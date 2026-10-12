@@ -32,6 +32,8 @@
 //     行内部时，选中项会连带触发行自身的 onClick（如导航到会话）。
 //  5. 新增 side/align 入参——上游写死 align="end"，antd 站点各有 placement（topLeft /
 //     bottomLeft / bottomRight），迁移须能指名方位。
+//  6. 透传 open / onOpenChange 受控开合——`content` 项不是菜单项，Radix 不会替它关弹层
+//     （附件面板的相机行点了要收起面板），消费方需要能自己关。
 // 注：Radix 的弹层按触发器的矩形定位（floating-ui autoUpdate），因此**触发器必须常驻布局**——
 // 消费方若把触发器放进 hover-only 的容器，关闭瞬间容器塌成 display:none、rect 归零到视口
 // 原点，仍在退场的菜单会被甩到左上角。此为消费方约束，组件侧不做兜底。
@@ -81,6 +83,13 @@ export type DropdownMenuProps = DropdownMenuTriggerProps & {
   /** 弹层相对触发器的方位（用 Radix 词汇而非 antd 的 placement，消费方自行换算） */
   side?: MenuSide;
   align?: MenuAlign;
+  /**
+   * 受控开合（Radix Root 同名 prop 原样透传）。给需要「点了面板里的自定义内容也要收起弹层」
+   * 的消费方用——`content` 项不是菜单项，Radix 不会替它关（如附件面板的相机行）。
+   * 不给时是 Radix 的非受控形态，行为与之前一致。
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 type Highlight = { top: number; height: number; danger: boolean; glide: boolean };
@@ -189,8 +198,8 @@ function MenuLevel({ variant, items, side, align, sideOffset, alignOffset, ref }
   return <DropdownPrimitive.Content ref={ref} className={styles.menu} data-dropdown-scroll-root side={side} align={align} sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={12} loop onFocus={onPanelFocus} onPointerMoveCapture={() => { pointer.current = true; }} onKeyDownCapture={() => { pointer.current = false; }} onClick={event => event.stopPropagation()}>{body}</DropdownPrimitive.Content>;
 }
 
-export function DropdownMenu({ label, trigger, items, icon, side = "bottom", align = "end" }: DropdownMenuProps) {
-  return <DropdownPrimitive.Root modal={false}>
+export function DropdownMenu({ label, trigger, items, icon, side = "bottom", align = "end", open, onOpenChange }: DropdownMenuProps) {
+  return <DropdownPrimitive.Root modal={false} open={open} onOpenChange={onOpenChange}>
     {/* mobi 本地修改 1：trigger 插槽走 asChild（不挂上游 .trigger 样式——外部触发器自带外观）；未给时保留上游触发器 */}
     {trigger !== undefined
       ? <DropdownPrimitive.Trigger asChild>{trigger}</DropdownPrimitive.Trigger>

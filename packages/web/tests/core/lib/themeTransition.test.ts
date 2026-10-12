@@ -191,6 +191,19 @@ describe('switchTheme 启用路径', () => {
         expect(startViewTransitionSpy.mock.calls.length).toBe(afterFirst)
     })
 
+    it('并发调用只跑一次自检（StrictMode 双挂载不许开两个 probe）', async () => {
+        installStartViewTransition()
+        readyDelayMs = 20
+        const { warmUpThemeTransition } = await loadModules()
+
+        // 不 await 第一条：模拟 StrictMode 下挂载 effect 连跑两次（两处都在 await whenIdle
+        // 之前通过「尚未自检」检查）。两个 probe 并发时后启动的会打断先启动的（其 ready
+        // reject），把达标机器误判成不支持——故必须单飞。
+        await Promise.all([warmUpThemeTransition(), warmUpThemeTransition()])
+
+        expect(startViewTransitionSpy).toHaveBeenCalledTimes(1)
+    })
+
     it('揭示起点取最近一次指针位置', async () => {
         installStartViewTransition()
         readyDelayMs = 20

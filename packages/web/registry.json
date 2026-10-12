@@ -28,6 +28,7 @@
                 "dropdown-menu.tsx：弹层内容结构重写——items 由上游的扁平字符串数组扩为递归树（children 子菜单 / content 非菜单项内容 / ReactNode label / selected / title / disabled / destructive / separatorBefore），面板抽成递归的 MenuLevel（每级自带滑动高亮与指针·键盘判据，子项共用一级高亮会画到一级面板上；面板带 data-dropdown-scroll-root 供子项找滚动容器，不暴露 CSS Modules 哈希类名）",
                 "dropdown-menu.tsx：子菜单走 Radix Sub（桌面 hover、触屏与键盘 click 展开均为内建——antd 的 triggerSubMenuAction 不需要；关闭即卸载由 Presence 保证——antd 的 destroyOnHidden 不需要）；onSelect 回调的事件是 Radix 在菜单项元素上派发的 CustomEvent（target 即该项，供「动作长在项内按钮上」的站点做点击代理）",
                 "dropdown-menu.tsx：新增 side/align 入参（上游写死 align=\"end\"；antd 站点各有 placement，topLeft/bottomLeft 等须能指名方位）",
+                "dropdown-menu.tsx：透传 open / onOpenChange 受控开合——content 项不是菜单项，Radix 不会替它关弹层，消费方（附件面板相机行点了要收面板）需要能自己关",
                 "消费方约束（组件侧不兜底），两条：①触发器必须常驻布局——Radix 弹层按触发器矩形定位（floating-ui autoUpdate），放进 hover-only 容器时关闭瞬间容器 display:none 会让 rect 归零到视口原点，退场中的菜单被甩到左上角（会话行由此把「更多」kebab 钉成常驻，仅重命名/置顶留 hover 显隐；触发器须是按钮组末尾，兄弟增删才不移动其矩形）；②触发器不能落在 role=\"tab\" 的 label 内——React portal 的 focusin 沿 **React 树**冒泡（非 DOM 树），rc-tabs 的 tab onFocus 据此 setFocusKey 再 focus() 抢回焦点，Radix 判 focus-outside 当场关菜单（开完即关，检查器「+」曾如此，现挂 tabBarExtraContent）",
                 "dropdown-menu.module.css：设计变量→mobi token 映射，声明挂 :where(.trigger, .menu)（trigger 在业务树、menu 在 portal，两个 DOM 根不共享自定义属性）",
                 "dropdown-menu.module.css：变量来源由 antd --ant-* 改为 cssVars.ts 注入 :root/.dark 的全局变量——antd cssVar 只在组件子树内可解析，弹层 portal 到 body 后 token 全空（无底色/无描边/无圆角/无投影 + 过渡失效），全局变量对 portal 同样可见",

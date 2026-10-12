@@ -106,6 +106,14 @@ describe('AttachPanel', () => {
         expect(onAttach).toHaveBeenCalledWith('video')
     })
 
+    it('移动端：相机行点完也关面板（相机行是 content 非 menuitem，Radix 不会自动关）', () => {
+        mocks.isMobile = true
+        renderPanel()
+
+        pick(PHOTO_ITEM)
+        expect(screen.queryByRole('menu')).toBeNull()
+    })
+
     it('未提供 onSketch：不渲染画板项（新建页面板形态）', () => {
         render(<AttachPanel onAttach={vi.fn()} />)
         openPanel()

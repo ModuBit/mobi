@@ -254,6 +254,24 @@ describe('MemorySection hindsight 开启态', () => {
         expect(payload.pageRefreshEveryTurns).toBe(5)
     })
 
+    it('刷新间隔：小数被整数化、清空回落 0（不刷新），不落 1（每轮）', async () => {
+        renderSection()
+        await waitFor(() => expect(screen.getByLabelText('API 地址')).toBeInTheDocument())
+
+        const field = screen.getByLabelText(i18nMap['settings.memory.pageRefreshLabel'])
+        // 轮数是整数计数：小数会被 shared 的 zod .int() 拒掉 → 整表单 400，用户只看到通用「保存失败」
+        fireEvent.change(field, { target: { value: '2.5' } })
+        fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }))
+        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalled())
+        expect(Number.isInteger(stableApi.memory.set.mock.calls[0][0].pageRefreshEveryTurns)).toBe(true)
+
+        // 清空：回落 0（从不刷新）。回落 1 会变成最费的「每轮」
+        fireEvent.change(field, { target: { value: '' } })
+        fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }))
+        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalledTimes(2))
+        expect(stableApi.memory.set.mock.calls[1][0].pageRefreshEveryTurns).toBe(0)
+    })
+
     it('清除 token：提交空串（在场性=清除）', async () => {
         renderSection()
         await waitFor(() => expect(screen.getByText(i18nMap['settings.memory.tokenClear'])).toBeInTheDocument())

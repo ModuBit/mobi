@@ -413,9 +413,13 @@ export function MemorySection() {
                         <FieldLabel $token={token}>{t('settings.memory.pageRefreshLabel')}</FieldLabel>
                         <InputNumber
                             min={0}
+                            step={1}
+                            // 轮数是整数计数：小数会被 shared 的 zod .int() 拒掉，整张表单 400（用户只看到
+                            // 通用「保存失败」），故输入侧就锁整数。清空回落 0（从不刷新）——回落 1 是最费的每轮。
+                            precision={0}
                             style={{ width: 120 }}
                             value={pageRefreshEveryTurns}
-                            onChange={(v) => setPageRefreshEveryTurns(typeof v === 'number' ? v : 1)}
+                            onChange={(v) => setPageRefreshEveryTurns(typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.round(v)) : 0)}
                             aria-label={t('settings.memory.pageRefreshLabel')}
                         />
                         <Hint $token={token}>{t('settings.memory.pageRefreshHint')}</Hint>

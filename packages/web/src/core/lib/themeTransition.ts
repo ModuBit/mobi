@@ -128,15 +128,30 @@ function whenIdle(): Promise<void> {
     })
 }
 
-/**
- * 启动自检。由 ThemeProvider 在挂载 effect 里调用一次（全站主题单源），
- * 未自检完成前 switchTheme 保守走直写——错过一次动画，好过押注在不确知的能力上。
- */
-export async function warmUpThemeTransition(): Promise<void> {
-    if (transitionEnabled !== null) return
+/** 自检单飞句柄：并发调用共享同一次自检（见 warmUpThemeTransition） */
+let warmUpInFlight: Promise<void> | null = null
+
+async function runWarmUp(): Promise<void> {
     await whenIdle()
     if (transitionEnabled !== null) return
     await probe()
+}
+
+/**
+ * 启动自检。由 ThemeProvider 在挂载 effect 里调用一次（全站主题单源），
+ * 未自检完成前 switchTheme 保守走直写——错过一次动画，好过押注在不确知的能力上。
+ *
+ * **单飞**：StrictMode 双挂载（dev）/ 多处 Provider 会让本函数被并发调用，两次都在
+ * await 之前通过「尚未自检」检查。两个 probe 并行会互相打断——后启动的
+ * startViewTransition 让先启动的 ready reject，而先启动的那条把它当成本机不行，
+ * 结论取谁先完成就变了（实测可把达标机器降级）。共享同一个 promise 后只有一个 probe。
+ */
+export function warmUpThemeTransition(): Promise<void> {
+    if (transitionEnabled !== null) return Promise.resolve()
+    warmUpInFlight ??= runWarmUp().finally(() => {
+        warmUpInFlight = null
+    })
+    return warmUpInFlight
 }
 
 /**

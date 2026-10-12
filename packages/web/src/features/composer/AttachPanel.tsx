@@ -23,10 +23,11 @@
  * 选中高亮），antd Dropdown 的自绘面板会另成一套外观。两项非菜单项内容（标题、相机行）走
  * `content`：它们不参与菜单键盘漫游，也不该被当成可选项。
  * 相机的两个按钮自持样式与菜单项同形（同尺寸/hover 档），因为菜单一行只能一个可选项。
- * 关闭不再手写：菜单项选中即关（Radix 内建），原 `pick()` 的 setOpen(false) 随之删除。
+ * 关闭：菜单项选中即关（Radix 内建），原 `pick()` 的 setOpen(false) 随之删除；相机行走
+ * `content`（非菜单项），Radix 不会替它关，故本组件受控 open，点完自己收面板。
  */
 
-import { type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Button } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import { Camera, Paperclip, PenLine, Video } from 'lucide-react'
@@ -98,6 +99,14 @@ function RowButton({ icon, title, onClick }: { icon: ReactNode; title: string; o
 export function AttachPanel({ disabled, onAttach, onSketch }: AttachPanelProps) {
     const { t } = useTranslation()
     const isMobile = useIsMobile()
+    // 受控开合：只为相机行能自己收面板（menu 项选中即关由 Radix 负责）
+    const [open, setOpen] = useState(false)
+
+    /** 相机行：先跑动作，再收面板（`content` 项不会被 Radix 当成选中） */
+    const pickCamera = (source: 'photo' | 'video') => {
+        onAttach(source)
+        setOpen(false)
+    }
 
     const items: DropdownItem[] = [
         { key: 'title', content: <GroupTitle>{t('composer.attachPanelTitle')}</GroupTitle> },
@@ -115,12 +124,12 @@ export function AttachPanel({ disabled, onAttach, onSketch }: AttachPanelProps) 
                         <RowButton
                             icon={<Camera size={16} />}
                             title={t('composer.attachPhoto')}
-                            onClick={() => onAttach('photo')}
+                            onClick={() => pickCamera('photo')}
                         />
                         <RowButton
                             icon={<Video size={16} />}
                             title={t('composer.attachRecord')}
-                            onClick={() => onAttach('video')}
+                            onClick={() => pickCamera('video')}
                         />
                     </CameraRow>
                 ),
@@ -151,6 +160,8 @@ export function AttachPanel({ disabled, onAttach, onSketch }: AttachPanelProps) 
             items={items}
             side="top"
             align="start"
+            open={open}
+            onOpenChange={setOpen}
         />
     )
 }

@@ -142,6 +142,26 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
    * 都在它上面），行点击代理到那个按钮——不在菜单项里再写一份动作，避免两处定义漂移。
    * 故 label 是既能点整行、又能点按钮本身的一团内容；分隔线走菜单自带的 separatorBefore。
    */
+  // 点在项自带按钮上时，动作已由按钮自己跑过一遍，行点击代理不该再来一次（否则执行两遍：
+  // 附件面板开了又关、终端建出两个）。Radix 2.x 的 onSelect 给的是它自己派发的 CustomEvent
+  // （target 是菜单项元素，不带原始事件），拿不到 `e.target.closest('button')`，故在 document
+  // 捕获阶段记下「最近这次交互是否落在按钮上」。记在 label 上不够——菜单项自身的内边距不在
+  // label 子树里，那片点击会让判定过期成「是按钮」。键盘选中不产生 click，keydown 时一并刷新
+  // （菜单项元素不是按钮 → 判否，照常走代理）。
+  const hitInnerButton = useRef(false)
+  useEffect(() => {
+    const mark = (event: Event) => {
+      const target = event.target
+      hitInnerButton.current = target instanceof Element && target.closest('button') !== null
+    }
+    document.addEventListener('click', mark, true)
+    document.addEventListener('keydown', mark, true)
+    return () => {
+      document.removeEventListener('click', mark, true)
+      document.removeEventListener('keydown', mark, true)
+    }
+  }, [])
+
   const overflowItems: DropdownItem[] = useMemo(() => items.slice(visibleCount).map((item, index) => ({
     key: item.key,
     separatorBefore: index > 0,
@@ -151,7 +171,10 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
         {item.label && <span>{item.label}</span>}
       </span>
     ),
-    onSelect: (event) => (event.target as HTMLElement | null)?.querySelector('button')?.click(),
+    onSelect: (event) => {
+      if (hitInnerButton.current) return
+      ;(event.target as HTMLElement | null)?.querySelector('button')?.click()
+    },
   // 依赖 items/visibleCount 而非 hiddenItems：后者是 slice 出来的新数组，引用每次都变，memo 永不命中
   })), [items, visibleCount])
 
