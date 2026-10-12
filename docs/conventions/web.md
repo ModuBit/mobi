@@ -40,13 +40,13 @@ src/
 
 **默认 antd。** antd v6 组件稳定、有团队支撑，是一切未迁移场景（含新代码）的默认选择。antd 对 mobi 的角色是「原语库 + 主题 token 运行时」，这个角色不变。
 
-### 归属登记表（唯一事实源）
+### 归属登记表（唯一事实源：`packages/web/registry.json`）
 
-只有迁移完成的组件才在表中登记，之后该组件的使用统一按表；**不在表中的组件一律 antd**，不因「感觉 shadcn 更好」口头越表。
+只有迁移完成的组件才登记，之后该组件的使用统一按表；**不在表中的组件一律 antd**，不因「感觉 shadcn 更好」口头越表。机器事实源是 [`packages/web/registry.json`](../../packages/web/registry.json)（一致性由 `tests/conventions/componentRegistry.test.ts` 守卫：登记↔目录双向一致 + 组件名唯一），下表为其投影，登记时两处同步更新：
 
 | 组件 | 归属 | 迁移于 | 说明 |
 |---|---|---|---|
-| （空——首个组件迁移完成时填入第一行） | | | |
+| （空——首个组件迁移完成时随 registry.json 一并填入） | | | |
 
 ### 单组件迁移流程
 
@@ -61,7 +61,7 @@ src/
    - 已迁移的弹层组件与 antd Modal/Drawer **禁止叠开**（body 滚动锁冲突）
    - uiarc 组件若引入，不可全局 import 其 `foundation.css`（暗档判据特异性会盖过主题注入），token 由 `core/config/theme/cssVars.ts` 单源供给
 5. **真机（Android Chrome）验收** = 迁移完成条件，不是后续优化（registry 组件 desktop-first，mobi 是移动 PWA 重度场景）
-6. **登记入表**：完成后在上表加一行（含迁移 commit），此后该组件使用统一按表
+6. **登记入表**：完成后在 `packages/web/registry.json` 加 entry（name/source/migratedIn），同步更新本章投影表，此后该组件使用统一按表
 
 ### 单一来源（禁止重复实现）
 

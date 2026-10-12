@@ -4,7 +4,7 @@
 
 ## 组件选型
 
-**默认 antd**（含新代码）。shadcn 系组件仅限「归属登记表」内已迁移组件，表与迁移流程见 [docs/conventions/web.md「组件选型」章](../../docs/conventions/web.md#组件选型)。要点：同一组件禁止多实现（替换迁移先删旧再登记）；registry 组件不预装、迁移须真机验收后登记入表；antx + 流式渲染管线为永久禁区；registry 后端包（@radix-ui 等）只允许被 `src/components/shadcn/`、`src/components/arc/` import（lint 已强制）。
+**默认 antd**（含新代码）。shadcn 系组件仅限「归属登记表」内已迁移组件——机器事实源 `registry.json`（`tests/conventions/componentRegistry.test.ts` 守卫一致性），表与迁移流程见 [docs/conventions/web.md「组件选型」章](../../docs/conventions/web.md#组件选型)。要点：同一组件禁止多实现（替换迁移先删旧再登记）；registry 组件不预装、迁移须真机验收后登记入表；antx + 流式渲染管线为永久禁区；registry 后端包（@radix-ui 等）只允许被 `src/components/shadcn/`、`src/components/arc/` import（lint 已强制）。
 
 ## 编码规范
 
