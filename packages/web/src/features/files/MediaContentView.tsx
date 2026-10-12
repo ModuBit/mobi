@@ -17,7 +17,7 @@
 import { Empty, Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AudioPlayer from './AudioPlayer'
-import { useFileMediaSrc } from './useFileMediaSrc'
+import { useFileMediaSrc } from '@/core/data/hooks/useFileMediaSrc'
 
 interface MediaContentViewProps {
     /** 会话 id（拼 read-file 端点 src） */

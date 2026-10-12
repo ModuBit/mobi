@@ -19,7 +19,7 @@ import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import type { ReactNode } from 'react'
-import { SessionContextBar } from '@/features/session/SessionContextBar'
+import { SessionContextBar } from '@/pages/session/SessionContextBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 
 // mock i18next（SessionContextBar 内部 useTranslation，mock 后不影响断言）

@@ -137,6 +137,17 @@ module.exports = {
       },
     },
     {
+      name: 'web-features-no-upward',
+      comment: 'web features 不允许依赖 pages/app（组装权在 pages 以上层；分层治理票 03）',
+      severity: 'error',
+      from: {
+        path: '^packages/web/src/features',
+      },
+      to: {
+        path: '^packages/web/src/(pages|app)',
+      },
+    },
+    {
       name: 'web-domain-no-react',
       comment: 'web domain 零 React：不允许依赖 react 系/react-i18next/antd/@tanstack（type-only 同罪）',
       severity: 'error',

@@ -28,7 +28,7 @@ import { EFFORT_LEVELS, EFFORT_LABELS, OUTPUT_STYLE_FOLLOW_SETTING, getPermissio
 import { useDaemonStatus } from '@/core/data/hooks/queries/useDaemonStatus'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
-import { SessionCreating } from '@/features/session/SessionCreating'
+import { SessionCreating } from '@/pages/session/SessionCreating'
 import { WorkspaceFormModal } from '@/ui/WorkspaceFormModal'
 import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useDirectoryCommands } from '@/features/composer/useDirectoryCommands'

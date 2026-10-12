@@ -19,7 +19,7 @@ import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import type { ReactNode } from 'react'
-import { SessionCreating } from '@/features/session/SessionCreating'
+import { SessionCreating } from '@/pages/session/SessionCreating'
 
 // mock i18next：提供固定文案映射
 // initReactI18next 必须 noop 导出 —— MobiLogo → uiStore 链触发 i18n/index.ts 顶层

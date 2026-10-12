@@ -30,7 +30,7 @@ import {
     QuoteItemIndex,
     QuoteItemText,
     QuoteListBox,
-} from '@/features/chat/userBlocks/QuoteListCard'
+} from '@/ui/QuoteListCard'
 
 interface QuoteChipBarProps {
     quotes: ComposerQuoteRef[]

@@ -26,7 +26,7 @@ import '@testing-library/jest-dom/vitest'
 import { Markdown } from '@/ui/Markdown'
 import { TextBlock } from '@/features/chat/blocks/TextBlock'
 import { ArtifactEnvProvider } from '@/ui/ArtifactDirectiveComponents'
-import { injectArtifactScrollbarStyle } from '@/features/files/SandboxHtmlFrame'
+import { injectArtifactScrollbarStyle } from '@/ui/SandboxHtmlFrame'
 import { DirectiveStreamGate } from '@/ui/directiveStreamGate'
 import { useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 

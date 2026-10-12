@@ -213,7 +213,7 @@ describe('getApiErrorCode', () => {
 
 // ========== lastMessageActivityAt（#34 静默告警的活动时间源）==========
 
-import { lastMessageActivityAt, lastUserMessageAt, resolveRunStartedAt } from '@/features/chat/ChatContainer'
+import { lastMessageActivityAt, lastUserMessageAt, resolveRunStartedAt } from '@/pages/session/ChatContainer'
 
 describe('lastMessageActivityAt', () => {
     it('落库消息（有 positionAt）取最后一条的 positionAt', () => {
@@ -416,7 +416,7 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
 }))
 
 // composer 不在本次断言范围
-vi.mock('@/features/composer/ChatComposer', () => ({
+vi.mock('@/pages/session/ChatComposer', () => ({
     ChatComposer: () => null,
 }))
 
@@ -432,7 +432,7 @@ vi.mock('@/features/chat/BubbleListChat', () => ({
         ),
 }))
 
-import { ChatContainer } from '@/features/chat/ChatContainer'
+import { ChatContainer } from '@/pages/session/ChatContainer'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 /** 造最小用户消息（content 为 role-wrapped 信封 + text，能走通 normalize→user-text block） */

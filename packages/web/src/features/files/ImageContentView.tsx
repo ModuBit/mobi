@@ -18,7 +18,7 @@ import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
 import { AppImage } from '@/ui/AppImage'
-import { useFileMediaSrc } from './useFileMediaSrc'
+import { useFileMediaSrc } from '@/core/data/hooks/useFileMediaSrc'
 
 interface ImageContentViewProps {
     /** 会话 id（拼 read-file 端点 src） */

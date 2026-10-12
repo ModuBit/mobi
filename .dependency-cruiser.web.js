@@ -23,27 +23,22 @@ const fs = require('fs')
 const path = require('path')
 const base = require('./.dependency-cruiser.js')
 
-/* ===== features 域间隔离（票 02 上锁；豁免 = 票 03 裁决中的存量边）===== */
+/* ===== features 域间隔离（票 02 上锁、票 03 清零后裸上锁）===== */
 /**
- * 存量跨域边豁免清单（票 03 裁决中，清零后删除）。
- * 列表 = from 文件（实际跨域引用的发起方），按域分组；
- * 票 03 逐边四选一裁决（下沉 domain / 下沉 ui / 改 props / 并域）后逐文件移除。
- * 批次 1 已消 14 文件（通用资产下沉 ui/：toolIcons/agentPalette/pierreTheme/present/
- * Logo/MobiWordmark/useThemeLocaleToggle/usePwaMode/InstallButton+mobileMenu.styles/
- * ContextRing+ContextBreakdown/ClearStateButton；useDirectoryListing 下沉 core/data/hooks）。
+ * 存量跨域边已全部清零（票 03 五批次）：
+ * 1. 通用资产下沉 ui/（16 件：toolIcons/agentPalette/pierreTheme/present/Logo/
+ *    MobiWordmark/useThemeLocaleToggle/usePwaMode/InstallButton/ContextRing/
+ *    ClearStateButton/AgentLoadingBubble/StatusBar/WorkspaceFormModal/
+ *    SandboxHtmlFrame/QuoteListCard 等）；
+ * 2. 纯逻辑下沉 domain/tool/resultText + core/data/hooks（useDirectoryListing/useFileMediaSrc）；
+ * 3. 单消费方归位（ElicitationFormCard/QueuedMessagesBar→composer、LiveSystemNoticeBar→
+ *    session、AssignWorkspaceModal→layout）；
+ * 4. tool-card 并入 chat 域（边界画错裁决：工具卡是对话流呈现子域）；
+ * 5. 组装链上提 pages/session/（session 域全域 + ChatContainer + ChatComposer +
+ *    ComposerInfoPanel——组装权归 pages 层）；
+ * 6. 渲染器注入化破 22 条循环（views/types + blocks/types + renderContext）。
  */
-const FEATURE_ISOLATION_EXEMPT = [
-  /* ===== chat（1 文件：ChatContainer 引 composer；ArtifactInlineViews 引 files——注入化裁决中）===== */
-  '^packages/web/src/features/chat/artifact/ArtifactInlineViews\\.tsx$',
-  '^packages/web/src/features/chat/ChatContainer\\.tsx$',
-  /* ===== composer（3 文件：ChatComposer 引 chat+sketchpad；ComposerInfoPanel 引 chat 受理卡；QuoteChipBar 引 chat）===== */
-  '^packages/web/src/features/composer/ChatComposer\\.tsx$',
-  '^packages/web/src/features/composer/ComposerInfoPanel\\.tsx$',
-  '^packages/web/src/features/composer/QuoteChipBar\\.tsx$',
-  /* ===== session（2 文件：引 chat/review/files/layout 等，页面壳编排）===== */
-  '^packages/web/src/features/session/ChatPane\\.tsx$',
-  '^packages/web/src/features/session/InspectorPane\\.tsx$',
-]
+const FEATURE_ISOLATION_EXEMPT = []
 
 const featuresDir = path.resolve(__dirname, 'packages/web/src/features')
 const featureRules = fs.existsSync(featuresDir)
