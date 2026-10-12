@@ -126,8 +126,9 @@ const ArtifactCard: FC<{ path: string, reason?: ArtifactCardReason, sessionId?: 
         }
         : undefined
 
-    // 图标统一 26px 底色块——对齐原生 App 菜单的观感；底色/圆角随主题 token 走，
-    // 因此随 label 一起内联（原先落在 antd.css 的 .artifact-menu-icon 专属规则里）
+    // 图标统一 26px 底色块——对齐原生 App 菜单的观感。用 antd token 内联：
+    // useToken() 给的是**具体色值**（实测 rgb(...)，非 var(--ant-*) 引用），
+    // 因此 portal 到 body 的弹层里同样有效。
     const menuIcon = (icon: ReactNode) => (
         <span style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

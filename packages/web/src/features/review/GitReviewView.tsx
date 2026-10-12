@@ -49,9 +49,6 @@ import { serializeTargetKey } from '@/core/lib/targetKey'
 // 对外保持原导出面（测试/消费方从 GitReviewView 取注入接口类型）
 export type { GitReviewDeps } from './reviewDeps'
 
-/** commit 档在菜单里的 key 前缀（与档位序列化键区分，onClick 按前缀分流） */
-const COMMIT_ITEM_PREFIX = 'commit:'
-
 /** 「已提交」子菜单在 scope 菜单里的 key（commit 档选中态高亮它） */
 const COMMITS_MENU_KEY = 'commits'
 
@@ -61,13 +58,16 @@ const COMMIT_ITEM_WIDTH = 300
 /** 树点文件定位前等 Collapse 展开动画结束的延时：动画中行头位置未定，立即滚会停偏 */
 const COLLAPSE_SETTLE_DELAY_MS = 260
 
-/** 档位选项（DiffTarget 单源遍历）：菜单项 key 用稳定序列化键；「已提交」二级子菜单内选 commit */
-const TARGET_OPTIONS: Array<{ target: DiffTarget; labelKey: string; disabled?: boolean }> = [
-    { target: { kind: 'turn' }, labelKey: 'review.scope.lastTurn' },
-    { target: { kind: 'worktree', area: 'uncommitted' }, labelKey: 'review.scope.uncommitted' },
-    { target: { kind: 'worktree', area: 'unstaged' }, labelKey: 'review.scope.unstaged' },
-    { target: { kind: 'worktree', area: 'staged' }, labelKey: 'review.scope.staged' },
-]
+/** 档位选项（DiffTarget 单源遍历）：菜单项 key 用稳定序列化键；「已提交」二级子菜单内选 commit。
+ *  序列化键在模块加载时算一次——否则每次渲染对每个档位各算一遍（触发器 label 的 find 还要再算）。 */
+const TARGET_OPTIONS = (
+    [
+        { target: { kind: 'turn' }, labelKey: 'review.scope.lastTurn' },
+        { target: { kind: 'worktree', area: 'uncommitted' }, labelKey: 'review.scope.uncommitted' },
+        { target: { kind: 'worktree', area: 'unstaged' }, labelKey: 'review.scope.unstaged' },
+        { target: { kind: 'worktree', area: 'staged' }, labelKey: 'review.scope.staged' },
+    ] as Array<{ target: DiffTarget; labelKey: string }>
+).map((o) => ({ ...o, key: serializeTargetKey(o.target) }))
 
 /**
  * 「已提交」子菜单的滚动加载哨兵：列表滚到底（哨兵进入滚动容器视口）即翻页。
@@ -429,13 +429,16 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
     // （语义就是「不可选的一行」），滚动哨兵用 content 渲染为非菜单项。
     // 桌面 hover 展开、触屏与键盘 click 展开都是 Radix Sub 内建，无需再分类判决；
     // 子菜单关闭即卸载，antd 时代 destroyOnHidden 兜的 popup 残留不存在。
+    // 档位序列化键算一次：commit 项的 selected 与触发器 label 都要按它比对
+    const targetKey = serializeTargetKey(target)
+
     const commitItems: DropdownItem[] = [
         ...(commits.isLoading
             ? [{ key: '__loading__', disabled: true, label: <Flex justify="center" style={{ width: COMMIT_ITEM_WIDTH, padding: 6 }}><Spin size="small" /></Flex> }]
             : []),
         ...(commits.error ? [{ key: '__error__', disabled: true, label: commits.error }] : []),
         ...commits.data.map((c) => ({
-            key: `${COMMIT_ITEM_PREFIX}${c.sha}`,
+            key: c.sha,
             disabled: c.parentSha === null,
             title: c.subject,
             selected: target.kind === 'commit' && target.range.head === c.sha,
@@ -467,8 +470,8 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
     ]
 
     const scopeMenuItems: DropdownItem[] = [
-        ...TARGET_OPTIONS.map(({ target: t2, labelKey }) => ({
-            key: serializeTargetKey(t2),
+        ...TARGET_OPTIONS.map(({ target: t2, labelKey, key }) => ({
+            key,
             label: (
                 <span>
                     {t(labelKey)}
@@ -478,7 +481,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                 </span>
             ),
             disabled: (t2.kind === 'turn' && lastTurnMissing) || (!isGitRepo && t2.kind !== 'turn'),
-            selected: target.kind !== 'commit' && serializeTargetKey(t2) === serializeTargetKey(target),
+            selected: target.kind !== 'commit' && key === targetKey,
             // 原先经 key 字符串回解（serialize → parse）拿档位，键与对象本就同源，直取即可
             onSelect: () => changeTarget(t2),
         })),
@@ -514,7 +517,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                                         const c = commits.data.find((x) => x.sha === target.range.head)
                                         return c ? `${c.sha.slice(0, 7)} · ${c.subject}` : t('review.scope.commits')
                                     })()
-                                    : t(TARGET_OPTIONS.find(({ target: t2 }) => serializeTargetKey(t2) === serializeTargetKey(target))?.labelKey ?? 'review.scope.commits')}
+                                    : t(TARGET_OPTIONS.find((o) => o.key === targetKey)?.labelKey ?? 'review.scope.commits')}
                             </span>
                             <ChevronDown size={12} style={{ flexShrink: 0, color: 'var(--ant-color-text-tertiary)' }} />
                         </Button>

@@ -110,7 +110,6 @@
 .destructive .icon { color: var(--danger); }
 .item[data-disabled] { opacity: .45; cursor: default; }
 @keyframes menu-exit { to { --menu-exit: 1; } }
-@media (prefers-reduced-transparency: reduce) { .menu { background: var(--surface-raised); backdrop-filter: none; -webkit-backdrop-filter: none; } }
 @media (prefers-reduced-motion: reduce) {
   .trigger, .chevron, .item, .highlight { transition: none; }
   .menu, .menu[data-state="closed"] { transform: none; transition: opacity var(--duration-instant) linear; }

@@ -46,7 +46,7 @@ let pointerTracking = false
 let transitionEnabled: boolean | null = null
 
 /** 浏览器是否具备 View Transition（无则一律直写，动画纯属增量） */
-export function supportsViewTransition(): boolean {
+function supportsViewTransition(): boolean {
     return typeof document !== 'undefined' && typeof document.startViewTransition === 'function'
 }
 
@@ -148,7 +148,8 @@ export async function warmUpThemeTransition(): Promise<void> {
 export function switchTheme(next: Theme): void {
     const write = () => flushSync(() => useUiStore.getState().setTheme(next))
 
-    if (transitionEnabled !== true || !supportsViewTransition()) {
+    // true 已蕴含「具备 View Transition」：该值只由 probe() 置为 true，而它开头就查了这条能力
+    if (transitionEnabled !== true) {
         write()
         return
     }

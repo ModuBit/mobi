@@ -142,7 +142,7 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
    * 都在它上面），行点击代理到那个按钮——不在菜单项里再写一份动作，避免两处定义漂移。
    * 故 label 是既能点整行、又能点按钮本身的一团内容；分隔线走菜单自带的 separatorBefore。
    */
-  const overflowItems: DropdownItem[] = useMemo(() => hiddenItems.map((item, index) => ({
+  const overflowItems: DropdownItem[] = useMemo(() => items.slice(visibleCount).map((item, index) => ({
     key: item.key,
     separatorBefore: index > 0,
     label: (
@@ -152,7 +152,8 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
       </span>
     ),
     onSelect: (event) => (event.target as HTMLElement | null)?.querySelector('button')?.click(),
-  })), [hiddenItems])
+  // 依赖 items/visibleCount 而非 hiddenItems：后者是 slice 出来的新数组，引用每次都变，memo 永不命中
+  })), [items, visibleCount])
 
   return (
     <ActionBarContainer

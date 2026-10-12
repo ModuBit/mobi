@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Layout, Tabs, Button, App, Spin } from 'antd'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { useTranslation } from 'react-i18next'
@@ -222,17 +222,16 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
         if (expanded) setEverExpanded(true)
     }, [expanded])
 
-    const rightChrome = useMemo(
-        () => (
-            <RightChrome
-                isMobile={isMobile}
-                chatHidden={chatHidden}
-                onToggleChat={(v) => setChatHidden(sessionId, v)}
-                onCollapse={() => setExpanded(sessionId, false)}
-                t={t}
-            />
-        ),
-        [isMobile, chatHidden, setChatHidden, setExpanded, sessionId, t],
+    // chrome 簇的构造收在一处；leading 给「+」（见 InspectorChrome 注释）
+    const chrome = (leading?: ReactNode) => (
+        <InspectorChrome
+            leading={leading}
+            isMobile={isMobile}
+            chatHidden={chatHidden}
+            onToggleChat={(v) => setChatHidden(sessionId, v)}
+            onCollapse={() => setExpanded(sessionId, false)}
+            t={t}
+        />
     )
 
     // 「+」下拉菜单：与空态卡片共用 INSPECTOR_ACTIONS（可用性与执行都在清单上）
@@ -359,17 +358,10 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
                         }
                     }}
                     tabBarStyle={{ padding: 'max(0px, env(safe-area-inset-top)) 12px 0', margin: 0 }}
-                    // 在线：「+」与 rightChrome 同在 tab 栏右端。离线时整组改浮动定位（见下），
-                    // 保持可用——openFile/terminal/review 在休眠会话下照常（daemon 自动唤醒）
-                    // right 必须是**单个**节点：antd 把它直接塞进 `display:block` 的
-                    // .ant-tabs-extra-content，多子节点会各自成块、容器宽度被算成「最宽的那个」，
-                    // 「+」就被挤到独立一行。包一层 flex 行，容器宽度才等于整行内容宽。
-                    tabBarExtraContent={active ? { right: (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            {addTabMenu}
-                            {rightChrome}
-                        </div>
-                    ) } : undefined}
+                    // 在线：整簇挂 tab 栏右端。right 必须是**单个**节点——antd 把它直接塞进
+                    // `display:block` 的 .ant-tabs-extra-content，多子节点会各自成块、容器宽度
+                    // 被算成「最宽的那个」，「+」就被挤到独立一行（行布局由 InspectorChrome 收口）
+                    tabBarExtraContent={active ? { right: chrome(addTabMenu) } : undefined}
                 />
             )}
             {everExpanded && showEmpty && (
@@ -379,9 +371,8 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
                 zIndex 高于毛玻璃，保证离线时最大化/收起按钮可点；离线且有 tab 时「+」一并在此，
                 不进 tabBar——所以不传 tabBarExtraContent，避免两处重叠 */}
             {(showEmpty || !active) && (
-                <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    {hasTabs && addTabMenu}
-                    {rightChrome}
+                <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 11 }}>
+                    {chrome(hasTabs ? addTabMenu : undefined)}
                 </div>
             )}
             {/* 终端 tab 休眠/离线时不叠 ActivateCover：TerminalView 自带重连遮罩
@@ -391,14 +382,18 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
     )
 }
 
-/** 右上角 chrome：最大化/恢复 + 收起。空态与 Tab 态共用。 */
-function RightChrome({
+/** 右上角 chrome 簇：leading（「+」新建 tab，仅在有 tab 时给）+ 最大化/恢复 + 收起，同一行。
+ *  整簇的布局只在这里写一次——两个落点（在线 tab 栏右端 / 空态与离线的浮动角）共用，
+ *  避免各自包一层 flex 时漏改（「+」被挤成独立一行就是这么来的）。 */
+function InspectorChrome({
+    leading,
     isMobile,
     chatHidden,
     onToggleChat,
     onCollapse,
     t,
 }: {
+    leading?: ReactNode
     isMobile: boolean
     chatHidden: boolean
     onToggleChat: (v: boolean) => void
@@ -407,6 +402,7 @@ function RightChrome({
 }) {
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {leading}
             {!isMobile && (
                 chatHidden ? (
                     <AppTooltip title={t('session.inspector.restore')}>

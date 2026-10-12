@@ -56,6 +56,19 @@ motion 变量）补在 `SHADCN_VAR_MAPPINGS` 与 `MOTION_VARS` 里，不在组�
 `--foreground` / `--text-secondary` / `--shadow-*`）直接继承，组件只声明全局没有的别名
 （`--surface-raised: var(--popover)` 这类）。
 
+## 补充：JS token 不在此坑范围内（2026-10-12 CDP 实测）
+
+同一份代码里两类取色必须分开判：
+
+- **CSS 里的 `var(--ant-*)`** → 受本坑影响（portal 里取空、token 归零）
+- **`theme.useToken()` 内联的 `token.colorXxx`** → **给的是具体色值**，不是 var 引用。
+  实测页面上 antd 出品的 inline style 是 `background: rgb(250, 249, 245)` / `color: rgb(176, 174, 165)`
+  这类**字面量**；内联到 style 后在 portal 元素上同样生效，且随主题重渲自动更新
+
+所以「组件把 token 内联进 portal 弹层，是不是踩了这个坑」的判断**不成立**。
+先看渲染出来的是 CSS 变量引用还是具体值，再决定改不改——误把后者当坑去「统一成全局变量」，
+会白白改掉色档（本次实测：`token.colorFillSecondary` → `--surface-muted` 其实是 `colorBgTextHover`，不同档）。
+
 ## 未清同类隐患
 
 `copy-button.module.css` 仍在用 `var(--ant-*)` 映射。它当前渲染在 `.ant-app` 子树内所以「碰巧」

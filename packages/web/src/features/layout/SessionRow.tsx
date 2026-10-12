@@ -77,14 +77,15 @@ export function SessionRow({
     // 菜单 items 也是内联字面量——引用稳定性在此层不成立也不需要。
     // 附加项由调用方直接产出 DropdownItem（动作随项走）
     const extraItems = extraMenuItems ?? []
+    // 附加项与内置项之间的分隔（antd 用独立的 divider 项，uiarc 挂在「下一项之前」）——
+    // 构造时就给出，不先建数组再回头原地改元素
+    const primaryItem: DropdownItem = session.active
+        ? { label: t('session.actions.dormant'), icon: <MoonOutlined />, disabled: dormantLoading, onSelect: onDormant }
+        : { label: t('session.actions.resume'), icon: <PlayCircleOutlined />, onSelect: onResume }
     const builtinItems: DropdownItem[] = [
-        session.active
-            ? { label: t('session.actions.dormant'), icon: <MoonOutlined />, disabled: dormantLoading, onSelect: onDormant }
-            : { label: t('session.actions.resume'), icon: <PlayCircleOutlined />, onSelect: onResume },
+        { ...primaryItem, separatorBefore: extraItems.length > 0 },
         { label: t('session.actions.delete'), icon: <DeleteOutlined />, destructive: true, onSelect: onDelete },
     ]
-    // 附加项与内置项之间的分隔（antd 用独立的 divider 项，uiarc 挂在「下一项之前」）
-    if (extraItems.length) builtinItems[0].separatorBefore = true
     const menuItems: DropdownItem[] = [...extraItems, ...builtinItems]
 
     if (isRenaming) {
