@@ -51,7 +51,7 @@ vi.mock('@/ui/ClearStateButton', () => ({
     ),
 }))
 
-import { GoalBadge } from '@/features/chat/GoalBadge'
+import { GoalBadge } from '@/ui/GoalBadge'
 
 describe('GoalBadge', () => {
     it('收起简要：徽标只显示 ◎ active（condition 不在收起态，移到 click 详情）', () => {

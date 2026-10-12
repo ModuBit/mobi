@@ -33,8 +33,8 @@ import { queryKeys } from '@/core/lib/query-keys'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
-import { WorkspaceFormModal } from '@/features/workspace/WorkspaceFormModal'
-import { AssignWorkspaceModal } from '@/features/workspace/AssignWorkspaceModal'
+import { WorkspaceFormModal } from '@/ui/WorkspaceFormModal'
+import { AssignWorkspaceModal } from '@/features/layout/AssignWorkspaceModal'
 import type { Session, Workspace } from '@/core/data/api/types'
 import {
     Container, SectionTitleRow, SectionTitle, SectionChevron, SectionActionButton,

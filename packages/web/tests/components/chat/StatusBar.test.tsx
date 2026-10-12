@@ -30,13 +30,13 @@ vi.mock('@/ui/AgentLoadingBubble', () => ({
     ),
 }))
 
-vi.mock('@/features/chat/GoalBadge', () => ({
+vi.mock('@/ui/GoalBadge', () => ({
     GoalBadge: ({ goal, sessionId }: { goal: GoalStatus; sessionId?: string }) => (
         <div data-testid="goal-badge" data-met={String(goal.met)} data-session={sessionId ?? ''} />
     ),
 }))
 
-import { StatusBar } from '@/features/chat/StatusBar'
+import { StatusBar } from '@/ui/StatusBar'
 
 const activeGoal: GoalStatus = { met: false, condition: '所有测试通过' }
 const expiredCache: CacheStatus = {

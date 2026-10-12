@@ -82,12 +82,12 @@ vi.mock('@/features/layout/MobilePinnedGroup', () => ({
     MobilePinnedGroup: () => null,
 }))
 
-vi.mock('@/features/workspace/WorkspaceFormModal', () => ({
+vi.mock('@/ui/WorkspaceFormModal', () => ({
     WorkspaceFormModal: () => null,
 }))
 
 // AssignWorkspaceModal 桩：断言 open 状态
-vi.mock('@/features/workspace/AssignWorkspaceModal', () => ({
+vi.mock('@/features/layout/AssignWorkspaceModal', () => ({
     AssignWorkspaceModal: ({ open }: { open: boolean }) =>
         open ? <div data-testid="assign-modal" /> : null,
 }))

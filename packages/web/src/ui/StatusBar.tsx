@@ -21,7 +21,7 @@ import { Tooltip, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { formatDuration, formatTokens } from '@/core/lib/metricsFormat'
 import { AgentLoadingBubble } from '@/ui/AgentLoadingBubble'
-import { GoalBadge } from './GoalBadge'
+import { GoalBadge } from '@/ui/GoalBadge'
 
 interface StatusBarProps {
     /** Agent 标识（AgentLoadingBubble aria-label 用） */

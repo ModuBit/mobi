@@ -37,13 +37,10 @@ const FEATURE_ISOLATION_EXEMPT = [
   '^packages/web/src/features/chat/artifact/ArtifactInlineViews\\.tsx$',
   '^packages/web/src/features/chat/blocks/ToolCallBlock\\.tsx$',
   '^packages/web/src/features/chat/ChatContainer\\.tsx$',
-  /* ===== composer（3 文件：引 chat）===== */
+  /* ===== composer（3 文件：ChatComposer 引 chat+sketchpad；ComposerInfoPanel 引 tool-card；QuoteChipBar 引 chat）===== */
   '^packages/web/src/features/composer/ChatComposer\\.tsx$',
   '^packages/web/src/features/composer/ComposerInfoPanel\\.tsx$',
   '^packages/web/src/features/composer/QuoteChipBar\\.tsx$',
-  /* ===== layout（2 文件：引 workspace）===== */
-  '^packages/web/src/features/layout/MobileWorkspaceList\\.tsx$',
-  '^packages/web/src/features/layout/SidebarWorkspaces\\.tsx$',
   /* ===== session（2 文件：引 chat/review/files/layout 等，页面壳编排）===== */
   '^packages/web/src/features/session/ChatPane\\.tsx$',
   '^packages/web/src/features/session/InspectorPane\\.tsx$',

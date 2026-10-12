@@ -127,7 +127,7 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
 vi.mock('@/features/layout/SidebarToggle', () => ({ SidebarToggle: () => null }))
 vi.mock('@/features/layout/MobileMenu', () => ({ MobileMenuButton: () => null }))
 vi.mock('@/ui/Logo', () => ({ Logo: () => null }))
-vi.mock('@/features/workspace/WorkspaceFormModal', () => ({ WorkspaceFormModal: () => null }))
+vi.mock('@/ui/WorkspaceFormModal', () => ({ WorkspaceFormModal: () => null }))
 
 // jsdom 无 ResizeObserver / matchMedia，antd Select 弹层路径依赖——最小 stub
 class ResizeObserverStub {

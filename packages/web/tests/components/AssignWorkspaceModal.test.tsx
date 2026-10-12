@@ -64,7 +64,7 @@ vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
 }))
 
-import { AssignWorkspaceModal } from '@/features/workspace/AssignWorkspaceModal'
+import { AssignWorkspaceModal } from '@/features/layout/AssignWorkspaceModal'
 
 const session = {
     id: 'sess-1',
