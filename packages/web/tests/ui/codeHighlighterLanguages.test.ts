@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { REGISTERED_LANGUAGE_NAMES } from '@/ui/codeHighlighterLanguages'
+import { REGISTERED_LANGUAGE_NAMES } from '@/ui/base/markdown/codeHighlighterLanguages'
 import { DETECTABLE_PRISM_LANGUAGES, FALLBACK_LANGUAGE } from '@/core/utils/codeLanguageDetect'
 
 describe('codeHighlighterLanguages 注册表对账', () => {

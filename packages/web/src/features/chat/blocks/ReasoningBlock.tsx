@@ -18,9 +18,9 @@ import { useState, useEffect, memo, useRef } from 'react'
 import { Think } from '@ant-design/x'
 import ThinkIcon from '@ant-design/x/es/think/icons/think'
 import { useTranslation } from 'react-i18next'
-import { Markdown } from '@/ui/Markdown'
-import { CrossfadeText } from '@/ui/CrossfadeText'
-import { StatusIcon } from '@/ui/toolIcons'
+import { Markdown } from '@/ui/base/markdown/Markdown'
+import { CrossfadeText } from '@/ui/base/motion/CrossfadeText'
+import { StatusIcon } from '@/ui/base/display/toolIcons'
 import { useSmoothStickBottom } from '@/features/chat/useSmoothStickBottom'
 
 /** 思考过程渲染 */

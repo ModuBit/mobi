@@ -187,10 +187,12 @@ module.exports = {
     doNotFollow: {
       path: 'node_modules',
     },
-    // dist 是 gitignored 的构建产物（如 packages/web/dist），不应纳入依赖巡检。
-    // node_modules 不 exclude（保留第三方包依赖边——web-domain-no-react 等规则依赖它）
+    // 依赖巡检的巡逻面：dist 是 gitignored 构建产物（如 packages/web/dist），不应纳入。
+    // node_modules 默认整片排除——为每个第三方 import 建节点/边是这轮巡检的主要成本，
+    // 而只有 web 的 web-domain-no-react 需要第三方边，由 .dependency-cruiser.web.js
+    // 单独放开 exclude，其余包维持排除。
     exclude: {
-      path: 'dist',
+      path: '(node_modules|dist)',
     },
   },
 }

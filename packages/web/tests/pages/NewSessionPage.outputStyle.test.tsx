@@ -125,9 +125,9 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
 
 // —— 静态化布局组件：避免 router/动画上下文干扰 ——
 vi.mock('@/features/layout/SidebarToggle', () => ({ SidebarToggle: () => null }))
-vi.mock('@/features/layout/MobileMenu', () => ({ MobileMenuButton: () => null }))
-vi.mock('@/ui/Logo', () => ({ Logo: () => null }))
-vi.mock('@/ui/WorkspaceFormModal', () => ({ WorkspaceFormModal: () => null }))
+vi.mock('@/features/layout/mobileMenu', () => ({ MobileMenuButton: () => null }))
+vi.mock('@/ui/base/brand/Logo', () => ({ Logo: () => null }))
+vi.mock('@/ui/shared/WorkspaceFormModal', () => ({ WorkspaceFormModal: () => null }))
 
 // jsdom 无 ResizeObserver / matchMedia，antd Select 弹层路径依赖——最小 stub
 class ResizeObserverStub {

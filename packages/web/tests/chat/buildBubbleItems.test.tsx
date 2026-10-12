@@ -31,8 +31,8 @@ vi.mock('@/features/chat/blocks', async (importOriginal) => {
 })
 
 // Mock ToolCallGroupRenderer
-vi.mock('@/features/chat/blocks/ToolCallBlock', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@/features/chat/blocks/ToolCallBlock')>()
+vi.mock('@/features/chat/blocks/toolCallBlock', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/features/chat/blocks/toolCallBlock')>()
     return {
         ...actual,
         ToolCallGroupRenderer: (_props: { blocks: ToolCallBlock[] }) => `group:${_props.blocks.map(b => b.id).join(',')}`,

@@ -24,7 +24,7 @@ import { ChatPane } from '@/pages/session/ChatPane'
 import { InspectorPane } from '@/pages/session/InspectorPane'
 import { WorkspaceSplitter } from '@/pages/session/WorkspaceSplitter'
 import { getAgentStatus } from '@/ui/pixel-avatar/types'
-import { MobiLogo } from '@/ui/MobiLogo'
+import { MobiLogo } from '@/ui/base/brand/MobiLogo'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { useWakeLock } from '@/core/pwa/useWakeLock'
 

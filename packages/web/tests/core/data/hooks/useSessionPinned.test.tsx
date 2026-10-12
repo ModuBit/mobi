@@ -33,7 +33,7 @@ vi.mock('@/core/data/api/client', () => ({
 }))
 
 import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinned'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 import type { Session } from '@/core/data/api/types'
 
 function makeSession(id: string, overrides: Partial<Session> = {}): Session {

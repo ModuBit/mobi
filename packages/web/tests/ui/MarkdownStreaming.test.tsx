@@ -30,7 +30,7 @@ import '@testing-library/jest-dom/vitest'
 
 // 受控 display：测试直接驱动「揭示进度」（display 恒为 content 的前缀）
 const displayState = vi.hoisted(() => ({ current: '' }))
-vi.mock('@/ui/useStreamingContent', () => ({
+vi.mock('@/ui/shared/useStreamingContent', () => ({
     useStreamingContent: () => displayState.current,
     STREAM_BASE_RATE: 0.1,
     computeRevealRate: vi.fn(() => 0.1),
@@ -49,7 +49,7 @@ vi.mock('@ant-design/x-markdown', () => ({
     }),
 }))
 
-const { Markdown } = await import('@/ui/Markdown')
+const { Markdown } = await import('@/ui/base/markdown/Markdown')
 
 /** 当前挂载的段（DOM 即真实渲染状态，不受历史调用记录干扰） */
 function mountedSegments() {

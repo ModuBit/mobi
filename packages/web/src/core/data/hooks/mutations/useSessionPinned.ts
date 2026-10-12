@@ -18,7 +18,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { InfiniteData, QueryKey } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import type { WorkspaceSessionsPage, Session } from '@/core/data/api/types'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { toggleIdInPages } from '@/core/data/cache/pinnedOptimistic'
 

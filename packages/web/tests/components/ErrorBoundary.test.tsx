@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, fireEvent, cleanup } from '@testing-library/react'
 import { reloadPage } from '@/core/utils/reload'
-import { ErrorBoundary } from '@/ui/ErrorBoundary'
+import { ErrorBoundary } from '@/ui/base/layout/ErrorBoundary'
 
 vi.mock('@/core/utils/reload', () => ({
     reloadPage: vi.fn(),

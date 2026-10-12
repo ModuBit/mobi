@@ -34,7 +34,7 @@ vi.mock('react-i18next', async (orig) => {
     }
 })
 
-import { CustomBlockView, CUSTOM_EVENT_VIEWS } from '@/features/chat/blocks/CustomBlock'
+import { CustomBlockView, CUSTOM_EVENT_VIEWS } from '@/features/chat/blocks/customBlock'
 import { TurnDiffCard } from '@/features/chat/blocks/TurnDiffCard'
 import type { CustomBlock } from '@/domain/chat/types'
 import { TURN_DIFF_EVENT, type TurnDiffPayload } from '@mobi/shared'

@@ -25,7 +25,7 @@ import { Global, css } from '@emotion/react'
 import { Loader } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { TeamAgentCard } from './TeamAgentCard'
-import { ClearStateButton, type ClearRuntimeStateField } from '@/ui/ClearStateButton'
+import { ClearStateButton, type ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
 import { useTeamMembers, useTeamName } from '@/core/data/stores/teamAgentsStore'
 
 const STATUS_ORDER: Record<string, number> = {

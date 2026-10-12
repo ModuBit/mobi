@@ -26,7 +26,7 @@ import type { UserQuoteBlock } from '@mobi/shared'
 import { QUOTE_DIRECTIVE } from '@mobi/shared'
 // 显式初始化 i18n（jsdom navigator.language → en）：组件内 useTranslation 依赖全局实例就绪
 import i18n from '@/core/config/i18n'
-import { QuoteAnnotationsProvider, QuoteDirectiveMarker } from '@/ui/QuoteDirectiveComponents'
+import { QuoteAnnotationsProvider, QuoteDirectiveMarker } from '@/ui/shared/quoteDirectiveComponents'
 
 afterEach(cleanup)
 

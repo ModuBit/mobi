@@ -24,7 +24,7 @@ import { isAskUserQuestionToolName, parseAskUserQuestionInput, buildChatAboutThi
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 import { OptionRow } from './OptionRow'
 
 const { useToken } = antTheme

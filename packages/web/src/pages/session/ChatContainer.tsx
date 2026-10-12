@@ -53,7 +53,7 @@ import { AgentTurnActions } from '@/features/chat/AgentTurnActions'
 import { CrossSessionTag } from '@/features/chat/blocks/CrossSessionTag'
 import { SentFromTag } from '@/features/chat/blocks/SentFromTag'
 import { renderUserBubbleHeader, renderChatBlock, type ChatBlockContext } from '@/features/chat/blocks'
-import { ToolCallGroupRenderer } from '@/features/chat/blocks/ToolCallGroupBlock'
+import { ToolCallGroupRenderer } from '@/features/chat/blocks/toolCallGroupBlock'
 import { type RewindDryRunResult } from '@/features/chat/RewindConfirmView'
 import { MessageActionsDrawer, MessageActionsTrigger, type MessageActionTarget } from '@/features/chat/MessageActionsDrawer'
 import { QuoteSelectionPopover, type QuoteSelectionPopoverState } from '@/features/chat/QuoteSelectionPopover'
@@ -73,13 +73,13 @@ import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
 import { useTeamAgentsStore } from '@/core/data/stores/teamAgentsStore'
 import { collapsibleUserMessageStyles } from '@/features/chat/CollapsibleUserMessage'
-import { spring } from '@/ui/motion/presets'
+import { spring } from '@/ui/base/motion/presets'
 import { SKETCH_DOCK_HEIGHT_RATIO, SKETCH_DOCK_GAP, SKETCH_DOCK_SIDE_INSET, SKETCH_Z_COMPOSER } from '@/domain/sketch/sketchLayout'
 
-import { MobiLogo } from '@/ui/MobiLogo'
-// BUBBLE_ROLES 由 BubbleListChat 内部使用（from '@/ui/bubbleRoles'），此处仅保留 re-export
+import { MobiLogo } from '@/ui/base/brand/MobiLogo'
+// BUBBLE_ROLES 由 BubbleListChat 内部使用（from '@/ui/base/display/bubbleRoles'），此处仅保留 re-export
 // 供历史 import './ChatContainer' 的调用方兼容
-export { BUBBLE_ROLES } from '@/ui/bubbleRoles'
+export { BUBBLE_ROLES } from '@/ui/base/display/bubbleRoles'
 
 const { useToken } = antTheme
 

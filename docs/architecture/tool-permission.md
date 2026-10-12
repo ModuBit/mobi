@@ -96,7 +96,7 @@ CLI 发送 `update-state` 后，daemon 写入 SQLite（乐观锁），广播 `se
 
 `getPermissions(agentState)` 遍历 `agentState.requests`，生成 pending 权限条目。
 
-**UI 渲染** — `packages/web/src/features/chat/blocks/ToolCallBlock.tsx`
+**UI 渲染** — `packages/web/src/features/chat/blocks/toolCallBlock.tsx`
 
 `status === 'pending'` 时根据工具类型渲染对应 Footer：
 - 普通工具 / ExitPlanMode → `PermissionFooter`
@@ -309,7 +309,7 @@ SDK 收到的最终工具输入变为：
 | **Web** | `packages/web/src/features/chat/tool-card/PermissionFooter.tsx` | 通用授权 UI + ExitPlanMode 特殊按钮 |
 | **Web** | `packages/web/src/features/chat/tool-card/AskUserQuestionFooter.tsx` | AskUserQuestion 选项 UI |
 | **Web** | `packages/web/src/features/chat/tool-card/RequestUserInputFooter.tsx` | RequestUserInput 输入 UI |
-| **Web** | `packages/web/src/features/chat/blocks/ToolCallBlock.tsx` | 工具调用块，判断 pending 状态渲染 Footer |
+| **Web** | `packages/web/src/features/chat/blocks/toolCallBlock.tsx` | 工具调用块，判断 pending 状态渲染 Footer |
 | **Web** | `packages/web/src/features/composer/ElicitationFormCard.tsx` | MCP elicitation 表单卡片（场景五，schema 四类型映射） |
 | **Web** | `packages/web/src/pages/session/ComposerInfoPanel.tsx` | elicitation 请求区挂载（过滤 + 渲染，直接消费 agentState.requests） |
 | **测试** | `packages/cli/tests/fixtures/elicitation-mcp/server.ts` | E2E 测试 MCP（trigger_elicitation 工具，响应回显断言闭环） |

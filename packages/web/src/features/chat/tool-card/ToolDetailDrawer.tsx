@@ -27,11 +27,11 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolCallBlock } from '@/domain/tool/types'
 import type { ChatBlock } from '@/domain/chat'
 import { getToolPresentation, isAgentTool, getAgentTitle } from './knownTools'
-import { getToolIcon, ICON_STYLE_LG, StatusIcon, statusIconStyle } from '@/ui/toolIcons'
+import { getToolIcon, ICON_STYLE_LG, StatusIcon, statusIconStyle } from '@/ui/base/display/toolIcons'
 import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
 import { truncate } from '@/core/lib/toolInputUtils'
-import { ContentDrawer, DRAWER_WIDTH_PRESETS } from '@/ui/ContentDrawer'
+import { ContentDrawer, DRAWER_WIDTH_PRESETS } from '@/ui/base/layout/ContentDrawer'
 import { AgentDrawerContent } from './AgentDrawerContent'
 
 const { Text } = Typography

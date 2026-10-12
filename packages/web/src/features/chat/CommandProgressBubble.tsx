@@ -17,9 +17,9 @@
 import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import { PixelLoader } from '@/ui/PixelLoader'
-import { ShinyText } from '@/ui/ShinyText'
-import { useElapsedSeconds } from '@/ui/useElapsedSeconds'
+import { PixelLoader } from '@/ui/base/motion/PixelLoader'
+import { ShinyText } from '@/ui/base/motion/ShinyText'
+import { useElapsedSeconds } from '@/ui/base/display/useElapsedSeconds'
 import { formatElapsedTime } from '@/core/utils/timeFormat'
 
 /**

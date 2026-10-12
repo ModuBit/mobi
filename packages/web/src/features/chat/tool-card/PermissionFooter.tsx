@@ -24,10 +24,10 @@ import { isAxiosError } from 'axios'
 import { Alert, Button, Input, theme as antTheme } from 'antd'
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { agentCardBg } from '@/ui/agentPalette'
+import { agentCardBg } from '@/ui/base/display/agentPalette'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 import { getCustomPermissionTitleKey, getInputStringAny, getPermissionDescription, isExitPlanModeTool } from '@/core/lib/toolInputUtils'
 
 const { useToken } = antTheme

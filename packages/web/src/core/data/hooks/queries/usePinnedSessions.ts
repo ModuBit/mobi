@@ -17,7 +17,7 @@
 import { useMobiApi } from '@/core/data/api/client'
 import { usePagedSessionList } from '@/core/data/hooks/queries/usePagedSessionList'
 import { useSessionIdsPages } from '@/core/data/hooks/queries/useSessionIdsPages'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 
 const PAGE_SIZE = 20
 

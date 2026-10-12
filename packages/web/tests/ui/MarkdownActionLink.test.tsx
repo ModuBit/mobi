@@ -76,7 +76,7 @@ vi.mock('@ant-design/x-markdown', () => ({
     },
 }))
 
-import { Markdown } from '@/ui/Markdown'
+import { Markdown } from '@/ui/base/markdown/Markdown'
 
 afterEach(cleanup)
 

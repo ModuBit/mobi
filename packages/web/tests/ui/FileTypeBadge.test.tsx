@@ -52,9 +52,9 @@ beforeEach(() => {
 
 afterEach(cleanup)
 
-import { ActionLink } from '@/ui/ActionLink'
-import { FileChip } from '@/ui/FileChip'
-import { FileTypeBadge } from '@/ui/FileTypeBadge'
+import { ActionLink } from '@/ui/shared/ActionLink'
+import { FileChip } from '@/ui/base/display/FileChip'
+import { FileTypeBadge } from '@/ui/base/display/FileTypeBadge'
 
 describe('ActionLink 文件类型徽章', () => {
     it('file/open：前置扩展名徽章（aria-hidden，不在 accessible name 内）', () => {

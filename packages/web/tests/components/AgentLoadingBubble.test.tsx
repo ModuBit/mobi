@@ -16,7 +16,7 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, waitFor, cleanup, act } from '@testing-library/react'
-import { AgentLoadingBubble } from '@/ui/AgentLoadingBubble'
+import { AgentLoadingBubble } from '@/ui/shared/AgentLoadingBubble'
 
 // vitest 未开 globals，渲染型测试需显式 cleanup，否则 DOM 累积串味后续断言
 afterEach(cleanup)

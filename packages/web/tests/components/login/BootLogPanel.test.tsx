@@ -21,7 +21,7 @@ import '@testing-library/jest-dom/vitest'
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
 }))
-vi.mock('@/ui/useThemeLocaleToggle', () => ({
+vi.mock('@/ui/base/theme/useThemeLocaleToggle', () => ({
     useThemeLocaleToggle: () => ({
         resolvedTheme: 'light',
         locale: 'zh',
@@ -31,7 +31,7 @@ vi.mock('@/ui/useThemeLocaleToggle', () => ({
 }))
 // Logo 内部 useUiStore 的 import 链会触发 i18n 初始化副作用，与上面的
 // react-i18next mock 冲突；mock 成静态 svg 切断链路（此处不验证 Logo 本体）
-vi.mock('@/ui/Logo', () => ({
+vi.mock('@/ui/base/brand/Logo', () => ({
     Logo: () => <svg data-testid="mobi-logo" aria-hidden="true" />,
 }))
 

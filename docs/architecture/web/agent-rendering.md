@@ -70,7 +70,7 @@ API 历史路径中，`isSidechain` 标记被清除（`isSidechain: false`），
 
 ### ToolCallRenderer
 
-**文件**：`features/chat/blocks/ToolCallBlock.tsx`
+**文件**：`features/chat/blocks/toolCallBlock.tsx`
 
 所有 tool-call block 的统一渲染入口，使用 Ant Design X 的 `<Think>` 组件实现折叠/展开。
 
@@ -173,8 +173,8 @@ Drawer 内的 sidechain 对话渲染，使用 `Bubble.List` 组件。
 
 | 组件 | 文件 | 职责 |
 |------|------|------|
-| `ToolCallRenderer` | `features/chat/blocks/ToolCallBlock.tsx` | 聊天内联渲染入口，Think 折叠 |
-| `ToolCallPreviewContent` | `features/chat/blocks/ToolCallBlock.tsx` | 内联预览内容（Agent prompt / 结果） |
+| `ToolCallRenderer` | `features/chat/blocks/toolCallBlock.tsx` | 聊天内联渲染入口，Think 折叠 |
+| `ToolCallPreviewContent` | `features/chat/blocks/toolCallBlock.tsx` | 内联预览内容（Agent prompt / 结果） |
 | `ToolCard` | `features/chat/tool-card/index.tsx` | 卡片式渲染（Card + Modal），含 Task 摘要 |
 | `ToolDetailDrawer` | `features/chat/tool-card/ToolDetailDrawer.tsx` | Drawer 容器，路由到 Agent / 普通视图 |
 | `AgentDrawerContent` | `features/chat/tool-card/AgentDrawerContent.tsx` | Drawer 内 sidechain Bubble.List |

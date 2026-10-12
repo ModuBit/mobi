@@ -28,7 +28,7 @@
  *
  * viewCache 按块级稳定键（pos）：编辑某块源码时 code 每键变但 pos 不变，缩放/平移跨源码编辑保留。
  */
-import { renderMermaidInto } from '@/ui/mermaidRender'
+import { renderMermaidInto } from '@/ui/base/markdown/mermaidRender'
 
 const clampZoom = (z: number) => Math.min(2, Math.max(0.25, +z.toFixed(2)))
 

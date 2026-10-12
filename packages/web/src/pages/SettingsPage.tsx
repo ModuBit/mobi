@@ -19,7 +19,7 @@ import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft } from 'lucide-react'
 import styled from '@emotion/styled'
-import { MobileMenuButton } from '@/features/layout/MobileMenu'
+import { MobileMenuButton } from '@/features/layout/mobileMenu'
 import { SidebarToggle } from '@/features/layout/SidebarToggle'
 import { PageHeader } from '@/features/layout/PageHeader'
 import { useMediaQuery } from '@/core/data/hooks/useMediaQuery'
@@ -100,7 +100,7 @@ const SectionMain = styled.main`
  * - PC（≥992px）：左侧分区导航（200px）+ 右侧 Outlet 内容
  * - mobile（<992px）：Outlet 直接渲染；子页 appbar 带返回键（← 回 /settings 入口列表）
  */
-export function SettingsLayout() {
+export function SettingsPage() {
     const { token } = useToken()
     const { t } = useTranslation()
     const isWide = useMediaQuery(SETTINGS_WIDE_QUERY)

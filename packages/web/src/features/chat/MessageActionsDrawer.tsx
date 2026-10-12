@@ -16,7 +16,7 @@
 
 import { Copy, MoreHorizontal, Split, Undo2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { MobileDrawer } from '@/ui/MobileDrawer'
+import { MobileDrawer } from '@/ui/base/layout/MobileDrawer'
 import { RewindConfirmView, type RewindDryRunResult } from './RewindConfirmView'
 import { ForkConfirmView } from './ForkConfirmView'
 import { copyTextToClipboard } from '@/core/utils/clipboard'

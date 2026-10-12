@@ -16,7 +16,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { resumeSession } from '@/core/data/sessionResume'
 import type { MobiApi } from '@/core/data/api/client'

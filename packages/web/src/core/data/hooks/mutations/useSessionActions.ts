@@ -19,7 +19,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { isCancelQueued, DEFAULT_STOP_KIND, type StopKind } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
 import { resumeSession as resumeSessionModule } from '@/core/data/sessionResume'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 import { clearMessageWindow, fetchLatestMessages, removeQueuedMessages } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 

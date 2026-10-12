@@ -50,7 +50,8 @@ src/
 ├── pages/         ← 路由页面壳 + 会话组装域（pages/session/）
 ├── features/      ← 业务域（chat / composer / files / layout / login / review /
 │                     settings / sketchpad / terminal——域间零互引）
-├── ui/            ← 通用组件（零业务知识；arc/ motion/ openui/ pixel-avatar/）
+├── ui/            ← 通用组件（零业务知识；base/ 基础件 + shared/ 多域共享业务件 +
+│                     openui/ pixel-avatar/ shadcn/ 体系目录）
 ├── domain/        ← 纯逻辑（零 React）
 └── core/          ← 基础设施（数据、配置、工具函数、Provider）
 ```
@@ -174,7 +175,7 @@ packages/web/src/
 │   ├── providers/              React Context Providers
 │   │   └── SSEProvider.tsx     SSE 全局连接管理（单例）
 │   ├── lib/                    业务辅助逻辑
-│   │   ├── query-keys.ts       React Query key 集中定义
+│   │   ├── queryKeys.ts       React Query key 集中定义
 │   │   ├── messages.ts         消息合并/去重/排序（缓存操作工具，isQueuedInMobi/isDiscardedInMobi；mergeMessages 含 lifecycle 单调防护——rank 比较，陈旧 echo/旧响应不回退已推进状态）
 │   │   ├── markMessagesSubmitted.ts 排队消息消费标记（lifecycle queued→pushed，first-write-wins）
 │   │   ├── fileAttachments.ts  文件附件类型和辅助函数
@@ -284,15 +285,21 @@ packages/web/src/
 │       ├── sections/           设置分区（registry.ts 单一真相 + 各 Section；路由布局见 pages/SettingsPage.tsx）
 │       └── webtools/           Web 工具子页（RouteCard / ProviderCard / CredentialEditor）
 │
-├── ui/                         通用组件（零业务知识；多域共享呈现原语，票 02/03 下沉）
-│   ├── Markdown.tsx / AutoDetectCodeBlock.tsx / useStreamingContent.ts（流式渲染管线）
-│   ├── StatusBar.tsx / GoalBadge.tsx / ContextRing.tsx / ClearStateButton.tsx
-│   ├── AgentLoadingBubble.tsx / ScrambleText.tsx / CopyButton.tsx / bubbleRoles.ts
-│   ├── toolIcons.tsx / present.tsx / pierreTheme.ts / agentPalette.ts（票 03 下沉）
-│   ├── WorkspaceFormModal.tsx / SandboxHtmlFrame.tsx / QuoteListCard.tsx / Logo.tsx
-│   ├── AppTooltip / IconButton / ErrorBoundary / ContentDrawer / MobileDrawer / PixelCard …
-│   ├── footnotePlugin / latexPlugin / mentionPlugin / slashCommandPlugin（Markdown 插件）
-│   └── arc/  motion/  openui/  pixel-avatar/   ← registry 组件与动效/头像子目录
+├── ui/                         通用组件（零业务知识，2026-10-12 ui 治理定形）
+│   ├── base/                   基础件（零业务语义，按性质分 8 组，组内平铺）
+│   │   ├── interactive/        IconButton / AppTooltip / HoverSelect / TwoStepConfirmButton / EdgeSwipeBack
+│   │   ├── layout/             MobileDrawer / ContentDrawer / SplitLayout / OverflowContainer / ErrorBoundary
+│   │   ├── display/            FileChip / FileTypeBadge / FilePathText / AppImage / sourceIcon / toolIcons
+│   │   ├── markdown/           Markdown / AutoDetectCodeBlock + 各插件（footnote/latex/mention/slashCommand/directive）
+│   │   ├── motion/             ShinyText / ScrambleText / CrossfadeText / PixelLoader / presets
+│   │   ├── brand/              Logo / MobiLogo / MobiWordmark / Favicon / brandPaths
+│   │   ├── theme/              pierreTheme / useThemeLocaleToggle
+│   │   └── sandbox/            SandboxHtmlFrame / sandboxAppHost
+│   ├── shared/                 多域共享的业务呈现件（平铺）
+│   │                           ContextRing / ContextBreakdown / StatusBar / GoalBadge / ToolRowItems /
+│   │                           QuoteListCard / ArtifactDirectiveComponents + ArtifactInlineViews / CopyButton /
+│   │                           CommentField / SketchEditBadge / present / WorkspaceFormModal / ActionLink …
+│   └── openui/  pixel-avatar/  shadcn/   ← 组件体系目录（pixel-avatar 含 sprites/ hooks/）
 │
 ├── pages/                      路由页面壳 + 会话组装域
 │   ├── LoginPage.tsx / NewSessionPage.tsx / SessionDetailPage.tsx
@@ -328,7 +335,7 @@ graph TD
     Main --> Index["/ → redirect /sessions"]
     Main --> SessionsLayout["/sessions<br/>SessionsLayout（侧边栏 + 内容）"]
     Main --> NewSession["/sessions/new<br/>NewSessionPage"]
-    Main --> Settings["/settings<br/>SettingsLayout（PC 左侧分区导航 / mobile 子页返回）"]
+    Main --> Settings["/settings<br/>SettingsPage（PC 左侧分区导航 / mobile 子页返回）"]
 
     SessionsLayout --> SessionList["/sessions/<br/>SessionsPage（会话列表）"]
     SessionsLayout --> SessionDetail["/sessions/$sessionId<br/>SessionDetailPage"]
@@ -345,7 +352,7 @@ graph TD
 | `/sessions` | SessionsPage | 会话列表，左侧工作区分组 + 「最近」侧边栏，右侧列表 |
 | `/sessions/$sessionId` | SessionDetailPage | 会话详情，支持聊天/文件/终端三个视图 |
 | `/sessions/new` | NewSessionPage | 新建会话向导 |
-| `/settings` | SettingsLayout（SettingsPage.tsx） | 设置 layout 路由：PC ≥992px 左侧 200px 分区导航，mobile 入口列表 + 子页返回 |
+| `/settings` | SettingsPage（SettingsPage.tsx） | 设置 layout 路由：PC ≥992px 左侧 200px 分区导航，mobile 入口列表 + 子页返回 |
 | `/settings/` | SettingsIndex | 设置入口列表（mobile 首屏，含状态徽标） |
 | `/settings/notifications` | NotificationsSection | 通知分区（包 NotificationSettings） |
 | `/settings/web-tools` | WebToolsSection | Web 工具分区（路由卡 + provider 卡 + 凭据编辑器） |
@@ -507,7 +514,7 @@ ChatBlock[]
 |------|------|
 | `domain/chat/groupToolCalls.ts` | Zone 检测 + 分组算法 + 标题格式化 |
 | `domain/chat/reducerTools.ts` | `isHiddenTool()` 隐藏判断 |
-| `features/chat/blocks/ToolCallGroupBlock.tsx` | 折叠组渲染（Think 组件，默认收起） |
+| `features/chat/blocks/toolCallGroupBlock.tsx` | 折叠组渲染（Think 组件，默认收起） |
 | `features/chat/buildBubbleItems.tsx` | 调用分组函数，分发到渲染器 |
 
 ### API 交互
@@ -591,11 +598,11 @@ Web 端区分三种状态，使用不同的管理方案：
 |------|------|
 | 添加新页面 | `src/app/router.tsx` + `pages/` + `src/features/layout/navConfig.ts` |
 | 添加新 API 端点 | `core/data/api/client.ts` + `core/data/api/types.ts` |
-| 添加新数据查询 | `core/data/hooks/queries/` + `core/lib/query-keys.ts` |
+| 添加新数据查询 | `core/data/hooks/queries/` + `core/lib/queryKeys.ts` |
 | 添加新工具卡片视图 | `src/features/chat/tool-card/views/` + `src/features/chat/tool-card/knownTools.tsx` |
 | 修改消息归约 | `domain/chat/reducer.ts` + `domain/chat/reducerTools.ts` |
 | 修改消息渲染 | `features/chat/ChatContainer.tsx` + `features/chat/blocks/` |
 | 修改 SSE 事件处理 | `core/providers/SSEProvider.tsx` |
 | 修改主题 | `core/config/theme/tokens.ts` + `core/config/theme/components.ts` |
-| 添加新 UI 组件 | `src/ui/` 或对应功能域子目录 |
+| 添加新 UI 组件 | 基础件 → `src/ui/base/<组>/`；多域共享业务件 → `src/ui/shared/`；registry 组件 → `src/ui/shadcn/`（见 web.md「组件选型」章） |
 | 添加领域逻辑 | `domain/` 对应子目录（chat/command/session/tool） |

@@ -1,0 +1,91 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { theme as antTheme } from 'antd'
+import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
+import type { ReactNode, ButtonHTMLAttributes } from 'react'
+import styled from '@emotion/styled'
+
+const { useToken } = antTheme
+
+const StyledButton = styled.button<{
+    $active?: boolean
+    $token: ReturnType<typeof useToken>['token']
+    $size: number
+}>`
+    width: ${props => props.$size}px;
+    height: ${props => props.$size}px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: ${props => props.$active ? props.$token.colorPrimaryBg : 'transparent'};
+    color: ${props => props.$active ? props.$token.colorPrimary : props.$token.colorTextSecondary};
+    border-radius: 6px;
+    cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+    opacity: ${props => props.disabled ? 0.4 : 1};
+    transition: all 0.2s;
+
+    &:hover:not(:disabled) {
+        // hover 用悬浮高亮淡档，active（$active）保留 colorPrimaryBg——hover ≠ 选中（DESIGN.md Hover 高亮章）
+        background: ${props => props.$token.colorBgTextHover};
+        color: ${props => props.$token.colorPrimary};
+    }
+`
+
+interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+    icon: ReactNode
+    active?: boolean
+    size?: number
+    tooltip?: string
+    tooltipPlacement?: 'top' | 'left' | 'right' | 'bottom'
+}
+
+export function IconButton({
+    icon,
+    active,
+    size = 36,
+    tooltip,
+    tooltipPlacement = 'top',
+    'aria-label': ariaLabel,
+    ...props
+}: IconButtonProps) {
+    const { token } = useToken()
+
+    const button = (
+        <StyledButton
+            $active={active}
+            $token={token}
+            $size={size}
+            // 图标按钮无可访问名称（SVG 不贡献名称）；tooltip 与视觉语义同源，
+            // 未显式传 aria-label 时以它兜底，保证读屏可辨识
+            aria-label={ariaLabel ?? tooltip}
+            {...props}
+        >
+            {icon}
+        </StyledButton>
+    )
+
+    if (tooltip) {
+        return (
+            <AppTooltip title={tooltip} placement={tooltipPlacement}>
+                {button}
+            </AppTooltip>
+        )
+    }
+
+    return button
+}

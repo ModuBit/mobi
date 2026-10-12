@@ -16,7 +16,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 import type { MemoryEndpointCheckResult, MemorySettings, MemorySettingsSubmission, RedactedMemorySettings } from '@mobi/shared'
 
 /**

@@ -19,7 +19,7 @@ import {
     computeSplitRatio,
     shouldCollapseOnDrag,
     DEFAULT_LEFT_MIN_RATIO,
-} from '@/ui/splitLayoutUtils'
+} from '@/ui/base/layout/splitLayoutUtils'
 
 describe('splitLayoutUtils', () => {
     describe('computeSplitRatio', () => {

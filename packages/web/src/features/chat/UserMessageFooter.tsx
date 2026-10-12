@@ -17,8 +17,8 @@
 import { Undo2 } from 'lucide-react'
 import { Popover } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { CopyButton } from '@/ui/CopyButton'
-import { IconButton } from '@/ui/IconButton'
+import { CopyButton } from '@/ui/shared/CopyButton'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 import { RewindConfirmView, type RewindDryRunResult } from './RewindConfirmView'
 import { formatMessageTime } from '@/core/utils/timeFormat'
 

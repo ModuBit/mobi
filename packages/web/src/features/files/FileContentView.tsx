@@ -21,7 +21,8 @@ import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Copy, FileCode, Eye, RefreshCw, WrapText } from 'lucide-react'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
+import { copyTextToClipboard } from '@/core/utils/clipboard'
 import FileDownloadPrompt from '@/features/files/FileDownloadPrompt'
 import HtmlPreviewView from '@/features/files/HtmlPreviewView'
 import ImageContentView from '@/features/files/ImageContentView'
@@ -29,12 +30,12 @@ import PdfContentView from '@/features/files/PdfContentView'
 import MediaContentView from '@/features/files/MediaContentView'
 import FileContentViewHeader from '@/features/files/FileContentViewHeader'
 import FileTreeView from '@/features/files/FileTreeView'
-import { RatioSplitLayout } from '@/ui/SplitLayout'
+import { RatioSplitLayout } from '@/ui/base/layout/SplitLayout'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useFileRenderState, type ReadyRenderState } from '@/features/files/useFileRenderState'
 import { useFileEditor, type FileEditorState } from '@/features/files/useFileEditor'
 import { SaveConflictDialog } from '@/features/files/SaveConflictDialog'
-import { registerEditor, unregisterEditor } from '@/features/files/EditorRegistry'
+import { registerEditor, unregisterEditor } from '@/features/files/editorRegistry'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 
 // 懒加载编辑器（Tiptap/CodeMirror 体积大，首次进入编辑态才加载 bundle）
@@ -116,18 +117,7 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
     const toggleWrap = onCodePath ? state.toggleWrap : undefined
 
     const copyPath = async () => {
-        try {
-            await navigator.clipboard.writeText(filePath)
-        } catch {
-            // fallback：对齐 CopyButton.tsx 的 execCommand 兜底（老浏览器/无权限）
-            const ta = document.createElement('textarea')
-            ta.value = filePath
-            document.body.appendChild(ta)
-            ta.select()
-            document.execCommand('copy')
-            document.body.removeChild(ta)
-        }
-        message.success(t('files.pathCopied'))
+        if (await copyTextToClipboard(filePath)) message.success(t('files.pathCopied'))
     }
 
     const moreMenuItems: MenuProps['items'] = [

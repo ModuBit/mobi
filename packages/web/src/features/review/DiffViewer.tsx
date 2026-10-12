@@ -37,8 +37,8 @@ import { makeReviewContentsQueryFn, makeReviewPatchQueryFn } from '@/core/data/h
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { basename } from '@/core/utils/path'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
-import { queryKeys } from '@/core/lib/query-keys'
-import { PIERRE_BRIDGE_VARS } from '@/ui/pierreTheme'
+import { queryKeys } from '@/core/lib/queryKeys'
+import { PIERRE_BRIDGE_VARS } from '@/ui/base/theme/pierreTheme'
 
 export function DiffViewer({ sessionId, target, path, version, wrap, layout }: {
     sessionId: string

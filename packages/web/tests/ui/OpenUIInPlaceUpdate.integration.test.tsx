@@ -30,10 +30,10 @@ import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 
 import { streamingDisplayState } from '../helpers/streamingContentMock'
-vi.mock('@/ui/useStreamingContent', async () =>
+vi.mock('@/ui/shared/useStreamingContent', async () =>
     (await import('../helpers/streamingContentMock')).streamingContentMock())
 
-const { Markdown } = await import('@/ui/Markdown')
+const { Markdown } = await import('@/ui/base/markdown/Markdown')
 const { UiSendProvider, OpenUIAnchorProvider } = await import('@/ui/openui/actionContext')
 const { useOpenUIActionStore } = await import('@/ui/openui/actionStore')
 

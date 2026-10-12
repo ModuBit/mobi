@@ -50,7 +50,7 @@ vi.mock('@/core/data/hooks/queries/useWorkspaces', () => ({
 }))
 
 // MobileDrawer 桩：绕开 framer-motion jsdom spring 发散（既有惯例，见 MobileMenu.test）
-vi.mock('@/ui/MobileDrawer', () => ({
+vi.mock('@/ui/base/layout/MobileDrawer', () => ({
     MobileDrawer: ({ open, title, children }: { open: boolean; title?: string; children: ReactNode }) =>
         open ? (
             <div data-testid="mobile-drawer">

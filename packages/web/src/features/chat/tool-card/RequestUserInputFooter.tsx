@@ -27,7 +27,7 @@ import {
 } from '@/domain/tool/requestUserInput'
 import { useMobiApi } from '@/core/data/api/client'
 import { useQueryClient } from '@tanstack/react-query'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 
 const { useToken } = antTheme
 const { TextArea } = Input

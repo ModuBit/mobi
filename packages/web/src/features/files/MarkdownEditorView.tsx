@@ -21,7 +21,7 @@ import { Button, Popover, Tooltip, Input, theme as antTheme } from 'antd'
 import { Bold, Italic, Strikethrough, Code, Link as LinkIcon, Link2, Check, ExternalLink, Unlink, Trash2, Image as ImageIcon } from 'lucide-react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
-import { MermaidCodeBlock, MermaidPreview } from './MermaidPreview'
+import { MermaidCodeBlock, MermaidPreview } from './mermaidPreview'
 import Link from '@tiptap/extension-link'
 import { linkInputRule } from './linkInputRule'
 

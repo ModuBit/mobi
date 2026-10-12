@@ -34,10 +34,10 @@ import { PatchDiff } from '@pierre/diffs/react'
 import { formatDiffStats } from './lineNumberUtils'
 import { composePatchText, composePatchFromLineRows, countPatchLines } from './structuredPatchUtils'
 import type { StructuredPatch } from '@/domain/chat/types'
-import { FilePathText } from '@/ui/FilePathText'
+import { FilePathText } from '@/ui/base/display/FilePathText'
 import { ToolViewPanel } from './ToolViewPanel'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
-import { PIERRE_BRIDGE_VARS } from '@/ui/pierreTheme'
+import { PIERRE_BRIDGE_VARS } from '@/ui/base/theme/pierreTheme'
 
 const { useToken } = antTheme
 

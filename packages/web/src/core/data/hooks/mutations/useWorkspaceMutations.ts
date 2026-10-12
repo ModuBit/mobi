@@ -16,7 +16,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 import { invalidateWorkspaceViews } from '@/core/lib/invalidateViews'
 import type { Workspace, WorkspaceFolder } from '@/core/data/api/types'
 

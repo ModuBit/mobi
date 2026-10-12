@@ -28,7 +28,7 @@ vi.mock('@/core/data/stores/uiStore', () => ({
     },
 }))
 
-import { EdgeSwipeBack } from '@/ui/EdgeSwipeBack'
+import { EdgeSwipeBack } from '@/ui/base/interactive/EdgeSwipeBack'
 
 /** 在 document 上派发合成 PointerEvent（jsdom 30 原生支持 pointerId/clientX init） */
 const dispatchPointer = (

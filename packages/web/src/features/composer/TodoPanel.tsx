@@ -20,8 +20,8 @@ import { Lightbulb } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { TodoItem } from '@mobi/shared'
-import { ClearStateButton, type ClearRuntimeStateField } from '@/ui/ClearStateButton'
-import { ShinyText } from '@/ui/ShinyText'
+import { ClearStateButton, type ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
+import { ShinyText } from '@/ui/base/motion/ShinyText'
 
 /** 任务橙色，参考 Claude Code */
 const TODO_ORANGE = '#e8825c'

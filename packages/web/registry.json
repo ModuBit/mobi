@@ -1,14 +1,16 @@
 {
-    "$comment": "组件归属注册表——shadcn 底座票 04。唯一机器事实源，消费方：tests/conventions/componentRegistry.test.ts（一致性守卫）、web.md「组件选型」章（投影表）。迁移流程完成后在此登记；name 用语义名，source 取 shadcn | arc；migratedIn 为迁移标识（commit 或日期/票号）；localMods 列本地修改点（add --overwrite 升级后照单恢复）。",
+    "$comment": "组件归属注册表——shadcn 底座票 04。唯一机器事实源，消费方：tests/conventions/componentRegistry.test.ts（一致性守卫）、web.md「组件选型」章（投影表）。registry 组件统一落 packages/web/src/ui/shadcn/<name>/；shadcn 是组件体系名（非来源名），官方 shadcn / uiarc / beautifului 在路径上无来源差异——来源只记本表 source 字段（shadcn 官方模型：注册表命名空间只决定下载源，落盘统一进 aliases.ui 目录）。迁移流程完成后在此登记；name 用语义名，source 取 shadcn | arc；migratedIn 为迁移标识（commit 或日期/票号）；localMods 列本地修改点（add --overwrite 升级后照单恢复）。",
     "components": [
         {
             "name": "copy-button",
             "source": "arc",
             "migratedIn": "2026-10-12 首个迁移组件（uiarc copy-button，零 headless 后端）",
             "localMods": [
+                "结构扁平化：上游 arc/copy-button/ + arc/lib/{use-copy-feedback,motion-tokens} + arc/motion-tokens（re-export 壳）→ mobi src/ui/shadcn/copy-button/ 单目录内聚（升级重建上游结构后按本条恢复）",
                 "全部文件补版权头",
                 "copy-button.tsx：新增 copiedLabel/failedLabel props（上游硬编码英文文案）",
-                "lib/use-copy-feedback.ts：copy 走 copyTextToClipboard（execCommand 降级，core/utils/clipboard）",
+                "use-copy-feedback.ts：copy 走 copyTextToClipboard（execCommand 降级，core/utils/clipboard）",
+                "use-copy-feedback.ts：复位时长导出 COPY_FEEDBACK_RESET_MS（消费壳 tooltip 复用同一时长，避免壳自定 2000ms 与内层 1900ms 错位）",
                 "copy-button.module.css：.button 作用域设计变量→mobi token 映射（foundation.css 不全局引入）"
             ]
         }

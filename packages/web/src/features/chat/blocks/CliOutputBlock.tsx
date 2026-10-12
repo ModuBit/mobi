@@ -19,7 +19,7 @@ import { Think } from '@ant-design/x'
 import { theme as antTheme } from 'antd'
 import { CodeOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { OverflowContainer } from '@/ui/OverflowContainer'
+import { OverflowContainer } from '@/ui/base/layout/OverflowContainer'
 import { CliOutputDetailDrawer } from '../CliOutputDetailDrawer'
 import { parseCliOutputText } from '@/domain/chat'
 

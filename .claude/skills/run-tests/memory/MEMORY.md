@@ -5,6 +5,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [dev 环境重启](dev-env-restart.md) — dev(2223/5174) 停服/迁移/重启 recipe；web 必须 cwd=packages/web 否则 vite 落 5173（2026-09-28 实踩）
 
 - [环境启动](env-bootstrap.md) — bootstrap / cleanup / 就绪判断 / profile 检查 / 端口隔离 / 故障恢复
+- [会话切模型](switch-model.md) — 下拉为空时走 POST /api/sessions/:id/model；CC Switch 本地 proxy 前缀路由 / 模型 ID 取法 / 429 表现
 - [浏览器连接](browser-connect.md) — Chrome DevTools MCP 复用、僵尸进程清理
 - [登录](login.md) — token 输入 + Connect 提交、验证跳转
 - [自定义输入框操作](input-box.md) — click → Ctrl+A → type_text 通用规范（登录 / 聊天共用）

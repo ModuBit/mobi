@@ -17,7 +17,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import type { Session } from '@/core/data/api/types'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 
 /**
  * 获取所有会话列表

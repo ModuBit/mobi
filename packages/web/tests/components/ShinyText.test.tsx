@@ -22,7 +22,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, act } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { ShinyText } from '@/ui/ShinyText'
+import { ShinyText } from '@/ui/base/motion/ShinyText'
 
 afterEach(() => {
     cleanup()

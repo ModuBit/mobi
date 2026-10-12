@@ -16,7 +16,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 import type { RedactedWebToolsConfig, WebToolsConfigSubmission } from '@mobi/shared'
 
 /** 两跳加载结果：ok / offline（executor 未就绪或网络异常）/ error（daemon 读盘失败，文案区分于离线） */

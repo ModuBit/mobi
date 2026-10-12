@@ -17,8 +17,8 @@
 import { Split } from 'lucide-react'
 import { Popover } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { CopyButton } from '@/ui/CopyButton'
-import { IconButton } from '@/ui/IconButton'
+import { CopyButton } from '@/ui/shared/CopyButton'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 import { ForkConfirmView } from './ForkConfirmView'
 
 export interface AgentTurnActionsProps {

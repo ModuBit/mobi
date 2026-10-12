@@ -18,7 +18,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import { ConfigProvider } from 'antd'
 import { Bubble } from '@ant-design/x'
-import { BUBBLE_ROLES } from '@/ui/bubbleRoles'
+import { BUBBLE_ROLES } from '@/ui/base/display/bubbleRoles'
 
 /**
  * 回归守卫：assistant 气泡贯穿整列（清 antdx Bubble 内置 15% 对侧留白）

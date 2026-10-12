@@ -22,7 +22,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen } from '@testing-library/react'
-import { ArtifactDirectiveView } from '@/ui/ArtifactDirectiveComponents'
+import { ArtifactDirectiveView } from '@/ui/shared/artifactDirectiveComponents'
 
 // 测试断言按 i18n key（项目惯例：t 直接回 key，见 FileContentView.test）。
 // initReactI18next 桩：SandboxHtmlFrame 引 uiStore → @/core/config/i18n 顶层

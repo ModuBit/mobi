@@ -8,16 +8,16 @@
  * 2. 22 条存量循环已清零（票 03 批次 5：views 类型抽离 types.ts / resultText 下沉
  *    domain / buildBubbleItems 渲染器注入 + renderContext Context 注入），no-circular
  *    恢复根配置的 error 硬卡。
- * 3. web-ui-no-upward 豁免 ArtifactDirectiveComponents：mobi 指令渲染链
- *    （Markdown → 指令组件 → artifact inline views）的解耦需 Markdown 组件
- *    注入化接口设计，属票 03 逐边裁决（豁免仅此一处，裁决后删除）。
+ * 3. web-ui-no-upward 豁免已清零（ui 组织治理票：ArtifactInlineViews 下沉 ui/shared，
+ *    mobi 指令渲染链 Markdown → 指令组件 → artifact inline views 全程留在 ui 内，
+ *    不再越层引 features）。
  * 4. 新增 features 域间隔离规则（readdir 动态生成 per-feature）：
  *    depcruise 正则不支持捕获组回引，无法用单条规则表达「features/X 不得引
  *    features/其他」。存量跨域边的 from 文件列入 EXEMPT（票号注释），
  *    票 03 逐边清零后删豁免、裸上锁防新增边。
  *
  * forbidden 规则集 require 根配置复用（新增规则只改根文件，防两份漂移）；
- * 仅对 no-circular 做 severity 覆盖、web-ui-no-upward 做豁免覆盖。
+ * 仅对 no-circular 做 severity 覆盖。
  */
 const fs = require('fs')
 const path = require('path')
@@ -60,21 +60,8 @@ const featureRules = fs.existsSync(featuresDir)
   : []
 
 module.exports = {
-  forbidden: [
-    ...base.forbidden.map((rule) => {
-      if (rule.name === 'web-ui-no-upward') {
-        return {
-          ...rule,
-          from: {
-            ...rule.from,
-            // mobi 指令渲染链（票 03 裁决中）：Markdown(通用) → 指令组件 → chat/artifact
-            pathNot: '^packages/web/src/ui/ArtifactDirectiveComponents\\.tsx$',
-          },
-        }
-      }
-      return rule
-    }),
-    ...featureRules,
-  ],
-  options: base.options,
+  forbidden: [...base.forbidden, ...featureRules],
+  // web-domain-no-react 依赖第三方包的依赖边（react / antd / @tanstack…），故相对根配置
+  // 放开 node_modules；其余包跑根配置时维持排除（建第三方节点是 depcruise 主要耗时）。
+  options: { ...base.options, exclude: { path: 'dist' } },
 }

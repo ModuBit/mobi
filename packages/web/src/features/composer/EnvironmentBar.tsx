@@ -17,7 +17,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Divider, Select, theme } from 'antd'
-import { AppTooltip } from '@/ui/AppTooltip'
+import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { DesktopOutlined, FolderOpenOutlined, PlusOutlined } from '@ant-design/icons'
 
 /**

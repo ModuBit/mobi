@@ -16,7 +16,7 @@
 
 import type { ToolViewProps } from './types'
 import { isObject } from '@mobi/shared'
-import { Markdown } from '@/ui/Markdown'
+import { Markdown } from '@/ui/base/markdown/Markdown'
 
 /**
  * ExitPlanMode 工具视图

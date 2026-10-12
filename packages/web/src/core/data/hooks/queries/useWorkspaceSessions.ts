@@ -19,7 +19,7 @@ import { useMobiApi } from '@/core/data/api/client'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { usePagedSessionList } from '@/core/data/hooks/queries/usePagedSessionList'
 import { useSessionIdsPages } from '@/core/data/hooks/queries/useSessionIdsPages'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 import type { Session } from '@/core/data/api/types'
 
 const PAGE_SIZE = 20

@@ -15,7 +15,7 @@
  */
 
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 import { mergeSessions } from '@/core/data/cache/sessionCache'
 import type { Session, WorkspaceSessionsPage, WorkspaceSessionsResponse } from '@/core/data/api/types'
 

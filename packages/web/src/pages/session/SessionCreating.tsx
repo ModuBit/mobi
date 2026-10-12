@@ -17,7 +17,7 @@
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { keyframes } from '@emotion/react'
-import { MobiLogo } from '@/ui/MobiLogo'
+import { MobiLogo } from '@/ui/base/brand/MobiLogo'
 
 /**
  * 创建会话过渡态

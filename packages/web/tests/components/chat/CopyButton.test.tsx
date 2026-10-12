@@ -23,7 +23,7 @@
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react'
-import { CopyButton } from '@/ui/CopyButton'
+import { CopyButton } from '@/ui/shared/CopyButton'
 
 const writeTextSpy = vi.hoisted(() => vi.fn<(text: string) => Promise<void>>())
 
@@ -86,7 +86,7 @@ describe('CopyButton 适配壳', () => {
         })
         expect(screen.getByRole('status').textContent).toBe('chat.copy: chat.copied')
 
-        // useCopyFeedback 1900ms 复位 + 壳 tooltip 2000ms 复位均已过
+        // 推进超过复位时长（内层按钮与 tooltip 共用 COPY_FEEDBACK_RESET_MS）后 status 区清空
         await act(async () => {
             await vi.advanceTimersByTimeAsync(2000)
         })

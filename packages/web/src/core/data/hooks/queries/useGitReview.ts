@@ -36,7 +36,7 @@ import {
     type ReviewPatchResult,
 } from '@mobi/shared'
 import { useMobiApi, type MobiApi } from '@/core/data/api/client'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 
 // ── 审查 v2（DiffTarget 统一模型，六 hooks）：数据链 = overview → files →
 //  patch/contents（pierre hydration 懒拉）。陈旧性：overview 的 targetGeneration

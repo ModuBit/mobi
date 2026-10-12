@@ -17,7 +17,7 @@
 import { useTranslation } from 'react-i18next'
 import { getSessionLoader } from '@/core/utils/sessionStatus'
 import type { Session } from '@/core/data/api/types'
-import { PixelLoader } from '@/ui/PixelLoader'
+import { PixelLoader } from '@/ui/base/motion/PixelLoader'
 
 /**
  * 会话列表状态指示（桌面 SessionRow 与移动端 MobileSessionItem 共用）：

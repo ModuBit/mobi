@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { AppTooltip } from '@/ui/AppTooltip'
+import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 
 // antd Tooltip（rc-trigger）依赖 ResizeObserver，jsdom 未提供
 beforeAll(() => {

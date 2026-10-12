@@ -17,7 +17,7 @@
 import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
-import { AppImage } from '@/ui/AppImage'
+import { AppImage } from '@/ui/base/display/AppImage'
 import { useFileMediaSrc } from '@/core/data/hooks/useFileMediaSrc'
 
 interface ImageContentViewProps {

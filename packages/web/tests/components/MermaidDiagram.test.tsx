@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, waitFor } from '@testing-library/react'
-import { resetMermaidCache } from '@/ui/mermaidRender'
+import { resetMermaidCache } from '@/ui/base/markdown/mermaidRender'
 
 // mock mermaid（懒加载动态 import 也被拦截）
 const renderMock = vi.fn(async (_id: string, _code: string) => ({ svg: '<svg class="mock-svg">mock</svg>' }))
@@ -28,7 +28,7 @@ vi.mock('mermaid', () => ({
     },
 }))
 
-import { MermaidDiagram } from '@/ui/MermaidDiagram'
+import { MermaidDiagram } from '@/ui/base/markdown/MermaidDiagram'
 
 describe('MermaidDiagram', () => {
     // svg 缓存是模块级，跨用例残留会令后续用例命中缓存不触发 render；每例前清空

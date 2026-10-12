@@ -17,7 +17,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import type { Workspace } from '@/core/data/api/types'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 
 /** 获取工作区列表（单机：machineId 维度已随 machine 概念移除退场） */
 export function useWorkspaces() {

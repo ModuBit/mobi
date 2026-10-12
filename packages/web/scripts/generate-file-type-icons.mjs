@@ -88,7 +88,7 @@ function cleanSvg(svg) {
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const outPath = join(__dirname, '../src/components/ui/fileTypeIcons.generated.ts')
+const outPath = join(__dirname, '../src/ui/base/display/fileTypeIcons.generated.ts')
 
 // 1. 拉主题映射 JSON，白名单过滤出 ext→icon
 const mapUrl = `https://unpkg.com/material-icon-theme@${THEME_VERSION}/dist/material-icons.json`

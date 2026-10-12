@@ -64,7 +64,7 @@
 **文章做法**：整条回复 markdown 是一个大字符串，一个 em dash 就把 Latin-1 单字节串打回 UTF-16，所有高亮 regex 走两字节慢路径（§SCALING HORIZONTALLY）。
 
 **mobi 现状**：
-- 聊天流 markdown 代码块链路：`packages/web/src/ui/Markdown.tsx`（components 覆盖）→ `packages/web/src/ui/AutoDetectCodeBlock.tsx` → `@ant-design/x` CodeHighlighter → **react-syntax-highlighter（Prism 全量主包、正则、主线程同步）**。
+- 聊天流 markdown 代码块链路：`packages/web/src/ui/base/markdown/Markdown.tsx`（components 覆盖）→ `packages/web/src/ui/base/markdown/AutoDetectCodeBlock.tsx` → `@ant-design/x` CodeHighlighter → **react-syntax-highlighter（Prism 全量主包、正则、主线程同步）**。
 - 文件查看链路：`packages/web/src/core/utils/shiki.ts` → shiki/core + `createJavaScriptRegexEngine`（JS 正则引擎，同样是主线程但静态一次性、异步 `useShikiHtml`，非聊天流式——文件内注释明确「不加防抖（聊天流式场景才需要）」）。
 - **关键差异**：mobi 内容以中文为主，消息字符串在 V8 里本来就是 two-byte，不存在「一个特殊字符把整串从单字节打回两字节」的悬崖——mobi 的常态就是文章修复后的状态。且代码 fence 本体是独立字符串（常见纯 ASCII），mobi 天然已按块拆分，不等价于「整条消息一串」。
 
@@ -85,7 +85,7 @@
 | `core/pwa/registerSW.ts:67` | controllerchange 事件回调 | 异步事件，不踩坑 |
 | `core/pwa/registerSW.ts:79` | waiting worker 失效时同步兜底 reload，经 UpdatePrompt 点击触发 | 点击 handler 内**无 setState 前置**，不构成「setState 后同步 reload」模式 |
 | `features/layout/SidebarFooter.tsx:125` | PWA 菜单「刷新」onClick 直接 reload | 无 setState 前置，安全 |
-| `features/layout/MobileMenu.tsx:212` | **已带 `setTimeout(0)` defer + 成因注释** | 已知 PWA 坑的唯一踩点，修复到位 |
+| `features/layout/mobileMenu.tsx:212` | **已带 `setTimeout(0)` defer + 成因注释** | 已知 PWA 坑的唯一踩点，修复到位 |
 
 **结论**：mobi 的 reload 全部是用户显式触发，不存在文章那种首绘后幽灵路径；「同步 setState 紧跟 reload 被吞」的唯一踩点（MobileMenu）已修复且有注释留痕。**无需动作**；唯一可留意的是 registerSW.ts:79 属「事件 handler 同步栈内 reload」，当前无 setState 前置所以安全，若未来有人在 UpdatePrompt 的点击链路里加状态更新需复查。
 
@@ -175,7 +175,7 @@
 
 - 一级来源：How we made claude.ai 3x faster in two weeks，claude.dev/blog，2026-09-23。文中每条文章侧 claim 标注的章节名：THE BRIEF / ANYTHING CAN BE HILL CLIMBED / THE LOOP, THREAD BY THREAD / SCALING HORIZONTALLY / GUARDRAILS / STEERING / AN 8-MILLISECOND BUDGET。
 - mobi 侧关键文件（均已实地核实）：
-  - 高亮：`packages/web/src/ui/Markdown.tsx`、`packages/web/src/ui/AutoDetectCodeBlock.tsx`、`packages/web/src/core/utils/shiki.ts`
+  - 高亮：`packages/web/src/ui/base/markdown/Markdown.tsx`、`packages/web/src/ui/base/markdown/AutoDetectCodeBlock.tsx`、`packages/web/src/core/utils/shiki.ts`
   - x-markdown patch：`.claude/skills/upgrade-deps/references/x-markdown-patch.md`
   - reload：`packages/web/src/core/pwa/{forceUpdate,registerSW}.ts`、`packages/web/src/core/utils/reload.ts`、`packages/web/src/features/layout/{MobileMenu,SidebarFooter,UpdatePrompt,MainLayout}.tsx`
   - 热区：`packages/web/src/features/composer/{ChatComposer,ComposerInfoPanel}.tsx`、`packages/web/src/features/chat/{ChatContainer,BubbleListChat}.tsx`、`packages/web/src/core/data/stores/messageWindowStore.ts`

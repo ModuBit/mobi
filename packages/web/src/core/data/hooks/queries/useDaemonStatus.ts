@@ -16,7 +16,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 import type { DaemonStatus } from '@/core/data/api/types'
 
 export type { DaemonStatus }

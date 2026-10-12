@@ -82,7 +82,7 @@ vi.mock('@/features/layout/MobilePinnedGroup', () => ({
     MobilePinnedGroup: () => null,
 }))
 
-vi.mock('@/ui/WorkspaceFormModal', () => ({
+vi.mock('@/ui/shared/WorkspaceFormModal', () => ({
     WorkspaceFormModal: () => null,
 }))
 

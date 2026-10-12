@@ -21,7 +21,7 @@ import { render, cleanup, screen, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ConfigProvider } from 'antd'
 import HtmlPreviewView from '@/features/files/HtmlPreviewView'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 
 // useFileMeta 订阅 meta（etag）驱动 iframe 重建；mock useMobiApi.files.meta 返回可控 etag。
 // mockApi 必须稳定引用（见 usemobiapi-stable-mock 记忆），否则 useMemo/useQuery effect 无限循环。

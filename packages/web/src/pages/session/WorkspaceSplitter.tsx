@@ -15,7 +15,7 @@
  */
 
 import type { ReactNode } from 'react'
-import { SplitLayout } from '@/ui/SplitLayout'
+import { SplitLayout } from '@/ui/base/layout/SplitLayout'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 
 export interface WorkspaceSplitterProps {

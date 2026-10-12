@@ -22,12 +22,12 @@ import { TeamCreateView } from '@/features/chat/tool-card/views/TeamCreateView'
 import { TeamDeleteView } from '@/features/chat/tool-card/views/TeamDeleteView'
 import { SendMessageView } from '@/features/chat/tool-card/views/SendMessageView'
 import { isObject, safeStringify } from '@mobi/shared'
-import { extractTextFromResult } from '@/domain/tool/resultText'
+import { extractTextFromResult, placeholderForState } from '@/domain/tool/resultText'
 import { getFileToolTarget } from '@/core/lib/toolInputUtils'
 import { theme as antTheme } from 'antd'
 import { formatLineRangeStats } from '@/features/chat/tool-card/views/lineNumberUtils'
 import { resolveDisplayPath } from '@/core/utils/path'
-import { Markdown } from '@/ui/Markdown'
+import { Markdown } from '@/ui/base/markdown/Markdown'
 import { DiffView } from '@/features/chat/tool-card/views/DiffView'
 import { ToolViewPanel } from '@/features/chat/tool-card/views/ToolViewPanel'
 
@@ -80,8 +80,6 @@ function renderText(text: string, opts: { mode: 'markdown' | 'code' | 'auto'; la
     }
     return <Markdown content={text} />
 }
-export { placeholderForState } from '@/domain/tool/resultText'
-import { placeholderForState } from '@/domain/tool/resultText'
 
 /** 无结果时的占位组件 */
 function ResultPlaceholder({ state }: { state: ToolViewProps['block']['tool']['state'] }) {

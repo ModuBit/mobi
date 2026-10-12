@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveDragDisposition } from '@/ui/resolveDragDisposition'
+import { resolveDragDisposition } from '@/ui/base/interactive/resolveDragDisposition'
 
 describe('resolveDragDisposition（速度符号优先于位置——Apple 原则）', () => {
     const base = { height: 400 }

@@ -26,7 +26,7 @@ import '@testing-library/jest-dom/vitest'
 import type { AgentTextBlock, UserTextBlock } from '@/domain/chat'
 import { renderChatBlock, type ChatBlockContext } from '@/features/chat/blocks'
 
-vi.mock('@/ui/Markdown', () => ({
+vi.mock('@/ui/base/markdown/Markdown', () => ({
     Markdown: ({ content }: { content: string }) => <div data-testid="md">{content}</div>,
 }))
 

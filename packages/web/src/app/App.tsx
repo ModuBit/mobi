@@ -20,13 +20,13 @@ import { useAuthStore } from '@/core/data/stores/authStore'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useEffect, useState, Suspense, useMemo } from 'react'
 import { setUnauthorizedHandler, createApiClient, useMobiApi } from '@/core/data/api/client'
-import { ErrorBoundary } from '@/ui/ErrorBoundary'
+import { ErrorBoundary } from '@/ui/base/layout/ErrorBoundary'
 import { prefetchRouteChunks } from '@/app/routeChunks'
-import { MobiLogo } from '@/ui/MobiLogo'
+import { MobiLogo } from '@/ui/base/brand/MobiLogo'
 import { NotificationPermissionGate } from '@/features/layout/NotificationPermissionGate'
 import { BubbleRenderProvider } from '@/features/chat/blocks/renderContext'
 import { renderChatBlock } from '@/features/chat/blocks'
-import { ToolCallGroupRenderer } from '@/features/chat/blocks/ToolCallGroupBlock'
+import { ToolCallGroupRenderer } from '@/features/chat/blocks/toolCallGroupBlock'
 
 export function App() {
     const { authenticated, logout } = useAuthStore()

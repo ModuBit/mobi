@@ -19,7 +19,7 @@ import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import { QUOTE_COMMENT_MAX } from '@mobi/shared'
 import { computeQuoteLayerPlacement } from './quoteLayerPlacement'
-import { CommentField } from '@/ui/CommentField'
+import { CommentField } from '@/ui/shared/CommentField'
 import { useKeyboardViewport } from './useKeyboardViewport'
 
 /** 浮层宽度：多行评论输入条 */

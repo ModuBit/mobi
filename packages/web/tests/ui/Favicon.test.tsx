@@ -48,7 +48,7 @@ afterEach(() => {
     vi.unstubAllGlobals()
 })
 
-import { Favicon } from '@/ui/Favicon'
+import { Favicon } from '@/ui/base/brand/Favicon'
 
 describe('Favicon', () => {
     it('探测期间渲染 globe 占位（无布局跳动），首选直连 favicon.ico', () => {

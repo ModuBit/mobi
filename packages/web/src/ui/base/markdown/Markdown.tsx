@@ -1,0 +1,342 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react'
+import { Box, Folder } from 'lucide-react'
+import type { Config as DOMPurifyConfig } from 'dompurify'
+import { MOBI_URI_SCHEME } from '@mobi/shared'
+import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
+import Latex, { containsLatex, ensureKatexLoaded } from '@/ui/base/markdown/latexPlugin'
+import slashCommand from '@/ui/base/markdown/slashCommandPlugin'
+import mention from '@/ui/base/markdown/mentionPlugin'
+import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from '@/ui/base/markdown/footnotePlugin'
+import { directiveExtension } from '@/ui/base/markdown/directivePlugin'
+import { truncateIncompleteDirectiveTail } from '@/domain/chat/directives'
+import { MobiDirective } from '@/ui/shared/quoteDirectiveComponents'
+import { isXMarkdownDebugEnabled } from '@/core/lib/xMarkdownDebug'
+import { useStreamingContent } from '@/ui/shared/useStreamingContent'
+import { INCOMPLETE_COMPONENTS } from '@/ui/base/markdown/markdownIncomplete'
+import { ActionLink } from '@/ui/shared/ActionLink'
+import { Favicon } from '@/ui/base/brand/Favicon'
+import AutoDetectCodeBlock from '@/ui/base/markdown/AutoDetectCodeBlock'
+import { MermaidDiagram } from '@/ui/base/markdown/MermaidDiagram'
+import { OpenUIBlock } from '@/ui/openui/OpenUIBlock'
+import { parseFenceIndexToken } from '@/ui/openui/fenceIndex'
+import { FootnoteContext, FootnoteRef, FootnoteSources } from '@/ui/base/markdown/footnoteComponents'
+// 必须排在 '@ant-design/x-markdown' 导入之后（同名 keyframes 后定义者胜，见文件内注释）
+import './markdownOverride.css'
+
+/** 流式渲染选项类型（从 XMarkdownProps 推断，因 x-markdown 未顶层导出） */
+type StreamingOption = NonNullable<XMarkdownProps['streaming']>
+
+/** 流式渲染默认配置：逐字揭示 + 短淡入 */
+export const MARKDOWN_STREAMING_CONFIG: StreamingOption = {
+    hasNextChunk: true,
+    enableAnimation: true,
+    animationConfig: { fadeDuration: 100 },
+    // 块级 memo（机器本地 patch：antx 源码 father 构建覆盖 bun store，bun install
+    // 会还原。升级 x-markdown 时的检查/撤除/重做见 upgrade-deps skill 的
+    // references/x-markdown-patch.md；上游发版含 incremental 后删此行即撤）
+    incremental: true,
+}
+
+/** 默认启用的 x-markdown 扩展（LaTeX 公式渲染）。
+ *  renderer 内部引用动态加载的 katex 实例——只有 ensureKatexLoaded 完成后
+ *  这些扩展才会进入渲染配置（见 katexReady 门控），工厂本身可同步创建 */
+const LATEX_EXTENSIONS = Latex()
+
+/** slash command badge 扩展 */
+const SLASH_COMMAND_EXTENSIONS = [slashCommand()]
+
+/** mention (@path) badge 扩展 */
+const MENTION_EXTENSIONS = [mention()]
+
+/** 脚注引用扩展（稳定引用，不依赖运行时数据） */
+const FOOTNOTE_REF_EXTENSIONS = [footnoteRefExtension()]
+
+/** 内联指令扩展（`:mobi-*{...}` → mobi-directive 标签；MobiDirective 按指令名路由渲染组件） */
+const DIRECTIVE_EXTENSIONS = [directiveExtension()]
+
+/** mobi URI scheme 前缀（scheme 大小写不敏感，按 URI 惯例归一后识别；scheme 权威声明在 shared actionUri） */
+const MOBI_URI_PREFIX = `${MOBI_URI_SCHEME}://`
+
+/**
+ * DOMPurify URI 白名单：x-markdown 渲染管线在 HTML sanitize 阶段用 DOMPurify 默认
+ * 协议正则（只放行 http/https/mailto/tel 等）过滤 href，`mobi://` 会被整体剥除——
+ * ExternalLink 拿不到 href，动作链接拦截（ActionLink）永远不会触发。
+ * 在默认正则上追加 mobi scheme（scheme 必须显式带冒号，任意值不会因此放行）；
+ * 点击行为仍由 ActionLink preventDefault 拦截，不产生真实导航。
+ */
+const DOMPURIFY_CONFIG: DOMPurifyConfig = {
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|mobi):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+}
+
+/**
+ * slash command 徽章（slashCommandPlugin 的自定义标签映射）：
+ * lucide Box icon + 命令名。icon 在 React 层渲染为真 SVG——raw HTML 形态的
+ * svg 会被 sanitize 剥掉 <path d> 属性致空白，组件化是唯一可靠路径。
+ * 样式（mono 蓝字、无底无框）见 markdown.css .slash-command-badge。
+ */
+const SlashCommandBadge: FC<ComponentProps<{ 'data-command'?: string }>> = ({ 'data-command': command }) => (
+    <span className="slash-command-badge">
+        <Box size={12} strokeWidth={2.4} aria-hidden="true" />
+        {command}
+    </span>
+)
+
+/**
+ * 目录 mention 徽章（mentionPlugin 的自定义标签映射）：lucide Folder 组件化渲染，
+ * 琥珀色同源 FileTypeBadge 的 DIRECTORY_TINT——raw HTML svg 会被 sanitize 剥
+ * <path d>（同 slash-command 的坑），组件路由是唯一可靠路径。文本基调
+ * （mono 弱于正文、无链接语义）见 markdown.css .mention-directory。
+ */
+const MentionDirectoryBadge: FC<ComponentProps<{ 'data-label'?: string }>> = ({ 'data-label': label }) => (
+    <span className="mention-directory">
+        <Folder size={13} strokeWidth={2.4} style={{ verticalAlign: -2, marginRight: 3 }} aria-hidden="true" />
+        {label}
+    </span>
+)
+
+/** 链接渲染：mobi:// 内部动作链接交 ActionLink 拦截分发（ADR 0003），其余统一新标签页打开 */
+const ExternalLink: FC<ComponentProps<{ href?: string }>> = (    { href, children, domNode, streamStatus, lang, block, className, ...rest },
+) => {
+    if (href?.toLowerCase().startsWith(MOBI_URI_PREFIX)) {
+        // className 透传：raw HTML 形态的 mobi 链接（如 mention badge）带原样式 class
+        return <ActionLink uri={href} className={className}>{children}</ActionLink>
+    }
+    const isHttp = !!href && /^https?:\/\//i.test(href)
+    // favicon 与链接首字符绑进同一 nowrap span：链接文本的断行规则（overflow-wrap
+    // anywhere，长 URL 任意字符间可折）会把行内的 icon 单独甩到第一行（2026-09-26
+    // 真机），绑定首字符后 icon 恒与文本同行，折行只发生在其后的字符间
+    const text = typeof children === 'string' && children.length > 0 ? children : null
+    return (
+        <a href={href} target="_blank" rel="noopener noreferrer" className={className} {...rest}>
+            {isHttp && text !== null ? (
+                <>
+                    <span style={{ whiteSpace: 'nowrap' }}>
+                        <Favicon href={href} />
+                        {text.slice(0, 1)}
+                    </span>
+                    {text.slice(1)}
+                </>
+            ) : (
+                <>
+                    {isHttp ? <Favicon href={href} /> : null}
+                    {children}
+                </>
+            )}
+        </a>
+    )
+}
+
+/** 默认的 code 渲染：块级走 CodeHighlighter（未指定 lang 时自动检测），行内保持原生 <code> */
+const DefaultCode: FC<ComponentProps> = ({ block, lang, className, children, streamStatus }) => {
+    if (typeof children !== 'string') return null
+
+    if (!block) {
+        return <code className={className}>{children}</code>
+    }
+
+    // info string 可能含额外参数（如 "ts twoslash"），仅取首个 token 作语言
+    const explicit = (lang ?? '').split(/\s+/)[0]
+        || className?.match(/language-([^\s]+)/)?.[1]
+        || undefined
+
+    // mermaid 图：渲染为 mermaid 图（而非代码高亮），与编辑器一致
+    if (explicit === 'mermaid') {
+        return <MermaidDiagram code={children} />
+    }
+
+    // openui 交互 UI（Intelligent UI Native 层）：渲染为 react-ui 官方组件库，
+    // 流式状态随所在代码块（x-markdown 按块级 memo 传递 streamStatus）。
+    // 标签双收：官方 inlineMode prompt 教的是 openui-lang，mobi 历史口径是 openui
+    if (explicit === 'openui' || explicit === 'openui-lang') {
+        // fence 身份序号（状态持久化票 01）：annotateOpenuiFences 注入的 token，anchor 下钻用；
+        // 无 token（非 TextBlock 路径）传 null，renderer 退回 block 级锚点
+        return <OpenUIBlock code={children} streaming={streamStatus === 'loading'} fenceIndex={parseFenceIndexToken(lang)} />
+    }
+
+    return <AutoDetectCodeBlock code={children} explicitLang={explicit} />
+}
+
+export interface MarkdownProps extends Omit<XMarkdownProps, 'streaming' | 'content' | 'children'> {
+    /** Markdown 文本内容 */
+    content?: string
+    /**
+     * 流式渲染配置：
+     * - `true`：使用默认 {@link MARKDOWN_STREAMING_CONFIG}
+     * - 对象：自定义流式配置
+     * - 省略 / `false` / `undefined`：非流式
+     */
+    streaming?: boolean | StreamingOption
+    /**
+     * 流式模式下是否启用逐字打字机效果：
+     * - `true`（默认）：将 snapshot 批量内容逐字揭示，自适应速率
+     * - `false`：直接传递完整内容，由 XMarkdown 的 enableAnimation 处理整体渐显
+     */
+    typing?: boolean
+    /** 包裹容器的内联样式（默认 maxWidth: 100%） */
+    style?: CSSProperties
+    /**
+     * 是否启用 slash command badge 渲染（如 `/compact`、`/board`）。
+     * 仅在用户消息场景启用，避免工具输出中的 `/` 路径被误渲染。
+     * 默认 `false`。
+     */
+    enableSlashCommand?: boolean
+    /**
+     * 是否启用 mention（`@<path>`）badge 渲染。
+     * 仅在用户消息场景启用——mention 作为独立 token 优先于 GFM 删除线等 inline 语法，
+     * 避免用户输入 `@~/a/b/c` 里的 `~` 被删除线吞掉。默认 `false`。
+     */
+    enableMention?: boolean
+}
+
+/**
+ * 通用 Markdown 渲染组件，统一封装 XMarkdown：
+ * - 默认接入代码高亮（CodeHighlighter）
+ * - 默认补全 `.x-markdown` 容器类，沿用全局 inline code / 表格样式
+ * - 流式渲染开箱即用
+ *
+ * 后续主题、扩展（数学公式、Mermaid 等）统一在这里增加配置。
+ */
+export const Markdown = memo(function Markdown({
+    content,
+    streaming,
+    typing = true,
+    components,
+    paragraphTag,
+    className,
+    style,
+    config,
+    enableSlashCommand = false,
+    enableMention = false,
+    ...rest
+}: MarkdownProps) {
+    const useDrip = !!streaming && typing !== false
+    const displayContent = useStreamingContent(content ?? '', useDrip)
+    // 指令原子揭示：drip 半截的 `:mobi-*{...}` 尾巴扣住不进 parse——x-markdown 的
+    // 流式 recognizer 不覆盖自定义扩展，半截 Text commit 后闭合不重识别（流式裸
+    // 文本、刷新才成钮的根因，2026-09-28）。仅 drip 流式路径截断；静态/非 drip
+    // 路径恒透传完整 content，模型真输出无闭合字面量时流结束诚实呈现
+    const finalContent = useDrip ? truncateIncompleteDirectiveTail(displayContent) : displayContent
+
+    // LaTeX 按需加载：探测到公式特征才拉 katex chunk（raw ~234K，含样式），
+    // 避免绝大多数不含公式的消息把 katex 带进会话页首载。加载是模块级幂等
+    // （ensureKatexLoaded 缓存 promise），加载过后所有渲染一直带 Latex 扩展。
+    // 探测用 target（content）而非逐字中的 display——超集探测，公式特征的
+    // 判定结果与揭示进度无关，只算一次不随每帧 display 变化重扫
+    const [katexReady, setKatexReady] = useState(false)
+    const needsKatex = useMemo(() => containsLatex(content ?? ''), [content])
+    useEffect(() => {
+        if (!needsKatex || katexReady) return
+        let cancelled = false
+        ensureKatexLoaded().then(() => {
+            if (!cancelled) setKatexReady(true)
+        })
+        return () => {
+            cancelled = true
+        }
+    }, [needsKatex, katexReady])
+
+    const streamingOption: StreamingOption | undefined = useMemo(() => {
+        if (streaming === true) return MARKDOWN_STREAMING_CONFIG
+        return streaming || undefined
+    }, [streaming])
+
+    const mergedComponents = useMemo(
+        () => ({
+            code: DefaultCode,
+            a: ExternalLink,
+            'footnote-ref': FootnoteRef,
+            'mobi-directive': MobiDirective,
+            'slash-command': SlashCommandBadge,
+            'mention-directory': MentionDirectoryBadge,
+            // 流式未完成语法占位（渐进可见，见 MarkdownIncomplete 注释）：
+            // 注册用默认名，仅在 hasNextChunk 缓存扣住 pending 时被触发，常驻注册无害
+            ...INCOMPLETE_COMPONENTS,
+            ...(components ?? {}),
+        }),
+        [components],
+    )
+
+    const mergedClassName = useMemo(
+        () => ['x-markdown', className].filter(Boolean).join(' '),
+        [className],
+    )
+
+    // 始终用 hook 输出：hook 内部区分历史全显 / 流式逐字 / 流式结束后继续逐字到收敛，
+    // 避免 streaming 结束（full message 替换 snapshot）时直接跳到 content 全显覆盖逐字
+
+    // 提取脚注定义，清洗正文（脚注定义从正文移除、集中到尾部 FootnoteSources 渲染）
+    const { cleanContent, footnotes } = useMemo(
+        () => extractFootnotes(finalContent),
+        [finalContent],
+    )
+
+    // 仅在脚注数据实质变化时重建 Map，流式渲染期间保持稳定引用
+    const footnotesRef = useRef(footnotes)
+    const footnotesMapRef = useRef(new Map<number, FootnoteItem>())
+    if (
+        footnotes.length !== footnotesRef.current.length
+        || footnotes.some((fn, i) =>
+            fn.num !== footnotesRef.current[i]?.num
+            || fn.title !== footnotesRef.current[i]?.title
+            || fn.url !== footnotesRef.current[i]?.url)
+    ) {
+        footnotesMapRef.current = new Map(footnotes.map(fn => [fn.num, fn]))
+        footnotesRef.current = footnotes
+    }
+
+    const mergedConfig = useMemo(() => {
+        const slashExts = enableSlashCommand ? SLASH_COMMAND_EXTENSIONS : []
+        const mentionExts = enableMention ? MENTION_EXTENSIONS : []
+        // Latex 扩展仅在 katex 就绪后加入（未就绪时公式暂以原文展示，加载完成即渲染）
+        const latexExts = katexReady ? LATEX_EXTENSIONS : []
+        const baseExts = [...FOOTNOTE_REF_EXTENSIONS, ...DIRECTIVE_EXTENSIONS, ...slashExts, ...mentionExts, ...latexExts]
+        if (!config) return { breaks: true, extensions: baseExts }
+        return {
+            breaks: true,
+            ...config,
+            extensions: [
+                ...(Array.isArray(config.extensions) ? config.extensions : []),
+                ...baseExts,
+            ],
+        }
+    }, [config, enableSlashCommand, enableMention, katexReady])
+
+    return (
+        <FootnoteContext.Provider value={footnotesMapRef.current}>
+            {/* 单段渲染：XMarkdown 的流式管线（AnimationText 增量淡入 / 位置 key /
+                useStreaming 前缀 cache）整套假设 content append-only，单容器是其
+                原生形态——结构在流式全程恒定，不存在双段拆分/归一时的结构翻转
+                （结构翻转会触发整块重淡入 = 闪烁，也会引入跨容器间距断裂）。
+                全量 re-parse 的成本控制由 useStreamingContent 的长度自适应节流承担 */}
+            <div className={mergedClassName} style={{ maxWidth: '100%', ...style }}>
+                <XMarkdown
+                    {...rest}
+                    content={cleanContent}
+                    streaming={streamingOption}
+                    components={mergedComponents}
+                    paragraphTag={paragraphTag}
+                    config={mergedConfig}
+                    dompurifyConfig={DOMPURIFY_CONFIG}
+                    debug={isXMarkdownDebugEnabled()}
+                />
+                {footnotes.length > 0 && <FootnoteSources footnotes={footnotes} />}
+            </div>
+        </FootnoteContext.Provider>
+    )
+})

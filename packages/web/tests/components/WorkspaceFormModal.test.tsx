@@ -74,7 +74,7 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
     useIsMobile: () => mobileState.current,
 }))
 
-import { WorkspaceFormModal } from '@/ui/WorkspaceFormModal'
+import { WorkspaceFormModal } from '@/ui/shared/WorkspaceFormModal'
 import type { Workspace } from '@/core/data/api/types'
 
 function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {

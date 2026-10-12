@@ -22,7 +22,7 @@ import { buildHostReadFileUrl } from '@/core/utils/fileUrl'
 
 // 轻量 mock Markdown：UserBlocksView 的测试关注「block 分发」而非 markdown 渲染管线，
 // XMarkdown 全链路由 ui/MarkdownStreaming.test.tsx 与 E2E 覆盖
-vi.mock('@/ui/Markdown', () => ({
+vi.mock('@/ui/base/markdown/Markdown', () => ({
     Markdown: ({ content }: { content: string }) => <div data-testid="md">{content}</div>,
 }))
 

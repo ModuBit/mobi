@@ -13,7 +13,7 @@
 **相关文件**：
 
 - `packages/session/src/claude/utils/streamSnapshotSender.ts` — Snapshot 生成与发送
-- `packages/web/src/ui/Markdown.tsx` — 前端逐字揭示渲染
+- `packages/web/src/ui/base/markdown/Markdown.tsx` — 前端逐字揭示渲染
 
 **现状**：
 
@@ -166,7 +166,7 @@
 
 **涉及文件**：
 
-- `packages/web/src/ui/useStreamingContent.ts` — 逐字揭示 hook
+- `packages/web/src/ui/shared/useStreamingContent.ts` — 逐字揭示 hook
 - `packages/web/src/features/chat/buildBubbleItems.tsx` — isStreaming 判定
 - `packages/session/src/claude/utils/streamSnapshotSender.ts` — snapshot flush 节奏
 
@@ -471,7 +471,7 @@ interrupt（用户停止）
 3. **条件性双段回归**：仅超长消息（如 >32k）启用稳定前缀拆段，正常长度保持单段——双段的复杂度只付给真正需要的场景
 4. **加大超长档间隔**：>32k 再加档（如 120ms）——治标，压频率不压单次成本
 
-**相关文件**：`packages/web/src/ui/Markdown.tsx`（单段渲染）、`packages/web/src/ui/useStreamingContent.ts`（档位）
+**相关文件**：`packages/web/src/ui/base/markdown/Markdown.tsx`（单段渲染）、`packages/web/src/ui/shared/useStreamingContent.ts`（档位）
 
 **相关 memory**：`xmarkdown-append-only-assumption`（库的流式管线假设）、`streaming-ux-smoothness`（单段决策过程）
 
@@ -1131,7 +1131,7 @@ agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服
 
 ## 112. 生成文件无 CI 生成钩子（fileTypeIcons 缺口）
 
-> 2026-10-10 票 02 实施发现：`*.generated.ts` 全局 gitignore，但 `packages/web/src/ui/fileTypeIcons.generated.ts`（436b3805 引入）既不入库也无任何 CI/构建钩子调用 `gen:file-type-icons`——干净 checkout 后 `bun run test`（FileTypeBadge.test）与 typecheck 都会因 import 缺失挂。本票的 `openuiCorePrompt.generated.ts`（票 08 更名，原 openuiCatalogPrompt.generated.ts）已走 gitignore 例外入库规避同类问题。
+> 2026-10-10 票 02 实施发现：`*.generated.ts` 全局 gitignore，但 `packages/web/src/ui/base/display/fileTypeIcons.generated.ts`（436b3805 引入）既不入库也无任何 CI/构建钩子调用 `gen:file-type-icons`——干净 checkout 后 `bun run test`（FileTypeBadge.test）与 typecheck 都会因 import 缺失挂。本票的 `openuiCorePrompt.generated.ts`（票 08 更名，原 openuiCatalogPrompt.generated.ts）已走 gitignore 例外入库规避同类问题。
 
 **治本方向**：CI `test`/`typecheck` job 加生成前置步（或根 `postinstall` 跑 gen 脚本），两个 gen 脚本统一挂载。
 

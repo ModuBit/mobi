@@ -18,7 +18,11 @@ src/
 ├── features/                ← 业务域（域间零互引；多域共享知识下沉 domain/ui）
 │   ├── chat/                ← 对话（含 tool-card 子域与 blocks/ 渲染器）
 │   ├── composer/ files/ layout/ login/ review/ settings/ sketchpad/ terminal/
-├── ui/                      ← 通用组件（零业务知识；arc/ motion/ openui/ pixel-avatar/ + 平铺）
+├── ui/                      ← 通用组件（零业务知识）
+│   ├── base/                ← 基础件（零业务语义；按性质分 8 组，组内平铺）
+│   │   └── interactive/ layout/ display/ markdown/ motion/ brand/ theme/ sandbox/
+│   ├── shared/              ← 多域共享的业务呈现件（平铺）
+│   └── openui/ pixel-avatar/ shadcn/     ← 组件体系目录（内部结构自洽）
 ├── domain/                  ← 纯逻辑（零 React / 零 JSX / 零 i18n runtime / 零 antd）
 │   ├── chat/ command/ session/ tool/ sketch/ …
 ├── core/                    ← 基础设施（零 UI 组件、零业务知识）
@@ -54,6 +58,18 @@ src/
 
 **豁免纪律**：规则临时豁免（`pathNot`）必须带票号注释（如「票 03 裁决中」），清零后删除——禁止裸豁免长期驻留（现行豁免清单为空）。
 
+### ui/ 内部组织（2026-10-12 ui 治理）
+
+`ui/` 内二分，判据是**是否含业务语义**（是否 import `@/domain`、`@/core/data` 的业务类型）：
+
+| 分区 | 职责 | 组织方式 |
+|---|---|---|
+| `base/` | 零业务语义的基础件——换个 React 项目依然成立 | 按性质分 8 组：`interactive/`（交互原语）`layout/`（布局容器）`display/`（文件/类型/图标展示）`markdown/`（markdown 渲染管线含各插件）`motion/`（动效与文本效果）`brand/`（品牌资产）`theme/`（主题桥）`sandbox/`（沙箱宿主）。**组内平铺** |
+| `shared/` | **多域共享**、但带业务语义的呈现件（`ContextRing` / `StatusBar` / `GoalBadge` / `ToolRowItems` / `ArtifactDirectiveComponents` …）——这是 ui 的合法职责，退回任何单个 feature 都会重新制造域间引用 | 平铺 |
+| `openui/` `pixel-avatar/` `shadcn/` | 组件体系目录（`shadcn/` 见「组件选型」章） | 各自体系惯例（如 `pixel-avatar/sprites/`） |
+
+层级封顶：`ui/<分区>/<组>/<文件>`，组内不再建子目录。判断某件该进 `base/` 还是 `shared/`：**看它是否依赖业务类型**——依赖即 `shared/`，反之 `base/`。
+
 ### 边界案例（票 03 裁决）
 
 - **工具卡并入 chat 域**：`tool-card` 是对话流的呈现子域，与 chat 十余条边纠缠、是循环主体——独立成域属假边界（「域过小或边界画错 → 并域」）。
@@ -78,7 +94,7 @@ src/
 
 1. **确认动机**——无动机不迁；antd 存量不设清零目标
 2. **后端策略**：官方组件默认 Base UI（`components.json` 已锁 `style: "base-new-york"`）；第三方 registry 组件自带后端（多为 Radix）照常引入、登记入表即可——双后端并存属预期，同类组件仅一份实现兜住行为差异。registry 组件**不预装**——组件源码只在首个真实消费场景出现时才 add
-3. **落位**：官方 shadcn 组件落 `src/ui/shadcn/`，uiarc 落 `src/ui/arc/`，beautifului copy-paste 落 `src/ui/shadcn/`（或就近业务目录，随迁移登记）
+3. **落位**：registry 组件统一落 `src/ui/shadcn/<语义名>/`——`shadcn/` 是组件体系名（非来源名），官方 shadcn、uiarc、beautifului copy-paste **同在 `shadcn/` 下，路径不体现来源**，来源只记 `registry.json` 的 `source` 字段（对齐 shadcn 官方模型：注册表命名空间只决定下载源，落盘统一进 `components.json` 的 `aliases.ui` 目录）
 4. **共存纪律**（底座票 03 实证）：
    - 弹层组件消费 `var(--mobi-z-overlay)`（antd 弹层 z 从 1000 起，生态默认 z-50 必被埋）
    - 禁止放进 emotion styled 带后代选择器的容器（unlayered 规则压过 Tailwind utilities layer）
@@ -89,12 +105,12 @@ src/
 
 ### 单一来源（禁止重复实现）
 
-同一语义组件（Button / Dialog / Select…）**只允许一份实现**：归属登记表每组件一行、一个来源；registry 目录用语义名（`button/`），禁止来源后缀命名（`button-uiarc` / `button-b`）。替换迁移 = 先删旧实现、再登记新来源，**不允许并存过渡期**——`shadcn/button` 与 `arc/button` 并存即选型漂移的开始。eslint `mobi/no-duplicate-registry-component` 已强制（`shadcn/` 与 `arc/` 下同名组件目录并存 → error）。
+同一语义组件（Button / Dialog / Select…）**只允许一份实现**：归属登记表每组件一行、一个来源；组件目录用语义名（`button/`），禁止来源后缀命名（`button-uiarc` / `button-b`）。替换迁移 = 先删旧实现、再登记新来源，**不允许并存过渡期**——同目录下同名组件物理上不可能并存，该纪律由「`src/ui/shadcn/<组件名>` 唯一」天然保证；`componentRegistry.test.ts` 另守「组件名全局唯一」。
 
 ### 禁区（不随迁移改变）
 
 - **antx + x-markdown + 流式渲染管线**：永久不迁移（Streamdown 换栈回滚是先例）
-- **shadcn registry 后端包**（`@radix-ui/*`、`@base-ui-components/*` 等）：只允许被 `src/ui/shadcn/`、`src/ui/arc/` 消费——eslint `no-restricted-imports` 已强制（`eslint.config.js`）
+- **shadcn registry 后端包**（`@radix-ui/*`、`@base-ui-components/*` 等）：只允许被 registry 组件源码（`src/ui/shadcn/`）消费——eslint `no-restricted-imports` 已强制（`eslint.config.js`）
 
 ### 升级与本地修改纪律
 
@@ -189,7 +205,21 @@ features/chat/
 新增类型时只需：在 `blocks/` 下加一个文件 → 在 `index.tsx` 的 switch 中加一行。
 
 - **导出方式**：`export function` 或 `export default function` 均可
-- **文件命名**：PascalCase（如 `ChatContainer.tsx`、`ToolCard.tsx`）
+
+**文件命名**（规则只有一条）——**文件名要么是某个主导出物的名字（`PascalCase`），要么是 `camelCase`**：
+
+| 文件名形态 | 含义 | 例 |
+|---|---|---|
+| `PascalCase`，且与某个 `export` 同名 | 组件 / class 文件（文件即那个导出物） | `ChatContainer.tsx`、`StatusBar.tsx`、`TerminalHost.ts` |
+| `camelCase` | 模块文件（hook / 工具 / 常量表 / 类型 / 插件 / **多组件模块**） | `useStreamingContent.ts`、`toolIcons.tsx`、`quoteListCard.tsx` |
+
+**目录名一律 `kebab-case`**（多词：`tool-card/`、`base/markdown/`）。约定名保持小写：`index.tsx` / `main.tsx` / `router.tsx`；`_` 前缀为聚合模块约定（`_all.tsx` / `_results.tsx`）。
+
+**机器门禁**：eslint `mobi/filename-matches-export`（[`tools/eslint-rules/filename-matches-export.js`](../../tools/eslint-rules/filename-matches-export.js)）以 **error** 级挂在 web 包——它读 AST 的顶层**值**导出名（排除 `export type` / `interface`；SCREAMING_SNAKE 常量不参与），文件名为 camelCase 或命中同名导出即放行，否则报错。其他包（class 文件命名分歧）待统一后再接入。
+
+**例外**：registry 上游组件保持上游命名（`copy-button.tsx`——本地改名会让 `add --overwrite` 升级全乱，见「组件选型」章）；生成文件照生成器命名（`fileTypeIcons.generated.ts`）。
+
+> 组件与模块同目录并存（`Markdown.tsx` 挨着 `mermaidRender.ts`）是这条规则的自然结果，不是混乱——**大写=组件/类，小写=模块**，扫一眼即可分类。
 - **组件定义**：函数组件 + Hooks，不使用 class 组件
 - **Props 类型**：在同一个文件内定义 `interface ComponentNameProps`
 
@@ -237,7 +267,7 @@ export function useSendMessage(sessionId: string) {
 
 ### 缓存 Key
 
-所有 queryKey 必须在 `src/core/lib/query-keys.ts` 中集中定义，禁止硬编码：
+所有 queryKey 必须在 `src/core/lib/queryKeys.ts` 中集中定义，禁止硬编码：
 
 ```typescript
 // ✅ 正确
@@ -314,8 +344,9 @@ import { useAuthStore } from '@/core/data/stores/authStore'
 import { queryKeys } from '@/core/lib/query-keys'
 import { ChatContainer } from '@/pages/session/ChatContainer'   // 组装层引 features
 import { ToolCallBlock } from '@/features/chat/tool-card/ToolCallBlock'
-import { StatusBar } from '@/ui/StatusBar'                       // 通用组件
-import { extractTextFromResult } from '@/domain/tool/resultText' // 纯逻辑
+import { StatusBar } from '@/ui/shared/StatusBar'                  // 多域共享业务件
+import { IconButton } from '@/ui/base/interactive/IconButton'      // 基础件
+import { extractTextFromResult } from '@/domain/tool/resultText'   // 纯逻辑
 ```
 
 ## 测试

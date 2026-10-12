@@ -80,7 +80,7 @@ beforeEach(() => {
     queryClient.clear()
 })
 
-import { Markdown } from '@/ui/Markdown'
+import { Markdown } from '@/ui/base/markdown/Markdown'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { queryClient } from '@/core/lib/queryClient'
 

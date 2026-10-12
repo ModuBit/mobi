@@ -29,7 +29,7 @@ const MainLayout = lazyRoute(routeChunkLoaders.MainLayout)
 const SessionsLayout = lazyRoute(routeChunkLoaders.SessionsLayout)
 const SessionDetailPage = lazyRoute(routeChunkLoaders.SessionDetailPage)
 const NewSessionPage = lazyRoute(routeChunkLoaders.NewSessionPage)
-const SettingsLayout = lazyRoute(routeChunkLoaders.SettingsLayout)
+const SettingsPage = lazyRoute(routeChunkLoaders.SettingsPage)
 const NotificationsSection = lazyRoute(routeChunkLoaders.NotificationsSection)
 const SettingsIndex = lazyRoute(routeChunkLoaders.SettingsIndex)
 const WebToolsSection = lazyRoute(routeChunkLoaders.WebToolsSection)
@@ -98,11 +98,11 @@ const newSessionRoute = createRoute({
     }),
 })
 
-// 设置页 layout 路由（左侧分区导航 / mobile 子页由 SettingsLayout 响应式分流）
+// 设置页 layout 路由（左侧分区导航 / mobile 子页由 SettingsPage 响应式分流）
 const settingsRoute = createRoute({
     getParentRoute: () => mainLayoutRoute,
     path: 'settings',
-    component: SettingsLayout,
+    component: SettingsPage,
 })
 // 设置 index：PC 渲染默认分区（通知），mobile 渲染分组入口列表（SettingsIndex 内部分流）
 const settingsIndexRoute = createRoute({

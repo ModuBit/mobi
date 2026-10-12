@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { Marked } from 'marked'
-import slashCommand from '@/ui/slashCommandPlugin'
+import slashCommand from '@/ui/base/markdown/slashCommandPlugin'
 
 /** 用 slash 扩展构造 Marked（gfm + breaks，模拟 user-text 渲染环境） */
 function render(text: string): string {

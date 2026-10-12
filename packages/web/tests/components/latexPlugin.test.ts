@@ -28,7 +28,7 @@ import Latex, {
     INLINE_LATEX_RULE,
     containsLatex,
     ensureKatexLoaded,
-} from '@/ui/latexPlugin'
+} from '@/ui/base/markdown/latexPlugin'
 
 describe('latexPlugin inline regex', () => {
     describe('行内 $...$（单美元符号）', () => {

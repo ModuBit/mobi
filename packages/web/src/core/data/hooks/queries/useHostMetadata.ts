@@ -16,7 +16,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 import type { SDKMetadata, SDKMetadataResponse } from '@/core/data/api/types'
 
 /**

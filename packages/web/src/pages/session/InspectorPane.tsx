@@ -16,18 +16,18 @@
 
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Layout, Tabs, Button, Dropdown, App, Spin } from 'antd'
-import { AppTooltip } from '@/ui/AppTooltip'
+import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { PanelRightClose, Folder, FileDiff, Maximize, Minimize, Plus } from 'lucide-react'
-import { FileTypeBadge } from '@/ui/FileTypeBadge'
+import { FileTypeBadge } from '@/ui/base/display/FileTypeBadge'
 import FileTreeView from '@/features/files/FileTreeView'
 import FileContentView from '@/features/files/FileContentView'
 import { GitReviewView } from '@/features/review/GitReviewView'
 import { parseTargetKey } from '@/core/lib/targetKey'
 
-import { getEditorApi } from '@/features/files/EditorRegistry'
+import { getEditorApi } from '@/features/files/editorRegistry'
 // TerminalView 懒加载：xterm 及 addons（raw ~324K）只在首次打开终端 tab 时拉取，
 // 不进会话页首载关键路径（终端为低频功能）。default export，React.lazy 直接可用
 const TerminalView = lazy(() => import('@/features/terminal/TerminalView'))

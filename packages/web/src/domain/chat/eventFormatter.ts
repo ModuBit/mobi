@@ -150,9 +150,7 @@ export function formatEvent(event: { type: string; [key: string]: unknown }, cre
             const segments: Array<string | I18nText> = [baseLabel]
             if (hasMetrics) {
                 const durationText = formatDurationMs(durationMs)
-                const tokensText = tokens >= 1000
-                    ? `${(tokens / 1000).toFixed(1)}k tokens`
-                    : `${tokens} tokens`
+                const tokensText = formatTokensCount(tokens)
                 segments.push(` · ${durationText} · ${tokensText}`)
             }
 

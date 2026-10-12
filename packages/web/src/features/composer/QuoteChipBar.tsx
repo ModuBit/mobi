@@ -21,7 +21,7 @@ import { CloseOutlined, EditOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ComposerQuoteRef } from '@/domain/chat/composerSegments'
 import { QUOTE_COMMENT_MAX } from '@mobi/shared'
-import { CommentField } from '@/ui/CommentField'
+import { CommentField } from '@/ui/shared/CommentField'
 import {
     QuoteChip,
     QuoteItemAction,
@@ -30,7 +30,7 @@ import {
     QuoteItemIndex,
     QuoteItemText,
     QuoteListBox,
-} from '@/ui/QuoteListCard'
+} from '@/ui/shared/quoteListCard'
 
 interface QuoteChipBarProps {
     quotes: ComposerQuoteRef[]

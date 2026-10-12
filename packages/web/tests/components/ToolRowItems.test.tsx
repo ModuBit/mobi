@@ -17,7 +17,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import { ConfigProvider } from 'antd'
-import { ToolRowItems } from '@/ui/ToolRowItems'
+import { ToolRowItems } from '@/ui/shared/ToolRowItems'
 import type { ToolRow } from '@/core/lib/toolRow'
 
 /**

@@ -30,7 +30,7 @@ import { ChevronDown, ChevronUp, FileDiff } from 'lucide-react'
 import type { TurnDiffPayload } from '@mobi/shared'
 import { theme } from 'antd'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
-import { FilePathLabel, KindBadge, DiffStat } from '@/ui/present'
+import { FilePathLabel, KindBadge, DiffStat } from '@/ui/shared/present'
 
 /** 清单默认铺开的条数，超出折叠进「再显示 N 个文件」 */
 const PREVIEW_COUNT = 3

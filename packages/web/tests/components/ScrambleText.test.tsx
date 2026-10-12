@@ -16,7 +16,7 @@
 
 import { act, render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { ScrambleText } from '@/ui/ScrambleText'
+import { ScrambleText } from '@/ui/base/motion/ScrambleText'
 
 describe('ScrambleText', () => {
     it('无 previousText 时，从乱码过渡到目标文本', () => {

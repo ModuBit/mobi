@@ -1,0 +1,147 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License at
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { useEffect, useRef, useState } from 'react'
+import { theme } from 'antd'
+import { useElapsedSeconds } from '@/ui/base/display/useElapsedSeconds'
+import { ScrambleText } from '@/ui/base/motion/ScrambleText'
+import { formatElapsedTime } from '@/core/utils/timeFormat'
+import { StatusStateIcon } from '@/ui/base/display/toolIcons'
+import { PixelLoader } from '@/ui/base/motion/PixelLoader'
+import { ShinyText } from '@/ui/base/motion/ShinyText'
+import { AWAITING_AUTH_LOADER } from '@/core/utils/sessionStatus'
+import type { AgentStatus } from '@/ui/pixel-avatar/types'
+import { VIBING_MESSAGES } from '@/ui/pixel-avatar/vibingMessages'
+
+/** Claude 品牌橙色 */
+const CLAUDE_ORANGE = '#D97757'
+
+/** vibing 消息轮换间隔（秒） */
+const VIBING_INTERVAL = 5
+
+/**
+ * 静默告警阈值（毫秒）：距最近一次消息活动超过该值时，loading 文案从
+ * vibing 轮换切换为「仍在等待响应」。区分「在干活」vs「在干等」——正常
+ * 长任务期间消息/工具事件持续到达；上游挂死（如代理连接建立但不返 token，
+ * API_TIMEOUT_MS 又长达数十分钟）则完全静默，vibing 动词照样轮换会造成
+ * 「一直在干活」的假象（见 docs/pending.md #34）。阈值取 120s：实测
+ * /code-review high 这类重任务正常也需 ~85s 才出第一个事件，留出余量。
+ */
+const STALL_WARN_MS = 120_000
+
+interface AgentLoadingBubbleProps {
+    agentId: string
+    status: AgentStatus
+    /** 外部指定的运行起始时间戳（毫秒），如 tool.startedAt；无值时使用组件 mount 时间 */
+    startedAt?: number
+    /**
+     * 最近一次消息活动时间戳（毫秒）。传入且静默超过 {@link STALL_WARN_MS} 时
+     * 切换为等待响应提示（挂死可观测）。不传则不启用检测——sidechain 卡片等
+     * 无活动时间来源的场景保持原行为。
+     */
+    lastActivityAt?: number
+}
+
+export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt }: AgentLoadingBubbleProps) {
+    const { token } = theme.useToken()
+    const mountTimeRef = useRef(Date.now())
+    // 首词随机偏移量，避免首个 vibingMsg 总是 "accomplishing"
+    const initialOffset = useRef(Math.floor(Math.random() * VIBING_MESSAGES.length))
+    // prevMsg 用 useState 替代 useRef，StrictMode 下 React 正确丢弃第一轮 state 更新
+    const [prevMsg, setPrevMsg] = useState(
+        VIBING_MESSAGES[initialOffset.current].toLowerCase() + '…'
+    )
+    const effectiveStartedAt = startedAt ?? mountTimeRef.current
+
+    const elapsed = useElapsedSeconds(effectiveStartedAt)
+
+    // 静默计时：距最近消息活动的秒数（复用每秒 tick 的计时器；无来源时以 startedAt 兜底恒不告警）
+    const stallElapsed = useElapsedSeconds(lastActivityAt ?? effectiveStartedAt)
+
+    // 轮换词：每 VIBING_INTERVAL 秒**随机**切换（不同于当前词），而非顺序步进
+    // ——顺序轮换在长会话里呈现明显的循环规律感。轮换时刻序号作 effect 依赖，
+    // 序号翻转时才挑新词（elapsed 连续递增，不能直接进依赖）
+    const rotateTick = elapsed <= 0 ? 0 : Math.floor((elapsed - 1) / VIBING_INTERVAL)
+    const [vibingMsg, setVibingMsg] = useState(() => VIBING_MESSAGES[initialOffset.current].toLowerCase() + '…')
+    useEffect(() => {
+        if (rotateTick === 0) return
+        setVibingMsg(prev => {
+            // 随机挑一个与当前不同的词（词表 >1，循环重抽必终止）
+            let next = prev
+            while (next === prev) {
+                next = VIBING_MESSAGES[Math.floor(Math.random() * VIBING_MESSAGES.length)].toLowerCase() + '…'
+            }
+            return next
+        })
+    }, [rotateTick])
+
+    // vibingMsg 变化时更新 prevMsg，供下一次 ScrambleText 过渡动画
+    useEffect(() => {
+        setPrevMsg(vibingMsg)
+    }, [vibingMsg])
+
+    const elapsedTime = formatElapsedTime(effectiveStartedAt, effectiveStartedAt + elapsed * 1000)
+
+    // awaiting_auth：等待用户确认，文本/aria-label 切到「等待确认」，不轮换 vibing 动词
+    const isAwaitingAuth = status === 'awaiting_auth'
+    // 静默告警：距最近消息活动超阈值（挂死可观测）。审批等待优先——那不是模型无响应
+    const stalled = !isAwaitingAuth
+        && lastActivityAt !== undefined
+        && (stallElapsed * 1000) >= STALL_WARN_MS
+    // 网格波形按状态分流：正常输出 drive（波前推进）；停滞 orbit（彗星绕圈——有事在转
+    // 但无进展，与「still waiting」文本自洽）；待审批 orbit 染橙（与会话列表同款波形，
+    // 绕圈等你给回合——不是「忙」而是「需要行动」的语义例外）；其余状态回退状态点
+    const loaderVariant = status === 'outputting' ? (stalled ? 'orbit' : 'drive')
+        : isAwaitingAuth ? 'orbit'
+        : null
+    const labelText = isAwaitingAuth
+        ? 'awaiting confirmation…'
+        : stalled ? 'still waiting for response…' : vibingMsg
+    const ariaLabel = isAwaitingAuth
+        ? `${agentId} 等待确认`
+        : stalled ? `${agentId} 长时间无响应` : `${agentId} 正在运行`
+
+    return (
+        <div role="status" aria-label={ariaLabel} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {/* 输出中 drive 波前 / 停滞 orbit 绕圈；待审批 orbit 染橙（审批橙语义色，
+                与会话列表同源取色）——审批是需要行动的语义例外，不与「忙」混同。
+                size 3：会话列表同款小格，状态栏走低调尺寸（2026-09-26 验收） */}
+            {loaderVariant
+                ? <PixelLoader variant={loaderVariant} size={3} color={isAwaitingAuth ? AWAITING_AUTH_LOADER.color : undefined} />
+                : <StatusStateIcon state={status} />}
+            {/* 读屏播报区：只给落定文案（labelText）——可见层的 scramble 逐帧改写文字，
+                live 区若跟着变会把随机乱码中间态当更新连续播报；视觉隐藏但读屏可达 */}
+            <span
+                aria-live="polite"
+                style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', clipPath: 'inset(50%)', whiteSpace: 'nowrap' }}
+            >
+                {labelText}
+            </span>
+            {/* 可见层是装饰性 scramble + 扫光，对读屏隐藏。
+                亮面扫光变体：小字号状态文字用暗基线会不可读（见 base.css .shimmer-text-solid） */}
+            <ShinyText
+                solid
+                aria-hidden="true"
+                style={{ color: stalled ? token.colorWarning : CLAUDE_ORANGE, fontSize: 12, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            >
+                <ScrambleText text={labelText} previousText={prevMsg} speed={40} />
+            </ShinyText>
+            <span aria-hidden="true" style={{ color: token.colorTextTertiary, fontSize: 11, marginLeft: 'auto' }}>
+                {elapsedTime}
+            </span>
+        </div>
+    )
+}

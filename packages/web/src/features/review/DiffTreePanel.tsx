@@ -30,8 +30,8 @@ import type { TurnDiffFileKind } from '@mobi/shared'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { basename } from '@/core/utils/path'
 import { buildPathTree, collectDirKeys, commonDirectoryPrefix, type NestedFileNode } from '@/core/utils/pathTree'
-import { KindBadge } from '@/ui/present'
-import { FileTypeBadge } from '@/ui/FileTypeBadge'
+import { KindBadge } from '@/ui/shared/present'
+import { FileTypeBadge } from '@/ui/base/display/FileTypeBadge'
 
 /**
  * 树区容器。与文件树 TreeWrap 同款行对齐修正：inline svg 图标默认 baseline 对齐

@@ -23,7 +23,7 @@ import { SidebarNav } from './SidebarNav'
 import { SidebarWorkspaces } from './SidebarWorkspaces'
 import { SidebarFooter } from './SidebarFooter'
 import { useWco } from './useWindowControlsOverlay'
-import { CLIP_DURATION, CLIP_EASING } from '@/ui/clipConstants'
+import { CLIP_DURATION, CLIP_EASING } from '@/ui/base/layout/clipConstants'
 
 const { useToken } = antTheme
 

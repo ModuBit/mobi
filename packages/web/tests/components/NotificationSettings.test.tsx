@@ -45,11 +45,11 @@ vi.mock('@/core/data/hooks/useNotificationSetup', () => ({
     }),
 }))
 // mock usePwaMode
-vi.mock('@/ui/usePwaMode', () => ({
+vi.mock('@/ui/shared/usePwaMode', () => ({
     usePwaMode: () => mockState.isPwa,
 }))
 // mock InstallButton(避免 beforeinstallprompt 监听)
-vi.mock('@/ui/InstallButton', () => ({
+vi.mock('@/ui/shared/InstallButton', () => ({
     InstallButton: () => <div data-testid="install-button" />,
 }))
 

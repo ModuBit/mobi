@@ -70,28 +70,27 @@ module.exports = tseslint.config(
     },
   },
 
-  // 同一语义组件禁止在多个 registry 目录重复实现（shadcn 底座票 04，
-  // 规范见 docs/conventions/web.md「组件选型」章），只作用于 registry 目录内文件
+  // 文件命名规范（ui 治理票）：文件名须是「某个主导出组件的名字」（组件文件，
+  // PascalCase）或 camelCase（模块文件：hook / 工具 / 常量表 / 多组件模块）。
+  // 现只挂 web 包（其他包的 class 文件命名分歧留待下一轮统一后接入）。
+  // 规范见 docs/conventions/web.md「文件命名」节。
   {
-    files: [
-      'packages/web/src/ui/shadcn/**/*.{ts,tsx}',
-      'packages/web/src/ui/arc/**/*.{ts,tsx}',
-    ],
+    files: ['packages/web/src/**/*.ts', 'packages/web/src/**/*.tsx'],
     plugins: {
       'mobi': customRules,
     },
     rules: {
-      'mobi/no-duplicate-registry-component': 'error',
+      'mobi/filename-matches-export': 'error',
     },
   },
 
   // registry 后端依赖门禁（shadcn 底座票 04）：shadcn 生态的原语后端包只允许被
-  // 组件源码目录消费，业务代码直接 import → error。白名单目录尚不存在时规则
-  // 同样成立（= 完全禁止），首个组件 add 进目录后自动获得豁免。
-  // 新增后端家族（如 @ark-ui/*）时扩充 group。
+  // registry 组件源码消费，业务代码直接 import → error。registry 组件统一落
+  // packages/web/src/ui/shadcn/（该目录是组件体系名，非来源名；组件归属见
+  // packages/web/registry.json）。新增后端家族（如 @ark-ui/*）时扩充 group。
   {
     files: ['packages/web/src/**/*.ts', 'packages/web/src/**/*.tsx'],
-    ignores: ['packages/web/src/ui/shadcn/**', 'packages/web/src/ui/arc/**'],
+    ignores: ['packages/web/src/ui/shadcn/**'],
     rules: {
       'no-restricted-imports': ['error', {
         patterns: [{
@@ -104,7 +103,7 @@ module.exports = tseslint.config(
             '@react-aria/*',
             'react-aria-components',
           ],
-          message: 'shadcn registry 后端包只能被 src/ui/shadcn/ 或 src/ui/arc/ 消费（组件选型规范见 docs/conventions/web.md「组件选型」章）',
+          message: 'shadcn registry 后端包只能被 registry 组件源码（packages/web/src/ui/shadcn/）消费（组件选型规范见 docs/conventions/web.md「组件选型」章）',
         }],
       }],
     },

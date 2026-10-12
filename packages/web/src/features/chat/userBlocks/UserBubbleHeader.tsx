@@ -31,7 +31,7 @@ import {
     QuoteItemText,
     QuoteListBox,
     QUOTE_ITEM_PREVIEW_MAX,
-} from '@/ui/QuoteListCard'
+} from '@/ui/shared/quoteListCard'
 import type { UserBlockRenderEnv } from './UserBlocksView'
 import { DocumentView, UserImageGroupView } from './UserBlocksView'
 

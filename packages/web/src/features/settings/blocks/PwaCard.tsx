@@ -19,8 +19,8 @@ import styled from '@emotion/styled'
 import { theme as antTheme } from 'antd'
 import { MobileOutlined } from '@ant-design/icons'
 import { enter, IconBox } from './shared'
-import { usePwaMode } from '@/ui/usePwaMode'
-import { InstallButton } from '@/ui/InstallButton'
+import { usePwaMode } from '@/ui/shared/usePwaMode'
+import { InstallButton } from '@/ui/shared/InstallButton'
 
 const { useToken } = antTheme
 // 块内部 token 类型（不 export）

@@ -18,7 +18,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, cleanup, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
-import AutoDetectCodeBlock from '@/ui/AutoDetectCodeBlock'
+import AutoDetectCodeBlock from '@/ui/base/markdown/AutoDetectCodeBlock'
 
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (key: string) => key }),

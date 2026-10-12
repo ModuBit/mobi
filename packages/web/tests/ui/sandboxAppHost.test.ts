@@ -27,7 +27,7 @@ import {
     createAppBridgeRateLimiter,
     injectAppBridgeScript,
     parseAppBridgeMessage,
-} from '@/ui/sandboxAppHost'
+} from '@/ui/base/sandbox/sandboxAppHost'
 
 const valid = { type: 'mobi-app', action: 'issueNewTurn', text: '按当前选择继续' }
 

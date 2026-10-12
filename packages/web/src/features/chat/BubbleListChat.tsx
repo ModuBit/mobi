@@ -16,8 +16,8 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Bubble } from '@ant-design/x'
-import { MobiLogo } from '@/ui/MobiLogo'
-import { BUBBLE_ROLES } from '@/ui/bubbleRoles'
+import { MobiLogo } from '@/ui/base/brand/MobiLogo'
+import { BUBBLE_ROLES } from '@/ui/base/display/bubbleRoles'
 import type { BubbleItemBase } from './buildBubbleItems'
 import { useStickToBottom } from './useStickToBottom'
 import { VISIBLE_WINDOW, EXPAND_WINDOW } from '@/core/data/stores/messageWindowStore'

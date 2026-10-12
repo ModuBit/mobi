@@ -15,7 +15,7 @@
  */
 
 import type { QueryClient } from '@tanstack/react-query'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 
 /**
  * 统一失效「工作区维度视图」缓存：

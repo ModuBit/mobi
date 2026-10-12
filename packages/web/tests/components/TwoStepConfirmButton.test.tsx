@@ -36,7 +36,7 @@ vi.mock('motion/react', async (importOriginal) => {
     }
 })
 
-const { TwoStepConfirmButton } = await import('@/ui/TwoStepConfirmButton')
+const { TwoStepConfirmButton } = await import('@/ui/base/interactive/TwoStepConfirmButton')
 
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({

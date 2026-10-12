@@ -19,7 +19,7 @@
  * 单一定义点：缩小 dropdown 字体的全局样式注入也收口在此，不随调用方复制漂移。
  */
 
-import { HoverSelect } from '@/ui/HoverSelect'
+import { HoverSelect } from '@/ui/base/interactive/HoverSelect'
 
 // 缩小 dropdown 弹出层的 option 字体（全局注入一次）
 export const COMPACT_DROPDOWN_CLASS = 'compact-select-dropdown'

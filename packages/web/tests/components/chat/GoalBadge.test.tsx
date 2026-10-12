@@ -45,13 +45,13 @@ vi.mock('antd', async orig => {
 })
 
 // ClearStateButton 走 Popconfirm/Drawer + theme token，mock 成占位按钮聚焦 GoalBadge 行为
-vi.mock('@/ui/ClearStateButton', () => ({
+vi.mock('@/ui/base/interactive/ClearStateButton', () => ({
     ClearStateButton: ({ sessionId, clearFields }: { sessionId: string; clearFields: string[] }) => (
         <button type="button" data-testid="clear-goal-btn" data-session={sessionId} data-fields={clearFields.join(',')} />
     ),
 }))
 
-import { GoalBadge } from '@/ui/GoalBadge'
+import { GoalBadge } from '@/ui/shared/GoalBadge'
 
 describe('GoalBadge', () => {
     it('收起简要：徽标只显示 ◎ active（condition 不在收起态，移到 click 详情）', () => {

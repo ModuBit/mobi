@@ -16,10 +16,10 @@
 
 import { theme as antTheme, ConfigProvider, Layout } from 'antd'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
-import { MobiLogo } from '@/ui/MobiLogo'
+import { MobiLogo } from '@/ui/base/brand/MobiLogo'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { AppSidebar } from './AppSidebar'
-import { MobileMenuDrawer } from './MobileMenu'
+import { MobileMenuDrawer } from './mobileMenu'
 import { WcoTitleBar, resolveChromeColor } from './WcoTitleBar'
 import { useWindowControlsOverlay, WcoContext } from './useWindowControlsOverlay'
 import { Outlet } from '@tanstack/react-router'

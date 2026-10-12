@@ -22,7 +22,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { render, screen, cleanup, act } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { CrossfadeText } from '@/ui/CrossfadeText'
+import { CrossfadeText } from '@/ui/base/motion/CrossfadeText'
 
 beforeEach(() => {
     vi.useFakeTimers()

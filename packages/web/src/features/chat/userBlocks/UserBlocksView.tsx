@@ -32,9 +32,9 @@ import { resolveUserImageUrl, type FileRefContext } from '@/core/utils/fileUrl'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
 import { buildActionUri } from '@mobi/shared'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
-import { ActionLink } from '@/ui/ActionLink'
-import { SketchEditBadge } from '@/ui/SketchEditBadge'
-import { AppTooltip } from '@/ui/AppTooltip'
+import { ActionLink } from '@/ui/shared/ActionLink'
+import { SketchEditBadge } from '@/ui/shared/SketchEditBadge'
+import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { TextBlock } from '../blocks/TextBlock'
 
 /** 渲染视图共用的上下文：文本柔和样式（合成消息）与会话文件 URL 构造所需 */

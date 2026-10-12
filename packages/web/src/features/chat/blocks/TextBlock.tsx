@@ -16,8 +16,8 @@
 
 import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Markdown } from '@/ui/Markdown'
-import { DirectiveStreamGate } from '@/ui/directiveStreamGate'
+import { Markdown } from '@/ui/base/markdown/Markdown'
+import { DirectiveStreamGate } from '@/ui/base/markdown/directiveStreamGate'
 import { dedupeDirectiveText } from '@/domain/chat/directives'
 import { annotateOpenuiFences } from '@/ui/openui/fenceIndex'
 import { isInterruptedSyntheticText } from '@/domain/chat/normalizeAgent'

@@ -11,7 +11,7 @@ metadata:
 tool-result 新字段从 `normalizeAgent`（读 `tool_use_result`）→ `reducerTimeline`（挂 `block.tool`）之后，**手动枚举 tool 字段的适配点有 3 处，漏一处就某些视图丢字段**：
 
 1. `domain/tool/types.ts` `ToolInfo` — 类型声明（没有则 TS 拦住后两处）
-2. `chat/blocks/ToolCallBlock.tsx` `ToolCallPreviewContent.adaptedBlock` — 聊天主列表（父 + child 两处 tool 字面量）
+2. `chat/blocks/toolCallBlock.tsx` `ToolCallPreviewContent.adaptedBlock` — 聊天主列表（父 + child 两处 tool 字面量）
 3. `tool-card/ToolDetailDrawer.tsx` `chatBlockToToolCardBlock` — 详情 Drawer
 
 排查法：全局搜 `createdAt: tool.createdAt` / `createdAt: child.tool.createdAt` 等枚举点。

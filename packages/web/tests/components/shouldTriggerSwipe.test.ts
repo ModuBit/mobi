@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { EDGE_WIDTH, HYSTERESIS, resolveEdgeSwipeDirection } from '@/ui/shouldTriggerSwipe'
+import { EDGE_WIDTH, HYSTERESIS, resolveEdgeSwipeDirection } from '@/ui/base/interactive/shouldTriggerSwipe'
 
 describe('resolveEdgeSwipeDirection（左缘滑动方向锁判定）', () => {
     it('原地（零位移）→ pending', () => {

@@ -16,7 +16,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 
 /** 获取 Agent 工具的 sidechain 消息 */
 export function useSidechainMessages(sessionId: string | null, parentToolUseId: string | null) {

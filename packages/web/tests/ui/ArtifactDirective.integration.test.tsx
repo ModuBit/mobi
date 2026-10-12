@@ -23,11 +23,11 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { Markdown } from '@/ui/Markdown'
+import { Markdown } from '@/ui/base/markdown/Markdown'
 import { TextBlock } from '@/features/chat/blocks/TextBlock'
-import { ArtifactEnvProvider } from '@/ui/ArtifactDirectiveComponents'
-import { injectArtifactScrollbarStyle } from '@/ui/SandboxHtmlFrame'
-import { DirectiveStreamGate } from '@/ui/directiveStreamGate'
+import { ArtifactEnvProvider } from '@/ui/shared/artifactDirectiveComponents'
+import { injectArtifactScrollbarStyle } from '@/ui/base/sandbox/SandboxHtmlFrame'
+import { DirectiveStreamGate } from '@/ui/base/markdown/directiveStreamGate'
 import { useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 
 vi.mock('@/core/data/hooks/queries/useFileTree', () => ({

@@ -20,7 +20,7 @@ import { Popover, theme as antTheme } from 'antd'
 import { Eye } from 'lucide-react'
 import styled from '@emotion/styled'
 import DOMPurify from 'dompurify'
-import { Markdown } from '@/ui/Markdown'
+import { Markdown } from '@/ui/base/markdown/Markdown'
 
 /** markdown 块级语法特征（标题/列表/引用/代码围栏）；命中则即便被 HTML 元素包裹也按 markdown 处理 */
 const MARKDOWN_BLOCK_SYNTAX = /(^|\n)\s*(#{1,6}\s|[-*+]\s|>\s|```)/

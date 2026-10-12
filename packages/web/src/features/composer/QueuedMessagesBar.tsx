@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import { Button, theme, message } from 'antd'
-import { AppTooltip } from '@/ui/AppTooltip'
+import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { ClockCircleOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { normalizeUserContent, type UserContentBlock } from '@mobi/shared'

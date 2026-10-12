@@ -15,33 +15,29 @@
  */
 
 import type React from 'react'
-import type { UserImageBlock, UserQuoteBlock } from '@mobi/shared'
 import type { ChatBlock } from '@/domain/chat'
-import type { SessionMetadataSummary } from '@/core/data/api/types'
-import type { MobiApi } from '@/core/data/api/client'
 import { fileRefContext } from '@/core/utils/fileUrl'
 import { quoteAnchorProps } from '@/domain/chat/quoteSelection'
 import { splitUserBodyAndAttachments } from '@/domain/chat/userContent'
-import { locateQuotedMessage, type QuoteLocateFn } from '@/core/lib/quoteLocate'
-import { QuoteAnnotationsProvider } from '@/ui/QuoteDirectiveComponents'
-import { ArtifactEnvProvider } from '@/ui/ArtifactDirectiveComponents'
+import { locateQuotedMessage } from '@/core/lib/quoteLocate'
+import { QuoteAnnotationsProvider } from '@/ui/shared/quoteDirectiveComponents'
+import { ArtifactEnvProvider } from '@/ui/shared/artifactDirectiveComponents'
 import { OpenUIAnchorProvider } from '@/ui/openui/actionContext'
+import type { ChatBlockContext } from './types'
 import { TextBlock } from './TextBlock'
 import { ReasoningBlock } from './ReasoningBlock'
 import { CliOutputBlock } from './CliOutputBlock'
 import { AgentEventBlock } from './AgentEventBlock'
 import { SystemNoticeBlock } from './SystemNoticeBlock'
-import { ToolCallRenderer } from './ToolCallBlock'
-import { CompactSummaryBlockComponent } from './CompactSummaryBlock'
-import { CustomBlockView } from './CustomBlock'
+import { ToolCallRenderer } from './toolCallBlock'
+import { CompactSummaryBlockComponent } from './compactSummaryBlock'
+import { CustomBlockView } from './customBlock'
 import { CollapsibleUserMessage } from '../CollapsibleUserMessage'
 import { UserBlocksView } from '../userBlocks/UserBlocksView'
 import { UserBubbleHeader } from '../userBlocks/UserBubbleHeader'
 
-/** 渲染 chat block 的上下文 */
 /** ChatBlockContext 类型定义已抽离 blocks/types.ts（分层治理票 03 破装配环），此处保留兼容 re-export */
 export type { ChatBlockContext } from './types'
-import type { ChatBlockContext } from './types'
 
 /** 根据 block 类型渲染对应组件 */
 export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.ReactNode {

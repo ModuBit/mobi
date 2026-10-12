@@ -22,7 +22,7 @@ import { App as AntApp } from 'antd'
 import FileContentView from '@/features/files/FileContentView'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { useFileContent, useFileMeta } from '@/core/data/hooks/queries/useFileTree'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 import type { FileContent, FileMeta } from '@/core/data/hooks/queries/useFileTree'
 
 // useQueryClient spy：刷新项测试断言 invalidateQueries 被以 sessionFileMeta key 调用。

@@ -15,7 +15,7 @@
  */
 
 import { Drawer, Button } from 'antd'
-import { MOBILE_SHEET_DRAWER_CLASS } from '@/ui/MobileDrawer'
+import { MOBILE_SHEET_DRAWER_CLASS } from '@/ui/base/layout/MobileDrawer'
 import { useTranslation } from 'react-i18next'
 
 interface Props {

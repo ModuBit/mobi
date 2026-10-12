@@ -18,7 +18,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
-import { AwaitingConfirmBadge } from '@/ui/AwaitingConfirmBadge'
+import { AwaitingConfirmBadge } from '@/ui/base/display/AwaitingConfirmBadge'
 
 vi.mock('react-i18next', async (importOriginal) => {
     const actual = await importOriginal<typeof import('react-i18next')>()

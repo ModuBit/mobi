@@ -27,7 +27,7 @@ import { ConfigProvider } from 'antd'
 import { OptionPreview } from '@/features/chat/tool-card/OptionPreview'
 
 // mock Markdown：回显内容，便于区分「走 Markdown」vs「走 dangerouslySetInnerHTML 注入」
-vi.mock('@/ui/Markdown', () => ({
+vi.mock('@/ui/base/markdown/Markdown', () => ({
     Markdown: ({ content }: { content: string }) => (
         <div data-testid="markdown-render">{content}</div>
     ),

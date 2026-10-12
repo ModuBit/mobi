@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { usePwaMode } from '@/ui/usePwaMode'
+import { usePwaMode } from '@/ui/shared/usePwaMode'
 
 describe('usePwaMode', () => {
     afterEach(() => { vi.restoreAllMocks() })

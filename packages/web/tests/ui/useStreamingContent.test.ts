@@ -22,7 +22,7 @@ import {
     revealIntervalFor,
     useStreamingContent,
     sampleArrivalRate,
-} from '@/ui/useStreamingContent'
+} from '@/ui/shared/useStreamingContent'
 
 describe('revealIntervalFor（长度自适应节流档位）', () => {
     it('正常长度（≤4k 字符）每帧揭示（interval 0）', () => {

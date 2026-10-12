@@ -1,0 +1,403 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { useMemo, useState, useCallback, useEffect, useRef, memo } from 'react'
+import { Think } from '@ant-design/x'
+import { theme as antTheme } from 'antd'
+import { Zap } from 'lucide-react'
+import type { ChatBlock, ChatToolCall } from '@/domain/chat'
+import { isObject } from '@mobi/shared'
+import type { SessionMetadataSummary } from '@/core/data/api/types'
+import type { MobiApi } from '@/core/data/api/client'
+import type { ToolPermission } from '@/domain/tool/types'
+import { StatusToolIcon } from '@/ui/base/display/toolIcons'
+import { getToolPresentation, isTerminalTool, isAgentTool, isBackgroundAgentTool, isBackgroundTool, isTeamAgentTool } from '@/features/chat/tool-card/knownTools'
+import { getToolResultViewComponent } from '@/features/chat/tool-card/views/_results'
+import { getToolViewComponent } from '@/features/chat/tool-card/views/_all'
+import { ToolDetailDrawer } from '@/features/chat/tool-card/ToolDetailDrawer'
+import { OverflowContainer } from '@/ui/base/layout/OverflowContainer'
+import { CrossfadeText } from '@/ui/base/motion/CrossfadeText'
+import { ToolRowItems } from '@/ui/shared/ToolRowItems'
+import { Markdown } from '@/ui/base/markdown/Markdown'
+import { getAgentPrompt } from '@/features/chat/tool-card/index'
+import { formatAgentMetrics } from '@/core/lib/metricsFormat'
+import { useTranslation } from 'react-i18next'
+
+/** 预览卡片最大高度 */
+const PREVIEW_MAX_HEIGHT = {
+    DEFAULT: 100,
+    FILE: 200,
+    TERMINAL: 160,
+} as const
+
+/** 工具行 Think 内容零缩进（行卡片自带边距）——模块级共享（ToolCallGroupRenderer 同用），
+ *  不用全局后代选择器，避免误伤嵌套 Think（如 reasoning）的 antd 默认缩进 */
+export const TOOL_THINK_CONTENT_STYLES = { content: { paddingLeft: 0 } } as const
+
+/** 转换权限对象格式 */
+function convertPermission(perm: NonNullable<ChatToolCall['permission']>): ToolPermission {
+    return {
+        id: perm.id,
+        status: perm.status,
+        reason: perm.reason,
+        decision: perm.decision === 'denied' ? 'abort' as const : perm.decision === 'approved_for_session' ? 'approved_for_session' as const : perm.decision === 'approved' ? 'approved' as const : undefined,
+        mode: perm.mode === 'acceptEdits' ? ('acceptEdits' as const) : undefined,
+        allowedTools: perm.allowedTools,
+        suggestions: perm.suggestions,
+        answers: perm.answers,
+    }
+}
+
+/** 「查看详情」入口：前台 Agent（有 summary）与后台 Agent 两个分支共用，同 testid/onClick/样式/文案 */
+function ViewDetailLink({ onViewDetail }: { onViewDetail: () => void }) {
+    const { t } = useTranslation()
+    const { token } = antTheme.useToken()
+    return (
+        <div
+            data-testid="tool-view-detail"
+            onClick={(e) => { e.stopPropagation(); onViewDetail() }}
+            style={{
+                marginTop: 8, fontSize: 12,
+                color: token.colorPrimary,
+                cursor: 'pointer',
+            }}
+        >
+            {t('chat.tool.viewDetail')} →
+        </div>
+    )
+}
+
+function ToolCallPreviewContent({
+    toolCallBlock,
+    metadata,
+    onViewDetail,
+    showInput,
+    maxHeight,
+    drawerDisabled
+}: {
+    toolCallBlock: Extract<ChatBlock, { kind: 'tool-call' }>
+    metadata: SessionMetadataSummary | null
+    onViewDetail: () => void
+    showInput?: boolean
+    maxHeight: number
+    /** drawer 内嵌套块（disableDrawer 上下文）不渲染「查看详情」入口，消除点击无响应死链 */
+    drawerDisabled?: boolean
+}) {
+    const { t } = useTranslation()
+    const { token } = antTheme.useToken()
+    const tool = toolCallBlock.tool
+    const terminalRunning = isTerminalTool(tool.name) && tool.state === 'running'
+    const showToolInput = showInput || terminalRunning
+
+    const ViewComponent = useMemo(() => {
+        if (showToolInput) {
+            return getToolViewComponent(tool.name)
+        }
+        return getToolResultViewComponent(tool.name)
+    }, [showToolInput, tool.name])
+
+    // 转换为 ToolCard/types.ToolCallBlock 格式
+    const adaptedBlock = useMemo(() => {
+        return {
+            id: toolCallBlock.id,
+            kind: 'tool-call' as const,
+            tool: {
+                name: tool.name,
+                input: tool.input,
+                result: showToolInput ? undefined : tool.result,
+                state: tool.state,
+                description: tool.description,
+                startedAt: tool.startedAt,
+                createdAt: tool.createdAt,
+                permission: tool.permission ? convertPermission(tool.permission) : null,
+                structuredPatch: tool.structuredPatch,
+            },
+            children: toolCallBlock.children
+                .filter((b): b is Extract<ChatBlock, { kind: 'tool-call' }> => b.kind === 'tool-call')
+                .map((child) => ({
+                    id: child.id,
+                    kind: 'tool-call' as const,
+                    tool: {
+                        name: child.tool.name,
+                        input: child.tool.input,
+                        result: child.tool.result ?? undefined,
+                        state: child.tool.state,
+                        description: child.tool.description,
+                        startedAt: child.tool.startedAt,
+                        createdAt: child.tool.createdAt,
+                        permission: child.tool.permission ? convertPermission(child.tool.permission) : null,
+                        structuredPatch: child.tool.structuredPatch,
+                    },
+                    children: [],
+                })),
+        }
+    }, [toolCallBlock, tool, showToolInput])
+
+    // 有权限请求 / 有结果 / Agent运行中 / 终端运行中 → 显示预览
+    const isAgent = isAgentTool(tool.name)
+    const agentRunning = isAgent && (tool.state === 'running' || tool.state === 'pending')
+    const showPreview = showInput || (tool.state !== 'running' && tool.result !== undefined) || agentRunning || terminalRunning
+
+    if (!showPreview) return null
+
+    // Agent 工具运行中：有 summary 时显示 summary + 查看详情按钮，否则显示 prompt
+    if (agentRunning) {
+        const summary = toolCallBlock.tool.agentSummary
+        if (summary) {
+            return (
+                <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
+                    <div style={{
+                        fontSize: 13, lineHeight: 1.5,
+                        color: token.colorTextSecondary,
+                        transition: 'opacity 0.15s',
+                    }}>
+                        {summary}
+                    </div>
+                    {!drawerDisabled && <ViewDetailLink onViewDetail={onViewDetail} />}
+                </div>
+            )
+        }
+        const prompt = getAgentPrompt(tool.input)
+        if (!prompt) return null
+        return (
+            <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
+                <OverflowContainer maxHeight={maxHeight} onClickExpand={onViewDetail}>
+                    <Markdown content={prompt} />
+                </OverflowContainer>
+            </div>
+        )
+    }
+
+    // 后台 Agent：tool_result 快速返回后 state=completed，但任务仍在后台执行
+    // 展示 agentSummary（来自 task_progress/task_notification），无 summary 时展示状态；
+    // drawer 入口与前台 Agent 统一（批次 B，spec D5），点击「查看详情」打开
+    if (isBackgroundAgentTool(tool.name, tool.input)) {
+        const summary = toolCallBlock.tool.agentSummary
+        return (
+            <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
+                <div style={{
+                    fontSize: 13, lineHeight: 1.5,
+                    color: token.colorTextSecondary,
+                }}>
+                    {summary ?? t('chat.backgroundTask.running', 'Running...')}
+                </div>
+                {!drawerDisabled && <ViewDetailLink onViewDetail={onViewDetail} />}
+            </div>
+        )
+    }
+
+    // Team agent: 展示 agent name + team name + description
+    if (isTeamAgentTool(tool.name, tool.input)) {
+        const input = isObject(tool.input) ? tool.input : {}
+        const agentName = typeof input.name === 'string' ? input.name : 'Agent'
+        const teamName = typeof input.team_name === 'string' ? input.team_name : ''
+        const description = typeof input.description === 'string' ? input.description : null
+
+        return (
+            <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 500, color: token.colorText }}>
+                    {agentName}
+                    {teamName && (
+                        <span style={{ fontSize: 11, fontWeight: 400, color: token.colorTextSecondary }}>
+                            {' '}@ {teamName}
+                        </span>
+                    )}
+                </div>
+                {description && (
+                    <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 2 }}>
+                        {description}
+                    </div>
+                )}
+            </div>
+        )
+    }
+
+    // 后台 Bash：仅展示命令，不展示 output
+    if (isTerminalTool(tool.name) && isObject(tool.input) && tool.input.run_in_background === true) {
+        const command = typeof tool.input.command === 'string' ? tool.input.command : ''
+        return (
+            <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
+                <div style={{
+                    fontSize: 13, lineHeight: 1.5,
+                    color: token.colorTextSecondary,
+                    fontFamily: 'var(--font-mono)',
+                    whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                }}>
+                    {command || t('chat.backgroundTask.running', 'Running...')}
+                </div>
+            </div>
+        )
+    }
+
+    if (!ViewComponent) return null
+
+    return (
+        <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
+            {/* tool_use_summary：SDK 对工具组的人话摘要，挂在 result preview 上方 */}
+            {tool.summary && (
+                <div style={{
+                    fontSize: 13, lineHeight: 1.5,
+                    color: token.colorTextSecondary,
+                    marginBottom: 4,
+                }}>
+                    {tool.summary}
+                </div>
+            )}
+            <OverflowContainer maxHeight={maxHeight} onClickExpand={onViewDetail}>
+                <ViewComponent block={adaptedBlock} metadata={metadata} />
+            </OverflowContainer>
+        </div>
+    )
+}
+
+/** 渲染 ToolCallBlock（来自 reduceChatBlocks） */
+export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata, sessionId, disableDrawer }: {
+    block: Extract<ChatBlock, { kind: 'tool-call' }>
+    metadata: SessionMetadataSummary | null
+    /** 审批交互已由 ComposerInfoPanel 承担，chat 区工具卡片不需要 api/disabled/onDone；保留类型声明维持调用方接口稳定 */
+    api?: MobiApi
+    sessionId?: string
+    disabled?: boolean
+    onDone?: () => void
+    disableDrawer?: boolean
+}) {
+    const { token } = antTheme.useToken()
+    const tool = block.tool
+    const isLoading = tool.state === 'running'
+    const hasPermission = tool.permission && tool.permission.status === 'pending'
+    // 流式期间 block 引用随 SSE 帧更替，memo 化避免每帧重跑 presentation 推导
+    // （inferToolRow 含行数 split 与 URI 构造，乘以工具行数放大）
+    const toolPresentation = useMemo(() => getToolPresentation({
+        toolName: tool.name,
+        input: tool.input,
+        result: tool.result,
+        childrenCount: block.children?.length ?? 0,
+        description: tool.description ?? null,
+        metadata
+    }), [tool.name, tool.input, tool.result, block.children?.length, tool.description, metadata])
+
+    const isError = tool.state === 'error'
+    const isAgent = isAgentTool(tool.name)
+    const isBgAgent = isBackgroundTool(tool.name, tool.input)
+    const agentRunning = isAgent && (tool.state === 'running' || tool.state === 'pending')
+    // 所有工具卡片默认收起（2026-08-21 用户降噪决策）：不再按工具名/失败态/审批态
+    // 自动展开（thinking 块除外，见 ReasoningBlock），失败也收起——用户想看再点开。
+    // 「终端工具失败必展开」的安全不变式随之废弃（git 历史可溯）
+    const [expanded, setExpanded] = useState(false)
+    const prevIsError = useRef(isError)
+    // 手动展开的卡片执行失败时自动收起（失败也应降噪，终端工具不再例外）
+    useEffect(() => {
+        if (isError && !prevIsError.current) {
+            setExpanded(false)
+        }
+        prevIsError.current = isError
+    }, [isError])
+
+    // 前台 Agent 完成时自动收起（后台 agent 不收起，保留 summary 展示）
+    const prevAgentRunning = useRef(agentRunning)
+    useEffect(() => {
+        if (prevAgentRunning.current && !agentRunning && !isBgAgent) {
+            setExpanded(false)
+        }
+        prevAgentRunning.current = agentRunning
+    }, [agentRunning, isBgAgent])
+
+    const [drawerOpen, setDrawerOpen] = useState(false)
+    // 后台 agent 不再禁用 drawer（批次 B，spec D5）：前后台入口统一。
+    // isBgAgent 在「前台完成自动收起」effect 中有实际语义：后台 agent 完成不自动收起，
+    // 保留 summary/「查看详情」展示
+    const handleViewDetail = useCallback(() => {
+        if (disableDrawer) return
+        setDrawerOpen(true)
+    }, [disableDrawer])
+
+    // 判断 title 是否已包含 description 信息
+    // Agent 工具的 title 由 getAgentTitle 动态生成，不含 description 字段，或 title 等于/以 description 开头时跳过
+    const titleContainsDescription = isAgentTool(tool.name)
+        || (tool.description != null && (toolPresentation.title === tool.description || toolPresentation.title.startsWith(tool.description)))
+
+    // 审批中（pending）工具卡片照常渲染（工具名/输入预览），让用户看到「工具即将执行」；
+    // 审批操作（Allow/Deny 按钮）由 ComposerInfoPanel 承担，chat 区不重复渲染审批交互。
+    // 授权/回答后（status 非 pending）卡片继续显示，状态由 reducer 翻为 running/completed。
+
+    return (
+        <>
+            <Think
+                className="tool-call-think"
+                styles={TOOL_THINK_CONTENT_STYLES}
+                icon={<StatusToolIcon name={tool.name} state={tool.state} />}
+                title={
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
+                        {toolPresentation.row ? (
+                            // 工具行新形态（动词 + chip + diff 统计，mockup 变体 A）：
+                            // chip 点击止于打开文件（内部 stopPropagation），行本体点击仍是展开/收起。
+                            // 运行态扫光与下方非 row 形态同一体系（shimmer 由行内动词/摘要承担）
+                            <ToolRowItems row={toolPresentation.row} shimmer={isLoading} />
+                        ) : (
+                            // 运行态扫光走自家 shimmer（CrossfadeText），不用 antdx Think 的 blink——
+                            // 与组头动态标题同一动画体系（base.css .shimmer-text），基线为文字本色
+                            <CrossfadeText
+                                text={toolPresentation.title}
+                                shimmer={isLoading}
+                                ellipsis
+                                style={{ fontWeight: 500, fontSize: 13, flex: '1 1 0', minWidth: 0 }}
+                            />
+                        )}
+                        {isBgAgent && (
+                            <Zap size={12} style={{ flexShrink: 0, color: '#f5b800' }} />
+                        )}
+                        {/* description 尾缀：title 与 summary 都未承载时才显示（row.summary 是纯展示
+                            工具的 description 同义词，已渲染则尾缀跳过，避免同文案两处重复） */}
+                        {!titleContainsDescription && !toolPresentation.row?.summary && tool.description && (
+                            <span style={{ fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0, maxWidth: '40%' }}>
+                                {tool.description.length > 60 ? `${tool.description.slice(0, 60)}...` : tool.description}
+                            </span>
+                        )}
+                        {tool.agentMetrics && (
+                            <span style={{ fontSize: 11, color: token.colorTextQuaternary, fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                {formatAgentMetrics(tool.agentMetrics)}
+                            </span>
+                        )}
+                    </div>
+                }
+                expanded={expanded}
+                onExpand={setExpanded}
+            >
+                {/* 审批中（pending）也渲染输入预览：Write/Edit 显示文件路径与内容、Bash 显示命令，
+                    让用户看到「工具即将做什么」；审批交互按钮由 ComposerInfoPanel 承担 */}
+                <ToolCallPreviewContent
+                    toolCallBlock={block}
+                    metadata={metadata}
+                    onViewDetail={handleViewDetail}
+                    showInput={hasPermission}
+                    drawerDisabled={disableDrawer}
+                    maxHeight={toolPresentation.previewMaxHeight
+                        ?? (isTerminalTool(tool.name) ? PREVIEW_MAX_HEIGHT.TERMINAL
+                        : PREVIEW_MAX_HEIGHT.DEFAULT)}
+                />
+            </Think>
+            {!disableDrawer && (
+                <ToolDetailDrawer
+                    block={block}
+                    metadata={metadata}
+                    open={drawerOpen}
+                    onClose={() => setDrawerOpen(false)}
+                    sessionId={sessionId}
+                />
+            )}
+        </>
+    )
+})

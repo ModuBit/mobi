@@ -18,7 +18,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import { TextBlock } from '@/features/chat/blocks/TextBlock'
 
-vi.mock('@/ui/Markdown', () => ({
+vi.mock('@/ui/base/markdown/Markdown', () => ({
     Markdown: ({ content }: { content: string }) => (
         <div data-testid="markdown">{content}</div>
     ),

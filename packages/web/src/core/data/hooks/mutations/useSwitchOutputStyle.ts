@@ -18,7 +18,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { App } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useMobiApi } from '@/core/data/api/client'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 
 /**
  * 切换 output style（/clear 语义，CLI 重启后 init 回报新值经 metadata 回流）。

@@ -17,7 +17,7 @@
 import { Empty } from 'antd'
 import { useTranslation } from 'react-i18next'
 import TextContentView from './TextContentView'
-import { SandboxHtmlFrame } from '@/ui/SandboxHtmlFrame'
+import { SandboxHtmlFrame } from '@/ui/base/sandbox/SandboxHtmlFrame'
 
 interface Props {
     sessionId: string

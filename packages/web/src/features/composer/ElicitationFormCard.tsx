@@ -19,7 +19,7 @@ import { Button, Form, Input, InputNumber, Select, Switch, theme as antTheme } f
 import { useTranslation } from 'react-i18next'
 import type { PermissionAnswers, SDKUIHints } from '@mobi/shared'
 import type { ElicitationFieldSchema, ElicitationRequestedSchema } from '@/domain/tool/elicitation'
-import { AwaitingConfirmBadge } from '@/ui/AwaitingConfirmBadge'
+import { AwaitingConfirmBadge } from '@/ui/base/display/AwaitingConfirmBadge'
 
 const { useToken } = antTheme
 

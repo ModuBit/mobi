@@ -16,10 +16,14 @@
 
 /**
  * 组件归属注册表一致性守卫（shadcn 底座票 04）：
- * registry.json 是组件归属的唯一机器事实源，本测试守住它与 registry 目录的双向
- * 一致——登记的组件必须真实存在、目录里的组件必须已登记（挡「顺手 add 不走流程」）、
- * 组件名全局唯一（单一来源，与 eslint mobi/no-duplicate-registry-component 互补）。
- * 规范见 docs/conventions/web.md「组件选型」章。
+ * registry.json 是组件归属的唯一机器事实源，本测试守住它与 registry 落位目录的双向
+ * 一致——登记的组件必须真实存在、落位目录里的组件必须已登记（挡「顺手 add 不走流程」）、
+ * 组件名全局唯一（单一来源）。
+ *
+ * registry 组件统一落 `src/ui/shadcn/<组件名>/`（该目录是组件体系名，非来源名），
+ * 官方 shadcn / uiarc / beautifului 在路径上无来源差异——来源只记 registry.json 的
+ * source 字段（对齐 shadcn 官方模型：注册表命名空间只决定下载源，落盘统一进
+ * components.json 的 aliases.ui 目录）。规范见 docs/conventions/web.md「组件选型」章。
  */
 
 import { describe, it, expect } from 'vitest'
@@ -33,16 +37,17 @@ const registry = JSON.parse(readFileSync(resolve(webRoot, 'registry.json'), 'utf
 }
 
 const SOURCES = ['shadcn', 'arc'] as const
-/** registry 源目录下的共享基建子目录（非组件，不参与登记） */
-const INFRA_DIRS = new Set(['lib'])
-const sourceRoot = (source: string) => resolve(webRoot, 'src/ui', source)
+/** registry 组件落位根（src/ui/shadcn/<组件名>/） */
+const COMPONENT_ROOT = resolve(webRoot, 'src/ui/shadcn')
 
-/** 列出某个 registry 源目录下已存在的顶层组件目录；源目录不存在返回空集 */
-function listSourceDirs(source: string): string[] {
-    const root = sourceRoot(source)
-    if (!existsSync(root)) return []
-    return readdirSync(root, { withFileTypes: true })
-        .filter((e) => e.isDirectory() && !INFRA_DIRS.has(e.name))
+/** 组件的落位路径 */
+const componentPath = (name: string) => resolve(COMPONENT_ROOT, name)
+
+/** 列出落位根下已存在的组件目录 */
+function listComponentDirs(): string[] {
+    if (!existsSync(COMPONENT_ROOT)) return []
+    return readdirSync(COMPONENT_ROOT, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
         .map((e) => e.name)
 }
 
@@ -56,27 +61,25 @@ describe('registry.json 组件归属注册表一致性', () => {
         }
     })
 
-    it('登记的组件必须真实存在于对应 source 目录', () => {
+    it('登记的组件必须真实存在于 src/ui/shadcn/ 下', () => {
         for (const c of registry.components) {
             expect(
-                existsSync(resolve(sourceRoot(c.source), c.name)),
-                `registry.json 登记了 ${c.source}/${c.name}，但目录不存在（先 add 实现再登记）`,
+                existsSync(componentPath(c.name)),
+                `registry.json 登记了 ${c.name}，但目录 src/ui/shadcn/${c.name}/ 不存在（先 add 实现再登记）`,
             ).toBe(true)
         }
     })
 
-    it('registry 目录里的组件必须已登记（挡未登记实现）', () => {
-        for (const source of SOURCES) {
-            for (const name of listSourceDirs(source)) {
-                expect(
-                    registry.components.some((c) => c.source === source && c.name === name),
-                    `发现未登记的组件 ${source}/${name}——走迁移流程后在 registry.json 登记`,
-                ).toBe(true)
-            }
+    it('落位目录里的组件必须已登记（挡未登记实现）', () => {
+        for (const name of listComponentDirs()) {
+            expect(
+                registry.components.some((c) => c.name === name),
+                `发现未登记的组件 src/ui/shadcn/${name}/——走迁移流程后在 registry.json 登记`,
+            ).toBe(true)
         }
     })
 
-    it('同一组件名只允许登记一次（单一来源兜底，编辑期由 eslint 规则先行）', () => {
+    it('同一组件名只允许登记一次（单一来源兜底）', () => {
         const names = registry.components.map((c) => c.name)
         expect(new Set(names).size, `组件名重复：${names.join(', ')}`).toBe(names.length)
     })

@@ -17,7 +17,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useMobiApi } from '@/core/data/api/client'
-import { queryKeys } from '@/core/lib/query-keys'
+import { queryKeys } from '@/core/lib/queryKeys'
 import type { SpawnResponse } from '@/core/data/api/types'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
 import type { AgentType, SessionType } from '@/domain/session/types'

@@ -33,7 +33,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const source = readFileSync(join(__dirname, '../../src/ui/Markdown.tsx'), 'utf-8')
+const source = readFileSync(join(__dirname, '../../src/ui/base/markdown/Markdown.tsx'), 'utf-8')
 
 describe('Markdown fade-in 覆盖的导入顺序契约', () => {
     it('markdownOverride.css 在 @ant-design/x-markdown 之后导入', () => {
@@ -44,7 +44,7 @@ describe('Markdown fade-in 覆盖的导入顺序契约', () => {
     })
 
     it('覆盖定义存在且起点为 0.35', () => {
-        const css = readFileSync(join(__dirname, '../../src/ui/markdownOverride.css'), 'utf-8')
+        const css = readFileSync(join(__dirname, '../../src/ui/base/markdown/markdownOverride.css'), 'utf-8')
         expect(css).toContain('@keyframes x-markdown-fade-in')
         expect(css).toMatch(/from\s*{[^}]*opacity:\s*0\.35/s)
     })

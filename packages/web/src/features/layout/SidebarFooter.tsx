@@ -32,9 +32,9 @@ import type { MenuProps } from 'antd'
 import styled from '@emotion/styled'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
-import { useThemeLocaleToggle } from '@/ui/useThemeLocaleToggle'
+import { useThemeLocaleToggle } from '@/ui/base/theme/useThemeLocaleToggle'
 import { usePwaInstall } from './usePwaInstall'
-import { usePwaMode } from '@/ui/usePwaMode'
+import { usePwaMode } from '@/ui/shared/usePwaMode'
 import { useForceUpdate } from '@/core/pwa/useForceUpdate'
 
 const { useToken } = antTheme

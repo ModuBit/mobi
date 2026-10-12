@@ -22,7 +22,7 @@ import { App as AntdApp } from 'antd'
 import { InspectorPane } from '@/pages/session/InspectorPane'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { clearCachedInstance } from '@/core/hooks/useCachedInstance'
-import { getEditorApi } from '@/features/files/EditorRegistry'
+import { getEditorApi } from '@/features/files/editorRegistry'
 
 vi.mock('@/core/data/hooks/useMediaQuery', () => ({
     useIsMobile: () => false,
@@ -64,7 +64,7 @@ vi.mock('@/features/files/FileContentView', () => ({
     default: () => <div data-testid="mock-fc" />,
 }))
 // mock EditorRegistry：getEditorApi 返回可控的 isDirty/saveNow（验证关 tab 保存逻辑）
-vi.mock('@/features/files/EditorRegistry', () => ({
+vi.mock('@/features/files/editorRegistry', () => ({
     getEditorApi: vi.fn(),
     registerEditor: vi.fn(),
     unregisterEditor: vi.fn(),

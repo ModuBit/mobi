@@ -24,8 +24,8 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { QUOTE_DIRECTIVE } from '@mobi/shared'
-import { Markdown } from '@/ui/Markdown'
-import { QuoteAnnotationsProvider } from '@/ui/QuoteDirectiveComponents'
+import { Markdown } from '@/ui/base/markdown/Markdown'
+import { QuoteAnnotationsProvider } from '@/ui/shared/quoteDirectiveComponents'
 
 afterEach(cleanup)
 
