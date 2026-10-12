@@ -326,6 +326,7 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - **手势释放判定：速度符号优先于位置**。快甩即关、快反向推即回位；拖到一半松手但速度接近零，才按位置判定。释放后用 momentum 投射（inertia decay `0.998`）继续沉降，让手势与动画无缝衔接。
 - **性能边界**：JS spring 跑在主线程，**避开聊天流等大区域**——虚拟列表内的条目不用 spring。所有动效只动 `transform` / `opacity`，不触发 layout。
 - **降级**：`prefers-reduced-motion` 下全量换 ≤200ms opacity cross-fade，物理感让位于可访问性。
+- **registry 组件动效纪律（shadcn 底座票 04）**：迁移进来的组件**禁止自带第二套 spring/缓动语言**——其动效参数必须并入 `components/motion/presets.ts` 单源（若选用 uiarc，其动效 token 即按 spec D9 升格至此，与 frontmatter 同步）；组件观感按本设计系统暖调色板/圆角 token 重着色，不留上游默认配色。动效密度：高频交互（按钮、行 hover、tab）只用克制反馈（按压 scale），morph 级动效仅限低频高感知时刻。
 - **按压反馈（移动端）**：去掉浏览器默认 tap-highlight，改用 `[role]/button/.tappable:active { opacity: 0.7 }`——圆形元素得圆形反馈，不出现方形高亮块。**仅触屏**生效，桌面端保留 hover。
 - **状态点呼吸**：`status-dot-breathe` 在 `opacity 1 ↔ 0.3` 间脉动，表示运行态。
 - **ScrambleText**：字符乱码滚动到位的打字机效果，用于 loading 文案。

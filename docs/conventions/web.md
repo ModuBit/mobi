@@ -36,6 +36,42 @@ src/
 - **`components/`** 放 UI 渲染和 React hooks
 - 新增领域逻辑时，如果文件不导入 React，应放入 `domain/` 对应子目录
 
+## 组件选型
+
+**默认 antd。** antd v6 组件稳定、有团队支撑，是一切未迁移场景（含新代码）的默认选择。antd 对 mobi 的角色是「原语库 + 主题 token 运行时」，这个角色不变。
+
+### 归属登记表（唯一事实源）
+
+只有迁移完成的组件才在表中登记，之后该组件的使用统一按表；**不在表中的组件一律 antd**，不因「感觉 shadcn 更好」口头越表。
+
+| 组件 | 归属 | 迁移于 | 说明 |
+|---|---|---|---|
+| （空——首个组件迁移完成时填入第一行） | | | |
+
+### 单组件迁移流程
+
+某个组件确有迁移价值时（antd 做不好 / registry 有领域贴合组件 / 动效诉求），按序走一遍：
+
+1. **确认动机**——无动机不迁；antd 存量不设清零目标
+2. **add 前核对原语后端**（Base UI / Radix / React Aria）；混用另一后端允许但登记。registry 组件**不预装**——组件源码只在首个真实消费场景出现时才 add
+3. **落位**：官方 shadcn 组件落 `src/components/shadcn/`，uiarc 落 `src/components/arc/`，beautifului copy-paste 落 `src/components/shadcn/`（或就近业务目录，随迁移登记）
+4. **共存纪律**（底座票 03 实证）：
+   - 弹层组件消费 `var(--mobi-z-overlay)`（antd 弹层 z 从 1000 起，生态默认 z-50 必被埋）
+   - 禁止放进 emotion styled 带后代选择器的容器（unlayered 规则压过 Tailwind utilities layer）
+   - 已迁移的弹层组件与 antd Modal/Drawer **禁止叠开**（body 滚动锁冲突）
+   - uiarc 组件若引入，不可全局 import 其 `foundation.css`（暗档判据特异性会盖过主题注入），token 由 `core/config/theme/cssVars.ts` 单源供给
+5. **真机（Android Chrome）验收** = 迁移完成条件，不是后续优化（registry 组件 desktop-first，mobi 是移动 PWA 重度场景）
+6. **登记入表**：完成后在上表加一行（含迁移 commit），此后该组件使用统一按表
+
+### 禁区（不随迁移改变）
+
+- **antx + x-markdown + 流式渲染管线**：永久不迁移（Streamdown 换栈回滚是先例）
+- **shadcn registry 后端包**（`@radix-ui/*`、`@base-ui-components/*` 等）：只允许被 `src/components/shadcn/`、`src/components/arc/` 消费——eslint `no-restricted-imports` 已强制（`eslint.config.js`）
+
+### 升级与本地修改纪律
+
+shadcn 模型下组件源码进项目即归我们维护。本地修改（含版权头、z 变量、行为修复）必须登记；`shadcn add --overwrite` 升级会冲掉本地修改，升级前 diff 登记清单、升级后逐项恢复（参照 x-markdown patch 纪律）。
+
 ## 组件
 
 ### 单一职责

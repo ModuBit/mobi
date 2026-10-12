@@ -69,4 +69,27 @@ module.exports = tseslint.config(
       'preserve-caught-error': 'warn',
     },
   },
+
+  // registry 后端依赖门禁（shadcn 底座票 04）：shadcn 生态的原语后端包只允许被
+  // 组件源码目录消费，业务代码直接 import → error。白名单目录尚不存在时规则
+  // 同样成立（= 完全禁止），首个组件 add 进目录后自动获得豁免。
+  // 新增后端家族（如 @ark-ui/*）时扩充 group。
+  {
+    files: ['packages/web/src/**/*.ts', 'packages/web/src/**/*.tsx'],
+    ignores: ['packages/web/src/components/shadcn/**', 'packages/web/src/components/arc/**'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: [
+            '@radix-ui/*',
+            '@base-ui-components/*',
+            '@base-ui/*',
+            '@ark-ui/*',
+            '@react-aria/*',
+          ],
+          message: 'shadcn registry 后端包只能被 src/components/shadcn/ 或 src/components/arc/ 消费（组件选型规范见 docs/conventions/web.md「组件选型」章）',
+        }],
+      }],
+    },
+  },
 )

@@ -2,6 +2,10 @@
 
 浏览器前端，提供 Claude Code 会话的远程交互界面。
 
+## 组件选型
+
+**默认 antd**（含新代码）。shadcn 系组件仅限「归属登记表」内已迁移组件，表与迁移流程见 [docs/conventions/web.md「组件选型」章](../../docs/conventions/web.md#组件选型)。要点：registry 组件不预装、迁移须真机验收后登记入表；antx + 流式渲染管线为永久禁区；registry 后端包（@radix-ui 等）只允许被 `src/components/shadcn/`、`src/components/arc/` import（lint 已强制）。
+
 ## 编码规范
 
 → [docs/conventions/web.md](../../docs/conventions/web.md)
