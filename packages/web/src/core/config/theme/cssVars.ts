@@ -52,6 +52,13 @@ const SHADCN_VAR_MAPPINGS: ReadonlyArray<readonly [string, keyof Token]> = [
 /** 注入样式节点的 id（ThemeProvider 挂载，幂等原地更新） */
 export const SHADCN_TOKENS_STYLE_ID = 'mobi-shadcn-tokens'
 
+/**
+ * shadcn/arc 弹层的统一 z-index 基线（spec D6）：antd 弹层 z 从 1000 起（mask/wrap），
+ * shadcn 生态默认 z-50 会在空间重叠处被 antd 弹层整层盖住（票 03 实测）。
+ * arc 组件源码经 var(--mobi-z-overlay) 消费此值；缺省回落 50 维持生态默认。
+ */
+const Z_OVERLAY = 1080
+
 /** 从双档 token 构建 shadcn 命名变量 CSS：light 挂 :root、dark 挂 .dark */
 export function buildShadcnThemeCss(mode: Mode): string {
     const token: Token = mode === 'dark' ? shadcnDarkToken : shadcnLightToken
@@ -62,7 +69,7 @@ export function buildShadcnThemeCss(mode: Mode): string {
         const rendered = typeof value === 'number' ? `${value}px` : value
         return `  ${cssVar}: ${rendered};`
     })
-    return [`${selector} {`, ...lines, '}'].join('\n')
+    return [`${selector} {`, ...lines, `  --mobi-z-overlay: ${Z_OVERLAY};`, '}'].join('\n')
 }
 
 /** 注入/更新 shadcn 变量样式（幂等）：已存在则原地更新 textContent，切档不重建节点 */

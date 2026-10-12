@@ -49,6 +49,8 @@ describe('buildShadcnThemeCss（--background 系主题变量）', () => {
             expect(css).toContain('--ring:')
             expect(css).toContain('--radius:')
         }
+        // 弹层 z 基线（spec D6，票 03 实测 antd z1000 会盖生态默认 z50）
+        expect(light).toContain('--mobi-z-overlay: 1080')
         // 档位值确实翻转（light bg 米白 / dark bg 深灰）
         expect(light).toContain('--background: #faf9f5')
         expect(dark).toContain('--background: #141413')

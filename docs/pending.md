@@ -1135,9 +1135,9 @@ agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服
 
 **治本方向**：CI `test`/`typecheck` job 加生成前置步（或根 `postinstall` 跑 gen 脚本），两个 gen 脚本统一挂载。
 
-## 113. ThemeProvider 忽略 system 档——主题为 system 时恒落 light（2026-10-10 发现）
+## 113. ✅ 已修：ThemeProvider 忽略 system 档——主题为 system 时恒落 light（2026-10-10 发现，2026-10-12 修复）
 
-> shadcn 底座 spec（`.scratch/shadcn-foundation/spec.md` D4）票 02 顺带修复；此处防丢失。
+> shadcn 底座票 02 顺带修复（commit `8814020e`），此处防丢失记录。
 
 **现象**：`packages/web/src/core/config/theme/ThemeProvider.tsx:30` 用 `theme === 'dark'` 判定暗色（`theme` 是 uiStore 原始值，可为 `'system'`），且 algorithm 取值同源于此判定——`theme: 'system'` 时恒走 defaultAlgorithm（light），系统深色偏好不生效。`data-theme` 属性倒是会同步 `'system'` 字面量。
 
