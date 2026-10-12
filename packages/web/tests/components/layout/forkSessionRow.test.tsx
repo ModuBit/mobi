@@ -179,9 +179,10 @@ describe('SessionRow fork 行', () => {
 
         // 删除守卫的 web 侧呈现：待激活 fork 行删除入口可用——删除已收进行内「更多」dropdown，
         // 打开菜单后删除项不 disabled、点击触发 onDelete
-        fireEvent.click(screen.getByTitle('common.more'))
+        // uiarc menu（Radix）在 pointerdown 上展开，非 click——须先补 pointerdown
+        fireEvent.pointerDown(screen.getByTitle('common.more'), { button: 0 })
         const deleteItem = await screen.findByText('session.actions.delete')
-        expect(deleteItem.closest('li')).not.toHaveClass('ant-dropdown-menu-item-disabled')
+        expect(deleteItem.closest('[role="menuitem"]')).not.toHaveAttribute('aria-disabled', 'true')
         fireEvent.click(deleteItem)
         expect(onDelete).toHaveBeenCalledTimes(1)
 

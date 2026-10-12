@@ -443,8 +443,8 @@ describe('FileContentView', () => {
         renderWithProviders(
             <FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />,
         )
-        // 点 Ellipsis 按钮（aria-label = files.more）展开下拉
-        fireEvent.click(screen.getByRole('button', { name: 'files.more' }))
+        // 点 Ellipsis 按钮（aria-label = files.more）展开下拉（Radix 触发器在 pointerdown 上开合）
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'files.more' }), { button: 0 })
         // 菜单项出现后点击「复制文件路径」
         const copyItem = await screen.findByText('files.copyPath')
         fireEvent.click(copyItem)
@@ -534,7 +534,7 @@ describe('FileContentView', () => {
         )
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="README.md" />)
         // 点 Ellipsis → 切源码
-        fireEvent.click(screen.getByRole('button', { name: 'files.more' }))
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'files.more' }), { button: 0 })
         fireEvent.click(await screen.findByText('files.viewSource'))
         const editor = await screen.findByTestId('code-editor')
         expect(editor).toHaveAttribute('data-read-only', 'false')
@@ -547,7 +547,7 @@ describe('FileContentView', () => {
             { blob: new Blob(['const x = 1'], { type: 'text/typescript' }), mime: 'text/typescript' },
         )
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a.ts" />)
-        fireEvent.click(screen.getByRole('button', { name: 'files.more' }))
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'files.more' }), { button: 0 })
         expect(screen.queryByText('files.viewSource')).not.toBeInTheDocument()
     })
 
@@ -589,7 +589,7 @@ describe('FileContentView', () => {
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
 
         // 点 Ellipsis 展开 → 点刷新项
-        fireEvent.click(screen.getByRole('button', { name: 'files.more' }))
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'files.more' }), { button: 0 })
         fireEvent.click(await screen.findByText('files.refresh'))
         // 断言 invalidateQueries 被以 sessionFileMeta key 调用（meta refetch → etag 变 → content 自动跟随）
         await waitFor(() => {

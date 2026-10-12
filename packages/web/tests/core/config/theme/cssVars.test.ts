@@ -51,6 +51,23 @@ describe('buildShadcnThemeCss（--background 系主题变量）', () => {
         }
         // 弹层 z 基线（spec D6，票 03 实测 antd z1000 会盖生态默认 z50）
         expect(light).toContain('--mobi-z-overlay: 1080')
+        // registry 组件（弹层）实际消费而标准 shadcn 集未覆盖的 token——
+        // 弹层 portal 到 body，antd 的 --ant-* 在子树外不可解析，这些必须全局可得
+        for (const css of [light, dark]) {
+            expect(css).toContain('--border-strong:')
+            expect(css).toContain('--border-subtle:')
+            expect(css).toContain('--text-secondary:')
+            expect(css).toContain('--radius-lg:')
+            expect(css).toContain('--shadow-resting:')
+            expect(css).toContain('--shadow-floating:')
+            // motion 投影（antd cssVar 不产出 motion 变量，组件不得自带第二套缓动语言）
+            expect(css).toContain('--mobi-duration-fast:')
+            expect(css).toContain('--mobi-duration-mid:')
+            expect(css).toContain('--mobi-ease-out:')
+            expect(css).toContain('--mobi-ease-in-out:')
+        }
+        expect(light).toContain('--radius-lg: 14px')
+        expect(dark).toContain('--text-secondary: #d1cfc5')
         // 档位值确实翻转（light bg 米白 / dark bg 深灰）
         expect(light).toContain('--background: #faf9f5')
         expect(dark).toContain('--background: #141413')

@@ -15,11 +15,12 @@
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
-import { Button, Dropdown, Divider, theme as antTheme } from 'antd'
+import { Button } from 'antd'
 import { MoreOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ReactNode } from 'react'
 import styled from '@emotion/styled'
+import { DropdownMenu, type DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
 
 export interface ActionItem {
   key: string
@@ -41,17 +42,6 @@ const ActionBarContainer = styled.div`
   }
 `
 
-const DropdownItem = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  border-radius: ${props => props.$token.borderRadius}px;
-  transition: background 0.2s;
-
-  &:hover {
-    background: ${props => props.$token.colorBgTextHover};
-  }
-`
 
 /**
  * 响应式操作栏
@@ -134,7 +124,6 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
   const visibleItems = items.slice(0, visibleCount)
   const hiddenItems = items.slice(visibleCount)
 
-  const { token } = antTheme.useToken()
   const { t } = useTranslation()
 
   const moreButton = useCallback(() => (
@@ -147,46 +136,23 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
     />
   ), [t])
 
-  const dropdownContent = useMemo(() => {
-    if (hiddenItems.length === 0) return null
-    return (
-      <div
-        data-in-dropdown
-        onMouseDown={e => e.stopPropagation()}
-        style={{
-          background: token.colorBgContainer,
-          borderRadius: token.borderRadiusLG,
-          boxShadow: token.boxShadowSecondary,
-          padding: '4px 0',
-        }}
-      >
-        {hiddenItems.map((item, index) => (
-          <div key={item.key}>
-            <DropdownItem
-              $token={token}
-              style={{ margin: '0 4px' }}
-              onClick={(e) => {
-                const target = e.target as HTMLElement
-                if (target.closest('button')) return
-                const btn = e.currentTarget.querySelector('button')
-                btn?.click()
-              }}
-            >
-              <div style={{ padding: '4px 8px', minWidth: 140, width: '100%', display: 'flex', alignItems: 'center', gap: 8 }}>
-                {item.render()}
-                {item.label && (
-                  <span style={{ fontSize: 12, color: token.colorText }}>{item.label}</span>
-                )}
-              </div>
-            </DropdownItem>
-            {index < hiddenItems.length - 1 && (
-              <Divider style={{ margin: '2px 12px', width: 'calc(100% - 24px)' }} />
-            )}
-          </div>
-        ))}
-      </div>
-    )
-  }, [hiddenItems, token])
+  /**
+   * 溢出面板（承载用 registry 的 DropdownMenu，与全站菜单同一套弹层观感）。
+   * 一项 = 「项按钮 + 文字」：动作长在 `item.render()` 返回的按钮自身（tooltip / onClick / 快捷键
+   * 都在它上面），行点击代理到那个按钮——不在菜单项里再写一份动作，避免两处定义漂移。
+   * 故 label 是既能点整行、又能点按钮本身的一团内容；分隔线走菜单自带的 separatorBefore。
+   */
+  const overflowItems: DropdownItem[] = useMemo(() => hiddenItems.map((item, index) => ({
+    key: item.key,
+    separatorBefore: index > 0,
+    label: (
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+        {item.render()}
+        {item.label && <span>{item.label}</span>}
+      </span>
+    ),
+    onSelect: (event) => (event.target as HTMLElement | null)?.querySelector('button')?.click(),
+  })), [hiddenItems])
 
   return (
     <ActionBarContainer
@@ -203,10 +169,8 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
         {visibleItems.map((item) => (
           <div key={item.key}>{item.render()}</div>
         ))}
-        {hiddenItems.length > 0 && dropdownContent && (
-          <Dropdown popupRender={() => dropdownContent} placement="topLeft">
-            {moreButton()}
-          </Dropdown>
+        {hiddenItems.length > 0 && (
+          <DropdownMenu trigger={moreButton()} items={overflowItems} side="top" align="start" />
         )}
       </div>
 

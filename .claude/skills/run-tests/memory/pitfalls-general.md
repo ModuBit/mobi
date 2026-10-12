@@ -3,7 +3,7 @@ name: pitfalls-general
 description: 跨任务通用误判（token 用途、诊断命令、工具禁用、短生命周期 DOM 验证、懒加载验证、React 控制的 inline style、claude 进程数观测归因）
 metadata:
   type: pitfall
-  last_verified: 2026-09-20
+  last_verified: 2026-10-12
 ---
 
 # 通用误判
@@ -151,3 +151,53 @@ return { defaultPrevented: ev.defaultPrevented };
 1. 先 `closest('[class*="queued"]')` 之类把目标按钮 scope 到功能容器内，找不到就报 found:false 而不是全页兜底
 2. 点击后**立即检查副作用是否是预期的**（排队条消失 + 无意外 modal）——本次误点后出现两个「删除会话」confirm，及时取淌才没出事
 3. 排队条按钮实测 `take_snapshot` 拿 uid 后 `click`（真实 CDP 点击）一次成功，比直调 React onClick 更可靠（后者找错按钮时同样「执行成功」，误导排查）
+
+## MCP `click` 打不开 Radix 菜单——改用 focus + `press_key ArrowDown`（2026-10-12）
+
+测会话行 kebab（uiarc/Radix DropdownMenu）时 `click` 拿 uid 点下去**菜单不开**，
+事件直接冒泡到行 onClick 导致导航去了会话页。原因：Radix 的 Trigger 在 `pointerdown`
+上开合（dropdown-menu dist：`onPointerDown: ... event.button === 0 && !event.ctrlKey → onOpenToggle`），
+而 MCP `click` 走的是 click 语义，Radix 收不到——antd Dropdown（click 触发）则正常。
+
+**绕法**：`evaluate_script` 里 `anchor.focus()` → `press_key ArrowDown`（Radix 监听 keydown，
+Enter/Space/ArrowDown 均可开），关用 `press_key Escape`。全程真实键盘输入，可直接挂 rAF 探针采样。
+
+**另一个假象**：`elementFromPoint(锚点中心)` 返回的不是按钮而是某个祖先 DIV 时，先确认锚点
+**可见**——折叠分组里的会话行仍在 DOM 中（外层 `grid-template-rows: 0fr` + overflow hidden），
+rect 照常返回但命不中，且 MCP hover/click 报 "did not become interactive"。先展开分组再操作。
+
+**补充**：**子菜单触发器**和根触发器不一样——Radix `MenuSubTrigger` 内建 `onClick`
+开合（`if (!context.open) onOpenChange(true)`），所以 `click` 反而能开、`pointerdown` 也许；
+键盘则是 `ArrowRight`。验子菜单时别照搬根触发器的 focus+ArrowDown 套路。
+真机鼠标路径验 hover 展开：CDP `hover` 拿 uid 悬停约 100ms 即展开（Radix 内建延迟）。
+
+## Radix 弹层开在 `role="tab"` label 内会「开完即关」——rc-tabs 抢焦点（2026-10-12）
+
+**现象**：把 Radix 菜单的触发器放进 antd `Tabs` 的 `label`（自绘成 tab 头上的图标按钮）后，
+点开菜单瞬间自动关闭，根本来不及点选。
+
+**根因（两层，缺一不成立）**：
+1. **React portal 的事件沿 React 树冒泡，不是 DOM 树**——Radix 把 `Content` portal 到 `body`，
+   但它的 `focusin` 在 React 合成系统里仍会冒泡经过**原 JSX 位置的祖先**（即那个 tab 节点）。
+2. rc-tabs（`@rc-component/tabs`）的 `TabNode` 有 `onFocus`：`if (!isMouse) setFocusKey(key)`，
+   配对的 effect 是 `if (focus && btnRef.current) btnRef.current.focus()` ——
+   于是 focus 被抢回那个 tab 按钮，Radix 判定 focus 移出 `Content` → 关闭。
+   鼠标路径之所以有时躲过，是靠 `onMouseDown` 里的 `e.preventDefault()` + `setIsMouse(true)`
+   抑制（键盘打开时 `isMouse=false`，必现）。
+
+**诊断法（不必读源码猜）**：给 `HTMLElement.prototype.focus` 打桩拿调用栈 +
+`MutationObserver` 盯弹层 `data-state`，一条链就能定位到「谁在菜单打开后抢了 focus」：
+
+```js
+const orig = HTMLElement.prototype.focus;
+HTMLElement.prototype.focus = function () {
+  console.log('FOCUS →', this.tagName, this.getAttribute('aria-label'), new Error().stack);
+  return orig.apply(this, arguments);
+};
+```
+
+**修法**：把触发器**移出 tab label**，挂到 antd 的 `tabBarExtraContent`（tab 栏专属的「附属动作」
+位置，不属于任何 `role="tab"` 元素）。已经在 registry.json `localMods` 记为消费方约束。
+
+**判据**：这是真机同样存在的 bug，不是 jsdom 假象——React 事件沿 React 树冒泡是框架行为。
+遇到「弹层开完即关」别先怀疑测试环境。

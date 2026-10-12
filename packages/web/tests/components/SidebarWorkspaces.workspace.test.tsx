@@ -225,9 +225,9 @@ describe('SidebarWorkspaces 工作区实体化', () => {
         setup({ workspaceSessionsMap: { p1: [s1, s2] } })
         await screen.findByText('Demo')
 
-        // 工作区组标题「更多」菜单（title = common.more）
+        // 工作区组标题「更多」菜单（title = common.more）；uiarc menu 在 pointerdown 上展开，非 click
         const moreBtn = document.querySelector('button[title="common.more"]') as HTMLButtonElement
-        fireEvent.click(moreBtn)
+        fireEvent.pointerDown(moreBtn, { button: 0 })
 
         const deleteItem = await screen.findByText('workspace.delete')
         fireEvent.click(deleteItem)
@@ -251,10 +251,10 @@ describe('SidebarWorkspaces 工作区实体化', () => {
         setup({ workspaceSessionsMap: { p1: [s1] } })
         await screen.findByText('工作区会话一')
 
-        // 会话行「更多」下拉
+        // 会话行「更多」下拉（uiarc menu 在 pointerdown 上展开，非 click）
         const rowMore = document.querySelector('.session-actions button[title="common.more"]') as HTMLButtonElement
         expect(rowMore).toBeTruthy()
-        fireEvent.click(rowMore)
+        fireEvent.pointerDown(rowMore, { button: 0 })
 
         fireEvent.click(await screen.findByText('workspace.toRecent'))
         await waitFor(() => expect(assignSession).toHaveBeenCalledWith('s1', null))
@@ -268,9 +268,10 @@ describe('SidebarWorkspaces 工作区实体化', () => {
         await screen.findByText('游离会话')
 
         // 「归入工作区」已收进行内「更多」dropdown：打开菜单 → 点归入工作区项
+        // （uiarc menu 在 pointerdown 上展开，非 click）
         const rowMore = document.querySelector('.session-actions button[title="common.more"]') as HTMLButtonElement
         expect(rowMore).toBeTruthy()
-        fireEvent.click(rowMore)
+        fireEvent.pointerDown(rowMore, { button: 0 })
         fireEvent.click(await screen.findByText('workspace.assignTo'))
 
         // 弹窗打开：全量工作区可选（单机无机器过滤；查询限定在弹窗内，排除侧边栏同名分组；

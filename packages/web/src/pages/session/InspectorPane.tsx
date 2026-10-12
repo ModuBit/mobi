@@ -15,13 +15,13 @@
  */
 
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Layout, Tabs, Button, Dropdown, App, Spin } from 'antd'
+import { Layout, Tabs, Button, App, Spin } from 'antd'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
-import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { PanelRightClose, Folder, FileDiff, Maximize, Minimize, Plus } from 'lucide-react'
 import { FileTypeBadge } from '@/ui/base/display/FileTypeBadge'
+import { DropdownMenu, type DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
 import FileTreeView from '@/features/files/FileTreeView'
 import FileContentView from '@/features/files/FileContentView'
 import { GitReviewView } from '@/features/review/GitReviewView'
@@ -129,9 +129,6 @@ export interface InspectorPaneProps {
     /** session 是否在线（CLI 已连接）；离线时 rightChrome 改浮动定位（不进 tabBar） */
     active?: boolean
 }
-
-/** 尾部「+」tab 的 key（仅作菜单触发，不进 store） */
-const ADD_TAB_KEY = '__inspector_add'
 
 /**
  * 审查 tab 表面（turn-diff 票06）：档位持久化挂 tab viewState——切走再切回保持
@@ -245,7 +242,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
         openTerminal: () => openTerminalTab(sessionId),
         openReview: () => openReviewTab(sessionId),
     }
-    const addMenuItems: MenuProps['items'] = INSPECTOR_ACTIONS.map((action) => {
+    const addMenuItems: DropdownItem[] = INSPECTOR_ACTIONS.map((action) => {
         const { Icon } = action
         const disabled = action.disabled || action.enabled?.(actionsContext) === false
         return {
@@ -253,9 +250,27 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
             icon: <Icon size={14} />,
             label: t(action.labelKey),
             disabled,
-            onClick: disabled ? undefined : () => action.run(actionsContext),
+            onSelect: disabled ? undefined : () => action.run(actionsContext),
         }
     })
+    // 「+」新建 tab 菜单按钮（与 rightChrome 同款 text/small，摆在它的左侧）。
+    // 它是 tab 栏的附属动作，**不是 tab**——曾以「假 tab」形式挂在 label 里，但那让带 portal 的
+    // 弹层落进 `role=tab` 内：重开焦点时 React 的 portal 事件沿 React 树冒泡到 tab 的 onFocus，
+    // rc-tabs 据此 setFocusKey 再 focus() 抢回焦点，Radix 判为 focus-outside 立刻关闭菜单
+    // （开完即关）。tabBarExtraContent 是 antd 给「tab 旁动作」的位置，也是它自带 add 按钮的落点。
+    const addTabMenu = (
+        <DropdownMenu
+            trigger={
+                <Button
+                    type="text"
+                    size="small"
+                    icon={<Plus size={16} />}
+                    aria-label={t('session.inspector.addTab')}
+                />
+            }
+            items={addMenuItems}
+        />
+    )
 
     const renderTabContent = (tab: InspectorTabEntry): ReactNode => {
         if (tab.mode === 'file' && tab.filePath) {
@@ -281,56 +296,36 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
         )
     }
 
-    const tabItems = [
-        ...tabs.map((tab) => ({
-            key: tab.id,
-            label: (
-                <AppTooltip title={tab.mode === 'file' ? tab.filePath : ''}>
-                    {tab.mode === 'terminal' ? (
-                        <TerminalTabLabel
-                            tab={tab}
-                            onRename={(title) => renameTerminalTab(sessionId, tab.id, title)}
-                        />
-                    ) : tab.mode === 'review' ? (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <FileDiff size={14} />
-                            {t('session.inspector.review')}
-                        </span>
-                    ) : (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {/* 文件 tab 按扩展名画类型徽章（TS 色块/目录 glyph），tree tab 保持 Folder */}
-                            {tab.mode === 'file' ? (
-                                <FileTypeBadge path={tab.filePath ?? ''} size={14} />
-                            ) : (
-                                <Folder size={14} />
-                            )}
-                            {tab.mode === 'file' ? tab.fileName : t('session.inspector.openFile')}
-                        </span>
-                    )}
-                </AppTooltip>
-            ),
-            children: renderTabContent(tab),
-            closable: true,
-        })),
-        // 尾部「+」：作为不可关闭的 tab 项，点击弹出下拉菜单新增 tab
-        {
-            key: ADD_TAB_KEY,
-            label: (
-                <Dropdown menu={{ items: addMenuItems }} trigger={['click']}>
-                    <span
-                        role="button"
-                        aria-label={t('session.inspector.addTab')}
-                        style={{ display: 'inline-flex', alignItems: 'center', padding: '0 4px' }}
-                    >
-                        <Plus size={14} />
+    const tabItems = tabs.map((tab) => ({
+        key: tab.id,
+        label: (
+            <AppTooltip title={tab.mode === 'file' ? tab.filePath : ''}>
+                {tab.mode === 'terminal' ? (
+                    <TerminalTabLabel
+                        tab={tab}
+                        onRename={(title) => renameTerminalTab(sessionId, tab.id, title)}
+                    />
+                ) : tab.mode === 'review' ? (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <FileDiff size={14} />
+                        {t('session.inspector.review')}
                     </span>
-                </Dropdown>
-            ),
-            children: null,
-            closable: false,
-            disabled: false,
-        },
-    ]
+                ) : (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {/* 文件 tab 按扩展名画类型徽章（TS 色块/目录 glyph），tree tab 保持 Folder */}
+                        {tab.mode === 'file' ? (
+                            <FileTypeBadge path={tab.filePath ?? ''} size={14} />
+                        ) : (
+                            <Folder size={14} />
+                        )}
+                        {tab.mode === 'file' ? tab.fileName : t('session.inspector.openFile')}
+                    </span>
+                )}
+            </AppTooltip>
+        ),
+        children: renderTabContent(tab),
+        closable: true,
+    }))
 
     const hasTabs = tabs.length > 0
     // 空态：居中 3 按钮。休眠也显示——openFile/桌面 machine 化照常可用，终端创建后
@@ -347,8 +342,6 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
                     hideAdd
                     activeKey={activeTabId ?? undefined}
                     onChange={(key) => {
-                        // 「+」tab 仅作菜单触发，不切换激活
-                        if (key === ADD_TAB_KEY) return
                         setActiveTab(sessionId, key)
                     }}
                     items={tabItems}
@@ -366,17 +359,22 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
                         }
                     }}
                     tabBarStyle={{ padding: 'max(0px, env(safe-area-inset-top)) 12px 0', margin: 0 }}
-                    // 离线时 rightChrome 改为浮动定位（置于毛玻璃之上），不放进 tabBar
-                    tabBarExtraContent={active ? { right: rightChrome } : undefined}
+                    // 在线：「+」与 rightChrome 同在 tab 栏右端。离线时整组改浮动定位（见下），
+                    // 保持可用——openFile/terminal/review 在休眠会话下照常（daemon 自动唤醒）
+                    tabBarExtraContent={active ? { right: <>{addTabMenu}{rightChrome}</> } : undefined}
                 />
             )}
             {everExpanded && showEmpty && (
                 <InspectorEmptyState actionsContext={actionsContext} />
             )}
-            {/* 空态/离线态的浮动 rightChrome（tab 态的在 tabBarExtraContent）。
-                zIndex 高于毛玻璃，保证离线时最大化/收起按钮可点 */}
+            {/* 空态/离线态的浮动 chrome（tab 态的在 tabBarExtraContent）。
+                zIndex 高于毛玻璃，保证离线时最大化/收起按钮可点；离线且有 tab 时「+」一并在此，
+                不进 tabBar——所以不传 tabBarExtraContent，避免两处重叠 */}
             {(showEmpty || !active) && (
-                <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 11 }}>{rightChrome}</div>
+                <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {hasTabs && addTabMenu}
+                    {rightChrome}
+                </div>
             )}
             {/* 终端 tab 休眠/离线时不叠 ActivateCover：TerminalView 自带重连遮罩
                 （create 被拒 → session_waking 提示 + 自动重试 + 手动「重连」按钮，

@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { AttachPanel } from '@/features/composer/AttachPanel'
 
 const mocks = vi.hoisted(() => ({ isMobile: false }))
@@ -50,12 +50,18 @@ function renderPanel(overrides: Partial<Parameters<typeof AttachPanel>[0]> = {})
     return { view, onAttach, onSketch }
 }
 
-/** 点开面板（触发按钮在 Popover 内） */
-async function openPanel() {
-    fireEvent.click(screen.getByTestId('attach-trigger'))
-    await waitFor(() => {
-        expect(screen.getByTestId('attach-panel')).toBeTruthy()
-    })
+/** 点开面板（Radix 在 pointerdown 上开合、click 打不开）；已打开时保持打开，
+ *  因为触发器是开合切换——再点一次会关掉 */
+function openPanel() {
+    if (screen.queryByRole('menu')) return
+    fireEvent.pointerDown(screen.getByTestId('attach-trigger'), { button: 0 })
+    expect(screen.getByRole('menu')).toBeTruthy()
+}
+
+/** 选一项：菜单项选中即关，故每次动作前重新打开 */
+function pick(text: string) {
+    openPanel()
+    fireEvent.click(screen.getByText(text))
 }
 
 describe('AttachPanel', () => {
@@ -65,37 +71,44 @@ describe('AttachPanel', () => {
         mocks.isMobile = false
     })
 
-    it('PC：文件 + 画板两项（无相机行），点击触发对应回调', async () => {
+    it('PC：文件 + 画板两项（无相机行），点击触发对应回调', () => {
         const { onAttach, onSketch } = renderPanel()
-        await openPanel()
+        openPanel()
 
         expect(screen.queryByText(PHOTO_ITEM)).toBeNull()
         expect(screen.queryByText(RECORD_ITEM)).toBeNull()
 
-        fireEvent.click(screen.getByText(FILE_ITEM))
+        pick(FILE_ITEM)
         expect(onAttach).toHaveBeenCalledWith('file')
         expect(onSketch).not.toHaveBeenCalled()
 
-        fireEvent.click(screen.getByText(SKETCH_ITEM))
+        pick(SKETCH_ITEM)
         expect(onSketch).toHaveBeenCalledTimes(1)
         expect(onAttach).toHaveBeenCalledTimes(1)
     })
 
-    it('移动端：相机行并排拍照/录像两项，回调 source 分别为 photo/video', async () => {
+    it('选中后菜单自动关闭（原 pick() 手写 setOpen 已随迁移删除）', () => {
+        renderPanel()
+        pick(FILE_ITEM)
+        // 菜单不再留在 DOM 里（Radix 选中即关）
+        expect(screen.queryByRole('menu')).toBeNull()
+        expect(screen.queryByText(SKETCH_ITEM)).toBeNull()
+    })
+
+    it('移动端：相机行并排拍照/录像两项，回调 source 分别为 photo/video', () => {
         mocks.isMobile = true
         const { onAttach } = renderPanel()
-        await openPanel()
 
-        fireEvent.click(screen.getByText(PHOTO_ITEM))
+        pick(PHOTO_ITEM)
         expect(onAttach).toHaveBeenCalledWith('photo')
 
-        fireEvent.click(screen.getByText(RECORD_ITEM))
+        pick(RECORD_ITEM)
         expect(onAttach).toHaveBeenCalledWith('video')
     })
 
-    it('未提供 onSketch：不渲染画板项（新建页面板形态）', async () => {
+    it('未提供 onSketch：不渲染画板项（新建页面板形态）', () => {
         render(<AttachPanel onAttach={vi.fn()} />)
-        await openPanel()
+        openPanel()
         expect(screen.queryByText(SKETCH_ITEM)).toBeNull()
     })
 })

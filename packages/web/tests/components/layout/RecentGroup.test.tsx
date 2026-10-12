@@ -124,6 +124,31 @@ describe('RecentGroup（平级「最近」分区）', () => {
         expect(screen.getByRole('button', { name: /nav.recent/ })).toHaveAttribute('aria-expanded', 'true')
     })
 
+    it('会话行菜单锚点常驻：触发器不进 hover 显隐，且在按钮组末尾', () => {
+        const s1 = makeSession('r1')
+        recentState.current = makeHookState({
+            sessions: [s1], visibleSessions: [s1], expanded: true,
+        })
+
+        render(
+            <RecentGroup
+                {...sharedProps}
+                onAssign={vi.fn()}
+                assignPendingSessionId={undefined}
+            />
+        )
+
+        const actions = document.querySelector('.session-actions')
+        expect(actions).not.toBeNull()
+        const anchor = actions!.querySelector('button[title="common.more"]')
+        // popper 每帧按锚点矩形定位：锚点若被 hover 显隐藏掉（rect 归零到视口原点），
+        // 退场中的菜单会被甩到视口左上角闪一下 → 锚点必须常驻，不得挂次要按钮的显隐类
+        expect(anchor).not.toHaveClass('session-action-secondary')
+        // 次要按钮（重命名 / 置顶）hover 显隐：锚点必须在末尾，兄弟增删才不会移动它的矩形
+        expect(actions!.lastElementChild).toBe(anchor)
+        expect(actions!.querySelectorAll('.session-action-secondary')).toHaveLength(2)
+    })
+
     it('空分区 → 分区头仍渲染，默认收起（aria-expanded=false）', () => {
         render(
             <RecentGroup

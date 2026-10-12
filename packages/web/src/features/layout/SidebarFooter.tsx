@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Dropdown, theme as antTheme } from 'antd'
+import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
     Settings,
@@ -28,8 +28,8 @@ import {
     RefreshCw,
     RotateCw,
 } from 'lucide-react'
-import type { MenuProps } from 'antd'
 import styled from '@emotion/styled'
+import { DropdownMenu, type DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { useThemeLocaleToggle } from '@/ui/base/theme/useThemeLocaleToggle'
@@ -90,87 +90,84 @@ export function SidebarFooter() {
         api.auth.logout().catch(() => {}).finally(() => logout())
     }
 
-    // Dropdown 菜单项
-    const menuItems: MenuProps['items'] = useMemo(() => {
-        const items: MenuProps['items'] = [
+    // Dropdown 菜单项（分隔线挂在「下一项之前」——uiarc 的形状，不再需要独立的 divider 项）
+    const menuItems: DropdownItem[] = useMemo(() => {
+        const items: DropdownItem[] = [
             {
                 key: 'settings',
                 label: t('nav.settings'),
                 icon: <Settings size={16} />,
-                onClick: () => navigate({ to: '/settings' }),
+                onSelect: () => navigate({ to: '/settings' }),
             },
-            { type: 'divider' },
             {
                 key: 'theme',
                 label: resolvedTheme === 'dark' ? t('nav.themeLight') : t('nav.themeDark'),
                 icon: resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />,
-                onClick: toggleTheme,
+                separatorBefore: true,
+                onSelect: toggleTheme,
             },
             {
                 key: 'locale',
                 label: locale === 'zh' ? 'English' : '中文',
                 icon: <Languages size={16} />,
-                onClick: toggleLocale,
+                onSelect: toggleLocale,
             },
         ]
 
         // 刷新/重启 仅 PWA 展示：浏览器有自带刷新按钮，PWA(standalone)无浏览器 chrome
         if (isPwa) {
             items.push(
-                { type: 'divider' },
                 {
                     key: 'refresh',
                     label: t('nav.refresh'),
                     icon: <RotateCw size={16} />,
-                    onClick: () => window.location.reload(),
+                    separatorBefore: true,
+                    onSelect: () => window.location.reload(),
                 },
                 {
                     key: 'restart',
                     label: t('nav.restart'),
                     icon: <RefreshCw size={16} />,
-                    onClick: restart,
+                    onSelect: restart,
                 },
             )
         }
 
         // PWA 安装选项
         if (canInstall) {
-            items.push(
-                { type: 'divider' },
-                {
-                    key: 'install',
-                    label: t('nav.installApp'),
-                    icon: <Download size={16} />,
-                    onClick: handleInstall,
-                },
-            )
+            items.push({
+                key: 'install',
+                label: t('nav.installApp'),
+                icon: <Download size={16} />,
+                separatorBefore: true,
+                onSelect: handleInstall,
+            })
         }
 
-        items.push(
-            { type: 'divider' },
-            {
-                key: 'logout',
-                label: t('nav.logout'),
-                icon: <LogOut size={16} />,
-                onClick: handleLogout,
-            },
-        )
+        items.push({
+            key: 'logout',
+            label: t('nav.logout'),
+            icon: <LogOut size={16} />,
+            separatorBefore: true,
+            onSelect: handleLogout,
+        })
 
         return items
     }, [t, navigate, resolvedTheme, locale, toggleTheme, toggleLocale, isPwa, canInstall, handleInstall, handleLogout, restart])
 
     return (
         <FooterContainer>
-            <Dropdown
-                menu={{ items: menuItems }}
-                trigger={['click']}
-                placement="topLeft"
-            >
-                <SettingsButton $token={token} type="button">
-                    <Settings size={16} />
-                    <span>{t('nav.settings')}</span>
-                </SettingsButton>
-            </Dropdown>
+            <DropdownMenu
+                trigger={
+                    <SettingsButton $token={token} type="button">
+                        <Settings size={16} />
+                        <span>{t('nav.settings')}</span>
+                    </SettingsButton>
+                }
+                items={menuItems}
+                side="top"
+                align="start"
+            />
         </FooterContainer>
     )
 }

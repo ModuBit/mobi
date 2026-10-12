@@ -27,7 +27,7 @@
  */
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
-import { App, Button, Collapse, Dropdown, Empty, Flex, Popover, Spin, Tooltip } from 'antd'
+import { App, Button, Collapse, Empty, Flex, Popover, Spin, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { CheckCheck, ChevronsDownUp, ChevronDown, Columns2, Copy, ExternalLink, FileQuestion, FolderTree, MoreHorizontal, RefreshCw, WrapText } from 'lucide-react'
 import { type DiffTarget, type ReviewFileEntry } from '@mobi/shared'
@@ -38,12 +38,13 @@ import { basename } from '@/core/utils/path'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { copyTextToClipboard } from '@/core/utils/clipboard'
 import { FilePathLabel, KindBadge, DiffStat } from '@/ui/shared/present'
+import { DropdownMenu, type DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
 import { RatioSplitLayout } from '@/ui/base/layout/SplitLayout'
 import { RowDiff } from './RowDiff'
 import { DiffTreePanel } from './DiffTreePanel'
 import { defaultDeps, type GitReviewDeps } from './reviewDeps'
 import { isDiffable, isTargetUnavailable } from './reviewEntries'
-import { parseTargetKey as DiffTargetParse, serializeTargetKey } from '@/core/lib/targetKey'
+import { serializeTargetKey } from '@/core/lib/targetKey'
 
 // 对外保持原导出面（测试/消费方从 GitReviewView 取注入接口类型）
 export type { GitReviewDeps } from './reviewDeps'
@@ -83,7 +84,7 @@ function CommitLoadSentinel({ onLoad, active, loading }: { onLoad: () => void; a
         if (!active || !el || typeof IntersectionObserver === 'undefined') return
         const io = new IntersectionObserver((entries) => {
             if (entries.some((e) => e.isIntersecting)) onLoadRef.current()
-        }, { root: el.closest('.ant-dropdown-menu-sub') })
+        }, { root: el.closest('[data-dropdown-scroll-root]') })
         io.observe(el)
         return () => io.disconnect()
     }, [active])
@@ -423,6 +424,74 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
         </Flex>
     )
 
+    // scope 菜单：四个档位 + 「已提交」二级子菜单（ZCode 同款：hover/click 展开直接列 commit，
+    // 选中即切 commit 档）。子菜单内容随 commits 分页动态长出来——加载/失败/空态用禁用项占位
+    // （语义就是「不可选的一行」），滚动哨兵用 content 渲染为非菜单项。
+    // 桌面 hover 展开、触屏与键盘 click 展开都是 Radix Sub 内建，无需再分类判决；
+    // 子菜单关闭即卸载，antd 时代 destroyOnHidden 兜的 popup 残留不存在。
+    const commitItems: DropdownItem[] = [
+        ...(commits.isLoading
+            ? [{ key: '__loading__', disabled: true, label: <Flex justify="center" style={{ width: COMMIT_ITEM_WIDTH, padding: 6 }}><Spin size="small" /></Flex> }]
+            : []),
+        ...(commits.error ? [{ key: '__error__', disabled: true, label: commits.error }] : []),
+        ...commits.data.map((c) => ({
+            key: `${COMMIT_ITEM_PREFIX}${c.sha}`,
+            disabled: c.parentSha === null,
+            title: c.subject,
+            selected: target.kind === 'commit' && target.range.head === c.sha,
+            label: (
+                <span
+                    data-testid="review-commit-item"
+                    data-sha={c.sha}
+                    data-root={c.parentSha === null || undefined}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: COMMIT_ITEM_WIDTH, maxWidth: '100%' }}
+                >
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {c.subject}
+                    </span>
+                    <span style={{ color: 'var(--ant-color-text-tertiary)', flexShrink: 0, fontSize: 12 }}>
+                        {formatRelativeTime(c.authorTimestamp * 1000, t)}
+                    </span>
+                </span>
+            ),
+            onSelect: () => changeTarget({ kind: 'commit', range: { base: c.parentSha ?? '', head: c.sha } }),
+        })),
+        // 滚动到底翻页哨兵：hasNextPage 才挂，滚近底部自动 loadMore（滚动根靠面板上的
+        // data-dropdown-scroll-root 定位，不再依赖 antd 的 DOM 类名）
+        ...(commits.hasNextPage
+            ? [{ key: '__sentinel__', content: <CommitLoadSentinel onLoad={commits.loadMore} active={!commits.isLoadingMore} loading={commits.isLoadingMore} /> }]
+            : []),
+        ...(commits.data.length === 0 && !commits.isLoading && !commits.error
+            ? [{ key: '__empty__', disabled: true, label: t('review.empty') }]
+            : []),
+    ]
+
+    const scopeMenuItems: DropdownItem[] = [
+        ...TARGET_OPTIONS.map(({ target: t2, labelKey }) => ({
+            key: serializeTargetKey(t2),
+            label: (
+                <span>
+                    {t(labelKey)}
+                    {!isGitRepo && t2.kind !== 'turn' && (
+                        <span style={{ color: 'var(--ant-color-text-quaternary)' }}> · {t('review.needsGit')}</span>
+                    )}
+                </span>
+            ),
+            disabled: (t2.kind === 'turn' && lastTurnMissing) || (!isGitRepo && t2.kind !== 'turn'),
+            selected: target.kind !== 'commit' && serializeTargetKey(t2) === serializeTargetKey(target),
+            // 原先经 key 字符串回解（serialize → parse）拿档位，键与对象本就同源，直取即可
+            onSelect: () => changeTarget(t2),
+        })),
+        ...(isGitRepo
+            ? [{
+                key: COMMITS_MENU_KEY,
+                label: t('review.scope.commits'),
+                selected: target.kind === 'commit',
+                children: commitItems,
+            }]
+            : []),
+    ]
+
     return (
         <Flex data-testid="git-review-view" vertical style={{ height: '100%', minHeight: 0 }}>
             {/* Header：范围切换 + 汇总统计 + 功能按钮 */}
@@ -431,102 +500,29 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                 gap={10}
                 style={{ padding: '8px 12px', borderBottom: '1px solid var(--ant-color-border-secondary)', flexShrink: 0 }}
             >
-                <Dropdown
-                    trigger={['click']}
-                    placement="bottomLeft"
-                    // 关闭即卸载 popup 树：触屏无 mouseleave 兜底，选中 commit 关主菜单后
-                    // 子菜单 popup 会泄漏残留（PC 靠移开鼠标的 mouseleave 才正常）；
-                    // 卸载同时清掉 openKeys 残留，避免重开时子菜单自动展开
-                    destroyOnHidden
-                    menu={{
-                        // 触屏走 click 展开子菜单：hover 语义在触屏上靠 tap 合成的 mouseenter，
-                        // 选择 commit 关闭主菜单的退场窗口里合成 mouseover 链会把子菜单再次
-                        // 「复活」再随卸载消失（闪烁）；PC 保持 hover 手感
-                        triggerSubMenuAction: isMobile ? 'click' : 'hover',
-                        items: [
-                            ...TARGET_OPTIONS.map(({ target: t2, labelKey }) => ({
-                                key: serializeTargetKey(t2),
-                                label: (
-                                    <span>
-                                        {t(labelKey)}
-                                        {!isGitRepo && t2.kind !== 'turn' && (
-                                            <span style={{ color: 'var(--ant-color-text-quaternary)' }}> · {t('review.needsGit')}</span>
-                                        )}
-                                    </span>
-                                ),
-                                disabled: (t2.kind === 'turn' && lastTurnMissing) || (!isGitRepo && t2.kind !== 'turn'),
-                            })),
-                            // 「已提交」二级子菜单（ZCode 同款）：hover/click 展开直接列 commit，
-                            // 选中即切 commit 档（非 git 目录隐藏）
-                            ...(isGitRepo ? [{
-                                key: COMMITS_MENU_KEY,
-                                label: t('review.scope.commits'),
-                                children: [
-                                    // 首拉中 / 失败占位
-                                    ...(commits.isLoading ? [{ key: '__loading__', disabled: true, label: <Flex justify="center" style={{ width: COMMIT_ITEM_WIDTH, padding: 6 }}><Spin size="small" /></Flex> }] : []),
-                                    ...(commits.error ? [{ key: '__error__', disabled: true, label: commits.error }] : []),
-                                    ...commits.data.map((c) => ({
-                                        key: `${COMMIT_ITEM_PREFIX}${c.sha}`,
-                                        disabled: c.parentSha === null,
-                                        title: c.subject,
-                                        label: (
-                                            <span
-                                                data-testid="review-commit-item"
-                                                data-sha={c.sha}
-                                                data-root={c.parentSha === null || undefined}
-                                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: COMMIT_ITEM_WIDTH }}
-                                            >
-                                                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                    {c.subject}
-                                                </span>
-                                                <span style={{ color: 'var(--ant-color-text-tertiary)', flexShrink: 0, fontSize: 12 }}>
-                                                    {formatRelativeTime(c.authorTimestamp * 1000, t)}
-                                                </span>
-                                            </span>
-                                        ),
-                                    })),
-                                    // 滚动到底翻页哨兵：hasNextPage 才挂，滚近底部自动 loadMore
-                                    ...(commits.hasNextPage ? [{
-                                        key: '__sentinel__',
-                                        disabled: true,
-                                        label: <CommitLoadSentinel onLoad={commits.loadMore} active={!commits.isLoadingMore} loading={commits.isLoadingMore} />,
-                                    }] : []),
-                                    ...(commits.data.length === 0 && !commits.isLoading && !commits.error
-                                        ? [{ key: '__empty__', disabled: true, label: t('review.empty') }]
-                                        : []),
-                                ],
-                            }] : []),
-                        ],
-                        selectedKeys: [target.kind === 'commit' ? COMMITS_MENU_KEY : serializeTargetKey(target)],
-                        onClick: ({ key }) => {
-                            if (key.startsWith(COMMIT_ITEM_PREFIX)) {
-                                const c = commits.data.find((x) => x.sha === key.slice(COMMIT_ITEM_PREFIX.length))
-                                if (c) changeTarget({ kind: 'commit', range: { base: c.parentSha ?? '', head: c.sha } })
-                                return
-                            }
-                            try {
-                                changeTarget(DiffTargetParse(key))
-                            } catch { /* 序列化键损坏不切档 */ }
-                        },
-                    }}
-                >
-                    <Button
-                        size="small" type="text"
-                        data-testid="review-scope-switch"
-                        aria-haspopup="menu"
-                        style={{ maxWidth: 180, paddingInline: 6 }}
-                    >
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {target.kind === 'commit'
-                                ? (() => {
-                                    const c = commits.data.find((x) => x.sha === target.range.head)
-                                    return c ? `${c.sha.slice(0, 7)} · ${c.subject}` : t('review.scope.commits')
-                                })()
-                                : t(TARGET_OPTIONS.find(({ target: t2 }) => serializeTargetKey(t2) === serializeTargetKey(target))?.labelKey ?? 'review.scope.commits')}
-                        </span>
-                        <ChevronDown size={12} style={{ flexShrink: 0, color: 'var(--ant-color-text-tertiary)' }} />
-                    </Button>
-                </Dropdown>
+                <DropdownMenu
+                    trigger={
+                        <Button
+                            size="small" type="text"
+                            data-testid="review-scope-switch"
+                            aria-haspopup="menu"
+                            style={{ maxWidth: 180, paddingInline: 6 }}
+                        >
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {target.kind === 'commit'
+                                    ? (() => {
+                                        const c = commits.data.find((x) => x.sha === target.range.head)
+                                        return c ? `${c.sha.slice(0, 7)} · ${c.subject}` : t('review.scope.commits')
+                                    })()
+                                    : t(TARGET_OPTIONS.find(({ target: t2 }) => serializeTargetKey(t2) === serializeTargetKey(target))?.labelKey ?? 'review.scope.commits')}
+                            </span>
+                            <ChevronDown size={12} style={{ flexShrink: 0, color: 'var(--ant-color-text-tertiary)' }} />
+                        </Button>
+                    }
+                    items={scopeMenuItems}
+                    side="bottom"
+                    align="start"
+                />
                 {scopeData && (
                     <span style={{ fontSize: 12, fontFamily: 'var(--font-mono, monospace)', whiteSpace: 'nowrap' }}>
                         <span style={{ color: 'var(--ant-color-text-secondary)' }}>{t('review.fileCount', { count: scopeData.stats.files })}</span>{' '}
@@ -543,32 +539,23 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                     移动端四键收进「更多」Dropdown 节省横宽，桌面保持平铺 */}
                 <Flex align="center" gap={2} style={{ marginLeft: 'auto' }} data-testid="review-toolbar">
                     {isMobile ? (
-                        <Dropdown
-                            menu={{
-                                items: [
-                                    { key: 'refresh', label: t('review.refresh'), icon: <RefreshCw size={14} />, disabled: overview.isFetching },
-                                    { key: 'collapseAll', label: t('review.collapseAll'), icon: <ChevronsDownUp size={14} /> },
-                                    { key: 'wrap', label: t('review.wrap'), icon: <WrapText size={14} /> },
-                                    { key: 'layout', label: layout === 'split' ? t('review.layoutUnified') : t('review.layoutSplit'), icon: <Columns2 size={14} /> },
-                                ],
-                                onClick: ({ key }) => {
-                                    if (key === 'refresh') overview.refetch()
-                                    else if (key === 'collapseAll') setExpandedPaths([])
-                                    else if (key === 'wrap') setWrap((v) => !v)
-                                    else if (key === 'layout') changeLayout(layout === 'split' ? 'unified' : 'split')
-                                },
-                            }}
-                            trigger={['click']}
-                            placement="bottomRight"
-                        >
-                            <Button
-                                type="text" size="small"
-                                aria-label={t('common.more')}
-                                aria-haspopup="menu"
-                                data-testid="review-more"
-                                icon={<MoreHorizontal size={15} style={{ color: 'var(--ant-color-text-tertiary)' }} />}
-                            />
-                        </Dropdown>
+                        <DropdownMenu
+                            items={[
+                                { key: 'refresh', label: t('review.refresh'), icon: <RefreshCw size={14} />, disabled: overview.isFetching, onSelect: () => overview.refetch() },
+                                { key: 'collapseAll', label: t('review.collapseAll'), icon: <ChevronsDownUp size={14} />, onSelect: () => setExpandedPaths([]) },
+                                { key: 'wrap', label: t('review.wrap'), icon: <WrapText size={14} />, onSelect: () => setWrap((v) => !v) },
+                                { key: 'layout', label: layout === 'split' ? t('review.layoutUnified') : t('review.layoutSplit'), icon: <Columns2 size={14} />, onSelect: () => changeLayout(layout === 'split' ? 'unified' : 'split') },
+                            ]}
+                            trigger={
+                                <Button
+                                    type="text" size="small"
+                                    aria-label={t('common.more')}
+                                    aria-haspopup="menu"
+                                    data-testid="review-more"
+                                    icon={<MoreHorizontal size={15} style={{ color: 'var(--ant-color-text-tertiary)' }} />}
+                                />
+                            }
+                        />
                     ) : (
                         <>
                             <Tooltip title={t('review.refresh')}>

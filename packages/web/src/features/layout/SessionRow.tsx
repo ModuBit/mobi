@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-import { useState } from 'react'
-import { Badge, Dropdown, Input, theme as antTheme } from 'antd'
-import type { MenuProps } from 'antd'
+import { Badge, Input, theme as antTheme } from 'antd'
 import { EditOutlined, DeleteOutlined, MoonOutlined, MoreOutlined, PlayCircleOutlined } from '@ant-design/icons'
 import { Pin, PinOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { DropdownMenu, type DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
@@ -55,15 +54,8 @@ interface SessionRowProps {
     /** 置顶操作进行中（仅该行禁用，其余行不受牵连） */
     pinLoading?: boolean
     /** dropdown 分组附加项（「归入工作区」/「移至最近」「换工作区」），渲染在休眠/删除之前 */
-    extraMenuItems?: MenuProps['items']
-    /** dropdown 附加项点击（key 为调用方的 item key） */
-    onExtraMenuClick?: (key: string) => void
+    extraMenuItems?: DropdownItem[]
 }
-
-/** dropdown 内休眠/恢复/删除项的 key（与附加项 key 区分） */
-const DORMANT_KEY = 'dormant'
-const RESUME_KEY = 'resume'
-const DELETE_KEY = 'delete'
 
 /** 桌面侧边栏单个会话行（含行内重命名与 hover 操作）。
  *  行内只保留高频的 编辑 + 置顶；休眠/恢复/删除与分组附加项统一收进「更多」dropdown */
@@ -71,7 +63,7 @@ export function SessionRow({
     session, active, isRenaming,
     renameValue, onRenameValueChange, onRenameConfirm, onRenameCancel, onRenameLoading,
     onClick, onRename, onDormant, dormantLoading, onResume, onDelete, onTogglePin, pinLoading,
-    extraMenuItems, onExtraMenuClick,
+    extraMenuItems,
 }: SessionRowProps) {
     const { token } = useToken()
     const { t } = useTranslation()
@@ -80,27 +72,20 @@ export function SessionRow({
     // fork 行：daemon 建行时标题已落库（metadata.name 含「· 分叉」后缀），
     // 徽标状态纯函数可得（spec §4.3）
     const forkState = resolveForkSessionState(session, t)
-    // dropdown 打开时鼠标移向 portal 菜单会离开行 → hover CSS 隐藏按钮组 → 触发器卸载导致菜单关闭。
-    // 受控 open，打开期间强制显示按钮组
-    const [menuOpen, setMenuOpen] = useState(false)
     // menu 构建轻量（几个数组项），每渲染重建无成本：上游 SessionRowsList 对
-    // extraMenuItems/onClick 每渲染传新引用，memo 永不命中；本组件未做 React.memo，
-    // Dropdown 的 menu prop 也是内联字面量——引用稳定性在此层不成立也不需要
-    const menuItems: MenuProps['items'] = [
-        ...(extraMenuItems ?? []),
-        ...(extraMenuItems?.length ? [{ type: 'divider' as const }] : []),
+    // extraMenuItems 每渲染传新引用，memo 永不命中；本组件未做 React.memo，
+    // 菜单 items 也是内联字面量——引用稳定性在此层不成立也不需要。
+    // 附加项由调用方直接产出 DropdownItem（动作随项走）
+    const extraItems = extraMenuItems ?? []
+    const builtinItems: DropdownItem[] = [
         session.active
-            ? { key: DORMANT_KEY, icon: <MoonOutlined />, label: t('session.actions.dormant'), disabled: dormantLoading }
-            : { key: RESUME_KEY, icon: <PlayCircleOutlined />, label: t('session.actions.resume') },
-        { key: DELETE_KEY, icon: <DeleteOutlined />, danger: true, label: t('session.actions.delete') },
+            ? { label: t('session.actions.dormant'), icon: <MoonOutlined />, disabled: dormantLoading, onSelect: onDormant }
+            : { label: t('session.actions.resume'), icon: <PlayCircleOutlined />, onSelect: onResume },
+        { label: t('session.actions.delete'), icon: <DeleteOutlined />, destructive: true, onSelect: onDelete },
     ]
-    const handleMenuClick: MenuProps['onClick'] = ({ key, domEvent }) => {
-        domEvent.stopPropagation()
-        if (key === DORMANT_KEY) onDormant()
-        else if (key === RESUME_KEY) onResume()
-        else if (key === DELETE_KEY) onDelete()
-        else onExtraMenuClick?.(key)
-    }
+    // 附加项与内置项之间的分隔（antd 用独立的 divider 项，uiarc 挂在「下一项之前」）
+    if (extraItems.length) builtinItems[0].separatorBefore = true
+    const menuItems: DropdownItem[] = [...extraItems, ...builtinItems]
 
     if (isRenaming) {
         return (
@@ -127,7 +112,7 @@ export function SessionRow({
     const inactive = !session.active
 
     return (
-        <SessionItem $active={active} $token={token} onClick={onClick} data-menu-open={menuOpen || undefined}>
+        <SessionItem $active={active} $token={token} onClick={onClick}>
             <SessionStatusDot session={session} />
             <AppTooltip title={displayName} mouseEnterDelay={0.5} placement="right">
                 <SessionName $inactive={inactive}>{displayName}</SessionName>
@@ -141,10 +126,13 @@ export function SessionRow({
             {hasUnread && <Badge data-testid={`session-id-badge-${session.id}`} color="#fa541c" dot />}
             <TimeLabel $token={token} className="session-time">{relativeTime}</TimeLabel>
             <SessionActions className="session-actions">
-                <ActionButton $token={token} title={t('session.actions.rename')} onClick={(e) => { e.stopPropagation(); onRename() }}>
+                {/* 次要按钮（重命名 / 置顶）：仍按 hover 显隐；「更多」是菜单锚点必须常驻，
+                    详见 sidebarWorkspaces.styles.ts 的 .session-actions 注释 */}
+                <ActionButton className="session-action-secondary" $token={token} title={t('session.actions.rename')} onClick={(e) => { e.stopPropagation(); onRename() }}>
                     <EditOutlined style={{ fontSize: 11 }} />
                 </ActionButton>
                 <ActionButton
+                    className="session-action-secondary"
                     $token={token}
                     disabled={pinLoading}
                     title={session.pinned ? t('session.actions.unpin') : t('session.actions.pin')}
@@ -152,16 +140,14 @@ export function SessionRow({
                 >
                     {session.pinned ? <PinOff size={11} /> : <Pin size={11} />}
                 </ActionButton>
-                <Dropdown
-                    menu={{ items: menuItems, onClick: handleMenuClick }}
-                    trigger={['click']}
-                    open={menuOpen}
-                    onOpenChange={setMenuOpen}
-                >
-                    <ActionButton $token={token} title={t('common.more')} onClick={(e) => e.stopPropagation()}>
-                        <MoreOutlined style={{ fontSize: 11 }} />
-                    </ActionButton>
-                </Dropdown>
+                <DropdownMenu
+                    trigger={
+                        <ActionButton $token={token} title={t('common.more')} onClick={(e) => e.stopPropagation()}>
+                            <MoreOutlined style={{ fontSize: 11 }} />
+                        </ActionButton>
+                    }
+                    items={menuItems}
+                />
             </SessionActions>
         </SessionItem>
     )

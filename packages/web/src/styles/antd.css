@@ -535,71 +535,7 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
     }
 }
 
-/* 产物卡「打开方式」下拉（ArtifactDirectiveComponents 分体式按钮）：antd 原生菜单
-   密度太紧凑（14px/5px padding/8px radius），对齐原生 App 菜单的呼吸感——大圆角、
-   宽行高、图标 26px 底色块；仅作用于本组件浮层（popupClassName 作用域收口） */
-.artifact-card-menu .ant-dropdown-menu {
-    padding: 6px;
-    border-radius: 12px;
-}
 
-.artifact-card-menu .ant-dropdown-menu .ant-dropdown-menu-item {
-    padding: 8px 10px;
-    border-radius: 8px;
-    font-size: 14px;
-    line-height: 22px;
-}
-
-.artifact-card-menu .ant-dropdown-menu-title-content {
-    display: flex;
-    align-items: center;
-}
-
-.artifact-card-menu .artifact-menu-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    margin-inline-end: 10px;
-    border-radius: 6px;
-    background: var(--ant-color-fill-secondary);
-    color: var(--ant-color-text-secondary);
-}
-
-/* 审查 scope 下拉的「已提交」二级子菜单（GitReviewView）：commit 列表可长（每页 50，
-   历史多的仓库多页累积），子菜单浮层限高内滚——滚动到底由列表尾部的 IO 哨兵自动翻页。
-   antd items 模式无 per-submenu popupClassName，收口到子菜单滚动容器通用类
-   （项目内无其他 Dropdown submenu 使用方，影响面可控） */
-.ant-dropdown-menu-sub {
-    max-height: 360px;
-    overflow-y: auto;
-}
-
-/* 窄屏：子菜单从主菜单右侧展开（锚点 x≈130），item 内联固定 300 宽会把 popup 撑到
-   恒 328px，<458px 视口必然溢出右缘——rc-trigger 的 align 只算一次，内容后撑宽不会
-   回拉，溢出还会诱发移动端整页横滚（主菜单被滚出屏）。
-   ul 直接定宽收进视口：item 的 ellipsis 链（flex+minWidth:0）依赖确定宽度，间接钳制
-   （max-width / width:auto）会陷入「li 由内容撑开」的循环失控，定宽是唯一闭合解 */
-@media (max-width: 768px) {
-    .ant-dropdown-menu-sub {
-        width: calc(100vw - 150px);
-        overflow-x: hidden;
-    }
-    /* ellipsis 收缩链逐层闭合：ul 定宽 → li(flex) → title-content(flex item)
-       → item。任何一层 min-width:auto 都会让 min-content 把整链撑破 */
-    .ant-dropdown-menu-sub .ant-dropdown-menu-item,
-    .ant-dropdown-menu-sub .ant-dropdown-menu-title-content,
-    .ant-dropdown-menu-sub [data-testid='review-commit-item'],
-    .ant-dropdown-menu-sub [data-testid='review-commit-sentinel'] {
-        min-width: 0 !important;
-    }
-    .ant-dropdown-menu-sub [data-testid='review-commit-item'],
-    .ant-dropdown-menu-sub [data-testid='review-commit-sentinel'] {
-        width: auto !important;
-        max-width: 100%;
-    }
-}
 
 /* antd Image hover 遮罩（cover 层）已全局去除（preview.cover=false），小手光标原本
    挂在 cover 上随之丢失——补回到可预览的 Image 根元素（rc-image 仅在可预览时置 role=button） */

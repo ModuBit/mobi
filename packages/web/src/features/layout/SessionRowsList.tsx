@@ -15,9 +15,9 @@
  */
 
 import { theme as antTheme } from 'antd'
-import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
+import type { DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
 import { SessionListContainer, EmptyRow } from './sidebarWorkspaces.styles'
 import { SessionRow } from './SessionRow'
 import { SessionSkeletonRows } from './SessionSkeletonRows'
@@ -67,10 +67,8 @@ interface SessionRowsListProps extends SessionListSharedProps {
     showMore: () => void
     collapse: () => void
     onSessionClick: (sessionId: string) => void
-    /** 每行 dropdown 的分组附加项（「移至最近」/「归入工作区」等），渲染在休眠/删除之前 */
-    renderExtraMenuItems?: (session: Session) => MenuProps['items']
-    /** 每行 dropdown 附加项点击（key 为分组定义的 item key） */
-    onExtraMenuClick?: (session: Session, key: string) => void
+    /** 每行 dropdown 的分组附加项（「移至最近」/「归入工作区」等），渲染在休眠/删除之前；动作随项走 */
+    renderExtraMenuItems?: (session: Session) => DropdownItem[]
 }
 
 /** 分组内会话列表：骨架 / 空态 / 会话行 / 底部展开收起链接 */
@@ -80,7 +78,7 @@ export function SessionRowsList({
     onTogglePin, pinPendingSessionId,
     sessions, visibleSessions, isLoadingInitial, isLoadingMore,
     showCollapse, canShowMore, remainingCount, showMore, collapse,
-    onSessionClick, renderExtraMenuItems, onExtraMenuClick,
+    onSessionClick, renderExtraMenuItems,
 }: SessionRowsListProps) {
     const { token } = useToken()
     const { t } = useTranslation()
@@ -115,7 +113,6 @@ export function SessionRowsList({
                     onTogglePin={() => onTogglePin(session)}
                     pinLoading={session.id === pinPendingSessionId}
                     extraMenuItems={renderExtraMenuItems?.(session)}
-                    onExtraMenuClick={onExtraMenuClick ? (key) => onExtraMenuClick(session, key) : undefined}
                 />
             ))}
             {showFooter && (

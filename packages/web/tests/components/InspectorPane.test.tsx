@@ -169,6 +169,18 @@ describe('InspectorPane', () => {
         expect(screen.getByRole('button', { name: 'session.inspector.addTab' })).toBeInTheDocument()
     })
 
+    it('「+」是 tab 栏附属动作（不在 role=tab 内）：打开菜单后不被 tab 抢焦点而立即关闭', () => {
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        renderWithClient(<InspectorPane sessionId="s1" />)
+        const addBtn = screen.getByRole('button', { name: 'session.inspector.addTab' })
+        // 落进 role=tab 就会复发：重开焦点时 portal 的 focusin 沿 React 树冒泡到 tab 的 onFocus，
+        // rc-tabs 据此 focus() 抢回焦点 → Radix 判 focus-outside → 菜单开完即关
+        expect(addBtn.closest('[role="tab"]')).toBeNull()
+        fireEvent.pointerDown(addBtn, { button: 0 })
+        expect(screen.getByText('session.inspector.terminal')).toBeInTheDocument()
+    })
+
     it('关闭最后一个 tab → 收起 inspector', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         useWorkspaceStore.getState().openFileTreeTab('s1')
@@ -201,7 +213,7 @@ describe('InspectorPane', () => {
         // 先开一个 tree tab 让「+」按钮出现（tabs.length > 0 才进入 tab 态）
         useWorkspaceStore.getState().openFileTreeTab('s1')
         renderWithClient(<InspectorPane sessionId="s1" />)
-        fireEvent.click(screen.getByRole('button', { name: 'session.inspector.addTab' }))
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'session.inspector.addTab' }), { button: 0 })
         const terminalItem = screen.getByText('session.inspector.terminal').closest('[role="menuitem"]')
         expect(terminalItem).toBeTruthy()
         // action.disabled=false 且未达上限 → 菜单项可点
@@ -222,7 +234,7 @@ describe('InspectorPane', () => {
         // 「+」下拉菜单中 terminal 项 disabled。
         // Task 9 启用 terminal 后 action.disabled=false，disabled 完全由 terminalLimitReached 决定，
         // 此处真正验证上限叠加（覆盖 Task 8 当时 action.disabled=true 无法独立验证的缺口）
-        fireEvent.click(screen.getByRole('button', { name: 'session.inspector.addTab' }))
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'session.inspector.addTab' }), { button: 0 })
         const terminalItem = screen.getByText('session.inspector.terminal').closest('[role="menuitem"]')
         expect(terminalItem).toBeTruthy()
         expect(terminalItem?.getAttribute('aria-disabled')).toBe('true')

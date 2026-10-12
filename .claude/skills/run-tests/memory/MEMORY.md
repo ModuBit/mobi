@@ -47,3 +47,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [记忆 E2E 验证](memory-verify.md) — fake 服务桩四场景一键脚本 e2e-memory.sh；断言面=mobi 侧行为；bash3.2 全角字符/bash -c 函数不可见/排队消息不触发 hook 三坑
 - [设计走查](design-walkthrough.md) — DESIGN.md 合规走查 / computed style 实测取值 / mobi-ui state.theme 切换 / theme 改后须整页 reload / selected+active 命中第三档判别
 - [generative-ui 验收](generative-ui-verify.md) — 档②③/主题/bridge/安全探针观测点 + mobi-ui state.theme 坑 + daemon 时限/孤儿 CLI 坑
+- [antd cssVar 作用域陷阱](antd-cssvar-portal-scope.md) — --ant-* 只在 antd 子树内可解析，portal 弹层 token 全空（无底色/无动画）；诊断三层探针法 + 组件映射块禁同名自引用

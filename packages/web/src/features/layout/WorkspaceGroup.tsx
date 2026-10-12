@@ -16,13 +16,14 @@
 
 import type React from 'react'
 import { useCallback } from 'react'
-import { Dropdown, theme as antTheme } from 'antd'
-import type { MenuProps } from 'antd'
+import { theme as antTheme } from 'antd'
 import { EditOutlined, DeleteOutlined, MoreOutlined, ImportOutlined, SwapOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { FolderClosed, FolderOpen, Plus } from 'lucide-react'
 import { useWorkspaceSessions } from '@/core/data/hooks/queries/useWorkspaceSessions'
+import { DropdownMenu } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
+import type { DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
 import type { Session, Workspace } from '@/core/data/api/types'
 import {
     GroupContainer, GroupHeader, HeaderActionButton, FolderIcon, GroupName,
@@ -76,39 +77,30 @@ export function WorkspaceGroup({
         navigate({ to: '/sessions/new', search: { workspaceId: workspace.id } })
     }, [navigate, workspace.id])
 
-    // 标题 hover 菜单：编辑 / 删除工作区
-    const headerMenu: MenuProps = {
-        items: [
-            { key: 'edit', icon: <EditOutlined />, label: t('workspace.edit') },
-            { key: 'delete', icon: <DeleteOutlined />, danger: true, label: t('workspace.delete') },
-        ],
-        onClick: ({ key, domEvent }) => {
-            domEvent.stopPropagation()
-            if (key === 'edit') onEditWorkspace(workspace)
-            if (key === 'delete') onDeleteWorkspace(workspace, total)
-        },
-    }
+    // 标题 hover 菜单：编辑 / 删除工作区（动作随项走，不再按 key 分发）
+    const headerMenu: DropdownItem[] = [
+        { key: 'edit', icon: <EditOutlined />, label: t('workspace.edit'), onSelect: () => onEditWorkspace(workspace) },
+        { key: 'delete', icon: <DeleteOutlined />, destructive: true, label: t('workspace.delete'), onSelect: () => onDeleteWorkspace(workspace, total) },
+    ]
 
     // dropdown 附加项：移至最近 / 换工作区（pending 时整组禁用——两项是互斥的分组变更，
     // 只禁其一仍可并发触发另一项）
-    const renderExtraMenuItems = useCallback((session: Session): MenuProps['items'] => ([
+    const renderExtraMenuItems = useCallback((session: Session): DropdownItem[] => ([
         {
             key: 'recent',
             icon: <ImportOutlined />,
             label: t('workspace.toRecent'),
             disabled: session.id === assignPendingSessionId,
+            onSelect: () => onMoveToRecent(session),
         },
         {
             key: 'change',
             icon: <SwapOutlined />,
             label: t('workspace.changeWorkspace'),
             disabled: session.id === assignPendingSessionId,
+            onSelect: () => onChangeWorkspace(session),
         },
-    ]), [t, assignPendingSessionId])
-    const handleExtraMenuClick = useCallback((session: Session, key: string) => {
-        if (key === 'recent') onMoveToRecent(session)
-        if (key === 'change') onChangeWorkspace(session)
-    }, [onMoveToRecent, onChangeWorkspace])
+    ]), [t, assignPendingSessionId, onMoveToRecent, onChangeWorkspace])
 
     // 展开容器在「有会话」或「正在首次加载」时撑开，避免点了没反馈
     // 展开即撑开：空分组展示「暂无会话」占位（点击有反馈），加载中展示骨架
@@ -125,15 +117,18 @@ export function WorkspaceGroup({
                     <HeaderActionButton $token={token} className="new-session-btn" onClick={handleNewSession}>
                         <Plus size={13} />
                     </HeaderActionButton>
-                    <Dropdown menu={headerMenu} trigger={['click']}>
-                        <HeaderActionButton
-                            $token={token}
-                            title={t('common.more')}
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <MoreOutlined style={{ fontSize: 12 }} />
-                        </HeaderActionButton>
-                    </Dropdown>
+                    <DropdownMenu
+                        trigger={
+                            <HeaderActionButton
+                                $token={token}
+                                title={t('common.more')}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <MoreOutlined style={{ fontSize: 12 }} />
+                            </HeaderActionButton>
+                        }
+                        items={headerMenu}
+                    />
                 </span>
             </GroupHeader>
             <SessionListWrapper $expanded={wrapperExpanded}>
@@ -152,7 +147,6 @@ export function WorkspaceGroup({
                         collapse={collapse}
                         onSessionClick={handleSessionClick}
                         renderExtraMenuItems={renderExtraMenuItems}
-                        onExtraMenuClick={handleExtraMenuClick}
                     />
                 </SessionListInner>
             </SessionListWrapper>

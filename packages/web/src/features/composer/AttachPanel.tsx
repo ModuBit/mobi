@@ -18,15 +18,21 @@
  * 附加面板（composer「+」按钮的弹出菜单）：
  * 分组标题 + 菜单项（图标 + 主文字）；移动端相机入口拆「拍照/录像」两项并排一行
  * （各自单类型 accept + capture，Android Chrome 才会直开相机，见 handleAttach 注释）。
- * 弹层经 antd Dropdown 承载（popupRender 自绘面板，定位/外点关闭托管的都是它）。
+ *
+ * 承载用 registry 的 DropdownMenu（uiarc）——与全站菜单同一套弹层观感（面板外壳/入场动效/
+ * 选中高亮），antd Dropdown 的自绘面板会另成一套外观。两项非菜单项内容（标题、相机行）走
+ * `content`：它们不参与菜单键盘漫游，也不该被当成可选项。
+ * 相机的两个按钮自持样式与菜单项同形（同尺寸/hover 档），因为菜单一行只能一个可选项。
+ * 关闭不再手写：菜单项选中即关（Radix 内建），原 `pick()` 的 setOpen(false) 随之删除。
  */
 
-import { useState, type ReactNode } from 'react'
-import { Button, Dropdown } from 'antd'
+import { type ReactNode } from 'react'
+import { Button } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import { Camera, Paperclip, PenLine, Video } from 'lucide-react'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
+import { DropdownMenu, type DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
 export interface AttachPanelProps {
@@ -37,58 +43,41 @@ export interface AttachPanelProps {
     onSketch?: () => void
 }
 
-/* 面板自带底色/边框/阴影：popupRender 自定义内容时 Dropdown 容器不带背景，须自持 */
-const Panel = styled.div`
-    width: 264px;
-    padding: 6px;
-    background: var(--ant-color-bg-elevated);
-    border: 1px solid var(--ant-color-border);
-    border-radius: 14px;
-    box-shadow: var(--ant-box-shadow-secondary);
-`
+/* 弹层里的一切都要用 cssVars.ts 注入 :root/.dark 的全局变量（弹层 portal 到 body，
+   antd 的 --ant-* 只在 antd 组件子树内可解析，此处会取空） */
 
-/* 分组标题：弱化但清晰可读（用户指定加大，不压到菜单项之下） */
+/* 分组标题：弱化但清晰可读（用户指定加大，不压到菜单项之下）；不参与漫游的 content 项，
+   横向内边距与菜单项对齐（面板自身 padding 5px + 11px） */
 const GroupTitle = styled.div`
-    padding: 6px 10px 4px;
+    padding: 5px 11px 3px;
     font-size: 13px;
-    color: var(--ant-color-text-secondary);
+    color: var(--text-secondary);
 `
 
-/* 菜单项：整行可点，hover 铺底；icon 左、主文字右（无说明文字，用户指定精简） */
-const Item = styled.button`
+/* 相机行的两个按钮：与菜单项同形（高度/内边距/图标间距/圆角/hover 档一致），
+   因为菜单项一行只能放一个可选项，并排两个只能落在 content 里自持样式 */
+const RowItem = styled.button`
     display: flex;
     align-items: center;
     gap: 10px;
     width: 100%;
-    padding: 9px 10px;
+    min-height: 36px;
+    padding: 0 11px;
     border: none;
-    border-radius: 8px;
+    border-radius: calc(var(--radius-lg) - 6px);
     background: transparent;
+    color: var(--foreground);
+    font: inherit;
+    font-size: 14px;
     text-align: left;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background-color var(--mobi-duration-fast) var(--mobi-ease-in-out);
 
-    /* hover 用全站列表项 hover 档（fill-tertiary 是 selected 档，重半档） */
-    &:hover { background: var(--ant-color-bg-text-hover); }
-    &:active { background: var(--ant-color-fill-secondary); }
-
-    .icon { color: var(--ant-color-text-secondary); flex-shrink: 0; }
-
-    .title { font-size: 14px; color: var(--ant-color-text); }
+    & svg { flex: none; color: var(--text-secondary); }
+    &:hover { background: var(--surface-muted); }
 `
 
-/** 面板单项（纯展示组装，供文件/画板共用） */
-function PanelItem({ icon, title, onClick }: { icon: ReactNode; title: string; onClick: () => void }) {
-    return (
-        <Item type="button" onClick={onClick}>
-            <span className="icon">{icon}</span>
-            <span className="title">{title}</span>
-        </Item>
-    )
-}
-
-/* 相机行：拍照/录像并排（用户指定两项同行、内容左对齐，与文件/画板项一致）。
- * 复用 PanelItem（Item 本身 width:100%，grid 两列已约束布局） */
+/* 相机行：拍照/录像并排（用户指定两项同行、内容左对齐，与文件/画板项一致） */
 const CameraRow = styled.div`
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -96,69 +85,72 @@ const CameraRow = styled.div`
     padding: 2px 0;
 `
 
-/**
- * 「+」按钮 + 附加面板：面板内容自绘（分组标题 + 富菜单项），承载用 antd Dropdown
- * （popupRender 自定义面板，语义即「菜单」，定位/外点关闭等行为全由 antd 托管）。
- */
+/** 相机行单项（与菜单项同形，仅供相机行的两个并排项使用） */
+function RowButton({ icon, title, onClick }: { icon: ReactNode; title: string; onClick: () => void }) {
+    return (
+        <RowItem type="button" onClick={onClick}>
+            {icon}
+            <span>{title}</span>
+        </RowItem>
+    )
+}
+
 export function AttachPanel({ disabled, onAttach, onSketch }: AttachPanelProps) {
     const { t } = useTranslation()
     const isMobile = useIsMobile()
-    const [open, setOpen] = useState(false)
 
-    /** 选项后收起面板（上传/画板各自的流程接管后续交互） */
-    const pick = (action: () => void) => () => {
-        setOpen(false)
-        action()
-    }
-
-    const content = (
-        <Panel data-testid="attach-panel" onClick={(e) => e.stopPropagation()}>
-            <GroupTitle>{t('composer.attachPanelTitle')}</GroupTitle>
-            <PanelItem
-                icon={<Paperclip size={16} />}
-                title={t('composer.attachFile')}
-                onClick={pick(() => onAttach('file'))}
-            />
-            {isMobile && (
-                <CameraRow>
-                    <PanelItem
-                        icon={<Camera size={16} />}
-                        title={t('composer.attachPhoto')}
-                        onClick={pick(() => onAttach('photo'))}
-                    />
-                    <PanelItem
-                        icon={<Video size={16} />}
-                        title={t('composer.attachRecord')}
-                        onClick={pick(() => onAttach('video'))}
-                    />
-                </CameraRow>
-            )}
-            {onSketch && (
-                <PanelItem
-                    icon={<PenLine size={16} />}
-                    title={t('sketch.open')}
-                    onClick={pick(onSketch)}
-                />
-            )}
-        </Panel>
-    )
+    const items: DropdownItem[] = [
+        { key: 'title', content: <GroupTitle>{t('composer.attachPanelTitle')}</GroupTitle> },
+        {
+            key: 'file',
+            icon: <Paperclip size={16} />,
+            label: t('composer.attachFile'),
+            onSelect: () => onAttach('file'),
+        },
+        ...(isMobile
+            ? [{
+                key: 'camera',
+                content: (
+                    <CameraRow>
+                        <RowButton
+                            icon={<Camera size={16} />}
+                            title={t('composer.attachPhoto')}
+                            onClick={() => onAttach('photo')}
+                        />
+                        <RowButton
+                            icon={<Video size={16} />}
+                            title={t('composer.attachRecord')}
+                            onClick={() => onAttach('video')}
+                        />
+                    </CameraRow>
+                ),
+            }]
+            : []),
+        ...(onSketch
+            ? [{
+                key: 'sketch',
+                icon: <PenLine size={16} />,
+                label: t('sketch.open'),
+                onSelect: onSketch,
+            }]
+            : []),
+    ]
 
     return (
-        <Dropdown
-            open={open}
-            onOpenChange={setOpen}
-            trigger={['click']}
-            placement="topLeft"
-            popupRender={() => content}
-        >
-            <Button
-                type="text"
-                size="small"
-                icon={<PlusOutlined />}
-                aria-label={t('composer.attach')}
-                disabled={disabled}
-                data-testid="attach-trigger"
-            />
-        </Dropdown>
+        <DropdownMenu
+            trigger={
+                <Button
+                    type="text"
+                    size="small"
+                    icon={<PlusOutlined />}
+                    aria-label={t('composer.attach')}
+                    disabled={disabled}
+                    data-testid="attach-trigger"
+                />
+            }
+            items={items}
+            side="top"
+            align="start"
+        />
     )
 }

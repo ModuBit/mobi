@@ -158,9 +158,20 @@ function expandedOf(row: HTMLElement): string | null {
     return row.closest('.ant-collapse-header')?.getAttribute('aria-expanded') ?? null
 }
 
-/** 打开范围下拉（Dropdown menu，点触发按钮；菜单项挂载在打开后的 portal） */
+/** 打开范围下拉（uiarc DropdownMenu，触发器在 pointerdown 上开合，click 打不开；
+ *  菜单项挂载在打开后的 portal） */
 function openScopeDropdown() {
-    fireEvent.click(screen.getByTestId('review-scope-switch'))
+    fireEvent.pointerDown(screen.getByTestId('review-scope-switch'), { button: 0 })
+}
+
+/** 当前挂载的菜单项（Radix role=menuitem；子菜单触发器同 role 但带 aria-haspopup） */
+function menuItems(): HTMLElement[] {
+    return [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+}
+
+/** 找子菜单触发器（按文案匹配，「已提交」项） */
+function submenuTrigger(): HTMLElement | undefined {
+    return menuItems().find((el) => el.getAttribute('aria-haspopup') === 'menu')
 }
 
 describe('GitReviewView（hook 注入 v2）', () => {
@@ -326,31 +337,30 @@ describe('GitReviewView（hook 注入 v2）', () => {
         // turn 档下拉：git 系禁用 + needsGit 后缀、无「已提交」子菜单
         render(<GitReviewView sessionId="s1" target={TARGET_TURN} deps={makeDeps({ overview: nonGit })} />)
         openScopeDropdown()
-        const disabledOptions = [...document.querySelectorAll('.ant-dropdown-menu-item-disabled')]
+        const items = menuItems()
+        const disabledOptions = items.filter((el) => el.hasAttribute('data-disabled'))
         expect(disabledOptions.length).toBe(3)
         expect(disabledOptions[0]!.textContent).toContain('review.needsGit')
-        expect(document.querySelectorAll('.ant-dropdown-menu-item')).toHaveLength(4) // 4 档，无 commits 项
-        expect(document.querySelector('.ant-menu-submenu')).toBeNull()
+        expect(items).toHaveLength(4) // 4 档，无 commits 项
+        expect(submenuTrigger()).toBeUndefined()
     })
 
     it('commit 子菜单：展开「已提交」列 commit → 选中切 commit 档；根提交（无父）不可选', async () => {
         const onTargetChange = vi.fn()
-        // 子菜单 click 展开 = 移动端语义（桌面走 hover，见 triggerSubMenuAction 分端）
-        mobile = true
         render(<GitReviewView sessionId="s1" target={TARGET_TURN} onTargetChange={onTargetChange} deps={makeDeps({ overview: OVERVIEW, commits: COMMITS, contents: { before: '', after: '' } })} />)
 
         openScopeDropdown()
-        // hover「已提交」展开子菜单（rc-menu desktop 由 mouseenter 触发；Dropdown 内类名带 dropdown 前缀）
-        const submenuTitle = [...document.querySelectorAll('.ant-dropdown-menu-submenu-title')].find((el) => el.textContent === 'review.scope.commits')
-        expect(submenuTitle).toBeDefined()
-        fireEvent.click(submenuTitle!)
+        // Radix Sub：桌面 hover 展开、触屏与键盘 click 展开（内建，无需 antd 的 triggerSubMenuAction）
+        const trigger = submenuTrigger()
+        expect(trigger).toBeDefined()
+        fireEvent.click(trigger!)
         await waitFor(() => expect(screen.getAllByTestId('review-commit-item')).toHaveLength(2))
 
         // 两行提交：正常提交可点、根提交（parentSha=null）菜单项禁用
         const items = screen.getAllByTestId('review-commit-item')
-        const itemRow = (el: HTMLElement) => el.closest('.ant-dropdown-menu-item')!
-        expect(itemRow(items[0]!).className).not.toContain('-disabled')
-        expect(itemRow(items[1]!).className).toContain('-disabled') // 根提交 parentSha=null
+        const itemRow = (el: HTMLElement) => el.closest<HTMLElement>('[role="menuitem"]')!
+        expect(itemRow(items[0]!).hasAttribute('data-disabled')).toBe(false)
+        expect(itemRow(items[1]!).hasAttribute('data-disabled')).toBe(true) // 根提交 parentSha=null
         expect(items[0]!.textContent).toContain('feat: add login flow')
 
         fireEvent.click(itemRow(items[0]!))
@@ -368,13 +378,10 @@ describe('GitReviewView（hook 注入 v2）', () => {
         })
         try {
             const onLoadMore = vi.fn()
-            // 移动端语义：子菜单 click 展开
-            mobile = true
             render(<GitReviewView sessionId="s1" target={TARGET_TURN} deps={makeDeps({ overview: OVERVIEW, commits: COMMITS, hasNextPage: true, onLoadMore })} />)
 
             openScopeDropdown()
-            const submenuTitle = [...document.querySelectorAll('.ant-dropdown-menu-submenu-title')].find((el) => el.textContent === 'review.scope.commits')
-            fireEvent.click(submenuTitle!)
+            fireEvent.click(submenuTrigger()!)
             // 子菜单懒渲染，等 portal 挂载；无「加载更多」按钮，只有哨兵
             await waitFor(() => expect(screen.getByTestId('review-commit-sentinel')).toBeDefined())
 
@@ -439,8 +446,8 @@ describe('GitReviewView（hook 注入 v2）', () => {
         expect(screen.getAllByText('review.noSnapshot').length).toBeGreaterThanOrEqual(1)
 
         openScopeDropdown()
-        // 禁用项 class：antd v6 menu 项为 .ant-dropdown-menu-item-disabled
-        const disabled = document.querySelector('.ant-dropdown-menu-item-disabled')
+        // 禁用项：Radix 项带 data-disabled（且 aria-disabled="true"）
+        const disabled = menuItems().find((el) => el.hasAttribute('data-disabled'))
         expect(disabled).not.toBeNull()
         expect(disabled!.textContent).toContain('review.scope.lastTurn')
     })

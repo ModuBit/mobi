@@ -208,16 +208,20 @@ export const SessionItem = styled.div<{
         background: ${props => props.$active ? props.$token.colorPrimaryBg : props.$token.colorBgTextHover};
     }
 
-    /* 操作按钮：默认隐藏，hover 时显示 */
+    /* 操作按钮组常驻：菜单锚点必须一直待在布局里。popper 每帧按触发器的矩形定位，锚点一旦
+       塌成 display:none（rect 归零到视口原点），退场中的菜单会被甩到左上角闪一下。antd 侧的
+       工作区头同策略（WorkspaceGroup 把按钮组钉成常驻）。组内次要按钮（重命名 / 置顶）仍按
+       hover 显隐——锚点是组内最后一个子元素、右缘固定，兄弟显隐不改变它的矩形 */
     .session-actions {
-        display: none;
-    }
-    &:hover .session-actions {
         display: inline-flex;
     }
-    /* 行 dropdown 打开期间强制显示：鼠标移向 portal 菜单会离开行、触发 hover 规则
-       把按钮组藏掉，触发器卸载会导致菜单闪关（SessionRow 挂 data-menu-open） */
-    &[data-menu-open] .session-actions {
+    .session-action-secondary {
+        display: none;
+    }
+    /* 菜单打开期间保持行内展开态：鼠标移向 portal 菜单会离开行，判据取触发器自身的
+       data-state（Radix 置 open）比受控 open state 更贴近事实，行也不必持有菜单状态 */
+    &:hover .session-action-secondary,
+    &:has(.session-actions [data-state='open']) .session-action-secondary {
         display: inline-flex;
     }
     /* hover 时隐藏时间 */

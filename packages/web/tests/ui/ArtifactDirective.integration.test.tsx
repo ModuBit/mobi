@@ -108,7 +108,8 @@ describe('产物声明渲染（:mobi-artifact 管线集成）', () => {
         openFileTabSpy.mockClear()
 
         // 箭头 → 下拉菜单（浏览器打开 / 复制链接），菜单点击不触发整卡
-        fireEvent.click(screen.getByTestId('artifact-card-menu-trigger'))
+        // （Radix 触发器在 pointerdown 上开合，click 打不开）
+        fireEvent.pointerDown(screen.getByTestId('artifact-card-menu-trigger'), { button: 0 })
         expect(await screen.findByText(/浏览器打开|Open in browser/)).toBeInTheDocument()
         expect(screen.getByText(/复制链接|Copy link/)).toBeInTheDocument()
         expect(openFileTabSpy).not.toHaveBeenCalled()

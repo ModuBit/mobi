@@ -89,6 +89,7 @@ src/
 | 组件 | 归属 | 迁移于 | 说明 |
 |---|---|---|---|
 | copy-button | arc（uiarc） | 2026-10-12 | 首个迁移组件；零 headless 后端（motion+lucide 自足）；消费入口 `chat/CopyButton`（iconOnly 适配壳） |
+| dropdown-menu | arc（uiarc） | 2026-10-12 | 全站菜单的唯一实现（antd `Dropdown` 不再是菜单选项）；Radix 后端；items 是递归树（子菜单 / 自绘面板 content）；消费入口 `ui/shadcn/dropdown-menu`。**两条消费方约束**（组件侧不兜底）：触发器必须常驻布局、且不能落在 `role="tab"` 的 label 内——见 registry.json localMods |
 
 ### 单组件迁移流程
 

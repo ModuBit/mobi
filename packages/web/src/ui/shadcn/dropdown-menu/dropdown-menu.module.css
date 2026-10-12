@@ -1,0 +1,117 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* uiarc 源码样式（shadcn 模型）；本地修改：
+ *  1. 为上游设计变量提供 mobi token 映射——**取自 cssVars.ts 注入 :root/.dark 的全局变量**，
+ *     不取 antd 的 --ant-*：antd cssVar 只在组件子树内可解析（:root 实测为空），弹层 portal
+ *     到 body 后整层 token 归零，表现为无底色/无描边/无圆角/无投影且过渡失效。全局变量对
+ *     portal 同样可见，且不与 foundation.css 的暗档判据冲突（见 shadcn 底座票 03）。
+ *  2. .menu 的 z-index 由上游写死的 60 改为 mobi 的 overlay 层级变量（antd 弹层 z 从
+ *     1000 起，生态默认 z-50 会被埋），按「组件选型」章的共存纪律。
+ *
+ * 变量声明挂在 :where(.trigger, .menu) 而非单一根类：trigger 留在业务树里、menu 走
+ * portal 到 body，两者是不同的 DOM 根，自定义属性不共享，必须各自具备。:where 保证
+ * 零特异性，不参与后续规则的选择器权重计算。
+ *
+ * 全局已供给的同名变量（--border / --border-strong / --border-subtle / --foreground /
+ * --text-secondary / --shadow-resting / --shadow-floating）**不在此重复声明**：同名重复
+ * 声明会构成自引用（--border: var(--border)）而整体失效。此处只声明上游专有、全局没有的名字。
+ * 升级 add --overwrite 会冲掉本头与映射，需按 registry.json localMods 恢复。 */
+
+:where(.trigger, .menu) {
+    /* 尺寸字面量取上游 foundation 原值（--space-1/2/3 = .25/.5/.75rem、--control-height-sm =
+     * 2.25rem、--text-sm = .875rem）——不沿用别的组件的数值。text-sm 14px 与 mobi 既有 antd
+     * 菜单项（.ant-dropdown-menu-item font-size 14px）同档；半径经 --radius-panel 走 mobi token，
+     * 项半径 = 面板半径 − 6px，与 antd 菜单项 8px 落点一致 */
+    --surface: transparent;
+    --surface-muted: var(--accent);
+    --surface-raised: var(--popover);
+    --text-muted: var(--muted-foreground);
+    --danger: var(--destructive);
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --control-height-sm: 36px;
+    --radius-control: var(--radius);
+    --radius-panel: var(--radius-lg);
+    --text-sm: 14px;
+    /* 上游四档时长 / 三档曲线收敛到主题 motion token（cssVars.ts 单源）——按 DESIGN.md
+     * 「registry 组件禁止自带第二套缓动语言」，--ease-spring 不做弹簧曲线，与 standard 同档 */
+    --duration-instant: var(--mobi-duration-fast);
+    --duration-fast: var(--mobi-duration-fast);
+    --duration-standard: var(--mobi-duration-mid);
+    --duration-spring: var(--mobi-duration-mid);
+    --ease-standard: var(--mobi-ease-in-out);
+    --ease-enter: var(--mobi-ease-out);
+    --ease-spring: var(--mobi-ease-in-out);
+}
+
+.trigger { display: inline-flex; max-width: 100%; min-height: var(--control-height-sm); align-items: center; gap: var(--space-2); padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface); color: var(--foreground); font: inherit; font-size: var(--text-sm); font-weight: 500; cursor: pointer; transition: background-color var(--duration-instant) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard); }
+@media (hover: hover) and (pointer: fine) { .trigger:hover { border-color: var(--border-strong); background: var(--surface-muted); box-shadow: var(--shadow-resting); } }
+/* The trigger anchors the menu, so press feedback stays in color. A scaled rect would be measured on pointerdown and shift the menu. */
+.trigger[data-state="open"] { border-color: var(--border-strong); background: var(--surface-muted); box-shadow: none; }
+.trigger:active { border-color: var(--border-strong); background: color-mix(in oklab, var(--surface-muted), var(--border) 55%); box-shadow: none; }
+.item:focus-visible { outline: none; }
+.triggerIcon { display: inline-flex; flex: none; color: var(--text-secondary); }
+.label { position: relative; display: inline-flex; min-width: 0; flex: 0 1 auto; overflow-x: clip; }
+.labelMeasure { position: absolute; top: 0; left: 0; visibility: hidden; white-space: nowrap; pointer-events: none; }
+.labelText { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chevron { flex: none; color: var(--text-muted); transition: transform var(--duration-spring) var(--ease-spring), color var(--duration-fast) var(--ease-standard); }
+.trigger[data-state="open"] .chevron { transform: rotate(180deg); }
+/* Panel base, shared by the root content and every submenu level. */
+.menu, .subMenu { position: relative; padding: 5px; border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--surface-raised); box-shadow: var(--shadow-floating); transition: opacity var(--duration-fast) var(--ease-enter), transform var(--duration-spring) var(--ease-spring); }
+/* The menu grows from the trigger edge: offset toward the trigger, scale from the Radix origin, fade quickly.
+   Transitions instead of keyframes, so a close that interrupts the open (or a reopen during the close) reverses from where it is. */
+.menu { --menu-x: 0px; --menu-y: -5px; z-index: var(--mobi-z-overlay, 50); min-width: min(12rem, var(--radix-dropdown-menu-content-available-width)); max-width: var(--radix-dropdown-menu-content-available-width); transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
+/* Submenus open sideways, sized by their content and capped so a long list scrolls instead of running off-screen.
+   Radix 只在一级面板上发布 content-* 变量，而子菜单面板是它的 DOM 兄弟节点（portal 同级），自定义属性不继承——
+   所以这里不能借用 --radix-dropdown-menu-content-transform-origin，侧向原点写死；翻边时 Radix 置 data-side=left */
+.subMenu { max-height: min(60dvh, 340px); max-width: min(90vw, 420px); overflow-y: auto; overscroll-behavior: contain; transform-origin: left center; }
+.subMenu[data-side="left"] { transform-origin: right center; }
+.menu[data-side="top"] { --menu-y: 5px; }
+.menu[data-side="left"] { --menu-x: 5px; --menu-y: 0px; }
+.menu[data-side="right"] { --menu-x: -5px; --menu-y: 0px; }
+@starting-style {
+  .menu[data-state="open"] { opacity: 0; transform: translate(var(--menu-x), var(--menu-y)) scale(.97); }
+  .menu[data-state="open"] .item { opacity: 0; transform: translate(calc(var(--menu-x) * .4), calc(var(--menu-y) * .4)); }
+  .subMenu[data-state="open"] { opacity: 0; transform: translateX(-5px) scale(.97); }
+}
+/* Radix unmounts when the exit animation ends, so a no-op keyframe times the exit while the transition does the visual work. */
+.menu[data-state="closed"] { opacity: 0; transform: translate(calc(var(--menu-x) * .5), calc(var(--menu-y) * .5)) scale(.985); transition: opacity 130ms var(--ease-standard), transform 130ms var(--ease-standard); animation: menu-exit 130ms linear both; pointer-events: none; }
+.highlight { position: absolute; top: 0; right: 5px; left: 5px; border-radius: calc(var(--radius-panel) - 6px); background: var(--surface-muted); opacity: 0; pointer-events: none; transition: background-color var(--duration-fast) var(--ease-standard); }
+.highlight[data-tone="danger"] { background: color-mix(in oklab, var(--danger) 8%, var(--surface)); }
+.item { position: relative; display: flex; min-width: 0; min-height: 36px; align-items: center; gap: 10px; padding: 0 11px; border-radius: calc(var(--radius-panel) - 6px); color: var(--foreground); font-size: var(--text-sm); cursor: pointer; outline: none; transition: color var(--duration-fast) var(--ease-standard), opacity var(--duration-standard) var(--ease-enter) calc(min(var(--i, 0), 4) * 35ms), transform var(--duration-standard) var(--ease-enter) calc(min(var(--i, 0), 4) * 35ms); }
+.icon { display: inline-flex; width: 17px; color: var(--text-secondary); }
+/* 选中项（antd selectedKeys 的对应物）：文案与图标转强调色 */
+.item[data-selected] { color: var(--primary); }
+.item[data-selected] .icon { color: var(--primary); }
+/* 子菜单展开态：与 hover 同底色（Radix 打开时给触发器 data-state=open） */
+.item[data-state="open"] { background: var(--surface-muted); }
+/* 子菜单指示箭头：推到行尾；展开时右移一点，提示面板朝哪边出 */
+.subChevron { flex: none; margin-left: auto; color: var(--text-muted); transition: color var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard); }
+.item[data-state="open"] .subChevron { color: var(--text-secondary); transform: translateX(2px); }
+/* 自定义项内容（加载占位 / 滚动哨兵 / 空态）：不是菜单项，因此不带指针态与菜单项内边距 */
+.custom { display: flex; align-items: center; }
+.separator { height: 1px; margin: var(--space-1) calc(var(--space-1) * -1); background: var(--border-subtle); }
+.destructive { color: var(--danger); }
+.destructive .icon { color: var(--danger); }
+.item[data-disabled] { opacity: .45; cursor: default; }
+@keyframes menu-exit { to { --menu-exit: 1; } }
+@media (prefers-reduced-transparency: reduce) { .menu { background: var(--surface-raised); backdrop-filter: none; -webkit-backdrop-filter: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .trigger, .chevron, .item, .highlight { transition: none; }
+  .menu, .menu[data-state="closed"] { transform: none; transition: opacity var(--duration-instant) linear; }
+}

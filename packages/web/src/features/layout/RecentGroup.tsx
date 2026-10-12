@@ -16,12 +16,12 @@
 
 import { useCallback } from 'react'
 import { theme as antTheme } from 'antd'
-import type { MenuProps } from 'antd'
 import { FolderAddOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { ChevronRight } from 'lucide-react'
 import { useRecentSessions } from '@/core/data/hooks/queries/useRecentSessions'
 import type { Session } from '@/core/data/api/types'
+import type { DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
 import {
     GroupContainer, SectionTitleRow, SectionTitle, SectionChevron,
     SessionListWrapper, SessionListInner,
@@ -58,18 +58,16 @@ export function RecentGroup({
         showMore, collapse,
     } = useRecentSessions(activeSessionId, true)
 
-    // dropdown 附加项：归入工作区…
-    const renderExtraMenuItems = useCallback((session: Session): MenuProps['items'] => ([
+    // dropdown 附加项：归入工作区…（动作随项走，不再按 key 分发）
+    const renderExtraMenuItems = useCallback((session: Session): DropdownItem[] => ([
         {
             key: 'assign',
             icon: <FolderAddOutlined />,
             label: t('workspace.assignTo'),
             disabled: session.id === assignPendingSessionId,
+            onSelect: () => onAssign(session),
         },
-    ]), [t, assignPendingSessionId])
-    const handleExtraMenuClick = useCallback((session: Session, key: string) => {
-        if (key === 'assign') onAssign(session)
-    }, [onAssign])
+    ]), [t, assignPendingSessionId, onAssign])
 
     // 展开即撑开：空分区展开时展示「暂无会话」占位，加载中展示骨架
     const wrapperExpanded = expanded
@@ -102,7 +100,6 @@ export function RecentGroup({
                         collapse={collapse}
                         onSessionClick={handleSessionClick}
                         renderExtraMenuItems={renderExtraMenuItems}
-                        onExtraMenuClick={handleExtraMenuClick}
                     />
                 </SessionListInner>
             </SessionListWrapper>

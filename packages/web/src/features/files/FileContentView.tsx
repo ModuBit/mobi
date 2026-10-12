@@ -17,11 +17,11 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Spin, Empty, App } from 'antd'
-import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Copy, FileCode, Eye, RefreshCw, WrapText } from 'lucide-react'
 import { queryKeys } from '@/core/lib/queryKeys'
+import type { DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
 import { copyTextToClipboard } from '@/core/utils/clipboard'
 import FileDownloadPrompt from '@/features/files/FileDownloadPrompt'
 import HtmlPreviewView from '@/features/files/HtmlPreviewView'
@@ -120,12 +120,12 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
         if (await copyTextToClipboard(filePath)) message.success(t('files.pathCopied'))
     }
 
-    const moreMenuItems: MenuProps['items'] = [
+    const moreMenuItems: DropdownItem[] = [
         // 刷新：只 invalidate meta → meta refetch 拿新 etag → useFileContent queryKey 含 etag 变化 → content 自动 refetch
-        { key: 'refresh', icon: <RefreshCw size={14} />, label: t('files.refresh'), onClick: () => {
+        { key: 'refresh', icon: <RefreshCw size={14} />, label: t('files.refresh'), onSelect: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.sessionFileMeta(sessionId, filePath) })
         } },
-        { key: 'copyPath', icon: <Copy size={14} />, label: t('files.copyPath'), onClick: copyPath },
+        { key: 'copyPath', icon: <Copy size={14} />, label: t('files.copyPath'), onSelect: copyPath },
     ]
     // .md / .html 文件：渲染/源码切换（图标随当前 view 变化）；isMarkdown || isHtml 隐含 toggleView 已定义
     // - markdown: render→source 用 viewSource；source→render 用 viewRender
@@ -141,7 +141,7 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
             key: 'toggleView',
             icon: inRenderMode ? <FileCode size={14} /> : <Eye size={14} />,
             label: switchLabel,
-            onClick: () => toggleView?.(),
+            onSelect: () => toggleView?.(),
         })
     }
     // 源码视图：自动换行切换（label 显示切换后的目标状态）
@@ -150,7 +150,7 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
             key: 'toggleWrap',
             icon: <WrapText size={14} />,
             label: wrap ? t('files.noWrap') : t('files.wordWrap'),
-            onClick: () => toggleWrap?.(),
+            onSelect: () => toggleWrap?.(),
         })
     }
 

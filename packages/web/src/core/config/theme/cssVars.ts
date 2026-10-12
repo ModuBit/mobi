@@ -47,6 +47,28 @@ const SHADCN_VAR_MAPPINGS: ReadonlyArray<readonly [string, keyof Token]> = [
     ['--input', 'colorBorder'],
     ['--ring', 'colorPrimary'],
     ['--radius', 'borderRadius'],
+    // 以下为 shadcn/arc 源码组件实际消费、而标准 shadcn 变量集未覆盖的 token
+    // （弹层的强/弱描边、次级文字、面板圆角、两级投影）
+    ['--border-strong', 'colorTextQuaternary'],
+    ['--border-subtle', 'colorBorderSecondary'],
+    ['--text-secondary', 'colorTextSecondary'],
+    ['--radius-lg', 'borderRadiusLG'],
+    ['--shadow-resting', 'boxShadowSecondary'],
+    ['--shadow-floating', 'boxShadow'],
+]
+
+/**
+ * CSS 过渡时长的投影：antd cssVar 只投颜色 / 圆角 / 阴影，**不产出 motion 变量**——
+ * `--ant-motion-*` 只在 antd 组件子树内可解析（浏览器实测 :root 全空），弹层 portal 到
+ * body 后更取不到，故由本模块单源供给。值取 antd 默认主题 token（motionDurationFast /
+ * motionDurationMid / motionEaseOut / motionEaseInOut），registry 组件据此不必自带
+ * 第二套缓动语言（DESIGN.md「Motion」章：组件禁止硬编码毫秒数与 cubic-bezier 字面量）。
+ */
+const MOTION_VARS: ReadonlyArray<readonly [string, string]> = [
+    ['--mobi-duration-fast', '0.1s'],
+    ['--mobi-duration-mid', '0.2s'],
+    ['--mobi-ease-out', 'cubic-bezier(0.215, 0.61, 0.355, 1)'],
+    ['--mobi-ease-in-out', 'cubic-bezier(0.645, 0.045, 0.355, 1)'],
 ]
 
 /** 注入样式节点的 id（ThemeProvider 挂载，幂等原地更新） */
@@ -63,13 +85,20 @@ const Z_OVERLAY = 1080
 export function buildShadcnThemeCss(mode: Mode): string {
     const token: Token = mode === 'dark' ? shadcnDarkToken : shadcnLightToken
     const selector = mode === 'dark' ? '.dark' : ':root'
-    const lines = SHADCN_VAR_MAPPINGS.map(([cssVar, tokenKey]) => {
+    const colorLines = SHADCN_VAR_MAPPINGS.map(([cssVar, tokenKey]) => {
         const value = token[tokenKey]
         // borderRadius 是数字（px 语义），其余为色值字符串
         const rendered = typeof value === 'number' ? `${value}px` : value
         return `  ${cssVar}: ${rendered};`
     })
-    return [`${selector} {`, ...lines, `  --mobi-z-overlay: ${Z_OVERLAY};`, '}'].join('\n')
+    const motionLines = MOTION_VARS.map(([cssVar, value]) => `  ${cssVar}: ${value};`)
+    return [
+        `${selector} {`,
+        ...colorLines,
+        ...motionLines,
+        `  --mobi-z-overlay: ${Z_OVERLAY};`,
+        '}',
+    ].join('\n')
 }
 
 /** 注入/更新 shadcn 变量样式（幂等）：已存在则原地更新 textContent，切档不重建节点 */

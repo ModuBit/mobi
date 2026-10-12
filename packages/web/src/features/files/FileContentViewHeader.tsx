@@ -15,8 +15,8 @@
  */
 
 import { Fragment, useLayoutEffect, useRef, useState } from 'react'
-import { Button, Dropdown, Popover, theme as antTheme } from 'antd'
-import type { MenuProps } from 'antd'
+import { Button, Popover, theme as antTheme } from 'antd'
+import { DropdownMenu, type DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
 import { Ellipsis, Folders } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
@@ -26,7 +26,7 @@ export interface FileContentViewHeaderProps {
     sessionId: string
     filePath: string
     /** more 菜单额外项（refresh/copyPath/markdown toggle 等由父组件提供） */
-    extraMenuItems: MenuProps['items']
+    extraMenuItems: DropdownItem[]
     /** 保存状态指示（仅 editable 文件传入；undefined 时不显示） */
     saveStatus?: 'saved' | 'saving' | 'dirty' | 'conflict'
     /** 文件树开合（受控，状态归 FileContentView：桌面驱动分栏，移动驱动 Popover） */
@@ -159,9 +159,10 @@ export default function FileContentViewHeader({ sessionId, filePath, extraMenuIt
                 </span>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-                <Dropdown menu={{ items: extraMenuItems }} trigger={['click']}>
-                    <Button type="text" size="small" icon={<Ellipsis size={14} />} aria-label={t('files.more')} />
-                </Dropdown>
+                <DropdownMenu
+                    trigger={<Button type="text" size="small" icon={<Ellipsis size={14} />} aria-label={t('files.more')} />}
+                    items={extraMenuItems}
+                />
                 {/* 树开关按钮单源：移动包 Popover（触屏无 hover）、桌面直切分栏；
                     按钮本体（icon 着色/aria）只写一遍，onClick 仅桌面需要（移动由 Popover 受控） */}
                 {isMobile ? (

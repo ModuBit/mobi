@@ -27,14 +27,14 @@
  */
 
 import { createContext, useCallback, useContext, useMemo, type FC, type ReactNode } from 'react'
-import { Dropdown, message, theme } from 'antd'
+import { message, theme } from 'antd'
 import { Alert } from 'antd'
-import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, File, FileText, Globe, Image as ImageIcon, Link2, Music, Video } from 'lucide-react'
 import { buildActionUri } from '@mobi/shared'
 import { copyTextToClipboard } from '@/core/utils/clipboard'
 import { useActionDispatcher } from '@/ui/shared/ActionLink'
+import { DropdownMenu, type DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
 import { useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { basename } from '@/core/utils/path'
 import { buildReadFileUrl, type FileRefContext } from '@/core/utils/fileUrl'
@@ -126,26 +126,32 @@ const ArtifactCard: FC<{ path: string, reason?: ArtifactCardReason, sessionId?: 
         }
         : undefined
 
-    // 图标统一 26px 底色块（.artifact-menu-icon，样式在 styles/antd.css）——对齐
-    // 原生 App 菜单的观感；次级动作（复制链接）前加分隔线
-    const menuItems: MenuProps['items'] = [
+    // 图标统一 26px 底色块——对齐原生 App 菜单的观感；底色/圆角随主题 token 走，
+    // 因此随 label 一起内联（原先落在 antd.css 的 .artifact-menu-icon 专属规则里）
+    const menuIcon = (icon: ReactNode) => (
+        <span style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 26, height: 26, borderRadius: 6,
+            background: token.colorFillSecondary, color: token.colorTextSecondary,
+        }}>{icon}</span>
+    )
+    const menuLabel = (icon: ReactNode, text: string) => (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{menuIcon(icon)}{text}</span>
+    )
+    // 次级动作（复制链接）前加分隔线
+    const menuItems: DropdownItem[] = [
         openInBrowser && {
             key: 'browser',
-            icon: <span className="artifact-menu-icon"><Globe size={15} /></span>,
-            label: t('chat.artifact.browser'),
+            label: menuLabel(<Globe size={15} />, t('chat.artifact.browser')),
+            onSelect: openInBrowser,
         },
-        copyLink && { type: 'divider' as const },
         copyLink && {
             key: 'copy',
-            icon: <span className="artifact-menu-icon"><Link2 size={15} /></span>,
-            label: t('chat.artifact.copyLink'),
+            label: menuLabel(<Link2 size={15} />, t('chat.artifact.copyLink')),
+            separatorBefore: true,
+            onSelect: copyLink,
         },
     ].filter((item): item is NonNullable<typeof item> => Boolean(item))
-
-    const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
-        if (key === 'browser') openInBrowser?.()
-        if (key === 'copy') copyLink?.()
-    }
 
     const subtitle = reason
         ? t(REASON_KEYS[reason], kind === 'unknown' || kind === 'pdf' ? {} : { limit: formatLimit(kind) })
@@ -213,24 +219,23 @@ const ArtifactCard: FC<{ path: string, reason?: ArtifactCardReason, sessionId?: 
                     {t('chat.artifact.openWith')}
                 </button>
                 {menuItems.length > 0 && (
-                    <Dropdown
-                        menu={{ items: menuItems, onClick: handleMenuClick }}
-                        trigger={['click']}
-                        overlayClassName="artifact-card-menu"
-                    >
-                        <button
-                            type="button"
-                            data-testid="artifact-card-menu-trigger"
-                            aria-label={t('chat.artifact.openWith')}
-                            style={{
-                                border: 'none', borderLeft: `1px solid ${token.colorBorderSecondary}`,
-                                background: 'none', cursor: 'pointer', padding: '4px 6px',
-                                color: token.colorTextSecondary, display: 'inline-flex', alignItems: 'center',
-                            }}
-                        >
-                            <ChevronDown size={14} />
-                        </button>
-                    </Dropdown>
+                    <DropdownMenu
+                        trigger={
+                            <button
+                                type="button"
+                                data-testid="artifact-card-menu-trigger"
+                                aria-label={t('chat.artifact.openWith')}
+                                style={{
+                                    border: 'none', borderLeft: `1px solid ${token.colorBorderSecondary}`,
+                                    background: 'none', cursor: 'pointer', padding: '4px 6px',
+                                    color: token.colorTextSecondary, display: 'inline-flex', alignItems: 'center',
+                                }}
+                            >
+                                <ChevronDown size={14} />
+                            </button>
+                        }
+                        items={menuItems}
+                    />
                 )}
             </div>
         </div>

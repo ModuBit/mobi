@@ -15,9 +15,10 @@
  */
 
 // uiarc 源码组件共享基建（shadcn 模型，进项目即归我们维护）。上游落位在 registry 的
-// lib/ 目录下，mobi 扁平化后随唯一消费者 copy-button 内聚；出现第二个消费者时上提为
-// src/ui/shadcn/ 下的独立组件目录（登记入 registry.json）。升级 add --overwrite 会重建
-// 上游 lib/ 结构，需按 registry.json localMods 恢复。
+// lib/ 目录下；mobi 首个消费者 copy-button 时曾内聚在组件目录内，第二个消费者
+// dropdown-menu 出现后按当时的约定上提到 src/ui/shadcn/ 根（该处是散件而非组件目录，
+// 不参与 registry.json 的组件↔目录一致性守卫）。
+// 升级 add --overwrite 会重建上游 lib/ 结构，需按各组件 registry.json localMods 恢复。
 export const motionTokens = {
   duration: { instant: 0.12, fast: 0.16, exit: 0.18, standard: 0.24, considered: 0.48 },
   ease: {

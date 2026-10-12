@@ -23,7 +23,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion, type TargetAndTransition, type Transition } from "motion/react";
 import { CircleAlert, Copy } from "lucide-react";
-import { motionTokens } from "./motion-tokens";
+import { motionTokens } from "../motion-tokens";
 import { useCopyFeedback } from "./use-copy-feedback";
 import styles from "./copy-button.module.css";
 
