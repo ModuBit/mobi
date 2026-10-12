@@ -83,4 +83,4 @@ executor 未就绪（会话管线未接线）→ 502。
 
 - 协议类型：`@mobi/shared` 的 `WebToolsConfigSchema` / `WebToolsConfigSubmissionSchema` / `RedactedWebToolsConfig` / `maskCredential`
 - 配置读写与校验：[`packages/node-core/src/handlers/webToolsConfig.ts`](/packages/node-core/src/handlers/webToolsConfig.ts)
-- Web 配置页：`packages/web/src/components/settings/webtools/`（分区入口见 `sections/WebToolsSection.tsx`）
+- Web 配置页：`packages/web/src/features/settings/webtools/`（分区入口见 `sections/WebToolsSection.tsx`）

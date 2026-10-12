@@ -619,7 +619,7 @@ type ChatBlock =
 
 ## 第 6 步：Web 渲染（render）
 
-**文件**：`packages/web/src/components/chat/ChatContainer.tsx`（主列表容器：`VirtuosoChatList` 虚拟化，内部 Bubble 单组件 + role 模板）
+**文件**：`packages/web/src/pages/session/ChatContainer.tsx`（主列表容器：`VirtuosoChatList` 虚拟化，内部 Bubble 单组件 + role 模板）
 
 `renderChatBlock()` 根据 `block.kind` 选择渲染组件（在 `VirtuosoChatList` 容器内）：
 
@@ -740,7 +740,7 @@ type ChatBlock =
 | daemon 消息服务 | `packages/daemon/src/sync/messageService.ts` | 分页查询（首页钉排队）、markMessagesPushed/cancelQueuedMessage |
 | Web SSE | `packages/web/src/core/providers/SSEProvider.tsx` | 接收实时事件、snapshot 缓存管理（upsertMessageCache + 按 `parentUuid` 关联清理，assembler 聚合后可靠）、messages-submitted 处理 |
 | Web 排队消费标记 | `packages/web/src/core/lib/markMessagesSubmitted.ts` | 排队消息 lifecycle 翻为 pushed（first-write-wins） |
-| Web 排队悬浮条 | `packages/web/src/components/chat/QueuedMessagesBar.tsx` | composer 上方悬浮排队消息（✕取消 / ✎编辑）+「已丢弃」分区（终态可见性，无操作） |
+| Web 排队悬浮条 | `packages/web/src/features/composer/QueuedMessagesBar.tsx` | composer 上方悬浮排队消息（✕取消 / ✎编辑）+「已丢弃」分区（终态可见性，无操作） |
 | Web 标准化入口 | `packages/web/src/domain/chat/normalize.ts` | DecryptedMessage → NormalizedMessage |
 | Web Agent 标准化 | `packages/web/src/domain/chat/normalizeAgent.ts` | Agent 消息详细解析 |
 | Web User 标准化 | `packages/web/src/domain/chat/normalizeUser.ts` | User 消息解析 |
@@ -748,6 +748,6 @@ type ChatBlock =
 | Web 归约 | `packages/web/src/domain/chat/reducer.ts` | NormalizedMessage[] → ChatBlock[] |
 | Web 时间线归约 | `packages/web/src/domain/chat/reducerTimeline.ts` | 时间线 → ChatBlock 转换、隐藏工具过滤（isHiddenTool） |
 | Web 工具过滤 | `packages/web/src/domain/chat/reducerTools.ts` | isHiddenTool / isChangeTitleToolName 判断 |
-| Web 渲染 | `packages/web/src/components/chat/ChatContainer.tsx` | ChatBlock → UI 组件 |
+| Web 渲染 | `packages/web/src/pages/session/ChatContainer.tsx` | ChatBlock → UI 组件 |
 | 共享工具 | `packages/shared/src/messages.ts` | unwrapRole / isSkippable / isVisible / MessageFact 联合类型 / LIFECYCLE_RANK + isLifecycleAhead（lifecycle rank 单调判定，与 daemon SQL CASE 同语义） |
 | 共享分类 | `packages/shared/src/messageClassification.ts` | classifyMessage / isClaudeChatVisibleMessage / isClaudeChatVisibleSystemSubtype |

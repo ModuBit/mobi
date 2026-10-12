@@ -23,4 +23,4 @@ tool-result 新字段从 `normalizeAgent`（读 `tool_use_result`）→ `reducer
 - CC 的 `tool_use_result.structuredPatch[].lines` 格式：unified 前缀（' '/'-'/'+'）+ 原行内容，**前缀后无分隔空格**（对照真实文件实证）；oldStart/newStart 即文件真实行号；Edit/MultiEdit/Write 三工具都有
 - E2E 步骤：`seq -f "line %g: ..." 1 40 > ~/workspace/demo/lineno-fixture.txt` 造中段编辑目标 → 发消息让 Claude Edit 第 20 行 → 完成后点工具组 header 展开 → 点 Edit 卡片 → `evaluate_script` 抓 `div[style*="display: table"]` 行（两 cell：行号/内容）
 - 断言：removed 行显示 old 行号、added/context 行显示 new 行号，且等于文件真实行号
-- 渲染纯函数在 `web/src/components/tool-card/views/structuredPatchUtils.ts`，自 diff 回退逻辑保留在 DiffView（执行中预览无 patch 时用）
+- 渲染纯函数在 `web/src/features/chat/tool-card/views/structuredPatchUtils.ts`，自 diff 回退逻辑保留在 DiffView（执行中预览无 patch 时用）

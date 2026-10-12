@@ -124,9 +124,9 @@ digraph sync_docs {
 |---|---|
 | `packages/web/src/core/**` | `docs/architecture/web/README.md` |
 | `packages/web/src/domain/**` | `docs/architecture/web/README.md`、`message-lifecycle.md` |
-| `packages/web/src/components/**` | `docs/architecture/web/README.md` |
+| `packages/web/src/features/**` | `docs/architecture/web/README.md` |
 | `packages/web/src/router.tsx` | `docs/architecture/web/README.md` |
-| `packages/web/src/components/tool-card/*` | `docs/architecture/web/agent-rendering.md` |
+| `packages/web/src/features/chat/tool-card/*` | `docs/architecture/web/agent-rendering.md` |
 
 #### Shared（跨模块）
 

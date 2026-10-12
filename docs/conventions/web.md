@@ -4,44 +4,61 @@
 
 ## 目录结构
 
-> 2026-10-12 分层治理票 02 起的结构（完整分层规则与门禁清单票 04 成文）：
-> 依赖只许向下 `app → pages → features → ui → domain → core`，depcruise 强制
-> （`.dependency-cruiser.js` / `.dependency-cruiser.web.js`）。
+> 2026-10-12 src 分层治理（票 01–04）定形。依赖只许向下
+> `app → pages → features → ui → domain → core`，depcruise 强制
+> （[`.dependency-cruiser.js`](../../.dependency-cruiser.js) / [`.dependency-cruiser.web.js`](../../.dependency-cruiser.web.js)）。
 
 ```
 src/
 ├── app/                     ← 组装层：App / main / router / routeChunks / dev*（唯一可引一切）
-├── core/                    ← 基础设施（零 UI 组件）
-│   ├── data/                ← 数据层
-│   │   ├── api/             ← API 客户端与类型
-│   │   ├── stores/          ← Zustand 全局状态
-│   │   ├── realtime/        ← SSE 客户端
-│   │   └── hooks/           ← TanStack Query 封装（queries/ + mutations/）
-│   ├── config/              ← 应用配置
-│   │   ├── i18n/            ← 国际化
-│   │   └── theme/           ← 主题系统
-│   ├── lib/                 ← 业务辅助逻辑（含 targetKey / cn）
-│   ├── notifications/       ← 通知子系统（含权限引导 flag）
-│   ├── utils/               ← 纯工具函数（含状态色基座 statusColor / agentStatus）
-│   └── providers/           ← React Context Provider
-├── domain/                  ← 领域逻辑（纯数据，零 React / 零 JSX / 零 i18n runtime）
-│   ├── chat/                ← 聊天（消息解析、reducer、工具合并）
-│   ├── command/             ← 命令（斜杠命令处理）
-│   ├── session/             ← 会话（类型定义、用户偏好）
-│   └── tool/                ← 工具（输入解析、类型定义）
-├── features/                ← 业务域（chat / composer / tool-card / files / settings /
-│   │                          session / review / terminal / sketchpad / login /
-│   │                          workspace / turnDiff / layout——域间互引禁止，票 03 收口）
-├── ui/                      ← 通用组件（零业务知识；arc/ shadcn/ registry 落位于此）
-├── pages/                   ← 路由页面壳
-└── styles/                  ← 全局样式
+├── pages/                   ← 路由页面壳 + 会话组装域
+│   ├── LoginPage / NewSessionPage / SessionDetailPage / SessionsLayout / SettingsPage
+│   └── session/             ← 会话组装链（ChatPane / InspectorPane / SessionDetail /
+│                              WorkspaceSplitter / ChatContainer / ChatComposer / ComposerInfoPanel）
+├── features/                ← 业务域（域间零互引；多域共享知识下沉 domain/ui）
+│   ├── chat/                ← 对话（含 tool-card 子域与 blocks/ 渲染器）
+│   ├── composer/ files/ layout/ login/ review/ settings/ sketchpad/ terminal/
+├── ui/                      ← 通用组件（零业务知识；arc/ motion/ openui/ pixel-avatar/ + 平铺）
+├── domain/                  ← 纯逻辑（零 React / 零 JSX / 零 i18n runtime / 零 antd）
+│   ├── chat/ command/ session/ tool/ sketch/ …
+├── core/                    ← 基础设施（零 UI 组件、零业务知识）
+│   ├── data/（api / stores / realtime / hooks）  config/（i18n / theme）
+│   ├── lib/ utils/ notifications/ providers/
+├── styles/                  ← 全局样式
+└── index.css                ← Tailwind/antd 分层入口
 ```
 
-### 领域逻辑 vs UI 组件的边界
+### 分层规则（依赖矩阵）
 
-- **`domain/`** 放纯数据处理和业务规则，不依赖 React（无 hooks、无 JSX）
-- **`features/`**（业务域）与 **`ui/`**（通用组件）放 UI 渲染和 React hooks
-- 新增领域逻辑时，如果文件不导入 React，应放入 `domain/` 对应子目录
+| 层 | 允许依赖 | 禁止 |
+|---|---|---|
+| `app` | 一切 | — |
+| `pages` | features / ui / domain / core | 直接引另一个 page |
+| `features` | ui / domain / core / 同域内部 | **features 域间互引**、引 pages/app |
+| `ui` | domain / core | 引任何 features / pages |
+| `domain` | shared / core 纯类型与纯函数 | react / react-i18next / antd / @tanstack / JSX（**type-only 同罪**） |
+| `core` | shared / 第三方库 | 引 app / pages / features / ui（向上泄漏） |
+
+**被多个域共享的知识**：按序下沉——纯逻辑 → `domain/`；通用呈现 → `ui/`；仅「父编排子」的伪耦合 → 改 props / 注入。禁止 features 横向借用他域实现。
+
+### 依赖方向门禁（depcruise）
+
+| 规则名 | 层级 | 说明 |
+|---|---|---|
+| `web-core-no-upward` | root | core 不得引 features/ui/pages/app |
+| `web-ui-no-upward` | root | ui 不得引 features/pages/app |
+| `web-features-no-upward` | root | features 不得引 pages/app（组装权归 pages 以上层） |
+| `web-domain-no-react` | root | domain 零 React 系（含 type-only）；bun 布局做子串匹配 |
+| `web-feature-isolated-*` | web | readdir 动态生成 per-feature，域间互引 error |
+| `no-circular` | 两者 | 循环依赖 error 硬卡（web 曾 22 条存量，票 03 清零） |
+
+**豁免纪律**：规则临时豁免（`pathNot`）必须带票号注释（如「票 03 裁决中」），清零后删除——禁止裸豁免长期驻留（现行豁免清单为空）。
+
+### 边界案例（票 03 裁决）
+
+- **工具卡并入 chat 域**：`tool-card` 是对话流的呈现子域，与 chat 十余条边纠缠、是循环主体——独立成域属假边界（「域过小或边界画错 → 并域」）。
+- **组装链上提 pages**：`ChatContainer` / `ChatComposer` / `ComposerInfoPanel` / session 页面壳扮演「编排其他域的组件」角色，归 `pages/session/`——features 只放「可被组装的业务域」，组装权归 pages。
+- **渲染注册表去循环**：装配器不静态 import 渲染器——共享类型抽 `types.ts`，纯函数下沉 `domain/`，组件引用走 React Context 注入（值在组装层环外组装，如 `BubbleRenderProvider`）。
 
 ## 组件选型
 
@@ -295,6 +312,10 @@ Web 端样式采用 **emotion styled + Tailwind v4 共存**，与 Ant Design v6 
 ```typescript
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { queryKeys } from '@/core/lib/query-keys'
+import { ChatContainer } from '@/pages/session/ChatContainer'   // 组装层引 features
+import { ToolCallBlock } from '@/features/chat/tool-card/ToolCallBlock'
+import { StatusBar } from '@/ui/StatusBar'                       // 通用组件
+import { extractTextFromResult } from '@/domain/tool/resultText' // 纯逻辑
 ```
 
 ## 测试

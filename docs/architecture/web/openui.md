@@ -1,6 +1,6 @@
 # OpenUI 渲染层（Intelligent UI Native 层）
 
-fenced `openui` / `openui-lang` 代码块渲染为可交互 UI（官方 @openuidev/react-ui 组件库 + react-lang 解释器），并向上接通两条回灌回路：操作发消息（档②）、操作状态随 agent turn 原地更新（档③）。与 Sandbox App（`mode=app` 的 .html 文件 iframe，`components/files/SandboxHtmlFrame.tsx`）是平行两层，按场景分工——本文只覆盖 Native 层。
+fenced `openui` / `openui-lang` 代码块渲染为可交互 UI（官方 @openuidev/react-ui 组件库 + react-lang 解释器），并向上接通两条回灌回路：操作发消息（档②）、操作状态随 agent turn 原地更新（档③）。与 Sandbox App（`mode=app` 的 .html 文件 iframe，`ui/SandboxHtmlFrame.tsx`）是平行两层，按场景分工——本文只覆盖 Native 层。
 
 ## 渲染入口与懒加载链路
 
@@ -51,7 +51,7 @@ graph LR
 
 | 文件 | 职责 |
 |------|------|
-| `OpenUIBlock.tsx`（`components/ui/`） | 渲染入口薄壳：React.lazy + Suspense；dev 调试挂件屏蔽 |
+| `OpenUIBlock.tsx`（`ui/`） | 渲染入口薄壳：React.lazy + Suspense；dev 调试挂件屏蔽 |
 | `openui/renderer.tsx` | 懒 chunk 渲染器：Renderer 装配（mobiLibrary/主题/initialState）、handleAction（身份回查 → running 去重 → 发送 + 失败回滚）、错误降级呈现（非法语句被 parser 丢弃，块不移除） |
 | `openui/actionContext.tsx` | UI 回灌注入 seam（UiSendProvider / OpenUIAnchorProvider）；零重依赖，进主 bundle |
 | `openui/actionMessage.ts` | ActionEvent → 用户消息文本组装（纯函数，缺省中文表头，labels 由 renderer 传 i18n） |

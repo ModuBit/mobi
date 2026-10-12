@@ -25,7 +25,7 @@ Web 是 Mobi 的浏览器前端，提供 Claude Code 会话的远程交互界面
 5. `src/core/notifications/` — toast 通知三分支决策（收到 toast 后前端本地判定展示方式）
 6. `src/domain/chat/` — 消息解析管线，理解 reducer → normalize → 分组流程
 7. `src/features/chat/` — 聊天视图，理解消息渲染管线
-8. `src/features/tool-card/` — 工具卡片，理解工具结果展示
+8. `src/features/chat/tool-card/` — 工具卡片，理解工具结果展示
 9. `src/core/data/hooks/` — 数据查询层，理解缓存策略
 
 ### 术语表
@@ -42,22 +42,25 @@ Web 是 Mobi 的浏览器前端，提供 Claude Code 会话的远程交互界面
 
 ## 整体架构
 
-代码按 `core / domain / components / pages` 四层组织：
+代码按 `app / pages / features / ui / domain / core` 六层组织，依赖只许向下（src 分层治理，2026-10-12）：
 
 ```
 src/
-├── core/          ← 基础设施（数据、配置、工具函数、Provider）
-├── domain/        ← 领域逻辑（纯数据处理，不依赖 React）
-├── components/    ← UI 组件（按功能域分组）
-└── pages/         ← 页面路由组件
+├── app/           ← 组装层（App / main / router，唯一可引一切）
+├── pages/         ← 路由页面壳 + 会话组装域（pages/session/）
+├── features/      ← 业务域（chat / composer / files / layout / login / review /
+│                     settings / sketchpad / terminal——域间零互引）
+├── ui/            ← 通用组件（零业务知识；arc/ motion/ openui/ pixel-avatar/）
+├── domain/        ← 纯逻辑（零 React）
+└── core/          ← 基础设施（数据、配置、工具函数、Provider）
 ```
 
 ```mermaid
 graph TB
     subgraph 入口
-        Main["main.tsx<br/>应用入口"]
+        Main["app/main.tsx<br/>应用入口"]
         Theme["core/config/theme/<br/>主题配置"]
-        Router["router.tsx<br/>路由定义"]
+        Router["app/router.tsx<br/>路由定义"]
     end
 
     subgraph core/providers
@@ -81,9 +84,10 @@ graph TB
         Tool["tool/<br/>输入解析、类型"]
     end
 
-    subgraph UI层
-        Pages["pages/<br/>页面组件"]
-        Components["components/<br/>功能组件"]
+    subgraph 呈现层
+        Pages["pages/<br/>页面壳 + 会话组装"]
+        Features["features/<br/>业务域"]
+        UI["ui/<br/>通用组件"]
     end
 
     Main --> Theme
@@ -95,10 +99,10 @@ graph TB
 
     Hooks --> API
     API --> Types
-    Components --> Hooks
-    Components --> Domain["domain/"]
-    Pages --> Components
-    Components --> Stores
+    Features --> Hooks
+    Features --> Domain["domain/"]
+    Pages --> Features
+    Features --> Stores
 ```
 
 ## 目录结构
@@ -229,162 +233,75 @@ packages/web/src/
 │       ├── askUserQuestion.ts  AskUserQuestion 输入解析
 │       └── requestUserInput.ts RequestUserInput 输入解析
 │
-├── components/                 UI 组件（按功能域分组）
-│   ├── chat/                   聊天视图
-│   │   ├── ChatContainer.tsx   主聊天容器
-│   │   ├── QueuedMessagesBar.tsx 排队消息悬浮条（agent 运行中发送的消息，✕取消 / ✎编辑）+「已丢弃」分区（cancelled/discarded 灰色删除线，无操作）
-│   │   ├── buildBubbleItems.tsx Bubble 渲染项构建
-│   │   ├── bubbleRoles.ts      气泡角色配置
-│   │   ├── ChatWelcome.tsx     空态欢迎页
-│   │   ├── AgentLoadingBubble.tsx Agent 加载气泡
+├── features/                   业务域（域间零互引；多域共享知识下沉 domain/ui）
+│   ├── chat/                   对话（含 tool-card/ 子域与 blocks/ 渲染器）
+│   │   ├── buildBubbleItems.tsx    Bubble 渲染项装配（渲染器注入式，票 03）
+│   │   ├── ChatWelcome.tsx         空态欢迎页
 │   │   ├── CompactProgressBubble.tsx 紧凑进度气泡
 │   │   ├── CliOutputDetailDrawer.tsx CLI 输出详情抽屉
-│   │   ├── CopyButton.tsx      复制按钮
-│   │   ├── ScrambleText.tsx    打字机文字动画
-│   │   ├── useElapsedSeconds.ts 已用时间 Hook
-│   │   └── blocks/             各类型渲染器
-│   │       ├── index.tsx       renderChatBlock 调度器
-│   │       ├── TextBlock.tsx   文本块
-│   │       ├── CliOutputBlock.tsx CLI 输出块
-│   │       ├── ReasoningBlock.tsx 思考过程块
-│   │       ├── AgentEventBlock.tsx Agent 事件块
-│   │       ├── CompactSummaryBlock.tsx 紧凑摘要块
-│   │       ├── ToolCallBlock.tsx     工具调用块
-│   │       └── ToolCallGroupBlock.tsx 工具调用折叠组
+│   │   ├── blocks/             各类型渲染器
+│   │   │   ├── index.tsx       renderChatBlock 调度器
+│   │   │   ├── types.ts        ChatBlockContext 类型（票 03 抽离破环）
+│   │   │   ├── renderContext.tsx BubbleRenderProvider 注入上下文（票 03）
+│   │   │   ├── TextBlock.tsx / CliOutputBlock.tsx / ReasoningBlock.tsx
+│   │   │   ├── AgentEventBlock.tsx / CompactSummaryBlock.tsx
+│   │   │   └── ToolCallBlock.tsx / ToolCallGroupBlock.tsx
 │   │   ├── userBlocks/         用户气泡 blocks 渲染
 │   │   │   ├── UserBlocksView.tsx    block 分发视图（text/image/document/quote）
-│   │   │   ├── UserBubbleHeader.tsx  气泡 header 附件层（图片/文档/引用 chip + popover 定位）
-│   │   │   └── QuoteListCard.tsx     引用列表卡共享视觉词汇（composer 胶囊与气泡 header 同源）
-│   ├── composer/               消息输入（28 文件）
-│   │   ├── ChatComposer.tsx    输入框 + 自动补全 + 布局编排
-│   │   ├── AutoComplete.tsx    自动补全容器
-│   │   ├── MentionDropdown.tsx @ 文件引用下拉
-│   │   ├── SlashCommandDropdown.tsx 斜杠命令下拉
-│   │   ├── StatusBar.tsx       状态栏（goal 徽标 / 缓存过期提示 chip / loading 指示）
-│   │   ├── AgentCard.tsx       Agent 卡片（前台/后台统一渲染，TasksPanel 复用）
-│   │   ├── TasksPanel.tsx      执行中任务面板（合并前台 Agent + 后台任务，后台任务带闪电标签）
-│   │   ├── BackgroundTaskCard.tsx  后台任务卡片
-│   │   ├── TeamAgentCard.tsx   Team Agent 卡片
-│   │   ├── TeamAgentPanel.tsx  Team Agent 面板
-│   │   ├── TaskPanel.tsx       任务面板
-│   │   ├── TodoPanel.tsx       待办面板
-│   │   └── ...
-│   ├── tool-card/              工具结果展示
-│   │   ├── index.tsx           主组件，路由到对应视图
-│   │   ├── knownTools.tsx      工具注册表
-│   │   ├── PermissionFooter.tsx 权限审批按钮
-│   │   ├── AskUserQuestionFooter.tsx AskUserQuestion 底部操作
-│   │   ├── RequestUserInputFooter.tsx RequestUserInput 底部操作
-│   │   ├── ToolDetailDrawer.tsx 工具详情抽屉
-│   │   ├── AgentDrawerContent.tsx Agent 子对话抽屉内容
-│   │   ├── OptionPreview.tsx   选项预览
-│   │   ├── checklist.tsx       清单工具渲染
-│   │   ├── icons.tsx           工具图标
-│   │   ├── toolIcons.tsx       工具图标映射
-│   │   ├── useAgentSidechain.ts Agent 子对话数据 Hook
-│   │   └── views/              工具专用视图
-│   │       ├── _all.tsx        全量注册
-│   │       ├── _results.tsx    结果视图注册
-│   │       ├── BashView.tsx
-│   │       ├── DiffView.tsx
-│   │       ├── EditView.tsx
-│   │       ├── MultiEditView.tsx
-│   │       ├── WriteView.tsx
-│   │       ├── ReadDetailView.tsx
-│   │       ├── GlobView.tsx
-│   │       ├── SendMessageView.tsx
-│   │       ├── ExitPlanModeView.tsx
-│   │       ├── UpdatePlanView.tsx
-│   │       ├── AskUserQuestionView.tsx
-│   │       ├── RequestUserInputView.tsx
-│   │       ├── TeamCreateView.tsx
-│   │       ├── TeamDeleteView.tsx
-│   │       ├── ToolViewPanel.tsx 通用工具面板
-│   │       └── lineNumberUtils.ts 行号工具
-│   ├── session/                会话管理
-│   │   ├── SessionDetail.tsx   会话详情
-│   │   ├── NewSessionForm.tsx  新建会话表单（workspace-first：先选工作区再选目录）
-│   │   ├── SessionContextBar.tsx 会话上下文栏
-│   │   ├── useDirectoryCapabilities.ts 目录能力 Hook（是否可列目录）
-│   │   └── useRecentPaths.ts   最近路径 Hook
-│   ├── workspace/                工作区管理
-│   │   ├── WorkspaceFormModal.tsx  工作区创建/编辑表单（名称 + folders + primary）
-│   │   └── AssignWorkspaceModal.tsx 会话归入工作区弹窗
-│   ├── layout/                 布局
-│   │   ├── MainLayout.tsx      三栏布局（RailNav + Sidebar + Content）
-│   │   ├── RailNav.tsx         左侧图标导航栏
-│   │   ├── MobileMenu.tsx      移动端汉堡菜单
-│   │   ├── PageHeader.tsx      页面头部
-│   │   ├── SidebarWorkspaces.tsx 侧边栏工作区分组 + 「最近」区
-│   │   ├── MobileWorkspaceList.tsx 移动端工作区列表
-│   │   ├── navConfig.ts        导航配置
-│   │   ├── InstallButton.tsx   PWA 安装按钮
-│   │   ├── UpdatePrompt.tsx    更新提示
-│   │   ├── usePwaMode.ts       PWA 运行环境检测（独立窗口/嵌入）
-│   │   └── useThemeLocaleToggle.ts 主题/语言切换 Hook
-│   ├── login/                  登录页角色带
-│   │   ├── CharacterBand.tsx   底部 4 角色带（眼球跟随/眨眼/对视/偷瞄）
-│   │   ├── EyeBall.tsx         眼球组件（Pupil + EyeBall）
-│   │   ├── useCharacterAnimation.ts 角色动画状态机（眨眼/对视/偷瞄定时器）
-│   │   └── useMouseLook.ts     单一鼠标位置源（rAF 节流 + 共享几何）
-│   ├── pixel-avatar/           像素头像动画
-│   │   ├── PixelAvatar.tsx     主组件
-│   │   ├── types.ts            类型定义
-│   │   ├── vibingMessages.ts   状态文案
-│   │   ├── hooks/useAnimationLoop.ts 动画循环 Hook
-│   │   └── sprites/            精灵图
+│   │   │   └── UserBubbleHeader.tsx  气泡 header 附件层
+│   │   ├── artifact/           指令产物内联视图（Sandbox App 层）
+│   │   └── tool-card/          工具结果展示（对话流呈现子域，票 03 并入 chat）
+│   │       ├── index.tsx / knownTools.tsx
+│   │       ├── PermissionFooter.tsx / AskUserQuestionFooter.tsx / RequestUserInputFooter.tsx
+│   │       ├── ToolDetailDrawer.tsx / AgentDrawerContent.tsx / useAgentSidechain.ts
+│   │       └── views/          工具专用视图
+│   │           ├── _all.tsx / _results.tsx / types.ts（票 03 类型抽离）
+│   │           ├── BashView / DiffView / EditView / MultiEditView / WriteView
+│   │           └── ReadDetailView / GlobView / SendMessageView / TeamCreateView …
+│   ├── composer/               消息输入（ChatComposer/ComposerInfoPanel 已上提 pages/session/）
+│   │   ├── MentionDropdown.tsx / SlashCommandDropdown.tsx / AutoComplete.tsx
+│   │   ├── AgentCard.tsx / TasksPanel.tsx / BackgroundTaskCard.tsx / TeamAgentCard.tsx
+│   │   ├── TaskPanel.tsx / TodoPanel.tsx / ElicitationFormCard.tsx / QueuedMessagesBar.tsx
+│   │   └── QuoteChipBar.tsx    引用胶囊（QuoteListCard 视觉词汇见 ui/）
 │   ├── files/                  文件浏览与预览
-│   │   ├── FileTree.tsx        文件树
-│   │   ├── FileView.tsx        文件查看器
-│   │   ├── FileContentView.tsx 内容查看器（按 FileKind 分流：pdf/image/media/markdown/html/text）
-│   │   ├── fileKind.ts         mime → FileKind 判定
-│   │   ├── useFileRenderState.ts 渲染决策（meta→kind→ready，view/wrap 切换）
-│   │   └── HtmlPreviewView.tsx HTML 预览（源码 / iframe 沙箱切换，走 serve-file 端点）
-│   ├── git/                    Git 状态/Diff
-│   │   ├── GitStatus.tsx       Git 状态
-│   │   └── DiffView.tsx        Diff 视图
+│   │   ├── FileTreeView.tsx / FileContentView.tsx / fileKind.ts / useFileRenderState.ts
+│   │   ├── HtmlPreviewView.tsx / ImageContentView.tsx / PdfContentView.tsx / MediaContentView.tsx
+│   │   └── EditorRegistry.ts / SaveConflictDialog.tsx
+│   ├── review/                 Git 审查（DiffViewer / GitReviewView / DiffTreePanel + pierre 渲染）
+│   ├── layout/                 布局
+│   │   ├── MainLayout.tsx / MobileMenu.tsx / PageHeader.tsx / navConfig.ts
+│   │   ├── SidebarWorkspaces.tsx / MobileWorkspaceList.tsx / AssignWorkspaceModal.tsx
+│   │   └── UpdatePrompt.tsx / NotificationPermissionGate.tsx
+│   ├── login/                  登录页角色带
+│   │   ├── CharacterBand.tsx / EyeBall.tsx
+│   │   └── useCharacterAnimation.ts / useMouseLook.ts
 │   ├── terminal/               终端视图
 │   │   ├── TerminalView.tsx    终端视图（useCachedInstance 保活）
 │   │   └── cachedTerminal.ts   终端实例工厂（xterm + socket 常驻缓存）
-│   ├── settings/               设置组件
-│   │   ├── NotificationSettings.tsx 通知设置区块（权限开关、订阅状态）
-│   │   ├── blocks/             设置子组件（GuideSection 权限引导 / PwaCard PWA 卡 / DebugSection 调试）
-│   │   ├── sections/           设置分区（子路由页面与分区注册表，路由布局见 pages/SettingsPage.tsx）
-│   │   │   ├── registry.ts     分区定义单一真相（入口列表与分区导航共用）
-│   │   │   ├── SettingsIndex.tsx 入口列表页（mobile 首屏，含 Web 工具状态徽标）
-│   │   │   ├── NotificationsSection.tsx 通知分区（包 NotificationSettings）
-│   │   │   ├── WebToolsSection.tsx Web 工具分区（用途路由卡 + provider 卡，子组件见 webtools/）
-│   │   │   └── DebugSectionRoute.tsx 调试分区路由（未解锁渲染空分区）
-│   │   └── webtools/           Web 工具子页组件
-│   │       ├── useWebToolsConfig.ts 配置读写 Hook（经 daemon 读写 web 工具配置，凭据在场性提交）
-│   │       ├── RouteCard.tsx   用途路由卡（搜索/抓取 provider 选择，即时保存）
-│   │       ├── ProviderCard.tsx provider 卡（开关外置 + 内联展开凭据编辑）
-│   │       └── CredentialEditor.tsx 凭据编辑器（只读预览态/替换编辑态 + 验证连接）
-│   └── ui/                     共享 UI 原语
-│       ├── Markdown.tsx        Markdown 渲染器
-│       ├── AutoDetectCodeBlock.tsx 代码块语言检测
-│       ├── ContentDrawer.tsx   内容抽屉
-│       ├── ErrorBoundary.tsx   错误边界
-│       ├── FilePathText.tsx    文件路径文本
-│       ├── IconButton.tsx      图标按钮
-│       ├── PixelCard.tsx       像素卡片
-│       ├── BlinkText.tsx       闪烁文字
-│       ├── OverflowContainer.tsx 溢出容器
-│       ├── FootnoteComponents.tsx 脚注组件
-│       ├── footnotePlugin.ts   Markdown 脚注插件
-│       ├── latexPlugin.ts      Markdown LaTeX 插件
-│       ├── slashCommandPlugin.ts Markdown 斜杠命令插件
-│       ├── mentionPlugin.ts    Markdown @path mention 插件
-│       ├── sourceIcon.tsx      来源图标
-│       └── useStreamingContent.ts 流式内容 Hook
+│   ├── sketchpad/              画板（SketchCanvas / SketchDrawerHandler / sketch marks）
+│   └── settings/               设置组件
+│       ├── NotificationSettings.tsx / blocks/（GuideSection / PwaCard / DebugSection）
+│       ├── sections/           设置分区（registry.ts 单一真相 + 各 Section；路由布局见 pages/SettingsPage.tsx）
+│       └── webtools/           Web 工具子页（RouteCard / ProviderCard / CredentialEditor）
 │
-├── pages/                      路由页面组件
-│   ├── LoginPage.tsx
-│   ├── SessionsPage.tsx
-│   ├── SessionsLayout.tsx
-│   ├── SessionDetailPage.tsx
-│   ├── NewSessionPage.tsx
-│   └── SettingsPage.tsx       SettingsLayout 设置页响应式壳（导出 SettingsLayout）
+├── ui/                         通用组件（零业务知识；多域共享呈现原语，票 02/03 下沉）
+│   ├── Markdown.tsx / AutoDetectCodeBlock.tsx / useStreamingContent.ts（流式渲染管线）
+│   ├── StatusBar.tsx / GoalBadge.tsx / ContextRing.tsx / ClearStateButton.tsx
+│   ├── AgentLoadingBubble.tsx / ScrambleText.tsx / CopyButton.tsx / bubbleRoles.ts
+│   ├── toolIcons.tsx / present.tsx / pierreTheme.ts / agentPalette.ts（票 03 下沉）
+│   ├── WorkspaceFormModal.tsx / SandboxHtmlFrame.tsx / QuoteListCard.tsx / Logo.tsx
+│   ├── AppTooltip / IconButton / ErrorBoundary / ContentDrawer / MobileDrawer / PixelCard …
+│   ├── footnotePlugin / latexPlugin / mentionPlugin / slashCommandPlugin（Markdown 插件）
+│   └── arc/  motion/  openui/  pixel-avatar/   ← registry 组件与动效/头像子目录
+│
+├── pages/                      路由页面壳 + 会话组装域
+│   ├── LoginPage.tsx / NewSessionPage.tsx / SessionDetailPage.tsx
+│   ├── SessionsLayout.tsx / SettingsPage.tsx
+│   └── session/                会话组装链（组装权归 pages 层，票 03 上提）
+│       ├── SessionDetail.tsx / ChatPane.tsx / InspectorPane.tsx / WorkspaceSplitter.tsx
+│       ├── ChatContainer.tsx / ChatComposer.tsx / ComposerInfoPanel.tsx
+│       ├── SessionContextBar.tsx / LiveSystemNoticeBar.tsx / TerminalTabLabel.tsx
+│       └── inspectorActions.tsx / InspectorEmptyState.tsx / SessionCreating.tsx
 │
 └── styles/                     全局样式
     ├── antd.css                Ant Design 覆盖
@@ -672,13 +589,13 @@ Web 端区分三种状态，使用不同的管理方案：
 
 | 需求 | 文件 |
 |------|------|
-| 添加新页面 | `router.tsx` + `pages/` + `components/layout/navConfig.ts` |
+| 添加新页面 | `src/app/router.tsx` + `pages/` + `src/features/layout/navConfig.ts` |
 | 添加新 API 端点 | `core/data/api/client.ts` + `core/data/api/types.ts` |
 | 添加新数据查询 | `core/data/hooks/queries/` + `core/lib/query-keys.ts` |
-| 添加新工具卡片视图 | `components/tool-card/views/` + `components/tool-card/knownTools.tsx` |
+| 添加新工具卡片视图 | `src/features/chat/tool-card/views/` + `src/features/chat/tool-card/knownTools.tsx` |
 | 修改消息归约 | `domain/chat/reducer.ts` + `domain/chat/reducerTools.ts` |
 | 修改消息渲染 | `features/chat/ChatContainer.tsx` + `features/chat/blocks/` |
 | 修改 SSE 事件处理 | `core/providers/SSEProvider.tsx` |
 | 修改主题 | `core/config/theme/tokens.ts` + `core/config/theme/components.ts` |
-| 添加新 UI 组件 | `components/ui/` 或对应功能域子目录 |
+| 添加新 UI 组件 | `src/ui/` 或对应功能域子目录 |
 | 添加领域逻辑 | `domain/` 对应子目录（chat/command/session/tool） |

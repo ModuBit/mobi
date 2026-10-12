@@ -77,19 +77,19 @@ ESLint: 0 errors, 230 warnings (均为预先存在的)
 
 | 文件 | 职责 |
 |------|------|
-| `packages/web/src/components/layout/AppSidebar.tsx` | 240px 宽侧边栏主组件 |
-| `packages/web/src/components/layout/SidebarHeader.tsx` | Logo + 收起按钮 |
-| `packages/web/src/components/layout/SidebarNav.tsx` | 导航项列表 |
-| `packages/web/src/components/layout/SidebarFooter.tsx` | 主题/语言切换 + 用户 Dropdown |
-| `packages/web/src/components/layout/SidebarProjects.tsx` | 项目分组会话列表 |
-| `packages/web/src/components/layout/SidebarSessionItem.tsx` | 紧凑会话列表项 |
-| `packages/web/src/components/layout/usePwaInstall.ts` | PWA 安装 hook |
+| `packages/web/src/features/layout/AppSidebar.tsx` | 240px 宽侧边栏主组件 |
+| `packages/web/src/features/layout/SidebarHeader.tsx` | Logo + 收起按钮 |
+| `packages/web/src/features/layout/SidebarNav.tsx` | 导航项列表 |
+| `packages/web/src/features/layout/SidebarFooter.tsx` | 主题/语言切换 + 用户 Dropdown |
+| `packages/web/src/features/layout/SidebarProjects.tsx` | 项目分组会话列表 |
+| `packages/web/src/features/layout/SidebarSessionItem.tsx` | 紧凑会话列表项 |
+| `packages/web/src/features/layout/usePwaInstall.ts` | PWA 安装 hook |
 
 ### 删除文件（2 个）
 
 | 文件 | 原因 |
 |------|------|
-| `packages/web/src/components/layout/RailNav.tsx` | 被 AppSidebar 替代 |
+| `packages/web/src/features/layout/RailNav.tsx` | 被 AppSidebar 替代 |
 | `packages/web/src/pages/SessionsPage.tsx` | 会话列表合并到 AppSidebar |
 
 ### 修改文件（8 个）

@@ -62,7 +62,7 @@ API 历史路径中，`isSidechain` 标记被清除（`isSidechain: false`），
 
 | 文件 | 职责 |
 |------|------|
-| `components/tool-card/useAgentSidechain.ts` | 双路径数据获取 hook |
+| `features/chat/tool-card/useAgentSidechain.ts` | 双路径数据获取 hook |
 | `core/data/hooks/queries/useSidechainMessages.ts` | TanStack Query 封装 |
 | `core/data/api/client.ts` → `messages.sidechain()` | API 客户端方法 |
 
@@ -109,7 +109,7 @@ API 历史路径中，`isSidechain` 标记被清除（`isSidechain: false`），
 
 ### ToolDetailDrawer
 
-**文件**：`components/tool-card/ToolDetailDrawer.tsx`
+**文件**：`features/chat/tool-card/ToolDetailDrawer.tsx`
 
 通用工具详情 Drawer 容器。通过 `isAgentTool(tool.name)` 判断，Agent 工具路由到 `AgentDrawerContent`，使用 wide 模式。
 
@@ -128,7 +128,7 @@ flowchart TD
 
 ### AgentDrawerContent
 
-**文件**：`components/tool-card/AgentDrawerContent.tsx`
+**文件**：`features/chat/tool-card/AgentDrawerContent.tsx`
 
 Drawer 内的 sidechain 对话渲染，使用 `Bubble.List` 组件。
 
@@ -158,7 +158,7 @@ Drawer 内的 sidechain 对话渲染，使用 `Bubble.List` 组件。
 
 ## ToolCard（卡片式渲染）
 
-**文件**：`components/tool-card/index.tsx`
+**文件**：`features/chat/tool-card/index.tsx`
 
 旧版的卡片式渲染，使用 `<Card>` + `<Modal>` 组合。当前与 `ToolCallRenderer` 并行存在，用于特定场景。
 
@@ -175,11 +175,11 @@ Drawer 内的 sidechain 对话渲染，使用 `Bubble.List` 组件。
 |------|------|------|
 | `ToolCallRenderer` | `features/chat/blocks/ToolCallBlock.tsx` | 聊天内联渲染入口，Think 折叠 |
 | `ToolCallPreviewContent` | `features/chat/blocks/ToolCallBlock.tsx` | 内联预览内容（Agent prompt / 结果） |
-| `ToolCard` | `components/tool-card/index.tsx` | 卡片式渲染（Card + Modal），含 Task 摘要 |
-| `ToolDetailDrawer` | `components/tool-card/ToolDetailDrawer.tsx` | Drawer 容器，路由到 Agent / 普通视图 |
-| `AgentDrawerContent` | `components/tool-card/AgentDrawerContent.tsx` | Drawer 内 sidechain Bubble.List |
+| `ToolCard` | `features/chat/tool-card/index.tsx` | 卡片式渲染（Card + Modal），含 Task 摘要 |
+| `ToolDetailDrawer` | `features/chat/tool-card/ToolDetailDrawer.tsx` | Drawer 容器，路由到 Agent / 普通视图 |
+| `AgentDrawerContent` | `features/chat/tool-card/AgentDrawerContent.tsx` | Drawer 内 sidechain Bubble.List |
 | `AgentLoadingBubble` | `features/chat/AgentLoadingBubble.tsx` | 运行中加载动画（PixelAvatar + vibing 文字） |
-| `useAgentSidechain` | `components/tool-card/useAgentSidechain.ts` | Agent sidechain 数据获取（双路径） |
-| `knownTools` | `components/tool-card/knownTools.tsx` | 工具注册（`isAgentTool` / `getAgentTitle` / subtitle） |
-| `getAgentPrompt` | `components/tool-card/index.tsx` | 提取 Agent 工具的 prompt 文本 |
+| `useAgentSidechain` | `features/chat/tool-card/useAgentSidechain.ts` | Agent sidechain 数据获取（双路径） |
+| `knownTools` | `features/chat/tool-card/knownTools.tsx` | 工具注册（`isAgentTool` / `getAgentTitle` / subtitle） |
+| `getAgentPrompt` | `features/chat/tool-card/index.tsx` | 提取 Agent 工具的 prompt 文本 |
 | `buildChatBubbleItems` | `features/chat/buildBubbleItems.tsx` | ChatBlock[] → BubbleItemBase[] 转换 |

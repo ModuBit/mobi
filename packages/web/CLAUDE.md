@@ -8,7 +8,13 @@
 
 ## 编码规范
 
-→ [docs/conventions/web.md](../../docs/conventions/web.md)
+→ [docs/conventions/web.md](../../docs/conventions/web.md)（**目录结构 / 分层规则 / 依赖门禁**见该文「目录结构」章）
+
+`src/` 六层 `app → pages → features → ui → domain → core`，依赖只许向下，depcruise 硬卡：
+
+- **features 域间互引禁止**；多域共享知识下沉 `domain/`（纯逻辑）或 `ui/`（通用呈现）；「父编排子」的伪耦合改 props/注入
+- **组装链归 `pages/`**：编排其他域组件的容器（如 `pages/session/`）不放 features
+- **domain 零 React**（含 type-only）；**ui 零业务知识**；**core 零 UI 组件**
 
 ## 关键文件
 
@@ -21,7 +27,7 @@
 | `src/domain/chat/normalize.ts` | 消息标准化（DecryptedMessage → NormalizedMessage） |
 | `src/domain/chat/reducer.ts` | 消息归约（NormalizedMessage[] → ChatBlock[]） |
 | `src/domain/chat/types.ts` | NormalizedMessage / ChatBlock 类型定义 |
-| `src/features/tool-card/knownTools.tsx` | 工具卡片注册 |
+| `src/features/chat/tool-card/knownTools.tsx` | 工具卡片注册 |
 | `src/core/lib/query-keys.ts` | 查询缓存 Key |
 | `src/core/lib/fileAttachments.ts` | 文件附件类型与上传校验（分桶/MIME 投影单一来源 bucketCompletedAttachments） |
 | `src/core/lib/composerDrafts.ts` | per-session 草稿持久化（分段结构 text/files/images/quotes，sessionStorage，旧格式兼容读取） |

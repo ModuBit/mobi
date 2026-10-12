@@ -15,7 +15,7 @@ patch 方式：用 antx 源码 father 构建产物覆盖 bun store 中的 npm �
    下的 `es/` `lib/` `plugins/` `themes/` `dist/` 被替换为 antx 源码构建产物。
    store 路径的 `<hash>` 随 lockfile 变化，用 `find node_modules/.bun -maxdepth 1 -name '@ant-design+x-markdown*'` 定位。
 
-2. **`packages/web/src/components/ui/Markdown.tsx`**：
+2. **`packages/web/src/ui/Markdown.tsx`**：
    `MARKDOWN_STREAMING_CONFIG` 中的 `incremental: true`（带注释）。
 
 ## 升级 x-markdown 时的检查步骤
