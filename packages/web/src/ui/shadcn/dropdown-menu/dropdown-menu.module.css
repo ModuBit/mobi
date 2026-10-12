@@ -76,15 +76,24 @@
 /* The menu grows from the trigger edge: offset toward the trigger, scale from the Radix origin, fade quickly.
    Transitions instead of keyframes, so a close that interrupts the open (or a reopen during the close) reverses from where it is. */
 .menu { --menu-x: 0px; --menu-y: -5px; z-index: var(--mobi-z-overlay, 50); min-width: min(12rem, var(--radix-dropdown-menu-content-available-width)); max-width: var(--radix-dropdown-menu-content-available-width); transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
+/* 面板横向贴边校正（本地修改 7）的落点：位移由 dropdown-menu.tsx 写进 --panel-shift-x。
+   两处要害：
+   ① **不给回退值**——变量没设时 `translate: var(--panel-shift-x)` 属「计算期无效值」，整条声明按
+      unset 处理即 translate:none。若写成 `var(..., 0px)`，面板会恒带一个非 none 的 translate，
+      从而成为 position:fixed 后代的包含块，把**三级菜单**（子菜单的面板是父面板的 DOM 后代）的
+      popper 拽到错位置——哪怕位移是 0。
+   ② 用 translate 而非 transform——transform 被开合动画占着；两者可叠加。 */
+.menu, .subMenu { translate: var(--panel-shift-x); }
 /* Submenus open sideways, sized by their content and capped so a long list scrolls instead of running off-screen.
    原点不借 --radix-dropdown-menu-content-* 那组变量：子菜单面板是**父面板的 DOM 后代**（Radix
    MenuSubContent 不 portal，不是兄弟节点），那组变量是给一级面板定位用的，借来几何对不上——
-   侧向原点写死；翻边时 Radix 置 data-side=left
-   translate 消费 --submenu-shift-x（本地修改 7）：横向溢出由 dropdown-menu.tsx 的贴边校正补上
-   （Radix 的 shift/flip 对 left/right 档位挪不动横向），不能用 transform——那被开合动画占着 */
-.subMenu { max-width: min(90vw, 420px); transform-origin: left center; translate: var(--submenu-shift-x, 0px) 0; }
-/* 条目容器才是子菜单的滚动容器：上下限挂这里，面板 padding 才不会被滚走（本地修改 8） */
-.subMenu > .items { max-height: min(60dvh, 340px); overflow-y: auto; overscroll-behavior: contain; }
+   侧向原点写死；翻边时 Radix 置 data-side=left */
+.subMenu { max-width: min(90vw, 420px); transform-origin: left center; }
+/* 条目容器才是子菜单的滚动容器：上下限挂这里，面板 padding 才不会被滚走（本地修改 8）。
+   overflow-x 必须显式收成 clip：只写 overflow-y 时 overflow-x 会按规范算成 auto，而分隔线
+   （.separator）带 -4px 的横向负边距、比条目容器宽 8px——在面板上时这点溢出被面板 padding 吸收，
+   收进零内边距的容器后就成了可横滚的溢出（多出一条横向滚动条，右端还被裁）。 */
+.subMenu > .items { max-height: min(60dvh, 340px); overflow-y: auto; overflow-x: clip; overscroll-behavior: contain; }
 .subMenu[data-side="left"] { transform-origin: right center; }
 .menu[data-side="top"] { --menu-y: 5px; }
 .menu[data-side="left"] { --menu-x: 5px; --menu-y: 0px; }

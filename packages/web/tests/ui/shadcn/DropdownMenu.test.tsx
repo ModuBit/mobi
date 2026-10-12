@@ -195,13 +195,13 @@ describe('DropdownMenu 的 items 结构', () => {
 })
 
 /**
- * 子菜单的窄屏两条不变量（2026-10-13 真机回归：审查范围「已提交」在 390px 屏上顶出右缘 150px、
+ * 面板贴边的两条不变量（2026-10-13 真机回归：审查范围「已提交」在 390px 屏上顶出右缘 150px、
  * 且列表滚动后上下贴边）。jsdom 无布局，故：
  * - 结构按其 DOM 契约断言（滚动容器 / 面板标记）；
  * - 贴边位移用桩矩形 + 桩 innerWidth，靠 window resize 触发重算——真机上首次重算由 ResizeObserver
  *   的首次回调（观察即回调）与 Radix 写定位时的 MutationObserver 触发，两者在 jsdom 里都不发信号。
  */
-describe('子菜单的窄屏贴边与滚动留白', () => {
+describe('面板的窄屏贴边与滚动留白', () => {
     const INITIAL_INNER_WIDTH = window.innerWidth
 
     afterEach(() => {
@@ -225,10 +225,10 @@ describe('子菜单的窄屏贴边与滚动留白', () => {
         return panels[1]!
     }
 
-    /** 只桩子菜单的定位层（面板的父元素）：别的元素保持 jsdom 的零矩形，免得干扰 Radix 自己的定位 */
-    function stubSubWrapperRect(sub: HTMLElement, rect: { x: number; right: number; width: number }) {
+    /** 只桩目标面板的定位层（面板的父元素）：别的元素保持 jsdom 的零矩形，免得干扰 Radix 自己的定位 */
+    function stubWrapperRect(panel: HTMLElement, rect: { x: number; right: number; width: number }) {
         vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
-            const box = this === sub.parentElement
+            const box = this === panel.parentElement
                 ? { left: rect.x, right: rect.right, width: rect.width }
                 : { left: 0, right: 0, width: 0 }
             return { ...box, top: 0, bottom: 0, height: 0, x: box.left, y: 0, toJSON: () => ({}) } as DOMRect
@@ -244,6 +244,8 @@ describe('子菜单的窄屏贴边与滚动留白', () => {
         const container = sub.querySelector<HTMLElement>(':scope > [data-dropdown-scroll-root]')
         expect(container).not.toBeNull()
         expect(container!.querySelectorAll('[role="menuitem"]')).toHaveLength(2)
+        // 包装层只是布局用的，不该插进 role=menu → role=menuitem 的归属链
+        expect(container).toHaveAttribute('role', 'none')
         // 面板自身不再挂滚动标记：否则哨兵会把不滚动的面板当 root，翻页判定失效
         expect(sub).not.toHaveAttribute('data-dropdown-scroll-root')
     })
@@ -252,21 +254,41 @@ describe('子菜单的窄屏贴边与滚动留白', () => {
         const sub = openSubmenu()
         Object.defineProperty(window, 'innerWidth', { value: 390, writable: true, configurable: true })
         // 390px 屏里的实测值：面板 340 宽、落在 x=200，右缘 540
-        stubSubWrapperRect(sub, { x: 200, right: 540, width: 340 })
+        stubWrapperRect(sub, { x: 200, right: 540, width: 340 })
 
         window.dispatchEvent(new Event('resize'))
 
         // 右缘收到 390 - 12（边缘留白），即左移 540 - 378 = 162
-        expect(sub.style.getPropertyValue('--submenu-shift-x')).toBe('-162px')
+        expect(sub.style.getPropertyValue('--panel-shift-x')).toBe('-162px')
+    })
+
+    it('一级菜单指名 side=left/right 时同样贴边（横向挪不动不是子菜单独有的毛病）', () => {
+        render(
+            <DropdownMenu
+                trigger={<button type="button">触发</button>}
+                items={[{ label: '甲' }]}
+                side="right"
+                align="start"
+            />
+        )
+        openMenu(screen.getByText('触发'))
+        const root = document.querySelector<HTMLElement>('[data-dropdown-panel]')!
+
+        Object.defineProperty(window, 'innerWidth', { value: 390, writable: true, configurable: true })
+        stubWrapperRect(root, { x: 300, right: 600, width: 300 })
+        window.dispatchEvent(new Event('resize'))
+
+        expect(root.style.getPropertyValue('--panel-shift-x')).toBe('-222px')
     })
 
     it('装得下时不补位移（宽屏右翻或右侧有余量，都不该被推走）', () => {
         const sub = openSubmenu()
         Object.defineProperty(window, 'innerWidth', { value: 1280, writable: true, configurable: true })
-        stubSubWrapperRect(sub, { x: 900, right: 1240, width: 340 })
+        stubWrapperRect(sub, { x: 900, right: 1240, width: 340 })
 
         window.dispatchEvent(new Event('resize'))
 
-        expect(sub.style.getPropertyValue('--submenu-shift-x')).toBe('')
+        // 归零时删变量而非写 0px：CSS 靠「未设 ⇒ translate:none」避免面板成为 fixed 后代的包含块
+        expect(sub.style.getPropertyValue('--panel-shift-x')).toBe('')
     })
 })
