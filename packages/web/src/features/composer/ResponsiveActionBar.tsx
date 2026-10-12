@@ -36,6 +36,35 @@ export interface ResponsiveActionBarProps {
 
 const MORE_BUTTON_WIDTH = 28
 
+/**
+ * 行里那件「能点开东西」的控件：按钮自身，或带 popup 语义的触发器——Radix 的 Trigger 是
+ * button + aria-haspopup、antd Select 是 role=combobox（没有 button）。
+ */
+function rowControl(row: HTMLElement): HTMLElement | null {
+  return row.querySelector<HTMLElement>('button, [aria-haspopup], [role="combobox"]')
+}
+
+/** 该控件自带弹层——决定外层面板能不能顺带关掉（见 onSelect 注释） */
+function ownsPopup(control: HTMLElement | null): boolean {
+  return !!control && (control.hasAttribute('aria-haspopup') || control.getAttribute('role') === 'combobox')
+}
+
+/**
+ * 把行的点击代理给控件本身：**必须重放整条指针序列**，只 dispatch 一个 click 不够——
+ * Radix 的触发器在 pointerdown 上开合、antd Select 在 mousedown 上开合，孤立的 click
+ * 两者都不动（合成事件的 isTrusted=false 对自家监听器无差别，只影响浏览器默认行为）。
+ * PointerEvent 在老内核/jsdom 可能缺构造器，退了便用 MouseEvent（监听器只看 type）。
+ */
+function replayPointerSequence(control: HTMLElement): void {
+  const base = { bubbles: true, cancelable: true, composed: true, button: 0 } as const
+  const Pointer = typeof PointerEvent === 'function' ? PointerEvent : MouseEvent
+  control.dispatchEvent(new Pointer('pointerdown', { ...base, buttons: 1 }))
+  control.dispatchEvent(new MouseEvent('mousedown', { ...base, buttons: 1, detail: 1 }))
+  control.dispatchEvent(new Pointer('pointerup', { ...base, buttons: 0 }))
+  control.dispatchEvent(new MouseEvent('mouseup', { ...base, buttons: 0, detail: 1 }))
+  control.dispatchEvent(new MouseEvent('click', { ...base, buttons: 0, detail: 1 }))
+}
+
 const ActionBarContainer = styled.div`
   & *:not(.anticon):not(.anticon *) {
     font-size: 12px !important;
@@ -172,8 +201,16 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
       </span>
     ),
     onSelect: (event) => {
+      const row = event.target as HTMLElement | null
+      const control = row ? rowControl(row) : null
+      // 自带弹层的一行不能顺带关掉外层面板：行里那层弹层挂在行组件上（Radix Portal），
+      // 外层一关它就跟着卸载，用户看到的是一闪而过。Radix 用 onSelect 事件的
+      // preventDefault 表达「这一项选中后不关」（menu dist：defaultPrevented ? 保持 : onClose）。
+      // 纯动作行照旧关。
+      if (ownsPopup(control)) event.preventDefault()
+      // 点在控件本身上：它自己已经处理过，代理再来一次会执行两遍
       if (hitInnerButton.current) return
-      ;(event.target as HTMLElement | null)?.querySelector('button')?.click()
+      if (control) replayPointerSequence(control)
     },
   // 依赖 items/visibleCount 而非 hiddenItems：后者是 slice 出来的新数组，引用每次都变，memo 永不命中
   })), [items, visibleCount])

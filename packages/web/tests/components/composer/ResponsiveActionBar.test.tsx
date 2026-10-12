@@ -100,4 +100,51 @@ describe('ResponsiveActionBar 溢出面板的行点击代理', () => {
 
         expect(second).toHaveBeenCalledTimes(1)
     })
+
+    it('纯动作行：点完外层面板照旧关掉', () => {
+        renderOverflowing()
+        const menu = openOverflow()
+
+        fireEvent.click(menu.getByText('乙'))
+
+        expect(screen.queryByRole('menu')).toBeNull()
+    })
+})
+
+/**
+ * 行里自带弹层的控件（附件面板的「+」是 Radix Trigger、权限/模型是 antd Select）：
+ * 代理必须重放整条指针序列，且外层面板不能顺带关——关掉会把行里刚打开的那层一起卸载。
+ */
+function renderPopupRow() {
+    const onPointerDown = vi.fn()
+    const onClick = vi.fn()
+    render(
+        <ResponsiveActionBar
+            items={[
+                { key: 'a', label: '甲', render: () => <button type="button" data-testid="btn-a">A</button> },
+                {
+                    key: 'b',
+                    label: '附件',
+                    render: () => (
+                        // Radix Trigger 形态：button + aria-haspopup，开合在 pointerdown 上
+                        <button type="button" data-testid="trigger-b" aria-haspopup="menu" onPointerDown={onPointerDown} onClick={onClick}>+</button>
+                    ),
+                },
+            ]}
+        />
+    )
+    return { onPointerDown, onClick }
+}
+
+describe('ResponsiveActionBar 溢出面板的弹层行', () => {
+    it('点行空白：重放指针序列（只 dispatch click 的话 pointerdown 收不到），外层面板保持打开', () => {
+        const { onPointerDown } = renderPopupRow()
+        const menu = openOverflow()
+
+        fireEvent.click(menu.getByText('附件'))
+
+        expect(onPointerDown).toHaveBeenCalledTimes(1)
+        // 外层若照常关，行里刚打开的弹层会随组件卸载一起消失
+        expect(screen.queryByRole('menu')).not.toBeNull()
+    })
 })
