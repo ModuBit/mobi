@@ -19,6 +19,7 @@ import { ConfigProvider, theme as antTheme, App as AntApp } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import enUS from 'antd/locale/en_US'
 import { useUiStore, resolveTheme, subscribeSystemTheme } from '@/core/data/stores/uiStore'
+import { warmUpThemeTransition } from '@/core/lib/themeTransition'
 import i18n from '@/core/config/i18n'
 import { shadcnLightToken, shadcnDarkToken } from './tokens'
 import { shadcnLightComponents, shadcnDarkComponents } from './components'
@@ -42,6 +43,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     // 变更 → 上面的 mode 重算 → 四通道一起更新。其余消费点只读 store 不各自监听
     // matchMedia，避免「主界面不跟 OS、terminal/sketchpad 单独跟 OS」的两套行为
     useEffect(() => subscribeSystemTheme(), [])
+
+    // 主题切换过渡的能力门自检（空 transition 量首帧延迟，超预算本会话降级）。
+    // 由本组件触发一次即可——它是主题链路的组装点，且自检本身与档位无关
+    useEffect(() => {
+        void warmUpThemeTransition()
+    }, [])
 
     // 同步 DOM 三通道到 html 元素（同源同 effect，杜绝档位错位窗口）：
     // data-theme（解析后档位，highlight.css 等消费）+ .dark class（shadcn 组件消费）+

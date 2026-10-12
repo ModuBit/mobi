@@ -61,6 +61,7 @@
 @import './styles/antd.css';
 @import './styles/scrollbar.css';
 @import './styles/modes.css';
+@import './styles/view-transition.css';
 @import './styles/highlight.css';
 @import './styles/shiki.css';
 @import './styles/openui.css';

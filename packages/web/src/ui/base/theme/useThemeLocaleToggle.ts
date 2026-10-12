@@ -15,12 +15,14 @@
  */
 
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
+import { switchTheme } from '@/core/lib/themeTransition'
 
 export function useThemeLocaleToggle() {
-    const { theme, systemIsDark, setTheme, locale, setLocale } = useUiStore()
+    const { theme, systemIsDark, locale, setLocale } = useUiStore()
     const resolvedTheme = resolveTheme(theme, systemIsDark)
 
-    const toggleTheme = () => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
+    // 换档走 switchTheme（View Transition 编排 + 主题写入口），不直接调 store.setTheme
+    const toggleTheme = () => switchTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
     const toggleLocale = () => setLocale(locale === 'zh' ? 'en' : 'zh')
 
     return { resolvedTheme, locale, toggleTheme, toggleLocale }

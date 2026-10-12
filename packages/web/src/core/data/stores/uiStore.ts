@@ -19,7 +19,7 @@ import { persist } from 'zustand/middleware'
 import i18n from '@/core/config/i18n'
 
 // 主题（支持 system）
-type Theme = 'light' | 'dark' | 'system'
+export type Theme = 'light' | 'dark' | 'system'
 // 语言
 type Locale = 'zh' | 'en'
 
