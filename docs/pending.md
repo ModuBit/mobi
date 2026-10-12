@@ -1166,3 +1166,51 @@ agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服
 **范围**：`grep 'Space direction='` 命中 3 文件——`features/chat/userBlocks/UserBlocksView.tsx`、`features/terminal/VirtualKeyEditor.tsx`、`features/terminal/VirtualKeyPicker.tsx`。
 
 **修法方向**：三处 `direction="..."` 改 `orientation="..."`，antd v6 语义不变，纯机械改名。
+
+## 117. 记忆自动注入的默认档与成本模型待讨论（2026-10-12 实施中提出）
+
+> 讨论项，勿当定论。当前已按「默认关」落地（见下方），但方案本身需要更完整的论证——尤其是「关掉是否伤了记忆特性的价值主张」。
+
+**背景**：hindsight 插件的 `UserPromptSubmit` hook 每轮往消息里注入两段——`<hindsight_memory>`（reflect 合成的答案，实测 43～7694 字符）与 `<hindsight_knowledge_refresh>`（知识页目录 + 工具指南，源码注释自述 ~2KB）。注入在 2026-10-12 被暴露成 mobi 设置 `memory.autoInject` / `memory.pageRefreshEveryTurns`（写进 mobi 管理的 per-scope 配置文件透传给插件），并把默认**从插件默认 `reflect` + 每轮，翻转为 `none` + `0`**。
+
+**实测数据（2026-10-12）**：
+
+- 注入频率：目录块默认 `pageRefreshEveryTurns=1` → **每轮**注入（`<hindsight_knowledge_refresh>` 恒在）；`<hindsight_memory>` 仅当轮 reflect 成功才注入
+- 成本：作者注释实测「刷新频率 10→1 使命中率 15%→32.5%，代价是 ~2KB/轮，靠 prompt cache 摊薄」
+- reflect 目前**持续失败**：qwen3.8-flash 的 thinking 模式 × 插件强制 `tool_choice=required` → HTTP 400（已用 `HINDSIGHT_API_LLM_EXTRA_BODY={"enable_thinking":false}` 修）；且 reflect 内部检索会撞上本地 reranker 的 ~90s → 超时降级。
+- 故当前实际注入路径多为 `pages` 兜底（轻），`reflect` 合成很少真正生效
+
+**待讨论**：
+
+1. **默认该不该关？** 关 = 记忆变成纯 opt-in 工具（模型自己 `hindsight_*` 调用），开箱即用的「顺手召回」价值丧失；不关 = 每轮 token 成本。是否分档默认（normal/open 关、isolated 开）？
+2. **默认是否该退一步选 `pages`**——保留「本仓有记忆可查」的信号（最轻），比 `none` 更符合记忆特性的卖点？
+3. **成本模型**：目录块 ~2KB/轮是否值得？能否改成「首轮注入 + 之后只在有新页时注入」？
+4. **reflect 的价值**：修复 reranker 后 reflect 能跑通的话，合成答案的收益是否值得每轮一次 LLM 往返？
+5. 与 pending #118 联动：reranker 不解决，reflect 路径永远是失败的。
+
+**相关文件**：`packages/shared/src/memorySettings.ts`、`packages/daemon/src/config/memorySettings.ts`（`buildMemoryManagedConfig`）、`packages/web/src/features/settings/sections/MemorySection.tsx`；插件侧 `packages/cli/plugins/memory-hindsight/dist/claude-hook.js`。
+
+**注**：改动尚未上线（需重新构建二进制）；上线后所有既有 hindsight 会话从下个新会话起不再自动注入。
+
+## 118. hindsight reranker 换云服务（2026-10-12 提出）
+
+**现状/根因**：`deploy/hindsight/docker/.env` 现用 `HINDSIGHT_API_RERANKER_PROVIDER=local`（`cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`）。本地 cross-encoder 是 recall 耗时的主因——实测 recall 46～72s，其中 **99.8% 是本地 rerank**（300 候选在 2 CPU 上跑 91.5s）。它会连带拖垮 reflect（内部检索撞 90s → 20s 超时 → 降级 fallback，见 pending #117）。
+
+**改法**：切云端 reranker（DashScope `qwen3-rerank`）。配置项 `.env.example` 已预留：
+
+```bash
+HINDSIGHT_API_RERANKER_PROVIDER=alibaba
+HINDSIGHT_API_RERANKER_ALIBABA_API_KEY=sk-你的DashScope-key
+```
+
+**坑（源码核实）**：
+
+1. `engine/search/reranking.py` 里 `RERANK_URL = "https://dashscope.aliyuncs.com/compatible-api/v1/reranks"` 是 **硬编码**（写死在 alibaba provider 分支）——换 endpoint 或非阿里服务需改代码/看是否有可配 URL。
+2. 需要一把 DashScope key（与 embeddings 同源可用同一把）。
+3. 读路径变成**有网络依赖**：离线/DashScope 抖动时 recall 会失败，需确认插件的失败回退（本地 passthrough / 报错）是否可接受。
+4. `HINDSIGHT_API_ENABLE_RERANKING=false` 是另一条路（RRF passthrough，91s→<0.3s），但**精度掉**且此刻 semantic 下限 0.3 成唯一闸——若要关 rerank，应同步上调 `min_scores.semantic`。
+
+**收益（预期）**：recall 从 ~60s → 亚秒级；卸掉本地模型省 VM 内存 ~200–400MB；reflect 不再因 rerank 超时而失败。
+
+**待验证**：云 rerank 的端到端延迟 / 计费 / 与本地版排序质量对比（真机跑同一批 query 对比 top-k 命中）。
+
