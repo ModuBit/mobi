@@ -361,7 +361,15 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
                     tabBarStyle={{ padding: 'max(0px, env(safe-area-inset-top)) 12px 0', margin: 0 }}
                     // 在线：「+」与 rightChrome 同在 tab 栏右端。离线时整组改浮动定位（见下），
                     // 保持可用——openFile/terminal/review 在休眠会话下照常（daemon 自动唤醒）
-                    tabBarExtraContent={active ? { right: <>{addTabMenu}{rightChrome}</> } : undefined}
+                    // right 必须是**单个**节点：antd 把它直接塞进 `display:block` 的
+                    // .ant-tabs-extra-content，多子节点会各自成块、容器宽度被算成「最宽的那个」，
+                    // 「+」就被挤到独立一行。包一层 flex 行，容器宽度才等于整行内容宽。
+                    tabBarExtraContent={active ? { right: (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {addTabMenu}
+                            {rightChrome}
+                        </div>
+                    ) } : undefined}
                 />
             )}
             {everExpanded && showEmpty && (

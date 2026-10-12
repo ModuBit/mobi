@@ -169,6 +169,18 @@ describe('InspectorPane', () => {
         expect(screen.getByRole('button', { name: 'session.inspector.addTab' })).toBeInTheDocument()
     })
 
+    it('「+」与右侧 chrome 同处一个行容器（extra-content 是 block，多子节点会各自成块被挤成两行）', () => {
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const { container } = renderWithClient(<InspectorPane sessionId="s1" />)
+        const extra = container.querySelector('.ant-tabs-extra-content')
+        expect(extra).toBeTruthy()
+        // antd 把 tabBarExtraContent.right 直接塞进 display:block 的 .ant-tabs-extra-content；
+        // 传 Fragment 展开成多个块级子节点时，容器宽度被算成「最宽的那个」，
+        // 「+」就会独占一行、chrome 掉到下一行。故右侧必须是单个 flex 行容器。
+        expect(extra!.children).toHaveLength(1)
+    })
+
     it('「+」是 tab 栏附属动作（不在 role=tab 内）：打开菜单后不被 tab 抢焦点而立即关闭', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         useWorkspaceStore.getState().openFileTreeTab('s1')
