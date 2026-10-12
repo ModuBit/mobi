@@ -33,19 +33,16 @@ const base = require('./.dependency-cruiser.js')
  * ContextRing+ContextBreakdown/ClearStateButton；useDirectoryListing 下沉 core/data/hooks）。
  */
 const FEATURE_ISOLATION_EXEMPT = [
-  /* ===== chat（3 文件：ToolCallBlock 引 tool-card 呈现注册表；ChatContainer 引 composer；ArtifactInlineViews 引 files——注入化裁决中）===== */
+  /* ===== chat（1 文件：ChatContainer 引 composer；ArtifactInlineViews 引 files——注入化裁决中）===== */
   '^packages/web/src/features/chat/artifact/ArtifactInlineViews\\.tsx$',
-  '^packages/web/src/features/chat/blocks/ToolCallBlock\\.tsx$',
   '^packages/web/src/features/chat/ChatContainer\\.tsx$',
-  /* ===== composer（3 文件：ChatComposer 引 chat+sketchpad；ComposerInfoPanel 引 tool-card；QuoteChipBar 引 chat）===== */
+  /* ===== composer（3 文件：ChatComposer 引 chat+sketchpad；ComposerInfoPanel 引 chat 受理卡；QuoteChipBar 引 chat）===== */
   '^packages/web/src/features/composer/ChatComposer\\.tsx$',
   '^packages/web/src/features/composer/ComposerInfoPanel\\.tsx$',
   '^packages/web/src/features/composer/QuoteChipBar\\.tsx$',
   /* ===== session（2 文件：引 chat/review/files/layout 等，页面壳编排）===== */
   '^packages/web/src/features/session/ChatPane\\.tsx$',
   '^packages/web/src/features/session/InspectorPane\\.tsx$',
-  /* ===== tool-card（1 文件：AgentDrawerContent 引 chat 气泡装配，三角一角）===== */
-  '^packages/web/src/features/tool-card/AgentDrawerContent\\.tsx$',
 ]
 
 const featuresDir = path.resolve(__dirname, 'packages/web/src/features')

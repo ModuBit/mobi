@@ -47,7 +47,7 @@ vi.mock('@/ui/toolIcons', async (importOriginal) => {
 })
 
 // mock ToolDetailDrawer：open 时渲染标记节点，供 drawer 开合断言
-vi.mock('@/features/tool-card/ToolDetailDrawer', () => ({
+vi.mock('@/features/chat/tool-card/ToolDetailDrawer', () => ({
     ToolDetailDrawer: ({ open }: { open?: boolean }) =>
         open ? <div data-testid="tool-detail-drawer" role="dialog" /> : null,
 }))

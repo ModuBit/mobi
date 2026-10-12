@@ -17,8 +17,8 @@
 import { theme as antTheme } from 'antd'
 import { TeamOutlined, UserOutlined } from '@ant-design/icons'
 import { getField, isObject } from '@mobi/shared'
-import type { ToolViewProps } from '@/features/tool-card/views/_all'
-import { extractTextFromResult } from '@/features/tool-card/views/_results'
+import type { ToolViewProps } from '@/features/chat/tool-card/views/_all'
+import { extractTextFromResult } from '@/features/chat/tool-card/views/_results'
 
 const { useToken } = antTheme
 

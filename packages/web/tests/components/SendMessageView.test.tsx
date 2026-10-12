@@ -18,9 +18,9 @@ import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
-import { SendMessageView, SendMessageFullView } from '@/features/tool-card/views/SendMessageView'
-import { getToolFullViewComponent } from '@/features/tool-card/views/_all'
-import type { ToolViewProps } from '@/features/tool-card/views/_all'
+import { SendMessageView, SendMessageFullView } from '@/features/chat/tool-card/views/SendMessageView'
+import { getToolFullViewComponent } from '@/features/chat/tool-card/views/_all'
+import type { ToolViewProps } from '@/features/chat/tool-card/views/_all'
 import type { ToolInfo } from '@/domain/tool/types'
 
 // mock i18next：t 直接返回 key 本身，断言文案用 key 值

@@ -15,7 +15,7 @@
  */
 
 import { theme as antTheme } from 'antd'
-import type { ToolViewProps } from '@/features/tool-card/views/_all'
+import type { ToolViewProps } from '@/features/chat/tool-card/views/_all'
 import { getInputStringAny } from '@/core/lib/toolInputUtils'
 import { extractTextFromResult, placeholderForState } from './_results'
 import { ToolViewPanel } from './ToolViewPanel'

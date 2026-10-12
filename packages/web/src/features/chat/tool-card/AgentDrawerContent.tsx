@@ -27,7 +27,7 @@ import { Markdown } from '@/ui/Markdown'
 import { buildChatBubbleItems } from '@/features/chat/buildBubbleItems'
 import { BUBBLE_ROLES } from '@/ui/bubbleRoles'
 import { useAgentSidechain } from './useAgentSidechain'
-import { extractTextFromResult } from '@/features/tool-card/views/_results'
+import { extractTextFromResult } from '@/features/chat/tool-card/views/_results'
 import { AgentLoadingBubble } from '@/ui/AgentLoadingBubble'
 import { isTeamAgentTool } from './knownTools'
 

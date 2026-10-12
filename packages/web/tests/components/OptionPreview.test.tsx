@@ -24,7 +24,7 @@ import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
-import { OptionPreview } from '@/features/tool-card/OptionPreview'
+import { OptionPreview } from '@/features/chat/tool-card/OptionPreview'
 
 // mock Markdown：回显内容，便于区分「走 Markdown」vs「走 dangerouslySetInnerHTML 注入」
 vi.mock('@/ui/Markdown', () => ({

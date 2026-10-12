@@ -18,7 +18,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
-import { OptionRow } from '@/features/tool-card/OptionRow'
+import { OptionRow } from '@/features/chat/tool-card/OptionRow'
 
 afterEach(cleanup)
 

@@ -15,7 +15,7 @@
  */
 
 import type { ReactNode } from 'react'
-import type { ToolViewProps } from '@/features/tool-card/views/_all'
+import type { ToolViewProps } from '@/features/chat/tool-card/views/_all'
 import { parseAskUserQuestionInput, normalizeAnswers } from '@/domain/tool/askUserQuestion'
 import { theme as antTheme } from 'antd'
 import { OptionRow } from '../OptionRow'

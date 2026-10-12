@@ -64,7 +64,7 @@ vi.mock('@/core/data/api/client', async (orig) => {
     }
 })
 
-import { ToolCard } from '@/features/tool-card'
+import { ToolCard } from '@/features/chat/tool-card'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { queryClient } from '@/core/lib/queryClient'
 import type { ToolCallBlock } from '@/domain/tool/types'

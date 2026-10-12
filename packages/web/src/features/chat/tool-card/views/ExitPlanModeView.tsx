@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ToolViewProps } from '@/features/tool-card/views/_all'
+import type { ToolViewProps } from '@/features/chat/tool-card/views/_all'
 import { isObject } from '@mobi/shared'
 import { Markdown } from '@/ui/Markdown'
 

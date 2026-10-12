@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import type { ToolViewProps } from '@/features/tool-card/views/_all'
-import { ChecklistList, extractUpdatePlanChecklist } from '@/features/tool-card/checklist'
+import type { ToolViewProps } from '@/features/chat/tool-card/views/_all'
+import { ChecklistList, extractUpdatePlanChecklist } from '@/features/chat/tool-card/checklist'
 
 /**
  * UpdatePlan 工具视图

@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import type { ToolViewProps } from '@/features/tool-card/views/_all'
+import type { ToolViewProps } from '@/features/chat/tool-card/views/_all'
 import { isObject } from '@mobi/shared'
-import { DiffView } from '@/features/tool-card/views/DiffView'
+import { DiffView } from '@/features/chat/tool-card/views/DiffView'
 import { patchForEdit } from './structuredPatchUtils'
 
 type Edit = { old_string: string; new_string: string }

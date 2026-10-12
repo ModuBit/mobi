@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { getToolPresentation } from '@/features/tool-card/knownTools'
+import { getToolPresentation } from '@/features/chat/tool-card/knownTools'
 
 describe('文件工具标题', () => {
     it.each(['Read', 'Edit', 'MultiEdit', 'Write'])('%s 兼容 file 字段', (toolName) => {

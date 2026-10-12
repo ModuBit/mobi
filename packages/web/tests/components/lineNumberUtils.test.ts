@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { calculateLineNumWidth, getMaxLineNum, calculateDiffStatsFromLines, formatDiffStats } from '@/features/tool-card/views/lineNumberUtils'
+import { calculateLineNumWidth, getMaxLineNum, calculateDiffStatsFromLines, formatDiffStats } from '@/features/chat/tool-card/views/lineNumberUtils'
 
 describe('lineNumberUtils', () => {
     describe('calculateLineNumWidth', () => {
