@@ -159,18 +159,24 @@ describe('buildMemoryManagedConfig（三档配置生成）', () => {
         expect(cfg.bankId).toBe('my-pool')
     })
 
-    it('注入策略缺省落定 mobi 默认（none + 0），不依赖插件内置默认', () => {
+    it('注入策略缺省落定 mobi 默认（none + 从不刷新）；「从不」编码为 -1 哨兵', () => {
         const cfg = JSON.parse(buildMemoryManagedConfig(active, 'demo'))
         expect(cfg.autoInject).toBe('none')
-        expect(cfg.pageRefreshEveryTurns).toBe(0)
+        // 0 会被插件的 `|| 1` 吞成 1（每轮），故 mobi 用负值承载「从不」——见 encodePageRefreshInterval
+        expect(cfg.pageRefreshEveryTurns).toBe(-1)
     })
 
-    it('注入策略设置后透传（显式开档）', () => {
+    it('注入策略设置后透传：正数原样、0（= 从不）编码为 -1', () => {
         const cfg = JSON.parse(buildMemoryManagedConfig(
             { ...active, autoInject: 'reflect', pageRefreshEveryTurns: 3 }, 'demo',
         ))
         expect(cfg.autoInject).toBe('reflect')
         expect(cfg.pageRefreshEveryTurns).toBe(3)
+
+        const off = JSON.parse(buildMemoryManagedConfig(
+            { ...active, pageRefreshEveryTurns: 0 }, 'demo',
+        ))
+        expect(off.pageRefreshEveryTurns).toBe(-1)
     })
 })
 

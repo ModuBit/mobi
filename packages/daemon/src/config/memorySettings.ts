@@ -56,6 +56,25 @@ const GLOBAL_BANK_DEFAULT = 'mobi-global'
 const ISO_BANK_PREFIX = 'mobi-iso-'
 
 /**
+ * 「知识页目录刷新间隔」的 mobi→插件编码哨兵。
+ *
+ * mobi 语义：0 = 从不刷新（设置页文案如此）。但 upstream 插件用
+ * `raw.pageRefreshEveryTurns || 1` 解析——0 是 falsy，会被当成「未配置」吞成 1
+ * （即每轮），且**没有任何值**能表达「从不」。插件真正判据是下游的
+ * `if (cadence > 0 && turns % cadence === 0)`。
+ *
+ * 故用 -1 承载「从不」：负数 truthy → 穿过 `||`；又让 `cadence > 0` 为假 → 永不注入。
+ * 因此 **vendored dist 保持上游原样**（不改插件代码，见 VENDOR-NOTES「配置契约」）。
+ * 上游若哪天把 `||` 修成 `??`，-1 依然成立，无需回头改这里。
+ */
+const PAGE_REFRESH_NEVER = -1
+
+/** 把 mobi 语义（0 = 从不）编码为插件可理解的间隔值（见 PAGE_REFRESH_NEVER） */
+function encodePageRefreshInterval(turns: number): number {
+    return turns > 0 ? turns : PAGE_REFRESH_NEVER
+}
+
+/**
  * 会话记忆裁决结果：
  * - active=false 携带原因（off / 配置非法 / workspace 被排除），会话正常启动不挂载
  * - active=true 携带注入子进程的 env
@@ -209,11 +228,11 @@ export function buildMemoryManagedConfig(
         // 写入恒定打项目溯源 tag（展开值）——三档写路径单源，档位差异只体现在召回侧
         retainTags: [`project:${tag}`],
         ...(mode === 'normal' ? { recallOptions: { tags: [`project:${tag}`], tags_match: 'any' } } : {}),
-        // 注入策略：mobi 显式落定默认（none = 不自动注入 + 0 = 不刷目录），不依赖插件内置
+        // 注入策略：mobi 显式落定默认（none = 不自动注入 + 从不刷目录），不依赖插件内置
         // 默认（reflect + 每轮）。文件层盖过 env，因此也屏蔽用户 shell 自有的 HINDSIGHT_*——
         // 与「mobi 管理配置文件」的隔离意图一致。想开自动注入时由设置在设置里显式选档
         autoInject: memory.autoInject ?? 'none',
-        pageRefreshEveryTurns: memory.pageRefreshEveryTurns ?? 0,
+        pageRefreshEveryTurns: encodePageRefreshInterval(memory.pageRefreshEveryTurns ?? 0),
         customPages: {
             'User Profile': USER_PROFILE_PAGE,
         },

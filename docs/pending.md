@@ -1171,7 +1171,7 @@ agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服
 
 > 讨论项，勿当定论。当前已按「默认关」落地（见下方），但方案本身需要更完整的论证——尤其是「关掉是否伤了记忆特性的价值主张」。
 
-**背景**：hindsight 插件的 `UserPromptSubmit` hook 每轮往消息里注入两段——`<hindsight_memory>`（reflect 合成的答案，实测 43～7694 字符）与 `<hindsight_knowledge_refresh>`（知识页目录 + 工具指南，源码注释自述 ~2KB）。注入在 2026-10-12 被暴露成 mobi 设置 `memory.autoInject` / `memory.pageRefreshEveryTurns`（写进 mobi 管理的 per-scope 配置文件透传给插件），并把默认**从插件默认 `reflect` + 每轮，翻转为 `none` + `0`**。
+**背景**：hindsight 插件的 `UserPromptSubmit` hook 每轮往消息里注入两段——`<hindsight_memory>`（reflect 合成的答案，实测 43～7694 字符）与 `<hindsight_knowledge_refresh>`（知识页目录 + 工具指南，源码注释自述 ~2KB）。注入在 2026-10-12 被暴露成 mobi 设置 `memory.autoInject` / `memory.pageRefreshEveryTurns`（写进 mobi 管理的 per-scope 配置文件透传给插件），并把默认**从插件默认 `reflect` + 每轮，翻转为 `none` + 从不**（mobi 语义 0 = 从不；写进配置文件时编码为 `-1` 哨兵，理由见 VENDOR-NOTES「配置契约」）。
 
 **实测数据（2026-10-12）**：
 

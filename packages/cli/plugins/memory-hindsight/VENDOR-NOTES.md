@@ -26,24 +26,30 @@ coding-agent.json 携带；见 `.scratch/agent-memory/spec.md`）。
   bundledPlugins.test 锁定**
 - `skills/hindsight/SKILL.md` — 上游 `skill/SKILL.md` 原样拷贝（生成物，勿手改）
 
-## 本地补丁（改的是 dist 上游代码，**re-vendor 会冲掉**）
+## 配置契约（mobi ↔ 插件；**不改 dist 代码**）
 
-### pageRefreshEveryTurns 的 0 档（2026-10-12）
+**本目录的 dist 与上游发布逐字节一致，不打任何本地补丁**——所有策略差异一律落在 mobi
+生成的那份配置文件上。回归守卫：`packages/cli/tests/runtime/runtimeAssets.test.ts` 断言
+6 个入口保持上游 `raw.pageRefreshEveryTurns || 1` 形态（被打补丁即红）。
 
-`raw.pageRefreshEveryTurns || 1` → `raw.pageRefreshEveryTurns ?? 1`，6 个入口各一处
-（claude-hook / claude-sessionstart-hook / claude-stop-hook / mcp-server / daemon-start / deepen）。
+### 为什么不用 `pageRefreshEveryTurns: 0` 表达「从不刷新」
 
-**为什么**：上游用 `||` 把「未配置」与「0」混同，0 被吞成 1 → 知识页目录块（~2KB/轮）**每轮**
-注入（`if (cadence > 0 && turns % cadence === 0)`），而上游没有任何值能表达「从不注入」。
-mobi 的设置（`memory.pageRefreshEveryTurns`，schema `int().min(0)`，UI 文案「0 = 从不刷新」）
-把 0 定义为关，故必须让 0 活到插件里。
+上游用 `||` 解析该键：`0` 是 falsy → 被当成「未配置」吞成 `1`，于是上游**没有任何值**能
+表达「从不」。真正的判据在下游 `if (cadence > 0 && turns % cadence === 0)`。
 
-**回归守卫**：`packages/cli/tests/runtime/runtimeAssets.test.ts` 断言 dist 内无 `|| 1` 形态、
-`?? 1` 恰好 6 处——re-vendor 丢补丁即红。
+故 mobi 用 **`-1` 哨兵** 承载「从不」：负数 truthy 能穿过 `||`，又让 `cadence > 0` 为假 →
+永不注入。编码落在 daemon：`packages/daemon/src/config/memorySettings.ts` 的
+`encodePageRefreshInterval`（mobi 对外语义仍是「0 = 从不」，只在写配置文件那一刻翻译）。
 
-**生效链路**：dist 打进二进制（embeddedAssets）→ daemon 启动时解包到
+上游若哪天把 `||` 修成 `??`，`-1` 依然成立，**无需回头改任何地方**。风险：上游若给该键
+加数值校验（如夹到 ≥0），哨兵会被夹回 0 → 又被 `||` 吞成 1（静默失效）——升级时留意。
+
+### 变更生效链路
+
+dist 打进二进制（embeddedAssets）→ daemon 启动时解包到
 `<MOBI_HOME>/runtime/<ver>/plugins/memory-hindsight/`（**探针文件在即跳过重写**）。
-故改完需重建二进制；已解包的机器要删掉该 runtime 插件目录让它重新释放（版本号不变时不会自动重放）。
+故改配置文件相关逻辑后需重建二进制；已解包的机器要删掉该 runtime 插件目录让它重新释放
+（版本号不变时不会自动重放）。
 
 ## 重新 vendor（升级流程）
 
@@ -56,8 +62,8 @@ cp package/skill/SKILL.md <本目录>/skills/hindsight/SKILL.md
 ```
 
 升级前必读：CC hook 协议版本间有变动（上游加 hook 事件需重跑 install 的场景），升级后须跑
-memory 插件的 PoC 验证（.scratch/agent-memory/issues/01 验收项）。**升级后还要重打上面「本地
-补丁」一节的改动**（runtimeAssets.test 会红着提醒）。
+memory 插件的 PoC 验证（.scratch/agent-memory/issues/01 验收项），并复核上面「配置契约」一节
+——`||` 形态是否变了（runtimeAssets.test 会红着提醒）、`-1` 哨兵是否仍有效。
 
 ## 运行要求
 

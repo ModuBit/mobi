@@ -109,19 +109,20 @@ describe('vendored 资产清单对齐（embeddedAssets ↔ MEMORY_HINDSIGHT_VEND
 });
 
 /**
- * 本地补丁守卫：vendored dist 被 re-vendor 整目录覆盖，补丁会静默丢失。
- * 补丁内容与理由见 plugins/memory-hindsight/VENDOR-NOTES.md「本地补丁」一节。
+ * vendored dist 必须保持上游原样——mobi 的策略差异一律落在**配置文件**，不改 dist 代码。
+ * 「从不刷新」用 -1 哨兵承载（上游 `|| 1` 会把 0 吞成 1），编码在 daemon 侧
+ * （见 VENDOR-NOTES「配置契约」）。此处守住「有人又往压缩产物里打补丁」。
  */
-describe('vendored 补丁：pageRefreshEveryTurns 的 0 档', () => {
+describe('vendored dist 保持上游原样（禁止本地补丁）', () => {
   const distFiles = () => readdirSync(join(projectPath(), 'plugins', 'memory-hindsight', 'dist'))
     .filter((f) => f.endsWith('.js'))
     .map((f) => ({ name: f, src: readFileSync(join(projectPath(), 'plugins', 'memory-hindsight', 'dist', f), 'utf-8') }));
 
-  it('解析默认值用 ?? 而非 ||——0（mobi 的「从不刷新」档）不能被吞成 1（每轮）', () => {
+  it('pageRefreshEveryTurns 解析保持上游 `|| 1` 形态（被打补丁即红）', () => {
     const files = distFiles();
-    expect(files.filter((f) => f.src.includes('pageRefreshEveryTurns: raw.pageRefreshEveryTurns || 1')).map((f) => f.name)).toEqual([]);
+    expect(files.filter((f) => f.src.includes('pageRefreshEveryTurns: raw.pageRefreshEveryTurns ?? 1')).map((f) => f.name)).toEqual([]);
     // 0.8.0 的 6 个入口各自内联一份配置解析（tsup 逐入口自包含）；数量变化 = 上游结构变了，
-    // 须复核补丁是否还落在全部解析点
-    expect(files.filter((f) => f.src.includes('pageRefreshEveryTurns: raw.pageRefreshEveryTurns ?? 1'))).toHaveLength(6);
+    // 须复核配置契约（-1 哨兵）是否仍旧有效
+    expect(files.filter((f) => f.src.includes('pageRefreshEveryTurns: raw.pageRefreshEveryTurns || 1'))).toHaveLength(6);
   });
 });

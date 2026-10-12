@@ -85,7 +85,7 @@ export const MemorySettingsSchema = z.object({
     bankName: z.string().min(1).optional(),
     /** 会话内自动注入模式（缺省 = mobi 默认 none：不自动注入）；写进 mobi 管理的 hindsight 配置文件透传给插件 */
     autoInject: MemoryAutoInjectModeSchema.optional(),
-    /** 知识页目录刷新间隔（轮）；0 = 从不刷新（缺省 = mobi 默认 0） */
+    /** 知识页目录刷新间隔（轮）；0 = 从不刷新（缺省 = mobi 默认 0）。落进配置文件时由 daemon 编码为插件可识别值 */
     pageRefreshEveryTurns: z.number().int().min(0).optional(),
 })
 export type MemorySettings = z.infer<typeof MemorySettingsSchema>
