@@ -24,6 +24,8 @@
  *
  * 用 context 而不是逐层传 prop：视图由 `getToolFullViewComponent(tool.name)` 动态选出，
  * 形状统一在 `ToolViewProps`，为一个「谁在用我」的差异去污染所有视图的入参不划算。
+ * 值本身就是那个数（`null` 表不限高），不再包一层对象——只有 diff 一项消费它，
+ * 多一层壳只让每个消费点都多写一次解构。
  */
 
 import { createContext, useContext } from 'react'
@@ -32,15 +34,8 @@ import type { ReactNode } from 'react'
 /** 消息卡内 diff 的高度上限（px）：超过就内滚 */
 export const INLINE_DIFF_MAX_HEIGHT = 320
 
-interface ToolViewScope {
-    /** diff 高度上限；null = 不限高（容器自己滚） */
-    diffMaxHeight: number | null
-}
-
-const INLINE_SCOPE: ToolViewScope = { diffMaxHeight: INLINE_DIFF_MAX_HEIGHT }
-const FULL_HEIGHT_SCOPE: ToolViewScope = { diffMaxHeight: null }
-
-const ToolViewScopeContext = createContext<ToolViewScope>(INLINE_SCOPE)
+/** 值 = diff 高度上限；null = 不限高（容器自己滚） */
+const ToolDiffMaxHeightContext = createContext<number | null>(INLINE_DIFF_MAX_HEIGHT)
 
 /** fullHeight：所在容器自己负责滚动（工具详情 sheet / 抽屉），内容一律全高 */
 export function ToolViewScopeProvider({ fullHeight = false, children }: {
@@ -48,12 +43,12 @@ export function ToolViewScopeProvider({ fullHeight = false, children }: {
     children: ReactNode
 }) {
     return (
-        <ToolViewScopeContext.Provider value={fullHeight ? FULL_HEIGHT_SCOPE : INLINE_SCOPE}>
+        <ToolDiffMaxHeightContext.Provider value={fullHeight ? null : INLINE_DIFF_MAX_HEIGHT}>
             {children}
-        </ToolViewScopeContext.Provider>
+        </ToolDiffMaxHeightContext.Provider>
     )
 }
 
-export function useToolViewScope(): ToolViewScope {
-    return useContext(ToolViewScopeContext)
+export function useToolDiffMaxHeight(): number | null {
+    return useContext(ToolDiffMaxHeightContext)
 }

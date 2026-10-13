@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useRef } from 'react'
+import { Z_OVERLAY } from '@/core/config/theme/cssVars'
 
 /**
  * 移动端弹层层号：**后领的更大 = 后打开的压在先打开的上面**（不分来源）。
@@ -33,8 +34,8 @@ import { useEffect, useRef } from 'react'
 
 /** 一个浮层占两个号：基准 = 背板，基准 + 1 = 主体（见 BottomSheet 的 --sheet-z / --sheet-z-top） */
 const STEP = 2
-/** 与 core/config/theme/cssVars.ts 的 --mobi-z-overlay 同源（shadcn 弹层整体高于 antd 的 1000 起） */
-const LAYER_BASE = 1080
+/** 与 --mobi-z-overlay 同源（shadcn 弹层整体高于 antd 的 1000 起）——同一个数只能有一处字面量 */
+const LAYER_BASE = Z_OVERLAY
 
 let seq = 0
 /** 当前**开着**的浮层数：归零时层号从头开始 */

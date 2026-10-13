@@ -48,14 +48,15 @@
 .overlay {
     position: fixed;
     inset: 0;
-    z-index: var(--sheet-z, 1080);
+    z-index: var(--sheet-z, var(--mobi-z-overlay));
     background: oklch(16% 0 0 / 0.34);
 }
 :global(html[data-theme='dark']) .overlay {
     background: oklch(0% 0 0 / 0.52);
 }
-/* 离场途中：下层不再被遮罩拦截，sheet 也不可再被抓取（Radix 会给 overlay 写 inline
-   pointer-events: auto，只有 !important 才压得住） */
+/* 离场途中：下层不再被遮罩拦截，sheet 也不可再被抓取。overlay 的 data-state 由组件自己写
+   （Radix 的 Overlay 在 modal={false} 下不渲染，那套 data-state 一并没有了）；sheet 的取自
+   Radix，它会给 sheet 写 inline pointer-events: auto——只有 !important 压得住 */
 .overlay[data-state='closed'],
 .sheet[data-state='closed'] {
     pointer-events: none !important;
@@ -68,7 +69,7 @@
     right: 0;
     bottom: calc(var(--sheet-extension) * -1);
     left: 0;
-    z-index: var(--sheet-z-top, 1081);
+    z-index: var(--sheet-z-top, calc(var(--mobi-z-overlay) + 1));
     display: flex;
     flex-direction: column;
     width: min(100%, 36rem);

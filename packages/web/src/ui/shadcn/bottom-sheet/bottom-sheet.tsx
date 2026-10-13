@@ -50,6 +50,11 @@
  *     （`resolveDetentRelease`：投影 + 快甩至少跨一档）都是 Mobi 版实现。
  *     **`peek={false}` 可整体关掉这条**（菜单、表单这类「一看就要看全」的面板：被裁掉的行对
  *     它们不是「还有更多」，是残缺）——peekY 恒为 0，与矮面板走同一条单档路径。
+ *  8. **modal={false} 的代价写在明处**（换的是「不要 Radix 的滚动锁」，见 Root 处注释）：
+ *     Radix 的 FocusScope 与背景 aria-hidden 都只在 modal 档跑，所以本组件**不做焦点陷阱**
+ *     （Tab 可以从 sheet 走到页面其他元素）也**不给背景加 aria-hidden**。面板内不要依赖
+ *     「焦点出不去」；背景的滚动由自建 bodyScrollLock 钉住（视觉与滚动上仍是模态）。
+ *     要重拾焦点陷阱得自己接 FocusScope——当前无此需求，先记在这里而不是让读者去猜。
  */
 
 import * as DialogPrimitive from '@radix-ui/react-dialog'
@@ -337,7 +342,7 @@ function Sheet({
         [reduced, y],
     )
 
-    /** 落档：先切档位状态再跑位移——`data-expanded`（决定内容区可否滚动）与读屏播报
+    /** 落档：先切档位状态再跑位移——`data-scroll-locked`（决定内容区可否滚动）与读屏播报
      *  必须立刻生效，等动画落定才切会让展开途中的内容闪一下 */
     const rest = useCallback(
         (next: Detent, velocity?: number) => {
@@ -367,14 +372,14 @@ function Sheet({
     )
 
     /** peek 档下 focus 到「还在屏幕外」的元素（Tab / 键盘）也应当把 sheet 展开，
-     *  否则焦点落在看不见的地方 */
+     *  否则焦点落在看不见的地方。已在 top 档的空转交给 expand（切档判据只此一处） */
     const handleBodyFocus = useCallback(
         (event: React.FocusEvent<HTMLDivElement>) => {
             const target = event.target
-            if (detentRef.current === 'top' || !(target instanceof Element)) return
-            if (target.getBoundingClientRect().bottom > window.innerHeight - 8) rest('top')
+            if (!(target instanceof Element)) return
+            if (target.getBoundingClientRect().bottom > window.innerHeight - 8) expand()
         },
-        [rest],
+        [expand],
     )
 
     // 遮罩强度是 sheet 位置的函数：拖拽中背景随之变亮/变暗，而不是按定时器淡入淡出。
@@ -628,7 +633,7 @@ function Sheet({
                 return
             }
             const next: Detent = landed === 0 ? 'top' : 'peek'
-            // 落档顺序有意为之：先切档位状态（data-expanded / 播报），再跑位移
+            // 落档顺序有意为之：先切档位状态（data-scroll-locked / 播报），再跑位移
             rest(next, velocity)
         },
         [closedY, height, peekY, rest, settleBack, y],
@@ -747,9 +752,12 @@ function Sheet({
             {/* 遮罩自己渲染：Radix 的 Overlay 在 modal={false} 下**根本不渲染**（源码里
                 `context.modal ? <DialogOverlayImpl/> : null`），而遮罩的视觉、层级、随位移变暗
                 本来就全归本组件。点它＝点在 Content 外部 → 走 DismissableLayer 的
-                onPointerDownOutside 关闭（下面 Content 上挂着） */}
+                onPointerDownOutside 关闭（下面 Content 上挂着）。
+                data-state 自己写：Radix 那套 data-state 随 Overlay 一起没了，而 CSS 的
+                「离场途中不拦截指针事件」正是按它判的（不写就整段滑出动画挡着下层点不到） */}
             <motion.div
                 data-testid="bottom-sheet-overlay"
+                data-state={isPresent ? 'open' : 'closed'}
                 className={styles.overlay}
                 style={{ opacity: backdrop, ['--sheet-z' as string]: layerZ } as unknown as CSSProperties}
             />
@@ -789,7 +797,7 @@ function Sheet({
                             opacity: presence,
                             '--sheet-extension': `${EXTENSION}px`,
                             '--sheet-max-height': maxHeight,
-                                                    '--sheet-z-top': layerZ + 1,
+                            '--sheet-z-top': layerZ + 1,
                         } as unknown as CSSProperties
                     }
                     tabIndex={-1}

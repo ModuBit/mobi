@@ -798,9 +798,9 @@ describe('BottomSheet', () => {
         expect(css).toMatch(/\.body \{[^}]*overflow-y: auto;/)
         // 底部安全区：触控余量与 home indicator 取大者（与旧底部抽屉同档）
         expect(css).toMatch(/padding-bottom: calc\(var\(--sheet-extension\) \+ max\(24px, env\(safe-area-inset-bottom/)
-        // 层号分层：z-index 不再写死 50/51
-        expect(css).toMatch(/z-index: var\(--sheet-z, 1080\)/)
-        expect(css).toMatch(/z-index: var\(--sheet-z-top, 1081\)/)
+        // 层号分层：z-index 不再写死 50/51，缺省回落也取自 --mobi-z-overlay（层号基线唯一来源）
+        expect(css).toMatch(/z-index: var\(--sheet-z, var\(--mobi-z-overlay\)\)/)
+        expect(css).toMatch(/z-index: var\(--sheet-z-top, calc\(var\(--mobi-z-overlay\) \+ 1\)\)/)
         // 标题行：三栏 grid（1fr 内容 1fr）——标题恒居中，extra/关闭按钮靠右
         expect(css).toMatch(/grid-template-columns: 1fr minmax\(0, auto\) 1fr/)
         expect(css).toMatch(/\.headText \{[^}]*grid-column: 2;/)

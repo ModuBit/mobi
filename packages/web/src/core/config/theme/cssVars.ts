@@ -148,8 +148,10 @@ export const SHADCN_TOKENS_STYLE_ID = 'mobi-shadcn-tokens'
  * shadcn/arc 弹层的统一 z-index 基线（spec D6）：antd 弹层 z 从 1000 起（mask/wrap），
  * shadcn 生态默认 z-50 会在空间重叠处被 antd 弹层整层盖住（票 03 实测）。
  * arc 组件源码经 var(--mobi-z-overlay) 消费此值；缺省回落 50 维持生态默认。
+ * **跨层唯一来源**：--mobi-z-overlay 与 ui/base/layout/overlayLayer 的层号基线是同一个数，
+ * 两处各写一份必然会漂（层号基线从本常量 import）。
  */
-const Z_OVERLAY = 1080
+export const Z_OVERLAY = 1080
 
 /** 把「变量名 → 取值」表渲染成 CSS 行（缩进与分号的格式只此一处，新增一类变量不必再抄一遍） */
 function renderVars<T>(entries: ReadonlyArray<readonly [string, T]>, render: (value: T) => string): string[] {

@@ -36,7 +36,7 @@ import type { StructuredPatch } from '@/domain/chat/types'
 import { FilePathText } from '@/ui/base/display/FilePathText'
 import { AutoHeightHost } from '@/ui/base/layout/AutoHeightHost'
 import { ToolViewPanel } from './ToolViewPanel'
-import { INLINE_DIFF_MAX_HEIGHT, useToolViewScope } from './toolViewScope'
+import { INLINE_DIFF_MAX_HEIGHT, useToolDiffMaxHeight } from './toolViewScope'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { PIERRE_BRIDGE_VARS } from '@/ui/base/theme/pierreTheme'
 
@@ -121,7 +121,7 @@ export function DiffView(props: {
     const { token } = useToken()
     const resolved = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark))
     // 消息卡内限高内滚；工具详情 sheet 里全高（容器自己滚，见 toolViewScope）
-    const { diffMaxHeight } = useToolViewScope()
+    const diffMaxHeight = useToolDiffMaxHeight()
 
     const name = props.filePath ?? '_'
     const hasPatches = !!props.structuredPatches && props.structuredPatches.length > 0
