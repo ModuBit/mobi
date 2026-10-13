@@ -110,7 +110,7 @@ html[data-theme='dark'] .x-markdown code {
     border: 1px solid var(--mobi-hairline);
     margin: 0.75em 0;
     width: 100%;
-    border-radius: 6px;
+    border-radius: var(--radius-icon);
     font-size: 0.875em;
     line-height: 1.5;
     table-layout: auto;

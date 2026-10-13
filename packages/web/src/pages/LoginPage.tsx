@@ -23,7 +23,6 @@ import {
     EyeInvisibleOutlined,
 } from '@ant-design/icons'
 import { BootLogPanel } from '@/features/login/BootLogPanel'
-import { shadcnLightToken, shadcnDarkToken } from '@/core/config/theme/tokens'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/core/data/stores/authStore'
@@ -154,11 +153,7 @@ const FormArea = styled.div`
     max-width: 380px;
     padding: 32px;
     border-radius: var(--radius-panel);
-    background: ${shadcnLightToken.colorBgBase};
-
-    html[data-theme='dark'] & {
-        background: ${shadcnDarkToken.colorBgBase};
-    }
+    background: var(--mobi-paper);
 `
 
 /** 欢迎标题 */

@@ -24,15 +24,11 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { resolve, dirname, join, relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
+import { resolve, relative } from 'node:path'
 import { NEUTRAL_LIGHT, NEUTRAL_DARK, SEMANTIC_LIGHT, SEMANTIC_DARK, type NeutralKey } from '@/core/config/theme/tokens'
 import { buildShadcnThemeCss } from '@/core/config/theme/cssVars'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const webRoot = resolve(here, '../../../..') // packages/web
-const designMd = readFileSync(resolve(webRoot, 'DESIGN.md'), 'utf-8')
+import { collectSourceFiles, readDesignBlock, WEB_ROOT } from '../../../helpers/themeGuards'
 
 /** DESIGN.md 里的档名 → tokens.ts 的键名 */
 const KEY_MAP: Record<string, NeutralKey> = {
@@ -51,12 +47,10 @@ const KEY_MAP: Record<string, NeutralKey> = {
     'hairline-strong': 'hairlineStrong',
 }
 
-/** 解析 frontmatter 里的一个色板块（正则，避免引入 yaml 依赖） */
+/** 解析 frontmatter 里的一个色板块 */
 function readDesignColors(block: 'colors' | 'colors-dark'): Record<string, string> {
-    const match = designMd.match(new RegExp(`^${block}:\\n((?:[ \\t].*\\n)+)`, 'm'))
-    if (!match) throw new Error(`DESIGN.md frontmatter 缺少 ${block} 块`)
     const out: Record<string, string> = {}
-    for (const line of match[1].split('\n')) {
+    for (const line of readDesignBlock(block)) {
         if (/^\s*#/.test(line)) continue // 块内注释
         const hit = line.match(/^\s{2}([a-z][a-z-]*):\s*"(#[0-9a-f]{6})"/)
         if (hit) out[hit[1]!] = hit[2]!
@@ -173,8 +167,8 @@ describe('配色与 DESIGN.md 一致性（文档与代码同源守卫）', () =>
         )
         const EXCEPTIONS = ['src/core/config/theme/tokens.ts'] // 档位表本身
         const offenders: string[] = []
-        for (const file of collectSourceFiles(resolve(webRoot, 'src'))) {
-            const rel = relative(webRoot, file)
+        for (const file of collectSourceFiles(resolve(WEB_ROOT, 'src'))) {
+            const rel = relative(WEB_ROOT, file)
             if (EXCEPTIONS.includes(rel)) continue
             for (const hit of readFileSync(file, 'utf-8').matchAll(/#[0-9a-fA-F]{6}/g)) {
                 if (rampValues.has(hit[0].toLowerCase())) offenders.push(`${rel} → ${hit[0]}`)
@@ -183,13 +177,3 @@ describe('配色与 DESIGN.md 一致性（文档与代码同源守卫）', () =>
         expect(offenders, '这些字面量应改成 token 引用或 var(--mobi-*)').toEqual([])
     })
 })
-
-function collectSourceFiles(dir: string): string[] {
-    const out: string[] = []
-    for (const entry of readdirSync(dir)) {
-        const full = join(dir, entry)
-        if (statSync(full).isDirectory()) out.push(...collectSourceFiles(full))
-        else if (/\.(ts|tsx|css)$/.test(entry)) out.push(full)
-    }
-    return out
-}

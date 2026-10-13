@@ -23,10 +23,11 @@
 
 import {
     NEUTRAL_DARK,
-    NEUTRAL_RAMPS,
+    NEUTRAL_LIGHT,
     RADIUS_TIERS,
     SEMANTIC_DARK,
     SEMANTIC_LIGHT,
+    type NeutralKey,
     shadcnLightToken,
     shadcnDarkToken,
 } from './tokens'
@@ -101,7 +102,7 @@ const RADIUS_VARS: ReadonlyArray<readonly [string, number]> = [
  * 全靠这一组变量接住——此前它们各自抄了一份十六进制（markdown.css 一处就抄了 39 个），
  * 配色一改就漏一片。
  */
-const NEUTRAL_VARS: ReadonlyArray<readonly [string, keyof typeof NEUTRAL_RAMPS.light]> = [
+const NEUTRAL_VARS: ReadonlyArray<readonly [string, NeutralKey]> = [
     ['--mobi-elevated', 'elevated'],
     ['--mobi-paper', 'container'],
     ['--mobi-canvas', 'canvas'],
@@ -127,15 +128,17 @@ const SEMANTIC_VARS: ReadonlyArray<readonly [string, 'success' | 'warning' | 'da
 /**
  * 固定深色舞台（反色气泡 / 登录页徽章等「浅色主题里的深色块」）的取色入口：
  * 一律取净墨档且**不随主题切换**——它们本来就是深底，跟着主题翻色会自相矛盾。
- * 就地声明会变成每处一份字面量，故与中性阶同法在 :root 投影一次。
+ * 因与主题无关，取值直接写进表里（对照 NEUTRAL_VARS 存的是档名，需运行时按档取）。
  */
-const STAGE_VARS: ReadonlyArray<readonly [string, keyof typeof NEUTRAL_DARK]> = [
-    ['--mobi-stage-canvas', 'canvas'],
-    ['--mobi-stage-elevated', 'elevated'],
-    ['--mobi-stage-ink', 'ink'],
-    ['--mobi-stage-ink-secondary', 'inkSecondary'],
-    ['--mobi-stage-ink-tertiary', 'inkTertiary'],
-    ['--mobi-stage-ink-quaternary', 'inkQuaternary'],
+const STAGE_VARS: ReadonlyArray<readonly [string, string]> = [
+    ['--mobi-stage-canvas', NEUTRAL_DARK.canvas],
+    ['--mobi-stage-elevated', NEUTRAL_DARK.elevated],
+    ['--mobi-stage-ink', NEUTRAL_DARK.ink],
+    ['--mobi-stage-ink-secondary', NEUTRAL_DARK.inkSecondary],
+    ['--mobi-stage-ink-tertiary', NEUTRAL_DARK.inkTertiary],
+    ['--mobi-stage-ink-quaternary', NEUTRAL_DARK.inkQuaternary],
+    // 舞台内的强调色同样是净墨档的语义色（不随主题切换）：登录页终端面板的提示绿
+    ['--mobi-stage-success', SEMANTIC_DARK.success],
 ]
 
 /** 注入样式节点的 id（ThemeProvider 挂载，幂等原地更新） */
@@ -148,34 +151,29 @@ export const SHADCN_TOKENS_STYLE_ID = 'mobi-shadcn-tokens'
  */
 const Z_OVERLAY = 1080
 
+/** 把「变量名 → 取值」表渲染成 CSS 行（缩进与分号的格式只此一处，新增一类变量不必再抄一遍） */
+function renderVars<T>(entries: ReadonlyArray<readonly [string, T]>, render: (value: T) => string): string[] {
+    return entries.map(([cssVar, value]) => `  ${cssVar}: ${render(value)};`)
+}
+
 /** 从双档 token 构建 shadcn 命名变量 CSS：light 挂 :root、dark 挂 .dark */
 export function buildShadcnThemeCss(mode: Mode): string {
     const token: Token = mode === 'dark' ? shadcnDarkToken : shadcnLightToken
     const selector = mode === 'dark' ? '.dark' : ':root'
-    const colorLines = SHADCN_VAR_MAPPINGS.map(([cssVar, tokenKey]) => {
-        const value = token[tokenKey]
-        // borderRadius 是数字（px 语义），其余为色值字符串
-        const rendered = typeof value === 'number' ? `${value}px` : value
-        return `  ${cssVar}: ${rendered};`
-    })
-    const motionLines = MOTION_VARS.map(([cssVar, value]) => `  ${cssVar}: ${value};`)
-    const radiusLines = RADIUS_VARS.map(([cssVar, value]) => `  ${cssVar}: ${value}px;`)
-    const ramp = NEUTRAL_RAMPS[mode]
-    const neutralLines = NEUTRAL_VARS.map(([cssVar, key]) => `  ${cssVar}: ${ramp[key]};`)
+    const ramp = mode === 'dark' ? NEUTRAL_DARK : NEUTRAL_LIGHT
     const semantic = mode === 'dark' ? SEMANTIC_DARK : SEMANTIC_LIGHT
-    const semanticLines = SEMANTIC_VARS.map(([cssVar, key]) => `  ${cssVar}: ${semantic[key]};`)
-    const stageLines = STAGE_VARS.map(([cssVar, key]) => `  ${cssVar}: ${NEUTRAL_DARK[key]};`)
-    // 舞台内的强调色同样是净墨档的语义色（不随主题切换），如登录页终端面板的提示绿
-    const stageAccent = `  --mobi-stage-success: ${SEMANTIC_DARK.success};`
     return [
         `${selector} {`,
-        ...colorLines,
-        ...neutralLines,
-        ...semanticLines,
-        ...stageLines,
-        stageAccent,
-        ...radiusLines,
-        ...motionLines,
+        ...renderVars(SHADCN_VAR_MAPPINGS, (tokenKey) => {
+            const value = token[tokenKey]
+            // borderRadius 是数字（px 语义），其余为色值字符串
+            return typeof value === 'number' ? `${value}px` : value
+        }),
+        ...renderVars(NEUTRAL_VARS, (key) => ramp[key]),
+        ...renderVars(SEMANTIC_VARS, (key) => semantic[key]),
+        ...renderVars(STAGE_VARS, (value) => value),
+        ...renderVars(RADIUS_VARS, (value) => `${value}px`),
+        ...renderVars(MOTION_VARS, (value) => value),
         `  --mobi-z-overlay: ${Z_OVERLAY};`,
         '}',
     ].join('\n')

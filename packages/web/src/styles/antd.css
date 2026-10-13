@@ -623,7 +623,7 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
 /* 行 hover 铺淡底挂 header（含 padding 满行，整行可点的 affordance；圆角避免色块贴边生硬） */
 .review-collapse > .ant-collapse-item > .ant-collapse-header:hover {
     background-color: var(--ant-color-fill-tertiary);
-    border-radius: var(--ant-border-radius, 6px);
+    border-radius: var(--ant-border-radius, var(--radius-icon));
 }
 .review-collapse .ant-collapse-expand-icon {
     display: none;

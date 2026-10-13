@@ -25,10 +25,41 @@
 //
 // 注意：antd 主题 token 必须是**具体色值**（它要按色值做派生计算），故这里引用 tokens.ts 的
 // 中性阶常量而非 CSS 变量——常量本身就是单一来源。
-import { NEUTRAL_DARK, NEUTRAL_LIGHT, withAlpha } from './tokens'
+import { NEUTRAL_DARK, NEUTRAL_LIGHT, RADIUS_TIERS, withAlpha } from './tokens'
+
+/**
+ * 与主题无关的组件覆写：不含颜色、双档应当完全一致，故共享同一份对象——
+ * 分成两份必然成对维护，改一档漏一档（这些键正是 radius-consistency 守卫断言「两档同值」的部分）。
+ */
+const sharedComponents = {
+    // 提示条是**控件档**的表面（uiarc 同法：alert 走 control），不是面板档。
+    // antd 只给 Alert 暴露 LG 槽位，故在此覆写
+    Alert: {
+        borderRadiusLG: RADIUS_TIERS.control,
+    },
+    // Modal 是**大表面档**（DESIGN.md Shapes），antd 没有对应的槽位，只能在这里覆写
+    Modal: {
+        borderRadiusLG: RADIUS_TIERS.surface,
+    },
+    Steps: {
+        iconSize: 32,
+    },
+    Switch: {
+        trackHeight: 24,
+        trackMinWidth: 44,
+        innerMinMargin: 4,
+        innerMaxMargin: 24,
+    },
+    // 方角档（DESIGN.md Shapes）：全局 SM 是「小尺寸控件」档（10px），
+    // 复选框要的是接近方角的 4px，故在此覆写
+    Checkbox: {
+        borderRadiusSM: RADIUS_TIERS.square,
+    },
+}
 
 /** 净白主题的组件覆写 */
 export const shadcnLightComponents = {
+    ...sharedComponents,
     // 图片预览工具栏：图标色必须跟随遮罩（--ant-color-bg-mask light=纸色/dark=深色），
     // 同一色两档必有一档隐形（2026-09-26 真机：白图标在 light 纸色遮罩上不可见）
     Image: {
@@ -68,32 +99,9 @@ export const shadcnLightComponents = {
         activeBorderColor: NEUTRAL_LIGHT.inkTertiary,
         activeOutlineColor: 'transparent',
     },
-    // 提示条是**控件档**的表面（uiarc 同法：alert 走 control），不是面板档。
-    // antd 只给 Alert 暴露 LG 槽位，故在此覆写（= tokens.ts 的 borderRadius）
-    Alert: {
-        borderRadiusLG: 14,
-    },
-    // Modal 是**大表面档**（DESIGN.md Shapes），antd 没有对应的槽位，只能在这里覆写
-    Modal: {
-        borderRadiusLG: 30,
-    },
     Progress: {
         defaultColor: NEUTRAL_LIGHT.primary,
         remainingColor: NEUTRAL_LIGHT.hover,
-    },
-    Steps: {
-        iconSize: 32,
-    },
-    Switch: {
-        trackHeight: 24,
-        trackMinWidth: 44,
-        innerMinMargin: 4,
-        innerMaxMargin: 24,
-    },
-    // 方角档（DESIGN.md rounded.square）：全局 SM 是「小尺寸控件」档（10px），
-    // 复选框要的是接近方角的 4px，故在此覆写
-    Checkbox: {
-        borderRadiusSM: 4,
     },
     Slider: {
         trackBg: NEUTRAL_LIGHT.hover,
@@ -106,10 +114,11 @@ export const shadcnLightComponents = {
 
 /** 净墨主题的组件覆写（与净白同构，状态方向相反：hover/active 逐档提亮） */
 export const shadcnDarkComponents = {
+    ...sharedComponents,
     // 图片预览工具栏：默认图标透明度过低，dark 遮罩下几乎不可见（2026-09-26 真机），
-    // 提到接近不透明；hover 全白
+    // 提到接近不透明；hover 全白（与 light 侧同法取 withAlpha，不写裸 rgba 字面量）
     Image: {
-        previewOperationColor: 'rgba(255, 255, 255, 0.92)',
+        previewOperationColor: withAlpha('#ffffff', 0.92),
         previewOperationHoverColor: '#ffffff',
     },
     // Tooltip 背景走 colorBgSpotlight（全局 dark token 是浅色，服务于浅底场景）——
@@ -149,27 +158,9 @@ export const shadcnDarkComponents = {
         activeBorderColor: NEUTRAL_DARK.inkTertiary,
         activeOutlineColor: 'transparent',
     },
-    Alert: {
-        borderRadiusLG: 14,
-    },
-    Modal: {
-        borderRadiusLG: 30,
-    },
     Progress: {
         defaultColor: NEUTRAL_DARK.ink,
         remainingColor: NEUTRAL_DARK.selected,
-    },
-    Steps: {
-        iconSize: 32,
-    },
-    Switch: {
-        trackHeight: 24,
-        trackMinWidth: 44,
-        innerMinMargin: 4,
-        innerMaxMargin: 24,
-    },
-    Checkbox: {
-        borderRadiusSM: 4,
     },
     Slider: {
         trackBg: NEUTRAL_DARK.selected,

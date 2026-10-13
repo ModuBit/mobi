@@ -179,6 +179,18 @@ type SemanticTokens<Prefix extends string> = {
     [K in keyof SemanticFamily as K extends 'color' ? `color${Prefix}` : `color${Prefix}${Capitalize<K>}`]: string
 }
 
+/**
+ * 九件套 → 扁平 token 键。槽位名只在这里拼一次：新增一个语义槽只需给 `SemanticFamily`
+ * 加一行，键名自动跟上（此前这里手抄了十行，加槽位要同时改接口、生成式、展平三处）。
+ */
+function spreadFamily<Prefix extends string>(prefix: Prefix, family: SemanticFamily): SemanticTokens<Prefix> {
+    const tokens: Record<string, string> = {}
+    for (const [slot, value] of Object.entries(family)) {
+        tokens[slot === 'color' ? `color${prefix}` : `color${prefix}${slot[0]!.toUpperCase()}${slot.slice(1)}`] = value
+    }
+    return tokens as SemanticTokens<Prefix>
+}
+
 function spreadSemantic<Prefix extends string>(
     prefix: Prefix,
     seed: string,
@@ -186,20 +198,33 @@ function spreadSemantic<Prefix extends string>(
     toward: string,
     ramp: SemanticRamp,
 ): SemanticTokens<Prefix> {
-    const f = semanticFamily(seed, base, toward, ramp)
-    const tokens = {
-        [`color${prefix}`]: f.color,
-        [`color${prefix}Bg`]: f.bg,
-        [`color${prefix}BgHover`]: f.bgHover,
-        [`color${prefix}Border`]: f.border,
-        [`color${prefix}BorderHover`]: f.borderHover,
-        [`color${prefix}Hover`]: f.hover,
-        [`color${prefix}Active`]: f.active,
-        [`color${prefix}Text`]: f.text,
-        [`color${prefix}TextHover`]: f.textHover,
-        [`color${prefix}TextActive`]: f.textActive,
-    }
-    return tokens as SemanticTokens<Prefix>
+    return spreadFamily(prefix, semanticFamily(seed, base, toward, ramp))
+}
+
+/**
+ * primary / info 两族的九件套。它们是**中性墨族**：antd 要求这两族各有整套 token，
+ * 但取值全是中性阶的档位，不是第二块调色板。故同样由生成式给出，族间实有差异的档
+ * （块上的字、light 的 info 描边比 primary 淡一档）在 opts 里点出来。
+ * 注意「块上的字」两族两档各不相同（light 是墨字、dark 的实心块是亮块压暗字），
+ * 故不做默认推导，逐档写明。
+ */
+function neutralFamily<Prefix extends 'Primary' | 'Info'>(
+    prefix: Prefix,
+    ramp: Record<NeutralKey, string>,
+    opts: { text: string; textHover: string; borderHover?: string },
+): SemanticTokens<Prefix> {
+    return spreadFamily(prefix, {
+        color: ramp.primary,
+        bg: ramp.selected,
+        bgHover: ramp.pressed,
+        border: ramp.selected,
+        borderHover: opts.borderHover ?? ramp.pressed,
+        hover: ramp.inkSecondary,
+        active: ramp.ink,
+        text: opts.text,
+        textHover: opts.textHover,
+        textActive: opts.text,
+        })
 }
 
 /* ==================== 圆角档位 ==================== */
@@ -263,8 +288,6 @@ const radius = {
 export const shadcnLightToken = {
     fontFamily: 'var(--font-body)',
     fontFamilyCode: 'var(--font-mono)',
-    colorPrimary: NEUTRAL_LIGHT.primary,
-    colorInfo: NEUTRAL_LIGHT.primary,
     colorTextBase: NEUTRAL_LIGHT.ink,
     colorBgBase: NEUTRAL_LIGHT.container,
     // 三个语义色族（含基色本身）由种子生成，见 spreadSemantic
@@ -272,24 +295,12 @@ export const shadcnLightToken = {
     ...spreadSemantic('Warning', SEMANTIC_LIGHT.warning, NEUTRAL_LIGHT.container, '#000000', LIGHT_RAMP),
     ...spreadSemantic('Error', SEMANTIC_LIGHT.danger, NEUTRAL_LIGHT.container, '#000000', LIGHT_RAMP),
     // primary / info 是中性墨族：它们的淡底、描边、深浅态就是中性阶本身（不再是第二套数值）
-    colorPrimaryBg: NEUTRAL_LIGHT.selected,
-    colorPrimaryBgHover: NEUTRAL_LIGHT.pressed,
-    colorPrimaryBorder: NEUTRAL_LIGHT.selected,
-    colorPrimaryBorderHover: NEUTRAL_LIGHT.pressed,
-    colorPrimaryHover: NEUTRAL_LIGHT.inkSecondary,
-    colorPrimaryActive: NEUTRAL_LIGHT.ink,
-    colorPrimaryText: NEUTRAL_LIGHT.ink,
-    colorPrimaryTextHover: NEUTRAL_LIGHT.inkSecondary,
-    colorPrimaryTextActive: NEUTRAL_LIGHT.ink,
-    colorInfoBg: NEUTRAL_LIGHT.selected,
-    colorInfoBgHover: NEUTRAL_LIGHT.pressed,
-    colorInfoBorder: NEUTRAL_LIGHT.selected,
-    colorInfoBorderHover: NEUTRAL_LIGHT.inkQuaternary,
-    colorInfoHover: NEUTRAL_LIGHT.inkSecondary,
-    colorInfoActive: NEUTRAL_LIGHT.ink,
-    colorInfoText: NEUTRAL_LIGHT.ink,
-    colorInfoTextHover: NEUTRAL_LIGHT.inkSecondary,
-    colorInfoTextActive: NEUTRAL_LIGHT.ink,
+    ...neutralFamily('Primary', NEUTRAL_LIGHT, { text: NEUTRAL_LIGHT.ink, textHover: NEUTRAL_LIGHT.inkSecondary }),
+    ...neutralFamily('Info', NEUTRAL_LIGHT, {
+        text: NEUTRAL_LIGHT.ink,
+        textHover: NEUTRAL_LIGHT.inkSecondary,
+        borderHover: NEUTRAL_LIGHT.inkQuaternary,
+    }),
     colorText: NEUTRAL_LIGHT.ink,
     colorTextSecondary: NEUTRAL_LIGHT.inkSecondary,
     colorTextTertiary: NEUTRAL_LIGHT.inkTertiary,
@@ -324,34 +335,16 @@ export const shadcnLightToken = {
 export const shadcnDarkToken = {
     fontFamily: 'var(--font-body)',
     fontFamilyCode: 'var(--font-mono)',
-    colorPrimary: NEUTRAL_DARK.primary,
-    colorInfo: NEUTRAL_DARK.primary,
     colorTextBase: NEUTRAL_DARK.ink,
     colorBgBase: NEUTRAL_DARK.container,
     // 三个语义色族（含基色本身）由种子生成，见 spreadSemantic
     ...spreadSemantic('Success', SEMANTIC_DARK.success, NEUTRAL_DARK.canvas, '#ffffff', DARK_RAMP),
     ...spreadSemantic('Warning', SEMANTIC_DARK.warning, NEUTRAL_DARK.canvas, '#ffffff', DARK_RAMP),
     ...spreadSemantic('Error', SEMANTIC_DARK.danger, NEUTRAL_DARK.canvas, '#ffffff', DARK_RAMP),
-    colorPrimaryBg: NEUTRAL_DARK.selected,
-    colorPrimaryBgHover: NEUTRAL_DARK.pressed,
-    colorPrimaryBorder: NEUTRAL_DARK.selected,
-    colorPrimaryBorderHover: NEUTRAL_DARK.pressed,
-    // dark 的实心按钮是「净墨压纸」：hover/active 向纸色靠近（提亮），与 light 方向相反
-    colorPrimaryHover: NEUTRAL_DARK.inkSecondary,
-    colorPrimaryActive: NEUTRAL_DARK.ink,
-    // 压在实心 primary 上的字 = 底色（暗底压亮块上的字）
-    colorPrimaryText: NEUTRAL_DARK.canvas,
-    colorPrimaryTextHover: NEUTRAL_DARK.canvas,
-    colorPrimaryTextActive: NEUTRAL_DARK.canvas,
-    colorInfoBg: NEUTRAL_DARK.selected,
-    colorInfoBgHover: NEUTRAL_DARK.pressed,
-    colorInfoBorder: NEUTRAL_DARK.selected,
-    colorInfoBorderHover: NEUTRAL_DARK.pressed,
-    colorInfoHover: NEUTRAL_DARK.inkSecondary,
-    colorInfoActive: NEUTRAL_DARK.ink,
-    colorInfoText: NEUTRAL_DARK.ink,
-    colorInfoTextHover: NEUTRAL_DARK.inkSecondary,
-    colorInfoTextActive: NEUTRAL_DARK.ink,
+    // primary 是「净墨压纸」：实心块是亮的墨色，故块上的字 = 画布色；淡底 / 描边取自中性阶
+    ...neutralFamily('Primary', NEUTRAL_DARK, { text: NEUTRAL_DARK.canvas, textHover: NEUTRAL_DARK.canvas }),
+    // info 的淡底是暗色块，字仍是墨色
+    ...neutralFamily('Info', NEUTRAL_DARK, { text: NEUTRAL_DARK.ink, textHover: NEUTRAL_DARK.inkSecondary }),
     colorText: NEUTRAL_DARK.ink,
     colorTextSecondary: NEUTRAL_DARK.inkSecondary,
     colorTextTertiary: NEUTRAL_DARK.inkTertiary,
@@ -379,6 +372,3 @@ export const shadcnDarkToken = {
     boxShadow: 'rgba(0,0,0,0.3) 0px 4px 24px',
     boxShadowSecondary: 'rgba(0,0,0,0.4) 0px 4px 12px',
 }
-
-/** 双档中性阶一起导出：cssVars 投影 `--mobi-*` 变量、守卫测试比对 DESIGN.md 用 */
-export const NEUTRAL_RAMPS: Record<'light' | 'dark', Record<NeutralKey, string>> = { light: NEUTRAL_LIGHT, dark: NEUTRAL_DARK }

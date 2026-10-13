@@ -26,23 +26,17 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { resolve, dirname, join, relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
+import { resolve, relative } from 'node:path'
 import { shadcnLightToken, shadcnDarkToken, RADIUS_TIERS, RADIUS_TIER_KEYS } from '@/core/config/theme/tokens'
 import { shadcnLightComponents, shadcnDarkComponents } from '@/core/config/theme/components'
 import { buildShadcnThemeCss } from '@/core/config/theme/cssVars'
+import { collectSourceFiles, readDesignBlock, WEB_ROOT } from '../../../helpers/themeGuards'
 
-const here = dirname(fileURLToPath(import.meta.url))
-const webRoot = resolve(here, '../../../..') // packages/web
-const designMd = readFileSync(resolve(webRoot, 'DESIGN.md'), 'utf-8')
-
-/** 解析 frontmatter 的 rounded 块（正则，避免引入 yaml 依赖；照 presets-consistency 先例） */
+/** 解析 frontmatter 的 rounded 块 */
 function readDesignTiers(): Record<string, number> {
-    const block = designMd.match(/^rounded:\n((?:[ \t].*\n)+)/m)
-    if (!block) throw new Error('DESIGN.md frontmatter 缺少 rounded 块')
     const tiers: Record<string, number> = {}
-    for (const line of block[1].split('\n')) {
+    for (const line of readDesignBlock('rounded')) {
         const hit = line.match(/^\s+([a-z][a-z-]*):\s*(\d+)px/)
         if (hit) tiers[hit[1]!] = Number(hit[2])
     }
@@ -72,21 +66,12 @@ function radiusOverrides(theme: unknown): Array<{ component: string; key: string
 }
 
 /**
- * 内容区例外：Markdown / 代码 / 编辑器 / 滚动条这些**密集文本区**的圆角按内容密度调过，
- * 不属于「外壳档位」体系（见 DESIGN.md「Shapes」末条）。除此之外任何等于档位值的字面量
- * 都算漂移——它不会随档位调整而变，是漏网的旧值。
+ * 内容区例外：代码编辑器内部的密集 chrome 圆角按内容密度调过，不属于「外壳档位」体系
+ * （见 DESIGN.md「Shapes」的「不写死数值」条）。**按具体文件列，不开目录级豁免**——
+ * 整目录豁免会把该目录里真正该取档的字面量一起放过（2026-10-13 实测：src/styles 下
+ * 就躲着三处，其中两处正是图标档的值）。除此之外任何等于档位值的字面量都算漂移。
  */
-const CONTENT_AREA_EXCEPTIONS = ['src/styles', 'src/features/files/editor.css']
-
-function collectSourceFiles(dir: string): string[] {
-    const out: string[] = []
-    for (const entry of readdirSync(dir)) {
-        const full = join(dir, entry)
-        if (statSync(full).isDirectory()) out.push(...collectSourceFiles(full))
-        else if (/\.(ts|tsx|css)$/.test(entry)) out.push(full)
-    }
-    return out
-}
+const CONTENT_AREA_EXCEPTIONS = ['src/features/files/editor.css']
 
 /** 去掉注释再扫：档位值常出现在解释性注释里（「面板档 22px」），那不是声明 */
 function stripComments(source: string): string {
@@ -154,8 +139,8 @@ describe('圆角档位与 DESIGN.md 一致性（文档与代码同源守卫）',
     it('源码里没有等于档位值的 border-radius 字面量（一律取档引用）', () => {
         const tierValues = new Set(Object.values(designTiers))
         const offenders: string[] = []
-        for (const file of collectSourceFiles(resolve(webRoot, 'src'))) {
-            const rel = relative(webRoot, file)
+        for (const file of collectSourceFiles(resolve(WEB_ROOT, 'src'))) {
+            const rel = relative(WEB_ROOT, file)
             if (CONTENT_AREA_EXCEPTIONS.some(prefix => rel.startsWith(prefix))) continue
             const source = stripComments(readFileSync(file, 'utf-8'))
             for (const decl of source.matchAll(/border-radius:\s*([^;{}\n]*)/g)) {
