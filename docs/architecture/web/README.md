@@ -288,7 +288,10 @@ packages/web/src/
 ├── ui/                         通用组件（零业务知识，2026-10-12 ui 治理定形）
 │   ├── base/                   基础件（零业务语义，按性质分 8 组，组内平铺）
 │   │   ├── interactive/        IconButton / AppTooltip / HoverSelect / TwoStepConfirmButton / EdgeSwipeBack
+│   │   │                       滚动与手势：scrollableInPath（可滚性唯一判据，吃 composedPath 穿透 shadow）
+│   │   │                       / bodyScrollLock（自建滚动锁，钉 body 不拦触摸）/ resolveDetentRelease（多档落档）
 │   │   ├── layout/             ContentDrawer / SplitLayout / OverflowContainer / ErrorBoundary / mobileSheetClass
+│   │   │                       AutoHeightHost（shadow 内容自适高）/ overlayLayer（移动浮层层号分配器）
 │   │   ├── display/            FileChip / FileTypeBadge / FilePathText / AppImage / sourceIcon / toolIcons
 │   │   ├── markdown/           Markdown / AutoDetectCodeBlock + 各插件（footnote/latex/mention/slashCommand/directive）
 │   │   ├── motion/             ShinyText / ScrambleText / CrossfadeText / PixelLoader / presets

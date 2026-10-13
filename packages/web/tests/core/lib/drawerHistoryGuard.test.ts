@@ -273,4 +273,31 @@ describe('drawerHistoryGuard', () => {
         firePopstate()
         expect(menu).toHaveBeenCalledTimes(1)
     })
+
+    /**
+     * 认不出的哨兵 entry（HMR 残留 / id 计数器重置）：落点带哨兵标记但 id 不在栈里。
+     * findIndex 给的是 -1，曾经被当成合法下标继续走 `closeFrom(index + 1)` = 整栈收起，
+     * 且绕过了自弹守卫——自己 back() 弹哨兵那一下就能把所有覆盖物一起收掉。
+     */
+    it('自弹落到「编号认不出的哨兵 entry」上：不整栈收起', async () => {
+        const bottom = vi.fn()
+        const top = vi.fn()
+        pushHistoryGuard(bottom)
+        const disposeTop = pushHistoryGuard(top)
+
+        vi.mocked(window.history.back).mockImplementation(() => {
+            window.dispatchEvent(
+                new PopStateEvent('popstate', { state: { mobiHistoryGuard: true, guardId: 9999 } }),
+            )
+        })
+        disposeTop()
+        await flushMicrotasks()
+        expect(top).not.toHaveBeenCalled()
+        // 修复前：-1 被当成 index 用 → closeFrom(0) 把底下的覆盖物一起收了
+        expect(bottom).not.toHaveBeenCalled()
+
+        // 底层仍在，用户返回照常收起它
+        firePopstate()
+        expect(bottom).toHaveBeenCalledTimes(1)
+    })
 })

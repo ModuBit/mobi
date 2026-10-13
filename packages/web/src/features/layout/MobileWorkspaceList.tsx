@@ -31,7 +31,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
-import { useOpenOverlayLayer } from '@/ui/base/layout/overlayLayer'
+import { nextOverlayLayer, useOpenOverlayLayer } from '@/ui/base/layout/overlayLayer'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinned'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
@@ -212,15 +212,21 @@ export function MobileWorkspaceList() {
     const renameModalZ = useOpenOverlayLayer(!!renameSessionId)
 
     // 手动休眠（dormancy spec §D.11）：动作流收口在 sessionDormancy（gate 阻塞时弹
-    // 「仍要退出」确认，archive 作为强制兜底），这里只管 pending 态
+    // 「仍要退出」确认，archive 作为强制兜底），这里只管 pending 态。
+    // 确认弹窗必须领号：它要叠在**本菜单 sheet** 之上（菜单在 await 期间保持打开），
+    // 不领号就会被 sheet 的 1080+ 盖住（见 dormantSessionWithFeedback 的 confirmZIndex）
     const handleDormant = useCallback(async () => {
         if (!actionSessionId) return
         setActionLoading('dormant')
         const target = actionSessionId
-        await dormantSessionWithFeedback({ api, queryClient, t, modal, message: messageApi }, target, () => {
-            setActionLoading(null)
-            setActionSessionId(null)
-        })
+        await dormantSessionWithFeedback(
+            { api, queryClient, t, modal, message: messageApi, confirmZIndex: nextOverlayLayer },
+            target,
+            () => {
+                setActionLoading(null)
+                setActionSessionId(null)
+            },
+        )
     }, [actionSessionId, api, queryClient, t, modal, messageApi])
 
     // 恢复

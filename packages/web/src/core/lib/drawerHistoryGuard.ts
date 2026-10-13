@@ -127,8 +127,11 @@ function ensureInstalled(): void {
         // （见文件头「为什么按落点对齐」）。落点 entry 之上的哨兵全部作废并收起，顶层先收。
         const landed = event.state as { mobiHistoryGuard?: boolean; guardId?: number } | null
         const landedId = landed?.mobiHistoryGuard ? landed.guardId : undefined
-        const index = landedId == null ? undefined : stack.findIndex((entry) => entry.id === landedId)
-        if (index == null) {
+        // findIndex 找不到时给 -1，与「落点不是哨兵」是同一件事，**不能当 index 用**：
+        // -1 会走到 closeFrom(0)（当 index+1 用）→ 绕过下面的自弹守卫、把整栈覆盖物全部收起
+        // （HMR 残留 entry / id 计数器重置后，一条认不出的哨兵 entry 就够触发）
+        const index = landedId == null ? -1 : stack.findIndex((entry) => entry.id === landedId)
+        if (index < 0) {
             // 落点不是本模块的哨兵（路由 entry / 连编号都对不上的 entry）：用户手势落到这里 =
             // 实际退到了所有覆盖物之下 → 整栈收起；自弹落到这里只说明压在我们下面的不是哨兵，不收
             if (selfPopped) return

@@ -229,8 +229,8 @@ hook 手动接管手势、用 `findXScroller` 穿透 shadow 驱动 pierre 内部
 **定稿（四步一次做完）**：
 1. 判据收一：`ui/base/interactive/scrollableInPath.ts` 的 `findScrollableInPath(composedPath, axis, delta, stopAt)`
    ——**吃 `event.composedPath()`（浏览器给的完整路径，天然含 shadow 内部与各级宿主）**，
-   同时看方向余量与 overflow。sheet 的 `canScrollChain` 改为调它（原来只走 `parentElement`，
-   shadow 里的滚动区一律判错）。
+   同时看方向余量与 overflow。sheet 的仲裁改为直接调它（原来的 `canScrollChain` 只走
+   `parentElement`，shadow 里的滚动区一律判错，已删）。
 2. 拿掉第三方锁：`BottomSheet` 走 `modal={false}` + 自建 `ui/base/interactive/bodyScrollLock.ts`
    （引用计数，`position: fixed` 钉 body，**不拦任何触摸事件**）。连带处理：Radix 在 `modal={false}`
    下**根本不渲染 Overlay**（源码 `context.modal ? <DialogOverlayImpl/> : null`）→ 遮罩自己渲染

@@ -23,13 +23,14 @@
  * 1000）→ 压在菜单下面；关掉菜单再开时若沿用挂载时领的旧号，还会继续被后开的浮层压住。
  */
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { nextOverlayLayer, retainOverlayLayer, useOpenOverlayLayer, __resetOverlayLayerForTest } from '@/ui/base/layout/overlayLayer'
 
 describe('overlayLayer', () => {
     // 发号状态是模块级单例，跨用例清场（否则「回到低位」的断言依赖前序用例的消耗量）
     beforeEach(() => __resetOverlayLayerForTest())
+    afterEach(() => vi.restoreAllMocks())
 
     it('后领的号更大（含 antd 弹层默认的 1000 起之上）', () => {
         const a = nextOverlayLayer()
@@ -55,17 +56,40 @@ describe('overlayLayer', () => {
         expect(result.current).toBeGreaterThan(1000)
     })
 
-    it('后打开的压在先打开的上面；全部释放后层号回到低位（不单调爬过 toast 的 z）', () => {
+    it('后打开的压在先打开的上面（真机：菜单里的操作菜单要压住菜单）', () => {
         const first = nextOverlayLayer()
         const release = retainOverlayLayer()
         const second = nextOverlayLayer()
-        // 前一层还开着时再开一层 → 必须更大（真机：菜单里的操作菜单要压住菜单）
         expect(second).toBeGreaterThan(first)
-
-        // 全部关掉后重新领 → 回到低位，不会一路涨过 antd message 的 2010
         release()
-        const afterAllClosed = nextOverlayLayer()
-        expect(afterAllClosed).toBeLessThan(second)
-        expect(afterAllClosed).toBeGreaterThan(1000)
+    })
+
+    it('释放后立刻再领号**不复用**：旧浮层还在播离场动画，它自己的 z 是基准 + 1', () => {
+        const release = retainOverlayLayer()
+        const exiting = nextOverlayLayer()
+        release()
+        // 关掉到真消失之间还有一段动画（antd 侧按 open 释放，组件并不卸载）：此刻把号收回去
+        // 重发，新浮层的遮罩（基准）就落在正在滑出的旧浮层主体（基准 + 1）之下 = 旧压新
+        const incoming = nextOverlayLayer()
+        expect(incoming).toBeGreaterThan(exiting)
+    })
+
+    it('静默一段（无人领号）后归零：不单调爬过 antd message 的 z', () => {
+        const release = retainOverlayLayer()
+        release()
+        let now = 0
+        vi.spyOn(Date, 'now').mockImplementation(() => now)
+
+        // 窗口内领号：仍然递增（离场动画可能还没播完）
+        const early = nextOverlayLayer()
+        const hold = retainOverlayLayer()
+        const mid = nextOverlayLayer()
+        expect(mid).toBeGreaterThan(early)
+
+        hold()
+        now += 1000
+        const afterIdle = nextOverlayLayer()
+        expect(afterIdle).toBeLessThan(mid)
+        expect(afterIdle).toBeGreaterThan(1000)
     })
 })

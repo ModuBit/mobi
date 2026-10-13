@@ -38,32 +38,46 @@ const STEP = 2
 const LAYER_BASE = Z_OVERLAY
 
 let seq = 0
-/** 当前**开着**的浮层数：归零时层号从头开始 */
+/** 当前**开着**的浮层数：归零后进入静默期才把号收回（见 IDLE_RESET_MS） */
 let live = 0
+/** 最后一个浮层释放的时刻（当前一层都没开时的计时起点）；此刻新领号就作废归零 */
+let idleSince: number | null = null
+
+/**
+ * 归零前的静默期（ms）：**关掉的浮层还在播离场动画时不许归零**——antd 侧按 `open` 释放
+ * （组件不卸载，只是不可见），此刻归零会让紧接着打开的浮层领到与它相同的号，而它自己的
+ * z 是基准 + 1（主体），于是「正在滑出的旧浮层」压在新浮层之上。等一段无人领号的静默期
+ * 再归零：离场动画最长也就几百毫秒，用户真停手了才收号。
+ */
+const IDLE_RESET_MS = 600
 
 /**
  * 领一层号（该层的基准值，主体用基准 + 1）。单调递增，**不在这里重置**——同一批里连领
  * 两个号（同一 commit 里嵌套挂载）必须拿到不同的值，重置逻辑放在释放侧（见下）。
  */
 export function nextOverlayLayer(): number {
+    if (idleSince !== null && Date.now() - idleSince >= IDLE_RESET_MS) seq = 0
+    idleSince = null
     return LAYER_BASE + ++seq * STEP
 }
 
 /**
  * 记一个「开着的浮层」直到关闭 / 卸载，返回释放函数。
  *
- * **全部关掉时层号归零**：号只用来排序「此刻开着的这几层」，单调涨下去迟早会爬过 antd
- * message / notification 的 z（2010 / 2050）——活到几天的 PWA 会话里几百次开合是常态，
+ * **全部关掉后层号归零**：号只用来排序「此刻还在屏幕上的这几层」，单调涨下去迟早会爬过
+ * antd message / notification 的 z（2010 / 2050）——活到几天的 PWA 会话里几百次开合是常态，
  * 那时 toast 会被压在 sheet 后面。归零把值域钉在「同时打开层数」的量级上。
  *
  * 计数挂在 **effect** 上而不是渲染期：StrictMode 会把 effect 跑两遍（挂载→清理→挂载），
- * 以 effect 为准才数得准；渲染期领号、effect 期计数，两侧各自幂等。
+ * 以 effect 为准才数得准；渲染期领号、effect 期计数，两侧各自幂等。离场窗口内不归零
+ * （见 IDLE_RESET_MS），StrictMode 那对「挂载→清理→挂载」也就不会把号收回去重发。
  */
 export function retainOverlayLayer(): () => void {
     live += 1
+    idleSince = null
     return () => {
         live = Math.max(0, live - 1)
-        if (live === 0) seq = 0
+        if (live === 0) idleSince = Date.now()
     }
 }
 
@@ -92,4 +106,5 @@ export function useOpenOverlayLayer(open: boolean): number | undefined {
 export function __resetOverlayLayerForTest(): void {
     seq = 0
     live = 0
+    idleSince = null
 }

@@ -30,6 +30,13 @@ export interface DormancyActionDeps {
     t: TFunction
     /** App.useApp() 的 modal 实例：gate 阻塞时承载「仍要退出」确认弹窗（受主题上下文） */
     modal: AppModal
+    /** 「仍要退出」确认弹窗的层号取值函数（调用方给 `() => nextOverlayLayer()`，见
+     *  ui/base/layout/overlayLayer）。**叠在已打开的浮层之上时必须给**：移动端休眠入口就在
+     *  操作菜单 sheet（z ≥1080）里，antd 弹窗默认 z 1000 会被 sheet 整个盖住——按钮点不到、
+     *  await 永不落定，菜单又被 pending 态拦着关不掉 = 卡死。取函数而不是取值是为了
+     *  **在真的要弹的时候才领号**（与层号分配器「号在打开时领」同一条纪律）。
+     *  PC 侧没有叠层，可省（走 antd 默认值） */
+    confirmZIndex?: () => number
     /** App.useApp() 的 message 实例：反馈 toast 与 modal 同走主题上下文，不用静态方法 */
     message: AppMessage
 }
@@ -94,6 +101,7 @@ export async function dormantSessionWithFeedback(
         }
         const forceExit = await new Promise<boolean>((resolve) => {
             modal.confirm({
+                zIndex: deps.confirmZIndex?.(),
                 title: t('session.dormancy.forceExitTitle'),
                 content: dormancyBlockedText(blockers, t),
                 okText: t('session.dormancy.forceExitOk'),

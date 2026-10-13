@@ -50,7 +50,7 @@
 
 - `styles.wrapper: { height: 'auto', maxHeight: '85dvh' }` + `styles.body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }`
 - **`rootClassName={MOBILE_SHEET_DRAWER_CLASS}`**（`src/ui/base/layout/mobileSheetClass.ts`）：`src/styles/antd.css` 的「height auto + 85dvh 上限 + body safe-area」全局规则只命中该标记类。规则不命中 `.ant-drawer-bottom` 泛选——否则会误伤同样 bottom placement 的非 sheet 抽屉（如 PC 画板停靠抽屉的固定高度被 `height: auto !important` 压塌，2026-09-19 实踩）。
-- **`zIndex={useOpenOverlayLayer(open)}`**（`src/ui/base/layout/overlayLayer.ts`）：antd 弹层默认 z 1000 低于 BottomSheet 的 1080 起，不领号就会压在打开的 sheet 后面。**任何会叠在别的移动浮层之上的浮层都要领号**——包括命令式 `modal.confirm`（调用处 `zIndex: nextOverlayLayer()`）。
+- **`zIndex={useOpenOverlayLayer(open)}`**（`src/ui/base/layout/overlayLayer.ts`）：antd 弹层默认 z 1000 低于 BottomSheet 的 1080 起，不领号就会压在打开的 sheet 后面。**任何会叠在别的移动浮层之上的浮层都要领号**——包括命令式 `modal.confirm`（调用处 `zIndex: nextOverlayLayer()`）。弹窗由 core 层的动作流弹出时（core 不许引 ui），把取值函数传进去在**真要弹的那一刻**领号：先例是 `sessionDormancy` 的 `confirmZIndex`（移动端休眠入口在操作菜单 sheet 里，不领号确认框会被 sheet 盖住 → 点不到、await 不落定、菜单被 pending 拦着关不掉）。
 
 注意：这套手动配置**仅对原生 antd Drawer 生效**，BottomSheet 不接受这些 prop（它们对应组件内部不变量）。
 
