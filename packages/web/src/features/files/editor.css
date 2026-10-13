@@ -36,14 +36,14 @@
     border: none;
     cursor: pointer;
     color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.55));
-    background: var(--ant-color-bg-container, #faf9f5);
+    background: var(--ant-color-bg-container, var(--mobi-paper));
     transition: color 0.12s, background 0.12s;
 }
 
 .md-toolbar-arrow:hover {
-    color: var(--ant-color-primary, #3d3d3a);
+    color: var(--ant-color-primary, var(--mobi-primary));
     /* 用实色 primaryBg（米白）而非 fill-tertiary（半透明），避免透出底层按钮显得「透明」 */
-    background: var(--ant-color-primary-bg, #e8e6dc);
+    background: var(--ant-color-primary-bg, var(--mobi-selected));
 }
 
 /* 靠内容侧的发丝分隔线（inset 阴影，避免占据布局宽度） */
@@ -184,9 +184,9 @@
     width: 16px;
     height: 16px;
     margin: 0;
-    /* 边框用 colorPrimary：light=#3d3d3a 深灰，dark=米白，在纸感米白底上都清晰；
-       不可用 colorBorder（#d9d9d9 浅灰）——与 #faf9f5 底对比不足，框看不清 */
-    border: 1.5px solid var(--ant-color-primary, #3d3d3a);
+    /* 边框用 colorPrimary：light=深灰，dark=近白，在纸底上都清晰；
+       不可用 colorBorder（浅灰）——与纸底对比不足，框看不清 */
+    border: 1.5px solid var(--ant-color-primary, var(--mobi-primary));
     border-radius: 3px;
     background: transparent;
     cursor: pointer;
@@ -199,8 +199,8 @@
 }
 
 .markdown-editor-view .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
-    background: var(--ant-color-primary, #3d3d3a);
-    border-color: var(--ant-color-primary, #3d3d3a);
+    background: var(--ant-color-primary, var(--mobi-primary));
+    border-color: var(--ant-color-primary, var(--mobi-primary));
 }
 
 .markdown-editor-view .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:checked::after {
@@ -434,5 +434,5 @@
 /* 源码切换：主操作，hover 用 primary 色强调 */
 .mermaid-btn.is-toggle:hover {
     background: var(--ant-color-primary-bg, rgba(61, 61, 58, 0.08));
-    color: var(--ant-color-primary, #3d3d3a);
+    color: var(--ant-color-primary, var(--mobi-primary));
 }

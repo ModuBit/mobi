@@ -45,6 +45,7 @@ vi.mock('socket.io-client', () => ({
 
 import { Terminal } from '@xterm/xterm'
 import { createCachedTerminal, buildBanner } from '@/features/terminal/cachedTerminal'
+import { NEUTRAL_LIGHT } from '@/core/config/theme/tokens'
 
 // helper：触发 cachedTerminal 内部 socket 的事件
 function fire(ev: string, ...args: unknown[]) {
@@ -248,9 +249,14 @@ describe('主题切换 setTheme', () => {
     it('setTheme(light)：terminal.options.theme + domNode 背景同步为亮色', () => {
         const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
         inst.setTheme('light')
-        expect(inst.terminal.options.theme).toMatchObject({ background: '#faf9f5', foreground: '#141413' })
-        // jsdom 把 hex 转成 rgb
-        expect(inst.domNode.style.background).toBe('rgb(250, 249, 245)')
+        expect(inst.terminal.options.theme).toMatchObject({ background: NEUTRAL_LIGHT.container, foreground: NEUTRAL_LIGHT.ink })
+        // jsdom 把 hex 转成 rgb，故用同样的一次归一化来比对（不写死 rgb 字面量）
+        const toRgb = (hex: string) => {
+            const el = document.createElement('div')
+            el.style.background = hex
+            return el.style.background
+        }
+        expect(inst.domNode.style.background).toBe(toRgb(NEUTRAL_LIGHT.container))
     })
 
     it('setTheme(dark)：恢复暗色调色板', () => {

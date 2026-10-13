@@ -158,11 +158,11 @@ function readOnlyExtensions(readOnly: boolean): Extension[] {
  */
 const systemChrome = EditorView.theme({
     '&': {
-        backgroundColor: 'var(--ant-color-bg-container, #faf9f5)',
+        backgroundColor: 'var(--ant-color-bg-container, var(--mobi-paper))',
         color: 'var(--ant-color-text)',
     },
     '.cm-gutters': {
-        backgroundColor: 'var(--ant-color-bg-layout, #f0eee6)',
+        backgroundColor: 'var(--ant-color-bg-layout, var(--mobi-hover))',
         color: 'var(--ant-color-text-quaternary)',
         borderRight: '1px solid var(--ant-color-border-secondary, rgba(0, 0, 0, 0.06))',
     },

@@ -51,16 +51,13 @@ html, body, #root {
 }
 
 html {
-    /* Light 模式背景 — 与 AppSidebar colorBgContainer 一致 */
-    background: #ffffff;
+    /* 页面底 — 与侧栏/容器的纸面色同源（净白档） */
+    background: var(--mobi-paper);
 }
 
 html[data-theme='dark'] {
-    /* Dark 模式背景 */
-    background: #141414;
-
-    /* 斜杠下拉：CC 内置命令名字色（antd gold；light 默认 #f97316 见 variables.css） */
-    --mobi-command-builtin: #faad14;
+    /* 页面底 — 净墨档的画布色 */
+    background: var(--mobi-canvas);
 }
 
 /* 选区配色：「荧光笔」高亮（2026-09-23 走查，琥珀版被否——观感沉闷偏土，
@@ -88,11 +85,7 @@ body {
     overflow: hidden;
     /* 透明背景，跟随 html */
     background: transparent;
-    color: #141413;
-}
-
-html[data-theme='dark'] body {
-    color: #faf9f5;
+    color: var(--mobi-ink);
 }
 
 /* 移动端安全区适配：viewport-fit=cover 下 env() 返回真实避让值；桌面/浏览器模式 env 恒为 0，不影响布局 */

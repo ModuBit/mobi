@@ -24,7 +24,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest'
 import { buildShadcnThemeCss, injectShadcnThemeCss, SHADCN_TOKENS_STYLE_ID } from '@/core/config/theme/cssVars'
-import { shadcnLightToken } from '@/core/config/theme/tokens'
+import { shadcnLightToken, shadcnDarkToken } from '@/core/config/theme/tokens'
 
 afterEach(() => {
     document.getElementById(SHADCN_TOKENS_STYLE_ID)?.remove()
@@ -70,14 +70,14 @@ describe('buildShadcnThemeCss（--background 系主题变量）', () => {
         // 断言「投影渲染」而非钉住数值：具体档位由 tokens.ts 单源决定，
         // 文档与代码的一致性另由 radius-consistency.test.ts 守卫
         expect(light).toContain(`--radius-lg: ${shadcnLightToken.borderRadiusLG}px`)
-        expect(dark).toContain('--text-secondary: #d1cfc5')
+        expect(dark).toContain(`--text-secondary: ${shadcnDarkToken.colorTextSecondary}`)
         // 档位值确实翻转（light bg 米白 / dark bg 深灰）
-        expect(light).toContain('--background: #faf9f5')
-        expect(dark).toContain('--background: #141413')
-        expect(light).toContain('--foreground: #141413')
-        expect(dark).toContain('--foreground: #faf9f5')
-        expect(light).toContain('--primary: #3d3d3a')
-        expect(dark).toContain('--primary: #faf9f5')
+        expect(light).toContain(`--background: ${shadcnLightToken.colorBgBase}`)
+        expect(dark).toContain(`--background: ${shadcnDarkToken.colorBgBase}`)
+        expect(light).toContain(`--foreground: ${shadcnLightToken.colorText}`)
+        expect(dark).toContain(`--foreground: ${shadcnDarkToken.colorText}`)
+        expect(light).toContain(`--primary: ${shadcnLightToken.colorPrimary}`)
+        expect(dark).toContain(`--primary: ${shadcnDarkToken.colorPrimary}`)
     })
 
     it('light 挂 :root、dark 挂 .dark 选择器，radius 带 px 单位', () => {
@@ -94,12 +94,12 @@ describe('injectShadcnThemeCss（幂等注入）', () => {
         injectShadcnThemeCss(document, 'light')
         const first = document.getElementById(SHADCN_TOKENS_STYLE_ID)
         expect(first).not.toBeNull()
-        expect(first?.textContent).toContain('#faf9f5')
+        expect(first?.textContent).toContain(shadcnLightToken.colorBgBase)
 
         injectShadcnThemeCss(document, 'dark')
         const second = document.getElementById(SHADCN_TOKENS_STYLE_ID)
         expect(second).toBe(first) // 原地更新而非重建
-        expect(second?.textContent).toContain('--background: #141413')
-        expect(second?.textContent).not.toContain('--background: #faf9f5')
+        expect(second?.textContent).toContain(`--background: ${shadcnDarkToken.colorBgBase}`)
+        expect(second?.textContent).not.toContain(`--background: ${shadcnLightToken.colorBgBase}`)
     })
 })

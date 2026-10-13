@@ -53,11 +53,7 @@ const LogoImg = styled.div`
 
 /** 品牌名（仅承载 color，字标尺寸由 MobiWordmark 自身控制） */
 const BrandName = styled.span`
-    color: #141413;
-
-    html[data-theme='dark'] & {
-        color: #faf9f5;
-    }
+    color: var(--mobi-ink);
 `
 
 /** 右面板：登录表单 */
@@ -69,13 +65,9 @@ const LoginPanel = styled.div`
     /* 底部避让 home 指示条；桌面 env=0 保持 32px */
     padding: 32px 32px max(32px, env(safe-area-inset-bottom));
     position: relative;
-    background: #faf9f5;
+    background: var(--mobi-paper);
     /* 矮视口表单超高时自滚（safe center：溢出回退顶部不切割） */
     overflow-y: auto;
-
-    html[data-theme='dark'] & {
-        background: #141413;
-    }
 
     @media (min-width: 1024px) {
         width: 50%;
@@ -110,12 +102,12 @@ const ActiveLocale = styled.span`
     z-index: 2;
     padding: 0 3px;
     border-radius: 3px;
-    background: rgba(20, 20, 19, 0.9);
-    color: #faf9f5;
+    background: color-mix(in srgb, var(--mobi-stage-canvas) 90%, transparent);
+    color: var(--mobi-stage-ink);
 
     html[data-theme='dark'] & {
-        background: rgba(250, 249, 245, 0.85);
-        color: #141413;
+        background: color-mix(in srgb, var(--mobi-stage-ink) 85%, transparent);
+        color: var(--mobi-stage-canvas);
     }
 `
 
@@ -176,11 +168,7 @@ const WelcomeTitle = styled.h1`
     letter-spacing: -0.02em;
     margin: 0 0 8px;
     text-align: center;
-    color: #141413;
-
-    html[data-theme='dark'] & {
-        color: #faf9f5;
-    }
+    color: var(--mobi-ink);
 `
 
 /** 品牌 Logo（表单区域，入场打招呼播一轮：MobiLogo play=once） */
@@ -196,10 +184,10 @@ const WelcomeSubtitle = styled.p`
     font-size: 14px;
     margin: 0;
     text-align: center;
-    color: #b0aea5;
+    color: var(--mobi-ink-quaternary);
 
     html[data-theme='dark'] & {
-        color: #87867f;
+        color: var(--mobi-ink-tertiary);
     }
 `
 
@@ -212,20 +200,12 @@ const HelpLink = styled.a`
     gap: 6px;
     font-size: 12px;
     font-weight: 500;
-    color: #b0aea5;
+    color: var(--mobi-ink-quaternary);
     text-decoration: none;
     transition: color 0.2s;
 
-    html[data-theme='dark'] & {
-        color: #5e5d59;
-    }
-
     &:hover {
-        color: #87867f;
-
-        html[data-theme='dark'] & {
-            color: #87867f;
-        }
+        color: var(--mobi-ink-tertiary);
     }
 `
 

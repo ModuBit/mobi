@@ -336,7 +336,13 @@ Web 端样式采用 **emotion styled + Tailwind v4 共存**，与 Ant Design v6 
 
 ### 主题色引用
 
-新组件的颜色应引用 `core/config/theme/tokens.ts` 的 token 常量（`shadcnLightToken.colorBgBase` / `shadcnDarkToken.colorBgBase` 等），不要硬编码 `#faf9f5` / `#141413`（既有 styled 的硬编码为渐进迁移项）。
+新组件的颜色**一律取引用**，不写十六进制字面量：
+
+- antd 主题 token 需要具体色值时，引 `core/config/theme/tokens.ts` 的常量（`NEUTRAL_LIGHT.ink` / `NEUTRAL_DARK.canvas` / `SEMANTIC_LIGHT.warning` 等）；
+- CSS / emotion styled-components 里用 `var(--mobi-ink)` `var(--mobi-paper)` `var(--mobi-hover)` `var(--mobi-success)` 等变量（cssVars.ts 按档投影到 `:root` / `.dark`，角色名即变量名）；
+- 「浅色主题里的固定深色块」（反色气泡等）用 `var(--mobi-stage-*)`（永远取净墨档，不随主题切换）。
+
+配色规格在 DESIGN.md「Colors」章，数值单源在 tokens.ts，二者由 `tests/core/config/theme/palette-consistency.test.ts` 逐档锁死——**源码里出现等于档位值的字面量即测试失败**。
 
 ## 路径别名
 

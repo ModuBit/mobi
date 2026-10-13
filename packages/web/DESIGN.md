@@ -1,43 +1,54 @@
 ---
 version: alpha
 name: Mobi
-description: Mobi 远程控制 Claude Code 的暖调纸感设计系统
+description: Mobi 远程控制 Claude Code 的净白纸感设计系统
+# 中性阶 —— **层次靠明度，色相不含倾向**（chroma ≤ 3）。规格值，代码单源见 tokens.ts 的
+# NEUTRAL_LIGHT / NEUTRAL_DARK（二者由 palette-consistency 守卫锁死）。
 colors:
-  # 中性墨色 —— 整套体系的骨架，一切文字与主交互的来源
-  ink: "#141413"
-  ink-secondary: "#4d4c48"
-  ink-tertiary: "#87867f"
-  ink-quaternary: "#b0aea5"
-  # 暖调纸色 —— 三层背景，从暖到净
-  paper: "#faf9f5"        # 容器底色，温热的奶油纸
-  paper-warm: "#f5f4ed"   # 布局底色，更暖一档
-  paper-elevated: "#ffffff" # 抬升层（Modal/浮层）唯一允许的净白
-  primary: "#3d3d3a"       # 主色（暖墨灰），solid 按钮与焦点边框的来源
+  # 三层表面：画布（页面底）< 容器（卡片/侧栏）< 抬升（Modal/浮层）
+  canvas: "#f0f0f4"       # 画布层：消息流所在的那一层
+  paper: "#f9f9fb"        # 容器层：卡片 / 侧栏 / 输入框本体
+  elevated: "#ffffff"     # 抬升层：Modal / 菜单 / 浮层（唯一允许纯白）
+  # 交互高亮三档（hover < selected < pressed），全站唯一来源
+  hover: "#e9e9ee"
+  selected: "#e1e1e7"
+  pressed: "#d5d5dc"
+  # 墨色四级：一切文字与主交互
+  ink: "#17171b"
+  ink-secondary: "#4c4c52"
+  ink-tertiary: "#83838a"
+  ink-quaternary: "#adadb4"
+  primary: "#3a3a41"       # 实心墨按钮：重要性靠深度的灰表达，不靠色相
   on-primary: "#ffffff"    # 压在 solid primary 上的浅字（antd 按主色亮度自动取）
+  # 语义色 —— 低饱和土地色谱，双档同族（dark 只提亮，见 colors-dark）
   success: "#3f7a3a"      # 苔藓绿
   warning: "#c96442"      # 赤陶橙
   danger: "#b53333"       # 砖红
-  bash-glow: "#e8703a"    # Bash 模式发光边框专用暖橙
-  # 边框 —— 极淡，几乎只剩温度
-  hairline: "#f0eee6"
-  hairline-strong: "#e8e6dc"
-  hairline-active: "#87867f"
+  bash-glow: "#e8703a"    # Bash 模式发光边框专用暖橙（信号色，不是装饰）
+  # 描边 —— 1px 极淡，与高亮档共阶梯
+  hairline: "#e6e6eb"
+  hairline-strong: "#d9d9e0"
+  hairline-active: "#83838a"
 # 暗色模式（自定义扩展键，spec 静默接受）。Light 为规范值，Dark 见正文说明
 colors-dark:
-  ink: "#faf9f5"
-  ink-secondary: "#d1cfc5"
-  ink-tertiary: "#87867f"
-  ink-quaternary: "#5e5d59"
-  paper: "#1a1a18"
-  paper-warm: "#141413"
-  paper-elevated: "#232320"
-  primary: "#faf9f5"
-  on-primary: "#141413"
-  success: "#4ade80"
-  warning: "#f97316"
-  danger: "#ef4444"
-  hairline: "#30302e"
-  hairline-strong: "#3d3d3a"
+  canvas: "#131316"
+  paper: "#1a1a1e"
+  elevated: "#25252a"
+  hover: "#232328"
+  selected: "#2f2f35"
+  pressed: "#3e3e45"
+  ink: "#f6f6f8"
+  ink-secondary: "#d2d2d8"
+  ink-tertiary: "#898990"
+  ink-quaternary: "#5d5d65"
+  primary: "#f6f6f8"
+  on-primary: "#131316"
+  success: "#6cc06f"
+  warning: "#e5925f"
+  danger: "#e26060"
+  hairline: "#2f2f35"
+  hairline-strong: "#3e3e45"
+  hairline-active: "#898990"
 typography:
   body:
     fontFamily: "Alibaba PuHuiTi 3.0"
@@ -113,19 +124,19 @@ components:
   button-primary-hover:
     backgroundColor: "{colors.ink-secondary}"
   button-default:
-    backgroundColor: "{colors.hairline-strong}"
+    backgroundColor: "{colors.selected}"
     textColor: "{colors.ink-secondary}"
     rounded: "{rounded.control}"
     padding: "{spacing.base}"
   button-default-hover:
-    backgroundColor: "{colors.ink-quaternary}"
+    backgroundColor: "{colors.pressed}"
     textColor: "{colors.ink}"
   button-danger:
     backgroundColor: "{colors.danger}"
-    textColor: "{colors.paper-elevated}"
+    textColor: "{colors.elevated}"
     rounded: "{rounded.control}"
   button-danger-hover:
-    backgroundColor: "#a02c2c"   # danger 深一档；dark 模式见正文
+    backgroundColor: "#9d2c2c"   # danger 深一档；dark 模式见正文
   button-text:
     backgroundColor: "transparent"
     textColor: "{colors.ink-secondary}"
@@ -142,7 +153,7 @@ components:
     rounded: "{rounded.panel}"
     padding: "{spacing.lg}"
   surface-layout:
-    backgroundColor: "{colors.paper-warm}"
+    backgroundColor: "{colors.canvas}"
   divider:
     backgroundColor: "{colors.hairline}"
   meta-text:
@@ -160,7 +171,7 @@ components:
   bash-mode-border:
     backgroundColor: "{colors.bash-glow}"
   modal:
-    backgroundColor: "{colors.paper-elevated}"
+    backgroundColor: "{colors.elevated}"
     rounded: "{rounded.surface}"
   checkbox:
     rounded: "{rounded.square}"
@@ -168,26 +179,32 @@ components:
 
 ## Overview
 
-Mobi 是 Claude Code 的远程驾驶舱。它的视觉是 **Claude 自身的暖调纸感语言** 搬到浏览器里——一块温热的奶油纸，上面铺着近乎纯黑的墨，配以从土地里取色的低饱和强调。
+Mobi 是 Claude Code 的远程驾驶舱。它的视觉是**净白纸 + 净墨**：一块没有色相倾向的纸，上面铺着近乎纯黑的墨，配以从土地里取色的低饱和强调。
 
-气质是「**手工日志本 + 终端**」的混合：大面积暖白留白与克制的中性灰，承载密集的等宽字体对话与代码。它自信地不讨好第一眼——按钮没有阴影，边框淡到只剩温度，强调色不是鲜艳的品牌色而是暖墨灰本身。唯一允许「发光」的地方是 Bash 命令模式边框和像素粒子悬停效果，因为它们对应真实的运行态。
+气质是「**手工日志本 + 终端**」的混合：大面积留白与克制的中性灰，承载密集的等宽字体对话与代码。它自信地不讨好第一眼——按钮没有阴影，边框淡到只剩一道灰，强调色不是鲜艳的品牌色而是墨本身。唯一允许「发光」的地方是 Bash 命令模式边框和像素粒子悬停效果，因为它们对应真实的运行态。
+
+**层次靠明度，不靠色相**：体系里只有中性阶与四个语义色两组颜色，中性阶的色度被压到几乎为零（chroma ≤ 5），全部层级信息由明度承载——纸面之间差 2–3 L* 就能分出「这是哪一层」而不成为硬边界。配色因此改得动：换一档明度，全站跟着走。
 
 面向两类读者：开发者（在桌面端长时间盯着会话流）和移动端用户（单手快速操作）。因此密度偏高、留白慷慨、移动端按压反馈用 `opacity` 而非高亮块。
 
 ## Colors
 
-单一墨色 + 三层暖纸 + 土地色谱强调色。Light 与 Dark 是**对称反转**的同一套体系，不是两套调色板。
+单一墨阶 + 三层白纸 + 土地色谱强调色。**唯一数值来源是 `src/core/config/theme/tokens.ts`**（`NEUTRAL_LIGHT` / `NEUTRAL_DARK` / `SEMANTIC_*`），本节是它的规格；antd token、`--mobi-*` CSS 变量都是它的投影，守卫测试逐档比对（`tests/core/config/theme/palette-consistency.test.ts`）。Light 与 Dark 是**对称映射**的同一套体系，不是两套调色板。
 
-- **Ink {colors.ink}** 是所有文字与主交互的来源。它不是 `#000`，而是带一点暖度的 `#141413`——纯黑在暖纸上会显得刺眼。次级文字逐级退向 {colors.ink-secondary} → {colors.ink-tertiary} → {colors.ink-quaternary}，四级灰阶承担全部信息层级。
-- **Paper {colors.paper}** 是容器底色，温热的奶油纸。**布局区用更暖的 {colors.paper-warm}**，与容器形成温度差而非明暗差——这是本项目区分层次的主要手段。抬升层（Modal、Popover、Drawer）才允许用净白 {colors.paper-elevated}。
-- **Primary {colors.primary}** 是主色，但它是**暖墨灰** `{colors.primary}`，不是鲜艳品牌色。primary 按钮就是这块灰。这是整套设计最反直觉也最关键的决策：交互的「重要性」靠**深度的灰**表达，而非色相。
-- **语义色**全部低饱和、土地取色：success 是苔藓绿 {colors.success}，warning 是赤陶橙 {colors.warning}，danger 是砖红 {colors.danger}。绝不用饱和的原色红绿。
+- **墨阶 {colors.ink} → {colors.ink-quaternary}**：一切文字与主交互的来源。底色纸太白，故墨不用 `#000` 而用 `#17171b`——纯黑在纸面上会「凿」出洞感。四级灰阶承担全部信息层级（正文 / 次级 / 辅助 / 占位与装饰）。
+- **三层纸**：画布 {colors.canvas}（页面底、消息流）→ 容器 {colors.paper}（卡片 / 侧栏 / 输入框）→ 抬升 {colors.elevated}（Modal / 菜单，唯一允许纯白）。每跳 2–4 L*，**同屏三层都看得见**——这是本项目区分层次的主要手段（旧体系靠「暖奶油 vs 暖白」的温度差，色差只有 1–2 L*，层级几乎不可见）。
+- **交互高亮三档** {colors.hover} / {colors.selected} / {colors.pressed}：hover 是指点未确认，selected 比它深半档，pressed 再深半档。三档与三层纸同属中性阶，**禁止自造 hover 色**（详见「Hover & Selected」）。
+- **Primary {colors.primary}** 是主色，但它是**墨灰** {colors.primary}，不是鲜艳品牌色。primary 按钮就是这块灰。这是整套设计最反直觉也最关键的决策：交互的「重要性」靠**深度的灰**表达，而非色相。
+- **语义色**全部低饱和、土地取色：success 是苔藓绿 {colors.success}，warning 是赤陶橙 {colors.warning}，danger 是砖红 {colors.danger}。绝不用饱和的原色红绿。**每族只有一颗种子**，其九件套（Bg / Border / Hover / Active / Text）由 `spreadSemantic` 从种子按固定比例混合生成——手写九个数必然漂（旧 dark 的 `colorSuccessBorder` 与 `colorSuccessBgHover` 就抄成了同一个值）。
 - **Bash glow {colors.bash-glow}** 是唯一允许「发光」的暖橙，仅用于 Sender 进入 Bash 模式时的发光边框——它是运行态信号，不是装饰。
-- **Hairline {colors.hairline}** 是边框，淡到 `#f0eee6`，几乎只剩温度。分隔靠留白与极淡边框，**永远不用粗实线**。
+- **Hairline {colors.hairline}** 是描边：卡片与分隔线 `hairline`，实控件边界 `hairline-strong`，focus 边框 `hairline-active`。分隔靠留白与 1px 淡线，**永远不用粗实线**。
+- **固定深色舞台**（反色气泡 / 登录页终端面板）：它们是「浅色主题里的深色块」，取净墨档且不随主题切换，经 `--mobi-stage-*` 变量取色。
 
 ### Dark 模式
 
-Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸互换（ink → `#faf9f5`，paper → `#1a1a18`），暖度保留（`#141413` 而非 `#000`），语义色提亮以在暗底上可读（success → `#4ade80`）。见 frontmatter 的 `colors-dark` 扩展键。切换通过 `html[data-theme='dark']`，CSS 变量与 antd token 同步驱动。
+Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸互换（ink → `#f6f6f8`，paper → `#1a1a1e`），明度关系整体压暗但方向不变（越亮越靠前），语义色同色相提亮以在暗底上可读（success `#3f7a3a` → `#6cc06f`）。见 frontmatter 的 `colors-dark` 扩展键。切换通过 `html[data-theme='dark']`，CSS 变量与 antd token 同步驱动。
+
+**双档同族**是硬约束：语义色的色相两档必须一致（只许动明度与彩度）。旧的 dark 直接用了 Tailwind 的高饱和色（success `#4ade80` C69 vs light 的 C44、warning `#f97316` C82 vs C53），两档看上去不是一套语言——守卫测试锁死「两档色相差 ≤ 20°」。
 
 ## Buttons
 
@@ -222,22 +239,22 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 
 | 形态 | rest | hover | active |
 |------|------|-------|--------|
-| primary | 底 {colors.primary} `#3d3d3a` / 字 on-primary `#fff` | 底 `#4d4c48` | 底 `#141413` |
-| default | 底/边 {colors.hairline-strong} `#e8e6dc` / 字 ink-secondary `#4d4c48` | 底/边 `#d1cfc5` / 字 ink `#141413` | 底/边 `#b0aea5` |
-| text | 无底 / 字 ink-secondary | 底 {colors.hairline} `#f0eee6` | 底 `#e8e6dc` |
-| danger（solid） | 底 {colors.danger} `#b53333` / 字 `#fff` | 底 `#a02c2c` | 底 `#882424` |
+| primary | 底 {colors.primary} `#3a3a41` / 字 on-primary `#fff` | 底 ink-secondary `#4c4c52` | 底 ink `#17171b` |
+| default | 底/边 {colors.selected} `#e1e1e7` / 字 ink-secondary `#4c4c52` | 底/边 `#d5d5dc` / 字 ink `#17171b` | 底/边 `#adadb4` |
+| text | 无底 / 字 ink-secondary | 底 {colors.hover} `#e9e9ee` | 底 `#e1e1e7` |
+| danger（solid） | 底 {colors.danger} `#b53333` / 字 `#fff` | 底 `#9d2c2c` | 底 `#882424` |
 
 **Dark（对称反转，不是新调色板）**
 
 | 形态 | rest | hover | active |
 |------|------|-------|--------|
-| primary | 底 paper `#faf9f5` / 字 ink `#141413` | 底 `#e4e2d8` | 底 `#faf9f5` |
-| default | 底/边 `#30302e` / 字 `#d1cfc5` | 底/边 `#3d3d3a` / 字 paper | 底/边 `#4d4c48` |
-| text | 无底 / 字 `#d1cfc5` | 底 `#30302e` | 底 `#3d3d3a` |
-| danger（solid） | 底 `#ef4444` / 字 ink | 底 `#dc3636` | 底 `#ef4444` |
+| primary | 底 ink `#f6f6f8` / 字 `#131316` | 底 ink-secondary `#d2d2d8` | 底 ink `#f6f6f8` |
+| default | 底/边 `#2f2f35` / 字 `#d2d2d8` | 底/边 `#3e3e45` / 字 ink | 底/边 `#5d5d65` |
+| text | 无底 / 字 `#d2d2d8` | 底 `#2f2f35` | 底 `#3e3e45` |
+| danger（solid） | 底 `#e26060` / 字 `#131316` | 底 `#d25757` | 底 `#e26060` |
 
-- **disabled**：字 `colorTextDisabled`（light `#b0aea5` / dark `#5e5d59`），背景不动——disabled 是「失去资格」，不是「换一种颜色的重要」。
-- **danger 字色形态**（text/default + danger 字）：字走 `colorErrorText` 系（light `#b53333` / dark `#ef4444`），hover 字不变、出淡红底（`colorErrorBg` 系）。红色只出现在字与淡底上。
+- **disabled**：字 `colorTextDisabled`（= ink-quaternary，light `#adadb6` / dark `#5d5d65`），背景不动——disabled 是「失去资格」，不是「换一种颜色的重要」。
+- **danger 字色形态**（text/default + danger 字）：字走 `colorErrorText` 系（light `#b53333` / dark `#e26060`），hover 字不变、出淡红底（`colorErrorBg` 系）。红色只出现在字与淡底上。
 - 实心 primary 的文字颜色由主题对称决定：**Light 白字、Dark 墨字**——都是「纸色压在墨上 / 墨色压在纸上」的同一逻辑，不是两套规则。
 - 图标按钮（IconButton）走 text 档词汇：透明底、ink-secondary 字，hover 出 primaryBg 淡底。
 - **两字按钮不加空格**：antd `autoInsertSpace` 已全局关闭（`ThemeProvider` ConfigProvider `button={{ autoInsertSpace: false }}`）。antd 的「连 接」式排版惯例与全站三字以上按钮（无空格）字距节奏不一致，统一取无空格的紧凑节奏。
@@ -248,16 +265,16 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 
 | 档 | token | Light | Dark | 语义 |
 |----|-------|-------|------|------|
-| **hover** | `colorBgTextHover` = `colorFillQuaternary` | `#f0eee6` | `#262622` | 指点过但未确认——最淡的一层 |
-| **selected** | `colorPrimaryBg`（= `colorFillTertiary`） | `#e8e6dc` | `#30302e` | 当前选中/激活——比 hover 深一档，「更鲜艳」 |
-| **pressed / 按住** | `colorFillSecondary` / `colorPrimaryBgHover` | `#d1cfc5` | `#3d3d3a` | 按压瞬时态或强调过渡 |
+| **hover** | `colorBgTextHover` = `colorFillQuaternary` = `{colors.hover}` | `#e9e9ee` | `#232328` | 指点过但未确认——最淡的一层 |
+| **selected** | `colorPrimaryBg`（= `colorFillTertiary`）= `{colors.selected}` | `#e1e1e7` | `#2f2f35` | 当前选中/激活——比 hover 深一档 |
+| **pressed / 按住** | `colorFillSecondary` / `colorPrimaryBgHover` = `{colors.pressed}` | `#d5d5dc` | `#3e3e45` | 按压瞬时态或强调过渡 |
 
 规则：
 
 - **hover 与 selected 必须是不同的两档**——同一元素两个状态同色，用户无法分辨「停在上面」和「已选中」（实锤过：effort 菜单曾把 selected 写成 hover 同色同值）。
 - **selected 永远比 hover 深半档**（light 加深 / dark 提亮），这是「鲜艳」在纸感体系里的表达——不靠饱和度靠明度差。
 - 任何列表行、菜单项、下拉选项、卡片可点区都落在这套阶梯上，**禁止自造 hover 色**：不直接写 rgba 黑白 alpha（antd 默认冷灰）、不硬编码 hex、不把 `colorPrimaryBg` 借作 hover（它会与选中撞色）。要走 token：hover 用 `colorBgTextHover`，选中用 `colorPrimaryBg`。
-- antd 内部组件的高亮由全局 token 自动统一（`colorFill*` 已暖调化覆盖默认冷灰）；自定义 CSS 变量引用 `var(--ant-color-bg-text-hover)` / `var(--ant-color-fill-*)` 同样自动跟随。
+- antd 内部组件的高亮由全局 token 自动统一（`colorFill*` 已统一覆盖 antd 的默认冷灰）；自定义 CSS 变量引用 `var(--ant-color-bg-text-hover)` / `var(--ant-color-fill-*)` 同样自动跟随。
 - 选中态的入口若同时可 hover（如侧栏选中行），hover 不得把选中底色洗掉——写条件保持 `selected` 档（参照 `sidebarProjects.styles` / `mobileMenu.styles` 的模式）。
 
 ## Typography
@@ -281,10 +298,10 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 
 ## Elevation & Depth
 
-**几乎不用投影。** 这是本项目最鲜明的克制。深度靠**温度差（paper-warm vs paper）**与**极淡边框**表达，不靠阴影。
+**几乎不用投影。** 这是本项目最鲜明的克制。深度靠**明度差（canvas / paper / elevated 三层，每跳 2–4 L*）**与**1px 淡边框**表达，不靠阴影。
 
 - **按钮零阴影**：primaryShadow / defaultShadow / dangerShadow 全部 `'none'`。交互反馈靠背景色变化，不靠浮起。
-- 抬升层（Modal/Drawer/Popover）才用极淡投影：`rgba(0,0,0,0.05) 0px 4px 24px`，几乎不可见。
+- 抬升层（Modal/Drawer/Popover）才用极淡投影：`rgba(0,0,0,0.05) 0px 4px 24px`，几乎不可见——明度差已经把层次说清了，阴影只是锦上添花。
 - Dark 模式投影稍重（`0.3`）以在暗底上可辨，但仍保持含蓄。
 - **例外**：Bash 模式发光边框用 `box-shadow` 叠暖橙光晕，PixelCard 用 canvas 粒子——它们是动效信号，不是静态层次。
 
@@ -294,7 +311,7 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 
 ## Shapes
 
-**暖调圆角体系**，圆角偏大但不到「胶囊」的程度。**按角色取档**（uiarc 同法）：档位以「这是哪一层表面」命名，不设 xs/sm/md/lg 的数值阶梯——省掉「该选哪号」的犹豫，是这套体系好用的一半。
+**圆角体系**，圆角偏大但不到「胶囊」的程度。**按角色取档**（uiarc 同法）：档位以「这是哪一层表面」命名，不设 xs/sm/md/lg 的数值阶梯——省掉「该选哪号」的犹豫，是这套体系好用的一半。
 
 主体三档**等差 8px**（control → panel → surface）：每跳的观感增幅一致，才不会出现「这一跳小、下一跳大」的突档感。`control` 的锚点是**控件高度**而非手感：mobi 控件高 36px，乘 uiarc 的控件比值（18px/44px）≈ 14px——照搬 uiarc 的 18px 会在 36px 高上变成胶囊。
 
@@ -313,7 +330,7 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 ## Components
 
 - **按钮**：语义分级（primary / default / text / danger）、判定规则与全量交互态见 **[Buttons](#buttons)** 章。零阴影，hover 仅背景一档变化。
-- **输入框 / 下拉框**：圆角 {rounded.control}，边框淡到 {colors.hairline}，hover 转 {colors.ink-quaternary}，focus 转 {colors.hairline-active}（中灰 ink-tertiary，双主题同值）——focus 边框**不做两极色**（最深暖墨/最亮纸白），1px 实线在纸面上会读成「刺眼描边」而非焦点信号；**无 focus 光晕**（Input `activeShadow: 'none'`、Select `activeOutlineColor: 'transparent'`）。强度阶梯：hairline → ink-quaternary → ink-tertiary，逐级半档，无突变。**下拉面板打开时不弱化 selector 里的选中文本**（antd 默认降到 opacity 0.25，读作「文本消失」，已在 antd.css 硬覆盖回 1——面板内的高亮选中项已承担「当前是谁」的表达）。
+- **输入框 / 下拉框**：圆角 {rounded.control}，边框淡到 {colors.hairline}，hover 转 {colors.ink-quaternary}，focus 转 {colors.hairline-active}（中灰 ink-tertiary，双主题同值）——focus 边框**不做两极色**（最深墨 / 最亮纸白），1px 实线在纸面上会读成「刺眼描边」而非焦点信号；**无 focus 光晕**（Input `activeShadow: 'none'`、Select `activeOutlineColor: 'transparent'`）。强度阶梯：hairline → ink-quaternary → ink-tertiary，逐级半档，无突变。**下拉面板打开时不弱化 selector 里的选中文本**（antd 默认降到 opacity 0.25，读作「文本消失」，已在 antd.css 硬覆盖回 1——面板内的高亮选中项已承担「当前是谁」的表达）。
 - **卡片**：圆角 {rounded.panel}，容器底色，无阴影无粗边。
 - **聊天气泡**：等宽优先字体，assistant 左对齐右侧留 5%，工具卡片气泡最小宽 80%。
 - **PixelCard**（签名组件）：鼠标悬停时 canvas 像素粒子从中心向外扩散，基于 React Bits 改造。用于需要「活」感的入口卡片。
@@ -340,7 +357,7 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - **手势释放判定：速度符号优先于位置**。快甩即关、快反向推即回位；拖到一半松手但速度接近零，才按位置判定。释放后用 momentum 投射（inertia decay `0.998`）继续沉降，让手势与动画无缝衔接。
 - **性能边界**：JS spring 跑在主线程，**避开聊天流等大区域**——虚拟列表内的条目不用 spring。所有动效只动 `transform` / `opacity`，不触发 layout。
 - **降级**：`prefers-reduced-motion` 下全量换 ≤200ms opacity cross-fade，物理感让位于可访问性。
-- **registry 组件动效纪律（shadcn 底座票 04）**：迁移进来的组件**禁止自带第二套 spring/缓动语言**——其动效参数必须并入 `components/motion/presets.ts` 单源（若选用 uiarc，其动效 token 即按 spec D9 升格至此，与 frontmatter 同步）；组件观感按本设计系统暖调色板/圆角 token 重着色，不留上游默认配色。动效密度：高频交互（按钮、行 hover、tab）只用克制反馈（按压 scale），morph 级动效仅限低频高感知时刻。
+- **registry 组件动效纪律（shadcn 底座票 04）**：迁移进来的组件**禁止自带第二套 spring/缓动语言**——其动效参数必须并入 `components/motion/presets.ts` 单源（若选用 uiarc，其动效 token 即按 spec D9 升格至此，与 frontmatter 同步）；组件观感按本设计系统的色板 / 圆角 token 重着色，不留上游默认配色。动效密度：高频交互（按钮、行 hover、tab）只用克制反馈（按压 scale），morph 级动效仅限低频高感知时刻。
 - **按压反馈（移动端）**：去掉浏览器默认 tap-highlight，改用 `[role]/button/.tappable:active { opacity: 0.7 }`——圆形元素得圆形反馈，不出现方形高亮块。**仅触屏**生效，桌面端保留 hover。
 - **状态点呼吸**：`status-dot-breathe` 在 `opacity 1 ↔ 0.3` 间脉动，表示运行态。
 - **ScrambleText**：字符乱码滚动到位的打字机效果，用于 loading 文案。
@@ -360,9 +377,9 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 
 ## Do's and Don'ts
 
-- **Do** 用暖墨灰 {colors.primary} 表达「最重要的那个操作」——一屏只允许一个 primary。
+- **Do** 用墨灰 {colors.primary} 表达「最重要的那个操作」——一屏只允许一个 primary。
 - **Do** 按钮先判语义等级再取色（见 Buttons 章）：主推进 primary、常规动作 default、行内轻操作 text、破坏性 danger。
-- **Do** 用温度差（paper-warm vs paper）做层次，而非阴影。
+- **Do** 用明度差（canvas / paper / elevated）做层次，而非阴影。
 - **Do** 在聊天气泡里用 `var(--font-chat)` 等宽优先字体。
 - **Do** 落在 8 的倍数间距刻度上。
 - **Do** 移动端可点元素加 `.tappable` 或语义 role，以获得 opacity 按压反馈。

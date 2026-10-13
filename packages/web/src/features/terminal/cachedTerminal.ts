@@ -15,6 +15,7 @@
  */
 
 import { io, type Socket } from 'socket.io-client'
+import { NEUTRAL_LIGHT } from '@/core/config/theme/tokens'
 import { Terminal, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -39,15 +40,15 @@ const XTERM_DARK_THEME: ITheme = {
     brightCyan: '#29b8db', brightWhite: '#e5e5e5',
 }
 
-/** 亮色调色板（bg/fg 与 web light token 一致：#faf9f5 / #141413） */
+/** 亮色调色板（底/字取净白档的容器色与墨色，与 web light token 同源；ANSI 十六色是终端自己的色域） */
 const XTERM_LIGHT_THEME: ITheme = {
-    background: '#faf9f5',
-    foreground: '#141413',
-    cursor: '#141413',
-    cursorAccent: '#faf9f5',
-    selectionBackground: '#c8c8c8',
-    black: '#141413', red: '#cd3131', green: '#0a7d4f', yellow: '#b58900',
-    blue: '#2472c8', magenta: '#bc3fbc', cyan: '#098a9e', white: '#faf9f5',
+    background: NEUTRAL_LIGHT.container,
+    foreground: NEUTRAL_LIGHT.ink,
+    cursor: NEUTRAL_LIGHT.ink,
+    cursorAccent: NEUTRAL_LIGHT.container,
+    selectionBackground: NEUTRAL_LIGHT.pressed,
+    black: NEUTRAL_LIGHT.ink, red: '#cd3131', green: '#0a7d4f', yellow: '#b58900',
+    blue: '#2472c8', magenta: '#bc3fbc', cyan: '#098a9e', white: NEUTRAL_LIGHT.container,
     brightBlack: '#666666', brightRed: '#cd3131', brightGreen: '#0a7d4f',
     brightYellow: '#b58900', brightBlue: '#2472c8', brightMagenta: '#d670d6',
     brightCyan: '#098a9e', brightWhite: '#ffffff',

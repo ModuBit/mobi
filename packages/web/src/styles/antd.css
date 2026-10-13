@@ -50,13 +50,14 @@
    内部元素逐一反色：markdown 链接 / 行内代码底 / 目录 mention / slash 徽章——
    这些各有自己的主题档规则，米色档的取值在深底上不可读，必须在作用域内覆盖 */
 html:not([data-theme='dark']) .user-msg-bubble .ant-bubble-content {
-    background: #3d3d3a;
-    color: #faf9f5;
+    /* 反色气泡是固定在浅色主题里的「深底舞台」：底色与内部字色取舞台变量（净墨档，不随主题切换） */
+    background: var(--mobi-stage-elevated);
+    color: var(--mobi-stage-ink);
 }
 
 html:not([data-theme='dark']) .user-msg-bubble .x-markdown a {
-    color: #d1cfc5;
-    text-decoration-color: rgba(209, 207, 197, 0.35);
+    color: var(--mobi-stage-ink-secondary);
+    text-decoration-color: color-mix(in srgb, var(--mobi-stage-ink-secondary) 35%, transparent);
 }
 
 html:not([data-theme='dark']) .user-msg-bubble .x-markdown code {
@@ -64,7 +65,7 @@ html:not([data-theme='dark']) .user-msg-bubble .x-markdown code {
 }
 
 html:not([data-theme='dark']) .user-msg-bubble .x-markdown .mention-directory {
-    color: #a8a69e;
+    color: var(--mobi-stage-ink-tertiary);
 }
 
 html:not([data-theme='dark']) .user-msg-bubble .x-markdown .slash-command-badge {
@@ -491,15 +492,15 @@ html[data-theme='dark'] .voice-note-glow {
 
 /* Dark 模式下 solid 按钮文字颜色修复 */
 html[data-theme='dark'] .ant-btn-variant-solid {
-    color: #141413 !important;
+    color: var(--mobi-canvas) !important;
 }
 
 html[data-theme='dark'] .ant-btn-variant-solid:hover {
-    color: #141413 !important;
+    color: var(--mobi-canvas) !important;
 }
 
 html[data-theme='dark'] .ant-btn-variant-solid:active {
-    color: #141413 !important;
+    color: var(--mobi-canvas) !important;
 }
 
 html[data-theme='dark'] .ant-btn-variant-solid:disabled {

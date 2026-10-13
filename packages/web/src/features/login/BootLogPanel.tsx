@@ -52,8 +52,8 @@ const fade = keyframes`
 
 /** 进度条单格扫动（亮峰经过时变绿） */
 const barSweep = keyframes`
-    0%, 100% { color: #3a3a37; }
-    50% { color: #4ade80; }
+    0%, 100% { color: #3a3a3f; }
+    50% { color: var(--mobi-stage-success); }
 `
 
 /** 左侧终端面板：neofetch 风仪表盘，替换原 BrandPanel，仅 PC 显示 */
@@ -67,9 +67,9 @@ const Panel = styled.div<{ $isDark: boolean }>`
     background:
         radial-gradient(circle at 12% 88%, rgba(74, 222, 128, 0.08), transparent 45%),
         radial-gradient(circle at 92% 8%, rgba(74, 222, 128, 0.05), transparent 38%),
-        ${({ $isDark }) => ($isDark ? '#0a0a09' : '#141413')};
+        ${({ $isDark }) => ($isDark ? '#0b0b0e' : 'var(--mobi-stage-canvas)')};
     font-family: var(--font-mono);
-    color: #d1cfc5;
+    color: var(--mobi-stage-ink-secondary);
 
     @media (min-width: 1024px) {
         display: flex;
@@ -107,7 +107,7 @@ const Titlebar = styled.div`
     align-items: center;
     gap: 6px;
     padding: 10px 14px;
-    border-bottom: 1px solid #2a2a27;
+    border-bottom: 1px solid #2a2a2e;
     background: rgba(255, 255, 255, 0.02);
     position: relative;
     z-index: 1;
@@ -124,11 +124,11 @@ const Dot = styled.span<{ $c: string }>`
 const Title = styled.span`
     margin-left: 8px;
     font-size: 11px;
-    color: #6b6a65;
+    color: #6b6b72;
     letter-spacing: 0.04em;
 
     b {
-        color: #87867f;
+        color: var(--mobi-stage-ink-tertiary);
         font-weight: 600;
     }
 `
@@ -137,7 +137,7 @@ const Title = styled.span`
 const TbRight = styled.span`
     margin-left: auto;
     font-size: 10px;
-    color: #6b6a65;
+    color: #6b6b72;
     display: flex;
     align-items: center;
     gap: 5px;
@@ -148,7 +148,7 @@ const TbDot = styled.span`
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #4ade80;
+    background: var(--mobi-stage-success);
     box-shadow: 0 0 6px rgba(74, 222, 128, 0.6);
 `
 
@@ -164,7 +164,7 @@ const Body = styled.div`
     /* 视口高度不足时内容区滚动（Status 固定为底栏，prompt 始终可见） */
     overflow-y: auto;
     scrollbar-width: thin;
-    scrollbar-color: #2a2a27 transparent;
+    scrollbar-color: #2a2a2e transparent;
     &::-webkit-scrollbar {
         width: 6px;
     }
@@ -172,11 +172,11 @@ const Body = styled.div`
         background: transparent;
     }
     &::-webkit-scrollbar-thumb {
-        background: #2a2a27;
+        background: #2a2a2e;
         border-radius: 3px;
     }
     &::-webkit-scrollbar-thumb:hover {
-        background: #3a3a37;
+        background: #3a3a3f;
     }
 `
 
@@ -205,13 +205,13 @@ const HeroName = styled.div`
 
 const Ver = styled.span`
     font-size: 11px;
-    color: #6b6a65;
+    color: #6b6b72;
     font-weight: 400;
 `
 
 const Rule = styled.div`
     height: 1px;
-    background: #2a2a27;
+    background: #2a2a2e;
     margin: 7px 0 8px;
 `
 
@@ -225,26 +225,26 @@ const InfoTable = styled.div`
 `
 
 const K = styled.span`
-    color: #6b6a65;
+    color: #6b6b72;
 `
 
 const V = styled.span`
-    color: #faf9f5;
+    color: var(--mobi-stage-ink);
 `
 
 const VGreen = styled.span`
-    color: #4ade80;
+    color: var(--mobi-stage-success);
 `
 
 /** hero 下的 tagline 注释 */
 const Tagline = styled.div`
     font-size: 12px;
-    color: #87867f;
+    color: var(--mobi-stage-ink-tertiary);
     line-height: 1.5;
 `
 
 const Comment = styled.span`
-    color: #4d4c48;
+    color: #4d4d55;
 `
 
 /** 分隔线带标签 */
@@ -252,7 +252,7 @@ const Sep = styled.div`
     display: flex;
     align-items: center;
     gap: 10px;
-    color: #4d4c48;
+    color: #4d4d55;
     font-size: 10px;
     letter-spacing: 0.18em;
     text-transform: uppercase;
@@ -260,14 +260,14 @@ const Sep = styled.div`
     &::before {
         content: '';
         height: 1px;
-        background: #2a2a27;
+        background: #2a2a2e;
         flex: 0 0 8px;
     }
 
     &::after {
         content: '';
         height: 1px;
-        background: #2a2a27;
+        background: #2a2a2e;
         flex: 1;
     }
 `
@@ -280,24 +280,24 @@ const Feats = styled.div`
 
 const FeatTitle = styled.div`
     font-size: 13px;
-    color: #faf9f5;
+    color: var(--mobi-stage-ink);
     display: flex;
     align-items: baseline;
     gap: 8px;
 `
 
 const Idx = styled.span`
-    color: #4d4c48;
+    color: #4d4d55;
     font-size: 11px;
 `
 
 const Mark = styled.span`
-    color: #4ade80;
+    color: var(--mobi-stage-success);
 `
 
 const FeatDesc = styled.div`
     font-size: 11px;
-    color: #6b6a65;
+    color: #6b6b72;
     padding-left: 42px;
     line-height: 1.5;
     margin-top: 1px;
@@ -325,26 +325,26 @@ const LogRow = styled.div`
     gap: 6px;
     font-size: 11px;
     line-height: 1.85;
-    color: #87867f;
+    color: var(--mobi-stage-ink-tertiary);
 `
 
 const LogArrow = styled.span`
-    color: #4d4c48;
+    color: #4d4d55;
 `
 
 const LogMsg = styled.span`
-    color: #d1cfc5;
+    color: var(--mobi-stage-ink-secondary);
 `
 
 const LogFill = styled.span`
     flex: 1;
-    border-bottom: 1px dotted #3a3a37;
+    border-bottom: 1px dotted #3a3a3f;
     transform: translateY(-3px);
     margin: 0 4px;
 `
 
 const LogOk = styled.span`
-    color: #4ade80;
+    color: var(--mobi-stage-success);
 `
 
 /** 能力树单行：├── name/ ……… val（终端目录树，展示 mobi 模块） */
@@ -354,26 +354,26 @@ const TreeRow = styled.div`
     gap: 6px;
     font-size: 11px;
     line-height: 1.85;
-    color: #6b6a65;
+    color: #6b6b72;
 `
 
 const TreeBranch = styled.span`
-    color: #4d4c48;
+    color: #4d4d55;
 `
 
 const TreeName = styled.span`
-    color: #4ade80;
+    color: var(--mobi-stage-success);
 `
 
 const TreeFill = styled.span`
     flex: 1;
-    border-bottom: 1px dotted #3a3a37;
+    border-bottom: 1px dotted #3a3a3f;
     transform: translateY(-3px);
     margin: 0 4px;
 `
 
 const TreeVal = styled.span`
-    color: #d1cfc5;
+    color: var(--mobi-stage-ink-secondary);
 `
 
 /** 底栏：进度条 + 历史命令 + 系统信息 + prompt（固定常驻，不随内容滚动） */
@@ -382,7 +382,7 @@ const Status = styled.div`
     flex-direction: column;
     gap: 5px;
     padding: 12px 28px 14px;
-    border-top: 1px solid #2a2a27;
+    border-top: 1px solid #2a2a2e;
     background: rgba(0, 0, 0, 0.18);
     position: relative;
     z-index: 1;
@@ -390,7 +390,7 @@ const Status = styled.div`
 
 const Progress = styled.div`
     font-size: 11px;
-    color: #87867f;
+    color: var(--mobi-stage-ink-tertiary);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -405,13 +405,13 @@ const Bar = styled.span`
     /* reduced-motion：定格前 2 格亮（静态连接指示） */
     @media (prefers-reduced-motion: reduce) {
         & > span:nth-child(-n + 2) {
-            color: #4ade80;
+            color: var(--mobi-stage-success);
         }
     }
 `
 
 const BarCell = styled.span<{ $idx: number }>`
-    color: #3a3a37;
+    color: #3a3a3f;
     animation: ${barSweep} ${BAR_SWEEP_PERIOD}s linear infinite;
     /* 8 格按 idx 错开 delay，形成从左到右的扫动波 */
     animation-delay: ${({ $idx }) => $idx * (BAR_SWEEP_PERIOD / BAR_TOTAL)}s;
@@ -424,29 +424,29 @@ const BarCell = styled.span<{ $idx: number }>`
 /** 历史命令行（淡化，营造曾执行过的终端感） */
 const CmdLine = styled.div`
     font-size: 11px;
-    color: #6b6a65;
+    color: #6b6b72;
     opacity: 0.65;
 `
 
 const CmdDollar = styled.span`
-    color: #4ade80;
+    color: var(--mobi-stage-success);
 `
 
 const SysLine = styled.div`
     font-size: 10px;
-    color: #6b6a65;
+    color: #6b6b72;
 `
 
 const PromptLine = styled.div`
     font-size: 13px;
-    color: #faf9f5;
+    color: var(--mobi-stage-ink);
     display: flex;
     align-items: center;
     gap: 6px;
 `
 
 const Pmt = styled.span`
-    color: #4ade80;
+    color: var(--mobi-stage-success);
     font-weight: 700;
 `
 
@@ -454,7 +454,7 @@ const Cursor = styled.span`
     display: inline-block;
     width: 8px;
     height: 14px;
-    background: #faf9f5;
+    background: var(--mobi-stage-ink);
     vertical-align: -2px;
     animation: ${blink} 1s steps(2) infinite;
 
@@ -465,7 +465,7 @@ const Cursor = styled.span`
 
 const Foot = styled.div`
     padding: 8px 28px 14px;
-    color: #4d4c48;
+    color: #4d4d55;
     font-size: 10px;
     position: relative;
     z-index: 1;
@@ -586,11 +586,11 @@ export function BootLogPanel() {
             <Body>
                 <Hero>
                     <LogoWrap>
-                        <Logo color="#faf9f5" style={{ width: 58, height: 58 }} />
+                        <Logo color="var(--mobi-stage-ink)" style={{ width: 58, height: 58 }} />
                     </LogoWrap>
                     <HeroInfo>
                         <HeroName>
-                            <MobiWordmark size={26} color="#faf9f5" />
+                            <MobiWordmark size={26} color="var(--mobi-stage-ink)" />
                             <Ver>{`v${__MOBI_VERSION__}`}</Ver>
                         </HeroName>
                         <Rule />

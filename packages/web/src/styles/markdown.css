@@ -26,9 +26,9 @@
 
 /* 链接样式：虚线下划线（实线视觉太重，虚线更像「可点开的引用」） */
 .x-markdown a {
-    color: #3d3d3a;
+    color: var(--mobi-primary);
     text-decoration: underline dashed;
-    text-decoration-color: rgba(61, 61, 58, 0.3);
+    text-decoration-color: color-mix(in srgb, var(--mobi-primary) 30%, transparent);
     text-underline-offset: 2px;
     transition: opacity 0.2s;
 }
@@ -38,30 +38,30 @@
 }
 
 html[data-theme='dark'] .x-markdown a {
-    color: #d1cfc5;
-    text-decoration-color: rgba(209, 207, 197, 0.3);
+    color: var(--mobi-ink-secondary);
+    text-decoration-color: color-mix(in srgb, var(--mobi-ink-secondary) 30%, transparent);
 }
 
 /* Sources 组件内链接需要更高优先级覆盖 antd 样式 */
 .x-markdown .ant-sources a,
 .x-markdown .ant-sources .ant-sources-link-title {
-    color: #3d3d3a;
+    color: var(--mobi-primary);
 }
 
 .x-markdown .ant-sources a:hover,
 .x-markdown .ant-sources .ant-sources-link:hover {
-    color: #3d3d3a;
+    color: var(--mobi-primary);
     opacity: 0.75;
 }
 
 html[data-theme='dark'] .x-markdown .ant-sources a,
 html[data-theme='dark'] .x-markdown .ant-sources .ant-sources-link-title {
-    color: #d1cfc5;
+    color: var(--mobi-ink-secondary);
 }
 
 html[data-theme='dark'] .x-markdown .ant-sources a:hover,
 html[data-theme='dark'] .x-markdown .ant-sources .ant-sources-link:hover {
-    color: #d1cfc5;
+    color: var(--mobi-ink-secondary);
 }
 
 /* Sources 组件：缩小字体 */
@@ -87,12 +87,12 @@ html[data-theme='dark'] .x-markdown .ant-sources .ant-sources-link:hover {
 
 .x-markdown .ant-sources .ant-sources-list-item {
     list-style: none;
-    border-left: 3px solid #b0aea5;
+    border-left: 3px solid var(--mobi-ink-quaternary);
     padding-left: 10px;
 }
 
 html[data-theme='dark'] .x-markdown .ant-sources .ant-sources-list-item {
-    border-left-color: #5e5d59;
+    border-left-color: var(--mobi-ink-quaternary);
 }
 
 /* XMarkdown inline code 背景色 */
@@ -107,7 +107,7 @@ html[data-theme='dark'] .x-markdown code {
 /* XMarkdown 表格样式 - Light 模式 */
 .x-markdown table {
     border-collapse: collapse;
-    border: 1px solid #e8e6dc;
+    border: 1px solid var(--mobi-hairline);
     margin: 0.75em 0;
     width: 100%;
     border-radius: 6px;
@@ -117,63 +117,63 @@ html[data-theme='dark'] .x-markdown code {
 }
 
 .x-markdown thead {
-    background: #f0eee6;
+    background: var(--mobi-hover);
 }
 
 .x-markdown th {
     font-weight: 600;
     padding: 8px 12px;
-    border: 1px solid #e8e6dc;
+    border: 1px solid var(--mobi-hairline);
     text-align: left;
     white-space: nowrap;
-    background: #e8e6dc;
+    background: var(--mobi-selected);
 }
 
 .x-markdown td {
     padding: 6px 12px;
-    border: 1px solid #e8e6dc;
+    border: 1px solid var(--mobi-hairline);
 }
 
 .x-markdown tbody tr:nth-child(odd) {
-    background: #faf9f5;
+    background: var(--mobi-paper);
 }
 
 .x-markdown tbody tr:nth-child(even) {
-    background: #f0eee6;
+    background: var(--mobi-hover);
 }
 
 .x-markdown tbody tr:hover {
-    background: #e2e0d6;
+    background: var(--mobi-pressed);
 }
 
 /* XMarkdown 表格样式 - Dark 模式 */
 html[data-theme='dark'] .x-markdown table {
-    border-color: #30302e;
+    border-color: var(--mobi-hairline);
 }
 
 html[data-theme='dark'] .x-markdown thead {
-    background: #1e1e1c;
+    background: var(--mobi-hover);
 }
 
 html[data-theme='dark'] .x-markdown th {
-    border-color: #30302e;
-    background: #232320;
+    border-color: var(--mobi-hairline);
+    background: var(--mobi-elevated);
 }
 
 html[data-theme='dark'] .x-markdown td {
-    border-color: #30302e;
+    border-color: var(--mobi-hairline);
 }
 
 html[data-theme='dark'] .x-markdown tbody tr:nth-child(odd) {
-    background: #1a1a18;
+    background: var(--mobi-paper);
 }
 
 html[data-theme='dark'] .x-markdown tbody tr:nth-child(even) {
-    background: #1e1e1c;
+    background: var(--mobi-hover);
 }
 
 html[data-theme='dark'] .x-markdown tbody tr:hover {
-    background: #2a2a28;
+    background: var(--mobi-pressed);
 }
 
 /* Slash Command Badge（2026-09-26 定稿）：lucide Box icon + 命令名，无底无框。
@@ -244,7 +244,7 @@ html[data-theme='dark'] .x-markdown [class*="codeHighlighter"]:not([class*="head
 
 /* custom 消息系统行（ADR 0003，12px 灰调）内的 Markdown 变体：
    收起块级 p 边距（系统行是无边框紧凑行），链接色继承行内灰调而非全局固定色
-   （.x-markdown a 的 #3d3d3a 与暗色主题覆盖都不适用于灰调系统行） */
+   （.x-markdown a 的 var(--mobi-primary) 与暗色主题覆盖都不适用于灰调系统行） */
 .x-markdown.x-markdown-inline p {
     margin: 0;
 }

@@ -17,6 +17,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, it, expect } from 'vitest'
+import { shadcnLightComponents, shadcnDarkComponents } from '@/core/config/theme/components'
+import { NEUTRAL_DARK, NEUTRAL_LIGHT } from '@/core/config/theme/tokens'
 
 /**
  * 回归守卫：Select 焦点边框降档 + 打开面板不弱化选中文本
@@ -24,19 +26,19 @@ import { describe, it, expect } from 'vitest'
  * 两个问题同一批修（DESIGN.md 输入框/下拉框规范）：
  * 1. antd Select 的 focus 边框默认走全局 colorPrimary（light 最深墨 / dark 最亮纸白的
  *    两极色），1px 实线刺眼——在 theme components.ts 里 light+dark 同时覆写
- *    activeBorderColor 为中灰 #87867f（与 Input 同阶梯）。
+ *    activeBorderColor 为中灰档（ink-tertiary，与 Input 同阶梯）。
  * 2. antd 对 Select 类组件硬编码「面板打开时选中文本 opacity 0.25」（select-input.js，
  *    非 token）——选中值几乎消失；在 src/styles/antd.css 硬覆盖回 1。
  *
  * 此测试防止覆盖规则被重构/antd 升级时误删或漏配。
  */
 describe('Select 焦点边框与打开态守卫', () => {
-    const themePath = path.resolve(__dirname, '../src/core/config/theme/components.ts')
-    const theme = fs.readFileSync(themePath, 'utf8')
-
-    it('light + dark 的 Select 都覆写了 activeBorderColor（中灰，非 colorPrimary 两极色）', () => {
-        // Input 与 Select 各 2 处（light/dark），四块全部落在 #87867f
-        expect(theme.match(/activeBorderColor: '#87867f'/g)?.length).toBe(4)
+    it('light + dark 的 Input / Select 都把 focus 边框压在中灰档（非 colorPrimary 两极色）', () => {
+        // 断言解析后的取值而非源码写法：组件覆写改引 token / 换实现方式，这条契约都该成立
+        expect(shadcnLightComponents.Input.activeBorderColor).toBe(NEUTRAL_LIGHT.inkTertiary)
+        expect(shadcnLightComponents.Select.activeBorderColor).toBe(NEUTRAL_LIGHT.inkTertiary)
+        expect(shadcnDarkComponents.Input.activeBorderColor).toBe(NEUTRAL_DARK.inkTertiary)
+        expect(shadcnDarkComponents.Select.activeBorderColor).toBe(NEUTRAL_DARK.inkTertiary)
     })
 
     it('antd.css 覆盖了 antd 打开面板时的选中内容弱化（opacity 0.25 → 1）', () => {

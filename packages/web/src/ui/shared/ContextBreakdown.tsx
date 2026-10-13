@@ -76,7 +76,8 @@ export function ContextBreakdown({ usage }: { usage: ContextUsage }) {
     const breakdown = usage.breakdown
     if (!breakdown) return null
 
-    const neutral = isDark ? '#5e5d59' : '#b0aea5'
+    // 中性档（未分类部分）取中性阶变量，两档同源
+    const neutral = 'var(--mobi-ink-quaternary)'
     // 细分口径分母 = breakdown 自身合计（类目和 + free + buffer），不用 usage.maxTokens——
     // 第三方渠道两者可能锚定不同窗口（breakdown 按 CC rawMaxTokens 估算、maxTokens 来自
     // result.modelUsage），自口径保证方格恒 100 格、行百分比不超 100%；窗口一致时两者相等

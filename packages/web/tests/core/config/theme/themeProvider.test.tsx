@@ -27,6 +27,7 @@ import { render, cleanup } from '@testing-library/react'
 import { ThemeProvider } from '@/core/config/theme/ThemeProvider'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { SHADCN_TOKENS_STYLE_ID } from '@/core/config/theme/cssVars'
+import { shadcnLightToken, shadcnDarkToken } from '@/core/config/theme/tokens'
 
 /** 覆写 setup.ts 的默认 matchMedia 桩（matches:false），模拟系统主题偏好 */
 function stubSystemTheme(dark: boolean) {
@@ -63,7 +64,7 @@ describe('ThemeProvider 主题四通道单源', () => {
         renderProvider()
         expect(document.documentElement.classList.contains('dark')).toBe(true)
         expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
-        expect(document.getElementById(SHADCN_TOKENS_STYLE_ID)?.textContent).toContain('--background: #141413')
+        expect(document.getElementById(SHADCN_TOKENS_STYLE_ID)?.textContent).toContain(shadcnDarkToken.colorBgBase)
     })
 
     it("theme='light'：无 .dark class + data-theme=light + 变量注入为亮档", () => {
@@ -71,7 +72,7 @@ describe('ThemeProvider 主题四通道单源', () => {
         renderProvider()
         expect(document.documentElement.classList.contains('dark')).toBe(false)
         expect(document.documentElement.getAttribute('data-theme')).toBe('light')
-        expect(document.getElementById(SHADCN_TOKENS_STYLE_ID)?.textContent).toContain('--background: #faf9f5')
+        expect(document.getElementById(SHADCN_TOKENS_STYLE_ID)?.textContent).toContain(shadcnLightToken.colorBgBase)
     })
 
     it("theme='system' + 系统深色：解析为 dark（回归 pending #113，现行为恒 light 为红）", () => {
@@ -80,7 +81,7 @@ describe('ThemeProvider 主题四通道单源', () => {
         renderProvider()
         expect(document.documentElement.classList.contains('dark')).toBe(true)
         expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
-        expect(document.getElementById(SHADCN_TOKENS_STYLE_ID)?.textContent).toContain('--background: #141413')
+        expect(document.getElementById(SHADCN_TOKENS_STYLE_ID)?.textContent).toContain(shadcnDarkToken.colorBgBase)
     })
 
     it("theme='system' + 系统浅色：解析为 light", () => {
@@ -89,6 +90,6 @@ describe('ThemeProvider 主题四通道单源', () => {
         renderProvider()
         expect(document.documentElement.classList.contains('dark')).toBe(false)
         expect(document.documentElement.getAttribute('data-theme')).toBe('light')
-        expect(document.getElementById(SHADCN_TOKENS_STYLE_ID)?.textContent).toContain('--background: #faf9f5')
+        expect(document.getElementById(SHADCN_TOKENS_STYLE_ID)?.textContent).toContain(shadcnLightToken.colorBgBase)
     })
 })

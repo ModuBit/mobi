@@ -21,7 +21,15 @@
  * 的 buildMobiThemeCss（token→CSS 变量投影先例）。新增变量只改 SHADCN_VAR_MAPPINGS 一处。
  */
 
-import { RADIUS_TIERS, shadcnLightToken, shadcnDarkToken } from './tokens'
+import {
+    NEUTRAL_DARK,
+    NEUTRAL_RAMPS,
+    RADIUS_TIERS,
+    SEMANTIC_DARK,
+    SEMANTIC_LIGHT,
+    shadcnLightToken,
+    shadcnDarkToken,
+} from './tokens'
 
 type Mode = 'light' | 'dark'
 type Token = typeof shadcnLightToken
@@ -87,6 +95,49 @@ const RADIUS_VARS: ReadonlyArray<readonly [string, number]> = [
     ['--radius-pill', RADIUS_TIERS.pill],
 ]
 
+/**
+ * 中性阶的 CSS 投影：**角色名即变量名**（DESIGN.md「Colors」的中性阶逐档对应）。
+ * antd 的 `--ant-color-*` 只在组件子树内可解析，`src/styles/*.css` 与自绘件够不着，
+ * 全靠这一组变量接住——此前它们各自抄了一份十六进制（markdown.css 一处就抄了 39 个），
+ * 配色一改就漏一片。
+ */
+const NEUTRAL_VARS: ReadonlyArray<readonly [string, keyof typeof NEUTRAL_RAMPS.light]> = [
+    ['--mobi-elevated', 'elevated'],
+    ['--mobi-paper', 'container'],
+    ['--mobi-canvas', 'canvas'],
+    ['--mobi-hairline', 'hairline'],
+    ['--mobi-hairline-strong', 'hairlineStrong'],
+    ['--mobi-hover', 'hover'],
+    ['--mobi-selected', 'selected'],
+    ['--mobi-pressed', 'pressed'],
+    ['--mobi-ink', 'ink'],
+    ['--mobi-ink-secondary', 'inkSecondary'],
+    ['--mobi-ink-tertiary', 'inkTertiary'],
+    ['--mobi-ink-quaternary', 'inkQuaternary'],
+    ['--mobi-primary', 'primary'],
+]
+
+/** 语义色的 CSS 投影（双档同族，只有明度不同）——自绘件与样式表的取色入口 */
+const SEMANTIC_VARS: ReadonlyArray<readonly [string, 'success' | 'warning' | 'danger']> = [
+    ['--mobi-success', 'success'],
+    ['--mobi-warning', 'warning'],
+    ['--mobi-danger', 'danger'],
+]
+
+/**
+ * 固定深色舞台（反色气泡 / 登录页徽章等「浅色主题里的深色块」）的取色入口：
+ * 一律取净墨档且**不随主题切换**——它们本来就是深底，跟着主题翻色会自相矛盾。
+ * 就地声明会变成每处一份字面量，故与中性阶同法在 :root 投影一次。
+ */
+const STAGE_VARS: ReadonlyArray<readonly [string, keyof typeof NEUTRAL_DARK]> = [
+    ['--mobi-stage-canvas', 'canvas'],
+    ['--mobi-stage-elevated', 'elevated'],
+    ['--mobi-stage-ink', 'ink'],
+    ['--mobi-stage-ink-secondary', 'inkSecondary'],
+    ['--mobi-stage-ink-tertiary', 'inkTertiary'],
+    ['--mobi-stage-ink-quaternary', 'inkQuaternary'],
+]
+
 /** 注入样式节点的 id（ThemeProvider 挂载，幂等原地更新） */
 export const SHADCN_TOKENS_STYLE_ID = 'mobi-shadcn-tokens'
 
@@ -109,9 +160,20 @@ export function buildShadcnThemeCss(mode: Mode): string {
     })
     const motionLines = MOTION_VARS.map(([cssVar, value]) => `  ${cssVar}: ${value};`)
     const radiusLines = RADIUS_VARS.map(([cssVar, value]) => `  ${cssVar}: ${value}px;`)
+    const ramp = NEUTRAL_RAMPS[mode]
+    const neutralLines = NEUTRAL_VARS.map(([cssVar, key]) => `  ${cssVar}: ${ramp[key]};`)
+    const semantic = mode === 'dark' ? SEMANTIC_DARK : SEMANTIC_LIGHT
+    const semanticLines = SEMANTIC_VARS.map(([cssVar, key]) => `  ${cssVar}: ${semantic[key]};`)
+    const stageLines = STAGE_VARS.map(([cssVar, key]) => `  ${cssVar}: ${NEUTRAL_DARK[key]};`)
+    // 舞台内的强调色同样是净墨档的语义色（不随主题切换），如登录页终端面板的提示绿
+    const stageAccent = `  --mobi-stage-success: ${SEMANTIC_DARK.success};`
     return [
         `${selector} {`,
         ...colorLines,
+        ...neutralLines,
+        ...semanticLines,
+        ...stageLines,
+        stageAccent,
         ...radiusLines,
         ...motionLines,
         `  --mobi-z-overlay: ${Z_OVERLAY};`,

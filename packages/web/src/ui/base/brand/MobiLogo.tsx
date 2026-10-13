@@ -36,6 +36,7 @@
 import type { CSSProperties } from 'react'
 import styled from '@emotion/styled'
 import { keyframes } from '@emotion/react'
+import { NEUTRAL_DARK, NEUTRAL_LIGHT } from '@/core/config/theme/tokens'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { MOBI_MARK_PATH } from '@/ui/base/brand/brandPaths'
 
@@ -114,7 +115,7 @@ function playStyle(play: MobiLogoPlay): CSSProperties {
 
 export function MobiLogo({ play = 'loop', size = 64, className, style }: MobiLogoProps) {
     const isDark = useUiStore((s) => s.theme === 'dark')
-    const color = isDark ? '#faf9f5' : '#141413'
+    const color = isDark ? NEUTRAL_DARK.ink : NEUTRAL_LIGHT.ink
     const playProps = { style: playStyle(play) }
 
     return (

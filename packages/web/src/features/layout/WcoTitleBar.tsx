@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { Logo } from '@/ui/base/brand/Logo'
 import { MobiWordmark } from '@/ui/base/brand/MobiWordmark'
 import { UpdateIconButton } from './UpdatePrompt'
+import { NEUTRAL_DARK, NEUTRAL_LIGHT } from '@/core/config/theme/tokens'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { useUpdateAvailable } from '@/core/pwa/useUpdateAvailable'
 
@@ -32,12 +33,11 @@ const MAC_TRAFFIC_PAD = '78px'
 
 /**
  * 浏览器 chrome（标签栏/地址栏）与 WcoTitleBar 统一使用的背景色。
- * 跟 html 背景色（base.css）一致：亮 #ffffff / 暗 #141414，
- * 不用 antd token（shadcn override 的 colorBgContainer=#faf9f5 / colorBgLayout=#141413 与 html 不同源，
- * 会导致 chrome 标签栏与窗口边缘色差、以及刷新时 #ffffff↔#faf9f5 闪烁）。
+ * 与 base.css 的 html 背景同源（净白档的容器色 / 净墨档的画布色）——这里必须取具体色值
+ * （浏览器 chrome 不吃 CSS 变量），故直接引 tokens.ts 的常量，避免又抄一份。
  */
-const CHROME_BG_LIGHT = '#ffffff'
-const CHROME_BG_DARK = '#141414'
+const CHROME_BG_LIGHT = NEUTRAL_LIGHT.container
+const CHROME_BG_DARK = NEUTRAL_DARK.canvas
 
 /** 解析当前主题对应的 chrome 背景色。MainLayout 设 theme-color 与 WcoTitleBar 背景共用，保证同源 */
 export function resolveChromeColor(theme: 'light' | 'dark'): string {

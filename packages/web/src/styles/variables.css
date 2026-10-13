@@ -9,8 +9,8 @@
     /* AgentCard 宽度 */
     --agent-card-width: 200px;
 
-    /* 斜杠下拉：CC 内置命令名字色（light 陶土暖橙；dark 覆盖为 antd gold，见 base.css） */
-    --mobi-command-builtin: #f97316;
+    /* 斜杠下拉：CC 内置命令名字色（双档同族警告色，见 DESIGN.md「Colors」语义色） */
+    --mobi-command-builtin: var(--mobi-warning);
 }
 
 @media (max-width: 768px) {

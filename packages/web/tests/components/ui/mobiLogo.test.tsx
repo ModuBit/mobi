@@ -19,6 +19,7 @@ import { render, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { MOBI_MARK_PATH } from '@/ui/base/brand/brandPaths'
 import { useUiStore } from '@/core/data/stores/uiStore'
+import { NEUTRAL_DARK, NEUTRAL_LIGHT } from '@/core/config/theme/tokens'
 
 const { MobiLogo } = await import('@/ui/base/brand/MobiLogo')
 
@@ -68,11 +69,11 @@ describe('MobiLogo 品牌动画组件', () => {
 
         useUiStore.setState({ theme: 'light' })
         rerender(<MobiLogo />)
-        expect(container.querySelector('svg')).toHaveStyle({ color: '#141413' })
+        expect(container.querySelector('svg')).toHaveStyle({ color: NEUTRAL_LIGHT.ink })
 
         useUiStore.setState({ theme: 'dark' })
         rerender(<MobiLogo />)
-        expect(container.querySelector('svg')).toHaveStyle({ color: '#faf9f5' })
+        expect(container.querySelector('svg')).toHaveStyle({ color: NEUTRAL_DARK.ink })
 
         useUiStore.setState({ theme: 'light' })
     })

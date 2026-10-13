@@ -98,9 +98,9 @@ function checklistTone(item: ChecklistItem): string {
 }
 
 function checklistColor(item: ChecklistItem): string {
-    if (item.status === 'completed') return '#3f7a3a'
-    if (item.status === 'in_progress') return '#3d3d3a'
-    return '#b0aea5'
+    if (item.status === 'completed') return 'var(--mobi-success)'
+    if (item.status === 'in_progress') return 'var(--mobi-primary)'
+    return 'var(--mobi-ink-quaternary)'
 }
 
 function checklistIcon(item: ChecklistItem): string {
@@ -111,7 +111,7 @@ function checklistIcon(item: ChecklistItem): string {
 export function ChecklistList(props: { items: ChecklistItem[]; emptyLabel?: string | null }) {
     if (props.items.length === 0) {
         return props.emptyLabel ? (
-            <div style={{ fontSize: 13, color: '#b0aea5' }}>{props.emptyLabel}</div>
+            <div style={{ fontSize: 13, color: 'var(--mobi-ink-quaternary)' }}>{props.emptyLabel}</div>
         ) : null
     }
 

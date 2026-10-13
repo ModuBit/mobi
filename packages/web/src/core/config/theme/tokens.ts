@@ -15,6 +15,196 @@
  */
 
 /**
+ * 全站配色的唯一数值来源。三块内容：
+ *
+ * ① **中性阶**（`NEUTRAL_LIGHT` / `NEUTRAL_DARK`）：净白与净墨，色相不含倾向（LCh 色度 ≤ 3），
+ *    层次由**明度**表达而非温度。旧体系靠「暖白 vs 奶油」的温度差分层次，色差只有 1–2 L*，
+ *    层级弱到几乎看不见（见 2026-10-13 前的 `paper` / `paper-warm`）。
+ * ② **语义色种子**（`SEMANTIC_*`）：success / warning / danger 三个基色，双档同族（同色相），
+ *    只按底色明度调整明度与彩度——旧 dark 用的是 Tailwind 高饱和色（C82 vs light 的 C53），
+ *    与 light 的土地色谱不是一套语言。
+ * ③ **档位表**（`RADIUS_TIERS`）：圆角，规格在 DESIGN.md「Shapes」。
+ *
+ * antd 主题 token 与 cssVars 投出的 CSS 变量都是这三块的投影：改配色只改本文件 + DESIGN.md，
+ * 组件侧一律取 token / var，任何字面量都会被守卫测试拦下。
+ */
+
+/* ==================== 中性阶 ==================== */
+
+/** 中性阶的档名（取档只看「这是哪一层」） */
+export type NeutralKey =
+    | 'elevated'
+    | 'container'
+    | 'canvas'
+    | 'hairline'
+    | 'hairlineStrong'
+    | 'hover'
+    | 'selected'
+    | 'pressed'
+    | 'ink'
+    | 'inkSecondary'
+    | 'inkTertiary'
+    | 'inkQuaternary'
+    | 'primary'
+
+/**
+ * 中性阶（净白，冷调 whisper）。每档一句「它是哪一层」，取档只看层次不看元素大小。
+ * 明度差是唯一的层次手段：container−canvas 3.4 L*、canvas−hover 2.4 L*、hover−selected 2.8 L*，
+ * 每跳都够看清又不至于变成硬边界（旧值 1.8 / 2.0 / 2.9 —— 第一跳几乎不存在）。
+ */
+export const NEUTRAL_LIGHT: Record<NeutralKey, string> = {
+    /** 抬升层：Modal / 菜单 / 浮层，唯一允许纯白的层 */
+    elevated: '#ffffff',
+    /** 容器层：卡片 / 侧栏 / 输入框本体 */
+    container: '#f9f9fb',
+    /** 画布层：页面底（消息流所在的那一层） */
+    canvas: '#f0f0f4',
+    /** 极淡描边：分隔线、卡片边 */
+    hairline: '#e6e6eb',
+    /** 实控件描边：按钮 / 输入框的边界 */
+    hairlineStrong: '#d9d9e0',
+    /** hover 高亮：指点未确认（最淡的一档浮起） */
+    hover: '#e9e9ee',
+    /** 选中高亮：比 hover 深一档 */
+    selected: '#e1e1e7',
+    /** 按压 / 强调过渡 */
+    pressed: '#d5d5dc',
+    /** 主文字：一切正文与主交互 */
+    ink: '#17171b',
+    inkSecondary: '#4c4c52',
+    inkTertiary: '#83838a',
+    /** 四级：占位符、禁用态、装饰点 */
+    inkQuaternary: '#adadb4',
+    /** 实心墨按钮：交互重要性靠「深度的灰」表达，不靠色相 */
+    primary: '#3a3a41',
+}
+
+/** 中性阶（净墨）——与 light 同构，明度方向相反（越亮越靠前） */
+export const NEUTRAL_DARK: Record<NeutralKey, string> = {
+    elevated: '#25252a',
+    container: '#1a1a1e',
+    canvas: '#131316',
+    hairline: '#2f2f35',
+    hairlineStrong: '#3e3e45',
+    hover: '#232328',
+    selected: '#2f2f35',
+    pressed: '#3e3e45',
+    ink: '#f6f6f8',
+    inkSecondary: '#d2d2d8',
+    inkTertiary: '#898990',
+    inkQuaternary: '#5d5d65',
+    primary: '#f6f6f8',
+}
+
+/* ==================== 语义色 ==================== */
+
+/**
+ * 语义色种子（土地色谱：苔藓绿 / 赤陶橙 / 砖红）。双档同色相，dark 只是提亮——
+ * 这一族是「哪档都认得出来」的识别色，不是两套调色板。
+ */
+export const SEMANTIC_LIGHT: Record<SemanticKey, string> = { success: '#3f7a3a', warning: '#c96442', danger: '#b53333' }
+export const SEMANTIC_DARK: Record<SemanticKey, string> = { success: '#6cc06f', warning: '#e5925f', danger: '#e26060' }
+
+type SemanticKey = 'success' | 'warning' | 'danger'
+
+/** #rrggbb → [r, g, b] */
+function hexToRgb(hex: string): [number, number, number] {
+    return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
+}
+
+/** #rrggbb + 透明度 → rgba(...)：antd 主题 token 只吃具体色值（CSS 变量它解析不了） */
+export function withAlpha(hex: string, alpha: number): string {
+    const [r, g, b] = hexToRgb(hex)
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+/** 两色按比例混合（t=0 取 a，t=1 取 b）——语义色族的唯一生成式 */
+function mix(a: string, b: string, t: number): string {
+    const [ar, ag, ab] = hexToRgb(a)
+    const [br, bg, bb] = hexToRgb(b)
+    const ch = (x: number, y: number) => Math.round(x + (y - x) * t).toString(16).padStart(2, '0')
+    return `#${ch(ar, br)}${ch(ag, bg)}${ch(ab, bb)}`
+}
+
+/**
+ * 语义色族的生成比例：淡底（Bg）/ 描边（Border）从底色向种子靠，深浅态（Hover/Active）
+ * 从种子向「远离底色」的方向走（light 压暗、dark 提亮）。
+ * 这样一族九色只需要一个种子，色相天然同源——手写九个数必然会漂（旧 dark 的
+ * `colorSuccessBorder` 与 `colorSuccessBgHover` 直接抄成了同一个值）。
+ */
+interface SemanticRamp {
+    bg: number
+    bgHover: number
+    border: number
+    borderHover: number
+    hover: number
+    active: number
+}
+
+const LIGHT_RAMP: SemanticRamp = { bg: 0.075, bgHover: 0.16, border: 0.3, borderHover: 0.5, hover: 0.13, active: 0.26 }
+const DARK_RAMP: SemanticRamp = { bg: 0.16, bgHover: 0.26, border: 0.38, borderHover: 0.6, hover: 0.14, active: 0.26 }
+
+/** 语义色族的九件套（键名为 antd token 的后缀，`color` = 基色本身） */
+interface SemanticFamily {
+    color: string
+    bg: string
+    bgHover: string
+    border: string
+    borderHover: string
+    hover: string
+    active: string
+    text: string
+    textHover: string
+    textActive: string
+}
+
+/** 由种子色 + 底色生成 antd 的九件套 */
+function semanticFamily(seed: string, base: string, toward: string, ramp: SemanticRamp): SemanticFamily {
+    return {
+        color: seed,
+        bg: mix(base, seed, ramp.bg),
+        bgHover: mix(base, seed, ramp.bgHover),
+        border: mix(base, seed, ramp.border),
+        borderHover: mix(base, seed, ramp.borderHover),
+        hover: mix(seed, toward, ramp.hover),
+        active: mix(seed, toward, ramp.active),
+        text: seed,
+        textHover: seed,
+        textActive: mix(seed, toward, ramp.hover),
+    }
+}
+
+/** 展平成 antd 的扁平 token 键：`color` → `colorSuccess`，其余 → `colorSuccessBg` 等 */
+type SemanticTokens<Prefix extends string> = {
+    [K in keyof SemanticFamily as K extends 'color' ? `color${Prefix}` : `color${Prefix}${Capitalize<K>}`]: string
+}
+
+function spreadSemantic<Prefix extends string>(
+    prefix: Prefix,
+    seed: string,
+    base: string,
+    toward: string,
+    ramp: SemanticRamp,
+): SemanticTokens<Prefix> {
+    const f = semanticFamily(seed, base, toward, ramp)
+    const tokens = {
+        [`color${prefix}`]: f.color,
+        [`color${prefix}Bg`]: f.bg,
+        [`color${prefix}BgHover`]: f.bgHover,
+        [`color${prefix}Border`]: f.border,
+        [`color${prefix}BorderHover`]: f.borderHover,
+        [`color${prefix}Hover`]: f.hover,
+        [`color${prefix}Active`]: f.active,
+        [`color${prefix}Text`]: f.text,
+        [`color${prefix}TextHover`]: f.textHover,
+        [`color${prefix}TextActive`]: f.textActive,
+    }
+    return tokens as SemanticTokens<Prefix>
+}
+
+/* ==================== 圆角档位 ==================== */
+
+/**
  * 圆角档位（两档同值，故单源一处——颜色双档有别，圆角没有）。
  *
  * **这是全站圆角的唯一数值来源**：DESIGN.md「Shapes」章是它的规格（二者由
@@ -64,82 +254,61 @@ const radius = {
     borderRadiusLG: RADIUS_TIERS.panel,
 }
 
-// Claude 暖调风格 Light 主题配置
+/* ==================== 主题 token ==================== */
+
+/**
+ * 净白主题（Light）。中性阶承担全部层次，色相只留给语义色与品牌图形。
+ * primary 是**净墨**——交互的重要性靠深度的灰表达，不靠色相（与旧体系的暖墨灰同理，只是去掉了暖）。
+ */
 export const shadcnLightToken = {
-    fontFamily: "var(--font-body)",
-    fontFamilyCode: "var(--font-mono)",
-    colorPrimary: '#3d3d3a',
-    colorSuccess: '#3f7a3a',
-    colorWarning: '#c96442',
-    colorError: '#b53333',
-    colorInfo: '#3d3d3a',
-    colorTextBase: '#141413',
-    colorBgBase: '#faf9f5',
-    colorPrimaryBg: '#e8e6dc',
-    colorPrimaryBgHover: '#d1cfc5',
-    colorPrimaryBorder: '#e8e6dc',
-    colorPrimaryBorderHover: '#d1cfc5',
-    colorPrimaryHover: '#4d4c48',
-    colorPrimaryActive: '#141413',
-    colorPrimaryText: '#141413',
-    colorPrimaryTextHover: '#4d4c48',
-    colorPrimaryTextActive: '#141413',
-    colorSuccessBg: '#f0f5ee',
-    colorSuccessBgHover: '#dde9d8',
-    colorSuccessBorder: '#c2d9b8',
-    colorSuccessBorderHover: '#a3c794',
-    colorSuccessHover: '#357030',
-    colorSuccessActive: '#2d5f28',
-    colorSuccessText: '#3f7a3a',
-    colorSuccessTextHover: '#3f7a3a',
-    colorSuccessTextActive: '#357030',
-    colorWarningBg: '#fdf5f0',
-    colorWarningBgHover: '#f8e4d6',
-    colorWarningBorder: '#f0c8b0',
-    colorWarningBorderHover: '#e0a882',
-    colorWarningHover: '#b5563a',
-    colorWarningActive: '#9e4830',
-    colorWarningText: '#c96442',
-    colorWarningTextHover: '#c96442',
-    colorWarningTextActive: '#b5563a',
-    colorErrorBg: '#faf0f0',
-    colorErrorBgHover: '#f5dddd',
-    colorErrorBorder: '#e8b8b8',
-    colorErrorBorderHover: '#d89898',
-    colorErrorHover: '#a02c2c',
-    colorErrorActive: '#882424',
-    colorErrorText: '#b53333',
-    colorErrorTextHover: '#b53333',
-    colorErrorTextActive: '#a02c2c',
-    colorInfoBg: '#e8e6dc',
-    colorInfoBgHover: '#d1cfc5',
-    colorInfoBorder: '#d1cfc5',
-    colorInfoBorderHover: '#b0aea5',
-    colorInfoHover: '#4d4c48',
-    colorInfoActive: '#141413',
-    colorInfoText: '#141413',
-    colorInfoTextHover: '#4d4c48',
-    colorInfoTextActive: '#141413',
-    colorText: '#141413',
-    colorTextSecondary: '#4d4c48',
-    colorTextTertiary: '#87867f',
-    colorTextQuaternary: '#b0aea5',
-    colorTextDisabled: '#b0aea5',
-    // 悬浮高亮体系（暖调化覆盖 antd 默认冷灰 rgba）：hover 半档/按下再半档，
-    // 与 hairline 三档同源——唯一来源，见 DESIGN.md「Hover 高亮」章
-    colorFillQuaternary: '#f0eee6',
-    colorFillTertiary: '#e8e6dc',
-    colorFillSecondary: '#d1cfc5',
-    colorBgTextHover: '#f0eee6',
-    colorBgContainer: '#faf9f5',
-    colorBgElevated: '#ffffff',
-    colorBgLayout: '#f5f4ed',
-    colorBgSpotlight: '#3d3d3a',
-    // light 档遮罩 = 米白磨砂（与 colorBgContainer 同色系）：深色 alpha 再浅叠在内容上也只会
-    // 「加灰」出不了亮色遮罩；dark 档维持深色 alpha。双档方向相反是有意为之
-    colorBgMask: 'rgba(250, 249, 245, 0.65)',
-    colorBorder: '#f0eee6',
-    colorBorderSecondary: '#f0eee6',
+    fontFamily: 'var(--font-body)',
+    fontFamilyCode: 'var(--font-mono)',
+    colorPrimary: NEUTRAL_LIGHT.primary,
+    colorInfo: NEUTRAL_LIGHT.primary,
+    colorTextBase: NEUTRAL_LIGHT.ink,
+    colorBgBase: NEUTRAL_LIGHT.container,
+    // 三个语义色族（含基色本身）由种子生成，见 spreadSemantic
+    ...spreadSemantic('Success', SEMANTIC_LIGHT.success, NEUTRAL_LIGHT.container, '#000000', LIGHT_RAMP),
+    ...spreadSemantic('Warning', SEMANTIC_LIGHT.warning, NEUTRAL_LIGHT.container, '#000000', LIGHT_RAMP),
+    ...spreadSemantic('Error', SEMANTIC_LIGHT.danger, NEUTRAL_LIGHT.container, '#000000', LIGHT_RAMP),
+    // primary / info 是中性墨族：它们的淡底、描边、深浅态就是中性阶本身（不再是第二套数值）
+    colorPrimaryBg: NEUTRAL_LIGHT.selected,
+    colorPrimaryBgHover: NEUTRAL_LIGHT.pressed,
+    colorPrimaryBorder: NEUTRAL_LIGHT.selected,
+    colorPrimaryBorderHover: NEUTRAL_LIGHT.pressed,
+    colorPrimaryHover: NEUTRAL_LIGHT.inkSecondary,
+    colorPrimaryActive: NEUTRAL_LIGHT.ink,
+    colorPrimaryText: NEUTRAL_LIGHT.ink,
+    colorPrimaryTextHover: NEUTRAL_LIGHT.inkSecondary,
+    colorPrimaryTextActive: NEUTRAL_LIGHT.ink,
+    colorInfoBg: NEUTRAL_LIGHT.selected,
+    colorInfoBgHover: NEUTRAL_LIGHT.pressed,
+    colorInfoBorder: NEUTRAL_LIGHT.selected,
+    colorInfoBorderHover: NEUTRAL_LIGHT.inkQuaternary,
+    colorInfoHover: NEUTRAL_LIGHT.inkSecondary,
+    colorInfoActive: NEUTRAL_LIGHT.ink,
+    colorInfoText: NEUTRAL_LIGHT.ink,
+    colorInfoTextHover: NEUTRAL_LIGHT.inkSecondary,
+    colorInfoTextActive: NEUTRAL_LIGHT.ink,
+    colorText: NEUTRAL_LIGHT.ink,
+    colorTextSecondary: NEUTRAL_LIGHT.inkSecondary,
+    colorTextTertiary: NEUTRAL_LIGHT.inkTertiary,
+    colorTextQuaternary: NEUTRAL_LIGHT.inkQuaternary,
+    colorTextDisabled: NEUTRAL_LIGHT.inkQuaternary,
+    // 悬浮高亮三档阶梯（唯一来源，见 DESIGN.md「Hover & Selected」）：hover < selected < pressed
+    colorFillQuaternary: NEUTRAL_LIGHT.hover,
+    colorFillTertiary: NEUTRAL_LIGHT.selected,
+    colorFillSecondary: NEUTRAL_LIGHT.pressed,
+    colorBgTextHover: NEUTRAL_LIGHT.hover,
+    colorBgContainer: NEUTRAL_LIGHT.container,
+    colorBgElevated: NEUTRAL_LIGHT.elevated,
+    colorBgLayout: NEUTRAL_LIGHT.canvas,
+    colorBgSpotlight: NEUTRAL_LIGHT.primary,
+    // 遮罩 = 容器色带透明度（与底色同源，不会在净白体系里漏出暖色）
+    colorBgMask: 'rgba(250, 250, 252, 0.65)',
+    // 极淡描边：分隔靠留白与 1px hairline，永远不用粗实线
+    colorBorder: NEUTRAL_LIGHT.hairline,
+    colorBorderSecondary: NEUTRAL_LIGHT.hairline,
     ...radius,
     padding: 16,
     paddingSM: 12,
@@ -151,80 +320,55 @@ export const shadcnLightToken = {
     boxShadowSecondary: 'rgba(0,0,0,0.08) 0px 4px 12px',
 }
 
-// Claude 暖调风格 Dark 主题配置
+/** 净墨主题（Dark）——与 Light 对称映射同一套语义，不是第二块调色板 */
 export const shadcnDarkToken = {
-    fontFamily: "var(--font-body)",
-    fontFamilyCode: "var(--font-mono)",
-    colorPrimary: '#faf9f5',
-    colorSuccess: '#4ade80',
-    colorWarning: '#f97316',
-    colorError: '#ef4444',
-    colorInfo: '#faf9f5',
-    colorTextBase: '#faf9f5',
-    colorBgBase: '#141413',
-    colorPrimaryBg: '#30302e',
-    colorPrimaryBgHover: '#3d3d3a',
-    colorPrimaryBorder: '#30302e',
-    colorPrimaryBorderHover: '#3d3d3a',
-    colorPrimaryHover: '#e4e2d8',
-    colorPrimaryActive: '#faf9f5',
-    colorPrimaryText: '#141413',
-    colorPrimaryTextHover: '#141413',
-    colorPrimaryTextActive: '#141413',
-    colorSuccessBg: '#0f2d1a',
-    colorSuccessBgHover: '#1a4028',
-    colorSuccessBorder: '#1a4028',
-    colorSuccessBorderHover: '#4ade80',
-    colorSuccessHover: '#3fcc70',
-    colorSuccessActive: '#4ade80',
-    colorSuccessText: '#4ade80',
-    colorSuccessTextHover: '#4ade80',
-    colorSuccessTextActive: '#6ee7a0',
-    colorWarningBg: '#3a1c08',
-    colorWarningBgHover: '#5a2e10',
-    colorWarningBorder: '#5a2e10',
-    colorWarningBorderHover: '#f97316',
-    colorWarningHover: '#ea6c10',
-    colorWarningActive: '#f97316',
-    colorWarningText: '#f97316',
-    colorWarningTextHover: '#f97316',
-    colorWarningTextActive: '#fdba74',
-    colorErrorBg: '#3a1010',
-    colorErrorBgHover: '#5a1818',
-    colorErrorBorder: '#5a1818',
-    colorErrorBorderHover: '#ef4444',
-    colorErrorHover: '#dc3636',
-    colorErrorActive: '#ef4444',
-    colorErrorText: '#ef4444',
-    colorErrorTextHover: '#ef4444',
-    colorErrorTextActive: '#fca5a5',
-    colorInfoBg: '#30302e',
-    colorInfoBgHover: '#3d3d3a',
-    colorInfoBorder: '#30302e',
-    colorInfoBorderHover: '#3d3d3a',
-    colorInfoHover: '#e4e2d8',
-    colorInfoActive: '#faf9f5',
-    colorInfoText: '#faf9f5',
-    colorInfoTextHover: '#e4e2d8',
-    colorInfoTextActive: '#faf9f5',
-    colorText: '#faf9f5',
-    colorTextSecondary: '#d1cfc5',
-    colorTextTertiary: '#87867f',
-    colorTextQuaternary: '#5e5d59',
-    colorTextDisabled: '#5e5d59',
-    // 悬浮高亮体系（dark 提亮方向）：与 light 对称的三档暖灰，见 DESIGN.md「Hover 高亮」章
-    colorFillQuaternary: '#262622',
-    colorFillTertiary: '#30302e',
-    colorFillSecondary: '#3d3d3a',
-    colorBgTextHover: '#262622',
-    colorBgContainer: '#1a1a18',
-    colorBgElevated: '#232320',
-    colorBgLayout: '#141413',
-    colorBgSpotlight: '#faf9f5',
-    colorTextLightSolid: '#141413',
+    fontFamily: 'var(--font-body)',
+    fontFamilyCode: 'var(--font-mono)',
+    colorPrimary: NEUTRAL_DARK.primary,
+    colorInfo: NEUTRAL_DARK.primary,
+    colorTextBase: NEUTRAL_DARK.ink,
+    colorBgBase: NEUTRAL_DARK.container,
+    // 三个语义色族（含基色本身）由种子生成，见 spreadSemantic
+    ...spreadSemantic('Success', SEMANTIC_DARK.success, NEUTRAL_DARK.canvas, '#ffffff', DARK_RAMP),
+    ...spreadSemantic('Warning', SEMANTIC_DARK.warning, NEUTRAL_DARK.canvas, '#ffffff', DARK_RAMP),
+    ...spreadSemantic('Error', SEMANTIC_DARK.danger, NEUTRAL_DARK.canvas, '#ffffff', DARK_RAMP),
+    colorPrimaryBg: NEUTRAL_DARK.selected,
+    colorPrimaryBgHover: NEUTRAL_DARK.pressed,
+    colorPrimaryBorder: NEUTRAL_DARK.selected,
+    colorPrimaryBorderHover: NEUTRAL_DARK.pressed,
+    // dark 的实心按钮是「净墨压纸」：hover/active 向纸色靠近（提亮），与 light 方向相反
+    colorPrimaryHover: NEUTRAL_DARK.inkSecondary,
+    colorPrimaryActive: NEUTRAL_DARK.ink,
+    // 压在实心 primary 上的字 = 底色（暗底压亮块上的字）
+    colorPrimaryText: NEUTRAL_DARK.canvas,
+    colorPrimaryTextHover: NEUTRAL_DARK.canvas,
+    colorPrimaryTextActive: NEUTRAL_DARK.canvas,
+    colorInfoBg: NEUTRAL_DARK.selected,
+    colorInfoBgHover: NEUTRAL_DARK.pressed,
+    colorInfoBorder: NEUTRAL_DARK.selected,
+    colorInfoBorderHover: NEUTRAL_DARK.pressed,
+    colorInfoHover: NEUTRAL_DARK.inkSecondary,
+    colorInfoActive: NEUTRAL_DARK.ink,
+    colorInfoText: NEUTRAL_DARK.ink,
+    colorInfoTextHover: NEUTRAL_DARK.inkSecondary,
+    colorInfoTextActive: NEUTRAL_DARK.ink,
+    colorText: NEUTRAL_DARK.ink,
+    colorTextSecondary: NEUTRAL_DARK.inkSecondary,
+    colorTextTertiary: NEUTRAL_DARK.inkTertiary,
+    colorTextQuaternary: NEUTRAL_DARK.inkQuaternary,
+    colorTextDisabled: NEUTRAL_DARK.inkQuaternary,
+    colorTextLightSolid: NEUTRAL_DARK.canvas,
+    colorFillQuaternary: NEUTRAL_DARK.hover,
+    colorFillTertiary: NEUTRAL_DARK.selected,
+    colorFillSecondary: NEUTRAL_DARK.pressed,
+    colorBgTextHover: NEUTRAL_DARK.hover,
+    colorBgContainer: NEUTRAL_DARK.container,
+    colorBgElevated: NEUTRAL_DARK.elevated,
+    colorBgLayout: NEUTRAL_DARK.canvas,
+    colorBgSpotlight: NEUTRAL_DARK.ink,
     colorBgMask: 'rgba(0, 0, 0, 0.65)',
-    colorBorder: '#30302e',
-    colorBorderSecondary: '#1e1e1c',
+    colorBorder: NEUTRAL_DARK.hairline,
+    colorBorderSecondary: NEUTRAL_DARK.hairline,
     ...radius,
     padding: 16,
     paddingSM: 12,
@@ -235,3 +379,6 @@ export const shadcnDarkToken = {
     boxShadow: 'rgba(0,0,0,0.3) 0px 4px 24px',
     boxShadowSecondary: 'rgba(0,0,0,0.4) 0px 4px 12px',
 }
+
+/** 双档中性阶一起导出：cssVars 投影 `--mobi-*` 变量、守卫测试比对 DESIGN.md 用 */
+export const NEUTRAL_RAMPS: Record<'light' | 'dark', Record<NeutralKey, string>> = { light: NEUTRAL_LIGHT, dark: NEUTRAL_DARK }
