@@ -24,7 +24,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { useState } from 'react'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { TabStrip, TabStripList, TabStripTab, TabStripPanel } from '@/ui/base/interactive/tabStrip'
 
@@ -254,6 +254,81 @@ describe('TabStrip 面板挂载', () => {
 
         fireEvent.click(tab('A'))
         expect(screen.getByTestId('panel-a')).toBe(node)
+    })
+})
+
+describe('TabStrip 拖拽滚动', () => {
+    // jsdom 没有 PointerEvent：造个普通 Event 把字段挂上去——React 是按属性名从原生事件上取值的
+    const pointer = (type: string, props: Record<string, unknown>) => Object.assign(new Event(type, { bubbles: true, cancelable: true }), props)
+
+    const renderStrip = (onChange = vi.fn()) => {
+        const { container } = render(
+            <TabStrip value="a" onValueChange={onChange}>
+                <TabStripList ariaLabel="面板页签">
+                    <TabStripTab value="a">A</TabStripTab>
+                    <TabStripTab value="b">B</TabStripTab>
+                </TabStripList>
+            </TabStrip>,
+        )
+        return { container, onChange, viewport: container.querySelector('[data-dragging]') as HTMLElement }
+    }
+    const drag = (viewport: HTMLElement, from: number, to: number) => {
+        viewport.dispatchEvent(pointer('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, clientX: from }))
+        viewport.dispatchEvent(pointer('pointermove', { pointerId: 1, pointerType: 'mouse', clientX: to }))
+        viewport.dispatchEvent(pointer('pointerup', { pointerId: 1, pointerType: 'mouse', clientX: to }))
+    }
+
+    it('拖过阈值：随后那一下 click 被吞掉（松手不切页签）', () => {
+        const { viewport, onChange } = renderStrip()
+        drag(viewport, 200, 140)
+
+        fireEvent.click(tab('B'))
+        expect(onChange).not.toHaveBeenCalled()
+    })
+
+    it('拖过阈值后，下一次正常的点击照常生效（吞噬只针对紧跟拖动的那一下）', () => {
+        const { viewport, onChange } = renderStrip()
+        drag(viewport, 200, 140)
+        fireEvent.click(tab('B'))
+        fireEvent.click(tab('B'))
+
+        expect(onChange).toHaveBeenCalledTimes(1)
+        expect(onChange).toHaveBeenCalledWith('b')
+    })
+
+    it('位移小于阈值当作点击（手抖不吞 click，也不进拖动态）', () => {
+        const { viewport, onChange } = renderStrip()
+        drag(viewport, 200, 198)
+
+        expect(viewport).toHaveAttribute('data-dragging', 'false')
+        fireEvent.click(tab('B'))
+        expect(onChange).toHaveBeenCalledWith('b')
+    })
+
+    it('拖动期间打上 data-dragging（抓手光标由它命中），松手复位', () => {
+        const { viewport } = renderStrip()
+        // 裸 dispatchEvent 不进 act：拖动态是 React state，得手动冲一下才看得到 DOM 更新
+        act(() => {
+            viewport.dispatchEvent(pointer('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, clientX: 200 }))
+            viewport.dispatchEvent(pointer('pointermove', { pointerId: 1, pointerType: 'mouse', clientX: 140 }))
+        })
+        expect(viewport).toHaveAttribute('data-dragging', 'true')
+
+        act(() => {
+            viewport.dispatchEvent(pointer('pointerup', { pointerId: 1, pointerType: 'mouse', clientX: 140 }))
+        })
+        expect(viewport).toHaveAttribute('data-dragging', 'false')
+    })
+
+    it('触摸不走自建拖拽（交给浏览器原生滚动），页面照常切页签', () => {
+        const { viewport, onChange } = renderStrip()
+        viewport.dispatchEvent(pointer('pointerdown', { pointerId: 2, pointerType: 'touch', button: 0, clientX: 200 }))
+        viewport.dispatchEvent(pointer('pointermove', { pointerId: 2, pointerType: 'touch', clientX: 100 }))
+        expect(viewport).toHaveAttribute('data-dragging', 'false')
+        viewport.dispatchEvent(pointer('pointerup', { pointerId: 2, pointerType: 'touch', clientX: 100 }))
+
+        fireEvent.click(tab('B'))
+        expect(onChange).toHaveBeenCalledWith('b')
     })
 })
 

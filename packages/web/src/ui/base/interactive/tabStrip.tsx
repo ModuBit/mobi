@@ -42,6 +42,8 @@
  * - 键盘：roving tabindex + ArrowLeft/Right/Home/End **自动激活**（移动焦点即选中），端点不循环
  * - a11y：`role=tablist` / `role=tab` + `aria-controls` / `role=tabpanel` + `aria-labelledby` 全程串联
  * - 关闭：关非活动 tab 不动焦点与选中（关闭按钮的 click 不外冒）；关活动 tab 后焦点落到顶上来的那一项
+ * - 拖拽滚动：鼠标 / 触屏笔按住横向拖；触摸走浏览器原生滚动（惯性 + 与页面纵向手势协商）；
+ *   超过 4px 才算拖，算拖了就吞掉随后那一下 click（否则松手会顺手切页签）
  * - `extra` 槽在 tablist **之外**（同一 flex 行的兄弟）——绝不放任何 `role="tab"` 内部，
  *   否则其中的弹层触发器会被 tab 的焦点抢夺链路当场关掉（dropdown-menu 记过这条）
  * - `keepMounted` 面板首次激活后常驻；隐藏一律用 `display:none`，**不用 `hidden` 属性**——
@@ -59,6 +61,7 @@ import {
     useState,
     type CSSProperties,
     type KeyboardEvent,
+    type PointerEvent,
     type ReactNode,
 } from 'react'
 import styled from '@emotion/styled'
@@ -69,6 +72,8 @@ import { nextFocusAfterClose, resolveTabNavKey } from './tabStripNavigation'
 
 /** 两端渐隐的宽度（与 Viewport 的 mask 同源） */
 const EDGE_FADE_WIDTH = 35
+/** 起拖阈值（px）：没超过它就还是「点」，超过才算拖——否则手抖一下就把点击吃了 */
+const DRAG_THRESHOLD = 4
 
 const Row = styled.div`
     display: flex;
@@ -101,8 +106,14 @@ const Viewport = styled.div`
     overflow-y: hidden;
     border-radius: inherit;
     scrollbar-width: none;
+    /* 页签条是 chrome，没有可选的文字；同时免掉拖拽滚动时选中一片标签 */
+    user-select: none;
     &::-webkit-scrollbar {
         display: none;
+    }
+    /* 拖拽进行中给个抓手光标——只在真拖动时出现，平时不抢页签该有的手型 */
+    &[data-dragging='true'] {
+        cursor: grabbing;
     }
 
     /* 滚到某端之外还有内容时，该端渐隐（暗示还有页签）。emotion 不能跨组件插值当选择器
@@ -384,6 +395,46 @@ export function TabStripList({
         focusTab(target?.el)
     })
 
+    /**
+     * 拖拽滚动（鼠标 / 触屏笔）。**触摸不在这里**——浏览器原生的横向拖动有惯性和边缘回弹，
+     * 还能和页面纵向滚动协商（横向手势归它、纵向手势冒给页面），自己实现只会更差。
+     * 鼠标没有「拖内容」这个原生行为，视口又把滚动条藏了，不补就只能 Shift+滚轮。
+     */
+    const dragRef = useRef<{ pointerId: number; startX: number; startScrollLeft: number } | null>(null)
+    // 拖动过就吞掉紧随其后那个 click（否则松手会顺手切页签）。要活到 click 之后，故与 dragRef 分开
+    const draggedRef = useRef(false)
+    const [dragging, setDragging] = useState(false)
+
+    const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+        draggedRef.current = false
+        if (event.pointerType === 'touch' || event.button !== 0) return
+        dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startScrollLeft: event.currentTarget.scrollLeft }
+    }
+
+    const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+        const drag = dragRef.current
+        if (!drag || drag.pointerId !== event.pointerId) return
+        const delta = event.clientX - drag.startX
+        if (!draggedRef.current) {
+            if (Math.abs(delta) < DRAG_THRESHOLD) return
+            draggedRef.current = true
+            setDragging(true)
+            // 起拖才抓指针：一上来就抓会把页签的 hover / click 链路整个改道
+            event.currentTarget.setPointerCapture?.(event.pointerId)
+        }
+        event.currentTarget.scrollLeft = drag.startScrollLeft - delta
+    }
+
+    const handlePointerEnd = (event: PointerEvent<HTMLDivElement>) => {
+        const drag = dragRef.current
+        if (!drag || drag.pointerId !== event.pointerId) return
+        dragRef.current = null
+        if (draggedRef.current) {
+            event.currentTarget.releasePointerCapture?.(event.pointerId)
+            setDragging(false)
+        }
+    }
+
     const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
         const tabs = collectTabs(listRef.current)
         // 焦点在关闭按钮上时算作它所在的那个 tab——否则方向键在这一格失灵
@@ -402,6 +453,18 @@ export function TabStripList({
                 <Shell ref={shellRef} className={shellClassName} style={shellStyle} data-left={edges.left} data-right={edges.right} data-overflow={edges.overflow}>
                     <Viewport
                         ref={viewportRef}
+                        data-dragging={dragging}
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerEnd}
+                        onPointerCancel={handlePointerEnd}
+                        /* 拖过之后那一下 click 落在某个页签上，捕获阶段就掐掉，别让它切了页签 */
+                        onClickCapture={(event) => {
+                            if (!draggedRef.current) return
+                            draggedRef.current = false
+                            event.preventDefault()
+                            event.stopPropagation()
+                        }}
                         /* 焦点进入页签（键盘 Tab 或方向键落到某个页签）时同样把它带进视口 */
                         onFocusCapture={(event) => {
                             if (event.target instanceof HTMLElement && event.target.getAttribute('role') === 'tab') {

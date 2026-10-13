@@ -73,7 +73,31 @@ shell.getAttribute('data-overflow')                      // 组件自己算的�
 - 页签宽度应保持**自然宽**（96 / 151 / 215 …），不随容器收窄——收到 38-51px 就是收缩回归了
 - 外壳里**不该有滚动按钮**（只有页签自己的关闭 ×）：`shell.querySelectorAll('button')` 应全是
   `aria-label` 形如「关闭 X」的，出现别的就是旧的滚动按钮回来了
-- 滚动靠视口本身：触摸拖动 / 触控板横滑 / Shift+滚轮（jsdom 与合成事件都测不了，真机手操）
+- 滚动：鼠标按住横拖（自建 pointer 拖拽，超 4px 才算拖）、触摸原生拖动、触控板横滑、Shift+滚轮
+
+## 2.5 拖动滚动怎么验（拖拽是自建逻辑，真机才测得准）
+
+**鼠标**：MCP `drag`（from_uid/to_uid 取两个相距远的页签）是真输入，实测 703→0、0→846；
+判据是三件事一起看：`scrollLeft` 变了、**选中项没变**（拖动没被当成点击）、松手后不残留拖动态。
+
+**触摸**：必须用带调试端口的独立 Chrome（MCP 那个走 `--remote-debugging-pipe`，发不了自定义 CDP）：
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
+  --remote-debugging-port=9413 --user-data-dir=/tmp/<新目录>/profile about:blank &
+```
+然后 bun + WebSocket 发 CDP：`Emulation.setDeviceMetricsOverride{width:390,height:844,mobile:true}`
++ `Emulation.setTouchEmulationEnabled{enabled:true}`，再用
+`Input.synthesizeScrollGesture{x,y,xDistance:∓150,yDistance:0,speed:800,gestureSourceType:'touch'}`。
+- **手搓 `Input.dispatchTouchEvent` 驱动不了滚动**（同一坐标的朴素 div 也不动）——别用它下结论，
+  它是环境假象；`synthesizeScrollGesture` 才行
+- **CDP 的 emulation 是会话级的**：WebSocket 一断（脚本退出）就还原成窗口尺寸。分脚本跑会把
+  「移动端 390」悄悄变回「桌面 500」，此时 3 个页签根本不溢出——**看着像「拖不动」，其实是无处可拖**。
+  设完 metrics 必须同一脚本内复核 `scrollWidth > clientWidth`
+- **坑：antd 通知 toast 盖在页签条上吞输入**（2026-10-13 排查半天）：`elementFromPoint(视口中心)`
+  返回 `div.ant-notification-notice`（顶部居中的「新版本」胶囊），手势全打在它身上。移动端 390px 下
+  页签条中心 x≈220 正好被居中通知压住；桌面 1280px 下页签条在右侧 x≈976，躲开了——所以「桌面能拖、
+  移动端拖不动」的假象。**动手势前先 `elementFromPoint` 确认命中自己**（或先点掉 `.ant-notification-notice-close`）
 
 ## 3. reveal 落点（选中项必须滚进可视区）
 
