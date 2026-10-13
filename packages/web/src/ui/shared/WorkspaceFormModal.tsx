@@ -18,7 +18,7 @@ import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { Alert, App, AutoComplete, Button, Form, Input, Modal, Radio, Spin, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FolderOutlined, HomeOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
-import { MobileDrawer } from '@/ui/base/layout/MobileDrawer'
+import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
 import { validateWorkspaceFolders, type WorkspaceFolder, type WorkspaceFoldersError } from '@mobi/shared'
 import { useDaemonStatus } from '@/core/data/hooks/queries/useDaemonStatus'
 import { useCreateWorkspace, useUpdateWorkspace } from '@/core/data/hooks/mutations/useWorkspaceMutations'
@@ -293,31 +293,35 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
     const title = isEdit ? t('workspace.edit') : t('workspace.create')
     const okText = isEdit ? t('common.save') : t('workspace.create')
 
-    // 移动端：底部 MobileDrawer（统一行为：header 下拉手势关闭 + 手势返回按层级关闭——
-    // 哨兵栈保证多层覆盖物后入先出；height:auto / maxHeight:85dvh 由 MobileDrawer 内置），
-    // 操作按钮随表单流入 body 底部（无 footer 栏），safe-area 下沉到按钮容器
+    // 移动端：底部 sheet（统一行为：header 下拉手势关闭 + 手势返回按层级关闭——
+    // 哨兵栈保证多层覆盖物后入先出；height:auto / maxHeight:85dvh 由 BottomSheet 内置），
+    // 操作按钮随表单流入 body 底部（无 footer 栏），safe-area 下沉到按钮容器。
+    // 提交中不许关：onClose 传 noop = 否决，sheet 沉降回原位（取代原 maskClosable={false}）
     if (isMobile) {
         return (
-            <MobileDrawer
+            <BottomSheet
                 title={title}
                 open={open}
                 onClose={() => { if (!isPending) onClose() }}
-                maskClosable={!isPending}
-                destroyOnHidden
+                // 表单要一眼看全字段与提交按钮：关掉 peek
+                peek={false}
             >
-                {formBody}
-                <div style={{
-                    display: 'flex', gap: 8, marginTop: 16,
-                    paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
-                }}>
-                    <Button block disabled={isPending} onClick={onClose}>
-                        {t('common.cancel')}
-                    </Button>
-                    <Button block type="primary" disabled={!isValid} loading={isPending} onClick={handleOk}>
-                        {okText}
-                    </Button>
+                {/* 内容内衬归调用方（BottomSheet 不给 padding）：表单两侧贴边会显得残缺 */}
+                <div style={{ padding: '12px 16px 0' }}>
+                    {formBody}
+                    <div style={{
+                        display: 'flex', gap: 8, marginTop: 16,
+                        paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
+                    }}>
+                        <Button block disabled={isPending} onClick={onClose}>
+                            {t('common.cancel')}
+                        </Button>
+                        <Button block type="primary" disabled={!isValid} loading={isPending} onClick={handleOk}>
+                            {okText}
+                        </Button>
+                    </div>
                 </div>
-            </MobileDrawer>
+            </BottomSheet>
         )
     }
 

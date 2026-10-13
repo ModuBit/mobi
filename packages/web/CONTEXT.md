@@ -143,4 +143,4 @@ _Avoid_: 原地编辑历史消息
 
 **画板载体（Sketch Host）**：
 承载画布的 Drawer 容器形态：移动端全屏、PC 停靠聊天列（可切全屏）。防误关是载体不变量——mask 点击、ESC、右上角 X 一律关闭路径禁用，唯一出口是画布内显式「完成/取消」。
-_Avoid_: MobileDrawer（下拉关闭手势与防误关冲突）
+_Avoid_: BottomSheet（下拉关闭手势与防误关冲突）

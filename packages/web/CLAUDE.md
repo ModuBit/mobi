@@ -34,22 +34,27 @@
 | `src/core/lib/fileAttachments.ts` | 文件附件类型与上传校验（分桶/MIME 投影单一来源 bucketCompletedAttachments） |
 | `src/core/lib/composerDrafts.ts` | per-session 草稿持久化（分段结构 text/files/images/quotes，sessionStorage，旧格式兼容读取） |
 
-## 移动端 Drawer 规范
+## 移动端底部 sheet 规范
 
-所有移动端底部弹出 Drawer（`placement="bottom"`）**优先使用 `MobileDrawer`**（`src/ui/base/layout/MobileDrawer.tsx`），以下不变量由组件统一收口，调用方不要再手动配置：
+移动端底部弹出面板**一律用 `BottomSheet`**（`src/ui/shadcn/bottom-sheet/bottom-sheet`，registry 登记件；2026-10-13 起全量替代旧 `MobileDrawer`——旧组件与其 antd 自管位移实现已删除），不变量由组件收口，调用方不要再手动配置：
 
-- **高度自适应 + 上限**：组件内置 `wrapper: { height: 'auto', maxHeight: '85dvh' }`（需调整上限时传 `maxHeight` prop）
-- **底部安全边界**：sheet 自带 `paddingBottom: 'max(24px, env(safe-area-inset-bottom))'`——**禁止调用方往 `styles.body` 传 padding**（组件强制 `padding: 0`，body padding 会把 sheet 抬离屏底、露出 mask 空隙），同样禁止覆盖 `body.overflow` / `body.maxHeight`
-- **开合动画 / header 下拉关闭 / 手势返回哨兵**：组件内置，`onClose` 消费者须**同步**决定是否关闭（异步决定会看到「沉降再滑出」弹跳）
+- **高度自适应 + 上限**：`height: auto` + `maxHeight`（默认 `85dvh`）；内容超过 peek 档（45dvh）先停 peek，滚内容 / 上推 / 点把手展开到上限。**菜单 / 表单 / 列表这类「打开就要看全」的传 `peek={false}`**：被裁掉的行对它们不是「还有更多」，是残缺（单档 sheet 的内容区照常滚，不会被 peek 的锁滚态挡住）
+- **底部安全边界 / 开合动画 / 下拉关闭 / 手势返回哨兵 / 滚动锁**：组件内置
+- **内容区里 shadow DOM 的滚动区由 sheet 负责放行，消费方零接入**：Radix Dialog 默认的滚动锁（react-remove-scroll）是 **document 级**、非 passive 的 touchmove，只沿浅 DOM 的 `parentNode` 找可滚祖先——判不出 shadow DOM 里的滚动容器（pierre diff 的 `<code>`、终端视口都算）就把整段手势 `preventDefault`，真机表现是「diff 本来就支持横向滚动，却横竖都滚不动」（2026-10-13 实测：同一个裸 pierre diff，放 sheet 里和放 sheet 外都拿到 `[true,true]`）。所以 BottomSheet 走 `modal={false}`（**不要那把锁**）+ 自建 `ui/base/interactive/bodyScrollLock`（钉 body，不碰任何触摸事件）；手势归属由内容区仲裁一处决定，判据是 `ui/base/interactive/scrollableInPath`（吃 `event.composedPath()`，**穿透 shadow 边界**，同时看方向余量）。两层都不需要消费方写一行接入代码——`DiffView` 不做任何接管，横向滚动就是 pierre 自己的
+- **别在 sheet 里嵌第二层限高滚动区**：容器自己就是滚动区，内容再限高内滚就成了双滚动（真机反馈「diff 里为什么有竖向滚动条」）。工具视图在详情容器里走 `ToolViewScopeProvider fullHeight`（`features/chat/tool-card/views/toolViewScope.tsx`）——同一个视图组件在消息卡内限高（320）、在详情里全高
+- **关闭是「先通知后动画」且可否决**：`onClose` 消费者须**同步**决定是否关闭；不翻转 `open` = 否决，sheet 沉降回原位（执行中的操作菜单、提交中的表单传 `() => {}` 或条件 noop 即可拦住关闭，不要另加 `maskClosable` 这类开关）
+- **内容内衬归调用方**：组件默认不给 body 加 padding，需要内衬就传 `bodyStyle`（与旧组件相反——旧组件的 `padding: 0` 强制是为了抵消 antd 默认内衬，BottomSheet 没有这层默认）
+- 其它可用 props：`title`（ReactNode，恒居中三栏）/ `extra`（标题行右侧操作）/ `showClose`（默认 false，靠下拉·遮罩·手势返回关闭）/ `showDragHandle`
 
-仅当无需交互关闭的纯提示框（如 `SaveConflictDialog`，`maskClosable={false}` 且无拖拽关闭语义）可直接用 antd `Drawer`，手动配置：
+**例外——无需交互关闭的纯提示框仍可直接用 antd `Drawer`**（如 `SaveConflictDialog`：`maskClosable={false}` 且无拖拽关闭语义）。此时必须手动补齐三件事：
 
-- `styles.wrapper: { height: 'auto', maxHeight: '85dvh' }`
-- `styles.body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }`
+- `styles.wrapper: { height: 'auto', maxHeight: '85dvh' }` + `styles.body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }`
+- **`rootClassName={MOBILE_SHEET_DRAWER_CLASS}`**（`src/ui/base/layout/mobileSheetClass.ts`）：`src/styles/antd.css` 的「height auto + 85dvh 上限 + body safe-area」全局规则只命中该标记类。规则不命中 `.ant-drawer-bottom` 泛选——否则会误伤同样 bottom placement 的非 sheet 抽屉（如 PC 画板停靠抽屉的固定高度被 `height: auto !important` 压塌，2026-09-19 实踩）。
+- **`zIndex={useOpenOverlayLayer(open)}`**（`src/ui/base/layout/overlayLayer.ts`）：antd 弹层默认 z 1000 低于 BottomSheet 的 1080 起，不领号就会压在打开的 sheet 后面。**任何会叠在别的移动浮层之上的浮层都要领号**——包括命令式 `modal.confirm`（调用处 `zIndex: nextOverlayLayer()`）。
 
-**必须同时传 `rootClassName="mobile-sheet-drawer"`**：`src/styles/antd.css` 的「height auto + 85dvh 上限 + body safe-area」全局规则只命中该标记类（MobileDrawer 恒挂它）。规则不命中 `.ant-drawer-bottom` 泛选——否则会误伤同样 bottom placement 的非 sheet 抽屉（如 PC 画板停靠抽屉的固定高度被 `height: auto !important` 压塌，2026-09-19 实踩）。
+注意：这套手动配置**仅对原生 antd Drawer 生效**，BottomSheet 不接受这些 prop（它们对应组件内部不变量）。
 
-注意：这套手动配置**仅对原生 antd Drawer 生效**；同一 prop 传给 MobileDrawer 会被组件不变量覆盖（见上）。
+**不要在打开的 sheet 之上叠 antd 弹层**（Radix Dialog 会把 `document.body` 置 `pointer-events: none`，自身的浮层靠 antd 显式提回 `auto` 才点得到——能用，但 fragile：三层叠起来没人保证）。确认 / 二次选择这类交互**优先就地展开在同一个 sheet 里**（先例：`MobileWorkspaceList` 的删除确认走 `actionView` 切视图 + 自己那层手势返回哨兵），或先关 sheet 再开弹层（重命名 / 归入工作区就是这么做的）。
 
 ## 跨格式字段访问
 

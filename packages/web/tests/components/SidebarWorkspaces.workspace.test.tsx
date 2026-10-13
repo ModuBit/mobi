@@ -64,7 +64,7 @@ vi.mock('@/core/data/api/client', () => ({
 }))
 
 // 锁定桌面分支：jsdom matchMedia mock 恒 matches:false → useIsMobile 恒 true，
-// 会把 AssignWorkspaceModal 推进 mobile 分支（MobileDrawer），此处显式断言 PC 形态
+// 会把 AssignWorkspaceModal 推进 mobile 分支（底部 sheet），此处显式断言 PC 形态
 vi.mock('@/core/data/hooks/useMediaQuery', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/core/data/hooks/useMediaQuery')>()
     return { ...actual, useIsMobile: () => false }

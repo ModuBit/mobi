@@ -12,10 +12,15 @@
         "success": "成功",
         "more": "更多",
         "close": "关闭",
+        "panel": "面板",
         "scrollBottom": "回到底部",
         "toggleTheme": "切换主题",
         "collapseSidebar": "收起侧边栏",
-        "expandSidebar": "展开侧边栏"
+        "expandSidebar": "展开侧边栏",
+        "expandSheet": "展开面板",
+        "collapseSheet": "收起面板",
+        "sheetExpanded": "面板已展开",
+        "sheetCollapsed": "面板已收起"
     },
     "time": {
         "justNow": "刚刚",
@@ -547,7 +552,6 @@
             },
             "picker": {
                 "title": "添加按键",
-                "cancel": "取消",
                 "add": "添加",
                 "preview": "预览："
             }

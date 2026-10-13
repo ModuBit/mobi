@@ -148,14 +148,15 @@ describe('MobileWorkspaceList ActionSheet 归属操作', () => {
         expect(queryByText('workspace.assignTo')).toBeNull()
     })
 
-    it('换工作区：关 ActionSheet 打开 AssignWorkspaceModal', () => {
+    it('换工作区：关 ActionSheet 打开 AssignWorkspaceModal', async () => {
         fixtures.sessions = [inWorkspaceSession]
         const { getByText, getByTestId, queryByText } = render(<MobileWorkspaceList />, { wrapper: makeWrapper() })
 
         fireEvent.click(getByText('open-in-workspace'))
         fireEvent.click(getByText('workspace.changeWorkspace'))
         expect(getByTestId('assign-modal')).toBeInTheDocument()
-        expect(queryByText('workspace.changeWorkspace')).toBeNull() // ActionSheet 已关
+        // ActionSheet 已关：BottomSheet 的离场有滑出动画，内容随落定才卸载（antd Drawer 是即卸）
+        await waitFor(() => expect(queryByText('workspace.changeWorkspace')).toBeNull())
     })
 
     it('移至最近：assign(workspaceId: null) + 关 ActionSheet', async () => {

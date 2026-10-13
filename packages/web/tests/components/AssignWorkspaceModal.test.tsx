@@ -16,7 +16,7 @@
 
 /**
  * AssignWorkspaceModal 组件测试
- * 验证端别自适应：PC 居中 Modal + Radio（现状保留）；mobile MobileDrawer 点行即提交
+ * 验证端别自适应：PC 居中 Modal + Radio（现状保留）；mobile 底部 sheet 点行即提交
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -49,9 +49,9 @@ vi.mock('@/core/data/hooks/queries/useWorkspaces', () => ({
     useWorkspaces: () => ({ data: fixtures.workspaces }),
 }))
 
-// MobileDrawer 桩：绕开 framer-motion jsdom spring 发散（既有惯例，见 MobileMenu.test）
-vi.mock('@/ui/base/layout/MobileDrawer', () => ({
-    MobileDrawer: ({ open, title, children }: { open: boolean; title?: string; children: ReactNode }) =>
+// BottomSheet 桩：绕开 Radix portal + motion 在 jsdom 下的开销（既有惯例，见 MobileMenu.test）
+vi.mock('@/ui/shadcn/bottom-sheet/bottom-sheet', () => ({
+    BottomSheet: ({ open, title, children }: { open: boolean; title?: string; children: ReactNode }) =>
         open ? (
             <div data-testid="mobile-drawer">
                 <div data-testid="drawer-title">{title}</div>
@@ -95,7 +95,7 @@ describe('AssignWorkspaceModal', () => {
         expect(getByText('工作区二')).toBeInTheDocument()
     })
 
-    it('mobile：渲染 MobileDrawer + 工作区行，点行即提交', async () => {
+    it('mobile：渲染底部 sheet + 工作区行，点行即提交', async () => {
         mockIsMobile.value = true
         const { getByTestId, getByText } = renderModal()
 

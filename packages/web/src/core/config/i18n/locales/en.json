@@ -12,10 +12,15 @@
         "success": "Success",
         "more": "More",
         "close": "Close",
+        "panel": "Panel",
         "scrollBottom": "Back to bottom",
         "toggleTheme": "Toggle theme",
         "collapseSidebar": "Collapse sidebar",
-        "expandSidebar": "Expand sidebar"
+        "expandSidebar": "Expand sidebar",
+        "expandSheet": "Expand sheet",
+        "collapseSheet": "Collapse sheet",
+        "sheetExpanded": "Sheet expanded",
+        "sheetCollapsed": "Sheet collapsed"
     },
     "time": {
         "justNow": "just now",
@@ -556,7 +561,6 @@
             },
             "picker": {
                 "title": "Add key",
-                "cancel": "Cancel",
                 "add": "Add",
                 "preview": "Preview: "
             }

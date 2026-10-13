@@ -16,13 +16,13 @@
 
 /**
  * 通用内容抽屉组件
- * 响应式 placement：移动端底部（MobileDrawer）、桌面端右侧
+ * 响应式 placement：移动端底部（BottomSheet）、桌面端右侧
  */
 
 import { memo, type CSSProperties, type ReactNode } from 'react'
 import { Drawer } from 'antd'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
-import { MobileDrawer } from '@/ui/base/layout/MobileDrawer'
+import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
 
 /** Drawer 宽度配置 */
 export type DrawerWidthConfig = number | string
@@ -57,20 +57,16 @@ function ContentDrawerInner({ title, open, onClose, bodyStyle, children, size, d
 
     if (isMobile) {
         return (
-            <MobileDrawer
+            <BottomSheet
                 open={open}
                 onClose={onClose}
                 title={title}
-                destroyOnHidden={destroyOnHidden}
-                styles={{
-                    body: {
-                        padding: 0,
-                        ...bodyStyle,
-                    },
-                }}
+                // 卸载语义由 BottomSheet 自带（关闭滑出落定即卸载），无需 destroyOnHidden；
+                // 内衬由调用方决定（组件默认不加 padding），原 body padding:0 的覆盖随之消失
+                bodyStyle={bodyStyle}
             >
                 {children}
-            </MobileDrawer>
+            </BottomSheet>
         )
     }
 

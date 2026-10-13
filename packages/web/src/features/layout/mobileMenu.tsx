@@ -26,7 +26,7 @@ import { useThemeLocaleToggle } from '@/ui/base/theme/useThemeLocaleToggle'
 import { MobileMenuItem } from '@/ui/base/layout/mobileMenu.styles'
 import { MobileWorkspaceList } from './MobileWorkspaceList'
 import { useMenuNavigate } from './useMenuNavigate'
-import { MobileDrawer } from '@/ui/base/layout/MobileDrawer'
+import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
 import { Menu, Sun, Moon, Languages, RefreshCw, RotateCw } from 'lucide-react'
 import { InstallButton } from '@/ui/shared/InstallButton'
 import { useForceUpdate } from '@/core/pwa/useForceUpdate'
@@ -131,12 +131,13 @@ export function MobileMenuDrawer() {
     const bottomItems = mobileNavItems.filter(item => item.key !== 'new-session')
 
     return (
-        <MobileDrawer
+        <BottomSheet
             title={t('nav.menu')}
             open={mobileMenuOpen}
             onClose={handleClose}
-            // 底部 safe-area 由 MobileDrawer 组件统一收口（sheet paddingBottom），
-            // 不再往 body 传 padding——body padding 会把 sheet 抬离屏底露出 mask 空隙
+            // 菜单是「一看就要看全」的面板：关掉 peek，打开即到内容高（被裁掉的行不是「还有更多」）
+            peek={false}
+            // 底部 safe-area 与内容内衬由 BottomSheet 收口（sheet 自带 safe-area paddingBottom）
         >
             <MenuContent $token={token}>
                 {/* 新建会话 */}
@@ -243,6 +244,6 @@ export function MobileMenuDrawer() {
                     <span>{t(logoutNavItem.labelKey)}</span>
                 </MobileMenuItem>
             </MenuContent>
-        </MobileDrawer>
+        </BottomSheet>
     )
 }

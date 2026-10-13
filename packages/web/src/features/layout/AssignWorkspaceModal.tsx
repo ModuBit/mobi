@@ -18,7 +18,7 @@ import { useState, useEffect } from 'react'
 import { App, Button, Modal, Radio, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FolderOutlined } from '@ant-design/icons'
-import { MobileDrawer } from '@/ui/base/layout/MobileDrawer'
+import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useAssignSessionWorkspace } from '@/core/data/hooks/mutations/useWorkspaceMutations'
@@ -62,11 +62,12 @@ export function AssignWorkspaceModal({ session, open, onClose }: AssignWorkspace
         }
     }
 
-    // mobile：底部 Drawer 大点按行，点行即提交。
-    // 手势返回哨兵由 MobileDrawer 内置（组件不变量），无需额外接线
+    // mobile：底部 sheet 大点按行，点行即提交。
+    // 手势返回哨兵由 BottomSheet 内置（组件不变量），无需额外接线。
+    // 列表型面板关掉 peek（peek={false}）：打开即到内容高，被裁掉的行不是「还有更多」
     if (isMobile) {
         return (
-            <MobileDrawer open={open} onClose={onClose} title={t('workspace.assignTitle')}>
+            <BottomSheet open={open} onClose={onClose} title={t('workspace.assignTitle')} peek={false}>
                 {workspaces.length === 0 ? (
                     <Text type="secondary" style={{ padding: '16px 20px', display: 'block' }}>
                         {t('workspace.assignEmpty')}
@@ -95,7 +96,7 @@ export function AssignWorkspaceModal({ session, open, onClose }: AssignWorkspace
                         ))}
                     </div>
                 )}
-            </MobileDrawer>
+            </BottomSheet>
         )
     }
 

@@ -16,7 +16,7 @@
 
 import { Copy, MoreHorizontal, Split, Undo2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { MobileDrawer } from '@/ui/base/layout/MobileDrawer'
+import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
 import { RewindConfirmView, type RewindDryRunResult } from './RewindConfirmView'
 import { ForkConfirmView } from './ForkConfirmView'
 import { copyTextToClipboard } from '@/core/utils/clipboard'
@@ -103,12 +103,14 @@ export function MessageActionsDrawer({
     }
 
     return (
-        <MobileDrawer
+        <BottomSheet
             title={rewindActive ? t('chat.rewind.title') : forkActive ? t('chat.fork.title') : undefined}
             open={open}
+            // 执行中不许关：onClose 传 noop = 否决，sheet 沉降回原位
+            //（取代原 maskClosable={!loading}），等终态统一收尾
             onClose={loading ? () => { /* 执行中不允许手势关闭，等终态统一收尾 */ } : onClose}
-            maskClosable={!loading}
-            destroyOnHidden
+            // 动作菜单：关掉 peek（同菜单语义）
+            peek={false}
         >
             <div style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
                 {/* 合并一层：复制始终可用；「回退并编辑」/「从此分叉」点击后对应行隐藏，
@@ -145,7 +147,7 @@ export function MessageActionsDrawer({
                     </div>
                 )}
             </div>
-        </MobileDrawer>
+        </BottomSheet>
     )
 }
 

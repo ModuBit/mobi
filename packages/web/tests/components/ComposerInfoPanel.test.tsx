@@ -179,7 +179,7 @@ describe('ComposerInfoPanel 订阅收窄', () => {
         useChatBlocksByIdStore.getState().set('perf-session', new Map([['agent-1', block]]))
 
         render(<ComposerInfoPanel {...PROPS} />, { wrapper })
-        expect(document.querySelector('.ant-drawer-open')).toBeNull()
+        expect(document.querySelector('[data-testid="bottom-sheet-surface"]')).toBeNull()
 
         const card = document.querySelector('[data-testid="agent-card-agent-1"]') as HTMLElement
         expect(card).toBeTruthy()
@@ -187,6 +187,6 @@ describe('ComposerInfoPanel 订阅收窄', () => {
             fireEvent.click(card)
         })
         // 抽屉打开 = 窄订阅 selector 在 drawerBlockId 就位后成功解析出 tool-call block
-        expect(document.querySelector('.ant-drawer-open')).not.toBeNull()
+        expect(document.querySelector('[data-testid="bottom-sheet-surface"]')).not.toBeNull()
     })
 })

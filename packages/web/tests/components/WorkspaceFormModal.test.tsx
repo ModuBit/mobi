@@ -98,11 +98,11 @@ function renderModal(workspace?: Workspace | null) {
     )
 }
 
-/** 弹窗底部主按钮（确定/保存）——Modal/Drawer 均渲染在 body 门户，不能查 render 容器 */
+/** 弹窗底部主按钮（确定/保存）——Modal/sheet 均渲染在 body 门户，不能查 render 容器 */
 function okButton(): HTMLButtonElement {
-    // PC 走 Modal footer；移动端操作按钮随表单流入 Drawer body
+    // PC 走 Modal footer；移动端操作按钮随表单流入 sheet body
     const selector = mobileState.current
-        ? '.ant-drawer-body .ant-btn-primary'
+        ? '[data-testid="bottom-sheet-surface"] .ant-btn-primary'
         : '.ant-modal-footer .ant-btn-primary'
     const btn = document.querySelector(selector)
     if (!(btn instanceof HTMLButtonElement)) throw new Error('ok button not found')
@@ -287,7 +287,7 @@ describe('WorkspaceFormModal（新建 + onCreated 回填）', () => {
     })
 })
 
-describe('WorkspaceFormModal（移动端底部 Drawer 形态）', () => {
+describe('WorkspaceFormModal（移动端底部 sheet 形态）', () => {
     beforeEach(() => {
         mobileState.current = true
     })
@@ -297,18 +297,18 @@ describe('WorkspaceFormModal（移动端底部 Drawer 形态）', () => {
         cleanup()
     })
 
-    it('渲染为底部 Drawer 而非 Modal，表单与操作按钮可用', async () => {
+    it('渲染为底部 sheet 而非 Modal，表单与操作按钮可用', async () => {
         renderModal(makeWorkspace())
 
         expect(await screen.findByText('workspace.edit')).toBeInTheDocument()
-        expect(document.querySelector('.ant-drawer')).not.toBeNull()
+        expect(document.querySelector('[data-testid="bottom-sheet-surface"]')).not.toBeNull()
         expect(document.querySelector('.ant-modal')).toBeNull()
-        // 编辑回填即合法：Drawer 内主按钮可用
+        // 编辑回填即合法：sheet 内主按钮可用
         expect(okButton()).toBeEnabled()
         expect(screen.getByDisplayValue('Demo')).toBeInTheDocument()
     })
 
-    it('校验不通过时禁用 Drawer 内提交按钮', async () => {
+    it('校验不通过时禁用 sheet 内提交按钮', async () => {
         renderModal(makeWorkspace({
             folders: [
                 { path: '/a', primary: true },

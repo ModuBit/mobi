@@ -17,7 +17,8 @@
 import { useState, useCallback } from 'react'
 import { Popconfirm, Drawer, Button, theme } from 'antd'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
-import { MOBILE_SHEET_DRAWER_CLASS } from '@/ui/base/layout/MobileDrawer'
+import { MOBILE_SHEET_DRAWER_CLASS } from '@/ui/base/layout/mobileSheetClass'
+import { useOpenOverlayLayer } from '@/ui/base/layout/overlayLayer'
 import { BrushCleaning } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
@@ -41,6 +42,8 @@ export function ClearStateButton({ sessionId, clearFields, confirmKey, onClear }
     const isMobile = useIsMobile()
     const [loading, setLoading] = useState(false)
     const [drawerOpen, setDrawerOpen] = useState(false)
+    // 层号：可能弹在别的移动浮层之上，领号保证后打开的在上（见 overlayLayer.ts）
+    const drawerZ = useOpenOverlayLayer(drawerOpen)
     const [hovered, setHovered] = useState(false)
 
     const confirmText = t(confirmKey ?? `chat.clearState.${clearFields[0]}`)
@@ -90,6 +93,7 @@ export function ClearStateButton({ sessionId, clearFields, confirmKey, onClear }
                 <Drawer
                     placement="bottom"
                     rootClassName={MOBILE_SHEET_DRAWER_CLASS}
+                    zIndex={drawerZ}
                     open={drawerOpen}
                     onClose={() => { if (!loading) setDrawerOpen(false) }}
                     closable={false}

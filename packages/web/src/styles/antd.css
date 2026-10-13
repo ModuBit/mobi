@@ -134,8 +134,8 @@ html:not([data-theme='dark']) .user-msg-bubble .x-markdown .slash-command-badge 
     overflow: auto;
 }
 
-/* 移动端底部 sheet Drawer（挂 mobile-sheet-drawer 标记：MobileDrawer 恒挂，原生 Drawer 的移动 sheet 也挂）：
-   高度自适应，上限 85dvh（不加 !important，让 MobileDrawer 的 inline maxHeight 可覆盖）。
+/* 移动端底部 sheet Drawer（挂 mobile-sheet-drawer 标记的移动 sheet Drawer 才命中）：
+   高度自适应，上限 85dvh（不加 !important，留给调用方 inline maxHeight 覆盖）。
    只命中标记类——不误伤 placement=bottom 的其他抽屉（如 PC 画板停靠抽屉的固定高度） */
 .mobile-sheet-drawer.ant-drawer-bottom .ant-drawer-content-wrapper {
     height: auto !important;

@@ -19,7 +19,8 @@ import { theme, Drawer, Button } from 'antd'
 import { LoadingOutlined } from '@ant-design/icons'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { TwoStepConfirmButton } from '@/ui/base/interactive/TwoStepConfirmButton'
-import { MOBILE_SHEET_DRAWER_CLASS } from '@/ui/base/layout/MobileDrawer'
+import { MOBILE_SHEET_DRAWER_CLASS } from '@/ui/base/layout/mobileSheetClass'
+import { useOpenOverlayLayer } from '@/ui/base/layout/overlayLayer'
 import type { GlobalToken } from 'antd/es/theme/interface'
 import { Terminal, CircleStop, Eye, Zap, CircleDashed, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -76,6 +77,8 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
 
     const [drawerOpen, setDrawerOpen] = useState(false)
     const [stopping, setStopping] = useState(false)
+    // 层号：可能弹在别的移动浮层之上，领号保证后打开的在上（见 overlayLayer.ts）
+    const drawerZ = useOpenOverlayLayer(drawerOpen)
 
     const prevSummaryRef = useRef(task.summary)
     const [displaySummary, setDisplaySummary] = useState(task.summary)
@@ -111,6 +114,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
         <Drawer
             placement="bottom"
             rootClassName={MOBILE_SHEET_DRAWER_CLASS}
+            zIndex={drawerZ}
             open={drawerOpen}
             onClose={() => { if (!stopping) setDrawerOpen(false) }}
             closable={false}

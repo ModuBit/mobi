@@ -15,7 +15,7 @@
  */
 
 import { useState } from 'react'
-import { Modal, Button, Space, Typography } from 'antd'
+import { Button, Space, Typography } from 'antd'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import {
@@ -24,6 +24,7 @@ import {
     buildKeySequence,
     type Modifier,
 } from './keySequence'
+import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
 import type { VirtualKey } from '@/core/data/stores/virtualKeysStore'
 
 const KeyGrid = styled.div`
@@ -71,18 +72,19 @@ export function VirtualKeyPicker({ open, onAdd, onClose }: VirtualKeyPickerProps
     }
 
     return (
-        <Modal
+        // 底部 sheet（BottomSheet 第二层：叠在编辑器 sheet 之上，层级与滚动锁由 Radix 的
+        // 层栈收口）。取消语义交给 sheet 自身（下拉 / 点遮罩 / 手势返回 = 关闭 + 复位），
+        // 与编辑器一致，不再单列取消按钮
+        <BottomSheet
             open={open}
-            onCancel={handleClose}
+            onClose={handleClose}
             title={t('terminal.virtualKeys.picker.title')}
-            footer={[
-                <Button key="cancel" onClick={handleClose}>
-                    {t('terminal.virtualKeys.picker.cancel')}
-                </Button>,
-                <Button key="add" type="primary" disabled={!built} onClick={handleAdd}>
+            bodyStyle={{ padding: '4px 16px 8px' }}
+            extra={
+                <Button type="primary" disabled={!built} onClick={handleAdd}>
                     {t('terminal.virtualKeys.picker.add')}
-                </Button>,
-            ]}
+                </Button>
+            }
         >
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
                 {/* 修饰键（多选 toggle） */}
@@ -127,6 +129,6 @@ export function VirtualKeyPicker({ open, onAdd, onClose }: VirtualKeyPickerProps
                     </Typography.Text>
                 )}
             </Space>
-        </Modal>
+        </BottomSheet>
     )
 }

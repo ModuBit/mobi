@@ -1,0 +1,259 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* 移动端底部 sheet 样式（uiarc bottom-sheet 认领版，2026-10-13）。
+ * 与上游的差异（认领后即本地代码，不再跟上游升级）：
+ *  1. .sheet 由「视口分数 detents 折算的固定高度」改为内容自适应 + --sheet-max-height 上限
+ *     （Mobi 的 sheet 多是三五个按钮的矮面板，恒定 45dvh 会明显变形）
+ *  2. z-index 由写死的 50/51 改为按层号注入的 --sheet-z / --sheet-z-top（嵌套时子层必须
+ *     压住父层，见 bottom-sheet.tsx 的层号分配）
+ *  3. .body 去掉上游的内容内衬（padding 归调用方；Mobi 既有 sheet 内容多自带整行按钮与
+ *     分区标题，组件再补一圈内衬会把它们推离屏边）
+ *  4. 底部安全区取 max(24px, env(...))（与旧底部抽屉同档，非刘海机型也留出触控余量）
+ *  5. 为上游设计变量提供 mobi token 映射——**取 cssVars.ts 注入 :root 的全局变量**，
+ *     不取 antd 的 --ant-*：antd cssVar 只在组件子树内可解析，弹层 portal 到 body 后
+ *     整层 token 归零（无底色/无描边/无圆角/无投影，见 dropdown-menu 的同类注释）。
+ * 变量声明挂 :where(.overlay, .sheet)：两者是 portal 里两个平级 DOM 根，自定义属性不共享。
+ * 全局已供给的同名变量（--border / --border-strong / --foreground / --text-secondary /
+ * --radius-surface / --shadow-floating）不在此重复声明——同名重复声明会构成自引用而整体失效 */
+
+:where(.overlay, .sheet) {
+    --surface-raised: var(--popover);
+    --surface-muted: var(--accent);
+    --text-muted: var(--muted-foreground);
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-4: 16px;
+    --text-sm: 14px;
+    --text-lg: 16px;
+    --duration-fast: var(--mobi-duration-fast);
+    --ease-standard: var(--mobi-ease-in-out);
+}
+
+/* 遮罩：底色在 CSS、明暗程度（opacity）在 JS——遮罩跟随 sheet 位置连续变暗/变亮，
+   而不是按定时器淡入淡出（拖拽中就能看到背景随之亮起来） */
+.overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--sheet-z, 1080);
+    background: oklch(16% 0 0 / 0.34);
+}
+:global(html[data-theme='dark']) .overlay {
+    background: oklch(0% 0 0 / 0.52);
+}
+/* 离场途中：下层不再被遮罩拦截，sheet 也不可再被抓取（Radix 会给 overlay 写 inline
+   pointer-events: auto，只有 !important 才压得住） */
+.overlay[data-state='closed'],
+.sheet[data-state='closed'] {
+    pointer-events: none !important;
+}
+
+/* sheet 主体：盒高 = 内容高（上限 --sheet-max-height），底部多出 --sheet-extension 的
+   屏下延伸段——向上拉伸时不会在底缘露出缝隙；位移全部走 y 的 transform */
+.sheet {
+    position: fixed;
+    right: 0;
+    bottom: calc(var(--sheet-extension) * -1);
+    left: 0;
+    z-index: var(--sheet-z-top, 1081);
+    display: flex;
+    flex-direction: column;
+    width: min(100%, 36rem);
+    height: auto;
+    max-height: calc(var(--sheet-max-height, 85dvh) + var(--sheet-extension));
+    margin-inline: auto;
+    overflow: hidden;
+    padding-bottom: calc(var(--sheet-extension) + max(24px, env(safe-area-inset-bottom, 0px)));
+    border: 1px solid var(--border);
+    border-bottom: 0;
+    border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+    background: var(--surface-raised);
+    color: var(--foreground);
+    box-shadow: var(--shadow-floating);
+    font-family: var(--font-body);
+    outline: none;
+    will-change: transform;
+}
+
+/* 整个 header 都是抓手（内容区留给滚动），按下即可拖动 */
+.header {
+    position: relative;
+    flex: none;
+    padding: var(--space-2) var(--space-4) var(--space-2);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.sheet[data-dragging] .header {
+    cursor: grabbing;
+}
+/* 发丝线只在内容滚到 header 下方时出现 */
+.header::after {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 1px;
+    background: var(--border);
+    content: '';
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+}
+.sheet[data-scrolled] .header::after {
+    opacity: 1;
+}
+
+/* 拖拽指示条。有 peek 档时它同时是「展开/收起」开关（渲染成 button），
+   矮面板下只是视觉提示（渲染成 div）——两边共用这套盒模型，故清掉按钮默认样式 */
+.grabber {
+    display: flex;
+    width: 3.5rem;
+    height: 1.25rem;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto var(--space-1);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: inherit;
+    -webkit-tap-highlight-color: transparent;
+}
+.grabberBar {
+    width: 2.25rem;
+    height: 5px;
+    border-radius: var(--radius-pill);
+    background: var(--border-strong);
+    transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.sheet[data-dragging] .grabberBar {
+    background: var(--text-muted);
+}
+
+/* 标题行：三栏 grid（1fr 内容 1fr）——标题恒居中，extra 与关闭按钮靠右；
+   两侧等分保证标题几何居中，空间不足时标题省略号截断而非与右侧操作重叠 */
+.headRow {
+    display: grid;
+    grid-template-columns: 1fr minmax(0, auto) 1fr;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 22px;
+}
+.headText {
+    display: flex;
+    grid-column: 2;
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+    /* 中栏 track 是 minmax(0, auto)：内容超宽时 track 被可用空间钳住，但**条目自身**
+       仍按 max-content 宽居中 → 两侧一起溢出（真机：工具详情长标题左右溢出）。
+       改成占满 track、居中交给内部 flex，超宽部分由下面的 overflow 收口 */
+}
+.title {
+    max-width: 100%;
+    margin: 0;
+    overflow: hidden;
+    font-family: var(--font-body);
+    font-size: var(--text-lg);
+    font-weight: 500;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* 调用方传的标题节点多是「图标 + 文本块」的组合（工具详情）：整体限宽并允许收缩，
+   否则内层文本块把标题项撑宽、跟着上面的居中一起溢出 */
+.title > * {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.headActions {
+    display: inline-flex;
+    grid-column: 3;
+    align-items: center;
+    gap: var(--space-2);
+    justify-self: end;
+}
+
+.close {
+    display: grid;
+    flex: none;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color var(--duration-fast) var(--ease-standard),
+        color var(--duration-fast) var(--ease-standard);
+}
+@media (hover: hover) and (pointer: fine) {
+    .close:hover {
+        border-color: var(--border-strong);
+        color: var(--foreground);
+    }
+}
+.close:active {
+    color: var(--foreground);
+}
+
+/* 内容区：唯一可滚区。内衬归调用方（见文件头第 3 条），组件只保证滚动与收缩链——
+   min-height: 0 解除 flex item 默认「不收缩」，没有它长内容会把 sheet 撑爆被裁而非出滚动条 */
+.body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    /* 两个方向都放给内容区：touch-action 在**祖先**上会限制整个子树，写 pan-y 会把
+       diff 这类内容自身的横向滚动一起锁死（真机「工具详情里的 diff 不能左右滚」）。
+       横向没得滚时浏览器自己空转，不必用 touch-action 代它决定 */
+    touch-action: pan-x pan-y;
+    font-size: var(--text-sm);
+}
+
+/* 锁滚态（有两档且停在 peek 档，见 bottom-sheet.tsx 的 data-scroll-locked）：
+   纵向不滚、触摸只用来改档——上推即展开，下拉即回落/关闭。
+   横向仍放给内容：touch-action 在**祖先**上会限制整个子树，写 none 会把 diff 这类内容
+   自身的横向滚动一起锁死（真机「工具详情里的 diff 左右也不能滚」）；横向没有改档语义，
+   交回浏览器即可。纵向不放 pan-y：那是本层要接管的方向，同时也避开嵌套滚动区抢纵向手势。
+   单档 sheet（矮内容 / peek={false}）没有这一态，内容区照常滚 */
+.sheet[data-scroll-locked] .body {
+    overflow: hidden;
+    touch-action: pan-x;
+}
+
+.srOnly {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .header::after,
+    .grabberBar,
+    .close {
+        transition: none;
+    }
+}

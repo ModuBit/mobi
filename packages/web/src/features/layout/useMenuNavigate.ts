@@ -23,7 +23,7 @@ const MENU_NAVIGATE_HEAD_START_MS = 100
 /**
  * 菜单抽屉内导航统一入口：先关抽屉，滑出动画起步后再执行注入的导航闭包。
  *
- * 背景：MobileDrawer 的滑出是主线程 JS spring 动画（逐帧计算），若与 navigate 同拍
+ * 背景：底部 sheet（BottomSheet）的滑出是主线程 JS spring 动画（逐帧计算），若与 navigate 同拍
  * 提交，会话详情页的渲染风暴（react-query / 消息解密 / Bubble.List / markdown）会
  * 饿死动画帧——表现为「菜单卡在半空，会话页渲染出来一部分才消失」。此处把导航推迟
  * 一个起步窗口（100ms）：滑出可见起步后两者并行推进，动画中后段即使被渲染挤几帧，

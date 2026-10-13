@@ -19,7 +19,7 @@ import { Button, Space, Typography, Tag } from 'antd'
 import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useVirtualKeysStore, type VirtualKey } from '@/core/data/stores/virtualKeysStore'
-import { MobileDrawer } from '@/ui/base/layout/MobileDrawer'
+import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
 import { VirtualKeyPicker } from './VirtualKeyPicker'
 
 interface VirtualKeyEditorProps {
@@ -61,12 +61,13 @@ export function VirtualKeyEditor({ open, onClose }: VirtualKeyEditorProps) {
     }
 
     return (
-        // 移动端底部 Drawer 用 MobileDrawer：高度/safe-area/动画/手势返回由组件统一收口
-        //（web CLAUDE.md 移动端 Drawer 规范），不再手动传 wrapper/body styles
-        <MobileDrawer
+        // 底部 sheet 用 BottomSheet（试点站，票 02）：高度自适应 / safe-area / 下拉与手势返回 /
+        // 层级（内嵌 Picker 是第二层 sheet）全由组件收口；内容内衬由调用方给（组件默认 0）
+        <BottomSheet
             title={t('terminal.virtualKeys.editor.title')}
             open={open}
             onClose={save}
+            bodyStyle={{ padding: '4px 16px 8px' }}
             extra={
                 <Button type="primary" onClick={save}>
                     {t('terminal.virtualKeys.editor.save')}
@@ -115,6 +116,6 @@ export function VirtualKeyEditor({ open, onClose }: VirtualKeyEditorProps) {
                 onAdd={addKey}
                 onClose={() => setPickerOpen(false)}
             />
-        </MobileDrawer>
+        </BottomSheet>
     )
 }

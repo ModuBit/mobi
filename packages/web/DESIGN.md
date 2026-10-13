@@ -371,7 +371,7 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 
 - **1:1 跟踪**：Pointer Events + `setPointerCapture`，触摸点抓到哪元素就跟到哪，尊重抓取偏移（抓手那一刻的相对位置），不跳变。
 - **释放速度继承（velocity handoff）**：手势结束时的速度原样交给 spring——这是「手势与动画无缝衔接」的关键。丢掉速度，动画就得从零加速，读作「卡了一下」。
-- **判定速度符号优先于位置**：快甩即关、快反向推即回位（见 Motion 章）。现有实现在 MobileDrawer 的 `resolveDragDisposition`。
+- **判定速度符号优先于位置**：快甩即关、快反向推即回位（见 Motion 章）。现有实现在 `ui/base/interactive/resolveDragDisposition`。
 - **rubber-band 上边界**（`dragElastic 0.2`）：内容已在顶部还继续下拉时，位移按比例衰减而非硬停。硬停读作「冻结」，渐进阻尼读作「到底了」。
 - **迟滞 10px 防误触 + 方向锁**：左缘右滑（EdgeSwipeBack，仅会话详情页）位移超过 10px 且水平分量胜出才认定为手势；竖向分量胜出立即放弃跟踪交还浏览器滚动——检测层无浮层、全程无 preventDefault，贴边滚动与点击不受干扰。
 - **多模态反馈三原则**：causality（因果明确——反馈必须能归因到刚才那个动作）/ harmony（视觉+触觉同帧，不各走各的）/ utility（只在有意义的时刻反馈，不为震而震）。

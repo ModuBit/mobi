@@ -15,7 +15,8 @@
  */
 
 import { Drawer, Button } from 'antd'
-import { MOBILE_SHEET_DRAWER_CLASS } from '@/ui/base/layout/MobileDrawer'
+import { MOBILE_SHEET_DRAWER_CLASS } from '@/ui/base/layout/mobileSheetClass'
+import { useOpenOverlayLayer } from '@/ui/base/layout/overlayLayer'
 import { useTranslation } from 'react-i18next'
 
 interface Props {
@@ -33,11 +34,14 @@ interface Props {
  */
 export function SaveConflictDialog({ open, onReload, onForceOverwrite }: Props) {
     const { t } = useTranslation()
+    // 层号：可能弹在别的移动浮层之上，领号保证后打开的在上（见 overlayLayer.ts）
+    const drawerZ = useOpenOverlayLayer(open)
     return (
         <Drawer
             open={open}
             placement="bottom"
             rootClassName={MOBILE_SHEET_DRAWER_CLASS}
+            zIndex={drawerZ}
             closable={false}
             maskClosable={false}
             styles={{

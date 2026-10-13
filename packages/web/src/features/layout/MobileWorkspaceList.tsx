@@ -14,15 +14,14 @@
  * limitations under the License.
  */
 
-import { useState, useCallback } from 'react'
-import { App as AntdApp, Button, Drawer, Input, Modal, theme as antTheme } from 'antd'
+import { useState, useCallback, useEffect } from 'react'
+import { App as AntdApp, Button, Input, Modal, theme as antTheme } from 'antd'
 import {
     EditOutlined,
     MoonOutlined,
     DeleteOutlined,
     PlayCircleOutlined,
     PushpinOutlined,
-    CloseOutlined,
     SwapOutlined,
     ImportOutlined,
 } from '@ant-design/icons'
@@ -32,7 +31,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
-import { MOBILE_SHEET_DRAWER_CLASS } from '@/ui/base/layout/MobileDrawer'
+import { useOpenOverlayLayer } from '@/ui/base/layout/overlayLayer'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinned'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
@@ -56,6 +55,7 @@ import { MobileRecentGroup } from './MobileRecentGroup'
 import { MobilePinnedGroup } from './MobilePinnedGroup'
 import { useMenuNavigate } from './useMenuNavigate'
 import { WorkspaceFormModal } from '@/ui/shared/WorkspaceFormModal'
+import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
 import { AssignWorkspaceModal } from '@/features/layout/AssignWorkspaceModal'
 import { SessionListFooter } from './SessionListFooter'
 import { useSectionExpanded } from './useSectionExpanded'
@@ -79,9 +79,14 @@ export function MobileWorkspaceList() {
     const params = useParams({ strict: false })
     const activeSessionId = params.sessionId as string | undefined
 
-    // ActionSheet 状态
+    // 会话操作菜单（BottomSheet）状态
     const [actionSessionId, setActionSessionId] = useState<string | null>(null)
     const [actionLoading, setActionLoading] = useState<string | null>(null)
+    /** 菜单内的视图：删除确认就地展开，**不在 sheet 之上叠 antd Modal**。Radix Dialog 打开期间
+     *  会把 body 置 `pointer-events: none`，antd 弹层得靠自己把内容提回 `auto` 才点得到——能用，
+     *  但两层 modal 的焦点陷阱互相抢，fragile；菜单里的其它入口（重命名 / 归入工作区）也是
+     *  「先关 sheet 再开弹层」的同一套做法 */
+    const [actionView, setActionView] = useState<'menu' | 'confirmDelete'>('menu')
 
     // 重命名 Modal 状态
     const [renameSessionId, setRenameSessionId] = useState<string | null>(null)
@@ -152,10 +157,22 @@ export function MobileWorkspaceList() {
         }
     }, [actionSessionId, assignMutation, messageApi, t])
 
-    // 关闭 ActionSheet
+    // 关闭会话操作菜单（执行中否决关闭：BottomSheet 收到否决即沉降回原位）
     const closeActionSheet = useCallback(() => {
         if (!actionLoading) setActionSessionId(null)
     }, [actionLoading])
+
+    // 菜单关闭即复位视图：下次长按重新从菜单进（确认中被遮罩/手势返回关掉时也要复位）
+    useEffect(() => {
+        if (actionSessionId == null) setActionView('menu')
+    }, [actionSessionId])
+
+    // 删除确认视图自带一层手势返回：返回 = 取消确认、退回菜单（同原先命令式 Modal 那层哨兵）。
+    // 进出确认视图时挂/摘哨兵——退回菜单后返回事件自然交回菜单自己的哨兵。
+    useEffect(() => {
+        if (actionView !== 'confirmDelete') return undefined
+        return pushHistoryGuard(() => setActionView('menu'))
+    }, [actionView])
 
     // 重命名
     const handleRenameStart = useCallback(() => {
@@ -185,11 +202,14 @@ export function MobileWorkspaceList() {
         setRenameValue('')
     }, [])
 
-    // ActionSheet / 重命名 Modal 虽是 antd 原生浮层（非 MobileDrawer），同样必须接
-    // history 哨兵：否则弹在 MobileMenu（哨兵）之上时，手势返回会穿透二级浮层
-    // 直接消费菜单的哨兵——表现为「返回关了父级菜单，ActionSheet 还开着」
-    useHistoryGuard(actionSessionId != null, closeActionSheet)
+    // 重命名 Modal 是 antd 原生浮层，必须接 history 哨兵——否则手势返回会穿透过去消费下层
+    // 菜单的哨兵。操作菜单本身已是 BottomSheet，哨兵由组件内置，不再手工接线。
     useHistoryGuard(renameSessionId != null, handleRenameCancel)
+
+    // 弹层层号：重命名 Modal 弹在 MobileMenu / 操作菜单之上，必须领比它们大的号，否则默认
+    // z 1000 被菜单的 1080 压住——真机「长按 session 弹出的二级退到后面去了」。
+    // 操作菜单（BottomSheet）自带层号分配，不在此领。
+    const renameModalZ = useOpenOverlayLayer(!!renameSessionId)
 
     // 手动休眠（dormancy spec §D.11）：动作流收口在 sessionDormancy（gate 阻塞时弹
     // 「仍要退出」确认，archive 作为强制兜底），这里只管 pending 态
@@ -218,56 +238,38 @@ export function MobileWorkspaceList() {
         }
     }, [actionSessionId, api, queryClient, navigate, navigateFromMenu])
 
-    // 删除
+    // 删除：先切到确认视图（同一 sheet 就地展开，见 actionView 注释），确认后再落真正的删除
     const handleDelete = useCallback(() => {
+        if (!actionSessionId) return
+        setActionView('confirmDelete')
+    }, [actionSessionId])
+
+    // 确认删除
+    const handleDeleteConfirm = useCallback(async () => {
         if (!actionSessionId) return
         const sessionId = actionSessionId
         setActionLoading('delete')
-        // 删除确认是命令式 Modal（无受控 open state），手动推哨兵：
-        // 手势返回销毁 Modal（等同取消），onOk/onCancel 各自 dispose 弹掉哨兵
-        const modalInstance = modal.confirm({
-            title: t('session.actions.deleteConfirmTitle'),
-            content: t('session.actions.deleteConfirmContent'),
-            okText: t('common.confirm'),
-            okButtonProps: { danger: true },
-            cancelText: t('common.cancel'),
-            onOk: async () => {
-                disposeGuard()
-                try {
-                    await api.sessions.delete(sessionId)
-                    queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
-                    clearMessageWindow(sessionId)
-                    await invalidateSessionViews(queryClient, [sessionId])
-                    // 清理检视面板状态 + 缓存终端（顺带关闭后端 PTY）
-                    clearSessionResources(sessionId)
-                    setActionSessionId(null)
-                    if (activeSessionId === sessionId) {
-                        navigateFromMenu(() => navigate({ to: '/sessions' }))
-                    }
-                } catch (error) {
-                    // gate 阻塞（daemon 删除前自动休眠被挡）→ 逐项原因文案；其余保持静默（原行为）
-                    const text = deleteBlockedText(error, t)
-                    if (text) {
-                        messageApi.error(text)
-                    }
-                } finally {
-                    setActionLoading(null)
-                }
-            },
-            onCancel: () => {
-                disposeGuard()
-                setActionLoading(null)
-            },
-        })
-        const disposeGuard = pushHistoryGuard(() => {
-            // 手势返回等同取消：destroy() 不触发 onCancel/onOk，loading 态须在此
-            // 显式复位——否则 ActionSheet 会被 closeActionSheet 的 loading 守卫
-            // 永久冻结（收不起也操作不了）
-            modalInstance.destroy()
+        try {
+            await api.sessions.delete(sessionId)
+            queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
+            clearMessageWindow(sessionId)
+            await invalidateSessionViews(queryClient, [sessionId])
+            // 清理检视面板状态 + 缓存终端（顺带关闭后端 PTY）
+            clearSessionResources(sessionId)
+            setActionSessionId(null)
+            if (activeSessionId === sessionId) {
+                navigateFromMenu(() => navigate({ to: '/sessions' }))
+            }
+        } catch (error) {
+            // gate 阻塞（daemon 删除前自动休眠被挡）→ 逐项原因文案；其余保持静默（原行为）
+            const text = deleteBlockedText(error, t)
+            if (text) {
+                messageApi.error(text)
+            }
+        } finally {
             setActionLoading(null)
-        })
-    }, [actionSessionId, api, queryClient, activeSessionId, navigate, navigateFromMenu, modal, t])
-
+        }
+    }, [actionSessionId, api, queryClient, activeSessionId, navigate, navigateFromMenu, t, messageApi])
 
     // ActionSheet 当前操作的 session
     const actionSession = actionSessionId ? findSession(actionSessionId) : null
@@ -330,22 +332,60 @@ export function MobileWorkspaceList() {
                 />
             </Container>
 
-            {/* ActionSheet：会话操作菜单（重命名 / 归档·恢复 / 删除 / 取消）
-                ⚠️ 故意使用 antd 原生 Drawer，**不要改成 MobileDrawer**。
-                这是轻量操作菜单：内容固定（几个按钮）、高度低、用完即关，
-                不需要 MobileDrawer 的下拉关闭手势、拖拽指示条；
-                挂 mobile-sheet-drawer 标记复用高度自适应 + 85dvh 上限的全局样式约定。
+            {/* 会话操作菜单（重命名 / 置顶 / 归属 / 休眠·恢复 / 删除 / 取消）
+                BottomSheet 二级弹层：弹在 MobileMenu（同为 BottomSheet）之上，层号由组件的
+                共享分配器给（后开者在上），调用方不再手工配 zIndex。
+                动作菜单关掉 peek（同菜单语义）：被裁掉的行对菜单是残缺，不是「还有更多」。
+                删除确认就地展开在同一个 sheet 里，**不叠 antd Modal**——Radix Dialog 打开期间
+                把 body 置 pointer-events:none，叠上来的 antd 弹层要自己提回 auto 才点得到，
+                再加两层 focus trap 互相抢，不稳。
                 title 显示当前操作的 session 名称（fork 行标题已落库，displayName 自然区分） */}
-            <Drawer
-                placement="bottom"
-                rootClassName={MOBILE_SHEET_DRAWER_CLASS}
+            <BottomSheet
                 open={!!actionSessionId}
                 onClose={closeActionSheet}
                 title={actionSessionDisplayTitle || undefined}
-                closable={false}
-                styles={{ body: { padding: '8px 0 max(24px, env(safe-area-inset-bottom))' } }}
+                peek={false}
+                // 内衬归调用方：组件默认不加 padding（底部安全区由 .sheet 自带）
+                bodyStyle={{ padding: '8px 0 0' }}
             >
-                {actionSession && (
+                {actionSession && actionView === 'confirmDelete' ? (
+                    <>
+                        <div style={{ padding: '4px 20px 16px' }}>
+                            <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 6 }}>
+                                {t('session.actions.deleteConfirmTitle')}
+                            </div>
+                            <div style={{ color: token.colorTextSecondary }}>
+                                {t('session.actions.deleteConfirmContent')}
+                            </div>
+                        </div>
+
+                        <Button
+                            danger
+                            type="primary"
+                            block
+                            loading={actionLoading === 'delete'}
+                            style={{ height: 44 }}
+                            onClick={handleDeleteConfirm}
+                        >
+                            {t('common.confirm')}
+                        </Button>
+
+                        <Button
+                            type="text"
+                            block
+                            disabled={!!actionLoading}
+                            style={{
+                                height: 48,
+                                marginTop: 4,
+                                justifyContent: 'center',
+                                color: token.colorTextSecondary,
+                            }}
+                            onClick={() => setActionView('menu')}
+                        >
+                            {t('common.cancel')}
+                        </Button>
+                    </>
+                ) : actionSession ? (
                     <>
                         {/* 重命名 */}
                         <Button
@@ -446,32 +486,18 @@ export function MobileWorkspaceList() {
                             danger
                             icon={<DeleteOutlined />}
                             disabled={actionSession.active || !!actionLoading}
-                            loading={actionLoading === 'delete'}
                             style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                             onClick={handleDelete}
                         >
                             {t('session.actions.delete')}
                         </Button>
-
-                        <div style={{ height: 1, background: token.colorBorderSecondary, margin: '4px 16px' }} />
-
-                        {/* 取消 */}
-                        <Button
-                            type="text"
-                            block
-                            icon={<CloseOutlined />}
-                            disabled={!!actionLoading}
-                            style={{ height: 48, justifyContent: 'center', color: token.colorTextSecondary }}
-                            onClick={closeActionSheet}
-                        >
-                            {t('common.cancel')}
-                        </Button>
                     </>
-                )}
-            </Drawer>
+                ) : null}
+            </BottomSheet>
 
             {/* 重命名 Modal */}
             <Modal
+                zIndex={renameModalZ}
                 title={t('session.actions.rename')}
                 open={!!renameSessionId}
                 onOk={handleRenameConfirm}
