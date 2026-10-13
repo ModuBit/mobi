@@ -24,6 +24,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest'
 import { buildShadcnThemeCss, injectShadcnThemeCss, SHADCN_TOKENS_STYLE_ID } from '@/core/config/theme/cssVars'
+import { shadcnLightToken } from '@/core/config/theme/tokens'
 
 afterEach(() => {
     document.getElementById(SHADCN_TOKENS_STYLE_ID)?.remove()
@@ -66,7 +67,9 @@ describe('buildShadcnThemeCss（--background 系主题变量）', () => {
             expect(css).toContain('--mobi-ease-out:')
             expect(css).toContain('--mobi-ease-in-out:')
         }
-        expect(light).toContain('--radius-lg: 14px')
+        // 断言「投影渲染」而非钉住数值：具体档位由 tokens.ts 单源决定，
+        // 文档与代码的一致性另由 radius-consistency.test.ts 守卫
+        expect(light).toContain(`--radius-lg: ${shadcnLightToken.borderRadiusLG}px`)
         expect(dark).toContain('--text-secondary: #d1cfc5')
         // 档位值确实翻转（light bg 米白 / dark bg 深灰）
         expect(light).toContain('--background: #faf9f5')
@@ -82,7 +85,7 @@ describe('buildShadcnThemeCss（--background 系主题变量）', () => {
         const dark = buildShadcnThemeCss('dark')
         expect(light).toMatch(/^:root \{/)
         expect(dark).toMatch(/^\.dark \{/)
-        expect(light).toContain('--radius: 10px')
+        expect(light).toContain(`--radius: ${shadcnLightToken.borderRadius}px`)
     })
 })
 

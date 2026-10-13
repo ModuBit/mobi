@@ -73,7 +73,7 @@ const SubNavItem = styled.button<{ $token: ReturnType<typeof useToken>['token'];
     padding: 10px 12px;
     border: none;
     cursor: pointer;
-    border-radius: 9px;
+    border-radius: ${p => p.$token.borderRadius}px;
     font-size: 13.5px;
     text-align: left;
     background: ${p => p.$active ? p.$token.colorBgContainer : 'transparent'};

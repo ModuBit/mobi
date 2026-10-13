@@ -79,7 +79,7 @@ const Row = styled.button<{ $token: ReturnType<typeof antTheme.useToken>['token'
     gap: 12px;
     padding: 12px 16px;
     border: none;
-    border-radius: 8px;
+    border-radius: ${(p) => p.$token.borderRadius}px;
     background: ${(p) => p.$token.colorFillQuaternary};
     color: ${(p) => p.$token.colorText};
     font-size: 14px;

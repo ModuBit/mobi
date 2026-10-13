@@ -44,7 +44,7 @@ const MenuButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] 
     border: none;
     background: transparent;
     color: ${props => props.$token.colorText};
-    border-radius: 8px;
+    border-radius: ${props => props.$token.borderRadius}px;
     cursor: pointer;
     transition: all 0.2s;
 

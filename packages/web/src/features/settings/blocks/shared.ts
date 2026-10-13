@@ -38,14 +38,14 @@ export const IconBox = styled.span<{ $token: { colorTextSecondary: string } }>`
 `
 
 /**
- * 设置页主卡容器（容器色 + 细边框 + 12px 圆角 + 入场动画）。
+ * 设置页主卡容器（容器色 + 细边框 + 面板档圆角 + 入场动画）。
  * RouteCard / ProviderCard 等设置分区卡片共享，padding/gap/边框态由各卡按需扩展——
  * 主题圆角或卡片语言调整只改这一处，不再逐卡漂移。
  */
-export const SettingsCard = styled.section<{ $token: { colorBgContainer: string; colorBorderSecondary: string } }>`
+export const SettingsCard = styled.section<{ $token: { colorBgContainer: string; colorBorderSecondary: string; borderRadiusLG: number } }>`
     display: flex;
     flex-direction: column;
-    border-radius: 12px;
+    border-radius: ${p => p.$token.borderRadiusLG}px;
     background: ${p => p.$token.colorBgContainer};
     border: 1px solid ${p => p.$token.colorBorderSecondary};
     animation: ${enter} 0.3s ease-out;

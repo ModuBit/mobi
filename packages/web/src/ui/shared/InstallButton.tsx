@@ -33,7 +33,7 @@ const NavItem = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
     border: none;
     background: transparent;
     color: ${props => props.$token.colorTextSecondary};
-    border-radius: 8px;
+    border-radius: ${props => props.$token.borderRadius}px;
     cursor: pointer;
     transition: all 0.2s;
 

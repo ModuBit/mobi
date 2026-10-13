@@ -14,6 +14,20 @@
  * limitations under the License.
  */
 
+/**
+ * 圆角档位：**两档同值**，故单源一处（颜色双档有别、圆角没有）。
+ * 档位以角色命名、数值按等差 8px 排——见 DESIGN.md「Shapes」章；
+ * antd 落点：control→borderRadius / control-sm→borderRadiusSM / panel→borderRadiusLG /
+ * square→borderRadiusXS（surface 档没有对应的 antd 槽位，由 Modal 组件级覆写）。
+ * 与 DESIGN.md 的一致性由 tests/core/config/theme/radius-consistency.test.ts 守卫。
+ */
+const radius = {
+    borderRadius: 14,
+    borderRadiusXS: 4,
+    borderRadiusSM: 10,
+    borderRadiusLG: 22,
+}
+
 // Claude 暖调风格 Light 主题配置
 export const shadcnLightToken = {
     fontFamily: "var(--font-body)",
@@ -90,10 +104,7 @@ export const shadcnLightToken = {
     colorBgMask: 'rgba(250, 249, 245, 0.65)',
     colorBorder: '#f0eee6',
     colorBorderSecondary: '#f0eee6',
-    borderRadius: 10,
-    borderRadiusXS: 2,
-    borderRadiusSM: 8,
-    borderRadiusLG: 14,
+    ...radius,
     padding: 16,
     paddingSM: 12,
     paddingLG: 24,
@@ -178,10 +189,7 @@ export const shadcnDarkToken = {
     colorBgMask: 'rgba(0, 0, 0, 0.65)',
     colorBorder: '#30302e',
     colorBorderSecondary: '#1e1e1c',
-    borderRadius: 10,
-    borderRadiusXS: 2,
-    borderRadiusSM: 8,
-    borderRadiusLG: 14,
+    ...radius,
     padding: 16,
     paddingSM: 12,
     paddingLG: 24,

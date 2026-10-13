@@ -15,6 +15,9 @@
  */
 
 // Claude 暖调组件配置 - Light 模式
+// 圆角纪律：**只覆写与全局档位不一致的组件**（Alert 借 LG 槽位承载控件档、Modal 覆写为
+// 大表面档、Checkbox 覆写为方角档）。与全局同值的覆写一律删掉——那是第二个事实源，
+// 改档位时必然漏改一处。全局档位见 tokens.ts 的 radius 单源与 DESIGN.md「Shapes」章。
 export const shadcnLightComponents = {
     // 图片预览工具栏：图标色必须跟随遮罩（--ant-color-bg-mask light=米白纸色/dark=深色），
     // 同一色两档必有一档隐形（2026-09-26 真机：白图标在 light 纸色遮罩上不可见）
@@ -36,14 +39,12 @@ export const shadcnLightComponents = {
         defaultActiveBorderColor: '#b0aea5',
         // text 档按钮 hover 底色（DESIGN.md Buttons 章：hairline）
         textHoverBg: '#f0eee6',
-        borderRadius: 8,
     },
     Input: {
         activeShadow: 'none',
         hoverBorderColor: '#b0aea5',
         // focus 边框用中灰（ink-tertiary）而非最深的暖墨——墨色描边过刺眼（DESIGN.md Buttons/Inputs 章）
         activeBorderColor: '#87867f',
-        borderRadius: 8,
     },
     Select: {
         // 选项 hover = 悬浮高亮 hover 档、选中 = colorPrimaryBg 档，与全站阶梯一致（DESIGN.md Hover 高亮章）
@@ -55,13 +56,15 @@ export const shadcnLightComponents = {
         hoverBorderColor: '#b0aea5',
         activeBorderColor: '#87867f',
         activeOutlineColor: 'transparent',
-        borderRadius: 8,
     },
+    // 提示条是**控件档**的表面（uiarc 同法：alert 走 control），不是面板档。
+    // antd 只给 Alert 暴露 LG 槽位，故在此覆写（= tokens.ts 的 borderRadius）
     Alert: {
-        borderRadiusLG: 8,
-    },
-    Modal: {
         borderRadiusLG: 14,
+    },
+    // Modal 是**大表面档**（DESIGN.md Shapes），antd 没有对应的槽位，只能在这里覆写
+    Modal: {
+        borderRadiusLG: 30,
     },
     Progress: {
         defaultColor: '#3d3d3a',
@@ -76,6 +79,8 @@ export const shadcnLightComponents = {
         innerMinMargin: 4,
         innerMaxMargin: 24,
     },
+    // 方角档（DESIGN.md rounded.square）：全局 SM 是「小尺寸控件」档（10px），
+    // 复选框要的是接近方角的 4px，故在此覆写
     Checkbox: {
         borderRadiusSM: 4,
     },
@@ -85,12 +90,6 @@ export const shadcnLightComponents = {
         handleSize: 18,
         handleSizeHover: 20,
         railSize: 6,
-    },
-    ColorPicker: {
-        borderRadius: 8,
-    },
-    Card: {
-        borderRadiusLG: 14,
     },
 }
 
@@ -122,7 +121,6 @@ export const shadcnDarkComponents = {
         defaultActiveBorderColor: '#4d4c48',
         // text 档按钮 hover 底色（DESIGN.md Buttons 章：dark 提亮一档）
         textHoverBg: '#30302e',
-        borderRadius: 8,
         primaryColor: '#141413',
     },
     Input: {
@@ -130,7 +128,6 @@ export const shadcnDarkComponents = {
         hoverBorderColor: '#5e5d59',
         // focus 边框用中灰（ink-tertiary）而非最亮的纸白——白框在暗底上过刺眼（DESIGN.md Buttons/Inputs 章）
         activeBorderColor: '#87867f',
-        borderRadius: 8,
     },
     Select: {
         // 选项 hover = 悬浮高亮 hover 档（#262622）、选中 = colorPrimaryBg 档（#30302e），与全站阶梯一致
@@ -142,13 +139,15 @@ export const shadcnDarkComponents = {
         hoverBorderColor: '#5e5d59',
         activeBorderColor: '#87867f',
         activeOutlineColor: 'transparent',
-        borderRadius: 8,
     },
+    // 提示条是**控件档**的表面（uiarc 同法：alert 走 control），不是面板档。
+    // antd 只给 Alert 暴露 LG 槽位，故在此覆写（= tokens.ts 的 borderRadius）
     Alert: {
-        borderRadiusLG: 8,
-    },
-    Modal: {
         borderRadiusLG: 14,
+    },
+    // Modal 是**大表面档**（DESIGN.md Shapes），antd 没有对应的槽位，只能在这里覆写
+    Modal: {
+        borderRadiusLG: 30,
     },
     Progress: {
         defaultColor: '#faf9f5',
@@ -163,6 +162,8 @@ export const shadcnDarkComponents = {
         innerMinMargin: 4,
         innerMaxMargin: 24,
     },
+    // 方角档（DESIGN.md rounded.square）：全局 SM 是「小尺寸控件」档（10px），
+    // 复选框要的是接近方角的 4px，故在此覆写
     Checkbox: {
         borderRadiusSM: 4,
     },
@@ -172,11 +173,5 @@ export const shadcnDarkComponents = {
         handleSize: 18,
         handleSizeHover: 20,
         railSize: 6,
-    },
-    ColorPicker: {
-        borderRadius: 8,
-    },
-    Card: {
-        borderRadiusLG: 14,
     },
 }

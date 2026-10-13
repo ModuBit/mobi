@@ -36,7 +36,7 @@ const Layer = styled.div`
     padding: 4px;
     background: var(--ant-color-bg-elevated);
     border: 1px solid var(--ant-color-border);
-    border-radius: 10px;
+    border-radius: var(--ant-border-radius-lg);
     box-shadow: var(--ant-box-shadow-secondary);
 `
 

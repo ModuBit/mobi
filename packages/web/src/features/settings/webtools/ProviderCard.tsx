@@ -57,7 +57,7 @@ const Head = styled.div<{ $token: Token }>`
     &:focus-visible {
         outline: 2px solid ${p => p.$token.colorPrimary};
         outline-offset: -2px;
-        border-radius: 12px;
+        border-radius: ${p => p.$token.borderRadiusLG}px;
     }
 `
 
@@ -68,7 +68,7 @@ const Logo = styled.span<{ $token: Token }>`
     width: 40px;
     height: 40px;
     flex-shrink: 0;
-    border-radius: 10px;
+    border-radius: ${p => p.$token.borderRadiusSM}px;
     background: ${p => p.$token.colorText};
     color: ${p => p.$token.colorTextLightSolid};
     font-size: 15px;

@@ -171,7 +171,8 @@ const Sheet = styled.div<{
 `
 
 /* 圆角经 section + overflow hidden 裁切（sheet 层有过渡动画，圆角放这层会被拉伸）。
- * 圆角落 rounded.lg=14（卡片/Modal 档）；细边框画边界：dark 下深色画布与页面底色
+ * 圆角走面板档（--radius-lg，DESIGN.md「Shapes」的双档之一：卡片 / 悬浮面板 / 菜单同档）——
+ * 不写死数值，档位调整时随 token 一起走；细边框画边界：dark 下深色画布与页面底色
  * 接近，靠它确认画板范围；抬升层底色用 paper-elevated（DESIGN.md 唯一允许净白的层） */
 const Section = styled.div`
     display: flex;
@@ -179,7 +180,7 @@ const Section = styled.div`
     flex: 1;
     min-height: 0;
     overflow: hidden;
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--ant-color-border);
     background: var(--ant-color-bg-elevated);
 `

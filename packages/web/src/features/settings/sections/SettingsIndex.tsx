@@ -40,7 +40,7 @@ const EntryCard = styled.button<{ $token: Token }>`
     gap: 14px;
     background: ${p => p.$token.colorBgContainer};
     border: 1px solid ${p => p.$token.colorBorderSecondary};
-    border-radius: 12px;
+    border-radius: ${p => p.$token.borderRadiusLG}px;
     padding: 16px;
     cursor: pointer;
     text-align: left;
@@ -53,7 +53,7 @@ const EntryCard = styled.button<{ $token: Token }>`
 const IconBox = styled.span<{ $token: Token }>`
     width: 38px;
     height: 38px;
-    border-radius: 10px;
+    border-radius: ${p => p.$token.borderRadiusSM}px;
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;

@@ -46,11 +46,10 @@
     --color-border: var(--border);
     --color-input: var(--input);
     --color-ring: var(--ring);
-    /* shadcn 组件源的 rounded-sm/md/lg/xl 语义，从注入的 --radius 派生 */
-    --radius-sm: calc(var(--radius) - 4px);
-    --radius-md: calc(var(--radius) - 2px);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) + 4px);
+    /* 圆角变量**不在这里派生**：`--radius`（控件档）与 `--radius-lg`（面板档）都由
+       cssVars.ts 从 tokens.ts 单源注入。此处曾从 `--radius` 派生 rounded-sm/md/lg/xl，
+       而派生的 `--radius-lg` 与注入的面板档**同名不同义**——旧值恰好都是 14px 才没暴露，
+       2026-10-13 放大档位后立刻分叉。Tailwind 的 rounded-* 工具类全库零使用，故直接删除。 */
 }
 
 /* 样式模块导入 */

@@ -53,7 +53,7 @@ const Notice = styled.div`
     align-items: flex-start;
     gap: 8px;
     padding: 10px 12px;
-    border-radius: 8px;
+    border-radius: var(--ant-border-radius);
     background: var(--ant-color-warning-bg);
     border: 1px solid var(--ant-color-warning-border);
     color: var(--ant-color-warning-text);
@@ -69,7 +69,7 @@ const Notice = styled.div`
 const TargetCard = styled.div`
     position: relative;
     padding: 12px 14px 12px 18px;
-    border-radius: 10px;
+    border-radius: var(--ant-border-radius);
     background: var(--ant-color-bg-layout);
     border: 1px solid var(--ant-color-border-secondary);
     &::before {
@@ -115,7 +115,7 @@ const OptionCardButton = styled.button<{ primary?: boolean }>`
     gap: 12px;
     width: 100%;
     padding: 12px 14px;
-    border-radius: 10px;
+    border-radius: var(--ant-border-radius);
     text-align: left;
     cursor: pointer;
     transition: border-color 0.15s ease, background 0.15s ease;
@@ -139,7 +139,7 @@ const OptionIcon = styled.span<{ primary?: boolean }>`
     flex-shrink: 0;
     width: 34px;
     height: 34px;
-    border-radius: 9px;
+    border-radius: var(--ant-border-radius-sm);
     color: ${props => (props.primary ? 'var(--ant-color-success-text)' : 'var(--ant-color-text-secondary)')};
     background: ${props => (props.primary ? 'var(--ant-color-success-bg)' : 'var(--ant-color-bg-layout)')};
 `

@@ -54,7 +54,7 @@ const EditorBox = styled.div<{ $token: Token }>`
     margin-top: 12px;
     padding: 12px;
     border: 1px dashed ${p => p.$token.colorBorder};
-    border-radius: 12px;
+    border-radius: ${p => p.$token.borderRadius}px;
     background: ${p => p.$token.colorFillQuaternary};
 `
 

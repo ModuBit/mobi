@@ -161,7 +161,7 @@ const FormArea = styled.div`
     width: 100%;
     max-width: 380px;
     padding: 32px;
-    border-radius: 16px;
+    border-radius: var(--radius-lg);
     background: ${shadcnLightToken.colorBgBase};
 
     html[data-theme='dark'] & {

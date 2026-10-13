@@ -86,12 +86,17 @@ motion:
   ui:       { bounce: 0, duration: 0.35 }   # 状态切换默认档
   momentum: { bounce: 0, duration: 0.3 }     # 拖拽释放沉降
   gentle:   { bounce: 0, duration: 0.5 }     # 大面积元素
+# 按角色命名取档（uiarc 同法），不做 xs/sm/md/lg 的数值阶梯——「该选哪号」的犹豫本身就是摩擦。
+# 主体三档等差 8px（control → panel → surface）：每跳的观感增幅一致，才不会出现「这一跳小、
+# 下一跳大」的突档（旧值 8/10/14 正是这样：+2 再 +4）。control=14 的锚：mobi 控件高 36px ×
+# uiarc 的控件比值（18/44）≈ 14——照搬 uiarc 的 18px 会在这个高度上变成胶囊。
 rounded:
-  xs: 2px
-  sm: 8px
-  md: 10px
-  lg: 14px
-  full: 9999px
+  square: 4px        # 方角档：复选框等要保留方角、以区别于圆形 radio 的元素
+  control-sm: 10px   # 控件小号档 = control − 4（小尺寸控件；uiarc 同法用「控件档 − 4」表达这一档）
+  control: 14px      # 控件档：按钮 / 输入 / Select
+  panel: 22px        # 面板档：卡片 / 悬浮面板 / 菜单
+  surface: 30px      # 大表面档：Modal
+  pill: 9999px       # 圆形档：头像 / 状态点 / 徽标
 spacing:
   xs: 4px
   sm: 8px
@@ -102,14 +107,14 @@ components:
   button-primary:
     backgroundColor: "{colors.primary}"
     textColor: "{colors.on-primary}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     padding: "{spacing.base}"
   button-primary-hover:
     backgroundColor: "{colors.ink-secondary}"
   button-default:
     backgroundColor: "{colors.hairline-strong}"
     textColor: "{colors.ink-secondary}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     padding: "{spacing.base}"
   button-default-hover:
     backgroundColor: "{colors.ink-quaternary}"
@@ -117,23 +122,23 @@ components:
   button-danger:
     backgroundColor: "{colors.danger}"
     textColor: "{colors.paper-elevated}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
   button-danger-hover:
     backgroundColor: "#a02c2c"   # danger 深一档；dark 模式见正文
   button-text:
     backgroundColor: "transparent"
     textColor: "{colors.ink-secondary}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
   button-text-hover:
     backgroundColor: "{colors.hairline}"
   input:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.ink}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     padding: "{spacing.base}"
   card:
     backgroundColor: "{colors.paper}"
-    rounded: "{rounded.lg}"
+    rounded: "{rounded.panel}"
     padding: "{spacing.lg}"
   surface-layout:
     backgroundColor: "{colors.paper-warm}"
@@ -144,20 +149,20 @@ components:
     typography: "{typography.body-sm}"
   chip-success:
     backgroundColor: "{colors.success}"
-    rounded: "{rounded.full}"
+    rounded: "{rounded.pill}"
   chip-warning:
     backgroundColor: "{colors.warning}"
-    rounded: "{rounded.full}"
+    rounded: "{rounded.pill}"
   chip-danger:
     backgroundColor: "{colors.danger}"
-    rounded: "{rounded.full}"
+    rounded: "{rounded.pill}"
   bash-mode-border:
     backgroundColor: "{colors.bash-glow}"
   modal:
     backgroundColor: "{colors.paper-elevated}"
-    rounded: "{rounded.lg}"
+    rounded: "{rounded.surface}"
   checkbox:
-    rounded: "{rounded.xs}"
+    rounded: "{rounded.square}"
 ---
 
 ## Overview
@@ -288,19 +293,26 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 
 ## Shapes
 
-**暖调圆角体系**，圆角偏大但不到「胶囊」的程度。
+**暖调圆角体系**，圆角偏大但不到「胶囊」的程度。**按角色取档**（uiarc 同法）：档位以「这是哪一层表面」命名，不设 xs/sm/md/lg 的数值阶梯——省掉「该选哪号」的犹豫，是这套体系好用的一半。
 
-- 按钮 / 输入 / Select：{rounded.sm}=8px
-- 卡片 / Modal：{rounded.lg}=14px
-- 复选框：{rounded.xs}=2px（保留方角，区别于圆形 radio）
-- 圆形元素（头像、状态点）：{rounded.full}
-- **不要在同一视图混用方角与圆角**；新组件默认落在 sm/lg 两档。
+主体三档**等差 8px**（control → panel → surface）：每跳的观感增幅一致，才不会出现「这一跳小、下一跳大」的突档感。`control` 的锚点是**控件高度**而非手感：mobi 控件高 36px，乘 uiarc 的控件比值（18px/44px）≈ 14px——照搬 uiarc 的 18px 会在 36px 高上变成胶囊。
+
+- 按钮 / 输入 / Select：{rounded.control}=14px
+- 卡片 / 悬浮面板 / 菜单：{rounded.panel}=22px
+- Modal：{rounded.surface}=30px
+- 小尺寸控件（标签、分段项、下拉项）：{rounded.control-sm}=10px（= control − 4）
+- 复选框：{rounded.square}=4px（保留方角，区别于圆形 radio）
+- 圆形元素（头像、状态点）：{rounded.pill}
+- **嵌套内圆角 = 外圆角 − 容器内边距**（同心圆公式，uiarc 同法）：菜单项 = panel − 6px、卡中卡 = panel − 8px。外圆角一放大，内层不跟着收就会「外圆内方」——这是大圆角最容易露馅的地方。
+- **不要在同一视图混用方角与圆角**；新组件默认落在 control/panel 两档。
+- **取档只看「这是哪一层」**，别按元素大小猜：最外层容器（页面级卡片 / 弹层 / 悬浮面板）走 `panel`；面板内的卡片、行、按钮、输入走 `control`；面板内的图标盒、小标签走 `control-sm`；要大要小都先问「它是不是外层的同心内层」——是就用同心公式，不是才换档。
+- **不写死数值**：圆角一律取 token（antd 组件树内用 `$token.borderRadius*` / `var(--ant-border-radius*)`，antd 树外与弹层用注入的 `--radius` / `--radius-lg`）。散落的字面量会在大档位调整时成为漏网的旧值——settings 页的卡片曾一半跟 token、一半写死 12px。
 
 ## Components
 
 - **按钮**：语义分级（primary / default / text / danger）、判定规则与全量交互态见 **[Buttons](#buttons)** 章。零阴影，hover 仅背景一档变化。
-- **输入框 / 下拉框**：圆角 8px，边框淡到 {colors.hairline}，hover 转 {colors.ink-quaternary}，focus 转 {colors.hairline-active}（中灰 ink-tertiary，双主题同值）——focus 边框**不做两极色**（最深暖墨/最亮纸白），1px 实线在纸面上会读成「刺眼描边」而非焦点信号；**无 focus 光晕**（Input `activeShadow: 'none'`、Select `activeOutlineColor: 'transparent'`）。强度阶梯：hairline → ink-quaternary → ink-tertiary，逐级半档，无突变。**下拉面板打开时不弱化 selector 里的选中文本**（antd 默认降到 opacity 0.25，读作「文本消失」，已在 antd.css 硬覆盖回 1——面板内的高亮选中项已承担「当前是谁」的表达）。
-- **卡片**：圆角 14px，容器底色，无阴影无粗边。
+- **输入框 / 下拉框**：圆角 {rounded.control}，边框淡到 {colors.hairline}，hover 转 {colors.ink-quaternary}，focus 转 {colors.hairline-active}（中灰 ink-tertiary，双主题同值）——focus 边框**不做两极色**（最深暖墨/最亮纸白），1px 实线在纸面上会读成「刺眼描边」而非焦点信号；**无 focus 光晕**（Input `activeShadow: 'none'`、Select `activeOutlineColor: 'transparent'`）。强度阶梯：hairline → ink-quaternary → ink-tertiary，逐级半档，无突变。**下拉面板打开时不弱化 selector 里的选中文本**（antd 默认降到 opacity 0.25，读作「文本消失」，已在 antd.css 硬覆盖回 1——面板内的高亮选中项已承担「当前是谁」的表达）。
+- **卡片**：圆角 {rounded.panel}，容器底色，无阴影无粗边。
 - **聊天气泡**：等宽优先字体，assistant 左对齐右侧留 5%，工具卡片气泡最小宽 80%。
 - **PixelCard**（签名组件）：鼠标悬停时 canvas 像素粒子从中心向外扩散，基于 React Bits 改造。用于需要「活」感的入口卡片。
 - **pixel-avatar**：动画像素精灵头像，含眨眼/呼吸循环（`status-dot-breathe` keyframes）。
