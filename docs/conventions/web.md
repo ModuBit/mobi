@@ -86,10 +86,10 @@ src/
 
 只有迁移完成的组件才登记，之后该组件的使用统一按表；**不在表中的组件一律 antd**，不因「感觉 shadcn 更好」口头越表。机器事实源是 [`packages/web/registry.json`](../../packages/web/registry.json)（一致性由 `tests/conventions/componentRegistry.test.ts` 守卫：登记↔目录双向一致 + 组件名唯一），下表为其投影，登记时两处同步更新：
 
-| 组件 | 归属 | 迁移于 | 说明 |
-|---|---|---|---|
-| copy-button | arc（uiarc） | 2026-10-12 | 首个迁移组件；零 headless 后端（motion+lucide 自足）；消费入口 `chat/CopyButton`（iconOnly 适配壳） |
-| dropdown-menu | arc（uiarc） | 2026-10-12 | 全站菜单的唯一实现（antd `Dropdown` 不再是菜单选项）；Radix 后端；items 是递归树（子菜单 / 自绘面板 content）；消费入口 `ui/shadcn/dropdown-menu`。**两条消费方约束**（组件侧不兜底）：触发器必须常驻布局、且不能落在 `role="tab"` 的 label 内——见 registry.json localMods |
+| 组件 | 归属 | 与上游 | 迁移于 | 说明 |
+|---|---|---|---|---|
+| copy-button | arc（uiarc） | tracked | 2026-10-12 | 首个迁移组件；零 headless 后端（motion+lucide 自足）；消费入口 `chat/CopyButton`（iconOnly 适配壳） |
+| dropdown-menu | arc（uiarc） | tracked（待判定，见 `.scratch/shadcn-adoption/`） | 2026-10-12 | 全站菜单的唯一实现（antd `Dropdown` 不再是菜单选项）；Radix 后端；items 是递归树（子菜单 / 自绘面板 content）；消费入口 `ui/shadcn/dropdown-menu`。**两条消费方约束**（组件侧不兜底）：触发器必须常驻布局、且不能落在 `role="tab"` 的 label 内——见 registry.json localMods |
 
 ### 单组件迁移流程
 
@@ -103,7 +103,7 @@ src/
    - 禁止放进 emotion styled 带后代选择器的容器（unlayered 规则压过 Tailwind utilities layer）
    - 已迁移的弹层组件与 antd Modal/Drawer **禁止叠开**（body 滚动锁冲突）
    - uiarc 组件若引入，不可全局 import 其 `foundation.css`（暗档判据特异性会盖过主题注入），token 由 `core/config/theme/cssVars.ts` 单源供给
-5. **登记入表**：在 `packages/web/registry.json` 加 entry（name/source/migratedIn，本地修改记入 localMods），同步更新本章投影表——一致性测试要求目录里的组件必须已登记，登记与实现同提交
+5. **登记入表**：在 `packages/web/registry.json` 加 entry（name/source/upstream/migratedIn，本地修改记入 localMods），同步更新本章投影表——一致性测试要求目录里的组件必须已登记，登记与实现同提交
 6. **真机（Android Chrome）验收**：迁移完成的收尾条件，不是后续优化（registry 组件 desktop-first，mobi 是移动 PWA 重度场景）
 
 ### 单一来源（禁止重复实现）
@@ -117,7 +117,30 @@ src/
 
 ### 升级与本地修改纪律
 
-shadcn 模型下组件源码进项目即归我们维护。本地修改（含版权头、z 变量、行为修复）必须登记；`shadcn add --overwrite` 升级会冲掉本地修改，升级前 diff 登记清单、升级后逐项恢复（参照 x-markdown patch 纪律）。
+shadcn 模型下组件源码进项目即归我们维护。本地修改（含版权头、z 变量、行为修复）必须登记；`shadcn add --overwrite` 升级会冲掉本地修改，升级前 diff 登记清单、升级后逐项恢复（参照 x-markdown patch 纪律）。**本节只适用于 `upstream: tracked` 的组件**——已认领（`adopted`）的不再跑 `--overwrite`，见下节。
+
+### 与上游的关系（`upstream`：tracked / adopted）
+
+归属登记表记的是**来源**（谁写的），不是**我们跟不跟它**。后者由 entry 的 `upstream` 字段记，取值二选一：
+
+- **`tracked`（跟上游）**：上游仍在演进、我们打算继续吸收它的版本。改动逐条记入 `localMods`，升级走 `shadcn add --overwrite` → 按清单恢复。
+- **`adopted`（已认领）**：以该组件为**起点**，此后是我们自己的组件。不再跑 `--overwrite`（跑了等于重写），上游新版只作人工阅读的灵感，a11y / 边界 / bug 全归我们；`localMods` 的历史条目保留为「与上游的差异记录」，不再承担升级恢复职责。
+
+**判定用这三档**（自上而下，命中即定；每新增一条 localMod 时重问一遍）：
+
+| 改动性质 | 结论 |
+|---|---|
+| 接线（版权头、import 路径、token 映射、上游 bug 的本地修复） | 留 `tracked` |
+| 补上游缺的**通用**能力（上游可能接收，如插槽、受控开合） | 可留 `tracked`，但每条问一句「上游会不会收」 |
+| **产品语义**（mobi 的会话 / 工作区 / 终端概念进了组件）或 localMods 多到 `--overwrite` 实际等于重写 | 翻 `adopted` |
+
+最实用的判据是一句话：**「下次 `add --overwrite` 你还敢跑吗？」** 不敢跑，说明事实上已经脱钩、只是没人承认——那就把状态改成如实描述，别继续付无人受益的恢复劳动。
+
+**认领不搬家、也不改禁区**：组件仍落 `src/ui/shadcn/<语义名>/`（该目录是 registry 组件的落位根，`adopted` 表示不再跟上游，不是换了体系）；eslint 的「`@radix-ui/*` 等后端包只许 `src/ui/shadcn/` 消费」禁区也不动——那条守的是「后端包不许散到业务层」，与跟不跟上游无关。认领只改一处：`registry.json` 的 `upstream` 字段（并同步本章投影表）。
+
+### 自建组件（无上游）
+
+需求落在上游没有的层（如「可关闭的多实例页签条」这类带产品语义的导航外壳）时，不要为了「用 registry」而拆空一个上游组件——那是付了 vendored 的成本、又拿不到上游的价值。**自建**：落 `src/ui/base/<组别>/`（自有件，非 registry 组件，不登记、不跑 `add --overwrite`），按普通组件维护（TDD、可自由重构）。
 
 ## 组件
 

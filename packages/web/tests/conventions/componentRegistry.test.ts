@@ -23,7 +23,9 @@
  * registry 组件统一落 `src/ui/shadcn/<组件名>/`（该目录是组件体系名，非来源名），
  * 官方 shadcn / uiarc / beautifului 在路径上无来源差异——来源只记 registry.json 的
  * source 字段（对齐 shadcn 官方模型：注册表命名空间只决定下载源，落盘统一进
- * components.json 的 aliases.ui 目录）。规范见 docs/conventions/web.md「组件选型」章。
+ * components.json 的 aliases.ui 目录）。source 之外另记 upstream（与上游的关系：
+ * tracked / adopted）——「认领」不改落位目录（落位根由 registry 模型决定），只改这个字段。
+ * 规范见 docs/conventions/web.md「组件选型」章。
  */
 
 import { describe, it, expect } from 'vitest'
@@ -33,10 +35,19 @@ import { fileURLToPath } from 'node:url'
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const registry = JSON.parse(readFileSync(resolve(webRoot, 'registry.json'), 'utf8')) as {
-    components: Array<{ name: string; source: string; migratedIn: string; localMods?: string[]; note?: string }>
+    components: Array<{
+        name: string
+        source: string
+        upstream: string
+        migratedIn: string
+        localMods?: string[]
+        note?: string
+    }>
 }
 
 const SOURCES = ['shadcn', 'arc'] as const
+/** 与上游的关系：tracked 跟上游（升级走 add --overwrite）/ adopted 已认领（不再跑 --overwrite） */
+const UPSTREAMS = ['tracked', 'adopted'] as const
 /** registry 组件落位根（src/ui/shadcn/<组件名>/） */
 const COMPONENT_ROOT = resolve(webRoot, 'src/ui/shadcn')
 
@@ -52,10 +63,14 @@ function listComponentDirs(): string[] {
 }
 
 describe('registry.json 组件归属注册表一致性', () => {
-    it('登记项字段完整且 source 合法', () => {
+    it('登记项字段完整且 source / upstream 合法', () => {
         for (const c of registry.components) {
             expect(c.name, `组件名缺失：${JSON.stringify(c)}`).toBeTruthy()
             expect(SOURCES, `source 必须是 ${SOURCES.join('/')}：${c.name}`).toContain(c.source)
+            expect(
+                UPSTREAMS,
+                `upstream 必须是 ${UPSTREAMS.join('/')}（tracked 跟上游 / adopted 已认领，判据见 web.md）：${c.name}`,
+            ).toContain(c.upstream)
             // migratedIn 为迁移标识（commit / 日期 / 票号），登记与实现常在同一提交，不强制 commit hash
             expect(c.migratedIn, `迁移标识缺失：${c.name}`).toBeTruthy()
         }
