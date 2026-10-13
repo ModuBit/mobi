@@ -67,11 +67,11 @@ jobs:
         id: ir
       # 墙钟参考：与 Ir 同 PR 打印，为相关性验证积累数据（只打印不判门）
       - name: 墙钟参考
-        run: bun packages/cli/benchmarks/assistantPartialAssembler.bench.ts --iterations 3000
+        run: bun packages/session/benchmarks/assistantPartialAssembler.bench.ts --iterations 3000
       - name: 棘轮比对
         run: |
           IR=${{ steps.ir.outputs.ir }}
-          BASE_FILE=packages/cli/benchmarks/ir-baseline.txt
+          BASE_FILE=packages/session/benchmarks/ir-baseline.txt
           if [ ! -f "$BASE_FILE" ]; then
             echo "::error::缺少 Ir 基线。到 Actions 手动运行 'bench-baseline' 工作流生成基线并合入 main。当前 Ir=$IR"
             exit 1

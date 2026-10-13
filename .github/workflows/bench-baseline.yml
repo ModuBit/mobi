@@ -22,7 +22,7 @@ jobs:
         id: ir
       - name: 基线缺失则创建；有改进则下调并提交
         run: |
-          FILE=packages/cli/benchmarks/ir-baseline.txt
+          FILE=packages/session/benchmarks/ir-baseline.txt
           NEW=${{ steps.ir.outputs.ir }}
           OLD=$(cat "$FILE" 2>/dev/null || echo "")
           if [ -n "$OLD" ] && [ "$NEW" -ge "$OLD" ]; then

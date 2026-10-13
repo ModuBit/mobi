@@ -18,7 +18,7 @@
  * AssistantPartialAssembler 基准入口（确定性 fixture 重放）
  *
  * 用法（详见 benchmarks/README.md）：
- * - 墙钟：`bun packages/cli/benchmarks/assistantPartialAssembler.bench.ts --iterations 3000`
+ * - 墙钟：`bun packages/session/benchmarks/assistantPartialAssembler.bench.ts --iterations 3000`
  * - 指令数（Linux）：bun build --target=node 出自包含产物后，
  *   `valgrind --tool=callgrind node --predictable /tmp/assembler.bench.js --iterations 20`
  *

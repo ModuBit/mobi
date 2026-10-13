@@ -10,7 +10,7 @@ cd "$REPO_ROOT"
 ITERATIONS="${BENCH_IR_ITERATIONS:-20}"
 
 # bun build 解析 @/ 路径别名，出 Node 自包含产物（产物内容随源码变化，正是要计数的对象）
-bun build packages/cli/benchmarks/assistantPartialAssembler.bench.ts \
+bun build packages/session/benchmarks/assistantPartialAssembler.bench.ts \
     --target=node --outfile /tmp/assembler.bench.js >/dev/null
 
 # --predictable 让 V8 行为确定化：同 node 版本 + 同产物 → Ir 逐位可复现

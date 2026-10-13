@@ -26,6 +26,10 @@
  * 扩展名（映射到 ~80 图标，~35KB）。要补扩展名时往白名单加一行重跑即可。
  *
  * 运行：bun run gen:file-type-icons（packages/web 目录下）
+ *
+ * ⚠️ 生成物**入库**（.gitignore 有例外）：CI 无生成钩子，而本脚本要联网拉主题资源，
+ *    塞进构建链等于让每次构建依赖网络。改白名单 / 升主题版本后必须重跑并提交，
+ *    否则 web 端仍旧表（构建、类型检查、单测都直接读入库那份）。
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs'

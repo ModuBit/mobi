@@ -8,7 +8,7 @@
 ### 墙钟（本机，bun）
 
 ```bash
-bun packages/cli/benchmarks/assistantPartialAssembler.bench.ts --iterations 3000
+bun packages/session/benchmarks/assistantPartialAssembler.bench.ts --iterations 3000
 # BENCH iterations=3000 totalMs=... msgsPerSec=... outputs=...
 ```
 
@@ -18,7 +18,7 @@ bun packages/cli/benchmarks/assistantPartialAssembler.bench.ts --iterations 3000
 
 ```bash
 # bun build 解析 @/ 别名出 Node 自包含产物
-bun build packages/cli/benchmarks/assistantPartialAssembler.bench.ts \
+bun build packages/session/benchmarks/assistantPartialAssembler.bench.ts \
     --target=node --outfile /tmp/assembler.bench.js
 
 # node --predictable 让 V8 行为确定化，指令计数一次运行即得、无需统计

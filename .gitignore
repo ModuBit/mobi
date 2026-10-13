@@ -26,6 +26,10 @@ dev-dist/
 *.generated.d.ts
 # 例外：openui 核心段生成物入库（CI 无生成钩子，靠同步测试守门防漂移）
 !packages/session/src/claude/utils/openuiCorePrompt.generated.ts
+# 例外：文件类型图标生成物入库——CI 无生成钩子，而生成要联网拉 Material Icon Theme
+# （unpkg），塞进构建链会让每次构建依赖网络；体积固定 ~35KB。改白名单/升主题版本后
+# 重跑 `bun run gen:file-type-icons`（packages/web 下）并提交，否则线上仍是旧表
+!packages/web/src/ui/base/display/fileTypeIcons.generated.ts
 
 # CLI build output
 dist-exe/

@@ -109,6 +109,7 @@
         "zod": "^4.6.5",
       },
       "devDependencies": {
+        "@types/node": "^26.6.4",
         "bun-types": "^1.4.2",
         "vitest": "^5.0.3",
       },
@@ -135,7 +136,6 @@
         "@excalidraw/excalidraw": "^0.18.1",
         "@microsoft/fetch-event-source": "^2.0.1",
         "@mobi/shared": "workspace:*",
-        "@openuidev/lang-core": "0.3.2",
         "@openuidev/react-headless": "0.17.0",
         "@openuidev/react-lang": "0.3.2",
         "@openuidev/react-ui": "0.17.0",
@@ -165,7 +165,6 @@
         "ansi_up": "^6.0.6",
         "antd": "^6.6.5",
         "axios": "^1.20.0",
-        "clsx": "^2.1.1",
         "dompurify": "^3.4.16",
         "highlight.js": "^11.12.0",
         "i18next": "^26.4.2",
@@ -184,7 +183,6 @@
         "react-syntax-highlighter": "^16.1.2",
         "shiki": "^4.5.0",
         "socket.io-client": "^4.8.4",
-        "tailwind-merge": "^3.7.0",
         "vconsole": "^3.15.1",
         "workbox-core": "^7.4.1",
         "workbox-precaching": "^7.4.1",
@@ -2822,8 +2820,6 @@
     "supports-color": ["supports-color@10.2.2", "", {}, "sha512-SS+jx45GF1QjgEXQx4NJZV9ImqmO2NPz5FNsIHrsDjh2YsHnawpan7SNQ1o8NuhrbHZy9AZhIoCUiCeaW/C80g=="],
 
     "supports-preserve-symlinks-flag": ["supports-preserve-symlinks-flag@1.0.0", "", {}, "sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w=="],
-
-    "tailwind-merge": ["tailwind-merge@3.7.0", "", {}, "sha512-XPPUyAc+cvspz3lHTcR/QgPfW2A0lv/xQNIjX3HGhLR+Nq2lHaLq5MtTesHn8GUr3W3DguT2KT5x3NVgRtYwmA=="],
 
     "tailwindcss": ["tailwindcss@4.3.3", "", {}, "sha512-gOhV3P7ufE62QDGg1zVaTgCR+EtPv92k2nIhVcVKcLmxT1sUBsQGhnZj175j+MqRt4zLF7ic+sCYjfhxMxj7YQ=="],
 

@@ -16,7 +16,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises'
-import { homedir, tmpdir } from 'os'
+import { homedir } from 'os'
 import { basename, join } from 'path'
 import { hostReadFileMetaImpl, hostReadFileRangeImpl } from '@/handlers/hostFiles'
 
@@ -28,6 +28,15 @@ import { hostReadFileMetaImpl, hostReadFileRangeImpl } from '@/handlers/hostFile
  * 策略断言：严格 cwd 边界（../ 逃逸 / 同前缀兄弟目录）+ 读边界白名单。
  */
 
+/**
+ * 临时根刻意落在**读边界之外**。读边界 = cwd 子树 ∪ home 子树 ∪ /tmp（EXTRA_READ_ROOTS）：
+ * Linux 上 os.tmpdir() 就是 /tmp，「../ 逃逸」落回 /tmp 内按边界本能放行——拿它当临时根，
+ * 「逃逸必拒」的断言在 CI 上假失败（2026-10-13 实踩：CI 两条 cwd 边界用例红、macOS 本机绿，
+ * 因为 macOS 的 tmpdir 是 /var/folders/… 恰好不在边界内）。
+ * /var/tmp 两个平台都在边界外（macOS 是 /private/var/tmp，与 /tmp 不同源）。
+ */
+const OUTSIDE_ROOT = '/var/tmp'
+
 describe('machine file 读取实现', () => {
     let rootDir: string
 
@@ -35,7 +44,7 @@ describe('machine file 读取实现', () => {
         if (rootDir) {
             await rm(rootDir, { recursive: true, force: true })
         }
-        rootDir = await mkdtemp(join(tmpdir(), 'mobi-machine-files-'))
+        rootDir = await mkdtemp(join(OUTSIDE_ROOT, 'mobi-machine-files-'))
     })
 
     afterEach(async () => {
@@ -57,7 +66,7 @@ describe('machine file 读取实现', () => {
         })
 
         it('缺省 cwd 回退 process.cwd()，越界文件 → 失败', async () => {
-            // rootDir 在 tmpdir 下，相对 handler 缺省边界（process.cwd()）必然逃逸
+            // rootDir 在读边界之外（见 OUTSIDE_ROOT），相对 handler 缺省边界（process.cwd()）必然逃逸
             const r = await handleMeta({ path: join(rootDir, 'a.js') })
             expect(r.success).toBe(false)
         })
@@ -69,7 +78,7 @@ describe('machine file 读取实现', () => {
         })
 
         it('../ 逃逸 → 失败', async () => {
-            const outside = await mkdtemp(join(tmpdir(), 'mobi-outside-'))
+            const outside = await mkdtemp(join(OUTSIDE_ROOT, 'mobi-outside-'))
             try {
                 await writeFile(join(outside, 'secret.png'), 'p')
                 const r = await handleMeta({ path: '../' + basename(outside) + '/secret.png', cwd: rootDir })
