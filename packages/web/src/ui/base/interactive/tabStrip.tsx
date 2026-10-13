@@ -39,16 +39,21 @@
  *
  * 契约（tests/ui/base/tabStrip.test.tsx 固化，改前先读）：
  * - 受控：无内部选中状态，`value` / `onValueChange` 由消费方持有
- * - 键盘：roving tabindex + ArrowLeft/Right/Home/End **自动激活**（移动焦点即选中），端点不循环
+ * - 键盘：roving tabindex + ArrowLeft/Right/Home/End **自动激活**（移动焦点即选中），端点不循环。
+ *   方向键在「页签」这一层移动，焦点落到某个页签内的关闭 × 上时算作它所在的那个页签；
+ *   但 x 是原生 `<button>`，**自带停留点**——Tab 会走「选中页签 → 它的 × → 下一个页签的 × …」，
+ *   不是「整条只停一次」（想只停一次就得把 × 移出 tab 序，代价是键盘用户没有关页签的入口）
  * - a11y：`role=tablist` / `role=tab` + `aria-controls` / `role=tabpanel` + `aria-labelledby` 全程串联
- * - 关闭：关非活动 tab 不动焦点与选中（关闭按钮的 click 不外冒）；关活动 tab 后焦点落到顶上来的那一项
+ * - 关闭：关非活动 tab 不动焦点与选中（关闭按钮的 click 不外冒）；关活动 tab 后焦点落到顶上来的那一项；
+ *   消费方拦下这次关闭（tab 还在，如未保存文件的确认框）则待办作废，绝不抢焦点
  * - 拖拽滚动：鼠标 / 触屏笔按住横向拖；触摸走浏览器原生滚动（惯性 + 与页面纵向手势协商）；
  *   超过 4px 才算拖，算拖了就吞掉随后那一下 click（否则松手会顺手切页签）
  * - `extra` 槽在 tablist **之外**（同一 flex 行的兄弟）——绝不放任何 `role="tab"` 内部，
  *   否则其中的弹层触发器会被 tab 的焦点抢夺链路当场关掉（dropdown-menu 记过这条）
  * - `keepMounted` 面板首次激活后常驻；隐藏一律用 `display:none`，**不用 `hidden` 属性**——
  *   组件自身的 `display:flex` 会压过 UA 的 `[hidden]` 样式，藏不住（uiarc 面板踩过：只加
- *   `pointer-events:none` 同样藏不住）
+ *   `pointer-events:none` 同样藏不住）。**未激活的面板也渲染外壳**（只是空的 + `display:none`，
+ *   内容一个字都不挂），好让每个页签的 `aria-controls` 都有落点
  */
 
 import {
@@ -342,7 +347,7 @@ export function TabStripList({ ariaLabel, extra, children, style }: TabStripList
     const { value: selectedValue, setValue } = useTabStripContext('TabStripList')
     const listRef = useRef<HTMLDivElement | null>(null)
     const viewportRef = useRef<HTMLDivElement | null>(null)
-    const pendingCloseRef = useRef<{ closedIndex: number } | null>(null)
+    const pendingCloseRef = useRef<{ closedValue: string; closedIndex: number } | null>(null)
     const reduced = useReducedMotion() ?? false
     const edges = useStripScroll(viewportRef, listRef, selectedValue, reduced)
 
@@ -354,19 +359,22 @@ export function TabStripList({ ariaLabel, extra, children, style }: TabStripList
                 // 非活动 tab 关闭：焦点与选中都不动（契约）
                 if (!wasSelected) return
                 const index = collectTabs(listRef.current).findIndex((t) => t.value === value)
-                if (index >= 0) pendingCloseRef.current = { closedIndex: index }
+                if (index >= 0) pendingCloseRef.current = { closedValue: value, closedIndex: index }
             },
         }),
         [],
     )
 
     // 关活动 tab 后的焦点落点：等消费方换完选中的那一帧再定——
-    // 首选它选中的 tab，消费方没换（value 指向已删的 tab）时按「顶上来的那一项」兜底
+    // 首选它选中的 tab，消费方没换（value 指向已删的 tab）时按「顶上来的那一项」兜底。
+    // 先认一下「关没关成」：消费方可能拦下这次关闭（未保存文件的确认框），那被关的 tab 还在，
+    // 此时待办就地作废——否则下一次渲染会冷不丁把焦点从用户手上抢到页签上
     useEffect(() => {
         const pending = pendingCloseRef.current
         if (!pending) return
         pendingCloseRef.current = null
         const tabs = collectTabs(listRef.current)
+        if (tabs.some((t) => t.value === pending.closedValue)) return
         const target = tabs.find((t) => t.value === selectedValue) ?? tabs[nextFocusAfterClose(pending.closedIndex, tabs) ?? -1]
         target?.el.focus()
     })
@@ -390,6 +398,13 @@ export function TabStripList({ ariaLabel, extra, children, style }: TabStripList
     const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
         const drag = dragRef.current
         if (!drag || drag.pointerId !== event.pointerId) return
+        // 按键已松开却还在收 move：说明那一下 pointerup 落在视口之外（没超阈值就没抓指针，
+        // 收不到）。这条 drag 已经作废，就地清掉——否则下一次「只是划过」会被当成拖动，
+        // 页签条自己滚起来还挂着抓手光标
+        if (event.buttons === 0) {
+            dragRef.current = null
+            return
+        }
         const delta = event.clientX - drag.startX
         if (!draggedRef.current) {
             if (Math.abs(delta) < DRAG_THRESHOLD) return
@@ -552,10 +567,12 @@ export interface TabStripPanelProps {
 export function TabStripPanel({ value, children, keepMounted, className, style }: TabStripPanelProps) {
     const { value: selectedValue, baseId } = useTabStripContext('TabStripPanel')
     const selected = selectedValue === value
-    // 「首次激活即常驻」：记一次已挂载过。React 官方的 render 期调整 state 写法（同值短路，不额外渲染）
+    // 「首次激活即常驻」这份记忆只服务 keepMounted（React 官方的 render 期调整 state 写法：
+    // 同值短路，不额外渲染）。非 keepMounted 的面板即选即挂、切走即卸，没人读它，不写
     const [everSelected, setEverSelected] = useState(selected)
-    if (selected && !everSelected) setEverSelected(true)
-    if (keepMounted ? !everSelected : !selected) return null
+    if (keepMounted && selected && !everSelected) setEverSelected(true)
+    // 内容挂不挂载（keepMounted）与外壳显不显示（只看选没选中）是两件事，别混成一个判断
+    const mounted = selected || (keepMounted && everSelected)
 
     const encoded = encodeURIComponent(value)
     return (
@@ -565,10 +582,12 @@ export function TabStripPanel({ value, children, keepMounted, className, style }
             aria-labelledby={`${baseId}-tab-${encoded}`}
             tabIndex={0}
             className={className}
+            // 未激活的面板**照样渲染外壳**（内容不挂载，外壳 display:none）：页签的 aria-controls
+            // 恒指向真实存在的元素，读屏不会拿到悬空引用（懒挂载面板的常见破绽）。
             // 隐藏走 display:none（即从无障碍树移除），不用 hidden 属性——见文件头注释
             style={selected ? style : { ...style, display: 'none' }}
         >
-            {children}
+            {mounted ? children : null}
         </PanelDiv>
     )
 }

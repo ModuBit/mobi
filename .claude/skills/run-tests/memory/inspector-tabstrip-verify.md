@@ -18,6 +18,9 @@ metadata:
 const shell = document.querySelector('[data-left]')
 const vp = [...shell.children].find(c => getComputedStyle(c).overflowX === 'auto')  // 滚动视口
 const sel = document.querySelector('[data-tab-selection]')                          // 滑移的选中块
+// 每个页签的 aria-controls 都必须有落点：未激活的面板渲染成空壳 + display:none（内容不挂载）
+;[...document.querySelectorAll('[role="tab"]')].every(t => !!document.getElementById(t.getAttribute('aria-controls')))
+// 且任一时刻只有一个面板 display 不为 none（其余 hidden 的不进无障碍树——a11y snapshot 里只该有一个 tabpanel）
 ```
 - 外壳：`backgroundColor` = 轨道底色（`--mobi-hover`）、1px 描边、`border-radius: 14px`；
   `data-left` / `data-right` 两个属性是两端渐隐的机器可读态（**没有** `data-overflow`——溢出直接量
@@ -80,6 +83,13 @@ shell.getAttribute('data-right')                         // 溢出未滚到头 �
 
 **鼠标**：MCP `drag`（from_uid/to_uid 取两个相距远的页签）是真输入，实测 703→0、0→846；
 判据是三件事一起看：`scrollLeft` 变了、**选中项没变**（拖动没被当成点击）、松手后不残留拖动态。
+- **MCP `hover` / `drag` 会先把目标 `scrollIntoView`**（2026-10-13 实测：hover 第一个页签把页签条
+  从 max 滚回左端）——量 `scrollLeft` 前后要意识到这一下不是组件干的，别当成「自动滚回去了」
+- **真机的 pointer 语义**（守卫 `event.buttons === 0` 的前提，用页签条上的 pointermove 探针实测）：
+  单纯悬停划过 = `buttons: 0`，拖动中 = `buttons: 1`。据此可验「阈值内按下 → 视口外松开 → 划过」
+  这条幽灵拖拽路径：脚本派发 pointerdown（buttons:1）+ 位移 <4px 的 move + **在 `document.body` 上
+  派发 pointerup**（视口收不到，模拟松手落在别处），随后派发一个 `buttons: 0` 的 move——
+  `scrollLeft` 与 `data-dragging` 都必须原地不动
 
 **触摸**：必须用带调试端口的独立 Chrome（MCP 那个走 `--remote-debugging-pipe`，发不了自定义 CDP）：
 

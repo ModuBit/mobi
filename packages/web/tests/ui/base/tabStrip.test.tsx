@@ -213,6 +213,38 @@ describe('TabStrip 关闭语义', () => {
         fireEvent.click(screen.getByLabelText('关闭 A'))
         expect(document.activeElement).toBe(tab('B'))
     })
+
+    it('关闭被消费方拦下（tab 还在）时不抢焦点：待办就地作废', () => {
+        // 未保存文件的确认框就长这样：点了 × 但页签没被删掉
+        function Harness() {
+            const [, setBump] = useState(0)
+            return (
+                <div>
+                    <button type="button" data-testid="outside">
+                        别处
+                    </button>
+                    <button type="button" data-testid="bump" onClick={() => setBump((n) => n + 1)}>
+                        重渲染
+                    </button>
+                    <TabStrip value="a" onValueChange={() => {}}>
+                        <TabStripList ariaLabel="面板页签">
+                            <TabStripTab value="a" closeLabel="关闭 A" onClose={() => {}}>
+                                A
+                            </TabStripTab>
+                        </TabStripList>
+                    </TabStrip>
+                </div>
+            )
+        }
+        const { getByTestId } = render(<Harness />)
+        getByTestId('outside').focus()
+        fireEvent.click(screen.getByLabelText('关闭 A'))
+
+        // 任何后续渲染都不该把焦点抢到页签上（消费方没删 tab = 这次关闭没成交）
+        const before = document.activeElement
+        fireEvent.click(getByTestId('bump'))
+        expect(document.activeElement).toBe(before)
+    })
 })
 
 describe('TabStrip 面板挂载', () => {
@@ -240,6 +272,17 @@ describe('TabStrip 面板挂载', () => {
     it('默认：未激活的面板不在 DOM 里', () => {
         renderPanels()
         expect(screen.queryByTestId('panel-b')).toBeNull()
+    })
+
+    it.each([undefined, true])('每个页签的 aria-controls 都有落点（keepMounted=%s）', (keepMounted) => {
+        // 面板懒挂载：未激活的那些必须仍渲染外壳，否则 aria-controls 指向不存在的 id
+        // （axe 的 aria-valid-attr-value 会据此报错）
+        renderPanels(keepMounted)
+        for (const t of screen.getAllByRole('tab')) {
+            const id = t.getAttribute('aria-controls')
+            expect(id).toBeTruthy()
+            expect(document.getElementById(id as string)).not.toBeNull()
+        }
     })
 
     it('keepMounted：切走不卸载（同一 DOM 节点），且被 display:none 隐藏', () => {
@@ -273,9 +316,9 @@ describe('TabStrip 拖拽滚动', () => {
         return { container, onChange, viewport: container.querySelector('[data-dragging]') as HTMLElement }
     }
     const drag = (viewport: HTMLElement, from: number, to: number) => {
-        viewport.dispatchEvent(pointer('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, clientX: from }))
-        viewport.dispatchEvent(pointer('pointermove', { pointerId: 1, pointerType: 'mouse', clientX: to }))
-        viewport.dispatchEvent(pointer('pointerup', { pointerId: 1, pointerType: 'mouse', clientX: to }))
+        viewport.dispatchEvent(pointer('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, buttons: 1, clientX: from }))
+        viewport.dispatchEvent(pointer('pointermove', { pointerId: 1, pointerType: 'mouse', buttons: 1, clientX: to }))
+        viewport.dispatchEvent(pointer('pointerup', { pointerId: 1, pointerType: 'mouse', button: 0, buttons: 0, clientX: to }))
     }
 
     it('拖过阈值：随后那一下 click 被吞掉（松手不切页签）', () => {
@@ -322,13 +365,28 @@ describe('TabStrip 拖拽滚动', () => {
 
     it('触摸不走自建拖拽（交给浏览器原生滚动），页面照常切页签', () => {
         const { viewport, onChange } = renderStrip()
-        viewport.dispatchEvent(pointer('pointerdown', { pointerId: 2, pointerType: 'touch', button: 0, clientX: 200 }))
-        viewport.dispatchEvent(pointer('pointermove', { pointerId: 2, pointerType: 'touch', clientX: 100 }))
+        viewport.dispatchEvent(pointer('pointerdown', { pointerId: 2, pointerType: 'touch', button: 0, buttons: 1, clientX: 200 }))
+        viewport.dispatchEvent(pointer('pointermove', { pointerId: 2, pointerType: 'touch', buttons: 1, clientX: 100 }))
         expect(viewport).toHaveAttribute('data-dragging', 'false')
-        viewport.dispatchEvent(pointer('pointerup', { pointerId: 2, pointerType: 'touch', clientX: 100 }))
+        viewport.dispatchEvent(pointer('pointerup', { pointerId: 2, pointerType: 'touch', button: 0, buttons: 0, clientX: 100 }))
 
         fireEvent.click(tab('B'))
         expect(onChange).toHaveBeenCalledWith('b')
+    })
+
+    it('阈值内按下、在视口外松开后：无按键划过不会变成拖动（幽灵拖拽）', () => {
+        const { viewport } = renderStrip()
+        // 没超阈值就不抓指针 → 松手落在视口外时 pointerup 收不到，这条 drag 会留在 ref 里
+        viewport.dispatchEvent(pointer('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, buttons: 1, clientX: 200 }))
+        viewport.dispatchEvent(pointer('pointermove', { pointerId: 1, pointerType: 'mouse', buttons: 1, clientX: 202 }))
+        document.body.dispatchEvent(pointer('pointerup', { pointerId: 1, pointerType: 'mouse', button: 0, buttons: 0, clientX: 400 }))
+
+        // 之后只是把鼠标划过页签条（没有按键）——不该滚、也不该进拖动态
+        act(() => {
+            viewport.dispatchEvent(pointer('pointermove', { pointerId: 1, pointerType: 'mouse', buttons: 0, clientX: 320 }))
+        })
+        expect(viewport.scrollLeft).toBe(0)
+        expect(viewport).toHaveAttribute('data-dragging', 'false')
     })
 })
 
