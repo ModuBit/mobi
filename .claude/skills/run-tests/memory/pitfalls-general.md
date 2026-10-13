@@ -166,6 +166,12 @@ Enter/Space/ArrowDown 均可开），关用 `press_key Escape`。全程真实键
 **可见**——折叠分组里的会话行仍在 DOM 中（外层 `grid-template-rows: 0fr` + overflow hidden），
 rect 照常返回但命不中，且 MCP hover/click 报 "did not become interactive"。先展开分组再操作。
 
+**补充（2026-10-13 实测）**：`evaluate_script` 里**合成 pointerdown 也能开**，而且更适合「一个脚本里循环操作」：
+`el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, buttons: 1 }))` + `pointerup` + `click()`
+（菜单项的选中同样吃合成 pointerdown/click）。**坑**：菜单已经开着时再对触发器发 pointerdown 会 toggle **关掉**它——
+循环里先判 `document.querySelectorAll('[role="menuitem"]').length === 0` 再开。
+真实鼠标路径仍优先用 MCP `click`（拿 uid），合成事件留给批量/循环场景。
+
 **补充**：**子菜单触发器**和根触发器不一样——Radix `MenuSubTrigger` 内建 `onClick`
 开合（`if (!context.open) onOpenChange(true)`），所以 `click` 反而能开、`pointerdown` 也许；
 键盘则是 `ArrowRight`。验子菜单时别照搬根触发器的 focus+ArrowDown 套路。
