@@ -31,12 +31,15 @@ interface Harness {
     emitted: Array<{ terminalId: string; event: string; payload: Record<string, unknown> }>
     /** 每次会话 manager 构造时捕获的回调（驱动 exit/error/onAllClosed 路径）；长度即构造次数 */
     captured: TerminalManagerOptions[]
+    /** fake manager 收到的 close 调用（terminalId 列表）——断言 pty 真被杀的唯一凭据 */
+    closed: string[]
 }
 
 function makeHarness(): Harness {
     const registry = new TerminalRegistry({ idleTimeoutMs: 0 })
     const emitted: Harness['emitted'] = []
     const captured: TerminalManagerOptions[] = []
+    const closed: string[] = []
     const host = new TerminalHost({
         terminalRegistry: registry,
         getSessionPath: () => '/tmp',
@@ -50,35 +53,53 @@ function makeHarness(): Harness {
                 create: () => {},
                 write: () => {},
                 resize: () => {},
-                close: () => {},
+                close: (terminalId: string) => closed.push(terminalId),
                 closeAll: () => {},
             } as never
         },
     })
-    return { host, registry, emitted, captured }
+    return { host, registry, emitted, captured, closed }
 }
 
 describe('TerminalHost', () => {
-    it('close：摘除 registry 条目（计数随之释放）', () => {
-        const { host, registry } = makeHarness()
+    it('close：摘除 registry 条目（计数随之释放）并杀 pty', () => {
+        const { host, registry, closed } = makeHarness()
         registry.register('t1', 's1', 'web-1')
+        host.create('s1', 't1', 80, 24)
         expect(registry.countForSession('s1')).toBe(1)
 
         host.close('t1')
         expect(registry.get('t1')).toBeNull()
         expect(registry.countForSession('s1')).toBe(0)
+        expect(closed).toEqual(['t1'])
     })
 
     it('closeEntries：批量关闭（web socket 断连），不动其他 socket 的终端', () => {
         const { host, registry } = makeHarness()
-        const e1 = registry.register('t1', 's1', 'web-1')!
-        const e2 = registry.register('t2', 's2', 'web-1')!
-        registry.register('t3', 's1', 'web-2')!
+        registry.register('t1', 's1', 'web-1')
+        registry.register('t2', 's2', 'web-1')
+        registry.register('t3', 's1', 'web-2')
 
-        host.closeEntries([e1, e2])
+        // 复刻真实断连顺序：handlers/terminal.ts 先 removeBySocket 摘表，再把摘下的条目交给 closeEntries
+        host.closeEntries(registry.removeBySocket('web-1'))
         expect(registry.get('t1')).toBeNull()
         expect(registry.get('t2')).toBeNull()
         expect(registry.get('t3')).not.toBeNull()
+    })
+
+    it('socket 断连（先 removeBySocket 再 closeEntries）：pty 仍被杀——条目已离表，不能回表查归属', () => {
+        // 回归：close 曾用 registry.get(terminalId) 查 sessionId 找 manager，而断连路径的条目
+        // 已被 removeBySocket 摘掉 → manager 取不到 → pty 不被杀、永留 TerminalManager.terminals
+        // （宿主传 idleTimeoutMs=0，无自回收）。攒满 3 个后同会话再也开不出终端，web 只看到
+        // 「Too many terminals open (max 3).」并无限重连
+        const { host, registry, closed } = makeHarness()
+        registry.register('t1', 's1', 'web-1')
+        host.create('s1', 't1', 80, 24)
+        registry.register('t2', 's1', 'web-1')
+        host.create('s1', 't2', 80, 24)
+
+        host.closeEntries(registry.removeBySocket('web-1'))
+        expect(closed.sort()).toEqual(['t1', 't2'])
     })
 
     it('write/resize 对无 registry 条目的 terminalId 是 no-op', () => {

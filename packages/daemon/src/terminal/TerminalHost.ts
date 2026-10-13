@@ -66,19 +66,30 @@ export class TerminalHost {
     }
 
     /** 显式关闭（web close / registry 空闲回收）：先摘 registry 再杀 pty——
-     * 主动关闭场景 web 不需要后续 exit 事件（与旧 CLI 转发路径行为一致） */
+     * 主动关闭场景 web 不需要后续 exit 事件（与旧 CLI 转发路径行为一致）。
+     * 归属只认 remove 的返回值：条目若已被摘（如断连路径先 removeBySocket），就无可关闭对象 */
     close(terminalId: string): void {
-        const entry = this.deps.terminalRegistry.get(terminalId)
-        const manager = entry ? this.managers.get(entry.sessionId) : null
-        this.deps.terminalRegistry.remove(terminalId)
-        manager?.close(terminalId)
+        const entry = this.deps.terminalRegistry.remove(terminalId)
+        if (entry) {
+            this.closeRuntime(entry.sessionId, terminalId)
+        }
     }
 
-    /** web socket 断连：批量关闭其名下终端 */
+    /**
+     * web socket 断连：批量关闭其名下终端。
+     * 入参的条目由 removeBySocket 摘除时返回，此刻已不在 registry 里——**不能再回表查归属**
+     * （查必空 → manager 取不到 → pty 留在 TerminalManager.terminals 永不回收：宿主传
+     *  idleTimeoutMs=0，manager 无自回收，攒满 3 个后同会话再也开不出终端）。
+     * 归属直接取条目自带的 sessionId */
     closeEntries(entries: TerminalRegistryEntry[]): void {
         for (const entry of entries) {
-            this.close(entry.terminalId)
+            this.closeRuntime(entry.sessionId, entry.terminalId)
         }
+    }
+
+    /** 杀 pty 的唯一出口：按会话找 manager 并关闭该终端 */
+    private closeRuntime(sessionId: string, terminalId: string): void {
+        this.managers.get(sessionId)?.close(terminalId)
     }
 
     private managerFor(terminalId: string): TerminalManager | null {
