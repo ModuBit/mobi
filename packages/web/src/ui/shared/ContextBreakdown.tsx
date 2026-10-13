@@ -41,12 +41,16 @@ const CATEGORY_META: Record<ContextUsageCategoryKey, { label: string; light: str
 /** 可展开逐项明细的类目（逐 server / 逐 skill / 逐 memory 文件） */
 const EXPANDABLE_KEYS = new Set<ContextUsageCategoryKey>(['mcpTools', 'memoryFiles', 'skills'])
 
-/** 斜纹单元格视觉公式：淡底 + 45°/135° 斜纹 + inset 描边（方格格与明细色点共用，改视觉参数只动这里） */
+/**
+ * 斜纹单元格视觉公式：淡底 + 45°/135° 斜纹 + inset 描边（方格格与明细色点共用，改视觉参数只动这里）。
+ * 淡底与描边用 `color-mix` 调透明度，**不能拼十六进制 alpha 后缀**——入参可能是 CSS 变量
+ * （中性档传 `var(--mobi-ink-quaternary)`），`var(...)29` 不是合法颜色，整条声明会失效。
+ */
 function hatchCellStyle(color: string, angle: 45 | 135 = 45): React.CSSProperties {
     return {
-        backgroundColor: `${color}29`,
+        backgroundColor: `color-mix(in srgb, ${color} 16%, transparent)`,
         backgroundImage: `repeating-linear-gradient(${angle}deg, ${color} 0 1.5px, transparent 1.5px 4px)`,
-        boxShadow: `inset 0 0 0 1px ${color}99`,
+        boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 60%, transparent)`,
     }
 }
 

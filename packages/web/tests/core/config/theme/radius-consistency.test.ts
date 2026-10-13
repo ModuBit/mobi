@@ -66,12 +66,14 @@ function radiusOverrides(theme: unknown): Array<{ component: string; key: string
 }
 
 /**
- * 内容区例外：代码编辑器内部的密集 chrome 圆角按内容密度调过，不属于「外壳档位」体系
- * （见 DESIGN.md「Shapes」的「不写死数值」条）。**按具体文件列，不开目录级豁免**——
- * 整目录豁免会把该目录里真正该取档的字面量一起放过（2026-10-13 实测：src/styles 下
- * 就躲着三处，其中两处正是图标档的值）。除此之外任何等于档位值的字面量都算漂移。
+ * 圆角字面量例外——两处，各有明确理由，**按具体文件列，不开目录级豁免**（整目录豁免会把
+ * 该目录里真正该取档的字面量一起放过：2026-10-13 实测 src/styles 下就躲着三处，其中两处
+ * 正是图标档的值）：
+ *   ① 代码编辑器内部的密集 chrome：圆角按内容密度独立取值，不属外壳档位体系；
+ *   ② 注入到产物 iframe 文档的样式（SandboxHtmlFrame）：CSS 自定义属性不跨文档，宿主
+ *      `:root` 的取档变量在那个文档里不存在，只能写字面量（见 DESIGN.md「Shapes」）。
  */
-const CONTENT_AREA_EXCEPTIONS = ['src/features/files/editor.css']
+const RADIUS_LITERAL_EXCEPTIONS = ['src/features/files/editor.css', 'src/ui/base/sandbox/SandboxHtmlFrame.tsx']
 
 /** 去掉注释再扫：档位值常出现在解释性注释里（「面板档 22px」），那不是声明 */
 function stripComments(source: string): string {
@@ -141,7 +143,7 @@ describe('圆角档位与 DESIGN.md 一致性（文档与代码同源守卫）',
         const offenders: string[] = []
         for (const file of collectSourceFiles(resolve(WEB_ROOT, 'src'))) {
             const rel = relative(WEB_ROOT, file)
-            if (CONTENT_AREA_EXCEPTIONS.some(prefix => rel.startsWith(prefix))) continue
+            if (RADIUS_LITERAL_EXCEPTIONS.some((prefix) => rel.startsWith(prefix))) continue
             const source = stripComments(readFileSync(file, 'utf-8'))
             for (const decl of source.matchAll(/border-radius:\s*([^;{}\n]*)/g)) {
                 const value = decl[1]!.trim()

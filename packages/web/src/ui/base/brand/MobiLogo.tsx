@@ -37,7 +37,7 @@ import type { CSSProperties } from 'react'
 import styled from '@emotion/styled'
 import { keyframes } from '@emotion/react'
 import { NEUTRAL_DARK, NEUTRAL_LIGHT } from '@/core/config/theme/tokens'
-import { useUiStore } from '@/core/data/stores/uiStore'
+import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { MOBI_MARK_PATH } from '@/ui/base/brand/brandPaths'
 
 /** 播放方式：loop=无限循环（等待）；once=播一轮定格（入场） */
@@ -114,7 +114,7 @@ function playStyle(play: MobiLogoPlay): CSSProperties {
 }
 
 export function MobiLogo({ play = 'loop', size = 64, className, style }: MobiLogoProps) {
-    const isDark = useUiStore((s) => s.theme === 'dark')
+    const isDark = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark) === 'dark')
     const color = isDark ? NEUTRAL_DARK.ink : NEUTRAL_LIGHT.ink
     const playProps = { style: playStyle(play) }
 

@@ -77,4 +77,19 @@ describe('MobiLogo 品牌动画组件', () => {
 
         useUiStore.setState({ theme: 'light' })
     })
+
+    it("theme='system' 时按 OS 偏好取色（不把 system 当成 light）", () => {
+        const { container, rerender } = render(<MobiLogo />)
+
+        // OS 暗色：system 档必须解析成 dark，否则近黑的墨色画在暗底上等于隐形
+        useUiStore.setState({ theme: 'system', systemIsDark: true })
+        rerender(<MobiLogo />)
+        expect(container.querySelector('svg')).toHaveStyle({ color: NEUTRAL_DARK.ink })
+
+        useUiStore.setState({ systemIsDark: false })
+        rerender(<MobiLogo />)
+        expect(container.querySelector('svg')).toHaveStyle({ color: NEUTRAL_LIGHT.ink })
+
+        useUiStore.setState({ theme: 'light' })
+    })
 })

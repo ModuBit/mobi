@@ -50,11 +50,15 @@ import {
 
 /** 产物 iframe 的滚动条主题（主题中性：透明轨道 + 半透明灰 thumb，深浅色页面通用）。
  * 产物页面多未设 color-scheme，原生浅色滚动条压在深色页面上很突兀；iframe 与宿主
- * 同源（serve-file + allow-same-origin，ADR 0007），load 后注入这段样式即可覆盖。 */
+ * 同源（serve-file + allow-same-origin，ADR 0007），load 后注入这段样式即可覆盖。
+ *
+ * 圆角写 `4px` 字面量而**不是** `var(--radius-square)`：这段样式注入的是产物文档，
+ * CSS 自定义属性不跨文档，宿主 `:root` 的取档变量在那里根本不存在（产物文档只会拿到
+ * injectMobiThemeStyle 投的 `--mobi-*` 应用变量）。理由与 radius-consistency 的例外清单一致。 */
 const ARTIFACT_SCROLLBAR_STYLE = [
     '::-webkit-scrollbar { width: 8px; height: 8px; }',
     '::-webkit-scrollbar-track { background: transparent; }',
-    '::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.45); border-radius: var(--radius-square); }',
+    '::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.45); border-radius: 4px; }',
     '::-webkit-scrollbar-thumb:hover { background: rgba(128, 128, 128, 0.65); }',
     '* { scrollbar-width: thin; scrollbar-color: rgba(128, 128, 128, 0.45) transparent; }',
 ].join('\n')

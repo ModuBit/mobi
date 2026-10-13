@@ -44,6 +44,27 @@ const BAR_SWEEP_PERIOD = 2.64 // 秒，8 格按 idx 错开 delay 形成往返扫
 
 const blink = keyframes`50% { opacity: 0; }`
 
+/**
+ * 终端面板自用的深灰阶。面板底比 `--mobi-stage-*` 的舞台画布更深，stage 那套灰阶
+ * （secondary / tertiary）在这个底上不够用，面板另排两级更暗的文字灰与两级结构线。
+ *
+ * 这几档只服务本面板（它是「假终端」的视觉系统，不是 app 的通用舞台色），故不并进
+ * cssVars 的 stage 变量表——那里是跨组件共用的舞台色；在此集中一处，改档只动这里。
+ * 绿色强调不在此列：一律取 `--mobi-stage-success`，浅淡态用 color-mix 调透明度。
+ */
+const TERMINAL = {
+    /** 暗主题下面板底再深一档（浅主题用舞台画布色） */
+    bgDeep: '#0b0b0e',
+    /** 结构线 / 次级块面 */
+    line: '#2a2a2e',
+    /** 强调结构线：点状分隔、进度条空格、滚动条 hover */
+    lineStrong: '#3a3a3f',
+    /** 面板文字灰阶第三级 */
+    inkDim: '#6b6b72',
+    /** 面板文字灰阶第四级（最暗） */
+    inkFaint: '#4d4d55',
+}
+
 /** 轮播切换时的淡入 */
 const fade = keyframes`
     from { opacity: 0; transform: translateY(-2px); }
@@ -52,7 +73,7 @@ const fade = keyframes`
 
 /** 进度条单格扫动（亮峰经过时变绿） */
 const barSweep = keyframes`
-    0%, 100% { color: #3a3a3f; }
+    0%, 100% { color: ${TERMINAL.lineStrong}; }
     50% { color: var(--mobi-stage-success); }
 `
 
@@ -65,9 +86,9 @@ const Panel = styled.div<{ $isDark: boolean }>`
     overflow: hidden;
     /* 深色底 + 双角绿色辉光，营造终端氛围（非纯色） */
     background:
-        radial-gradient(circle at 12% 88%, rgba(74, 222, 128, 0.08), transparent 45%),
-        radial-gradient(circle at 92% 8%, rgba(74, 222, 128, 0.05), transparent 38%),
-        ${({ $isDark }) => ($isDark ? '#0b0b0e' : 'var(--mobi-stage-canvas)')};
+        radial-gradient(circle at 12% 88%, color-mix(in srgb, var(--mobi-stage-success) 8%, transparent), transparent 45%),
+        radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--mobi-stage-success) 5%, transparent), transparent 38%),
+        ${({ $isDark }) => ($isDark ? TERMINAL.bgDeep : 'var(--mobi-stage-canvas)')};
     font-family: var(--font-mono);
     color: var(--mobi-stage-ink-secondary);
 
@@ -107,7 +128,7 @@ const Titlebar = styled.div`
     align-items: center;
     gap: 6px;
     padding: 10px 14px;
-    border-bottom: 1px solid #2a2a2e;
+    border-bottom: 1px solid ${TERMINAL.line};
     background: rgba(255, 255, 255, 0.02);
     position: relative;
     z-index: 1;
@@ -124,7 +145,7 @@ const Dot = styled.span<{ $c: string }>`
 const Title = styled.span`
     margin-left: 8px;
     font-size: 11px;
-    color: #6b6b72;
+    color: ${TERMINAL.inkDim};
     letter-spacing: 0.04em;
 
     b {
@@ -137,7 +158,7 @@ const Title = styled.span`
 const TbRight = styled.span`
     margin-left: auto;
     font-size: 10px;
-    color: #6b6b72;
+    color: ${TERMINAL.inkDim};
     display: flex;
     align-items: center;
     gap: 5px;
@@ -149,7 +170,7 @@ const TbDot = styled.span`
     height: 6px;
     border-radius: 50%;
     background: var(--mobi-stage-success);
-    box-shadow: 0 0 6px rgba(74, 222, 128, 0.6);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--mobi-stage-success) 60%, transparent);
 `
 
 const Body = styled.div`
@@ -164,7 +185,7 @@ const Body = styled.div`
     /* 视口高度不足时内容区滚动（Status 固定为底栏，prompt 始终可见） */
     overflow-y: auto;
     scrollbar-width: thin;
-    scrollbar-color: #2a2a2e transparent;
+    scrollbar-color: ${TERMINAL.line} transparent;
     &::-webkit-scrollbar {
         width: 6px;
     }
@@ -172,11 +193,11 @@ const Body = styled.div`
         background: transparent;
     }
     &::-webkit-scrollbar-thumb {
-        background: #2a2a2e;
+        background: ${TERMINAL.line};
         border-radius: 3px;
     }
     &::-webkit-scrollbar-thumb:hover {
-        background: #3a3a3f;
+        background: ${TERMINAL.lineStrong};
     }
 `
 
@@ -189,7 +210,7 @@ const Hero = styled.div`
 
 const LogoWrap = styled.div`
     flex-shrink: 0;
-    filter: drop-shadow(0 0 14px rgba(74, 222, 128, 0.12));
+    filter: drop-shadow(0 0 14px color-mix(in srgb, var(--mobi-stage-success) 12%, transparent));
 `
 
 const HeroInfo = styled.div`
@@ -205,13 +226,13 @@ const HeroName = styled.div`
 
 const Ver = styled.span`
     font-size: 11px;
-    color: #6b6b72;
+    color: ${TERMINAL.inkDim};
     font-weight: 400;
 `
 
 const Rule = styled.div`
     height: 1px;
-    background: #2a2a2e;
+    background: ${TERMINAL.line};
     margin: 7px 0 8px;
 `
 
@@ -225,7 +246,7 @@ const InfoTable = styled.div`
 `
 
 const K = styled.span`
-    color: #6b6b72;
+    color: ${TERMINAL.inkDim};
 `
 
 const V = styled.span`
@@ -244,7 +265,7 @@ const Tagline = styled.div`
 `
 
 const Comment = styled.span`
-    color: #4d4d55;
+    color: ${TERMINAL.inkFaint};
 `
 
 /** 分隔线带标签 */
@@ -252,7 +273,7 @@ const Sep = styled.div`
     display: flex;
     align-items: center;
     gap: 10px;
-    color: #4d4d55;
+    color: ${TERMINAL.inkFaint};
     font-size: 10px;
     letter-spacing: 0.18em;
     text-transform: uppercase;
@@ -260,14 +281,14 @@ const Sep = styled.div`
     &::before {
         content: '';
         height: 1px;
-        background: #2a2a2e;
+        background: ${TERMINAL.line};
         flex: 0 0 8px;
     }
 
     &::after {
         content: '';
         height: 1px;
-        background: #2a2a2e;
+        background: ${TERMINAL.line};
         flex: 1;
     }
 `
@@ -287,7 +308,7 @@ const FeatTitle = styled.div`
 `
 
 const Idx = styled.span`
-    color: #4d4d55;
+    color: ${TERMINAL.inkFaint};
     font-size: 11px;
 `
 
@@ -297,7 +318,7 @@ const Mark = styled.span`
 
 const FeatDesc = styled.div`
     font-size: 11px;
-    color: #6b6b72;
+    color: ${TERMINAL.inkDim};
     padding-left: 42px;
     line-height: 1.5;
     margin-top: 1px;
@@ -329,7 +350,7 @@ const LogRow = styled.div`
 `
 
 const LogArrow = styled.span`
-    color: #4d4d55;
+    color: ${TERMINAL.inkFaint};
 `
 
 const LogMsg = styled.span`
@@ -338,7 +359,7 @@ const LogMsg = styled.span`
 
 const LogFill = styled.span`
     flex: 1;
-    border-bottom: 1px dotted #3a3a3f;
+    border-bottom: 1px dotted ${TERMINAL.lineStrong};
     transform: translateY(-3px);
     margin: 0 4px;
 `
@@ -354,11 +375,11 @@ const TreeRow = styled.div`
     gap: 6px;
     font-size: 11px;
     line-height: 1.85;
-    color: #6b6b72;
+    color: ${TERMINAL.inkDim};
 `
 
 const TreeBranch = styled.span`
-    color: #4d4d55;
+    color: ${TERMINAL.inkFaint};
 `
 
 const TreeName = styled.span`
@@ -367,7 +388,7 @@ const TreeName = styled.span`
 
 const TreeFill = styled.span`
     flex: 1;
-    border-bottom: 1px dotted #3a3a3f;
+    border-bottom: 1px dotted ${TERMINAL.lineStrong};
     transform: translateY(-3px);
     margin: 0 4px;
 `
@@ -382,7 +403,7 @@ const Status = styled.div`
     flex-direction: column;
     gap: 5px;
     padding: 12px 28px 14px;
-    border-top: 1px solid #2a2a2e;
+    border-top: 1px solid ${TERMINAL.line};
     background: rgba(0, 0, 0, 0.18);
     position: relative;
     z-index: 1;
@@ -411,7 +432,7 @@ const Bar = styled.span`
 `
 
 const BarCell = styled.span<{ $idx: number }>`
-    color: #3a3a3f;
+    color: ${TERMINAL.lineStrong};
     animation: ${barSweep} ${BAR_SWEEP_PERIOD}s linear infinite;
     /* 8 格按 idx 错开 delay，形成从左到右的扫动波 */
     animation-delay: ${({ $idx }) => $idx * (BAR_SWEEP_PERIOD / BAR_TOTAL)}s;
@@ -424,7 +445,7 @@ const BarCell = styled.span<{ $idx: number }>`
 /** 历史命令行（淡化，营造曾执行过的终端感） */
 const CmdLine = styled.div`
     font-size: 11px;
-    color: #6b6b72;
+    color: ${TERMINAL.inkDim};
     opacity: 0.65;
 `
 
@@ -434,7 +455,7 @@ const CmdDollar = styled.span`
 
 const SysLine = styled.div`
     font-size: 10px;
-    color: #6b6b72;
+    color: ${TERMINAL.inkDim};
 `
 
 const PromptLine = styled.div`
@@ -465,7 +486,7 @@ const Cursor = styled.span`
 
 const Foot = styled.div`
     padding: 8px 28px 14px;
-    color: #4d4d55;
+    color: ${TERMINAL.inkFaint};
     font-size: 10px;
     position: relative;
     z-index: 1;

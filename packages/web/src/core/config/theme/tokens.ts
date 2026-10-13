@@ -315,8 +315,9 @@ export const shadcnLightToken = {
     colorBgElevated: NEUTRAL_LIGHT.elevated,
     colorBgLayout: NEUTRAL_LIGHT.canvas,
     colorBgSpotlight: NEUTRAL_LIGHT.primary,
-    // 遮罩 = 容器色带透明度（与底色同源，不会在净白体系里漏出暖色）
-    colorBgMask: 'rgba(250, 250, 252, 0.65)',
+    // 遮罩 = 容器色带透明度（与底色同源，不会在净白体系里漏出暖色）——由容器色派生而非抄一份
+    // rgba（抄的那份曾与容器色差一个通道）
+    colorBgMask: withAlpha(NEUTRAL_LIGHT.container, 0.65),
     // 极淡描边：分隔靠留白与 1px hairline，永远不用粗实线
     colorBorder: NEUTRAL_LIGHT.hairline,
     colorBorderSecondary: NEUTRAL_LIGHT.hairline,

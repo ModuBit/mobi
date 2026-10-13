@@ -22,7 +22,7 @@
 
 import type { CSSProperties } from 'react'
 import { NEUTRAL_DARK, NEUTRAL_LIGHT } from '@/core/config/theme/tokens'
-import { useUiStore } from '@/core/data/stores/uiStore'
+import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { MOBI_MARK_PATH } from '@/ui/base/brand/brandPaths'
 
 interface LogoProps {
@@ -37,7 +37,9 @@ interface LogoProps {
 export function Logo({ className, style, color: colorProp }: LogoProps) {
     // 跟随 app 主题取标记色（与文本色同源，见 tokens.ts 的中性阶）；
     // 显式 color 覆盖（用于固定背景的场景，如 BootLogPanel 始终深色背景需浅色标记）
-    const isDark = useUiStore((s) => s.theme === 'dark')
+    // 跟随 app 主题取标记色（与文本色同源，见 tokens.ts 的中性阶）；'system' 档须经
+    // resolveTheme 落 OS 偏好——直接比 theme 会把它当成浅色，标记在暗底上会看不见
+    const isDark = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark) === 'dark')
     const color = colorProp ?? (isDark ? NEUTRAL_DARK.ink : NEUTRAL_LIGHT.ink)
 
     return (

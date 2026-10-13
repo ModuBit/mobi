@@ -111,4 +111,16 @@ describe('ContextBreakdown', () => {
             if (m) expect(Number(m[1])).toBeLessThanOrEqual(100)
         })
     })
+
+    it('方格颜色对 CSS 变量入参也合法（不把变量拼上十六进制 alpha 后缀）', () => {
+        const { container } = render(<ContextBreakdown usage={usage} />)
+        const cells = container.querySelectorAll('[data-testid="waffle-cell"], [data-buffer-cell]')
+        expect(cells.length).toBeGreaterThan(0)
+        for (const cell of cells) {
+            const style = cell.getAttribute('style') ?? ''
+            // buffer / 未分类格走中性档 var(--mobi-ink-quaternary)：早前用 `${color}29` 调透明度，
+            // 拼出来是 `var(…)29`——不是合法颜色，浏览器整条声明丢弃，格底与描边一起消失
+            expect(style, `非法颜色：${style}`).not.toMatch(/var\(--[^)]+\)[0-9a-f]{2}/)
+        }
+    })
 })
