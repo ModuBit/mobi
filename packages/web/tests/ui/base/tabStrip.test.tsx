@@ -274,6 +274,19 @@ describe('TabStrip 结构契约', () => {
         expect(tab('A').contains(extra)).toBe(false)
     })
 
+    it('页签有可读下限（min-width 不为 0）：否则收缩压力传到底、tablist 永不溢出，横向滚动成死代码', () => {
+        render(
+            <TabStrip value="a" onValueChange={() => {}}>
+                <TabStripList ariaLabel="面板页签">
+                    <TabStripTab value="a">A</TabStripTab>
+                </TabStripList>
+            </TabStrip>,
+        )
+
+        const minWidth = parseFloat(getComputedStyle(tab('A')).minWidth)
+        expect(minWidth).toBeGreaterThan(0)
+    })
+
     it('prefers-reduced-motion 下渲染不抛错', () => {
         const original = window.matchMedia
         window.matchMedia = ((query: string) => ({

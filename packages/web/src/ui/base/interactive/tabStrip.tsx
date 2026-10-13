@@ -80,7 +80,12 @@ const TabDiv = styled.div<{ $selected: boolean; $disabled: boolean }>`
     align-items: center;
     gap: 6px;
     flex: 0 1 auto;
-    min-width: 0;
+    /* 可读下限：页面宽度不够时先按此收窄（标签走省略号），到下限为止才让 tablist 横向滚动。
+       若这里给 0（无下限），收缩压力会一路传到底——真机实测 9 个页签挤进 420px 时每个只剩
+       38–51px（图标 + 半个字 + 关闭按钮），标签全成省略号，而 tablist 的 scrollWidth 始终等于
+       clientWidth：横向滚动分支永远不可达（2026-10-13 真机验证）。下限值取「图标 + 约 4 个
+       西文字符 + 关闭按钮」，具体数值可按设计诉求调，但**不能为 0**。 */
+    min-width: 96px;
     padding: 4px 10px;
     border: 1px solid transparent;
     border-radius: var(--radius-icon);
