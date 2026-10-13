@@ -175,9 +175,12 @@ describe('InspectorPane', () => {
         renderWithClient(<InspectorPane sessionId="s1" />)
         const list = screen.getByRole('tablist')
         const addBtn = screen.getByRole('button', { name: 'session.inspector.addTab' })
-        // extra 槽是 tablist 的兄弟（同一 flex 行）：既与页签同排，又不会被 tab 的键盘/焦点链路牵动
+        // extra 槽与页签条同处一行（tablist 被滚动视口包着，故找共同的那一行）：
+        // 既与页签同排，又不会被 tab 的键盘/焦点链路牵动
+        const row = list.closest('[data-tab-strip-row]')
+        expect(row).not.toBeNull()
         expect(list.contains(addBtn)).toBe(false)
-        expect(list.parentElement?.contains(addBtn)).toBe(true)
+        expect(row?.contains(addBtn)).toBe(true)
     })
 
     it('「+」是页签条附属动作（不在 role=tab 内）：打开菜单后不被 tab 抢焦点而立即关闭', () => {

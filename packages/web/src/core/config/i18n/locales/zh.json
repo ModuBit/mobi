@@ -116,6 +116,8 @@
             "openFile": "打开文件",
             "tabs": "面板页签",
             "closeTab": "关闭 {{name}}",
+            "scrollTabsLeft": "向左滚动页签",
+            "scrollTabsRight": "向右滚动页签",
             "terminal": "终端",
             "review": "审查",
             "addTab": "新建",
@@ -366,7 +368,9 @@
                 "fallback": "请输入你的回答：",
                 "placeholder": "在此输入...",
                 "otherPlaceholder": "输入自定义答案...",
-                "chatAbout": "聊一聊"
+                "chatAbout": "聊一聊",
+                "scrollTabsLeft": "向左滚动问题页签",
+                "scrollTabsRight": "向右滚动问题页签"
             },
             "requestUserInput.noteLabel": "备注（可选）",
             "requestUserInput.notePlaceholder": "输入备注...",

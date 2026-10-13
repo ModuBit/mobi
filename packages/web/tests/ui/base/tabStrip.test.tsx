@@ -34,12 +34,15 @@ afterEach(cleanup)
 // tab 的可访问名称含标签文字，带关闭按钮时后者的 aria-label 也会算进去——只锚定开头
 const tab = (label: string) => screen.getByRole('tab', { name: new RegExp(`^${label}`) })
 
+// 溢出时两端滚动按钮的名称（真机上才有值，这里只是把它从必填项里解放出来）
+const SCROLL_LABELS = { left: '向左滚动页签', right: '向右滚动页签' }
+
 describe('TabStrip 受控与键盘', () => {
     it('受控：点击只上报 onValueChange，选中态不自己改（无内部状态）', () => {
         const onChange = vi.fn()
         render(
             <TabStrip value="a" onValueChange={onChange}>
-                <TabStripList ariaLabel="面板页签">
+                <TabStripList ariaLabel="面板页签" scrollButtonLabels={SCROLL_LABELS}>
                     <TabStripTab value="a">A</TabStripTab>
                     <TabStripTab value="b">B</TabStripTab>
                 </TabStripList>
@@ -56,7 +59,7 @@ describe('TabStrip 受控与键盘', () => {
             const [value, setValue] = useState('a')
             return (
                 <TabStrip value={value} onValueChange={setValue}>
-                    <TabStripList ariaLabel="面板页签">
+                    <TabStripList ariaLabel="面板页签" scrollButtonLabels={SCROLL_LABELS}>
                         <TabStripTab value="a">A</TabStripTab>
                         <TabStripTab value="b">B</TabStripTab>
                     </TabStripList>
@@ -75,7 +78,7 @@ describe('TabStrip 受控与键盘', () => {
             const [value, setValue] = useState('a')
             return (
                 <TabStrip value={value} onValueChange={setValue}>
-                    <TabStripList ariaLabel="面板页签">
+                    <TabStripList ariaLabel="面板页签" scrollButtonLabels={SCROLL_LABELS}>
                         <TabStripTab value="a">A</TabStripTab>
                         <TabStripTab value="b">B</TabStripTab>
                         <TabStripTab value="c">C</TabStripTab>
@@ -103,7 +106,7 @@ describe('TabStrip 受控与键盘', () => {
             const [value, setValue] = useState('a')
             return (
                 <TabStrip value={value} onValueChange={setValue}>
-                    <TabStripList ariaLabel="面板页签">
+                    <TabStripList ariaLabel="面板页签" scrollButtonLabels={SCROLL_LABELS}>
                         <TabStripTab value="a">A</TabStripTab>
                         <TabStripTab value="b" disabled>B</TabStripTab>
                         <TabStripTab value="c">C</TabStripTab>
@@ -122,7 +125,7 @@ describe('TabStrip 受控与键盘', () => {
     it('tab 与面板通过 aria-controls / aria-labelledby 串联', () => {
         render(
             <TabStrip value="a" onValueChange={() => {}}>
-                <TabStripList ariaLabel="面板页签">
+                <TabStripList ariaLabel="面板页签" scrollButtonLabels={SCROLL_LABELS}>
                     <TabStripTab value="a">A</TabStripTab>
                 </TabStripList>
                 <TabStripPanel value="a">内容 A</TabStripPanel>
@@ -143,7 +146,7 @@ describe('TabStrip 关闭语义', () => {
         const onClose = vi.fn()
         render(
             <TabStrip value="a" onValueChange={onChange}>
-                <TabStripList ariaLabel="面板页签">
+                <TabStripList ariaLabel="面板页签" scrollButtonLabels={SCROLL_LABELS}>
                     <TabStripTab value="a">A</TabStripTab>
                     <TabStripTab value="b" onClose={onClose} closeLabel="关闭 B">B</TabStripTab>
                 </TabStripList>
@@ -161,7 +164,7 @@ describe('TabStrip 关闭语义', () => {
             const [values, setValues] = useState(['a', 'b', 'c'])
             return (
                 <TabStrip value={value} onValueChange={setValue}>
-                    <TabStripList ariaLabel="面板页签">
+                    <TabStripList ariaLabel="面板页签" scrollButtonLabels={SCROLL_LABELS}>
                         {values.map((v) => (
                             <TabStripTab
                                 key={v}
@@ -193,7 +196,7 @@ describe('TabStrip 关闭语义', () => {
             const [values, setValues] = useState(['a', 'b', 'c'])
             return (
                 <TabStrip value="a" onValueChange={() => {}}>
-                    <TabStripList ariaLabel="面板页签">
+                    <TabStripList ariaLabel="面板页签" scrollButtonLabels={SCROLL_LABELS}>
                         {values.map((v) => (
                             <TabStripTab
                                 key={v}
@@ -221,7 +224,7 @@ describe('TabStrip 面板挂载', () => {
             const [value, setValue] = useState('a')
             return (
                 <TabStrip value={value} onValueChange={setValue}>
-                    <TabStripList ariaLabel="面板页签">
+                    <TabStripList ariaLabel="面板页签" scrollButtonLabels={SCROLL_LABELS}>
                         <TabStripTab value="a">A</TabStripTab>
                         <TabStripTab value="b">B</TabStripTab>
                     </TabStripList>
@@ -261,7 +264,7 @@ describe('TabStrip 结构契约', () => {
     it('extra 在 tablist 之外，不是任何 role="tab" 的后代', () => {
         render(
             <TabStrip value="a" onValueChange={() => {}}>
-                <TabStripList ariaLabel="面板页签" extra={<button type="button">新建</button>}>
+                <TabStripList ariaLabel="面板页签" scrollButtonLabels={SCROLL_LABELS} extra={<button type="button">新建</button>}>
                     <TabStripTab value="a">A</TabStripTab>
                 </TabStripList>
             </TabStrip>,
@@ -269,15 +272,18 @@ describe('TabStrip 结构契约', () => {
 
         const list = screen.getByRole('tablist')
         const extra = screen.getByRole('button', { name: '新建' })
+        // tablist 现在被 Viewport（滚动视口）包着，与 extra 不再直接相邻——找共同的那一行
+        const row = list.closest('[data-tab-strip-row]')
+        expect(row).not.toBeNull()
         expect(list.contains(extra)).toBe(false)
-        expect(list.parentElement?.contains(extra)).toBe(true)
+        expect(row?.contains(extra)).toBe(true)
         expect(tab('A').contains(extra)).toBe(false)
     })
 
     it('页签有可读下限（min-width 不为 0）：否则收缩压力传到底、tablist 永不溢出，横向滚动成死代码', () => {
         render(
             <TabStrip value="a" onValueChange={() => {}}>
-                <TabStripList ariaLabel="面板页签">
+                <TabStripList ariaLabel="面板页签" scrollButtonLabels={SCROLL_LABELS}>
                     <TabStripTab value="a">A</TabStripTab>
                 </TabStripList>
             </TabStrip>,
@@ -285,6 +291,68 @@ describe('TabStrip 结构契约', () => {
 
         const minWidth = parseFloat(getComputedStyle(tab('A')).minWidth)
         expect(minWidth).toBeGreaterThan(0)
+    })
+
+    it('选中块是垫在文字下的一块浮起面，且全程只有一份（滑移动效的前提）', () => {
+        function Harness() {
+            const [value, setValue] = useState('a')
+            return (
+                <TabStrip value={value} onValueChange={setValue}>
+                    <TabStripList ariaLabel="面板页签" scrollButtonLabels={SCROLL_LABELS}>
+                        <TabStripTab value="a">A</TabStripTab>
+                        <TabStripTab value="b">B</TabStripTab>
+                    </TabStripList>
+                </TabStrip>
+            )
+        }
+        render(<Harness />)
+
+        const selected = tab('A').querySelector('[data-tab-selection]') as HTMLElement
+        expect(selected).not.toBeNull()
+        // z-index:-1 + 绝对定位 = 垫在标签文字之下的一块独立面，而不是页签自己的底色
+        expect(getComputedStyle(selected).zIndex).toBe('-1')
+        expect(getComputedStyle(selected).position).toBe('absolute')
+
+        fireEvent.click(tab('B'))
+        expect(document.querySelectorAll('[data-tab-selection]')).toHaveLength(1)
+        expect(tab('B').contains(document.querySelector('[data-tab-selection]'))).toBe(true)
+    })
+
+    it('溢出才渲染两端滚动按钮，且起点只有向右可用', () => {
+        // jsdom 不做布局（clientWidth/scrollWidth 恒 0），量不到溢出——临时桩成溢出态。
+        // 两个属性定义在 Element.prototype 上，故在 HTMLElement.prototype 上影子覆盖，用完删除还原
+        const origClient = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
+        const origScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth')
+        Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 100 })
+        Object.defineProperty(HTMLElement.prototype, 'scrollWidth', { configurable: true, get: () => 300 })
+        try {
+            render(
+                <TabStrip value="a" onValueChange={() => {}}>
+                    <TabStripList ariaLabel="面板页签" scrollButtonLabels={SCROLL_LABELS}>
+                        <TabStripTab value="a">A</TabStripTab>
+                    </TabStripList>
+                </TabStrip>,
+            )
+            expect(screen.getByLabelText('向右滚动页签')).toBeEnabled()
+            // 滚在最左，左边没内容可回——按钮在但不可用
+            expect(screen.getByLabelText('向左滚动页签')).toBeDisabled()
+        } finally {
+            if (origClient) Object.defineProperty(HTMLElement.prototype, 'clientWidth', origClient)
+            else delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth
+            if (origScroll) Object.defineProperty(HTMLElement.prototype, 'scrollWidth', origScroll)
+            else delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollWidth
+        }
+    })
+
+    it('未溢出时不渲染滚动按钮（无谓的控件不进 DOM）', () => {
+        render(
+            <TabStrip value="a" onValueChange={() => {}}>
+                <TabStripList ariaLabel="面板页签" scrollButtonLabels={SCROLL_LABELS}>
+                    <TabStripTab value="a">A</TabStripTab>
+                </TabStripList>
+            </TabStrip>,
+        )
+        expect(screen.queryByLabelText('向右滚动页签')).toBeNull()
     })
 
     it('prefers-reduced-motion 下渲染不抛错', () => {
@@ -303,7 +371,7 @@ describe('TabStrip 结构契约', () => {
         try {
             render(
                 <TabStrip value="a" onValueChange={() => {}}>
-                    <TabStripList ariaLabel="面板页签">
+                    <TabStripList ariaLabel="面板页签" scrollButtonLabels={SCROLL_LABELS}>
                         <TabStripTab value="a">A</TabStripTab>
                     </TabStripList>
                     <TabStripPanel value="a">内容</TabStripPanel>

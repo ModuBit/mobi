@@ -419,6 +419,10 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                 >
                     <TabStripList
                         ariaLabel={t('chat.tool.askUserQuestion.title')}
+                        scrollButtonLabels={{
+                            left: t('chat.tool.askUserQuestion.scrollTabsLeft'),
+                            right: t('chat.tool.askUserQuestion.scrollTabsRight'),
+                        }}
                         // 页签行与下方动作按钮等高（原 antd tabBarStyle.minHeight，数值不变）
                         style={{ minHeight: actionMinHeight }}
                     >

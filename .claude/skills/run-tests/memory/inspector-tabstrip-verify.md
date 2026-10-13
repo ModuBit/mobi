@@ -1,6 +1,6 @@
 ---
 name: inspector-tabstrip-verify
-description: 检查器页签条（TabStrip）验证 recipe——堆页签造溢出 / 量收窄下限与横向滚动 / 关终端页签验 PTY 真被杀
+description: 检查器页签条（TabStrip，uiarc 观感）验证 recipe——堆页签造溢出 / 量不收缩与滑动选中块 / 滚动按钮与边缘渐隐 / reveal 落点 / 关终端页签验 PTY 真被杀
 metadata:
   type: recipe
   last_verified: 2026-10-13
@@ -8,14 +8,35 @@ metadata:
 
 # 检查器页签条（TabStrip）验证
 
-页签条的真机命题只有三类：**溢出时滚不滚**、**收窄到哪为止**、**关闭的副作用**。
+页签条是 **uiarc Tabs 的观感**（分段控件外壳 + 滑移选中块 + 溢出滚动按钮/渐隐），
+真机命题：**溢出时滚不滚**、**页签不收缩**、**选中块跟不跟手**、**reveal 落点对不对**、**关闭的副作用**。
+
+## 0. 观感断言（computed style 一把抓，别靠肉眼看截图）
+
+```js
+const shell = document.querySelector('[data-left]')
+const vp = [...shell.children].find(c => getComputedStyle(c).overflowX === 'auto')  // 滚动视口（外壳的兄弟含按钮）
+const sel = document.querySelector('[data-tab-selection]')                          // 滑移的选中块
+```
+- 外壳：`backgroundColor` = 轨道底色（`--mobi-hover`）、1px 描边、`border-radius: 14px`
+- 视口：`maskImage` 含 `35px` 渐隐（仅 `data-left/right=true` 时命中）；jsdom 验不了，只能真机
+- 选中块：`zIndex: -1` + `position: absolute` + `backgroundColor` 升一档（light `#fff` / dark `#25252a`）+ 圆角 10
+- **滑移动效 jsdom 测不出**（`motion` 共享布局走 FLIP transform，jsdom 不算布局）：单测只能锁「同一时刻
+  只存在一个选中块、归选中项所有」，真机要看**切页签那一刻块是否从旧位置滑过去**——rAF 采样选中块的
+  `getBoundingClientRect()`，起止两帧位置不同、中间有过渡帧即动效在跑（`transform` 不走 `transition`，
+  别去查 `transitionDuration`）
+- 页签：`flex: 0 0 auto`（**不收缩**）、`minWidth: 88px`（5.5rem）；选中的文字色是 `--mobi-ink`，
+  其余 `--mobi-ink-secondary`
+- **别拿 `--mobi-primary` 当强调色**：本项目的 primary 是中性墨族（dark 档 `#f6f6f8` **等于** ink，
+  light 档 `#3a3a41` 比 ink 还浅）——2026-10-13 实测「选中色设成 primary」在暗档等于没生效，
+  靠查 `getComputedStyle(document.documentElement).getPropertyValue('--mobi-primary')` 才发现
 
 ## 1. 堆页签：`+ → 打开文件 → 点文件` 循环，每轮净增一个 tab
 
 单靠终端（最多 3 个）+ 审查 + 文件树最多 4-5 个页签，在 420px 面板里**造不出溢出**。
 要多少有多少的做法：`openFileTreeTab` 只在「当前没有 tree tab」时新建，而点文件会把 tree tab
 **就地转成 file tab** —— 于是每轮「打开文件 → 点一个文件」净增一个 file tab（**每轮换不同文件**，
-同路径会命中去重、退化成只激活）。
+同路径会命中去重、退化成只激活）。6 轮 + 3 个基础页签 ≈ 9 个，稳定溢出。
 
 ```js
 // 「+」是 Radix DropdownMenu：合成 pointerdown 就能开（见 [[pitfalls-general]]）
@@ -32,29 +53,41 @@ const cands = [...node.querySelectorAll('*')].filter(e => e.textContent.trim() =
 ;(cands[cands.length - 1] ?? node).click()
 ```
 
-菜单已开时别再对着 `+` 发 pointerdown（会 toggle 关掉），先判 `document.querySelectorAll('[role="menuitem"]').length`。
+- **页签条空态时没有「+」**：空态走 `InspectorEmptyState` 的动作卡（按钮文字即 `审查` / `终端` / `打开文件`），
+  直接按 `textContent.trim() === label` 找按钮点；有 tab 后「+」才出现在行右端
+- 菜单已开时别再对着 `+` 发 pointerdown（会 toggle 关掉），先判 `document.querySelectorAll('[role="menuitem"]').length`
+- 页签是**内存态**，整页 reload（换主题等）会清空，得重堆
 
-## 2. 量溢出与下限
+## 2. 量溢出、不收缩与滚动按钮
 
 ```js
 const list = document.querySelector('[role="tablist"]')
-list.clientWidth   // 可用宽
-list.scrollWidth   // 内容宽；> clientWidth 才说明真的溢出、滚动分支可达
+list.clientWidth; list.scrollWidth                      // 内容宽 > 视口宽 = 真溢出
+shell.getAttribute('data-overflow')                      // 组件自己算的溢出态（按钮因此出现）
 ;[...document.querySelectorAll('[role="tab"]')].map(t => t.getBoundingClientRect().width)
 ```
+- 页签宽度应保持**自然宽**（96 / 151 / 215 …），不随容器收窄——收到 38-51px 就是收缩回归了
+- 两端滚动按钮在 `shell` 的**直接子节点**里（`shell.children` 过滤 `BUTTON`），
+  不在 `[role="tab"]` 内，别用 `shell.querySelectorAll('button')`（会连关闭 × 一起抓）
+- 按钮禁用 = `opacity: 0` + `pointer-events: none`：**滚到尽头时右按钮自己淡出**，
+  故「选中项右缘落在按钮下」在尽头处无害
 
-- **`scrollWidth === clientWidth` 就是没溢出**：别急着说「滚动已验证」。页签若允许无限收缩
-  （`min-width: 0`），会把 9 个页签压成每个 38–51px 的 stub，永不溢出——**滚动是死代码**
-  （2026-10-13 实测后给 TabDiv 加了 `min-width: 96px` 下限）
-- 断言滚动生效要三件套：`scrollWidth > clientWidth`、`scrollLeft` 随选中项移动
-  （末尾应等于 `scrollWidth - clientWidth`）、选中 tab 的 rect 落在 tablist rect 内
-- 键盘路径用**真实** `press_key`（focus 可以 evaluate 里 `focus()`）——合成 KeyboardEvent 也走
-  React onKeyDown，但真机键盘才排除「事件是合成的」这类疑点
-- 检查器面板宽度由 splitRatio 决定，视口 500px 时面板约 420px：窄面板 + 8 个页签就够，不必真缩窗口
-- 移动端：`Emulation.setDeviceMetricsOverride({width:390, height:844, deviceScaleFactor:2, mobile:true})`
-  比 MCP `resize_page` 可靠（后者在 macOS 上被窗口最小宽度卡住，innerWidth 不动）
+## 3. reveal 落点（选中项必须滚进可视区）
 
-## 3. 关终端页签 → PTY 真被杀
+选中间/末尾的页签后量：
+
+```js
+const vpr = vp.getBoundingClientRect(), sr = document.querySelector('[role="tab"][aria-selected="true"]').getBoundingClientRect()
+sr.left - vpr.left      // 期望 ≈ 34（左侧按钮宽），不能为负
+vpr.right - sr.right    // 期望 ≈ 34，或 scrollLeft 已到 max（尽头，按钮淡出）
+```
+- **stale-layout 陷阱（2026-10-13 实测）**：新建页签那一帧它的宽度往往还没定稿（先按占位标题摆一道），
+  此刻算出的可达滚动范围偏小 → 平滑滚动**定格在「新页签仍被右侧按钮压住」**（实测选中项右缘超视口 48px，
+  `scrollLeft` 停在 795 而 max 是 845，且**不会自己恢复**）。组件侧的修法是把「带进视口」当待办布局义务、
+  依靠 ResizeObserver 复核；验收方法是**新增一个文件页签后就地量落点**（别只手点已有页签——那样测不出来）
+- 采样平滑滚动轨迹：rAF 里 push `scrollLeft`，只保留变化帧（相邻同值去重），看它是否走到 `max`
+
+## 4. 关终端页签 → PTY 真被杀
 
 `clearCachedInstance('terminal:<sessionId>:<terminalId>')` → dispose → `terminal:close`，PTY 是
 **daemon 的直接子进程**（`ppid === daemon pid`），PTY 里跑的是 `/bin/zsh`：
@@ -69,7 +102,7 @@ ps -o pid,ppid,command -p <ptyPid>                       # 关闭后只应剩表
 - 关闭 × 用**真实 CDP click**（uid 来自 snapshot）；非活动 tab 的 × 是 `opacity: 0`，
   但透明元素照常命中，不必先 hover
 
-## 4. 关活动 tab 后的焦点
+## 5. 关活动 tab 后的焦点
 
 关活动 tab 时组件接管焦点（`nextFocusAfterClose` → 顶上来的那一项）。断言：
 `document.activeElement === document.querySelector('[role="tab"][aria-selected="true"]')`

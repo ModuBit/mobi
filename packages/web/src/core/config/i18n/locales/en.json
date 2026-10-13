@@ -116,6 +116,8 @@
             "openFile": "Open File",
             "tabs": "Panel tabs",
             "closeTab": "Close {{name}}",
+            "scrollTabsLeft": "Scroll tabs left",
+            "scrollTabsRight": "Scroll tabs right",
             "terminal": "Terminal",
             "review": "Review",
             "addTab": "Add",
@@ -375,7 +377,9 @@
                 "fallback": "Please enter your answer:",
                 "placeholder": "Type here...",
                 "otherPlaceholder": "Enter custom answer...",
-                "chatAbout": "Chat about this"
+                "chatAbout": "Chat about this",
+                "scrollTabsLeft": "Scroll questions left",
+                "scrollTabsRight": "Scroll questions right"
             },
             "requestUserInput.noteLabel": "Note (optional)",
             "requestUserInput.notePlaceholder": "Enter a note...",

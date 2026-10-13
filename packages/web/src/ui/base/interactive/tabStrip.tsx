@@ -17,10 +17,23 @@
 /**
  * TabStrip —— 自带键盘与无障碍契约的页签条（**自建件，无上游**，落 ui/base/，不登记 registry.json）。
  *
- * 为什么不是 antd Tabs / uiarc Tabs：检查器需要的「可关闭 + 右侧 chrome 槽 + 切走不卸载」
- * 在上游都只能靠覆盖内部 DOM 或消费方补丁拼出来（`StyledTabs` 的 `&&` 就是前车之鉴：
- * 关按钮的 hover 显隐、触屏常驻是**产品行为**，却锚在 `.ant-tabs-tab-remove` 上）。
- * 决策与源码级否决记录见 .scratch/tabs-migration/spec.md。
+ * **观感与动效取自 uiarc 的 Tabs**（`uiarc.dev/r/tabs.json`：`tabs.tsx` + `tabs.module.css`），
+ * 但我们不用它的组件：检查器需要的「可关闭 + 右侧 chrome 槽 + 切走不卸载」它都没有，
+ * 且 `forceMount` 的语义（照常渲染 **且不隐藏**）与我们「非活动面板 `display:none`」相反。
+ * 于是只把它那套**呈现**搬过来，能力仍由我们自己的契约承载（见下「契约」）。
+ *
+ * uiarc 的四条呈现特征，逐条对应到下面的实现：
+ * 1. **分段控件外壳**（`.listShell`）：描边 + 轨道底色 + 内边距 + 圆角，页签是轨道里的块
+ * 2. **选中项是一块滑移的独立块**（`.selection` + motion 共享布局）：块自己从旧页签滑到新页签，
+ *    而不是「每个页签各自换个底色」；`z-index:-1` 让它垫在文字下方，`isolate` 圈住层级
+ * 3. **不收缩**（`.trigger { flex: 0 0 auto; min-width: 5.5rem }`）：空间不够时横向滚动，
+ *    绝不把页签挤扁（曾实测：允许收缩时 9 个页签会各自压成 38–51px 只剩省略号）
+ * 4. **溢出用两侧滚动按钮 + 两端渐隐**（`.scrollButton` + `viewport` 的 `mask-image`），
+ *    选中项变化时 `reveal()` 把它滚进视口，并给按钮让出 34px
+ *
+ * 刻意**没有**照搬的：面板的入/出场动效（x 位移 + 高度 morph + 出界面板钉原位）。它靠
+ * `AnimatePresence` + 面板卸载成立，而检查器面板是 `keepMounted` + `display:none`（终端不重连、
+ * 文件树不回根），两者语义冲突——要保 keepalive 就得放弃这段面板动效。页签条的滑移不受影响。
  *
  * 契约（tests/ui/base/tabStrip.test.tsx 固化，改前先读）：
  * - 受控：无内部选中状态，`value` / `onValueChange` 由消费方持有
@@ -36,6 +49,7 @@
 
 import {
     createContext,
+    useCallback,
     useContext,
     useEffect,
     useId,
@@ -47,61 +61,113 @@ import {
     type ReactNode,
 } from 'react'
 import styled from '@emotion/styled'
-import { X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { LayoutGroup, motion, useReducedMotion, type Transition } from 'motion/react'
+import { spring } from '@/ui/base/motion/presets'
 import { nextFocusAfterClose, resolveTabNavKey } from './tabStripNavigation'
+
+/** 滚动按钮宽度（与 ScrollButton 的 width 同源）——reveal 要按它给按钮让位 */
+const SCROLL_BUTTON_WIDTH = 33
+/** 两端渐隐的宽度（与 Viewport 的 mask 同源） */
+const EDGE_FADE_WIDTH = 35
 
 const Row = styled.div`
     display: flex;
     align-items: center;
-    gap: 4px;
-    /* 页签条是「头」，永远不参与压缩——空间不够时该让面板滚，不该把页签挤扁 */
+    gap: 8px;
+    /* 页签条是「头」，永远不参与压缩——空间不够时该让页签条内部滚，不该把它挤没 */
     flex: none;
     min-width: 0;
 `
 
-const ListDiv = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    flex: 1 1 auto;
+/* 分段控件外壳（uiarc .listShell）：描边 + 轨道底色 + 圆角，页签在轨道里滑动 */
+const Shell = styled.div`
+    position: relative;
+    display: inline-flex;
+    flex: 0 1 auto;
+    max-width: 100%;
     min-width: 0;
-    /* 窄屏页签溢出时横向滚动：藏滚动条（页签条上的滚动条比内容本身更抢眼），
-       聚焦项由 scrollIntoView 带进视口 */
+    align-items: center;
+    /* 圈住层级：选中块的 z-index:-1 只沉到轨道之下，不会穿到父级背景之后 */
+    isolation: isolate;
+    border: 1px solid var(--mobi-hairline);
+    border-radius: var(--radius-control);
+    background: var(--mobi-hover);
+`
+
+/* 滚动视口（uiarc .viewport）：滚的是它，外壳那道描边不跟着动 */
+const Viewport = styled.div`
+    min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
+    border-radius: inherit;
     scrollbar-width: none;
     &::-webkit-scrollbar {
         display: none;
     }
+
+    /* 滚到某端之外还有内容时，该端渐隐（暗示还有页签）。emotion 不能跨组件插值当选择器
+       （需 @emotion/babel-plugin 注入 target，本项目没装），故用父级属性选择器反向命中 */
+    [data-left='true'] > & {
+        mask-image: linear-gradient(to right, transparent, black ${EDGE_FADE_WIDTH}px, black);
+    }
+    [data-right='true'] > & {
+        mask-image: linear-gradient(to right, black, black calc(100% - ${EDGE_FADE_WIDTH}px), transparent);
+    }
+    [data-left='true'][data-right='true'] > & {
+        mask-image: linear-gradient(
+            to right,
+            transparent,
+            black ${EDGE_FADE_WIDTH}px,
+            black calc(100% - ${EDGE_FADE_WIDTH}px),
+            transparent
+        );
+    }
+`
+
+/* 页签列表（uiarc .list）：width:max-content —— 内容多宽就多宽，外壳负责裁切与滚动 */
+const TabList = styled.div`
+    display: inline-flex;
+    width: max-content;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    isolation: isolate;
 `
 
 const TabDiv = styled.div<{ $selected: boolean; $disabled: boolean }>`
+    position: relative;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
-    flex: 0 1 auto;
-    /* 可读下限：页面宽度不够时先按此收窄（标签走省略号），到下限为止才让 tablist 横向滚动。
-       若这里给 0（无下限），收缩压力会一路传到底——真机实测 9 个页签挤进 420px 时每个只剩
-       38–51px（图标 + 半个字 + 关闭按钮），标签全成省略号，而 tablist 的 scrollWidth 始终等于
-       clientWidth：横向滚动分支永远不可达（2026-10-13 真机验证）。下限值取「图标 + 约 4 个
-       西文字符 + 关闭按钮」，具体数值可按设计诉求调，但**不能为 0**。 */
-    min-width: 96px;
-    padding: 4px 10px;
-    border: 1px solid transparent;
-    border-radius: var(--radius-icon);
+    /* 不收缩：空间不够时由视口滚动解决，页签本身永远是可读的自然宽度 */
+    flex: 0 0 auto;
+    min-width: 5.5rem;
+    min-height: 28px;
+    padding: 0 12px;
+    border: 0;
+    /* 与外框同心的内层档位（外框 control，内层收一档即 control-sm） */
+    border-radius: var(--radius-control-sm);
     background: transparent;
     color: var(--mobi-ink-secondary);
     font-size: 14px;
+    font-weight: 500;
     line-height: 1.4;
     white-space: nowrap;
     cursor: pointer;
     user-select: none;
-    transition:
-        background-color var(--mobi-duration-fast) ease,
-        color var(--mobi-duration-fast) ease;
+    -webkit-tap-highlight-color: transparent;
+    transition: color var(--mobi-duration-fast) var(--mobi-ease-out);
 
-    &:hover {
-        background: var(--mobi-hover);
+    /* hover / 按下只改文字色（uiarc 的做法）：底色留给选中块，避免和滑移的块打架 */
+    @media (hover: hover) and (pointer: fine) {
+        &:hover {
+            color: var(--mobi-ink);
+        }
+    }
+    &:active {
+        color: var(--mobi-ink);
     }
 
     &:focus-visible {
@@ -113,31 +179,19 @@ const TabDiv = styled.div<{ $selected: boolean; $disabled: boolean }>`
         transition: none;
     }
 
-    /* hover / 选中 / 禁用三态按此顺序排列：同特异性下后写的胜出 */
-    ${(p) =>
-        p.$selected &&
-        `
-        background: var(--mobi-selected);
-        color: var(--mobi-ink);
-        font-weight: 500;
-        &:hover {
-            background: var(--mobi-selected);
-        }
-    `}
+    /* 选中：文字用最深一档墨。mobi 的强调色是**中性墨族**（primary 在暗档就等于 ink，
+       在亮档还比 ink 浅一档——见 tokens.ts），所以「强调」在这里的正确表达是最重的墨，
+       而不是某个色相；块的存在感交给下面那块滑移的面。 */
+    ${(p) => p.$selected && `color: var(--mobi-ink);`}
 
     ${(p) =>
         p.$disabled &&
         `
-        cursor: default;
-        color: var(--mobi-ink-quaternary);
-        &:hover {
-            background: transparent;
-        }
+        cursor: not-allowed;
+        opacity: 0.5;
     `}
 
-    /* 关闭 ×：指针设备 hover 才现形（触屏没有 hover，故常驻）；始终占位，避免 hover 时布局抖动。
-       用 data 属性选中而不是嵌套一个 styled 子组件——跨组件插值当选择器要 @emotion/babel-plugin
-       注入 target 才成立，本项目没装（见 package.json），故在父级里自包含地写 */
+    /* 关闭 ×：指针设备 hover 才现形（触屏没有 hover，故常驻）；始终占位，避免 hover 时布局抖动 */
     & [data-tab-close] {
         display: inline-flex;
         align-items: center;
@@ -181,10 +235,59 @@ const TabDiv = styled.div<{ $selected: boolean; $disabled: boolean }>`
     }
 `
 
+/* 选中块（uiarc .selection）：垫在文字之下的一块浮起面，靠 motion 共享布局在页签间滑移 */
+const Selection = styled(motion.span)`
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    border: 1px solid var(--mobi-hairline);
+    border-radius: inherit;
+    background: var(--mobi-elevated);
+    box-shadow: var(--shadow-resting);
+    will-change: transform;
+`
+
 const TabLabel = styled.span`
+    position: relative;
+    z-index: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+`
+
+/* 溢出时的两端滚动按钮（uiarc .scrollButton）：盖在视口上，禁用即透明（不占位观感） */
+const ScrollButton = styled.button`
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    bottom: 0;
+    display: grid;
+    width: 33px;
+    place-items: center;
+    border: 0;
+    background: var(--mobi-hover);
+    color: var(--mobi-ink);
+    cursor: pointer;
+
+    &:disabled {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--mobi-primary);
+        outline-offset: -3px;
+    }
+`
+
+const ScrollLeftButton = styled(ScrollButton)`
+    left: 0;
+    border-radius: var(--radius-control) 0 0 var(--radius-control);
+`
+
+const ScrollRightButton = styled(ScrollButton)`
+    right: 0;
+    border-radius: 0 var(--radius-control) var(--radius-control) 0;
 `
 
 const PanelDiv = styled.div`
@@ -199,6 +302,7 @@ interface TabStripContextValue {
 
 interface TabStripListContextValue {
     listRef: React.RefObject<HTMLDivElement | null>
+    viewportRef: React.RefObject<HTMLDivElement | null>
     /** 关闭前登记：关活动 tab 才需要挪焦点，且此刻被关的 tab 还在 DOM 里（可就地算下标） */
     notifyClosed: (value: string, wasSelected: boolean) => void
 }
@@ -233,9 +337,12 @@ export function TabStrip({ value, onValueChange, children, className, style }: T
     const ctx = useMemo<TabStripContextValue>(() => ({ value, setValue: onValueChange, baseId }), [value, onValueChange, baseId])
     return (
         <TabStripContext.Provider value={ctx}>
-            <div className={className} style={style} data-tab-strip="">
-                {children}
-            </div>
+            {/* LayoutGroup 按实例隔离：选中块只在同一条页签条内滑移，不会从另一组页签"飞"过来 */}
+            <LayoutGroup id={baseId}>
+                <div className={className} style={style} data-tab-strip="">
+                    {children}
+                </div>
+            </LayoutGroup>
         </TabStripContext.Provider>
     )
 }
@@ -243,25 +350,46 @@ export function TabStrip({ value, onValueChange, children, className, style }: T
 export interface TabStripListProps {
     /** tablist 的无障碍名称（读屏进入页签条时朗读） */
     ariaLabel: string
+    /** 溢出时两端滚动按钮的无障碍名称（形如「向左滚动页签」——光一个箭头读屏读不出来） */
+    scrollButtonLabels: { left: string; right: string }
     /** 行右端槽位（新建 / 收起一类操作）；**不是** tab 的一部分，不会被 tab 的键盘与焦点链路牵动 */
     extra?: ReactNode
     children: ReactNode
     /** 外层行（页签条整条）的样式：内边距、安全区一类归这里 */
     className?: string
     style?: CSSProperties
-    /** 内层滚动容器的样式：页签间距、收窄诉求 */
+    /** 外层外壳（描边轨道）的样式：需要限宽一类诉求时用 */
+    shellClassName?: string
+    shellStyle?: CSSProperties
+    /** 内层列表的样式：页签间距一类归这里 */
     listClassName?: string
     listStyle?: CSSProperties
 }
 
-export function TabStripList({ ariaLabel, extra, children, className, style, listClassName, listStyle }: TabStripListProps) {
+export function TabStripList({
+    ariaLabel,
+    scrollButtonLabels,
+    extra,
+    children,
+    className,
+    style,
+    shellClassName,
+    shellStyle,
+    listClassName,
+    listStyle,
+}: TabStripListProps) {
     const { value: selectedValue, setValue } = useTabStripContext('TabStripList')
     const listRef = useRef<HTMLDivElement | null>(null)
+    const viewportRef = useRef<HTMLDivElement | null>(null)
+    const shellRef = useRef<HTMLDivElement | null>(null)
     const pendingCloseRef = useRef<{ closedIndex: number } | null>(null)
+    const reduced = useReducedMotion() ?? false
+    const edges = useStripScroll(shellRef, viewportRef, listRef, selectedValue, reduced)
 
     const listCtx = useMemo<TabStripListContextValue>(
         () => ({
             listRef,
+            viewportRef,
             notifyClosed(value, wasSelected) {
                 // 非活动 tab 关闭：焦点与选中都不动（契约）
                 if (!wasSelected) return
@@ -285,11 +413,14 @@ export function TabStripList({ ariaLabel, extra, children, className, style, lis
         focusTab(target?.el)
     })
 
-    // 选中项滚进视口（窄屏溢出时切页签不该把新页签留在视野外）
-    useEffect(() => {
-        const selected = collectTabs(listRef.current).find((t) => t.el.getAttribute('aria-selected') === 'true')
-        scrollIntoView(selected?.el)
-    }, [selectedValue])
+    const scrollByPage = useCallback(
+        (direction: 1 | -1) => {
+            const viewport = viewportRef.current
+            if (!viewport) return
+            viewport.scrollBy?.({ left: direction * viewport.clientWidth * 0.75, behavior: reduced ? 'instant' : 'smooth' })
+        },
+        [reduced],
+    )
 
     const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
         const tabs = collectTabs(listRef.current)
@@ -304,19 +435,41 @@ export function TabStripList({ ariaLabel, extra, children, className, style, lis
     }
 
     return (
-        <Row className={className} style={style}>
+        <Row className={className} style={style} data-tab-strip-row="">
             <TabStripListContext.Provider value={listCtx}>
-                <ListDiv
-                    ref={listRef}
-                    role="tablist"
-                    aria-orientation="horizontal"
-                    aria-label={ariaLabel}
-                    className={listClassName}
-                    style={listStyle}
-                    onKeyDown={handleKeyDown}
-                >
-                    {children}
-                </ListDiv>
+                <Shell ref={shellRef} className={shellClassName} style={shellStyle} data-left={edges.left} data-right={edges.right} data-overflow={edges.overflow}>
+                    {edges.overflow && (
+                        <ScrollLeftButton type="button" aria-label={scrollButtonLabels.left} disabled={!edges.left} onClick={() => scrollByPage(-1)}>
+                            <ChevronLeft size={17} aria-hidden />
+                        </ScrollLeftButton>
+                    )}
+                    <Viewport
+                        ref={viewportRef}
+                        /* 焦点进入页签（键盘 Tab 或方向键落到某个页签）时同样把它带进视口 */
+                        onFocusCapture={(event) => {
+                            if (event.target instanceof HTMLElement && event.target.getAttribute('role') === 'tab') {
+                                revealTab(viewportRef.current, event.target, reduced)
+                            }
+                        }}
+                    >
+                        <TabList
+                            ref={listRef}
+                            role="tablist"
+                            aria-orientation="horizontal"
+                            aria-label={ariaLabel}
+                            className={listClassName}
+                            style={listStyle}
+                            onKeyDown={handleKeyDown}
+                        >
+                            {children}
+                        </TabList>
+                    </Viewport>
+                    {edges.overflow && (
+                        <ScrollRightButton type="button" aria-label={scrollButtonLabels.right} disabled={!edges.right} onClick={() => scrollByPage(1)}>
+                            <ChevronRight size={17} aria-hidden />
+                        </ScrollRightButton>
+                    )}
+                </Shell>
             </TabStripListContext.Provider>
             {extra}
         </Row>
@@ -340,6 +493,7 @@ export function TabStripTab({ value, children, disabled, onClose, closeLabel, cl
     const { notifyClosed } = useTabStripListContext('TabStripTab')
     const selected = selectedValue === value
     const encoded = encodeURIComponent(value)
+    const reduced = useReducedMotion() ?? false
 
     return (
         <TabDiv
@@ -367,6 +521,16 @@ export function TabStripTab({ value, children, disabled, onClose, closeLabel, cl
                 }
             }}
         >
+            {selected && (
+                <Selection
+                    data-tab-selection=""
+                    aria-hidden
+                    layoutId="selection"
+                    /* uiarc 同款做法：reduced-motion 下不是不渲染，而是把时长归零（动效降级而非结构分叉）。
+                       弹簧用全局预设 spring.ui（DESIGN.md 的口径：组件不许自带第二套缓动语言） */
+                    transition={reduced ? { duration: 0 } : (spring.ui as Transition)}
+                />
+            )}
             <TabLabel>{children}</TabLabel>
             {onClose && (
                 <button
@@ -440,7 +604,90 @@ function focusTab(el: HTMLElement | undefined): void {
     el?.focus()
 }
 
-/** jsdom 未实现 scrollIntoView，故可选调用（浏览器里才有实际行为） */
-function scrollIntoView(el: HTMLElement | undefined): void {
-    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+/**
+ * 把某页签滚进视口（uiarc `reveal`）：两端各有滚动按钮盖在视口上，故只在**按钮之外**的区间里判可见，
+ * 免得滚进来又正好被按钮盖住。`scrollBy` 在 jsdom 里不存在，故可选调用（浏览器里才有实际行为）。
+ * 返回它是否已经落定（本来就在区间内 = 无位移可做）。滚到列表尽头时按钮会因禁用而淡出，
+ * 那里少量遮挡不算问题——所以「已经在尽头」也算落定。
+ */
+function revealTab(viewport: HTMLDivElement | null, tab: HTMLElement | undefined, reduced: boolean): boolean {
+    if (!viewport || !tab) return true
+    const frame = viewport.getBoundingClientRect()
+    const item = tab.getBoundingClientRect()
+    const max = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+    const left = frame.left + (viewport.scrollLeft > 1 ? SCROLL_BUTTON_WIDTH + 1 : 0)
+    const right = frame.right - (viewport.scrollLeft < max - 1 ? SCROLL_BUTTON_WIDTH + 1 : 0)
+    const delta = item.left < left ? item.left - left : item.right > right ? item.right - right : 0
+    if (!delta) return true
+    // 已到尽头还够不着（末尾页签）——按钮此刻是禁用态（透明且不可点），不必再追
+    if ((delta < 0 && viewport.scrollLeft <= 1) || (delta > 0 && viewport.scrollLeft >= max - 1)) return true
+    viewport.scrollBy?.({ left: delta, behavior: reduced ? 'instant' : 'smooth' })
+    return false
+}
+
+interface ScrollEdges {
+    overflow: boolean
+    left: boolean
+    right: boolean
+}
+
+const NO_EDGES: ScrollEdges = { overflow: false, left: false, right: false }
+
+/**
+ * 视口两端的可滚状态（决定滚动按钮与渐隐的显隐）+「把选中项带进视口」。
+ * ResizeObserver 在 jsdom 里不存在——守卫后使用，测试环境下恒为「无溢出」，不影响其它断言。
+ *
+ * 两者合在一个 effect 里，是因为揭示（reveal）**不能只算一次**：新建页签那一帧它的宽度往往还没定稿
+ * （先按占位标题摆一道，再换成真标题），此刻量出的可达滚动范围偏小，滚动就此停在
+ * 「新页签仍被右侧按钮压住」的位置不动了（2026-10-13 实测：选中项右缘超出视口 48px 定格）。
+ * 于是把「带进视口」当成一项**待办的布局义务**：选中变化时挂起，此后每次尺寸变化复核一遍，
+ * 直到它真的落在视口里（或已在尽头）才算完。滚动事件只更新两端状态、绝不触发滚动本身，避免互相打架。
+ */
+function useStripScroll(
+    shellRef: React.RefObject<HTMLDivElement | null>,
+    viewportRef: React.RefObject<HTMLDivElement | null>,
+    listRef: React.RefObject<HTMLDivElement | null>,
+    selectedValue: string,
+    reduced: boolean,
+): ScrollEdges {
+    const [edges, setEdges] = useState<ScrollEdges>(NO_EDGES)
+    const revealPendingRef = useRef(false)
+
+    useEffect(() => {
+        revealPendingRef.current = true
+        const frame = shellRef.current
+        const scroll = viewportRef.current
+        const container = listRef.current
+        if (!frame || !scroll || !container) return
+
+        const syncEdges = () => {
+            const max = Math.max(0, scroll.scrollWidth - scroll.clientWidth)
+            const next: ScrollEdges = {
+                // 外壳比内容窄才算溢出：用 1px 容差吸收亚像素
+                overflow: scroll.scrollWidth > frame.clientWidth + 1,
+                left: scroll.scrollLeft > 1,
+                right: scroll.scrollLeft < max - 1,
+            }
+            setEdges((prev) => (prev.overflow === next.overflow && prev.left === next.left && prev.right === next.right ? prev : next))
+        }
+        const measure = () => {
+            syncEdges()
+            if (!revealPendingRef.current) return
+            const selected = collectTabs(container).find((t) => t.el.getAttribute('aria-selected') === 'true')
+            if (revealTab(scroll, selected?.el, reduced)) revealPendingRef.current = false
+        }
+
+        const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+        observer?.observe(frame)
+        observer?.observe(scroll)
+        observer?.observe(container)
+        scroll.addEventListener('scroll', syncEdges, { passive: true })
+        measure()
+        return () => {
+            observer?.disconnect()
+            scroll.removeEventListener('scroll', syncEdges)
+        }
+    }, [selectedValue, reduced, shellRef, viewportRef, listRef])
+
+    return edges
 }
