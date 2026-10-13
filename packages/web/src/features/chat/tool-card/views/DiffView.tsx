@@ -21,13 +21,12 @@
  * 数据源双轨合成 unified patch 文本（composePatchText / composePatchFromLineRows，
  * structuredPatch 优先、old/new 自 diff 回退），props 契约不变。
  *
- * 高度姿势（与审查面板固定 host 不同，工具卡要求内容自适应、超限内滚）：
- * PatchDiff 虚拟器以 host getBoundingClientRect 高度为视口（源码 getHeight 实证），
- * host 高 0 起步——两段式：先给足够高的估计高度，首帧后测 shadow container 实际
- * 内容高收缩到 min(实际, 上限)，上限内滚。
+ * 高度姿势：PatchDiff 需要确定高度视口（虚拟化硬约束，以 host getBoundingClientRect 高度为准），
+ * 而工具卡要求卡片高度随行数自适应、超限内滚——交给 `AutoHeightHost`（量 shadow 内容高、
+ * 收缩到上限、补滚动条占位），本组件只负责把 pierre 挂进去、给对上限值。
  */
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { Modal, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { PatchDiff } from '@pierre/diffs/react'
@@ -35,17 +34,13 @@ import { formatDiffStats } from './lineNumberUtils'
 import { composePatchText, composePatchFromLineRows, countPatchLines } from './structuredPatchUtils'
 import type { StructuredPatch } from '@/domain/chat/types'
 import { FilePathText } from '@/ui/base/display/FilePathText'
+import { AutoHeightHost } from '@/ui/base/layout/AutoHeightHost'
 import { ToolViewPanel } from './ToolViewPanel'
+import { INLINE_DIFF_MAX_HEIGHT, useToolViewScope } from './toolViewScope'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { PIERRE_BRIDGE_VARS } from '@/ui/base/theme/pierreTheme'
 
 const { useToken } = antTheme
-
-/** inline 卡片内 diff 高度上限（超出内滚） */
-const INLINE_MAX_DIFF_HEIGHT = 320
-
-/** 估计初始高度：宁大勿小（首帧后按实际收缩），但封顶防超大 patch 撑出滚动闪跳 */
-const INITIAL_ESTIMATE_HEIGHT = 1600
 
 /**
  * 简单的行级 diff 算法（回退路径：执行中预览 / Write 无 patch / 历史消息缺 structuredPatch）
@@ -110,64 +105,6 @@ function diffLines(oldStr: string, newStr: string): Array<{ value: string; added
 }
 
 /**
- * 内容自适应高度的 PatchDiff 宿主：PatchDiff 需要确定高度视口（虚拟化硬约束），
- * 而工具卡要求卡片高度随 diff 行数自适应、超上限内滚。两段式解决——初始给
- * 估计高度（宁大勿小），首帧后读 shadow container 实际内容高收缩到 min(实际, 上限)。
- * patch 变化（流式更新）时回到估计高度重新测量。
- */
-function AutoHeightPatchDiff({ patch, options, maxHeightPx }: {
-    patch: string
-    options: Record<string, unknown>
-    maxHeightPx: number
-}) {
-    const hostRef = useRef<HTMLDivElement>(null)
-    const [height, setHeight] = useState<number>(INITIAL_ESTIMATE_HEIGHT)
-
-    useEffect(() => {
-        // 先回到估计高度再测：旧高度可能小于新内容，会被 host 截断出假读数
-        setHeight(INITIAL_ESTIMATE_HEIGHT)
-        const el = hostRef.current
-        if (!el) return
-        // pierre 的 shadow 内容异步渲染（首帧可能只有 0 高占位 svg）——轮询直到测到
-        // 内容高或超时（~2s）。用 setTimeout 不用 rAF：后台 tab 的 rAF 完全暂停，
-        // 重新可见时才补跑，卡片会长时间停在估计高度
-        let timer: ReturnType<typeof setTimeout> | undefined
-        const startedAt = Date.now()
-        const measure = () => {
-            // diffs-container（PatchDiff 渲染的 host web component）在其子位置，
-            // shadow 里首子是 0 高 svg（spinner 占位），内容在 PRE/容器子元素——
-            // 取各子元素实测高度的最大值（contain 无裁剪，即虚拟化总内容高）
-            const host = el.querySelector('diffs-container') as (HTMLElement & { shadowRoot?: ShadowRoot }) | null
-            const shadow = host?.shadowRoot
-            const contentHeight = shadow
-                ? Math.max(0, ...[...shadow.children].map((c) => c.getBoundingClientRect().height))
-                : 0
-            if (contentHeight > 0) {
-                setHeight(Math.min(Math.ceil(contentHeight), maxHeightPx))
-                return
-            }
-            if (Date.now() - startedAt < 2000) timer = setTimeout(measure, 50)
-        }
-        timer = setTimeout(measure, 50)
-        return () => clearTimeout(timer)
-    }, [patch, options, maxHeightPx])
-
-    return (
-        <div
-            ref={hostRef}
-            data-testid="tool-diff-viewer"
-            style={{ height, maxHeight: maxHeightPx, overflow: 'auto', display: 'flex' }}
-        >
-            <PatchDiff
-                patch={patch}
-                options={options}
-                style={{ ...PIERRE_BRIDGE_VARS, height: '100%', flex: 1, minWidth: 0 } as CSSProperties}
-            />
-        </div>
-    )
-}
-
-/**
  * Diff 视图组件
  * 支持 inline（卡片内嵌）和 preview（概要 + Modal）两种模式
  */
@@ -183,6 +120,8 @@ export function DiffView(props: {
     const { t } = useTranslation()
     const { token } = useToken()
     const resolved = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark))
+    // 消息卡内限高内滚；工具详情 sheet 里全高（容器自己滚，见 toolViewScope）
+    const { diffMaxHeight } = useToolViewScope()
 
     const name = props.filePath ?? '_'
     const hasPatches = !!props.structuredPatches && props.structuredPatches.length > 0
@@ -244,9 +183,20 @@ export function DiffView(props: {
         </>
     ), [props.filePath, statsLabel, token])
 
-    const diffBody = patchText ? (
-        <AutoHeightPatchDiff patch={patchText} options={options} maxHeightPx={INLINE_MAX_DIFF_HEIGHT} />
-    ) : (
+    // 高度自适应由 AutoHeightHost 承担（量 pierre shadow 内容高、超限内滚、补滚动条占位）；
+    // 横向滚动是 pierre 自己的事（内部 `<code>` 是滚动区，行号 gutter 是它的 sticky 子元素），
+    // 这里只需别抢横向溢出——抢了整个 diff 连行号一起平移
+    const diffViewer = (maxHeightPx: number | null) => (
+        <AutoHeightHost maxHeightPx={maxHeightPx} contentKey={patchText} testId="tool-diff-viewer">
+            <PatchDiff
+                patch={patchText}
+                options={options}
+                style={{ ...PIERRE_BRIDGE_VARS, height: '100%', flex: 1, minWidth: 0 } as CSSProperties}
+            />
+        </AutoHeightHost>
+    )
+
+    const diffBody = patchText ? diffViewer(diffMaxHeight) : (
         <div style={{ padding: 8, fontSize: 12, color: token.colorTextTertiary }}>{t('review.noDiff')}</div>
     )
 
@@ -255,10 +205,8 @@ export function DiffView(props: {
     }
 
     // preview Modal：上限放宽到视口 75%（与 Modal 容器一致），不共用 inline 的 320 上限
-    const modalMaxHeight = typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.75) : INLINE_MAX_DIFF_HEIGHT
-    const modalBody = patchText
-        ? <AutoHeightPatchDiff patch={patchText} options={options} maxHeightPx={modalMaxHeight} />
-        : diffBody
+    const modalMaxHeight = typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.75) : INLINE_DIFF_MAX_HEIGHT
+    const modalBody = patchText ? diffViewer(modalMaxHeight) : diffBody
 
     return <DiffPreviewView modalBody={modalBody} statsLabel={statsLabel} filePath={props.filePath} />
 }

@@ -50,3 +50,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [设计走查](design-walkthrough.md) — DESIGN.md 合规走查 / computed style 实测取值 / mobi-ui state.theme 切换 / theme 改后须整页 reload / selected+active 命中第三档判别
 - [generative-ui 验收](generative-ui-verify.md) — 档②③/主题/bridge/安全探针观测点 + mobi-ui state.theme 坑 + daemon 时限/孤儿 CLI 坑
 - [antd cssVar 作用域陷阱](antd-cssvar-portal-scope.md) — --ant-* 只在 antd 子树内可解析，portal 弹层 token 全空（无底色/无动画）；诊断三层探针法 + 组件映射块禁同名自引用
+- [移动端 sheet 验证](bottom-sheet-verify.md) — CDP 移动视口 + 合成拖拽采样（跟手/遮罩连续/嵌套层号/内容自滚）；**遮罩关闭要发满 down→up→click**、dev 的哨兵累积是 StrictMode 产物、HMR 会重置层号发号器、**验哨兵/多级返回必须用 production 构建（build:web + 2224）**、孤儿哨兵致整栈收起已修、**会话操作菜单已改二级 BottomSheet + 删除确认就地展开**、**peek 锁滚档死区（内容区横竖都滚不动）已修 + 合成 TouchEvent 即可验 JS 仲裁侧**（2026-10-13 三轮）

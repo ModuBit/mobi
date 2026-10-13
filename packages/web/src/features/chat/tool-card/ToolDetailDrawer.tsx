@@ -29,9 +29,11 @@ import type { ChatBlock } from '@/domain/chat'
 import { getToolPresentation, isAgentTool, getAgentTitle } from './knownTools'
 import { getToolIcon, ICON_STYLE_LG, StatusIcon, statusIconStyle } from '@/ui/base/display/toolIcons'
 import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
+import { ToolViewScopeProvider } from './views/toolViewScope'
 import { getToolResultViewComponent } from './views/_results'
 import { truncate } from '@/core/lib/toolInputUtils'
 import { ContentDrawer, DRAWER_WIDTH_PRESETS } from '@/ui/base/layout/ContentDrawer'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { AgentDrawerContent } from './AgentDrawerContent'
 
 const { Text } = Typography
@@ -104,6 +106,7 @@ function getStatusText(state: 'pending' | 'running' | 'completed' | 'error', t: 
 function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: ToolDetailDrawerProps) {
     const { t } = useTranslation()
     const { token } = useToken()
+    const isMobile = useIsMobile()
 
     const tool = block.tool
 
@@ -159,7 +162,10 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
                 {getToolIcon(tool.name, ICON_STYLE_LG)}
             </StatusIcon>
             <div style={{ minWidth: 0, flex: 1 }}>
-                <Text strong style={{ fontSize: 14, wordBreak: 'break-word' }}>
+                {/* 移动端 title 行只有一行（header 高度固定）：单行省略；PC 抽屉保留换行 */}
+                <Text strong style={isMobile
+                    ? { fontSize: 14, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+                    : { fontSize: 14, wordBreak: 'break-word' }}>
                     {isAgentTool(tool.name) ? getAgentTitle(tool.input) : presentation.title}
                 </Text>
                 {!isAgentTool(tool.name) && truncatedSubtitle && (
@@ -209,11 +215,15 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
             ) : hasSpecialView ? (
                 <>
                     <div style={sectionStyle}>
-                        {FullView ? (
-                            <FullView block={adaptedBlock} metadata={metadata} />
-                        ) : CompactView ? (
-                            <CompactView block={adaptedBlock} metadata={metadata} />
-                        ) : null}
+                        {/* 全高呈现：详情容器（sheet / 抽屉）自己就是滚动区，视图内不再限高内滚
+                            （限高会在容器里嵌出第二层滚动区——真机反馈「diff 里为什么有竖向滚动条」） */}
+                        <ToolViewScopeProvider fullHeight>
+                            {FullView ? (
+                                <FullView block={adaptedBlock} metadata={metadata} />
+                            ) : CompactView ? (
+                                <CompactView block={adaptedBlock} metadata={metadata} />
+                            ) : null}
+                        </ToolViewScopeProvider>
                     </div>
                     {/* 避免错误状态下重复渲染同一组件（FullView 与 ResultView 相同时） */}
                     {tool.state === 'error' && ResultView !== FullView && ResultView !== CompactView && (
