@@ -406,7 +406,6 @@ describe('TabStrip 结构契约', () => {
                 </TabStrip>,
             )
             const shell = container.querySelector('[data-tab-strip-row] > div') as HTMLElement
-            expect(shell).toHaveAttribute('data-overflow', 'true')
             expect(shell).toHaveAttribute('data-right', 'true')
             // scrollLeft 0：左边没有可回的内容，左端不该渐隐
             expect(shell).toHaveAttribute('data-left', 'false')
@@ -427,7 +426,6 @@ describe('TabStrip 结构契约', () => {
             </TabStrip>,
         )
         const shell = container.querySelector('[data-tab-strip-row] > div') as HTMLElement
-        expect(shell).toHaveAttribute('data-overflow', 'false')
         expect(shell).toHaveAttribute('data-left', 'false')
         expect(shell).toHaveAttribute('data-right', 'false')
     })

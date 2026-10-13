@@ -152,7 +152,6 @@ const TabList = styled.div`
     align-items: center;
     gap: 2px;
     padding: 2px;
-    isolation: isolate;
 `
 
 const TabDiv = styled.div<{ $selected: boolean; $disabled: boolean }>`
@@ -311,12 +310,11 @@ export interface TabStripProps {
     value: string
     onValueChange: (value: string) => void
     children: ReactNode
-    className?: string
     style?: CSSProperties
 }
 
 /** 根：只提供受控上下文（布局由消费方给——检查器要撑满高度、气泡内是内联块，诉求不同） */
-export function TabStrip({ value, onValueChange, children, className, style }: TabStripProps) {
+export function TabStrip({ value, onValueChange, children, style }: TabStripProps) {
     // useId 的产物含 `:`、`«` 一类字符（各 React 版本不同），拼进 id 前先收成标识符安全集
     const baseId = useId().replace(/[^a-zA-Z0-9]/g, '')
     const ctx = useMemo<TabStripContextValue>(() => ({ value, setValue: onValueChange, baseId }), [value, onValueChange, baseId])
@@ -324,9 +322,7 @@ export function TabStrip({ value, onValueChange, children, className, style }: T
         <TabStripContext.Provider value={ctx}>
             {/* LayoutGroup 按实例隔离：选中块只在同一条页签条内滑移，不会从另一组页签"飞"过来 */}
             <LayoutGroup id={baseId}>
-                <div className={className} style={style} data-tab-strip="">
-                    {children}
-                </div>
+                <div style={style}>{children}</div>
             </LayoutGroup>
         </TabStripContext.Provider>
     )
@@ -339,34 +335,16 @@ export interface TabStripListProps {
     extra?: ReactNode
     children: ReactNode
     /** 外层行（页签条整条）的样式：内边距、安全区一类归这里 */
-    className?: string
     style?: CSSProperties
-    /** 外层外壳（描边轨道）的样式：需要限宽一类诉求时用 */
-    shellClassName?: string
-    shellStyle?: CSSProperties
-    /** 内层列表的样式：页签间距一类归这里 */
-    listClassName?: string
-    listStyle?: CSSProperties
 }
 
-export function TabStripList({
-    ariaLabel,
-    extra,
-    children,
-    className,
-    style,
-    shellClassName,
-    shellStyle,
-    listClassName,
-    listStyle,
-}: TabStripListProps) {
+export function TabStripList({ ariaLabel, extra, children, style }: TabStripListProps) {
     const { value: selectedValue, setValue } = useTabStripContext('TabStripList')
     const listRef = useRef<HTMLDivElement | null>(null)
     const viewportRef = useRef<HTMLDivElement | null>(null)
-    const shellRef = useRef<HTMLDivElement | null>(null)
     const pendingCloseRef = useRef<{ closedIndex: number } | null>(null)
     const reduced = useReducedMotion() ?? false
-    const edges = useStripScroll(shellRef, viewportRef, listRef, selectedValue, reduced)
+    const edges = useStripScroll(viewportRef, listRef, selectedValue, reduced)
 
     const listCtx = useMemo<TabStripListContextValue>(
         () => ({
@@ -389,10 +367,8 @@ export function TabStripList({
         if (!pending) return
         pendingCloseRef.current = null
         const tabs = collectTabs(listRef.current)
-        const target =
-            tabs.find((t) => t.el.getAttribute('aria-selected') === 'true') ??
-            tabs[nextFocusAfterClose(pending.closedIndex, tabs) ?? -1]
-        focusTab(target?.el)
+        const target = tabs.find((t) => t.value === selectedValue) ?? tabs[nextFocusAfterClose(pending.closedIndex, tabs) ?? -1]
+        target?.el.focus()
     })
 
     /**
@@ -443,14 +419,14 @@ export function TabStripList({
         const target = resolveTabNavKey(event.key, current, tabs)
         if (target === null) return
         event.preventDefault()
-        focusTab(tabs[target].el)
+        tabs[target].el.focus()
         setValue(tabs[target].value)
     }
 
     return (
-        <Row className={className} style={style} data-tab-strip-row="">
+        <Row style={style} data-tab-strip-row="">
             <TabStripListContext.Provider value={listCtx}>
-                <Shell ref={shellRef} className={shellClassName} style={shellStyle} data-left={edges.left} data-right={edges.right} data-overflow={edges.overflow}>
+                <Shell data-left={edges.left} data-right={edges.right}>
                     <Viewport
                         ref={viewportRef}
                         data-dragging={dragging}
@@ -477,8 +453,6 @@ export function TabStripList({
                             role="tablist"
                             aria-orientation="horizontal"
                             aria-label={ariaLabel}
-                            className={listClassName}
-                            style={listStyle}
                             onKeyDown={handleKeyDown}
                         >
                             {children}
@@ -615,16 +589,15 @@ function collectTabs(container: HTMLElement | null): TabEntry[] {
     }))
 }
 
-function focusTab(el: HTMLElement | undefined): void {
-    el?.focus()
-}
-
 /**
  * 把某页签滚进视口（uiarc `reveal`）：只在**渐隐区之外**判可见——两端那 35px 是留给
  * 「还有内容」的暗示，落进去的页签会被蒙上一层淡出，选中的那个尤其不能。
  * `scrollBy` 在 jsdom 里不存在，故可选调用（浏览器里才有实际行为）。
  * 返回它是否已经落定（本来就在可视区内 = 无位移可做）；滚到尽头时该端不再渐隐（`data-right` 为假），
  * 所以「在尽头」也算落定。
+ *
+ * 手算而不用 `scroll-padding-inline` + `scrollIntoView`：后者会把**祖先滚动容器**一并滚
+ * （气泡里的页签条切页签会顺手把聊天滚一下），这里只需要动视口自己。
  */
 function revealTab(viewport: HTMLDivElement | null, tab: HTMLElement | undefined, reduced: boolean): boolean {
     if (!viewport || !tab) return true
@@ -641,26 +614,28 @@ function revealTab(viewport: HTMLDivElement | null, tab: HTMLElement | undefined
     return false
 }
 
+/** 视口两端之外还有内容（决定该端是否渐隐） */
 interface ScrollEdges {
-    overflow: boolean
     left: boolean
     right: boolean
 }
 
-const NO_EDGES: ScrollEdges = { overflow: false, left: false, right: false }
+const NO_EDGES: ScrollEdges = { left: false, right: false }
 
 /**
- * 视口两端的可滚状态（决定滚动按钮与渐隐的显隐）+「把选中项带进视口」。
- * ResizeObserver 在 jsdom 里不存在——守卫后使用，测试环境下恒为「无溢出」，不影响其它断言。
+ * 视口两端的可滚状态（决定两端渐隐的显隐）+「把选中项带进视口」。
+ * ResizeObserver 在 jsdom 里不存在——守卫后使用，测试环境下恒为「两端不渐隐」，不影响其它断言。
  *
- * 两者合在一个 effect 里，是因为揭示（reveal）**不能只算一次**：新建页签那一帧它的宽度往往还没定稿
- * （先按占位标题摆一道，再换成真标题），此刻量出的可达滚动范围偏小，滚动就此停在
- * 「新页签仍被右侧按钮压住」的位置不动了（2026-10-13 实测：选中项右缘超出视口 48px 定格）。
- * 于是把「带进视口」当成一项**待办的布局义务**：选中变化时挂起，此后每次尺寸变化复核一遍，
- * 直到它真的落在视口里（或已在尽头）才算完。滚动事件只更新两端状态、绝不触发滚动本身，避免互相打架。
+ * 下面两个 effect 刻意分开：**订阅**（ResizeObserver / scroll 监听）只装一次，
+ * 与「选中了哪个」无关；选中变化只翻一下待办标记再量一次。
+ *
+ * 揭示（reveal）**不能只算一次**：新建页签那一帧它的宽度往往还没定稿（先按占位标题摆一道，
+ * 再换成真标题），此刻量出的可达滚动范围偏小，滚动就此停在「新页签仍被右侧挡住」的位置不动了
+ * （2026-10-13 实测：选中项右缘超出视口 48px 定格）。于是把「带进视口」当成一项**待办的布局义务**：
+ * 选中变化时挂起，此后每次尺寸变化复核一遍，直到它真的落在视口里（或已在尽头）才算完。
+ * 滚动事件只更新两端状态、绝不触发滚动本身，避免互相打架。
  */
 function useStripScroll(
-    shellRef: React.RefObject<HTMLDivElement | null>,
     viewportRef: React.RefObject<HTMLDivElement | null>,
     listRef: React.RefObject<HTMLDivElement | null>,
     selectedValue: string,
@@ -668,33 +643,33 @@ function useStripScroll(
 ): ScrollEdges {
     const [edges, setEdges] = useState<ScrollEdges>(NO_EDGES)
     const revealPendingRef = useRef(false)
+    // 订阅 effect 不随选中重建，故当前选中值经 ref 传进去（`measure` 读它比读 DOM 的 aria-selected 直接）
+    const selectedRef = useRef(selectedValue)
+    const measureRef = useRef<() => void>(() => {})
 
     useEffect(() => {
-        revealPendingRef.current = true
-        const frame = shellRef.current
         const scroll = viewportRef.current
         const container = listRef.current
-        if (!frame || !scroll || !container) return
+        if (!scroll || !container) return
 
         const syncEdges = () => {
             const max = Math.max(0, scroll.scrollWidth - scroll.clientWidth)
             const next: ScrollEdges = {
-                // 外壳比内容窄才算溢出：用 1px 容差吸收亚像素
-                overflow: scroll.scrollWidth > frame.clientWidth + 1,
+                // 1px 容差吸收亚像素
                 left: scroll.scrollLeft > 1,
                 right: scroll.scrollLeft < max - 1,
             }
-            setEdges((prev) => (prev.overflow === next.overflow && prev.left === next.left && prev.right === next.right ? prev : next))
+            setEdges((prev) => (prev.left === next.left && prev.right === next.right ? prev : next))
         }
         const measure = () => {
             syncEdges()
             if (!revealPendingRef.current) return
-            const selected = collectTabs(container).find((t) => t.el.getAttribute('aria-selected') === 'true')
+            const selected = collectTabs(container).find((t) => t.value === selectedRef.current)
             if (revealTab(scroll, selected?.el, reduced)) revealPendingRef.current = false
         }
+        measureRef.current = measure
 
         const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
-        observer?.observe(frame)
         observer?.observe(scroll)
         observer?.observe(container)
         scroll.addEventListener('scroll', syncEdges, { passive: true })
@@ -702,8 +677,16 @@ function useStripScroll(
         return () => {
             observer?.disconnect()
             scroll.removeEventListener('scroll', syncEdges)
+            measureRef.current = () => {}
         }
-    }, [selectedValue, reduced, shellRef, viewportRef, listRef])
+    }, [reduced, viewportRef, listRef])
+
+    // 选中变化：登记待办，立刻量一次（宽度没定稿的部分留给上面的 ResizeObserver 复核）
+    useEffect(() => {
+        selectedRef.current = selectedValue
+        revealPendingRef.current = true
+        measureRef.current()
+    }, [selectedValue])
 
     return edges
 }

@@ -20,7 +20,8 @@ const vp = [...shell.children].find(c => getComputedStyle(c).overflowX === 'auto
 const sel = document.querySelector('[data-tab-selection]')                          // 滑移的选中块
 ```
 - 外壳：`backgroundColor` = 轨道底色（`--mobi-hover`）、1px 描边、`border-radius: 14px`；
-  `data-left` / `data-right` / `data-overflow` 三个属性是渐隐与溢出的机器可读态
+  `data-left` / `data-right` 两个属性是两端渐隐的机器可读态（**没有** `data-overflow`——溢出直接量
+  `list.scrollWidth > list.clientWidth`，见 §2）
 - 视口：`mask-image` 含 `35px` 渐隐（**仅**在对应 `data-*` 为 true 时命中）；jsdom 验不了，只能真机。
   渐隐只在**边缘那段真有内容**时看得出来——选中项刚被 reveal 过时边缘是空轨道，别据此判「没生效」，
   手动滚一点让页签压到边缘再看
@@ -67,7 +68,7 @@ const cands = [...node.querySelectorAll('*')].filter(e => e.textContent.trim() =
 ```js
 const list = document.querySelector('[role="tablist"]')
 list.clientWidth; list.scrollWidth                      // 内容宽 > 视口宽 = 真溢出
-shell.getAttribute('data-overflow')                      // 组件自己算的溢出态
+shell.getAttribute('data-right')                         // 溢出未滚到头 → true；滚到最左时 data-left 为 false
 ;[...document.querySelectorAll('[role="tab"]')].map(t => t.getBoundingClientRect().width)
 ```
 - 页签宽度应保持**自然宽**（96 / 151 / 215 …），不随容器收窄——收到 38-51px 就是收缩回归了

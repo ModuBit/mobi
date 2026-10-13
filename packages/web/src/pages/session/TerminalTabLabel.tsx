@@ -18,6 +18,7 @@ import { useState, useRef, type KeyboardEvent } from 'react'
 import { Input } from 'antd'
 import { Terminal as TerminalIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type { InspectorTabEntry } from '@/core/data/stores/workspaceStore'
 
 interface TerminalTabLabelProps {
@@ -26,9 +27,17 @@ interface TerminalTabLabelProps {
 }
 
 /**
+ * 终端页签的显示名：自定义标题 ?? 本地化的「终端 N」。
+ * 改名时的「无变化」比对要拿它比，故页签显示（这里）与关闭按钮的无障碍名称（InspectorPane）
+ * 必须同源——两边各推一遍的话，默认名会被当成改动写进 `title`，永久丢掉语言切换回退。
+ */
+export function terminalTabName(tab: InspectorTabEntry, t: TFunction): string {
+    return tab.title ?? t('session.inspector.terminalName', { n: tab.terminalSeq ?? 1 })
+}
+
+/**
  * 终端 tab 的标签：lucide Terminal 图标 + 显示名。
- * 显示名 = tab.title ?? t('terminalName', { n: terminalSeq })（默认「终端 N」）。
- * 双击进入编辑态（Input），回车/失焦确认调 onRename，Esc 取消。
+ * 显示名见 terminalTabName。双击进入编辑态（Input），回车/失焦确认调 onRename，Esc 取消。
  */
 export function TerminalTabLabel({ tab, onRename }: TerminalTabLabelProps) {
     const { t } = useTranslation()
@@ -38,7 +47,7 @@ export function TerminalTabLabel({ tab, onRename }: TerminalTabLabelProps) {
     // （Esc 取消后若 blur 先于卸载触发，会误提交）
     const activeRef = useRef(false)
 
-    const display = tab.title ?? t('session.inspector.terminalName', { n: tab.terminalSeq ?? 1 })
+    const display = terminalTabName(tab, t)
 
     const startEdit = () => {
         activeRef.current = true

@@ -34,7 +34,7 @@ import { getEditorApi } from '@/features/files/editorRegistry'
 const TerminalView = lazy(() => import('@/features/terminal/TerminalView'))
 import { clearCachedInstance } from '@/core/hooks/useCachedInstance'
 import { InspectorEmptyState } from './InspectorEmptyState'
-import { TerminalTabLabel } from './TerminalTabLabel'
+import { TerminalTabLabel, terminalTabName } from './TerminalTabLabel'
 import { INSPECTOR_ACTIONS, type InspectorActionContext } from './inspectorActions'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import {
@@ -242,10 +242,11 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
     /** 页签上显示的名字。关闭按钮的无障碍名称与它同源——光一个「×」读屏读不出关的是哪个页签 */
     const tabDisplayName = (tab: InspectorTabEntry): string => {
         if (tab.mode === 'file') return tab.fileName ?? ''
-        if (tab.mode === 'terminal') return tab.title ?? t('session.inspector.terminalName', { n: tab.terminalSeq ?? 1 })
+        if (tab.mode === 'terminal') return terminalTabName(tab, t)
         return t(tab.mode === 'review' ? 'session.inspector.review' : 'session.inspector.openFile')
     }
 
+    /** 页签的可见标签 = 上面那个名字 + 一枚类型图标（终端另有就地改名，整体交给 TerminalTabLabel） */
     const renderTabLabel = (tab: InspectorTabEntry): ReactNode => (
         <AppTooltip title={tab.mode === 'file' ? tab.filePath : ''}>
             {tab.mode === 'terminal' ? (
@@ -253,20 +254,17 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
                     tab={tab}
                     onRename={(title) => renameTerminalTab(sessionId, tab.id, title)}
                 />
-            ) : tab.mode === 'review' ? (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <FileDiff size={14} />
-                    {t('session.inspector.review')}
-                </span>
             ) : (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {/* 文件 tab 按扩展名画类型徽章（TS 色块/目录 glyph），tree tab 保持 Folder */}
-                    {tab.mode === 'file' ? (
+                    {/* 文件 tab 按扩展名画类型徽章（TS 色块/目录 glyph），审查与文件树各一枚固定图标 */}
+                    {tab.mode === 'review' ? (
+                        <FileDiff size={14} />
+                    ) : tab.mode === 'file' ? (
                         <FileTypeBadge path={tab.filePath ?? ''} size={14} />
                     ) : (
                         <Folder size={14} />
                     )}
-                    {tab.mode === 'file' ? tab.fileName : t('session.inspector.openFile')}
+                    {tabDisplayName(tab)}
                 </span>
             )}
         </AppTooltip>
