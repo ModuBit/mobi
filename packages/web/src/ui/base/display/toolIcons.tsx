@@ -129,9 +129,12 @@ type StatusStateIconProps = {
  * 各状态图标本体呼吸节奏（icon 载体的动画单点来源）；未列出的状态为静态。
  * dot 载体已不含动画——running（旋转弧）/idle（sonar 扩散环）由形状承载，
  * pending/awaiting_auth 为静态橙点（见 StatusStateIcon）
+ *
+ * running 的周期读全局 --pulse-period（variables.css）：它与旁边标题的文字扫光
+ * 同周期才不会拍频（其余状态无并排的扫光文字，各按各自节奏即可）
  */
 const STATUS_ANIMATIONS: Partial<Record<StatusDotState, string>> = {
-    running: 'status-icon-breathe 1.1s ease-in-out infinite',
+    running: 'status-icon-breathe var(--pulse-period, 1.4s) ease-in-out infinite',
     pending: 'status-icon-breathe 1.5s ease-in-out infinite',
     awaiting_auth: 'status-icon-breathe 0.45s ease-in-out infinite',
     idle: 'status-icon-breathe 3s ease-in-out infinite',

@@ -213,7 +213,7 @@ pre, code {
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    animation: crossfade-in var(--fade-ms, 200ms) ease, shimmer-sweep 1.4s linear infinite;
+    animation: crossfade-in var(--fade-ms, 200ms) ease, shimmer-sweep var(--pulse-period, 1.4s) linear infinite;
 }
 /* hover 不暂停扫光（2026-09-26 产品定稿：hover 停扫反而像卡住）；
    视口外暂停仍走 [data-shimmer-off]（ShinyText 经单例 IntersectionObserver 标记）：

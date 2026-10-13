@@ -236,7 +236,8 @@
             },
             "waiting": {
                 "approval": "等待确认"
-            }
+            },
+            "collapse": "收起"
         },
         "contextReset": "对话已重置",
         "contextCompacted": "对话已优化",

@@ -245,7 +245,8 @@
             },
             "waiting": {
                 "approval": "Awaiting confirmation"
-            }
+            },
+            "collapse": "Collapse"
         },
         "contextReset": "Conversation reset",
         "contextCompacted": "Conversation optimized",

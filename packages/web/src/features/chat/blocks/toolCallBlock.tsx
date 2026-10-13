@@ -294,7 +294,7 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
     const isBgAgent = isBackgroundTool(tool.name, tool.input)
     const agentRunning = isAgent && (tool.state === 'running' || tool.state === 'pending')
     // 所有工具卡片默认收起（2026-08-21 用户降噪决策）：不再按工具名/失败态/审批态
-    // 自动展开（thinking 块除外，见 ReasoningBlock），失败也收起——用户想看再点开。
+    // 自动展开，失败也收起——用户想看再点开（thinking 块同理，见 ReasoningBlock）。
     // 「终端工具失败必展开」的安全不变式随之废弃（git 历史可溯）
     const [expanded, setExpanded] = useState(false)
     const prevIsError = useRef(isError)

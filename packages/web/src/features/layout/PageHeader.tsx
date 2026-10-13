@@ -41,6 +41,10 @@ export const HeaderRight = styled.div`
     flex-shrink: 0;
 `
 
+/** 页面头部行高。左右两栏要共用同一个值——聊天页头与检查器页签条并排，
+ *  高度不一致时分隔线上下错位（2026-10-13 实见） */
+export const PAGE_HEADER_HEIGHT = 48
+
 const StyledHeader = styled(Layout.Header, {
     shouldForwardProp: shouldNotForwardDollarProps,
 })<{ $bg: string }>`
@@ -53,7 +57,7 @@ const StyledHeader = styled(Layout.Header, {
         padding-top: max(0px, env(safe-area-inset-top));
     }
     height: auto;
-    min-height: 48px;
+    min-height: ${PAGE_HEADER_HEIGHT}px;
     line-height: normal;
     background: ${p => p.$bg};
     margin-bottom: 2px;

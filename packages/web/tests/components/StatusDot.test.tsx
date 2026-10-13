@@ -15,6 +15,8 @@
  */
 
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { render } from '@testing-library/react'
 import { StatusStateIcon, StatusToolIcon, statusIconStyle } from '@/ui/base/display/toolIcons'
 import { STATUS_DOT_COLORS, toStatusDotState } from '@/core/utils/statusColor'
@@ -123,6 +125,20 @@ describe('statusIconStyle', () => {
     it('静态状态无动画（completed/error）', () => {
         expect(statusIconStyle('completed').animation).toBeUndefined()
         expect(statusIconStyle('error').animation).toBeUndefined()
+    })
+
+    it('running 呼吸与文字扫光同源（同一个 --pulse-period，否则拍频）', () => {
+        // 图标呼吸与相邻标题的扫光各写死时长（曾 1.1s vs 1.4s）会拍频：明暗节奏一会儿合
+        // 一会儿错。三个消费点——变量定义、扫光、呼吸——必须都读同一个变量
+        expect(statusIconStyle('running').animation).toContain('var(--pulse-period')
+
+        // 源码是文件路径读法：vitest 下 import.meta.url 是 http 的（vite 服务），只能按包根相对取
+        // （web 的测试脚本恒在 packages/web 下跑）
+        const variables = readFileSync(join(process.cwd(), 'src/styles/variables.css'), 'utf8')
+        const base = readFileSync(join(process.cwd(), 'src/styles/base.css'), 'utf8')
+        // 变量有定义：没有定义时 var() 各自回落到字面值，拍频会悄悄回来
+        expect(variables).toMatch(/--pulse-period:\s*\d/)
+        expect(base).toMatch(/\.shimmer-text \{[\s\S]*?shimmer-sweep var\(--pulse-period/)
     })
 })
 

@@ -16,7 +16,8 @@
 
 import { useState } from 'react'
 import { Think } from '@ant-design/x'
-import { Layers } from 'lucide-react'
+import { Button } from 'antd'
+import { ChevronUp, Layers } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { AgentReasoningBlock, ToolCallBlock } from '@/domain/chat'
 import type { ChatBlockContext } from './index'
@@ -60,6 +61,13 @@ function ToolCallGroupIcon({ hasError, hasActive }: { hasError: boolean; hasActi
   )
 }
 
+/**
+ * 展开的长组在末尾附一个「收起」——组内条目多到把组头挤出视野时，
+ * 想收起就得一路往回翻；超过此条数即补出口。
+ * 仅决定按钮何时出现，不改变折叠语义（数值可按手感调）。
+ */
+export const COLLAPSE_FOOTER_MIN_ITEMS = 10
+
 export function ToolCallGroupRenderer({
   blocks,
   isActiveReasoning,
@@ -96,13 +104,13 @@ export function ToolCallGroupRenderer({
     >
       <div style={{ paddingLeft: 12, paddingRight: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {blocks.map(block => block.kind === 'agent-reasoning' ? (
-          // 组内 reasoning：永远默认收起（inGroup），进行中由标题「思考中...」+ blink 表达活跃
+          // 组内 reasoning：与其他位置一致——默认收起，展开权只归用户；
+          // 进行中由组头「思考中...」表达活跃
           <ReasoningBlock
             key={block.id}
             text={block.text}
             thinking={isActiveReasoning?.(block) ?? false}
             durationMs={block.durationMs}
-            inGroup
           />
         ) : (
           <ToolCallRenderer
@@ -111,6 +119,18 @@ export function ToolCallGroupRenderer({
             {...ctx}
           />
         ))}
+        {blocks.length > COLLAPSE_FOOTER_MIN_ITEMS && (
+          <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 4 }}>
+            <Button
+              type="text"
+              size="small"
+              icon={<ChevronUp size={14} />}
+              onClick={() => setExpanded(false)}
+            >
+              {t('chat.group.collapse')}
+            </Button>
+          </div>
+        )}
       </div>
     </Think>
   )

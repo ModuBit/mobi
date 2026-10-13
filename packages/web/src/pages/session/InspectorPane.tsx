@@ -26,6 +26,7 @@ import { DropdownMenu, type DropdownItem } from '@/ui/shadcn/dropdown-menu/dropd
 import FileTreeView from '@/features/files/FileTreeView'
 import FileContentView from '@/features/files/FileContentView'
 import { GitReviewView } from '@/features/review/GitReviewView'
+import { PAGE_HEADER_HEIGHT } from '@/features/layout/PageHeader'
 import { parseTargetKey } from '@/core/lib/targetKey'
 
 import { getEditorApi } from '@/features/files/editorRegistry'
@@ -57,8 +58,15 @@ const PanelSlot = styled(TabStripPanel)`
 /** 页签条 + 面板的纵向容器（撑满检查器） */
 const STRIP_STYLE: CSSProperties = { display: 'flex', flexDirection: 'column', height: '100%' }
 
-/** 页签条整条的留白：安全区上边距 + 左右 12px（原 antd tabBarStyle，数值不变） */
-const STRIP_ROW_STYLE: CSSProperties = { padding: 'max(0px, env(safe-area-inset-top)) 12px 0' }
+/** 页签条整条的留白：安全区上边距 + 左右 12px（原 antd tabBarStyle，数值不变）。
+ *  行高与聊天页头（PageHeader）同源——两栏并排，高度不一致时分隔线与按钮中线上下错位；
+ *  宽度撑满：页签可用宽度 = 行宽 − 右侧 chrome，chrome 由 TabStrip 推到行右端。
+ *  页签与 chrome 的垂直居中由 TabStrip 行的 align-items 负责。 */
+const STRIP_ROW_STYLE: CSSProperties = {
+    padding: 'max(0px, env(safe-area-inset-top)) 12px 0',
+    minHeight: PAGE_HEADER_HEIGHT,
+    width: '100%',
+}
 
 export interface InspectorPaneProps {
     sessionId: string
@@ -320,7 +328,18 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
                 zIndex 高于毛玻璃，保证离线时最大化/收起按钮可点；离线且有 tab 时「+」一并在此，
                 不进页签条——所以 extra 传 null，避免两处重叠 */}
             {(showEmpty || !active) && (
-                <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 11 }}>
+                /* 浮动 chrome 的盒子与页签条同形（安全区上边距 + 同高 + 垂直居中），
+                   离线时它正好压在页签行的右端、空态时落在页头的同一水平带上 */
+                <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    right: 8,
+                    zIndex: 11,
+                    paddingTop: 'max(0px, env(safe-area-inset-top))',
+                    minHeight: PAGE_HEADER_HEIGHT,
+                    display: 'flex',
+                    alignItems: 'center',
+                }}>
                     {chrome(hasTabs ? addTabMenu : undefined)}
                 </div>
             )}

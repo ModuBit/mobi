@@ -475,7 +475,15 @@ export function TabStripList({ ariaLabel, extra, children, style }: TabStripList
                     </Viewport>
                 </Shell>
             </TabStripListContext.Provider>
-            {extra}
+            {/* extra 恒占行的右端，且**不参与压缩**（flex:none）——行有余量时自动外边距把它推到最右，
+                余量不足时由 Shell（flex:0 1 auto + min-width:0）先缩、内部横向滚动。
+                于是页签可用宽度的上界 = 行宽 − extra 宽，extra 永远不会被页签挤走或压变形
+                （行宽等于内容宽时 marginLeft:auto 无效，extra 仍紧跟 Shell，语义不变） */}
+            {extra && (
+                <div style={{ marginLeft: 'auto', flex: 'none', display: 'flex', alignItems: 'center' }}>
+                    {extra}
+                </div>
+            )}
         </Row>
     )
 }
