@@ -10,9 +10,10 @@
          resizes-visual（只缩 visual viewport + 滚动 window 抬起输入框）。默认行为会把 100dvh 的
          MainLayout 整体顶出屏外（header 消失）；resizes-content 下 dvh 跟随收缩，flex 布局原地
          重排——header 保持可见、输入框贴键盘上沿。iOS Safari 忽略此关键字，无副作用 -->
-    <!-- 浏览器 chrome（标签栏/地址栏）着色：静态默认浅色 #ffffff / 深色 #141414，运行时由 MainLayout 按 uiStore.theme 动态覆盖 -->
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#141414" media="(prefers-color-scheme: dark)" />
+    <!-- 浏览器 chrome（标签栏/地址栏）着色：静态兜底浅色 #f9f9fb / 深色 #131316（= shared 的 CHROME_BG，
+         由 palette-consistency 守卫锁死），运行时由 MainLayout 按 uiStore.theme 动态覆盖 -->
+    <meta name="theme-color" content="#f9f9fb" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#131316" media="(prefers-color-scheme: dark)" />
     <!-- 早读 mobi-ui theme，React 加载前同步设 theme-color，消除刷新时"先黑后浅"闪烁。
          mobi 主题独立于系统主题（system 才跟随），media query 兜底仅用于 localStorage 无值的首次访问 -->
     <script>
@@ -23,7 +24,7 @@
                 var resolved = theme === 'system'
                     ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
                     : theme
-                var color = resolved === 'dark' ? '#141414' : '#ffffff'
+                var color = resolved === 'dark' ? '#131316' : '#f9f9fb'
                 document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
                     m.setAttribute('content', color)
                 })

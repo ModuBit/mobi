@@ -199,6 +199,7 @@ Mobi 是 Claude Code 的远程驾驶舱。它的视觉是**净白纸 + 净墨**�
 - **Bash glow {colors.bash-glow}** 是唯一允许「发光」的暖橙，仅用于 Sender 进入 Bash 模式时的发光边框——它是运行态信号，不是装饰。
 - **Hairline {colors.hairline}** 是描边：卡片与分隔线 `hairline`，实控件边界 `hairline-strong`，focus 边框 `hairline-active`。分隔靠留白与 1px 淡线，**永远不用粗实线**。
 - **固定深色舞台**（反色气泡 / 登录页终端面板）：它们是「浅色主题里的深色块」，取净墨档且不随主题切换，经 `--mobi-stage-*` 变量取色。
+- **窗口 chrome 色**（浏览器标签栏/系统栏、桌面 WCO 标题栏、首屏兜底）必须等于页面最外层表面：light 取容器 {colors.paper}、dark 取画布 {colors.canvas}。这一个色 daemon 拼 PWA manifest 也要用，而 daemon 够不着本包，故值落在 `@mobi/shared` 的 `CHROME_BG`（守卫比对它与本表的等式，改配色漏改会红）。
 
 ### Dark 模式
 

@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { Logo } from '@/ui/base/brand/Logo'
 import { MobiWordmark } from '@/ui/base/brand/MobiWordmark'
 import { UpdateIconButton } from './UpdatePrompt'
-import { NEUTRAL_DARK, NEUTRAL_LIGHT } from '@/core/config/theme/tokens'
+import { CHROME_BG } from '@mobi/shared'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { useUpdateAvailable } from '@/core/pwa/useUpdateAvailable'
 
@@ -32,16 +32,14 @@ const { useToken } = antTheme
 const MAC_TRAFFIC_PAD = '78px'
 
 /**
- * 浏览器 chrome（标签栏/地址栏）与 WcoTitleBar 统一使用的背景色。
- * 与 base.css 的 html 背景同源（净白档的容器色 / 净墨档的画布色）——这里必须取具体色值
- * （浏览器 chrome 不吃 CSS 变量），故直接引 tokens.ts 的常量，避免又抄一份。
+ * 解析当前主题对应的 chrome 背景色（标签栏/地址栏 / WcoTitleBar 背景 / index.html 首屏兜底同用）。
+ *
+ * 取具体色值——浏览器 chrome 不吃 CSS 变量。值来自 @mobi/shared 的 CHROME_BG：
+ * daemon 拼 PWA manifest 也要这个色，而它够不着 web 的调色板，故这一事实落在两包都能引的
+ * shared（与 tokens.ts 的容器档/画布档逐对相等的等式由 palette-consistency 守卫锁定）。
  */
-const CHROME_BG_LIGHT = NEUTRAL_LIGHT.container
-const CHROME_BG_DARK = NEUTRAL_DARK.canvas
-
-/** 解析当前主题对应的 chrome 背景色。MainLayout 设 theme-color 与 WcoTitleBar 背景共用，保证同源 */
 export function resolveChromeColor(theme: 'light' | 'dark'): string {
-    return theme === 'dark' ? CHROME_BG_DARK : CHROME_BG_LIGHT
+    return CHROME_BG[theme]
 }
 
 /** 标题栏两侧：mac 三色在左，win 按钮在右 */

@@ -26,6 +26,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve, relative } from 'node:path'
+import { CHROME_BG } from '@mobi/shared'
 import { NEUTRAL_LIGHT, NEUTRAL_DARK, SEMANTIC_LIGHT, SEMANTIC_DARK, type NeutralKey } from '@/core/config/theme/tokens'
 import { buildShadcnThemeCss } from '@/core/config/theme/cssVars'
 import { collectSourceFiles, readDesignBlock, WEB_ROOT } from '../../../helpers/themeGuards'
@@ -147,6 +148,28 @@ describe('配色与 DESIGN.md 一致性（文档与代码同源守卫）', () =>
         for (const key of ['success', 'warning', 'danger'] as const) {
             expect(lch(SEMANTIC_DARK[key])[0], `${key} 未在 dark 档提亮`).toBeGreaterThan(lch(SEMANTIC_LIGHT[key])[0])
         }
+    })
+
+    it('窗口 chrome 色 = light 容器 / dark 画布（shared 的 CHROME_BG，跨包共引的那一份）', () => {
+        // chrome（系统栏/标签栏/WCO 标题栏）必须与页面最外层表面同色，否则两者之间裂一道边。
+        // daemon 拼 manifest 也要这个色却够不着本包，故值落在 @mobi/shared——等式在这里锁死。
+        expect(CHROME_BG.light).toBe(NEUTRAL_LIGHT.container)
+        expect(CHROME_BG.dark).toBe(NEUTRAL_DARK.canvas)
+    })
+
+    it('index.html 的 theme-color 兜底值与 chrome 色一致（React 加载前的首屏着色）', () => {
+        const html = readFileSync(resolve(WEB_ROOT, 'index.html'), 'utf-8')
+        for (const [mode, expected] of [
+            ['light', CHROME_BG.light],
+            ['dark', CHROME_BG.dark],
+        ] as const) {
+            const meta = html.match(new RegExp(`content="(#[0-9a-f]{6})" media="\\(prefers-color-scheme: ${mode}\\)"`))
+            expect(meta?.[1], `index.html ${mode} 档 theme-color`).toBe(expected)
+        }
+        // 首屏内联脚本里的字面量（React 加载前改 meta 的那段）同一事实
+        const script = html.match(/var color = resolved === 'dark' \? '(#[0-9a-f]{6})' : '(#[0-9a-f]{6})'/)
+        expect(script?.[1], 'index.html 首屏脚本 dark 色').toBe(CHROME_BG.dark)
+        expect(script?.[2], 'index.html 首屏脚本 light 色').toBe(CHROME_BG.light)
     })
 
     it.each(['light', 'dark'] as const)('%s 档每个中性档都投成 --mobi-<档名> CSS 变量', (mode) => {

@@ -15,6 +15,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
+import { CHROME_BG } from '@mobi/shared'
 import { setupTestApp } from '../helpers/setupTestApp'
 
 describe('Manifest API', () => {
@@ -63,5 +64,14 @@ describe('Manifest API', () => {
         expect((override as unknown[]).includes('window-controls-overlay')).toBe(true)
         // 回退项 standalone 必须存在，保证 WCO 不可用时降级
         expect((override as unknown[]).includes('standalone')).toBe(true)
+    })
+
+    test('GET /manifest.webmanifest 的 theme_color / background_color 取 shared 的 chrome 底色', async () => {
+        const res = await app.request('/manifest.webmanifest')
+        const body = await res.json() as Record<string, unknown>
+        // chrome 色必须与页面最外层表面同源（web 调色板的 light 容器档），共引 @mobi/shared
+        // 的 CHROME_BG——daemon 够不着 web，此处再写回字面量就会漂（2026-10-13 曾漂成 #fafafc）
+        expect(body.theme_color).toBe(CHROME_BG.light)
+        expect(body.background_color).toBe(CHROME_BG.light)
     })
 })

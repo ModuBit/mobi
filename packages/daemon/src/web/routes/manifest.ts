@@ -16,6 +16,7 @@
 
 import { Hono } from 'hono'
 import { createHash } from 'node:crypto'
+import { CHROME_BG } from '@mobi/shared'
 import { configuration } from '../../configuration'
 
 /** 截短名称，保留最多 6 个字符 */
@@ -41,10 +42,10 @@ export function createManifestRoutes(): Hono {
             // WCO：桌面端 PWA 把系统标题栏区域交还 Web 内容（按钮浮在内容上）。
             // 浏览器逐项尝试，window-controls-overlay 不可用时回退 standalone（现状）。
             display_override: ['window-controls-overlay', 'standalone'],
-            // 与 web 端 chrome 底色同源（web 的 tokens.ts → WcoTitleBar.resolveChromeColor）：
-            // daemon 不能反向依赖 web 包，故此处保持字面量——改净白档容器色时两处一起改
-            theme_color: '#fafafc',
-            background_color: '#fafafc',
+            // 与 web 端 chrome 底色同源：共引 @mobi/shared 的 CHROME_BG（daemon 不依赖 web），
+            // 取 light 档——manifest 是静态一份，装入态的启动画面/系统栏按默认主题着色
+            theme_color: CHROME_BG.light,
+            background_color: CHROME_BG.light,
             icons: [
                 {
                     src: '/brand/logo.svg',
