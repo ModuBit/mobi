@@ -98,6 +98,20 @@ describe('shared logger', () => {
         expect(findLatestLog(TEST_DIR, 'daemon')).toBeNull()
     })
 
+    it('findLatestLog：mtime 全等时按文件名时间戳破平（粗粒度时钟下不再随机）', () => {
+        const legacyHub = join(TEST_DIR, '2026-07-23-01-00-00-pid-99999981-hub.log')
+        const daemon = join(TEST_DIR, '2026-07-23-03-00-00-pid-99999983-daemon.log')
+        writeFileSync(legacyHub, 'hub')
+        writeFileSync(daemon, 'daemon')
+        // 模拟粗粒度文件系统时钟（Linux jiffies）：同 tick 创建 → mtime 全等，
+        // 旧实现只比 mtime，结果退化为 readdirSync 顺序（CI 实踩，见 isNewerLog 注释）
+        const sameTick = new Date('2026-07-23T05:00:00Z')
+        utimesSync(legacyHub, sameTick, sameTick)
+        utimesSync(daemon, sameTick, sameTick)
+
+        expect(findLatestLog(TEST_DIR, 'daemon')!.endsWith('pid-99999983-daemon.log')).toBe(true)
+    })
+
     it('cleanupOldLogs 删超龄文件，保留 exits.log 与新文件', () => {
         const old = join(TEST_DIR, '2020-01-01-00-00-00-pid-99999981-runner.log')
         const fresh = join(TEST_DIR, '2026-07-23-00-00-00-pid-99999982-runner.log')

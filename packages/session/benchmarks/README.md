@@ -32,6 +32,7 @@ callgrind_annotate /tmp/cg.out | head -30   # Ir 总数 + 热点函数
 
 - **`bench-ratchet`**（ci.yml job）：每次 PR 测 Ir，超过 `ir-baseline.txt` 的 2% 即失败（回潮绊网）；同时打印墙钟数字积累相关性证据。**起步时容差 2% 是临时的**——Ir↔墙钟相关性验证完成后收紧。
 - **`bench-baseline`** 工作流：手动触发 + 每周一调度。Ir 改进时自动下调基线并提交（棘轮的「只降不升」半边）；基线缺失时首次创建。
+  - 该工作流只在**默认分支**注册（GitHub 规则：workflow 文件不在默认分支上就不会被 Actions 注册，`gh workflow run` 报 404）。仓库默认分支若落后于开发分支，就用 bench-ratchet 失败信息里打印的 `当前 Ir=` 手工建立基线——两份代码共用 `.github/actions/ir-measure`，环境与脚本同源，读数可比。
 - Ir 对 node 版本敏感：两个工作流均精确 pin `node@22.11.0`，升级 node 必须同步 pin 并重录基线（删除基线文件 → 跑 bench-baseline 重建）。
 
 ## 相关性验证流程（挂 CI 棘轮的前置条件）
@@ -46,4 +47,5 @@ callgrind_annotate /tmp/cg.out | head -30   # Ir 总数 + 热点函数
 | 日期 | 提交 | 墙钟（3000 迭代 ×3 中位，M 系列 Mac） | Ir（Linux CI） |
 |---|---|---|---|
 | 2026-09-24 | 建基准时的实现 | ~322ms（±1%） | 未测（需 Linux/valgrind） |
+| 2026-10-13 | `3249ecbe` | 未测 | **439576525**（bench-ratchet 的实测读数，据此建立 `ir-baseline.txt`） |
 

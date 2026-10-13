@@ -47,9 +47,9 @@ export const MARKDOWN_STREAMING_CONFIG: StreamingOption = {
     hasNextChunk: true,
     enableAnimation: true,
     animationConfig: { fadeDuration: 100 },
-    // 块级 memo（机器本地 patch：antx 源码 father 构建覆盖 bun store，bun install
-    // 会还原。升级 x-markdown 时的检查/撤除/重做见 upgrade-deps skill 的
-    // references/x-markdown-patch.md；上游发版含 incremental 后删此行即撤）
+    // 块级 memo（上游 main 已实现、npm 未发版；mobi 以 patches/@ant-design%2Fx-markdown
+    // 打入口袋，bun install 与 CI 同源应用。升级 x-markdown 的检查/撤除/重做见
+    // upgrade-deps skill 的 references/x-markdown-patch.md；上游发版含 incremental 后删此行）
     incremental: true,
 }
 

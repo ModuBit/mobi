@@ -265,16 +265,49 @@ function pidFromLogFileName(file: string): number | null {
     return m ? Number(m[1]) : null
 }
 
-/** 查找指定 processType 的最新日志文件（按 mtime 降序），无则 null。
+/** 从日志文件名解析启动时刻（{ts}-pid-{pid}-{type}.log 的 YYYY-MM-DD-HH-MM-SS 前缀，本地时区，
+ *  与 createTimestampForFilename 同源）；无时间戳段返回 null */
+function startedAtFromLogFileName(file: string): number | null {
+    const m = /^(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})-/.exec(file)
+    if (!m) return null
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6])).getTime()
+}
+
+interface LogCandidate {
+    path: string
+    mtime: number
+    /** 文件名时间戳（启动时刻）；文件名无时间戳段时为 null */
+    startedAt: number | null
+}
+
+/**
+ * 判断 a 是否比 b 更新：mtime 为主，相等时用文件名时间戳破平。
+ *
+ * 为什么必须破平：mtime 取自文件系统时钟，粗粒度实现（Linux jiffies，~1-4ms）会把同一 tick
+ * 内创建的文件写成同一时间戳，比较于是退化为 readdirSync 的目录顺序、结果不确定
+ * （2026-10-13 CI 实踩：daemon 桶四个日志 mtime 全等，取到 -hub 而非最新的 -daemon）。
+ * 同 tick 并列是唯一的失效形态——粗粒度时钟只会取整、不会让顺序倒挂——所以 mtime 为主、
+ * 文件名时间戳（日志自身的启动身份，秒级）为次，即可完全确定。
+ */
+function isNewerLog(a: LogCandidate, b: LogCandidate): boolean {
+    if (a.mtime !== b.mtime) return a.mtime > b.mtime
+    return (a.startedAt ?? -Infinity) > (b.startedAt ?? -Infinity)
+}
+
+/** 查找指定 processType 的最新日志文件（mtime 降序，同 mtime 按文件名时间戳破平），无则 null。
  *  历史文件名（-hub.log / -runner.log）归入 daemon 桶参与比较 */
 export function findLatestLog(logsDir: string, processType: LogProcessType): string | null {
     if (!existsSync(logsDir)) return null
-    let best: { path: string; mtime: number } | null = null
+    let best: LogCandidate | null = null
     for (const file of readdirSync(logsDir)) {
         if (logFileType(file) !== processType) continue
         const fullPath = join(logsDir, file)
-        const mtime = statSync(fullPath).mtimeMs
-        if (!best || mtime > best.mtime) best = { path: fullPath, mtime }
+        const candidate: LogCandidate = {
+            path: fullPath,
+            mtime: statSync(fullPath).mtimeMs,
+            startedAt: startedAtFromLogFileName(file),
+        }
+        if (!best || isNewerLog(candidate, best)) best = candidate
     }
     return best?.path ?? null
 }
