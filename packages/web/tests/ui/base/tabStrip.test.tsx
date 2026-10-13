@@ -1,0 +1,304 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * TabStrip 行为契约（自建件，无上游）：
+ * - 受控 + 键盘（Arrow/Home/End，自动激活）+ a11y 串联（tab ↔ tabpanel）
+ * - 关闭语义：关闭非活动 tab 不改选中；关闭活动 tab 焦点落到顶上的那一项
+ * - 面板挂载：默认切走即卸载；keepMounted 首次激活后常驻且非活动 display:none
+ * - extra 槽在 tablist 外侧（不在任何 role="tab" 内）——dropdown 触发器落 tab 内会当场关菜单
+ */
+
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { useState } from 'react'
+import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import '@testing-library/jest-dom/vitest'
+import { TabStrip, TabStripList, TabStripTab, TabStripPanel } from '@/ui/base/interactive/tabStrip'
+
+// vitest 未开 globals：渲染型测试必须显式 cleanup，否则 DOM 累积致 getBy* 多元素报错
+afterEach(cleanup)
+
+// tab 的可访问名称含标签文字，带关闭按钮时后者的 aria-label 也会算进去——只锚定开头
+const tab = (label: string) => screen.getByRole('tab', { name: new RegExp(`^${label}`) })
+
+describe('TabStrip 受控与键盘', () => {
+    it('受控：点击只上报 onValueChange，选中态不自己改（无内部状态）', () => {
+        const onChange = vi.fn()
+        render(
+            <TabStrip value="a" onValueChange={onChange}>
+                <TabStripList ariaLabel="面板页签">
+                    <TabStripTab value="a">A</TabStripTab>
+                    <TabStripTab value="b">B</TabStripTab>
+                </TabStripList>
+            </TabStrip>,
+        )
+
+        fireEvent.click(tab('B'))
+        expect(onChange).toHaveBeenCalledWith('b')
+        expect(tab('A')).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it('消费方回填 value 后选中态随之翻转', () => {
+        function Harness() {
+            const [value, setValue] = useState('a')
+            return (
+                <TabStrip value={value} onValueChange={setValue}>
+                    <TabStripList ariaLabel="面板页签">
+                        <TabStripTab value="a">A</TabStripTab>
+                        <TabStripTab value="b">B</TabStripTab>
+                    </TabStripList>
+                </TabStrip>
+            )
+        }
+        render(<Harness />)
+
+        fireEvent.click(tab('B'))
+        expect(tab('B')).toHaveAttribute('aria-selected', 'true')
+        expect(tab('A')).toHaveAttribute('aria-selected', 'false')
+    })
+
+    it('ArrowRight 移动焦点与选中（自动激活）；端点不循环', () => {
+        function Harness() {
+            const [value, setValue] = useState('a')
+            return (
+                <TabStrip value={value} onValueChange={setValue}>
+                    <TabStripList ariaLabel="面板页签">
+                        <TabStripTab value="a">A</TabStripTab>
+                        <TabStripTab value="b">B</TabStripTab>
+                        <TabStripTab value="c">C</TabStripTab>
+                    </TabStripList>
+                </TabStrip>
+            )
+        }
+        render(<Harness />)
+
+        tab('A').focus()
+        fireEvent.keyDown(tab('A'), { key: 'ArrowRight' })
+        expect(document.activeElement).toBe(tab('B'))
+        expect(tab('B')).toHaveAttribute('aria-selected', 'true')
+
+        fireEvent.keyDown(tab('B'), { key: 'ArrowRight' })
+        fireEvent.keyDown(tab('C'), { key: 'ArrowRight' })
+        expect(document.activeElement).toBe(tab('C'))
+
+        fireEvent.keyDown(tab('C'), { key: 'Home' })
+        expect(document.activeElement).toBe(tab('A'))
+    })
+
+    it('disabled 的 tab 被方向键跳过', () => {
+        function Harness() {
+            const [value, setValue] = useState('a')
+            return (
+                <TabStrip value={value} onValueChange={setValue}>
+                    <TabStripList ariaLabel="面板页签">
+                        <TabStripTab value="a">A</TabStripTab>
+                        <TabStripTab value="b" disabled>B</TabStripTab>
+                        <TabStripTab value="c">C</TabStripTab>
+                    </TabStripList>
+                </TabStrip>
+            )
+        }
+        render(<Harness />)
+
+        tab('A').focus()
+        fireEvent.keyDown(tab('A'), { key: 'ArrowRight' })
+        expect(document.activeElement).toBe(tab('C'))
+        expect(tab('B')).toHaveAttribute('aria-disabled', 'true')
+    })
+
+    it('tab 与面板通过 aria-controls / aria-labelledby 串联', () => {
+        render(
+            <TabStrip value="a" onValueChange={() => {}}>
+                <TabStripList ariaLabel="面板页签">
+                    <TabStripTab value="a">A</TabStripTab>
+                </TabStripList>
+                <TabStripPanel value="a">内容 A</TabStripPanel>
+            </TabStrip>,
+        )
+
+        const t = tab('A')
+        const panel = screen.getByRole('tabpanel')
+        expect(panel.id).toBeTruthy()
+        expect(t).toHaveAttribute('aria-controls', panel.id)
+        expect(panel).toHaveAttribute('aria-labelledby', t.id)
+    })
+})
+
+describe('TabStrip 关闭语义', () => {
+    it('关闭非活动 tab：不改选中（click 不冒泡到 tab）', () => {
+        const onChange = vi.fn()
+        const onClose = vi.fn()
+        render(
+            <TabStrip value="a" onValueChange={onChange}>
+                <TabStripList ariaLabel="面板页签">
+                    <TabStripTab value="a">A</TabStripTab>
+                    <TabStripTab value="b" onClose={onClose} closeLabel="关闭 B">B</TabStripTab>
+                </TabStripList>
+            </TabStrip>,
+        )
+
+        fireEvent.click(screen.getByLabelText('关闭 B'))
+        expect(onClose).toHaveBeenCalledTimes(1)
+        expect(onChange).not.toHaveBeenCalled()
+    })
+
+    it('关闭活动 tab：消费方换选中后，焦点落到顶上的那一项', () => {
+        function Harness() {
+            const [value, setValue] = useState('a')
+            const [values, setValues] = useState(['a', 'b', 'c'])
+            return (
+                <TabStrip value={value} onValueChange={setValue}>
+                    <TabStripList ariaLabel="面板页签">
+                        {values.map((v) => (
+                            <TabStripTab
+                                key={v}
+                                value={v}
+                                closeLabel={`关闭 ${v.toUpperCase()}`}
+                                onClose={() => {
+                                    setValues((prev) => prev.filter((x) => x !== v))
+                                    if (value === v) {
+                                        const i = values.indexOf(v)
+                                        setValue(values[i + 1] ?? values[i - 1])
+                                    }
+                                }}
+                            >
+                                {v.toUpperCase()}
+                            </TabStripTab>
+                        ))}
+                    </TabStripList>
+                </TabStrip>
+            )
+        }
+        render(<Harness />)
+
+        fireEvent.click(screen.getByLabelText('关闭 A'))
+        expect(document.activeElement).toBe(tab('B'))
+    })
+
+    it('消费方未改选中（value 指向已关的 tab）时，焦点按落点规则兜底', () => {
+        function Harness() {
+            const [values, setValues] = useState(['a', 'b', 'c'])
+            return (
+                <TabStrip value="a" onValueChange={() => {}}>
+                    <TabStripList ariaLabel="面板页签">
+                        {values.map((v) => (
+                            <TabStripTab
+                                key={v}
+                                value={v}
+                                closeLabel={`关闭 ${v.toUpperCase()}`}
+                                onClose={() => setValues((prev) => prev.filter((x) => x !== v))}
+                            >
+                                {v.toUpperCase()}
+                            </TabStripTab>
+                        ))}
+                    </TabStripList>
+                </TabStrip>
+            )
+        }
+        render(<Harness />)
+
+        fireEvent.click(screen.getByLabelText('关闭 A'))
+        expect(document.activeElement).toBe(tab('B'))
+    })
+})
+
+describe('TabStrip 面板挂载', () => {
+    const renderPanels = (keepMounted?: boolean) => {
+        function Harness() {
+            const [value, setValue] = useState('a')
+            return (
+                <TabStrip value={value} onValueChange={setValue}>
+                    <TabStripList ariaLabel="面板页签">
+                        <TabStripTab value="a">A</TabStripTab>
+                        <TabStripTab value="b">B</TabStripTab>
+                    </TabStripList>
+                    <TabStripPanel value="a" keepMounted={keepMounted}>
+                        <div data-testid="panel-a">A 内容</div>
+                    </TabStripPanel>
+                    <TabStripPanel value="b" keepMounted={keepMounted}>
+                        <div data-testid="panel-b">B 内容</div>
+                    </TabStripPanel>
+                </TabStrip>
+            )
+        }
+        return render(<Harness />)
+    }
+
+    it('默认：未激活的面板不在 DOM 里', () => {
+        renderPanels()
+        expect(screen.queryByTestId('panel-b')).toBeNull()
+    })
+
+    it('keepMounted：切走不卸载（同一 DOM 节点），且被 display:none 隐藏', () => {
+        renderPanels(true)
+        const node = screen.getByTestId('panel-a')
+        expect(node.parentElement).not.toHaveStyle({ display: 'none' })
+
+        fireEvent.click(tab('B'))
+        expect(screen.getByTestId('panel-a')).toBe(node)
+        expect(node.parentElement).toHaveStyle({ display: 'none' })
+        expect(screen.getByTestId('panel-b').parentElement).not.toHaveStyle({ display: 'none' })
+
+        fireEvent.click(tab('A'))
+        expect(screen.getByTestId('panel-a')).toBe(node)
+    })
+})
+
+describe('TabStrip 结构契约', () => {
+    it('extra 在 tablist 之外，不是任何 role="tab" 的后代', () => {
+        render(
+            <TabStrip value="a" onValueChange={() => {}}>
+                <TabStripList ariaLabel="面板页签" extra={<button type="button">新建</button>}>
+                    <TabStripTab value="a">A</TabStripTab>
+                </TabStripList>
+            </TabStrip>,
+        )
+
+        const list = screen.getByRole('tablist')
+        const extra = screen.getByRole('button', { name: '新建' })
+        expect(list.contains(extra)).toBe(false)
+        expect(list.parentElement?.contains(extra)).toBe(true)
+        expect(tab('A').contains(extra)).toBe(false)
+    })
+
+    it('prefers-reduced-motion 下渲染不抛错', () => {
+        const original = window.matchMedia
+        window.matchMedia = ((query: string) => ({
+            matches: query.includes('prefers-reduced-motion'),
+            media: query,
+            onchange: null,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            addListener: () => {},
+            removeListener: () => {},
+            dispatchEvent: () => false,
+        })) as unknown as typeof window.matchMedia
+
+        try {
+            render(
+                <TabStrip value="a" onValueChange={() => {}}>
+                    <TabStripList ariaLabel="面板页签">
+                        <TabStripTab value="a">A</TabStripTab>
+                    </TabStripList>
+                    <TabStripPanel value="a">内容</TabStripPanel>
+                </TabStrip>,
+            )
+            expect(screen.getByRole('tabpanel')).toBeInTheDocument()
+        } finally {
+            window.matchMedia = original
+        }
+    })
+})

@@ -70,7 +70,7 @@ vi.mock('@/features/files/editorRegistry', () => ({
     unregisterEditor: vi.fn(),
 }))
 
-// jsdom 没有 ResizeObserver（antd Tabs 依赖）
+// jsdom 没有 ResizeObserver（dropdown-menu 的 TriggerLabel 依赖）
 beforeAll(() => {
     vi.stubGlobal('ResizeObserver', class {
         observe() {}
@@ -145,8 +145,8 @@ describe('InspectorPane', () => {
         const terminalId = useWorkspaceStore
             .getState()
             .getSession('s1').tabs.find((t) => t.mode === 'terminal')!.terminalId
-        // 点 terminal tab 的关闭按钮（editable-card 的 remove）触发 onEdit
-        fireEvent.click(document.querySelector('.ant-tabs-tab-remove') as HTMLElement)
+        // 点 terminal tab 的关闭 ×（TabStripTab 的 onClose）触发清理
+        fireEvent.click(document.querySelector('[data-tab-close]') as HTMLElement)
         // 清理该 terminalId 的缓存实例 → dispose 发 terminal:close 杀 PTY + 断 socket
         expect(clearCachedInstance).toHaveBeenCalledWith(`terminal:s1:${terminalId}`)
         // store 里 tab 已移除
@@ -169,36 +169,69 @@ describe('InspectorPane', () => {
         expect(screen.getByRole('button', { name: 'session.inspector.addTab' })).toBeInTheDocument()
     })
 
-    it('「+」与右侧 chrome 同处一个行容器（extra-content 是 block，多子节点会各自成块被挤成两行）', () => {
+    it('「+」与右侧 chrome 同处页签条行内，且在 tablist 之外', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         useWorkspaceStore.getState().openFileTreeTab('s1')
-        const { container } = renderWithClient(<InspectorPane sessionId="s1" />)
-        const extra = container.querySelector('.ant-tabs-extra-content')
-        expect(extra).toBeTruthy()
-        // antd 把 tabBarExtraContent.right 直接塞进 display:block 的 .ant-tabs-extra-content；
-        // 传 Fragment 展开成多个块级子节点时，容器宽度被算成「最宽的那个」，
-        // 「+」就会独占一行、chrome 掉到下一行。故右侧必须是单个 flex 行容器。
-        expect(extra!.children).toHaveLength(1)
+        renderWithClient(<InspectorPane sessionId="s1" />)
+        const list = screen.getByRole('tablist')
+        const addBtn = screen.getByRole('button', { name: 'session.inspector.addTab' })
+        // extra 槽是 tablist 的兄弟（同一 flex 行）：既与页签同排，又不会被 tab 的键盘/焦点链路牵动
+        expect(list.contains(addBtn)).toBe(false)
+        expect(list.parentElement?.contains(addBtn)).toBe(true)
     })
 
-    it('「+」是 tab 栏附属动作（不在 role=tab 内）：打开菜单后不被 tab 抢焦点而立即关闭', () => {
+    it('「+」是页签条附属动作（不在 role=tab 内）：打开菜单后不被 tab 抢焦点而立即关闭', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         useWorkspaceStore.getState().openFileTreeTab('s1')
         renderWithClient(<InspectorPane sessionId="s1" />)
         const addBtn = screen.getByRole('button', { name: 'session.inspector.addTab' })
-        // 落进 role=tab 就会复发：重开焦点时 portal 的 focusin 沿 React 树冒泡到 tab 的 onFocus，
-        // rc-tabs 据此 focus() 抢回焦点 → Radix 判 focus-outside → 菜单开完即关
+        // 落进 role=tab 就会复发：焦点在 tab 内重开时，portal 的 focusin 沿 React 树冒泡到 tab，
+        // 自建件的 tab 把它当自身焦点处理并 focus() 抢回 → Radix 判 focus-outside → 菜单开完即关
         expect(addBtn.closest('[role="tab"]')).toBeNull()
         fireEvent.pointerDown(addBtn, { button: 0 })
         expect(screen.getByText('session.inspector.terminal')).toBeInTheDocument()
+    })
+
+    it('关闭非活动 tab：选中不动（× 的点击不冒泡成一次切换）', () => {
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        useWorkspaceStore.getState().openTerminalTab('s1') // 终端激活
+        renderWithClient(<InspectorPane sessionId="s1" />)
+
+        const treeTab = useWorkspaceStore.getState().getSession('s1').tabs.find((t) => t.mode === 'tree')!
+        fireEvent.click(screen.getByRole('tab', { name: 'session.inspector.openFile' })) // 切回文件树
+
+        // 页签顺序 [tree, terminal]：第二个 × 是终端的（非活动）
+        fireEvent.click(screen.getAllByRole('button', { name: 'session.inspector.closeTab' })[1])
+
+        const s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs.some((t) => t.mode === 'terminal')).toBe(false)
+        expect(s.activeTabId).toBe(treeTab.id)
+    })
+
+    it('keepalive：切走再切回，终端面板是同一个 DOM 节点；切走时被 display:none 隐藏', async () => {
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        useWorkspaceStore.getState().openTerminalTab('s1')
+        renderWithClient(<InspectorPane sessionId="s1" />)
+
+        const tv = await screen.findByTestId('mock-terminal-view')
+        fireEvent.click(screen.getByRole('tab', { name: 'session.inspector.openFile' }))
+        // 切走不卸载（同一节点），只是藏起来
+        expect(screen.getByTestId('mock-terminal-view')).toBe(tv)
+        expect(tv.closest('[role="tabpanel"]')).toHaveStyle({ display: 'none' })
+
+        fireEvent.click(screen.getByRole('tab', { name: 'session.inspector.terminalName' }))
+        expect(screen.getByTestId('mock-terminal-view')).toBe(tv)
+        expect(tv.closest('[role="tabpanel"]')).not.toHaveStyle({ display: 'none' })
     })
 
     it('关闭最后一个 tab → 收起 inspector', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         useWorkspaceStore.getState().openFileTreeTab('s1')
         const { container } = renderWithClient(<InspectorPane sessionId="s1" />)
-        // antd Tabs closable 渲染 .ant-tabs-tab-remove
-        const remove = container.querySelector('.ant-tabs-tab-remove') as HTMLElement
+        // TabStripTab 给出 onClose 即渲染关闭 ×
+        const remove = container.querySelector('[data-tab-close]') as HTMLElement
         expect(remove).toBeTruthy()
         fireEvent.click(remove)
         const s = useWorkspaceStore.getState().getSession('s1')
@@ -263,7 +296,7 @@ describe('InspectorPane', () => {
 
         renderWithClient(<InspectorPane sessionId="s1" />)
         // 点 file tab 关闭 → 弹「未保存」确认框
-        fireEvent.click(document.querySelector('.ant-tabs-tab-remove') as HTMLElement)
+        fireEvent.click(document.querySelector('[data-tab-close]') as HTMLElement)
         // 点「保存并关闭」（i18n mock 返回 key 本身）
         const saveBtn = await screen.findByText('files.saveAndClose')
         await fireEvent.click(saveBtn)
@@ -282,7 +315,7 @@ describe('InspectorPane', () => {
         useWorkspaceStore.getState().openFileInTab('s1', treeTab.id, 'a.md', 'a.md')
 
         renderWithClient(<InspectorPane sessionId="s1" />)
-        fireEvent.click(document.querySelector('.ant-tabs-tab-remove') as HTMLElement)
+        fireEvent.click(document.querySelector('[data-tab-close]') as HTMLElement)
         const saveBtn = await screen.findByText('files.saveAndClose')
         await fireEvent.click(saveBtn)
         // 成功 → tab 关闭

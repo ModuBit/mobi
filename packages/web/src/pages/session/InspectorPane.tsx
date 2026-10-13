@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-import { Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from 'react'
-import { Layout, Tabs, Button, App, Spin } from 'antd'
+import { Suspense, lazy, useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { Layout, Button, App, Spin } from 'antd'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
+import { TabStrip, TabStripList, TabStripPanel, TabStripTab } from '@/ui/base/interactive/tabStrip'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { PanelRightClose, Folder, FileDiff, Maximize, Minimize, Plus } from 'lucide-react'
@@ -43,86 +44,21 @@ import {
 } from '@/core/data/stores/workspaceStore'
 
 /**
- * editable-card 提供关闭 × 机制，但其卡片外观（边框/背景）过重。
- * 这里覆盖样式：去边框、透明背景，hover/active 用填充色，呈现简洁的胶囊式 tab。
- * 用 && 提升 emotion 选择器优先级以压过 antd 的 .ant-tabs-card 规则。
+ * 面板槽：撑满页签条下的剩余高度且允许内部滚动。原 antd 版靠 `&& > .ant-tabs-body-holder
+ * … > .ant-tabs-tabpane` 四层类名链把 height:100% 逐层传下去；换成 flex 后同一件事由一个
+ * flex 项表达。minHeight:0 不能省——内容会把链路撑开，多页 PDF / xterm 需要 bounded height
+ * 才能在内部滚动，否则表现为「不能滚动 / 终端占不满」。
  */
-const StyledTabs = styled(Tabs)`
-    && > .ant-tabs-nav .ant-tabs-tab,
-    && > .ant-tabs-nav .ant-tabs-tab.ant-tabs-tab-active {
-        background: transparent;
-        border: 1px solid transparent;
-        border-radius: var(--radius-icon);
-        padding: 4px 10px;
-        margin: 2px 2px;
-    }
-    && > .ant-tabs-nav .ant-tabs-tab:hover {
-        background: var(--ant-color-fill-quaternary);
-    }
-    && > .ant-tabs-nav .ant-tabs-tab.ant-tabs-tab-active {
-        background: var(--ant-color-fill-tertiary);
-        border-color: transparent;
-    }
-    && > .ant-tabs-nav .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
-        font-weight: 500;
-    }
-    /* tab 内容垂直居中：让只有图标的「+」与「图标+文字」tab 对齐 */
-    && .ant-tabs-tab-btn {
-        display: inline-flex;
-        align-items: center;
-    }
-    /* 关闭按钮：默认隐藏，hover tab 时才显示（保留占位，避免 hover 时布局抖动） */
-    && .ant-tabs-tab-remove {
-        margin-inline-start: 2px;
-        padding: 2px;
-        border-radius: var(--radius-square);
-        opacity: 0;
-        transition: opacity 0.15s ease;
-    }
-    && > .ant-tabs-nav .ant-tabs-tab:hover .ant-tabs-tab-remove {
-        opacity: 1;
-    }
-    && .ant-tabs-tab-remove:hover {
-        background: var(--ant-color-fill);
-    }
-    /* 触屏设备（无 hover）：关闭按钮常驻显示 */
-    @media (hover: none) {
-        && .ant-tabs-tab-remove {
-            opacity: 1;
-        }
-    }
-    /* 隐藏 editable-card 默认的底部墨条（line 风格不需要） */
-    && > .ant-tabs-nav .ant-tabs-ink-bar {
-        background: transparent;
-    }
-    /* 去掉 nav 底部分割线（editable-card 默认有一条 border-bottom） */
-    && > .ant-tabs-nav::before {
-        border-bottom: none;
-    }
-    /* 高度链：让 tab 内容占满剩余空间。
-       多页 PDF / xterm 等需要 tabpane 有 bounded height 才能在内部滚动/自适应，
-       否则内容会把整条链撑开（tabpane → FileContentView / TerminalView 全部 height:auto），
-       表现为「不能滚动 / 终端占不满」。flex 滚动容器还需配合 minHeight:0（见各组件）。
-       注意 antd v5 类名链为 body-holder > body > content > tabpane（v4 的 content-holder 已废弃）。*/
-    && {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-    }
-    && > .ant-tabs-body-holder {
-        flex: 1;
-        min-height: 0;
-    }
-    && > .ant-tabs-body-holder > .ant-tabs-body {
-        height: 100%;
-    }
-    && > .ant-tabs-body-holder > .ant-tabs-body > .ant-tabs-content {
-        height: 100%;
-    }
-    && > .ant-tabs-body-holder > .ant-tabs-body > .ant-tabs-content > .ant-tabs-tabpane {
-        height: 100%;
-    }
+const PanelSlot = styled(TabStripPanel)`
+    flex: 1 1 auto;
+    min-height: 0;
 `
+
+/** 页签条 + 面板的纵向容器（撑满检查器） */
+const STRIP_STYLE: CSSProperties = { display: 'flex', flexDirection: 'column', height: '100%' }
+
+/** 页签条整条的留白：安全区上边距 + 左右 12px（原 antd tabBarStyle，数值不变） */
+const STRIP_ROW_STYLE: CSSProperties = { padding: 'max(0px, env(safe-area-inset-top)) 12px 0' }
 
 export interface InspectorPaneProps {
     sessionId: string
@@ -208,6 +144,14 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
             ),
         })
     }, [closeTab, sessionId, t, modal, message])
+    /** 关 tab 的唯一入口：终端先清缓存实例（dispose 发 terminal:close 杀 PTY + 断 socket），
+     *  再走通用的关闭流程。切换 tab 不走此处，PTY 保留（keepalive）。 */
+    const closeTabWithCleanup = useCallback((tab: InspectorTabEntry) => {
+        if (tab.mode === 'terminal' && tab.terminalId) {
+            clearCachedInstance(`terminal:${sessionId}:${tab.terminalId}`)
+        }
+        handleCloseTab(tab.id)
+    }, [sessionId, handleCloseTab])
     const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
     const openTerminalTab = useWorkspaceStore((s) => s.openTerminalTab)
     const openReviewTab = useWorkspaceStore((s) => s.openReviewTab)
@@ -295,36 +239,38 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
         )
     }
 
-    const tabItems = tabs.map((tab) => ({
-        key: tab.id,
-        label: (
-            <AppTooltip title={tab.mode === 'file' ? tab.filePath : ''}>
-                {tab.mode === 'terminal' ? (
-                    <TerminalTabLabel
-                        tab={tab}
-                        onRename={(title) => renameTerminalTab(sessionId, tab.id, title)}
-                    />
-                ) : tab.mode === 'review' ? (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <FileDiff size={14} />
-                        {t('session.inspector.review')}
-                    </span>
-                ) : (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {/* 文件 tab 按扩展名画类型徽章（TS 色块/目录 glyph），tree tab 保持 Folder */}
-                        {tab.mode === 'file' ? (
-                            <FileTypeBadge path={tab.filePath ?? ''} size={14} />
-                        ) : (
-                            <Folder size={14} />
-                        )}
-                        {tab.mode === 'file' ? tab.fileName : t('session.inspector.openFile')}
-                    </span>
-                )}
-            </AppTooltip>
-        ),
-        children: renderTabContent(tab),
-        closable: true,
-    }))
+    /** 页签上显示的名字。关闭按钮的无障碍名称与它同源——光一个「×」读屏读不出关的是哪个页签 */
+    const tabDisplayName = (tab: InspectorTabEntry): string => {
+        if (tab.mode === 'file') return tab.fileName ?? ''
+        if (tab.mode === 'terminal') return tab.title ?? t('session.inspector.terminalName', { n: tab.terminalSeq ?? 1 })
+        return t(tab.mode === 'review' ? 'session.inspector.review' : 'session.inspector.openFile')
+    }
+
+    const renderTabLabel = (tab: InspectorTabEntry): ReactNode => (
+        <AppTooltip title={tab.mode === 'file' ? tab.filePath : ''}>
+            {tab.mode === 'terminal' ? (
+                <TerminalTabLabel
+                    tab={tab}
+                    onRename={(title) => renameTerminalTab(sessionId, tab.id, title)}
+                />
+            ) : tab.mode === 'review' ? (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <FileDiff size={14} />
+                    {t('session.inspector.review')}
+                </span>
+            ) : (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {/* 文件 tab 按扩展名画类型徽章（TS 色块/目录 glyph），tree tab 保持 Folder */}
+                    {tab.mode === 'file' ? (
+                        <FileTypeBadge path={tab.filePath ?? ''} size={14} />
+                    ) : (
+                        <Folder size={14} />
+                    )}
+                    {tab.mode === 'file' ? tab.fileName : t('session.inspector.openFile')}
+                </span>
+            )}
+        </AppTooltip>
+    )
 
     const hasTabs = tabs.length > 0
     // 空态：居中 3 按钮。休眠也显示——openFile/桌面 machine 化照常可用，终端创建后
@@ -333,43 +279,48 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
 
     return (
         <Layout style={{ height: '100%', position: 'relative', paddingBottom: 'max(0px, env(safe-area-inset-bottom))' }}>
-            {/* tab 内容：有 tab 时渲染。active 切换（在线↔离线）不卸载（destroyOnHidden + 同一条件分支），
+            {/* tab 内容：有 tab 时渲染。active 切换（在线↔离线）不卸载（keepMounted + 同一条件分支），
                 离线时保留作毛玻璃背景，模糊可见关闭前的内容。空态/未展开不渲染（避免无谓 RPC）。 */}
             {everExpanded && hasTabs && (
-                <StyledTabs
-                    type="editable-card"
-                    hideAdd
-                    activeKey={activeTabId ?? undefined}
-                    onChange={(key) => {
+                <TabStrip
+                    value={activeTabId ?? ''}
+                    onValueChange={(key) => {
                         setActiveTab(sessionId, key)
                     }}
-                    items={tabItems}
-                    size="small"
-                    destroyOnHidden={false}
-                    onEdit={(targetKey, action) => {
-                        if (action === 'remove' && typeof targetKey === 'string') {
-                            // 关闭 terminal tab：清理缓存实例（dispose 发 terminal:close 杀 PTY + 断 socket）。
-                            // 切换 tab 不走此处，PTY 保留（keepalive）。
-                            const closingTab = tabs.find((t) => t.id === targetKey)
-                            if (closingTab?.mode === 'terminal' && closingTab.terminalId) {
-                                clearCachedInstance(`terminal:${sessionId}:${closingTab.terminalId}`)
-                            }
-                            handleCloseTab(targetKey)
-                        }
-                    }}
-                    tabBarStyle={{ padding: 'max(0px, env(safe-area-inset-top)) 12px 0', margin: 0 }}
-                    // 在线：整簇挂 tab 栏右端。right 必须是**单个**节点——antd 把它直接塞进
-                    // `display:block` 的 .ant-tabs-extra-content，多子节点会各自成块、容器宽度
-                    // 被算成「最宽的那个」，「+」就被挤到独立一行（行布局由 InspectorChrome 收口）
-                    tabBarExtraContent={active ? { right: chrome(addTabMenu) } : undefined}
-                />
+                    style={STRIP_STYLE}
+                >
+                    {/* 在线：整簇 chrome 挂页签条右端（extra 槽在 tablist 之外，行布局由它收口）。
+                        离线时 chrome 走下方浮动角，两者不重叠 */}
+                    <TabStripList
+                        ariaLabel={t('session.inspector.tabs')}
+                        style={STRIP_ROW_STYLE}
+                        extra={active ? chrome(addTabMenu) : null}
+                    >
+                        {tabs.map((tab) => (
+                            <TabStripTab
+                                key={tab.id}
+                                value={tab.id}
+                                closeLabel={t('session.inspector.closeTab', { name: tabDisplayName(tab) })}
+                                onClose={() => closeTabWithCleanup(tab)}
+                            >
+                                {renderTabLabel(tab)}
+                            </TabStripTab>
+                        ))}
+                    </TabStripList>
+                    {/* keepMounted：首次展开后切走不卸载（终端不重连、文件树不回到根） */}
+                    {tabs.map((tab) => (
+                        <PanelSlot key={tab.id} value={tab.id} keepMounted>
+                            {renderTabContent(tab)}
+                        </PanelSlot>
+                    ))}
+                </TabStrip>
             )}
             {everExpanded && showEmpty && (
                 <InspectorEmptyState actionsContext={actionsContext} />
             )}
-            {/* 空态/离线态的浮动 chrome（tab 态的在 tabBarExtraContent）。
+            {/* 空态/离线态的浮动 chrome（在线 tab 态的在页签条右端的 extra 槽）。
                 zIndex 高于毛玻璃，保证离线时最大化/收起按钮可点；离线且有 tab 时「+」一并在此，
-                不进 tabBar——所以不传 tabBarExtraContent，避免两处重叠 */}
+                不进页签条——所以 extra 传 null，避免两处重叠 */}
             {(showEmpty || !active) && (
                 <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 11 }}>
                     {chrome(hasTabs ? addTabMenu : undefined)}

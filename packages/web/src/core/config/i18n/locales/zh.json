@@ -114,6 +114,8 @@
             "maximize": "最大化",
             "restore": "恢复",
             "openFile": "打开文件",
+            "tabs": "面板页签",
+            "closeTab": "关闭 {{name}}",
             "terminal": "终端",
             "review": "审查",
             "addTab": "新建",

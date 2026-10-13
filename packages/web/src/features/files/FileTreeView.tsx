@@ -50,7 +50,7 @@ function findDataNode(nodes: DataNode[], key: string): DataNode | null {
 /**
  * 包裹层。antd v6 的 Tree 不会把 style/className 透传到 .ant-tree 根元素，
  * 故 inline style 无效；这里用 && 提优先级直接覆盖 .ant-tree 默认的
- * colorBgContainer 背景，让其透出 InspectorPane 面板色（与 StyledTabs 同款手法）。
+ * colorBgContainer 背景，让其透出 InspectorPane 面板色（以 `&&` 提优先级压过组件库默认背景的通用手法）。
  */
 const TreeWrap = styled.div`
     height: 100%;

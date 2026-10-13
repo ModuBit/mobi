@@ -17,8 +17,9 @@
 import type { MobiApi } from '@/core/data/api/client'
 import type { ToolInfo } from '@/domain/tool/types'
 import { memo, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, theme as antTheme, Input, Tabs } from 'antd'
+import { Alert, Button, theme as antTheme, Input } from 'antd'
 import { CheckOutlined, LoadingOutlined } from '@ant-design/icons'
+import { TabStrip, TabStripList, TabStripPanel, TabStripTab } from '@/ui/base/interactive/tabStrip'
 import { useTranslation } from 'react-i18next'
 import { isAskUserQuestionToolName, parseAskUserQuestionInput, buildChatAboutThisReason, type AskUserQuestionQuestion } from '@/domain/tool/askUserQuestion'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
@@ -410,23 +411,30 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                     {renderSubmitButton()}
                 </div>
             ) : (
-                /* 多题：使用 Tabs 组件 */
-                <Tabs
-                    activeKey={String(step)}
-                    onChange={(key) => { setError(null); setStep(Number(key)) }}
-                    size="small"
-                    tabBarStyle={{ minHeight: actionMinHeight }}
-                    items={questions.map((q, idx) => ({
-                        key: String(idx),
-                        label: q.header || t('chat.tool.askUserQuestion.questionN', { n: idx + 1 }),
-                        children: (
-                            <div>
-                                {renderQuestionOptions(idx)}
-                                {idx === questions.length - 1 ? renderSubmitButton() : null}
-                            </div>
-                        )
-                    }))}
-                />
+                /* 多题：页签条 + 每题一个面板。面板不 keepMounted——每题内容只是选项列表，
+                   切走即卸载没有副作用，还省掉不活跃题目的 DOM */
+                <TabStrip
+                    value={String(step)}
+                    onValueChange={(key) => { setError(null); setStep(Number(key)) }}
+                >
+                    <TabStripList
+                        ariaLabel={t('chat.tool.askUserQuestion.title')}
+                        // 页签行与下方动作按钮等高（原 antd tabBarStyle.minHeight，数值不变）
+                        style={{ minHeight: actionMinHeight }}
+                    >
+                        {questions.map((q, idx) => (
+                            <TabStripTab key={idx} value={String(idx)}>
+                                {q.header || t('chat.tool.askUserQuestion.questionN', { n: idx + 1 })}
+                            </TabStripTab>
+                        ))}
+                    </TabStripList>
+                    {questions.map((_q, idx) => (
+                        <TabStripPanel key={idx} value={String(idx)}>
+                            {renderQuestionOptions(idx)}
+                            {idx === questions.length - 1 ? renderSubmitButton() : null}
+                        </TabStripPanel>
+                    ))}
+                </TabStrip>
             )}
         </div>
     )

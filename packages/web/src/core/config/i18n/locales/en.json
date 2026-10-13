@@ -114,6 +114,8 @@
             "maximize": "Maximize",
             "restore": "Restore",
             "openFile": "Open File",
+            "tabs": "Panel tabs",
+            "closeTab": "Close {{name}}",
             "terminal": "Terminal",
             "review": "Review",
             "addTab": "Add",
