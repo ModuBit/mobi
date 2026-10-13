@@ -293,10 +293,6 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
                         离线时 chrome 走下方浮动角，两者不重叠 */}
                     <TabStripList
                         ariaLabel={t('session.inspector.tabs')}
-                        scrollButtonLabels={{
-                            left: t('session.inspector.scrollTabsLeft'),
-                            right: t('session.inspector.scrollTabsRight'),
-                        }}
                         style={STRIP_ROW_STYLE}
                         extra={active ? chrome(addTabMenu) : null}
                     >

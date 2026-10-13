@@ -30,7 +30,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [rewind 全链路验证](rewind-verify.md) — 按钮/ack/dry-run/截断上下文探针/连续 rewind/回填断言/**双 tab 同步**/链首隐藏；进行中窗口 <2s 抓不到的坑
 - [会话 resume 重播验证](resume-replay-verify.md) — attach 重播/backfill 复现脚本（!cmd+/compact 素材→kill→Resume→发首条消息）/ SSE 抓包解析 / 手造存量 NULL 行 / fetch patch 破坏 SSE 的坑
 - [CDP 动效逐帧采样](motion-verify.md) — rAF 探针验证 CSS 动画/选择器命中（jsdom 测不出）；antd v6 rootClassName 层级坑；**prefers-reduced-motion 两档验证（独立 Chrome + flag / CDP 模拟）**
-- [检查器页签条验证](inspector-tabstrip-verify.md) — uiarc 观感断言（轨道/滑移选中块/渐隐，别拿 --mobi-primary 当强调色）/ 堆页签造溢出（+→打开文件→点文件）/ 不收缩与滚动按钮 / **reveal 落点与 stale-layout 陷阱** / 关终端页签用 ps 验 PTY 真被杀（只读，禁 pkill）
+- [检查器页签条验证](inspector-tabstrip-verify.md) — uiarc 观感断言（轨道/滑移选中块/两端渐隐，别拿 --mobi-primary 当强调色）/ 堆页签造溢出（+→打开文件→点文件）/ 不收缩、无滚动按钮 / **reveal 落点与 stale-layout 陷阱** / 关终端页签用 ps 验 PTY 真被杀（只读，禁 pkill）
 - [真实大会话注入](real-session-seed.md) — prod→e2e 拷库（messages 必须显式列 position_at）做消息窗口化/fill 级联验证
 - [turn-diff 验证](turn-diff-verify.md) — 卡片对表/审查tab/归档断言全链路（hydration 口径：ref/全文目录/oversized 可展开/sidechain 卡）；展开行须 CDP click；E2E 不需要构建二进制
 - [上下文水位验证](waterline-verify.md) — assistant usage 落库断言 / contextUsage=四项和瞬时水位 / 圆环 svg[role=button] 双端断言 / 两把尺子别混

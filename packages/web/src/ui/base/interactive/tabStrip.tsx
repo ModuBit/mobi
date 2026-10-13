@@ -28,12 +28,14 @@
  *    而不是「每个页签各自换个底色」；`z-index:-1` 让它垫在文字下方，`isolate` 圈住层级
  * 3. **不收缩**（`.trigger { flex: 0 0 auto; min-width: 5.5rem }`）：空间不够时横向滚动，
  *    绝不把页签挤扁（曾实测：允许收缩时 9 个页签会各自压成 38–51px 只剩省略号）
- * 4. **溢出用两侧滚动按钮 + 两端渐隐**（`.scrollButton` + `viewport` 的 `mask-image`），
- *    选中项变化时 `reveal()` 把它滚进视口，并给按钮让出 34px
+ * 4. **溢出时两端渐隐**（`viewport` 的 `mask-image`）：滚到某端之外还有内容，该端淡出，
+ *    暗示那边还有页签。选中项变化时 `reveal()` 把它滚进视口
  *
- * 刻意**没有**照搬的：面板的入/出场动效（x 位移 + 高度 morph + 出界面板钉原位）。它靠
- * `AnimatePresence` + 面板卸载成立，而检查器面板是 `keepMounted` + `display:none`（终端不重连、
- * 文件树不回根），两者语义冲突——要保 keepalive 就得放弃这段面板动效。页签条的滑移不受影响。
+ * **不搬的两处**：
+ * - 面板的入/出场动效（x 位移 + 高度 morph + 出界面板钉原位）：它靠 `AnimatePresence` + 面板卸载成立，
+ *   而检查器面板是 `keepMounted` + `display:none`（终端不重连、文件树不回根），两者语义冲突
+ * - uiarc 的两端**滚动按钮**：与渐隐同时出现是重复的提示，且按钮会盖住正在淡出的那段内容
+ *   （渐隐因此看不见）。滚动交给视口本身——触摸拖动 / 触控板横滑 / 鼠标 Shift+滚轮都能滚。
  *
  * 契约（tests/ui/base/tabStrip.test.tsx 固化，改前先读）：
  * - 受控：无内部选中状态，`value` / `onValueChange` 由消费方持有
@@ -49,7 +51,6 @@
 
 import {
     createContext,
-    useCallback,
     useContext,
     useEffect,
     useId,
@@ -61,13 +62,11 @@ import {
     type ReactNode,
 } from 'react'
 import styled from '@emotion/styled'
-import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { LayoutGroup, motion, useReducedMotion, type Transition } from 'motion/react'
 import { spring } from '@/ui/base/motion/presets'
 import { nextFocusAfterClose, resolveTabNavKey } from './tabStripNavigation'
 
-/** 滚动按钮宽度（与 ScrollButton 的 width 同源）——reveal 要按它给按钮让位 */
-const SCROLL_BUTTON_WIDTH = 33
 /** 两端渐隐的宽度（与 Viewport 的 mask 同源） */
 const EDGE_FADE_WIDTH = 35
 
@@ -107,14 +106,24 @@ const Viewport = styled.div`
     }
 
     /* 滚到某端之外还有内容时，该端渐隐（暗示还有页签）。emotion 不能跨组件插值当选择器
-       （需 @emotion/babel-plugin 注入 target，本项目没装），故用父级属性选择器反向命中 */
+       （需 @emotion/babel-plugin 注入 target，本项目没装），故用父级属性选择器反向命中。
+       -webkit- 前缀给 iOS PWA（WebKit 上 unprefixed 的 mask-image 从 15.4 起才有） */
     [data-left='true'] > & {
+        -webkit-mask-image: linear-gradient(to right, transparent, black ${EDGE_FADE_WIDTH}px, black);
         mask-image: linear-gradient(to right, transparent, black ${EDGE_FADE_WIDTH}px, black);
     }
     [data-right='true'] > & {
+        -webkit-mask-image: linear-gradient(to right, black, black calc(100% - ${EDGE_FADE_WIDTH}px), transparent);
         mask-image: linear-gradient(to right, black, black calc(100% - ${EDGE_FADE_WIDTH}px), transparent);
     }
     [data-left='true'][data-right='true'] > & {
+        -webkit-mask-image: linear-gradient(
+            to right,
+            transparent,
+            black ${EDGE_FADE_WIDTH}px,
+            black calc(100% - ${EDGE_FADE_WIDTH}px),
+            transparent
+        );
         mask-image: linear-gradient(
             to right,
             transparent,
@@ -255,41 +264,6 @@ const TabLabel = styled.span`
     text-overflow: ellipsis;
 `
 
-/* 溢出时的两端滚动按钮（uiarc .scrollButton）：盖在视口上，禁用即透明（不占位观感） */
-const ScrollButton = styled.button`
-    position: absolute;
-    z-index: 2;
-    top: 0;
-    bottom: 0;
-    display: grid;
-    width: 33px;
-    place-items: center;
-    border: 0;
-    background: var(--mobi-hover);
-    color: var(--mobi-ink);
-    cursor: pointer;
-
-    &:disabled {
-        opacity: 0;
-        pointer-events: none;
-    }
-
-    &:focus-visible {
-        outline: 2px solid var(--mobi-primary);
-        outline-offset: -3px;
-    }
-`
-
-const ScrollLeftButton = styled(ScrollButton)`
-    left: 0;
-    border-radius: var(--radius-control) 0 0 var(--radius-control);
-`
-
-const ScrollRightButton = styled(ScrollButton)`
-    right: 0;
-    border-radius: 0 var(--radius-control) var(--radius-control) 0;
-`
-
 const PanelDiv = styled.div`
     min-width: 0;
 `
@@ -350,8 +324,6 @@ export function TabStrip({ value, onValueChange, children, className, style }: T
 export interface TabStripListProps {
     /** tablist 的无障碍名称（读屏进入页签条时朗读） */
     ariaLabel: string
-    /** 溢出时两端滚动按钮的无障碍名称（形如「向左滚动页签」——光一个箭头读屏读不出来） */
-    scrollButtonLabels: { left: string; right: string }
     /** 行右端槽位（新建 / 收起一类操作）；**不是** tab 的一部分，不会被 tab 的键盘与焦点链路牵动 */
     extra?: ReactNode
     children: ReactNode
@@ -368,7 +340,6 @@ export interface TabStripListProps {
 
 export function TabStripList({
     ariaLabel,
-    scrollButtonLabels,
     extra,
     children,
     className,
@@ -413,15 +384,6 @@ export function TabStripList({
         focusTab(target?.el)
     })
 
-    const scrollByPage = useCallback(
-        (direction: 1 | -1) => {
-            const viewport = viewportRef.current
-            if (!viewport) return
-            viewport.scrollBy?.({ left: direction * viewport.clientWidth * 0.75, behavior: reduced ? 'instant' : 'smooth' })
-        },
-        [reduced],
-    )
-
     const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
         const tabs = collectTabs(listRef.current)
         // 焦点在关闭按钮上时算作它所在的那个 tab——否则方向键在这一格失灵
@@ -438,11 +400,6 @@ export function TabStripList({
         <Row className={className} style={style} data-tab-strip-row="">
             <TabStripListContext.Provider value={listCtx}>
                 <Shell ref={shellRef} className={shellClassName} style={shellStyle} data-left={edges.left} data-right={edges.right} data-overflow={edges.overflow}>
-                    {edges.overflow && (
-                        <ScrollLeftButton type="button" aria-label={scrollButtonLabels.left} disabled={!edges.left} onClick={() => scrollByPage(-1)}>
-                            <ChevronLeft size={17} aria-hidden />
-                        </ScrollLeftButton>
-                    )}
                     <Viewport
                         ref={viewportRef}
                         /* 焦点进入页签（键盘 Tab 或方向键落到某个页签）时同样把它带进视口 */
@@ -464,11 +421,6 @@ export function TabStripList({
                             {children}
                         </TabList>
                     </Viewport>
-                    {edges.overflow && (
-                        <ScrollRightButton type="button" aria-label={scrollButtonLabels.right} disabled={!edges.right} onClick={() => scrollByPage(1)}>
-                            <ChevronRight size={17} aria-hidden />
-                        </ScrollRightButton>
-                    )}
                 </Shell>
             </TabStripListContext.Provider>
             {extra}
@@ -605,21 +557,22 @@ function focusTab(el: HTMLElement | undefined): void {
 }
 
 /**
- * 把某页签滚进视口（uiarc `reveal`）：两端各有滚动按钮盖在视口上，故只在**按钮之外**的区间里判可见，
- * 免得滚进来又正好被按钮盖住。`scrollBy` 在 jsdom 里不存在，故可选调用（浏览器里才有实际行为）。
- * 返回它是否已经落定（本来就在区间内 = 无位移可做）。滚到列表尽头时按钮会因禁用而淡出，
- * 那里少量遮挡不算问题——所以「已经在尽头」也算落定。
+ * 把某页签滚进视口（uiarc `reveal`）：只在**渐隐区之外**判可见——两端那 35px 是留给
+ * 「还有内容」的暗示，落进去的页签会被蒙上一层淡出，选中的那个尤其不能。
+ * `scrollBy` 在 jsdom 里不存在，故可选调用（浏览器里才有实际行为）。
+ * 返回它是否已经落定（本来就在可视区内 = 无位移可做）；滚到尽头时该端不再渐隐（`data-right` 为假），
+ * 所以「在尽头」也算落定。
  */
 function revealTab(viewport: HTMLDivElement | null, tab: HTMLElement | undefined, reduced: boolean): boolean {
     if (!viewport || !tab) return true
     const frame = viewport.getBoundingClientRect()
     const item = tab.getBoundingClientRect()
     const max = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-    const left = frame.left + (viewport.scrollLeft > 1 ? SCROLL_BUTTON_WIDTH + 1 : 0)
-    const right = frame.right - (viewport.scrollLeft < max - 1 ? SCROLL_BUTTON_WIDTH + 1 : 0)
+    const left = frame.left + (viewport.scrollLeft > 1 ? EDGE_FADE_WIDTH : 0)
+    const right = frame.right - (viewport.scrollLeft < max - 1 ? EDGE_FADE_WIDTH : 0)
     const delta = item.left < left ? item.left - left : item.right > right ? item.right - right : 0
     if (!delta) return true
-    // 已到尽头还够不着（末尾页签）——按钮此刻是禁用态（透明且不可点），不必再追
+    // 已到尽头还够不着（末尾页签比可视区还长的那几 px）——无处可滚了
     if ((delta < 0 && viewport.scrollLeft <= 1) || (delta > 0 && viewport.scrollLeft >= max - 1)) return true
     viewport.scrollBy?.({ left: delta, behavior: reduced ? 'instant' : 'smooth' })
     return false

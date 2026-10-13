@@ -1,6 +1,6 @@
 ---
 name: inspector-tabstrip-verify
-description: 检查器页签条（TabStrip，uiarc 观感）验证 recipe——堆页签造溢出 / 量不收缩与滑动选中块 / 滚动按钮与边缘渐隐 / reveal 落点 / 关终端页签验 PTY 真被杀
+description: 检查器页签条（TabStrip，uiarc 观感）验证 recipe——堆页签造溢出 / 量不收缩与滑动选中块 / 两端渐隐 / reveal 落点 / 关终端页签验 PTY 真被杀
 metadata:
   type: recipe
   last_verified: 2026-10-13
@@ -8,18 +8,22 @@ metadata:
 
 # 检查器页签条（TabStrip）验证
 
-页签条是 **uiarc Tabs 的观感**（分段控件外壳 + 滑移选中块 + 溢出滚动按钮/渐隐），
-真机命题：**溢出时滚不滚**、**页签不收缩**、**选中块跟不跟手**、**reveal 落点对不对**、**关闭的副作用**。
+页签条是 **uiarc Tabs 的观感**（分段控件外壳 + 滑移选中块 + 溢出时两端渐隐），
+**两端没有滚动按钮**（用户明确否掉：拖动直接滚就好，按钮会盖住正在淡出的那段）。
+真机命题：**溢出时滚不滚**、**页签不收缩**、**选中块跟不跟手**、**两端渐隐在不在**、**reveal 落点对不对**、**关闭的副作用**。
 
 ## 0. 观感断言（computed style 一把抓，别靠肉眼看截图）
 
 ```js
 const shell = document.querySelector('[data-left]')
-const vp = [...shell.children].find(c => getComputedStyle(c).overflowX === 'auto')  // 滚动视口（外壳的兄弟含按钮）
+const vp = [...shell.children].find(c => getComputedStyle(c).overflowX === 'auto')  // 滚动视口
 const sel = document.querySelector('[data-tab-selection]')                          // 滑移的选中块
 ```
-- 外壳：`backgroundColor` = 轨道底色（`--mobi-hover`）、1px 描边、`border-radius: 14px`
-- 视口：`maskImage` 含 `35px` 渐隐（仅 `data-left/right=true` 时命中）；jsdom 验不了，只能真机
+- 外壳：`backgroundColor` = 轨道底色（`--mobi-hover`）、1px 描边、`border-radius: 14px`；
+  `data-left` / `data-right` / `data-overflow` 三个属性是渐隐与溢出的机器可读态
+- 视口：`mask-image` 含 `35px` 渐隐（**仅**在对应 `data-*` 为 true 时命中）；jsdom 验不了，只能真机。
+  渐隐只在**边缘那段真有内容**时看得出来——选中项刚被 reveal 过时边缘是空轨道，别据此判「没生效」，
+  手动滚一点让页签压到边缘再看
 - 选中块：`zIndex: -1` + `position: absolute` + `backgroundColor` 升一档（light `#fff` / dark `#25252a`）+ 圆角 10
 - **滑移动效 jsdom 测不出**（`motion` 共享布局走 FLIP transform，jsdom 不算布局）：单测只能锁「同一时刻
   只存在一个选中块、归选中项所有」，真机要看**切页签那一刻块是否从旧位置滑过去**——rAF 采样选中块的
@@ -58,19 +62,18 @@ const cands = [...node.querySelectorAll('*')].filter(e => e.textContent.trim() =
 - 菜单已开时别再对着 `+` 发 pointerdown（会 toggle 关掉），先判 `document.querySelectorAll('[role="menuitem"]').length`
 - 页签是**内存态**，整页 reload（换主题等）会清空，得重堆
 
-## 2. 量溢出、不收缩与滚动按钮
+## 2. 量溢出与不收缩
 
 ```js
 const list = document.querySelector('[role="tablist"]')
 list.clientWidth; list.scrollWidth                      // 内容宽 > 视口宽 = 真溢出
-shell.getAttribute('data-overflow')                      // 组件自己算的溢出态（按钮因此出现）
+shell.getAttribute('data-overflow')                      // 组件自己算的溢出态
 ;[...document.querySelectorAll('[role="tab"]')].map(t => t.getBoundingClientRect().width)
 ```
 - 页签宽度应保持**自然宽**（96 / 151 / 215 …），不随容器收窄——收到 38-51px 就是收缩回归了
-- 两端滚动按钮在 `shell` 的**直接子节点**里（`shell.children` 过滤 `BUTTON`），
-  不在 `[role="tab"]` 内，别用 `shell.querySelectorAll('button')`（会连关闭 × 一起抓）
-- 按钮禁用 = `opacity: 0` + `pointer-events: none`：**滚到尽头时右按钮自己淡出**，
-  故「选中项右缘落在按钮下」在尽头处无害
+- 外壳里**不该有滚动按钮**（只有页签自己的关闭 ×）：`shell.querySelectorAll('button')` 应全是
+  `aria-label` 形如「关闭 X」的，出现别的就是旧的滚动按钮回来了
+- 滚动靠视口本身：触摸拖动 / 触控板横滑 / Shift+滚轮（jsdom 与合成事件都测不了，真机手操）
 
 ## 3. reveal 落点（选中项必须滚进可视区）
 
@@ -78,11 +81,12 @@ shell.getAttribute('data-overflow')                      // 组件自己算的�
 
 ```js
 const vpr = vp.getBoundingClientRect(), sr = document.querySelector('[role="tab"][aria-selected="true"]').getBoundingClientRect()
-sr.left - vpr.left      // 期望 ≈ 34（左侧按钮宽），不能为负
-vpr.right - sr.right    // 期望 ≈ 34，或 scrollLeft 已到 max（尽头，按钮淡出）
+sr.left - vpr.left      // 期望 ≈ 35（左侧渐隐宽），不能落在渐隐区里
+vpr.right - sr.right    // 期望 ≈ 35，或 scrollLeft 已到 max（尽头，该端不再渐隐）
 ```
+- **落进渐隐区 = 选中项被蒙上一层淡出**：组件按 35px 给渐隐让位，所以期望值就是 35（不是 0）
 - **stale-layout 陷阱（2026-10-13 实测）**：新建页签那一帧它的宽度往往还没定稿（先按占位标题摆一道），
-  此刻算出的可达滚动范围偏小 → 平滑滚动**定格在「新页签仍被右侧按钮压住」**（实测选中项右缘超视口 48px，
+  此刻算出的可达滚动范围偏小 → 平滑滚动**定格在「新页签仍被右侧挡着」**（实测选中项右缘超视口 48px，
   `scrollLeft` 停在 795 而 max 是 845，且**不会自己恢复**）。组件侧的修法是把「带进视口」当待办布局义务、
   依靠 ResizeObserver 复核；验收方法是**新增一个文件页签后就地量落点**（别只手点已有页签——那样测不出来）
 - 采样平滑滚动轨迹：rAF 里 push `scrollLeft`，只保留变化帧（相邻同值去重），看它是否走到 `max`
