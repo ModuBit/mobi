@@ -65,7 +65,7 @@ const RowItem = styled.button`
     min-height: 36px;
     padding: 0 11px;
     border: none;
-    border-radius: calc(var(--radius-lg) - 6px);
+    border-radius: calc(var(--radius-panel) - 6px);
     background: transparent;
     color: var(--foreground);
     font: inherit;

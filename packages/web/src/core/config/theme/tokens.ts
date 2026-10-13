@@ -15,17 +15,53 @@
  */
 
 /**
- * 圆角档位：**两档同值**，故单源一处（颜色双档有别、圆角没有）。
- * 档位以角色命名、数值按等差 8px 排——见 DESIGN.md「Shapes」章；
- * antd 落点：control→borderRadius / control-sm→borderRadiusSM / panel→borderRadiusLG /
- * square→borderRadiusXS（surface 档没有对应的 antd 槽位，由 Modal 组件级覆写）。
- * 与 DESIGN.md 的一致性由 tests/core/config/theme/radius-consistency.test.ts 守卫。
+ * 圆角档位（两档同值，故单源一处——颜色双档有别，圆角没有）。
+ *
+ * **这是全站圆角的唯一数值来源**：DESIGN.md「Shapes」章是它的规格（二者由
+ * tests/core/config/theme/radius-consistency.test.ts 锁死），antd 主题 token 与
+ * cssVars 投出的 CSS 变量都是它的投影。改档位只改这里 + DESIGN.md，组件侧一律取档引用，
+ * 任何 `border-radius: <数值>px` 字面量都会被守卫拦下——散落的字面量正是逐个调不动的根因。
+ *
+ * 档位以**角色**命名（uiarc 同法），不设 xs/sm/md/lg 数值阶梯；主体三档等差 8px。
+ */
+export const RADIUS_TIERS = {
+    /** 方角档：复选框、小标记等要保留方角的元素 */
+    square: 4,
+    /** 图标键档：侧栏 / 标题栏 / 工具条里的纯图标按钮（比控件档收一档，才不像药丸） */
+    icon: 6,
+    /** 控件小号档：标签、分段项、下拉项、`ant-btn-sm` */
+    controlSm: 10,
+    /** 控件档：按钮 / 输入 / Select */
+    control: 14,
+    /** 面板档：卡片 / 悬浮面板 / 菜单 */
+    panel: 22,
+    /** 大表面档：Modal */
+    surface: 30,
+    /** 圆形档：头像 / 状态点 / 徽标（不是圆角，是「无圆角上限」） */
+    pill: 9999,
+} as const
+
+/** DESIGN.md 里的档位名 → 本文件的键名（守卫测试按这张表逐档比对） */
+export const RADIUS_TIER_KEYS = {
+    square: 'square',
+    icon: 'icon',
+    'control-sm': 'controlSm',
+    control: 'control',
+    panel: 'panel',
+    surface: 'surface',
+    pill: 'pill',
+} as const
+
+/**
+ * antd 主题 token 的四个槽位。antd 只提供这四个名字，故 icon / surface 两档**没有槽位**：
+ * 前者由组件取 `--radius-icon` CSS 变量，后者由 Modal 组件级覆写（antd v6 的覆写机制是
+ * 在组件作用域里重声明全局变量，实测生效）。
  */
 const radius = {
-    borderRadius: 14,
-    borderRadiusXS: 4,
-    borderRadiusSM: 10,
-    borderRadiusLG: 22,
+    borderRadius: RADIUS_TIERS.control,
+    borderRadiusXS: RADIUS_TIERS.square,
+    borderRadiusSM: RADIUS_TIERS.controlSm,
+    borderRadiusLG: RADIUS_TIERS.panel,
 }
 
 // Claude 暖调风格 Light 主题配置

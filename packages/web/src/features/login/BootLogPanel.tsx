@@ -308,7 +308,7 @@ const Block = styled.div`
     display: flex;
     flex-direction: column;
     padding: 10px 12px 11px;
-    border-radius: 4px;
+    border-radius: var(--radius-square);
     background: rgba(0, 0, 0, 0.18);
 `
 

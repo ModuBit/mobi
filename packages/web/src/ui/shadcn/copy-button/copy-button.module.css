@@ -32,7 +32,8 @@
     --space-2: 8px;
     --space-3: 12px;
     --control-height-sm: 28px;
-    --radius-control: var(--ant-border-radius);
+    /* 圆角不再在此映射：--radius-control 由 cssVars.ts 以 mobi 档位直接注入 :root
+       （原映射到 --ant-border-radius，而 antd 的变量只在组件子树内可解析） */
     --text-sm: 13px;
     --duration-fast: var(--ant-motion-duration-fast);
     --duration-instant: var(--ant-motion-duration-fast);

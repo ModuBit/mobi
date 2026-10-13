@@ -39,7 +39,7 @@ const Badge = styled.span`
     align-items: center;
     gap: 5px;
     padding: 2px 8px;
-    border-radius: 10px;
+    border-radius: var(--radius-pill);
     font-size: 11px;
     line-height: 1.6;
     color: ${STATUS_DOT_COLORS.running};
@@ -67,7 +67,7 @@ const DetailReason = styled.div`
     color: var(--ant-color-text-secondary);
     background: var(--ant-color-fill-quaternary);
     padding: 3px 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-square);
     line-height: 1.5;
     word-break: break-word;
 `

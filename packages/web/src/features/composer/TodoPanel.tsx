@@ -35,7 +35,7 @@ const STATUS_ORDER: Record<TodoItem['status'], number> = {
 
 const StyledCheckbox = styled(Checkbox)<{ $status: TodoItem['status'] }>`
     .ant-checkbox-inner {
-        border-radius: 4px;
+        border-radius: var(--radius-square);
     }
     &.ant-checkbox-checked .ant-checkbox-inner {
         background-color: ${TODO_GREEN};

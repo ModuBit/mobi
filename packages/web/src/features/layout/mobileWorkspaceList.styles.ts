@@ -110,7 +110,7 @@ export const NewSessionBtn = styled.button<{ $token: SidebarToken }>`
     border: none;
     background: transparent;
     color: ${props => props.$token.colorTextTertiary};
-    border-radius: 6px;
+    border-radius: var(--radius-icon);
     cursor: pointer;
     flex-shrink: 0;
 
@@ -183,7 +183,7 @@ export const MoreButton = styled.button<{ $token: SidebarToken }>`
     border: none;
     background: transparent;
     color: ${props => props.$token.colorTextTertiary};
-    border-radius: 6px;
+    border-radius: var(--radius-icon);
     cursor: pointer;
     flex-shrink: 0;
 

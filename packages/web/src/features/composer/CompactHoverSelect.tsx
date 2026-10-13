@@ -41,7 +41,7 @@ function useCompactDropdownStyle() {
 .effort-popover .ant-popover-container { padding: 4px 0 !important; }
 .effort-popover .ant-popover-arrow { display: none !important; }
 .effort-popover .effort-item:hover { background: var(--ant-color-bg-text-hover) !important; }
-.effort-popover .effort-arrow { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; border-radius: 4px; }
+.effort-popover .effort-arrow { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; border-radius: var(--radius-square); }
 .effort-popover .effort-arrow:hover { background: var(--ant-color-bg-text-hover); }
 `
         document.head.appendChild(style)

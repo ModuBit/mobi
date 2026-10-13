@@ -30,7 +30,7 @@ const StyledButton = styled.button<{ $token: ReturnType<typeof useToken>['token'
     width: 32px;
     height: 32px;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-icon);
     cursor: pointer;
     background: transparent;
     color: ${props => props.$token.colorTextSecondary};

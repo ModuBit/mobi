@@ -53,7 +53,7 @@ const Row = styled.div<{ $clickable: boolean; $divided: boolean }>`
     gap: 8px;
     align-items: flex-start;
     padding: 2px 4px;
-    border-radius: 4px;
+    border-radius: var(--radius-square);
     cursor: ${({ $clickable }) => ($clickable ? 'pointer' : undefined)};
     transition: background 0.15s;
     &:hover {

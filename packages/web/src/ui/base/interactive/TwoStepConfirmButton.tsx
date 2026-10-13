@@ -78,7 +78,7 @@ const Root = styled(motion.div)<{ $token: GlobalToken }>`
     align-items: center;
     justify-content: flex-end;
     height: ${TILE_SIZE}px;
-    border-radius: 6px;
+    border-radius: var(--radius-icon);
     overflow: visible;
     background: ${(p) => p.$token.colorBgContainer};
 `
@@ -93,7 +93,7 @@ const Trigger = styled(motion.button)<{ $token: GlobalToken }>`
     flex-shrink: 0;
     border: none;
     padding: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-icon);
     background: transparent;
     cursor: pointer;
     color: ${(p) => p.$token.colorTextQuaternary};
@@ -123,7 +123,7 @@ const Panel = styled(motion.div)<{ $token: GlobalToken }>`
     justify-content: center;
     gap: 4px;
     width: ${PANEL_WIDTH}px;
-    border-radius: 6px;
+    border-radius: var(--radius-icon);
     background: ${(p) => p.$token.colorFillQuaternary};
 `
 

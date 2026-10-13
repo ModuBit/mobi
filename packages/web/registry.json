@@ -12,7 +12,7 @@
                 "copy-button.tsx：新增 copiedLabel/failedLabel props（上游硬编码英文文案）",
                 "use-copy-feedback.ts：copy 走 copyTextToClipboard（execCommand 降级，core/utils/clipboard）",
                 "use-copy-feedback.ts：复位时长具名常量 COPY_FEEDBACK_RESET_MS（1900ms，模块内自用）",
-                "copy-button.module.css：.button 作用域设计变量→mobi token 映射（foundation.css 不全局引入）"
+                "copy-button.module.css：.button 作用域设计变量→mobi token 映射（foundation.css 不全局引入）；圆角**不在此处映射**——--radius-control 由 cssVars.ts 按档位直接注入 :root（原映射到 --ant-border-radius，而 antd 变量只在组件子树内可解析，弹层与自绘件取不到）"
             ]
         },
         {
@@ -30,7 +30,7 @@
                 "dropdown-menu.tsx：新增 side/align 入参（上游写死 align=\"end\"；antd 站点各有 placement，topLeft/bottomLeft 等须能指名方位）",
                 "dropdown-menu.tsx：透传 open / onOpenChange 受控开合——content 项不是菜单项，Radix 不会替它关弹层，消费方（附件面板相机行点了要收面板）需要能自己关",
                 "消费方约束（组件侧不兜底），两条：①触发器必须常驻布局——Radix 弹层按触发器矩形定位（floating-ui autoUpdate），放进 hover-only 容器时关闭瞬间容器 display:none 会让 rect 归零到视口原点，退场中的菜单被甩到左上角（会话行由此把「更多」kebab 钉成常驻，仅重命名/置顶留 hover 显隐；触发器须是按钮组末尾，兄弟增删才不移动其矩形）；②触发器不能落在 role=\"tab\" 的 label 内——React portal 的 focusin 沿 **React 树**冒泡（非 DOM 树），rc-tabs 的 tab onFocus 据此 setFocusKey 再 focus() 抢回焦点，Radix 判 focus-outside 当场关菜单（开完即关，检查器「+」曾如此，现挂 tabBarExtraContent）",
-                "dropdown-menu.module.css：设计变量→mobi token 映射，声明挂 :where(.trigger, .menu)（trigger 在业务树、menu 在 portal，两个 DOM 根不共享自定义属性）",
+                "dropdown-menu.module.css：设计变量→mobi token 映射，声明挂 :where(.trigger, .menu)（trigger 在业务树、menu 在 portal，两个 DOM 根不共享自定义属性）；圆角不在映射块里重声明——--radius-control / --radius-panel 由 cssVars.ts 按档位注入 :root，两处 DOM 根同样可见",
                 "dropdown-menu.module.css：变量来源由 antd --ant-* 改为 cssVars.ts 注入 :root/.dark 的全局变量——antd cssVar 只在组件子树内可解析，弹层 portal 到 body 后 token 全空（无底色/无描边/无圆角/无投影 + 过渡失效），全局变量对 portal 同样可见",
                 "dropdown-menu.module.css：上游四档时长/三档曲线收敛到 --mobi-duration-*/--mobi-ease-*（cssVars.ts 单源），按 DESIGN.md 禁止 registry 组件自带第二套缓动语言",
                 "core/config/theme/cssVars.ts：SHADCN_VAR_MAPPINGS 增补组件实际消费而标准 shadcn 变量集未覆盖的 token（--border-strong/--border-subtle/--text-secondary/--radius-lg/--shadow-resting/--shadow-floating），并新增 MOTION_VARS 投影（antd cssVar 不产出 motion 变量）",

@@ -54,7 +54,7 @@ import {
 const ARTIFACT_SCROLLBAR_STYLE = [
     '::-webkit-scrollbar { width: 8px; height: 8px; }',
     '::-webkit-scrollbar-track { background: transparent; }',
-    '::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.45); border-radius: 4px; }',
+    '::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.45); border-radius: var(--radius-square); }',
     '::-webkit-scrollbar-thumb:hover { background: rgba(128, 128, 128, 0.65); }',
     '* { scrollbar-width: thin; scrollbar-color: rgba(128, 128, 128, 0.45) transparent; }',
 ].join('\n')

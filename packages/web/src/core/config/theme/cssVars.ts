@@ -21,7 +21,7 @@
  * 的 buildMobiThemeCss（token→CSS 变量投影先例）。新增变量只改 SHADCN_VAR_MAPPINGS 一处。
  */
 
-import { shadcnLightToken, shadcnDarkToken } from './tokens'
+import { RADIUS_TIERS, shadcnLightToken, shadcnDarkToken } from './tokens'
 
 type Mode = 'light' | 'dark'
 type Token = typeof shadcnLightToken
@@ -71,6 +71,22 @@ const MOTION_VARS: ReadonlyArray<readonly [string, string]> = [
     ['--mobi-ease-in-out', 'cubic-bezier(0.645, 0.045, 0.355, 1)'],
 ]
 
+/**
+ * 圆角档位的 CSS 投影：**角色名即变量名**（DESIGN.md「Shapes」的档位表逐档对应）。
+ * 组件取档一律引这些变量，不再写死数值——antd 主题 token 只覆盖得了 antd 组件，
+ * 自绘件（styled-component / 模块 CSS / 弹层）够不着，全靠这一组变量接住。
+ * 与 antd 四个槽位的对应关系见 tokens.ts 的 RADIUS_TIERS 注释。
+ */
+const RADIUS_VARS: ReadonlyArray<readonly [string, number]> = [
+    ['--radius-square', RADIUS_TIERS.square],
+    ['--radius-icon', RADIUS_TIERS.icon],
+    ['--radius-control-sm', RADIUS_TIERS.controlSm],
+    ['--radius-control', RADIUS_TIERS.control],
+    ['--radius-panel', RADIUS_TIERS.panel],
+    ['--radius-surface', RADIUS_TIERS.surface],
+    ['--radius-pill', RADIUS_TIERS.pill],
+]
+
 /** 注入样式节点的 id（ThemeProvider 挂载，幂等原地更新） */
 export const SHADCN_TOKENS_STYLE_ID = 'mobi-shadcn-tokens'
 
@@ -92,9 +108,11 @@ export function buildShadcnThemeCss(mode: Mode): string {
         return `  ${cssVar}: ${rendered};`
     })
     const motionLines = MOTION_VARS.map(([cssVar, value]) => `  ${cssVar}: ${value};`)
+    const radiusLines = RADIUS_VARS.map(([cssVar, value]) => `  ${cssVar}: ${value}px;`)
     return [
         `${selector} {`,
         ...colorLines,
+        ...radiusLines,
         ...motionLines,
         `  --mobi-z-overlay: ${Z_OVERLAY};`,
         '}',

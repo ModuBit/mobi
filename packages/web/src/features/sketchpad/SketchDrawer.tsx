@@ -180,7 +180,7 @@ const Section = styled.div`
     flex: 1;
     min-height: 0;
     overflow: hidden;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-panel);
     border: 1px solid var(--ant-color-border);
     background: var(--ant-color-bg-elevated);
 `

@@ -58,7 +58,7 @@ const SettingsButton = styled.button<{ $token: ReturnType<typeof useToken>['toke
     border: none;
     background: transparent;
     color: ${props => props.$token.colorTextSecondary};
-    border-radius: 6px;
+    border-radius: var(--radius-icon);
     cursor: pointer;
     font-size: 13px;
     transition: all 0.2s;

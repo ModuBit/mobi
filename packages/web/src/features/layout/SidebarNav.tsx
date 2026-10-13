@@ -44,7 +44,7 @@ const NavItem = styled.button<{ $active: boolean; $disabled?: boolean; $token: R
         if (props.$disabled) return props.$token.colorTextQuaternary
         return props.$active ? props.$token.colorPrimary : props.$token.colorTextSecondary
     }};
-    border-radius: 6px;
+    border-radius: var(--radius-icon);
     cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
     font-size: 13px;
     line-height: 1;

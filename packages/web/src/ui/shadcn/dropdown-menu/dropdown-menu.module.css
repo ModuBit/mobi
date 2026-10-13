@@ -46,8 +46,8 @@
     --space-2: 8px;
     --space-3: 12px;
     --control-height-sm: 36px;
-    --radius-control: var(--radius);
-    --radius-panel: var(--radius-lg);
+    /* 圆角不在此映射：--radius-control / --radius-panel 由 cssVars.ts 按 mobi 档位直接注入
+       :root，组件内直接用即可 */
     --text-sm: 14px;
     /* 上游四档时长 / 三档曲线收敛到主题 motion token（cssVars.ts 单源）——按 DESIGN.md
      * 「registry 组件禁止自带第二套缓动语言」，--ease-spring 不做弹簧曲线，与 standard 同档 */

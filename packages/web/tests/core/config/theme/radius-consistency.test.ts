@@ -15,24 +15,27 @@
  */
 
 /**
- * 圆角档位一致性（文档与代码同源守卫，2026-10-13）。
+ * 圆角档位守卫（2026-10-13）。
  *
- * 圆角散在三处：DESIGN.md「Shapes」章（规范）、theme/tokens.ts（全局落点）、
- * theme/components.ts（组件级覆写）。此前只有人工同步，改一处漏一处是必然——
- * 本测试把「档位 → antd 槽位」的映射写死成一张契约表，任一边漂移即失败。
+ * 圆角散在四处：DESIGN.md「Shapes」章（规格）、theme/tokens.ts（档位表 = 唯一数值源）、
+ * theme/components.ts（组件级覆写）、以及各处取档引用。此前全靠人工同步，改一处漏一处是必然。
+ * 本测试把三件事锁死：
+ *   ① 档位表：DESIGN.md ←→ tokens.ts.RADIUS_TIERS ←→ antd 槽位 ←→ 注入的 CSS 变量；
+ *   ② 组件覆写只允许落到指定档，且不许出现「与全局同值」的冗余覆写；
+ *   ③ **源码里不许再出现等于档位值的字面量**——散落的字面量正是「逐个调不动」的根因。
  */
 
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { resolve, dirname } from 'node:path'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { resolve, dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { shadcnLightToken, shadcnDarkToken } from '@/core/config/theme/tokens'
+import { shadcnLightToken, shadcnDarkToken, RADIUS_TIERS, RADIUS_TIER_KEYS } from '@/core/config/theme/tokens'
 import { shadcnLightComponents, shadcnDarkComponents } from '@/core/config/theme/components'
 import { buildShadcnThemeCss } from '@/core/config/theme/cssVars'
 
 const here = dirname(fileURLToPath(import.meta.url))
-// 本文件在 packages/web/tests/core/config/theme/，向上四级回到包根
-const designMd = readFileSync(resolve(here, '../../../../DESIGN.md'), 'utf-8')
+const webRoot = resolve(here, '../../../..') // packages/web
+const designMd = readFileSync(resolve(webRoot, 'DESIGN.md'), 'utf-8')
 
 /** 解析 frontmatter 的 rounded 块（正则，避免引入 yaml 依赖；照 presets-consistency 先例） */
 function readDesignTiers(): Record<string, number> {
@@ -46,9 +49,9 @@ function readDesignTiers(): Record<string, number> {
     return tiers
 }
 
-const tiers = readDesignTiers()
+const designTiers = readDesignTiers()
 
-/** 档位 → antd 全局槽位。这是文档与代码之间的契约，改档位必须两边一起改 */
+/** 档位 → antd 全局槽位（icon / surface 两档没有槽位，见 tokens.ts 注释） */
 const TOKEN_SLOTS = [
     ['control', 'borderRadius'],
     ['control-sm', 'borderRadiusSM'],
@@ -56,7 +59,7 @@ const TOKEN_SLOTS = [
     ['square', 'borderRadiusXS'],
 ] as const
 
-/** 组件级圆角覆写：只允许覆写成**与全局槽位不同**的档（同值覆写＝第二个事实源） */
+/** 组件级圆角覆写：只允许覆写成与全局槽位**不同**的档（同值覆写＝第二个事实源） */
 function radiusOverrides(theme: unknown): Array<{ component: string; key: string; value: number }> {
     const out: Array<{ component: string; key: string; value: number }> = []
     for (const [component, slots] of Object.entries(theme as Record<string, unknown>)) {
@@ -68,12 +71,39 @@ function radiusOverrides(theme: unknown): Array<{ component: string; key: string
     return out
 }
 
+/**
+ * 内容区例外：Markdown / 代码 / 编辑器 / 滚动条这些**密集文本区**的圆角按内容密度调过，
+ * 不属于「外壳档位」体系（见 DESIGN.md「Shapes」末条）。除此之外任何等于档位值的字面量
+ * 都算漂移——它不会随档位调整而变，是漏网的旧值。
+ */
+const CONTENT_AREA_EXCEPTIONS = ['src/styles', 'src/features/files/editor.css']
+
+function collectSourceFiles(dir: string): string[] {
+    const out: string[] = []
+    for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry)
+        if (statSync(full).isDirectory()) out.push(...collectSourceFiles(full))
+        else if (/\.(ts|tsx|css)$/.test(entry)) out.push(full)
+    }
+    return out
+}
+
+/** 去掉注释再扫：档位值常出现在解释性注释里（「面板档 22px」），那不是声明 */
+function stripComments(source: string): string {
+    return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+}
+
 describe('圆角档位与 DESIGN.md 一致性（文档与代码同源守卫）', () => {
-    it.each(['light', 'dark'] as const)('%s 档的四条全局槽位与文档数值一致', mode => {
+    it.each(['light', 'dark'] as const)('%s 档的四条 antd 槽位与文档数值一致', mode => {
         const token = mode === 'dark' ? shadcnDarkToken : shadcnLightToken
         for (const [tier, slot] of TOKEN_SLOTS) {
-            expect(token[slot], `${mode} 档 ${tier} → ${slot}`).toBe(tiers[tier])
+            expect(token[slot], `${mode} 档 ${tier} → ${slot}`).toBe(designTiers[tier])
         }
+    })
+
+    it('文档档位表与代码档位表逐档对齐（不多不少）', () => {
+        const codeTiers = Object.entries(RADIUS_TIER_KEYS).map(([docKey, codeKey]) => [docKey, RADIUS_TIERS[codeKey]] as const)
+        expect(Object.fromEntries(codeTiers)).toEqual(designTiers)
     })
 
     it('两档同值（圆角不分主题；颜色才分）', () => {
@@ -83,38 +113,60 @@ describe('圆角档位与 DESIGN.md 一致性（文档与代码同源守卫）',
     })
 
     it('主体三档等差 8px（每跳观感增幅一致，不出现突档）', () => {
-        expect(tiers['panel']! - tiers['control']!).toBe(8)
-        expect(tiers['surface']! - tiers['panel']!).toBe(8)
+        expect(designTiers['panel']! - designTiers['control']!).toBe(8)
+        expect(designTiers['surface']! - designTiers['panel']!).toBe(8)
     })
 
     it('控件小号档 = 控件档 − 4（uiarc 同法）', () => {
-        expect(tiers['control']! - tiers['control-sm']!).toBe(4)
+        expect(designTiers['control']! - designTiers['control-sm']!).toBe(4)
+    })
+
+    it('每个档位都投成同名 CSS 变量（角色名即变量名）', () => {
+        const css = buildShadcnThemeCss('light')
+        for (const [docKey, value] of Object.entries(designTiers)) {
+            expect(css, `--radius-${docKey}`).toContain(`--radius-${docKey}: ${value}px`)
+        }
+        // shadcn 生态兼容名保留（registry 组件按 --radius / --radius-lg 取档）
+        expect(css).toContain(`--radius: ${RADIUS_TIERS.control}px`)
+        expect(css).toContain(`--radius-lg: ${RADIUS_TIERS.panel}px`)
     })
 
     it.each([
-        ['light', shadcnLightComponents, shadcnLightToken],
-        ['dark', shadcnDarkComponents, shadcnDarkToken],
-    ] as const)('%s 组件覆写：Modal 走大表面档、Alert 走控件档、Checkbox 走方角档', (mode, components, token) => {
-        expect(components.Modal.borderRadiusLG, `${mode} Modal`).toBe(tiers['surface'])
-        expect(components.Alert.borderRadiusLG, `${mode} Alert`).toBe(tiers['control'])
-        expect(components.Checkbox.borderRadiusSM, `${mode} Checkbox`).toBe(tiers['square'])
+        ['light', shadcnLightComponents],
+        ['dark', shadcnDarkComponents],
+    ] as const)('%s 组件覆写：Modal 走大表面档、Alert 走控件档、Checkbox 走方角档', (mode, components) => {
+        expect(components.Modal.borderRadiusLG, `${mode} Modal`).toBe(designTiers['surface'])
+        expect(components.Alert.borderRadiusLG, `${mode} Alert`).toBe(designTiers['control'])
+        expect(components.Checkbox.borderRadiusSM, `${mode} Checkbox`).toBe(designTiers['square'])
     })
 
     it.each([
         ['light', shadcnLightComponents],
         ['dark', shadcnDarkComponents],
     ] as const)('%s 不存在「与全局同值」的冗余覆写', (_mode, components) => {
-        const globals = Object.fromEntries(TOKEN_SLOTS.map(([tier, slot]) => [slot, tiers[tier]]))
+        const globals = Object.fromEntries(TOKEN_SLOTS.map(([tier, slot]) => [slot, designTiers[tier]]))
         for (const { component, key, value } of radiusOverrides(components)) {
-            // 值必须是文档里的某一档，且不能等于该槽位的全局值（那就是冗余覆写）
-            expect(Object.values(tiers), `${component}.${key} 的值不在档位表里`).toContain(value)
+            expect(Object.values(designTiers), `${component}.${key} 的值不在档位表里`).toContain(value)
             expect(value, `${component}.${key} 与全局 ${key} 同值，冗余覆写应删除`).not.toBe(globals[key])
         }
     })
 
-    it('shadcn 变量投影跟随档位（registry 组件消费的 --radius / --radius-lg）', () => {
-        const css = buildShadcnThemeCss('light')
-        expect(css).toContain(`--radius: ${tiers['control']}px`)
-        expect(css).toContain(`--radius-lg: ${tiers['panel']}px`)
+    it('源码里没有等于档位值的 border-radius 字面量（一律取档引用）', () => {
+        const tierValues = new Set(Object.values(designTiers))
+        const offenders: string[] = []
+        for (const file of collectSourceFiles(resolve(webRoot, 'src'))) {
+            const rel = relative(webRoot, file)
+            if (CONTENT_AREA_EXCEPTIONS.some(prefix => rel.startsWith(prefix))) continue
+            const source = stripComments(readFileSync(file, 'utf-8'))
+            for (const decl of source.matchAll(/border-radius:\s*([^;{}\n]*)/g)) {
+                const value = decl[1]!.trim()
+                // calc() 里的数值是结构性的内缩量（同心公式），不是取档
+                if (value.startsWith('calc(')) continue
+                for (const px of value.matchAll(/(\d+)px/g)) {
+                    if (tierValues.has(Number(px[1]))) offenders.push(`${rel} → border-radius: ${value}`)
+                }
+            }
+        }
+        expect(offenders, `这些字面量应改成 var(--radius-<档名>)`).toEqual([])
     })
 })

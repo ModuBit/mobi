@@ -52,7 +52,7 @@ const StyledTabs = styled(Tabs)`
     && > .ant-tabs-nav .ant-tabs-tab.ant-tabs-tab-active {
         background: transparent;
         border: 1px solid transparent;
-        border-radius: 6px;
+        border-radius: var(--radius-icon);
         padding: 4px 10px;
         margin: 2px 2px;
     }
@@ -75,7 +75,7 @@ const StyledTabs = styled(Tabs)`
     && .ant-tabs-tab-remove {
         margin-inline-start: 2px;
         padding: 2px;
-        border-radius: 4px;
+        border-radius: var(--radius-square);
         opacity: 0;
         transition: opacity 0.15s ease;
     }

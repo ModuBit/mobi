@@ -36,7 +36,7 @@ const STATUS_ORDER: Record<TaskItem['status'], number> = {
 
 const StyledCheckbox = styled(Checkbox)<{ $status: TaskItem['status'] }>`
     .ant-checkbox-inner {
-        border-radius: 4px;
+        border-radius: var(--radius-square);
     }
     &.ant-checkbox-checked .ant-checkbox-inner {
         background-color: ${TASK_GREEN};

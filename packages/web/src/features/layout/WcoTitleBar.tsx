@@ -90,7 +90,7 @@ const LogoArea = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>
     background: transparent;
     cursor: pointer;
     color: ${p => p.$token.colorText};
-    border-radius: 6px;
+    border-radius: var(--radius-icon);
     padding: 4px 6px;
 
     &:hover {
@@ -107,7 +107,7 @@ const CollapseButton = styled.button<{ $token: ReturnType<typeof useToken>['toke
     border: none;
     background: transparent;
     color: ${p => p.$token.colorTextSecondary};
-    border-radius: 6px;
+    border-radius: var(--radius-icon);
     cursor: pointer;
     transition: background 0.2s, color 0.2s;
 

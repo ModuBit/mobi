@@ -34,7 +34,7 @@ const StyledButton = styled.button<{
     border: none;
     background: ${props => props.$active ? props.$token.colorPrimaryBg : 'transparent'};
     color: ${props => props.$active ? props.$token.colorPrimary : props.$token.colorTextSecondary};
-    border-radius: 6px;
+    border-radius: var(--radius-icon);
     cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
     opacity: ${props => props.disabled ? 0.4 : 1};
     transition: all 0.2s;

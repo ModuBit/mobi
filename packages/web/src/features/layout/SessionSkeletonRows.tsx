@@ -41,7 +41,8 @@ const SkeletonRow = styled.div<{ $token: Token; $variant: SessionListVariant }>`
 
     & > .sk-bar {
         height: ${props => props.$variant === 'mobile' ? '10px' : '8px'};
-        border-radius: ${props => props.$variant === 'mobile' ? '5px' : '4px'};
+        /* 骨架条本就是「半高胶囊」（5px 配 10px 条 / 4px 配 8px 条），直接取圆形档更好读 */
+        border-radius: var(--radius-pill);
         background: linear-gradient(
             90deg,
             ${props => props.$token.colorFillSecondary} 25%,

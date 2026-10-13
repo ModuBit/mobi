@@ -44,7 +44,7 @@ const LogoArea = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
     gap: 8px;
     cursor: pointer;
     color: ${props => props.$token.colorPrimary};
-    border-radius: 6px;
+    border-radius: var(--radius-icon);
     padding: 4px;
 `
 
@@ -69,7 +69,7 @@ const CollapseButton = styled.button<{ $token: ReturnType<typeof useToken>['toke
     border: none;
     background: transparent;
     color: ${props => props.$token.colorTextSecondary};
-    border-radius: 6px;
+    border-radius: var(--radius-icon);
     cursor: pointer;
     transition: all 0.2s;
 

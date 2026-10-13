@@ -91,7 +91,8 @@ motion:
 # 下一跳大」的突档（旧值 8/10/14 正是这样：+2 再 +4）。control=14 的锚：mobi 控件高 36px ×
 # uiarc 的控件比值（18/44）≈ 14——照搬 uiarc 的 18px 会在这个高度上变成胶囊。
 rounded:
-  square: 4px        # 方角档：复选框等要保留方角、以区别于圆形 radio 的元素
+  square: 4px        # 方角档：复选框、小标记等要保留方角的元素
+  icon: 6px          # 图标键档：侧栏 / 标题栏 / 工具条里的纯图标按钮（比控件档收一档，才不像药丸）
   control-sm: 10px   # 控件小号档 = control − 4（小尺寸控件；uiarc 同法用「控件档 − 4」表达这一档）
   control: 14px      # 控件档：按钮 / 输入 / Select
   panel: 22px        # 面板档：卡片 / 悬浮面板 / 菜单
@@ -301,12 +302,13 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - 卡片 / 悬浮面板 / 菜单：{rounded.panel}=22px
 - Modal：{rounded.surface}=30px
 - 小尺寸控件（标签、分段项、下拉项）：{rounded.control-sm}=10px（= control − 4）
-- 复选框：{rounded.square}=4px（保留方角，区别于圆形 radio）
+- 图标键（侧栏 / 标题栏 / 工具条里的纯图标按钮）：{rounded.icon}=6px
+- 复选框、小标记：{rounded.square}=4px（保留方角，区别于圆形 radio）
 - 圆形元素（头像、状态点）：{rounded.pill}
 - **嵌套内圆角 = 外圆角 − 容器内边距**（同心圆公式，uiarc 同法）：菜单项 = panel − 6px、卡中卡 = panel − 8px。外圆角一放大，内层不跟着收就会「外圆内方」——这是大圆角最容易露馅的地方。
 - **不要在同一视图混用方角与圆角**；新组件默认落在 control/panel 两档。
 - **取档只看「这是哪一层」**，别按元素大小猜：最外层容器（页面级卡片 / 弹层 / 悬浮面板）走 `panel`；面板内的卡片、行、按钮、输入走 `control`；面板内的图标盒、小标签走 `control-sm`；要大要小都先问「它是不是外层的同心内层」——是就用同心公式，不是才换档。
-- **不写死数值**：圆角一律取 token（antd 组件树内用 `$token.borderRadius*` / `var(--ant-border-radius*)`，antd 树外与弹层用注入的 `--radius` / `--radius-lg`）。散落的字面量会在大档位调整时成为漏网的旧值——settings 页的卡片曾一半跟 token、一半写死 12px。
+- **不写死数值**：组件一律取档引用——antd 组件树内用 `$token.borderRadius*` / `var(--ant-border-radius*)`，antd 树外与自绘件、弹层用注入的 `--radius-<档名>`（角色名即变量名）。散落的字面量是「逐个调不动」的根因（settings 页的卡片曾一半跟 token、一半写死 12px），故由守卫测试机械拦截：`src` 下任何等于档位值的 `border-radius` 字面量都会失败。
 
 ## Components
 
