@@ -292,6 +292,8 @@ packages/web/src/
 │   │   │                       / bodyScrollLock（自建滚动锁，钉 body 不拦触摸）/ resolveDetentRelease（多档落档）
 │   │   ├── layout/             ContentDrawer / SplitLayout / OverflowContainer / ErrorBoundary / mobileSheetClass
 │   │   │                       AutoHeightHost（shadow 内容自适高）/ overlayLayer（移动浮层层号分配器）
+│   │   │                       sheetSurface（移动浮层共享壳：面 / 头部基线 / 抓手 / 图标钮——BottomSheet
+│   │   │                       与画板共用，定位与动画编排仍归各自）
 │   │   ├── display/            FileChip / FileTypeBadge / FilePathText / AppImage / sourceIcon / toolIcons
 │   │   ├── markdown/           Markdown / AutoDetectCodeBlock + 各插件（footnote/latex/mention/slashCommand/directive）
 │   │   ├── motion/             ShinyText / ScrambleText / CrossfadeText / PixelLoader / presets

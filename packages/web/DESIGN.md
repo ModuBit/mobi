@@ -293,7 +293,7 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 双布局模型：**桌面端固定侧栏 + 主区**，**移动端单栏 + 抽屉**。响应式断点 `768px`，跨越处用 `dvh`/`dvw` 而非 `vh`/`vw` 应对移动端浏览器栏。
 
 - **间距严格 8 的倍数**（4px 为半步微调）：{spacing.xs}=4、{spacing.sm}=8、{spacing.base}=12、{spacing.md}=16、{spacing.lg}=24。新组件请落在这套刻度上。
-- **移动端底部 Drawer 强制三约束**：高度自适应、上限 `85dvh`、底部 `padding: max(24px, env(safe-area-inset-bottom))` 安全区。这是硬规范，见 `packages/web/CLAUDE.md`。
+- **移动端底部浮层是同一张「面」**：高度自适应、上限 `85dvh`、底部 `padding: max(24px, env(safe-area-inset-bottom))` 安全区——三约束由 `BottomSheet` 与共享壳 `ui/base/layout/sheetSurface`（圆角 / 描边 / 底色 / 阴影 / 裁切 / 头部基线 / 抓手）收口，**移动端画板与它同一张面**：新浮层不要自己拼壳，见 `packages/web/CLAUDE.md`「移动端底部 sheet 规范」。
 - **侧栏宽度** `--agent-card-width` 桌面 200px、移动 130px，作为 AgentCard 等浮层的基准宽度。
 - **气泡留白**：assistant 气泡右侧压缩 5%，含工具卡片的气泡最小宽度 80%——给工具卡片足够横向空间。
 
@@ -401,4 +401,4 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - **Don't** 硬编码 transition 的毫秒数或 cubic-bezier 字面量——CSS 过渡时长/曲线同样走主题 token（`motionDurationMid` × `motionEaseInOut`）。
 - **Don't** 锁输入等动画完成——一切动效可打断。
 - **Don't** 引入毛玻璃/滚动穿透浮层材质（真机卡顿 + 效果不明显，见 Materials）。
-- **Don't** 新建移动端底部 Drawer 时省略安全区 padding 与 85dvh 上限。
+- **Don't** 新建移动端底部浮层时省略安全区 padding 与 85dvh 上限，或另拼一版「面」（壳见 `ui/base/layout/sheetSurface`）。

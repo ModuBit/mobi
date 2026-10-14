@@ -8,7 +8,7 @@
 
 ## 编码规范
 
-→ [docs/conventions/web.md](../../docs/conventions/web.md)（**目录结构 / 分层规则 / 依赖门禁**见该文「目录结构」章）
+→ [docs/conventions/web.md](../../docs/conventions/web.md)（**目录结构 / 分层规则 / 依赖门禁**见该文「目录结构」章；**浮层与全屏页面的头部锚位**见「头部布局与锚位」章）
 
 `src/` 六层 `app → pages → features → ui → domain → core`，依赖只许向下，depcruise 硬卡：
 
@@ -44,6 +44,7 @@
 - **别在 sheet 里嵌第二层限高滚动区**：容器自己就是滚动区，内容再限高内滚就成了双滚动（真机反馈「diff 里为什么有竖向滚动条」）。工具视图在详情容器里走 `ToolViewScopeProvider fullHeight`（`features/chat/tool-card/views/toolViewScope.tsx`）——同一个视图组件在消息卡内限高（320）、在详情里全高
 - **关闭是「先通知后动画」且可否决**：`onClose` 消费者须**同步**决定是否关闭；不翻转 `open` = 否决，sheet 沉降回原位（执行中的操作菜单、提交中的表单传 `() => {}` 或条件 noop 即可拦住关闭，不要另加 `maskClosable` 这类开关）
 - **内容内衬归调用方**：组件默认不给 body 加 padding，需要内衬就传 `bodyStyle`（与旧组件相反——旧组件的 `padding: 0` 强制是为了抵消 antd 默认内衬，BottomSheet 没有这层默认）
+- **「面」由共享壳提供**（`src/ui/base/layout/sheetSurface`）：圆角 / 描边 / 底色 / 阴影 / 裁切 / 头部基线（居中三栏与工具条两档）/ 抓手 / 图标钮都在壳里，BottomSheet 与**移动端画板**共用同一个壳（视觉统一）。**定位、尺寸、开合与手势编排仍归各自**——画板因此刻意不套 BottomSheet（要自管停靠测量与 morph 过渡），但壳、滚动锁（`bodyScrollLock`）、返回哨兵（`useHistoryGuard`）、层号分配器（`overlayLayer`）都是同一套
 - 其它可用 props：`title`（ReactNode，恒居中三栏）/ `extra`（标题行右侧操作）/ `showClose`（默认 false，靠下拉·遮罩·手势返回关闭）/ `showDragHandle`
 
 **例外——无需交互关闭的纯提示框仍可直接用 antd `Drawer`**（如 `SaveConflictDialog`：`maskClosable={false}` 且无拖拽关闭语义）。此时必须手动补齐三件事：
