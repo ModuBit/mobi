@@ -168,24 +168,38 @@ function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null
 
 // Dock 容器：包裹整个 Composer 区域，和 BubbleList 形成视觉分隔
 const ComposerDock = styled.div`
-    background: var(--ant-color-fill-quaternary);
+    /* 默认退场：背后没有内容层时（InfoPanel / StatusBar 空态都渲染 null，Dock 里只剩
+       wrapper 一个孩子），灰底只剩上下两条空圆角带——比没有 Dock 更难看。此时白卡
+       直接落在页面底色上，分层只靠底色差 + 圆角 */
+    background: transparent;
     border-radius: var(--ant-border-radius-lg, 12px);
-    padding: 8px;
 
-    /* Sender 浮出 Dock 的「卡中卡」：白底 + 大圆角 + 投影，左右负 margin 悬挑出 Dock
-       边缘 8px（外层 16px 内衬保证任何视口宽度下与屏幕边都有 8px 缝——聊天列在全宽
-       渲染的中等宽度下内衬就是唯一的安全边距，断点 hack 不可靠）、上下正 margin 与
-       相邻层拉开呼吸空隙——输入卡是前景主体（参考 ChatGPT/Codex composer 的叠层样式） */
+    /* 背后有内容层（InfoPanel / StatusBar 渲染了非 null，⟺ 直接子元素不止 wrapper
+       一个）才回来：灰底 + 内衬，白卡悬挑其上的分层样式（对齐手绘稿：灰卡装着
+       内容行、白卡悬挑在中间） */
+    &&:not(:has(> :only-child)) {
+        background: var(--ant-color-fill-quaternary);
+        padding: 8px;
+    }
+
+    /* Sender 浮出 Dock 的「卡中卡」：白底 + 大圆角。左右 margin -16px = 抵消 Dock 内衬
+       8px + 真悬挑 8px——悬挑量就是「超出 Dock 边缘」的部分，只抵消内衬的话卡和 Dock
+       永远同宽（踩过）。外层 16px 内衬 − 悬挑 8px = 任何视口宽度下与屏幕边保底 8px 缝
+       （聊天列在全宽渲染的中等宽度下内衬就是唯一的安全边距，断点 hack 不可靠）。
+       无投影：两侧悬挑外与下方永远是空底，投影没有可依附的内容层，展示出来只像
+       一块污渍；分层靠白卡与灰底的底色差 + 圆角 */
     && .ant-sender {
         border: none !important;
-        /* 无投影：聊天页 composer 下方永远是空底（dock 末位）、两侧悬挑外也是空底——
-           投影没有可依附的内容层，展示出来只像空底上的一块污渍；分层靠白卡与灰底的
-           底色差 + 圆角即可（新会话页上下都有内容层，投影保留，见 InputCard） */
         box-shadow: none !important;
         border-radius: 24px !important;
         background: var(--ant-color-bg-container) !important;
         width: auto !important;
-        margin: 8px -8px;
+        margin: 0 -16px;
+    }
+
+    /* 有内容层时白卡与上下层拉开呼吸空隙 */
+    &&:not(:has(> :only-child)) .ant-sender {
+        margin: 8px -16px;
     }
 
     /* 提交/停止按钮：深色大圆钮（中性反色，双档主题各自成立——light 黑底白标、dark 白底黑标）。
