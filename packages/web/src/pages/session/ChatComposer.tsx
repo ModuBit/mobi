@@ -38,7 +38,7 @@ import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { AttachPanel } from '@/features/composer/AttachPanel'
 import { QuoteChipBar } from '@/features/composer/QuoteChipBar'
-import { composerSenderCard, composerSubmitButton } from '@/features/composer/composerSurface.styles'
+import { composerSenderCard, composerSubmitButton, COMPOSER_CARD_HEADER_INSET } from '@/features/composer/composerSurface.styles'
 import { ComposerInfoPanel } from '@/pages/session/ComposerInfoPanel'
 import { resolveCopyShortcut } from '@/features/composer/copyShortcut'
 import { StatusBar } from '@/ui/shared/StatusBar'
@@ -173,9 +173,11 @@ const ComposerDock = styled.div`
     ${composerSenderCard}
     ${composerSubmitButton}
 
-    /* 聊天页 Dock 无内容层时白卡上下不留垂直空隙（新会话页始终 8px）——覆盖共享片段 */
+    /* 聊天页 Dock 无内容层时白卡上下不留垂直空隙（新会话页始终 8px）；水平只悬 8px
+       （-8）而非共享片段的 -16——-16 里本有 8px 是「抵消 Dock 内衬」的部分，空态没有
+       Dock 内衬可抵，照抄会把白卡推到贴死屏幕边（外层 16px 内衬 − 16px = 0 缝） */
     && .ant-sender {
-        margin: 0 -16px;
+        margin: 0 -8px;
     }
 
     /* 背后有内容层（InfoPanel / StatusBar 渲染了非 null，⟺ 直接子元素不止 wrapper
@@ -819,7 +821,7 @@ export function ChatComposer(props: ChatComposerProps) {
             />
         ),
         hasQuotes && (
-            <div key="quotes" style={{ padding: '8px 16px 0' }}>
+            <div key="quotes" style={{ padding: COMPOSER_CARD_HEADER_INSET }}>
                 <QuoteChipBar
                     quotes={quotes}
                     onRemove={removeQuote}

@@ -29,6 +29,7 @@ import {
 import type { LucideProps } from 'lucide-react'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
 import { formatFileSize } from '@/core/utils/fileSize'
+import { COMPOSER_CARD_HEADER_INSET } from './composerSurface.styles'
 
 /** 文件类别图标（对齐 AntX FileCard PresetIcons） */
 type FileCategory = 'default' | 'pdf' | 'word' | 'excel' | 'ppt' | 'image' | 'video' | 'audio' | 'zip' | 'markdown' | 'java' | 'javascript' | 'python' | 'code'
@@ -423,7 +424,7 @@ export const AttachmentList = memo(function AttachmentList(props: AttachmentList
     }
 
     return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 16px 0' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: COMPOSER_CARD_HEADER_INSET }}>
             {attachments.map(attachment => (
                 <AttachmentCard
                     key={attachment.id}

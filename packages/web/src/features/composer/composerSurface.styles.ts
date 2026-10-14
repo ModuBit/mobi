@@ -23,6 +23,13 @@ import { css } from '@emotion/react'
  */
 
 /**
+ * 白卡头部内容行（建议 chip / 引用 chips / 附件列表）的统一内衬。
+ * 同心规则：外圆角 = 内圆角 + 内衬——24px 白卡圆角下，顶衬 <12px 会被上圆弧咬住
+ * （曾只有 4px，chip 顶在圆角上）；侧向对齐卡片 16px 基准。
+ */
+export const COMPOSER_CARD_HEADER_INSET = '12px 16px 0'
+
+/**
  * Sender 浮出容器的「卡中卡」：白底 + 24px 大圆角、无投影无描边。
  * 左右负 margin 吃掉容器内衬 8px 再真悬挑 8px（-16 = 8 内衬 + 8 悬挑），
  * 上下正 margin 与相邻层拉开呼吸空隙。Sender 根节点 width:100%，必须
@@ -52,7 +59,9 @@ export const composerSubmitButton = css`
         font-size: 18px;
         background: var(--ant-color-text) !important;
         color: var(--ant-color-bg-container) !important;
-        transition: opacity 0.15s ease;
+        /* 逐项点名（不写 all）：除 hover 压暗的 opacity 外，保留背景/前景的过渡——
+           背景色在此被整钮接管，disabled↔enabled、主题切换时不加会跳变 */
+        transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
     }
 
     && .ant-sender .ant-btn-primary.ant-btn-circle:not(:disabled):hover {
