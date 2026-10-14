@@ -181,18 +181,19 @@ const ComposerDock = styled.div`
     }
 
     /* 背后有内容层（InfoPanel / StatusBar 渲染了非 null，⟺ 直接子元素不止 wrapper
-       一个）才现身：灰底 + 内衬 + 圆角，白卡悬挑其上的分层样式（对齐手绘稿：灰卡
-       装着内容行、白卡悬挑在中间），并与上下层拉开呼吸空隙。空态时 Dock 若仍上灰底，
-       只剩上下两条空圆角带——比没有 Dock 更难看；此时白卡直接落在页面底色上，
-       分层只靠底色差 + 圆角 */
+       一个）才现身，且灰底只铺上方——内容层都在白卡上方（各管各的：上没内容上不铺，
+       下方永远没有内容层，所以永不铺），白卡下缘直接落在页面底色上。对齐手绘稿：
+       灰卡装着内容行、白卡悬挑在中间；空态时 Dock 若仍上灰底，只剩上下两条空圆角带
+       ——比没有 Dock 更难看，此时白卡直接落在页面底色上，分层只靠底色差 + 圆角 */
     &&:not(:has(> :only-child)) {
         background: var(--ant-color-fill-quaternary);
-        border-radius: var(--ant-border-radius-lg, 12px);
-        padding: 8px;
+        border-radius: var(--ant-border-radius-lg, 12px) var(--ant-border-radius-lg, 12px) 0 0;
+        /* 下方不留内衬：有白卡 margin 8px + padding 8px 叠出的灰带会悬在卡片底下 */
+        padding: 8px 8px 0;
     }
 
     &&:not(:has(> :only-child)) .ant-sender {
-        margin: 8px -16px;
+        margin: 8px -16px 0;
     }
 
     /* bash 模式：恢复 Sender 橙色发光边框（输入 ! 空格 触发 .bash-mode）。
