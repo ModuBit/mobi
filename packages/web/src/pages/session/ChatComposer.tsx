@@ -173,14 +173,25 @@ const ComposerDock = styled.div`
     padding: 8px;
 
     /* Sender 浮出 Dock 的「卡中卡」：白底 + 大圆角 + 投影，左右负 margin 吃掉 Dock 内衬
-       （左右悬挑出 Dock 边缘 8px，移动端恰好贴满视口）、上下负 margin 轻叠相邻层——输入卡是
+       （左右悬挑出 Dock 边缘 8px，移动端恰好贴满视口）、上下正 margin 与相邻层拉开呼吸空隙——输入卡是
        前景主体，周边条退为背景（参考 ChatGPT/Codex composer 的叠层样式） */
     && .ant-sender {
         border: none !important;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.14) !important;
+        /* 无投影：聊天页 composer 下方永远是空底（dock 末位）、两侧悬挑外也是空底——
+           投影没有可依附的内容层，展示出来只像空底上的一块污渍；分层靠白卡与灰底的
+           底色差 + 圆角即可（新会话页上下都有内容层，投影保留，见 InputCard） */
+        box-shadow: none !important;
         border-radius: 24px !important;
         background: var(--ant-color-bg-container) !important;
-        margin: -6px -16px;
+        width: auto !important;
+        margin: 8px -16px;
+    }
+
+    /* 窄屏：悬挑收窄到两侧各 4px——外层 8px 边距下 -16px 会正好贴死屏幕边 */
+    @media (max-width: 767px) {
+        && .ant-sender {
+            margin: 6px -12px;
+        }
     }
 
     /* 提交/停止按钮：深色大圆钮（中性反色，双档主题各自成立——light 黑底白标、dark 白底黑标）。
