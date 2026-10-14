@@ -30,6 +30,7 @@ import { join } from 'node:path'
 import { useState } from 'react'
 import type { AnimationPlaybackControls, MotionValue } from 'motion/react'
 import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
+import { sheetClass } from '@/ui/base/layout/sheetSurface'
 import { __resetHistoryGuardForTest } from '@/core/lib/drawerHistoryGuard'
 import { __resetBodyScrollLockForTest } from '@/ui/base/interactive/bodyScrollLock'
 
@@ -125,13 +126,14 @@ function forceOffsetHeightOnPrototype(value = SURFACE_H) {
 }
 
 /** 受控宿主：veto=true 时拦住关闭（复现执行中的操作菜单传 noop onClose 的场景） */
-function Host({ veto = false, onClose, children, peek = true }: { veto?: boolean; onClose?: () => void; children?: React.ReactNode; peek?: boolean }) {
+function Host({ veto = false, onClose, children, peek = true, showClose = false }: { veto?: boolean; onClose?: () => void; children?: React.ReactNode; peek?: boolean; showClose?: boolean }) {
     const [open, setOpen] = useState(true)
     return (
         <BottomSheet
             open={open}
             title="测试"
             peek={peek}
+            showClose={showClose}
             onClose={() => {
                 onClose?.()
                 if (!veto) setOpen(false)
@@ -503,6 +505,18 @@ describe('BottomSheet', () => {
         await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
     })
 
+    it('关闭按钮走壳（SheetClose），点击触发 onClose', async () => {
+        const onClose = vi.fn()
+        render(<Host onClose={onClose} showClose />)
+        forceHeight(surface())
+        await waitSettled()
+
+        const close = screen.getByRole('button', { name: 'common.close' })
+        expect(close.className).toContain(sheetClass.iconBtn)
+        fireEvent.click(close)
+        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    })
+
     it('无 title 时仍渲染可访问名（视觉隐藏的 Title），有 title 时渲染标题文本', () => {
         const { unmount } = render(<BottomSheet open onClose={vi.fn()} />)
         // 面板名回落到 i18n 的 common.panel（Radix 要求 Content 内存在 Title 元素）
@@ -788,30 +802,40 @@ describe('BottomSheet', () => {
 
     it('样式源不变量：内容自适应 + 上限、滚动收缩链、底部安全区、层号分层、居中三栏标题行', () => {
         // CSS modules 在 vitest 里不进 DOM（无 css: true），关键不变量读源码断言
-        // （先例：tests/components/StatusDot.test.tsx）
+        // （先例：tests/components/StatusDot.test.tsx）。
+        // 两个文件：sheet 自己的定位/状态规则，与共享壳（面 + 头部 + 内容区滚动链）——
+        // 后者的不变量对画板载体同样成立，故断言也要落在壳上，别只盯 sheet
         const css = readFileSync(join(process.cwd(), 'src/ui/shadcn/bottom-sheet/bottom-sheet.module.css'), 'utf8')
+        const shell = readFileSync(join(process.cwd(), 'src/ui/base/layout/sheetSurface.module.css'), 'utf8')
         // 高度：内容自适应（height:auto）+ 上限 = 调用方档位（--sheet-max-height，默认 85dvh）
         expect(css).toMatch(/\.sheet \{[^}]*height: auto;/)
         expect(css).toMatch(/max-height: calc\(var\(--sheet-max-height, 85dvh\) \+ var\(--sheet-extension\)\)/)
         // 内容区：唯一滚动区 + 解除 flex item 的「不收缩」（没有它长内容会撑爆 sheet 被裁）
-        expect(css).toMatch(/\.body \{[^}]*min-height: 0;/)
-        expect(css).toMatch(/\.body \{[^}]*overflow-y: auto;/)
+        expect(shell).toMatch(/\.body \{[^}]*min-height: 0;/)
+        expect(shell).toMatch(/\.body \{[^}]*overflow-y: auto;/)
         // 底部安全区：触控余量与 home indicator 取大者（与旧底部抽屉同档）
         expect(css).toMatch(/padding-bottom: calc\(var\(--sheet-extension\) \+ max\(24px, env\(safe-area-inset-bottom/)
-        // 层号分层：z-index 不再写死 50/51，缺省回落也取自 --mobi-z-overlay（层号基线唯一来源）
-        expect(css).toMatch(/z-index: var\(--sheet-z, var\(--mobi-z-overlay\)\)/)
+        // 层号分层：z-index 不再写死 50/51，缺省回落也取自 --mobi-z-overlay（层号基线唯一来源）。
+        // 定位在本地（壳只管遮罩视觉）——画板的 PC 遮罩是 absolute，两套定位住不进同一个类
+        expect(css).toMatch(/\.mask \{[^}]*z-index: var\(--sheet-z, var\(--mobi-z-overlay\)\);/)
+        expect(css).toMatch(/\.mask \{[^}]*position: fixed;/)
+        expect(shell).toMatch(/\.mask \{[^}]*background: var\(--sheet-mask-bg, oklch\(16% 0 0 \/ 0\.34\)\)/)
         expect(css).toMatch(/z-index: var\(--sheet-z-top, calc\(var\(--mobi-z-overlay\) \+ 1\)\)/)
+        // 面：形状语言只在壳里（贴底 = 上半圆角；悬浮矩形 = 四角），且取档引用不写死数值。
+        // 档位取 panel（DESIGN.md：卡片/悬浮面板/菜单 = panel，surface 档是 Modal 的）
+        expect(shell).toMatch(/\.surfaceBottom \{[^}]*border-radius: var\(--radius-panel\) var\(--radius-panel\) 0 0;/)
+        expect(shell).toMatch(/\.surfaceFloating \{[^}]*border-radius: var\(--radius-panel\);/)
         // 标题行：三栏 grid（1fr 内容 1fr）——标题恒居中，extra/关闭按钮靠右
-        expect(css).toMatch(/grid-template-columns: 1fr minmax\(0, auto\) 1fr/)
-        expect(css).toMatch(/\.headText \{[^}]*grid-column: 2;/)
-        expect(css).toMatch(/\.headActions \{[^}]*grid-column: 3;/)
+        expect(shell).toMatch(/grid-template-columns: 1fr minmax\(0, auto\) 1fr/)
+        expect(shell).toMatch(/\.headText \{[^}]*grid-column: 2;/)
+        expect(shell).toMatch(/\.headActions \{[^}]*grid-column: 3;/)
         // reduced-motion：CSS 侧的微过渡全部关掉（sheet 自身的位移由 JS 分支直接跳，见另一用例）
-        expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^}]*transition: none;/)
-        // peek 档：纵向不滚、触摸只改档（靠 data-scroll-locked 命中）；
+        expect(shell).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^}]*transition: none;/)
+        // peek 档：纵向不滚、触摸只改档（靠 data-scroll-locked 命中，跨模块用 data 属性而非类名）；
         // 横向仍放给内容——写 none 会把 diff 这类嵌套滚动区一起锁死（真机「横竖都不能滚」）
-        expect(css).toMatch(/\.sheet\[data-scroll-locked\] \.body \{[^}]*overflow: hidden;/)
-        expect(css).toMatch(/\.sheet\[data-scroll-locked\] \.body \{[^}]*touch-action: pan-x;/)
+        expect(css).toMatch(/\.sheet\[data-scroll-locked\] \[data-sheet-body\] \{[^}]*overflow: hidden;/)
+        expect(css).toMatch(/\.sheet\[data-scroll-locked\] \[data-sheet-body\] \{[^}]*touch-action: pan-x;/)
         // 内容区两个方向都可滚（touch-action 在祖先上会限制整个子树，diff 的横向滚动曾被锁死）
-        expect(css).toMatch(/\.body \{[^}]*touch-action: pan-x pan-y;/)
+        expect(shell).toMatch(/\.body \{[^}]*touch-action: pan-x pan-y;/)
     })
 })

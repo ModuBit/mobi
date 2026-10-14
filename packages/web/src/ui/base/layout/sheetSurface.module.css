@@ -1,0 +1,302 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* 浮层的「面」与头部基线：BottomSheet 与画板载体（SketchDrawer）的共享层，
+ * 让两种浮层在形状 / 描边 / 底色 / 阴影 / 头部 / 内容区滚动链上逐项一致。
+ *
+ * **边界**：壳只管「面」——圆角、描边、底色、阴影、字体、裁切、内容区滚动链、头部基线。
+ * 定位、尺寸、屏下延伸、安全区内衬、动效编排、手势、层号一律归使用方
+ * （设计约束见 .scratch/sketch-sheet-unify/plan.md）。
+ *
+ * **怎么复用**：宿主元素必须自己渲染时（motion.div / Radix asChild）用导出的 `sheetClass`；
+ * 结构固定时直接用 `SheetHeader` / `SheetGrabber`。使用方要加**状态**规则时挂 data 属性
+ * （`data-dragging` / `data-scrolled` / `data-scroll-locked`），不要跨模块引类名——
+ * 两个模块的哈希类名互不可见，靠属性才是稳定契约。
+ *
+ * 层号变量沿用 `--sheet-z` / `--sheet-z-top`（由使用方注入，缺省回落 --mobi-z-overlay +
+ * 1）：名字带 sheet 是历史，改名会牵动层号分配器与既有断言，收益不值，故保持。
+ */
+
+/* 变量声明挂本模块自己的类（`:where(.mask, .surface)`）——遮罩与面是 portal 里两个平级 DOM 根，
+   自定义属性不共享，必须各挂一份；且**只能用真实存在于元素上的选择器**（写成 [data-sheet-surface]
+   这类没人渲染的属性会静默失效：底色/内衬/字号全回落空值）。
+   全局已供给的同名变量（--border / --foreground / --radius-* / --shadow-floating）不在此重复声明
+   ——同名重复声明会构成自引用而整体失效 */
+:where(.mask, .surface) {
+    --surface-raised: var(--popover);
+    --surface-muted: var(--accent);
+    --text-muted: var(--muted-foreground);
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-4: 16px;
+    --text-sm: 14px;
+    --text-lg: 16px;
+    --duration-fast: var(--mobi-duration-fast);
+    --ease-standard: var(--mobi-ease-in-out);
+}
+
+/* 遮罩：**只管视觉**（底色 + 离场不拦指针），定位/层号归使用方——BottomSheet 是 fixed
+   贴视口，画板 PC 形态是 absolute 落在宿主层里，两套定位住不进同一个类。
+   明暗程度：默认档在此，使用方要改（如画板 PC 只挡交互不改视觉）就注入 --sheet-mask-bg */
+.mask {
+    background: var(--sheet-mask-bg, oklch(16% 0 0 / 0.34));
+}
+:global(html[data-theme='dark']) .mask {
+    background: var(--sheet-mask-bg, oklch(0% 0 0 / 0.52));
+}
+/* 离场途中：下层不再被遮罩拦截（使用方写 data-state='closed'——Radix 那套只覆盖它自己
+   渲染的 Overlay，自渲染的遮罩得自己标） */
+.mask[data-state='closed'] {
+    pointer-events: none !important;
+}
+
+/* 面：形状语言只此一处。使用方在同一元素上叠自己的定位/尺寸类（position/inset/
+   max-height/padding 等），不要在这里长几何 */
+.surface {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+    color: var(--foreground);
+    box-shadow: var(--shadow-floating);
+    font-family: var(--font-body);
+}
+/* 贴底弹层：上半圆角，底边由使用方的屏下延伸段接住（不留缝）。
+   档位按 DESIGN.md「Shapes」取：悬浮面板/弹层 = --radius-panel（surface 档是 Modal 的），
+   此前 sheet 用的 surface 与画板的 panel 是同一视觉概念的两套取值，2026-10-14 统一到 panel */
+.surfaceBottom {
+    border-bottom: 0;
+    border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+}
+/* 悬浮矩形（PC 停靠 / 全屏、页内浮层）：四角 */
+.surfaceFloating {
+    border-radius: var(--radius-panel);
+}
+
+/* 头部基线：整块都是抓手（内容区留给滚动）。使用方挂 onPointerDown 等拖拽处理器，
+   并在拖拽中写 data-dragging（见下）。
+   **抓取光标与 touch-action 归 data-draggable 一支**：光标是对用户的承诺，头部不可拖的
+   使用方（画板的 PC 停靠形态）挂着 grab 是骗人；touch-action: none 同理——它会把该区域的
+   触摸手势整个拿走，没有拖拽语义的头部不该付这个代价 */
+.header {
+    position: relative;
+    flex: none;
+    padding: var(--space-2) var(--space-4) var(--space-2);
+    cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.header[data-draggable] {
+    cursor: grab;
+    touch-action: none;
+}
+[data-dragging] .header {
+    cursor: grabbing;
+}
+/* 发丝线：默认随内容滚动显隐（使用方写 data-scrolled），或由使用方标记常驻
+   （data-bordered——画布这类不滚的内容区没法靠滚动显线，头部与内容之间仍需一道界） */
+.header::after {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 1px;
+    background: var(--border);
+    content: '';
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+}
+[data-scrolled] .header::after,
+.header[data-bordered]::after {
+    opacity: 1;
+}
+
+/* 拖拽指示条。可交互档（真控件，点一下切档）渲染成 button，纯提示档是 div——
+   两边共用这套盒模型，故清掉按钮默认样式 */
+.grabber {
+    display: flex;
+    width: 3.5rem;
+    height: 1.25rem;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto var(--space-1);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: inherit;
+    -webkit-tap-highlight-color: transparent;
+}
+.grabberBar {
+    width: 2.25rem;
+    height: 5px;
+    border-radius: var(--radius-pill);
+    background: var(--border-strong);
+    transition: background-color var(--duration-fast) var(--ease-standard);
+}
+[data-dragging] .grabberBar {
+    background: var(--text-muted);
+}
+
+/* 标题行：三栏 grid（1fr 内容 1fr）——标题恒居中，操作靠右；
+   两侧等分保证标题几何居中，空间不足时标题省略号截断而非与右侧操作重叠 */
+.headRow {
+    display: grid;
+    grid-template-columns: 1fr minmax(0, auto) 1fr;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 22px;
+}
+.headText {
+    display: flex;
+    grid-column: 2;
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+    /* 中栏 track 是 minmax(0, auto)：内容超宽时 track 被可用空间钳住，但**条目自身**
+       仍按 max-content 宽居中 → 两侧一起溢出（真机：工具详情长标题左右溢出）。
+       改成占满 track、居中交给内部 flex，超宽部分由下面的 overflow 收口 */
+}
+.title {
+    max-width: 100%;
+    margin: 0;
+    overflow: hidden;
+    font-family: var(--font-body);
+    font-size: var(--text-lg);
+    font-weight: 500;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* 调用方传的标题节点多是「图标 + 文本块」的组合（工具详情）：整体限宽并允许收缩，
+   否则内层文本块把标题项撑宽、跟着上面的居中一起溢出 */
+.title > * {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.headActions {
+    display: inline-flex;
+    grid-column: 3;
+    align-items: center;
+    gap: var(--space-2);
+    justify-self: end;
+}
+
+/* 工具条布局（无标题）：左槽放主出口、右槽放操作；不走三栏——标题居中在无标题时
+   只剩两段留白（见 plan.md §5「头部布局按用途分，样式统一」） */
+.headerToolbar .headRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+.headerToolbar .headText {
+    grid-column: unset;
+    justify-content: flex-start;
+}
+.headerToolbar .headActions {
+    margin-left: auto;
+}
+
+/* 头部图标按钮：.iconBtn 是盒模型与 hover/active 基线（**含默认尺寸档**——桌面 32px；
+   尺寸必须落在基类里，否则某一档漏挂类就塌成内容宽），描边与尺寸各是一档
+   ——描边档（关闭：面板级退出，出现即为唯一出口，要显眼）、无描边档（工具条里的常规动作）；
+   尺寸档按端取：base 32px、touch 40px（移动端触达目标）。
+   圆角取图标键档（DESIGN「Shapes」：侧栏 / 标题栏 / 工具条里的纯图标按钮比控件档收一档，
+   **才不像药丸**）——一度用了 pill，同一条工具条上就成了「药丸 + 圆角矩形」两套形状语言。
+   三处头部（sheet 关闭 / 画板取消 / 画板全屏）共用，避免各自拼一版粗细不一的图标钮 */
+.iconBtn {
+    display: grid;
+    flex: none;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-icon);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color var(--duration-fast) var(--ease-standard),
+        color var(--duration-fast) var(--ease-standard),
+        /* 按压是高频反馈：只给克制的一档缩放（DESIGN「动效密度」），缓动取 ease-out */
+        scale 150ms ease-out;
+}
+.iconBtn:not(:disabled):active {
+    /* 静态线索：按压变色。缩放是动效，只在允许动效时上（见下） */
+    color: var(--foreground);
+}
+/* 缩放只在允许动效时上；reduced-motion 下按压仍有上面那一档变色 */
+@media (prefers-reduced-motion: no-preference) {
+    .iconBtn:not(:disabled):active {
+        scale: 0.96;
+    }
+}
+.iconBtnBordered {
+    border-color: var(--border);
+    background: var(--surface-muted);
+}
+.iconBtnTouch {
+    width: 2.5rem;
+    height: 2.5rem;
+}
+/* hover 只改色与描边档的边框：无描边档在 hover 时长出边框会跳变（它本来就以「无框」表态） */
+@media (hover: hover) and (pointer: fine) {
+    .iconBtn:hover:not(:disabled) {
+        color: var(--foreground);
+    }
+    .iconBtnBordered:hover:not(:disabled) {
+        border-color: var(--border-strong);
+    }
+}
+.iconBtn:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+/* 内容区：唯一滚动区。内衬归调用方，这里只保证**滚动与收缩链**——
+   min-height: 0 解除 flex item 默认「不收缩」，没有它长内容会把浮层撑爆被裁而非出滚动条 */
+.body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    /* 两个方向都放给内容区：touch-action 在**祖先**上会限制整个子树，写 pan-y 会把
+       diff 这类内容自身的横向滚动一起锁死（真机「工具详情里的 diff 不能左右滚」）。
+       横向没得滚时浏览器自己空转，不必用 touch-action 代它决定 */
+    touch-action: pan-x pan-y;
+    font-size: var(--text-sm);
+}
+
+.srOnly {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .header::after,
+    .grabberBar,
+    .iconBtn {
+        transition: none;
+    }
+}

@@ -61,15 +61,15 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { AnimatePresence, animate, motion, useMotionValue, usePresence, useReducedMotion, useTransform } from 'motion/react'
-import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { lockBodyScroll } from '@/ui/base/interactive/bodyScrollLock'
 import { findScrollableInPath } from '@/ui/base/interactive/scrollableInPath'
 import { spring } from '@/ui/base/motion/presets'
-import { resolveDragDisposition } from '@/ui/base/interactive/resolveDragDisposition'
+import { dragVelocity, resolveDragDisposition, type DragSample } from '@/ui/base/interactive/resolveDragDisposition'
 import { resolveDetentRelease } from '@/ui/base/interactive/resolveDetentRelease'
 import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
 import { nextOverlayLayer, retainOverlayLayer } from '@/ui/base/layout/overlayLayer'
+import { SheetClose, SheetGrabber, SheetHeader, sheetClass, sheetSurfaceClass } from '@/ui/base/layout/sheetSurface'
 import styles from './bottom-sheet.module.css'
 
 /** 屏下延伸段：向上拉伸时底缘不露缝（CSS 的 bottom/padding-bottom 都按它算） */
@@ -129,16 +129,7 @@ function peekOffsetOf(full: number): number {
     return Math.max(0, full - Math.min(full, PEEK_RATIO * window.innerHeight))
 }
 
-type Drag = { startY: number; origin: number; moved: boolean; samples: { t: number; y: number }[] }
-
-/** 释放速度：只看最近 80ms 的位移；松手前停顿会掉动量（慢而稳的释放落回原处） */
-function velocityOf(samples: Drag['samples'], now: number) {
-    const recent = samples.filter((sample) => now - sample.t <= 80)
-    const first = recent[0]
-    const last = recent[recent.length - 1]
-    if (!first || !last || last === first || now - last.t > 60) return 0
-    return (last.y - first.y) / ((last.t - first.t) / 1000)
-}
+type Drag = { startY: number; origin: number; moved: boolean; samples: DragSample[] }
 
 /** 指针捕获：jsdom 与老浏览器可能不实现这两个方法（缺失时当作未捕获，拖拽仍走 window 通道） */
 function hasPointerCapture(el: Element, pointerId: number): boolean {
@@ -612,7 +603,7 @@ function Sheet({
             }
             const current = y.get()
             // 已拉伸（负位移）的释放不继承速度，免得弹簧把 sheet 弹过拉伸极限
-            const velocity = current < 0 ? 0 : velocityOf(state.samples, time)
+            const velocity = current < 0 ? 0 : dragVelocity(state.samples, time)
             const full = height.get()
             if (!full) {
                 // 高度不可测（首帧）：退回两档判定，避免档位表退化成「任何位移都算关闭」
@@ -745,7 +736,7 @@ function Sheet({
 
     // 标题恒居中三栏 grid；无标题时也渲染 Title（视觉隐藏）——Radix 要求 Content 内
     // 存在 Title 元素，否则报无障碍警告且读屏拿不到面板名
-    const titleNode = title ?? <span className={styles.srOnly}>{t('common.panel')}</span>
+    const titleNode = title ?? <span className={sheetClass.srOnly}>{t('common.panel')}</span>
 
     return (
         <>
@@ -758,7 +749,7 @@ function Sheet({
             <motion.div
                 data-testid="bottom-sheet-overlay"
                 data-state={isPresent ? 'open' : 'closed'}
-                className={styles.overlay}
+                className={[sheetClass.mask, styles.mask].join(' ')}
                 style={{ opacity: backdrop, ['--sheet-z' as string]: layerZ } as unknown as CSSProperties}
             />
             <DialogPrimitive.Content
@@ -790,7 +781,8 @@ function Sheet({
                     // **单档 sheet（矮内容 / peek={false}）不锁**：没有「下面还有内容」这回事，
                     // 锁了就变成「长菜单拉一下才能滚」（真机踩过）
                     data-scroll-locked={hasPeek && detent !== 'top' ? '' : undefined}
-                    className={[styles.sheet, className].filter(Boolean).join(' ')}
+                    // 面（形状/描边/底色/阴影/字体/裁切）来自共享壳，定位与状态由本组件的样式表给
+                    className={[sheetSurfaceClass('bottom'), styles.sheet, className].filter(Boolean).join(' ')}
                     style={
                         {
                             y,
@@ -802,45 +794,42 @@ function Sheet({
                     }
                     tabIndex={-1}
                 >
-                    <div className={styles.header} onPointerDown={headerDown} onPointerMove={headerMove} onPointerUp={headerUp} onPointerCancel={headerUp}>
-                        {showDragHandle &&
-                            (hasPeek ? (
-                                // 有 peek 档时把手是真控件：点一下在两档间切换（键盘也可）
-                                <button
-                                    type="button"
-                                    className={styles.grabber}
-                                    data-grabber=""
-                                    aria-expanded={detent === 'top'}
-                                    aria-label={detent === 'top' ? t('common.collapseSheet') : t('common.expandSheet')}
+                    <SheetHeader
+                        layout="title"
+                        /* 头部恒可拖（抓取光标与 touch-action 由壳的 data-draggable 一支给） */
+                        data-draggable=""
+                        onPointerDown={headerDown}
+                        onPointerMove={headerMove}
+                        onPointerUp={headerUp}
+                        onPointerCancel={headerUp}
+                        grabber={
+                            showDragHandle && (
+                                // 有 peek 档时把手是真控件：点一下在两档间切换（键盘也可）；
+                                // 矮面板两档重合：只是视觉提示，不做交互开关
+                                <SheetGrabber
+                                    interactive={hasPeek}
+                                    expanded={detent === 'top'}
+                                    label={detent === 'top' ? t('common.collapseSheet') : t('common.expandSheet')}
                                     onClick={toggleDetent}
-                                >
-                                    <span className={styles.grabberBar} aria-hidden="true" />
-                                </button>
-                            ) : (
-                                // 矮面板两档重合：把手只是视觉提示，不做交互开关
-                                <div className={styles.grabber} aria-hidden="true">
-                                    <span className={styles.grabberBar} />
-                                </div>
-                            ))}
-                        <div className={styles.headRow}>
-                            <div className={styles.headText}>
-                                <DialogPrimitive.Title className={styles.title}>{titleNode}</DialogPrimitive.Title>
-                            </div>
-                            {(extra || showClose) && (
-                                <div className={styles.headActions}>
-                                    {extra}
-                                    {showClose && (
-                                        <DialogPrimitive.Close className={styles.close} aria-label={closeLabel ?? t('common.close')}>
-                                            <X size={16} strokeWidth={1.75} aria-hidden="true" />
-                                        </DialogPrimitive.Close>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                                />
+                            )
+                        }
+                        title={<DialogPrimitive.Title className={sheetClass.title}>{titleNode}</DialogPrimitive.Title>}
+                        trailing={
+                            <>
+                                {extra}
+                                {showClose && (
+                                    <DialogPrimitive.Close asChild>
+                                        <SheetClose label={closeLabel ?? t('common.close')} />
+                                    </DialogPrimitive.Close>
+                                )}
+                            </>
+                        }
+                    />
                     <div
                         ref={bodyRef}
-                        className={styles.body}
+                        data-sheet-body=""
+                        className={sheetClass.body}
                         style={bodyStyle}
                         onWheel={handleBodyWheel}
                         onFocus={handleBodyFocus}
@@ -848,7 +837,7 @@ function Sheet({
                         {children}
                     </div>
                     {/* 档位变化的读屏播报（视觉上不可见）。矮面板没有档位可播，保持空 */}
-                    <span className={styles.srOnly} role="status" aria-live="polite">
+                    <span className={sheetClass.srOnly} role="status" aria-live="polite">
                         {hasPeek ? (detent === 'top' ? t('common.sheetExpanded') : t('common.sheetCollapsed')) : ''}
                     </span>
                 </motion.div>
