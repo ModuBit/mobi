@@ -355,7 +355,10 @@ export const shadcnDarkToken = {
     colorFillQuaternary: NEUTRAL_DARK.hover,
     colorFillTertiary: NEUTRAL_DARK.selected,
     colorFillSecondary: NEUTRAL_DARK.pressed,
-    colorBgTextHover: NEUTRAL_DARK.hover,
+    // hover 高亮取 selected 档而非 hover 档：colorBgTextHover 大量落在抬升层（下拉菜单
+    // --accent、IconButton 等），净墨阶 hover 档(#232328)比 elevated(#25252a) 还暗——
+    // 深色主题 hover 必须逐档提亮，压在抬升层上才可见（2026-10-14 实测菜单 hover 不可见）
+    colorBgTextHover: NEUTRAL_DARK.selected,
     colorBgContainer: NEUTRAL_DARK.container,
     colorBgElevated: NEUTRAL_DARK.elevated,
     colorBgLayout: NEUTRAL_DARK.canvas,

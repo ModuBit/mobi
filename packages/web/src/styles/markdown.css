@@ -134,10 +134,8 @@ html[data-theme='dark'] .x-markdown code {
     border: 1px solid var(--mobi-hairline);
 }
 
-.x-markdown tbody tr:nth-child(odd) {
-    background: var(--mobi-paper);
-}
-
+/* 斑马纹只上偶数行、奇数行透底：奇数行铺 paper 贴着白气泡会淡得像脏斑
+   （2026-10-14 真机反馈「浅色行太浅很扎眼」）；透底后条纹清晰且自适应任意气泡底色 */
 .x-markdown tbody tr:nth-child(even) {
     background: var(--mobi-hover);
 }
@@ -164,12 +162,10 @@ html[data-theme='dark'] .x-markdown td {
     border-color: var(--mobi-hairline);
 }
 
-html[data-theme='dark'] .x-markdown tbody tr:nth-child(odd) {
-    background: var(--mobi-paper);
-}
-
+/* dark 侧同 light：奇数行透底；偶数行用 selected 而非 hover——hover 档比
+   气泡底 elevated 还暗，条纹会整个隐形；净墨阶 hover 方向朝亮 */
 html[data-theme='dark'] .x-markdown tbody tr:nth-child(even) {
-    background: var(--mobi-hover);
+    background: var(--mobi-selected);
 }
 
 html[data-theme='dark'] .x-markdown tbody tr:hover {
