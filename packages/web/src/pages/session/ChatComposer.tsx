@@ -172,15 +172,36 @@ const ComposerDock = styled.div`
     border-radius: var(--ant-border-radius-lg, 12px);
     padding: 8px;
 
-    /* Sender 浮出 Dock 的「卡中卡」：白底 + 大圆角 + 投影，左右负 margin 吃掉 Dock 内衬、
-       上下负 margin 轻叠相邻层（信息面板 / StatusBar）——输入卡是前景主体，周边条退为背景
-       （参考 ChatGPT/Codex composer 的叠层样式） */
+    /* Sender 浮出 Dock 的「卡中卡」：白底 + 大圆角 + 投影，左右负 margin 吃掉 Dock 内衬
+       （与灰卡外缘平齐）、上下负 margin 轻叠相邻层（信息面板 / StatusBar）——输入卡是
+       前景主体，周边条退为背景（参考 ChatGPT/Codex composer 的叠层样式） */
     && .ant-sender {
         border: none !important;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 6px 24px rgba(0, 0, 0, 0.12) !important;
-        border-radius: 16px !important;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.14) !important;
+        border-radius: 24px !important;
         background: var(--ant-color-bg-container) !important;
-        margin: -4px -6px;
+        margin: -6px -8px;
+    }
+
+    /* 提交/停止按钮：深色大圆钮（中性反色，双档主题各自成立——light 黑底白标、dark 白底黑标）。
+       disabled 回落灰底弱化（ChatGPT 同款语义：不可发送时按钮退后） */
+    && .ant-sender .ant-btn-primary.ant-btn-circle {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        font-size: 18px;
+        background: var(--ant-color-text) !important;
+        color: var(--ant-color-bg-container) !important;
+        transition: opacity 0.15s ease;
+    }
+
+    && .ant-sender .ant-btn-primary.ant-btn-circle:not(:disabled):hover {
+        opacity: 0.88;
+    }
+
+    && .ant-sender .ant-btn-primary.ant-btn-circle:disabled {
+        background: var(--ant-color-fill-secondary) !important;
+        color: var(--ant-color-text-quaternary) !important;
     }
 
     /* bash 模式：恢复 Sender 橙色发光边框（输入 ! 空格 触发 .bash-mode）。
