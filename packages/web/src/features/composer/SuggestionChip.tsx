@@ -48,7 +48,9 @@ export function SuggestionChip({ text, hidden, onAccept, onDismiss }: Suggestion
     return (
         <div
             style={{
-                padding: '4px 8px 0 4px',
+                // 外圆角=内圆角+内衬：白卡 24px 圆角下，内衬 <12px 会被左上圆弧咬住
+                // （曾只有 4px 8px 0 4px，chip 顶在圆角上）。侧/上对齐卡片 16px/12px 基准
+                padding: '12px 16px 0',
                 // border-box：maxHeight 收缩时把 padding 也算进盒高，hidden 态彻底塌缩无 4px 缝
                 boxSizing: 'border-box',
                 opacity: hidden ? 0 : 1,
