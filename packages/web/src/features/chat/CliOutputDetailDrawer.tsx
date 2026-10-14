@@ -24,7 +24,7 @@ import { theme } from 'antd'
 import type { GlobalToken } from 'antd/es/theme/interface'
 import { useTranslation } from 'react-i18next'
 import { ansiToHtml } from '@/core/lib/ansiUtils'
-import { ContentDrawer } from '@/ui/base/layout/ContentDrawer'
+import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
 
 // 用于 pre 标签的通用样式
 const preStyle = (token: GlobalToken, extra?: CSSProperties): CSSProperties => ({
@@ -62,7 +62,7 @@ export const CliOutputDetailDrawer = memo(function CliOutputDetailDrawer({
     const stderrHtml = useMemo(() => stderr ? ansiToHtml(stderr) : '', [stderr])
 
     return (
-        <ContentDrawer
+        <BottomSheet
             title={title}
             open={open}
             onClose={onClose}
@@ -86,6 +86,6 @@ export const CliOutputDetailDrawer = memo(function CliOutputDetailDrawer({
                     <pre style={preStyle(token, { color: token.colorError })} dangerouslySetInnerHTML={{ __html: stderrHtml }} />
                 </div>
             )}
-        </ContentDrawer>
+        </BottomSheet>
     )
 })

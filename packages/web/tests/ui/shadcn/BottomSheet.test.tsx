@@ -249,14 +249,15 @@ describe('BottomSheet', () => {
         await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
     })
 
-    it('进场：首帧即置于屏外（位移取初值 4000，远在屏下），弹入动画目标 0', () => {
+    it('进场：首帧即置于屏外（位移取初值 4000，远在屏下），弹入动画目标 0', async () => {
         render(<BottomSheet open onClose={vi.fn()} title="测试" />)
         const el = surface()!
         expect(el).toBeTruthy()
         // 首帧不得出现在屏内：位移量初值远在屏下，随后由实测高度校正到「刚出屏」位置
         expect(el.style.transform).toBe('translateY(4000px)')
-        // 弹入目标 0（而非退化成 0→0 的「无动画直出」）
-        expect(animateCalls.some((call) => call.target === 0)).toBe(true)
+        // 弹入目标 0（而非退化成 0→0 的「无动画直出」）。
+        // 起跳延迟两个动画帧（等内容首测稳定，见入场 effect），断言须等它真正起跳
+        await waitFor(() => expect(animateCalls.some((call) => call.target === 0)).toBe(true))
     })
 
     it('关闭：滑出目标 = 实测可见高 + CLOSED_GAP，落定后卸载', async () => {

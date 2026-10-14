@@ -15,8 +15,10 @@
  */
 
 /**
- * 抽屉详情组件
- * 点击内联预览后弹出，展示工具调用的完整输入和输出信息
+ * 工具详情容器：点击内联预览后弹出，展示工具调用的完整输入和输出信息。
+ * 全端统一 BottomSheet（2026-10-14 从「移动端 sheet / PC 右侧抽屉」的分流收拢——
+ * ContentDrawer 随之分流使命消亡而删除）：详情是「临时浮起来看一眼」的心智，
+ * 贴底 sheet 与消息流里其它浮层同一套关闭语言（下拉 / 遮罩 / ESC / 手势返回）。
  */
 
 import { useMemo, memo, type CSSProperties } from 'react'
@@ -32,8 +34,7 @@ import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { ToolViewScopeProvider } from './views/toolViewScope'
 import { getToolResultViewComponent } from './views/_results'
 import { truncate } from '@/core/lib/toolInputUtils'
-import { ContentDrawer, DRAWER_WIDTH_PRESETS } from '@/ui/base/layout/ContentDrawer'
-import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
 import { AgentDrawerContent } from './AgentDrawerContent'
 
 const { Text } = Typography
@@ -100,13 +101,11 @@ function getStatusText(state: 'pending' | 'running' | 'completed' | 'error', t: 
 }
 
 /**
- * 抽屉详情组件
- * 展示工具调用的完整输入和输出信息，桌面端从右侧滑出，移动端从底部弹出
+ * 工具详情：展示工具调用的完整输入和输出信息
  */
 function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: ToolDetailDrawerProps) {
     const { t } = useTranslation()
     const { token } = useToken()
-    const isMobile = useIsMobile()
 
     const tool = block.tool
 
@@ -155,17 +154,14 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
         padding: '12px 16px',
     }
 
-    // 标题栏
+    // 标题栏（sheet 头部单行基线：单行省略，副标题同行截断）
     const titleContent = (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <StatusIcon state={tool.state}>
                 {getToolIcon(tool.name, ICON_STYLE_LG)}
             </StatusIcon>
             <div style={{ minWidth: 0, flex: 1 }}>
-                {/* 移动端 title 行只有一行（header 高度固定）：单行省略；PC 抽屉保留换行 */}
-                <Text strong style={isMobile
-                    ? { fontSize: 14, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
-                    : { fontSize: 14, wordBreak: 'break-word' }}>
+                <Text strong style={{ fontSize: 14, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {isAgentTool(tool.name) ? getAgentTitle(tool.input) : presentation.title}
                 </Text>
                 {!isAgentTool(tool.name) && truncatedSubtitle && (
@@ -196,18 +192,13 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
         </div>
     )
 
-    // Agent 工具使用 wide 模式，其他按 presentation 配置
-    const drawerSize = isAgentTool(tool.name) || presentation.wideDrawer
-        ? DRAWER_WIDTH_PRESETS.wide
-        : DRAWER_WIDTH_PRESETS.narrow
-
+    // 详情内容较长（diff / 终端输出常超屏）：peek 档先露一截，滚动/上推再展开——
+    // 「查看详情」点开的常态就是长内容，peek 语义正合适
     return (
-        <ContentDrawer
+        <BottomSheet
             open={open}
             onClose={onClose}
             title={titleContent}
-            size={drawerSize}
-            destroyOnHidden={true}
         >
             {/* Agent 工具：BubbleList 渲染 sidechain 对话 */}
             {isAgentTool(tool.name) ? (
@@ -260,7 +251,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
                     {renderOutputSection()}
                 </>
             )}
-        </ContentDrawer>
+        </BottomSheet>
     )
 }
 

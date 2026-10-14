@@ -71,4 +71,28 @@ describe('AutoHeightHost', () => {
         await waitFor(() => expect(host.style.height).toBe('240px'))
         expect(host.style.maxHeight).toBe('')
     })
+
+    /** BottomSheet 的入场收敛检测靠这个标记判断「高度还不是真实值」——契约不能破 */
+    it('量到真实高前挂 data-height-pending，量到后摘除；重新量（contentKey 变）时重挂', async () => {
+        const { getByTestId, rerender } = render(
+            <AutoHeightHost maxHeightPx={null} contentKey="a" testId="host">
+                <ShadowHost contentHeight={120} />
+            </AutoHeightHost>,
+        )
+        const host = getByTestId('host')
+        // 挂载即 pending（高度还是估计值）
+        expect(host.hasAttribute('data-height-pending')).toBe(true)
+        await waitFor(() => expect(host.style.height).toBe('120px'))
+        expect(host.hasAttribute('data-height-pending')).toBe(false)
+
+        // 内容变化 → 重新量：先回到 pending，量到后再次摘除
+        rerender(
+            <AutoHeightHost maxHeightPx={null} contentKey="b" testId="host">
+                <ShadowHost contentHeight={260} />
+            </AutoHeightHost>,
+        )
+        expect(host.hasAttribute('data-height-pending')).toBe(true)
+        await waitFor(() => expect(host.style.height).toBe('260px'))
+        expect(host.hasAttribute('data-height-pending')).toBe(false)
+    })
 })

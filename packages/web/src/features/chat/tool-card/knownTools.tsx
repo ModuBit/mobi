@@ -97,8 +97,6 @@ export type ToolPresentation = {
     title: string
     subtitle: string | null
     minimal: boolean
-    /** 是否需要宽 Drawer（代码类工具） */
-    wideDrawer?: boolean
     /** 预览卡片最大高度（px） */
     previewMaxHeight?: number
     /** 工具行新形态（动词+chip，toolRow.ts 推导单源）；null = 维持 title 形态渲染 */
@@ -203,8 +201,6 @@ export const knownTools: Record<string, {
     title: (opts: ToolOpts) => string
     subtitle?: (opts: ToolOpts) => string | null
     minimal?: boolean | ((opts: ToolOpts) => boolean)
-    /** 是否需要宽 Drawer（代码类工具） */
-    wideDrawer?: boolean
     /** 预览卡片最大高度（px） */
     previewMaxHeight?: number
 }> = {
@@ -291,7 +287,7 @@ export const knownTools: Record<string, {
         minimal: false,
         previewMaxHeight: Number.MAX_SAFE_INTEGER,
     },
-    Bash: { ...terminalToolConfig, wideDrawer: true },
+    Bash: terminalToolConfig,
     Glob: {
         icon: () => renderToolIcon('Glob'),
         title: (opts) => {
@@ -343,7 +339,6 @@ export const knownTools: Record<string, {
             return `Read(${basePath})`
         },
         minimal: true,
-        wideDrawer: true,
         previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     Edit: {
@@ -353,7 +348,6 @@ export const knownTools: Record<string, {
             return file ? `Edit(${resolveDisplayPath(file, opts.metadata)})` : 'Edit'
         },
         minimal: true,
-        wideDrawer: true,
         previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     MultiEdit: {
@@ -367,7 +361,6 @@ export const knownTools: Record<string, {
             return count > 1 ? `MultiEdit(${path}, ${count} edits)` : `MultiEdit(${path})`
         },
         minimal: true,
-        wideDrawer: true,
         previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     Write: {
@@ -383,7 +376,6 @@ export const knownTools: Record<string, {
             return lines > 1 ? `${lines} lines` : `${content.length} chars`
         },
         minimal: true,
-        wideDrawer: true,
         previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     WebFetch: {
@@ -419,8 +411,7 @@ export const knownTools: Record<string, {
             const path = getInputStringAny(opts.input, ['notebook_path'])
             return path ? `NotebookRead(${resolveDisplayPath(path, opts.metadata)})` : 'NotebookRead'
         },
-        minimal: true,
-        wideDrawer: true
+        minimal: true
     },
     NotebookEdit: {
         icon: () => renderToolIcon('NotebookEdit'),
@@ -565,7 +556,6 @@ export function getToolPresentation(opts: Omit<ToolOpts, 'metadata'> & { metadat
             title: known.title(opts),
             subtitle: known.subtitle ? known.subtitle(opts) : null,
             minimal,
-            wideDrawer: known.wideDrawer ?? false,
             previewMaxHeight: known.previewMaxHeight,
             row,
         }

@@ -82,6 +82,11 @@ const STRETCH = 120
 /** peek 档占视口高的比例：长内容先只露这么多，滚动/上推/点把手再展开到上限。
  *  内容高不超这一档时两档重合，等于没有 peek（矮面板观感不变） */
 const PEEK_RATIO = 0.45
+
+/** 首次入场的「内容收敛」检测步距（ms）：scrollHeight 连续两轮相同才起跳（见入场 effect 注释） */
+const ENTER_SETTLE_MS = 32
+/** 收敛等待的上限（ms）：内容持续流式时也不能永远不开 */
+const ENTER_MAX_WAIT_MS = 600
 /** peek 档残留的遮罩强度：停在 peek 档时背景不亮到头（上游同值同义） */
 const LOW_DIM = 0.78
 /** 内容区手势的方向判定阈值（px）：累计位移不到它就不表态。
@@ -284,6 +289,10 @@ function Sheet({
 
     const drag = useRef<Drag | null>(null)
     const mountedRef = useRef(false)
+    /** 首次入场是否已起跳（延迟起跳只该发生在第一次，见入场 effect 内注释） */
+    const enteredRef = useRef(false)
+    /** 首次入场是否已起跳：起跳前的内容收缩不得触发 RO 重定位（见 RO 回调注释） */
+    const enterDoneRef = useRef(false)
     const onCloseRef = useRef(onClose)
     onCloseRef.current = onClose
 
@@ -457,9 +466,57 @@ function Sheet({
             presence.jump(1)
             // 进场不继承速度（父直调重开时暂存的甩动速度不得复用）
             takeVelocity()
-            // 进场落**初始档**：长内容开在 peek（先露一截），矮面板 peekY = 0 即全开位
-            go(detentY(detentRef.current))
-            return undefined
+            // 进场落**初始档**：长内容开在 peek（先露一截），矮面板 peekY = 0 即全开位。
+            //
+            // **首次入场等内容高度收敛再起跳**：内容组件（AutoHeightHost 宿下的 pierre diff
+            // 等）先以估计高度（1600px）渲染、挂载后才异步量到真实高再收缩——挂载帧的测高
+            // 不是最终值，照它起跳会在内容就绪后收缩+重定位，「先按错误高度升起、再收缩
+            // 下沉」观感就是「弹出→消失→再弹出」（真机实锤，Edit 详情必闪；Bash 详情内容
+            // 同步渲染，挂载帧即最终值，所以从不闪）。
+            // 盯 **scrollHeight** 而不是盒高：估计高被 max-height 裁住时盒高恒定不变
+            // （上一版因此假收敛失效），scrollHeight 才反映内容的真实需求高。轮询到连续
+            // 两轮不变即收敛，`ENTER_MAX_WAIT_MS` 兜底防流式内容永远不开。
+            // 父直调重开（enteredRef 已置位）立即起跳——那时高度早已稳定。
+            if (enteredRef.current) {
+                enterDoneRef.current = true
+                y.jump(closedY())
+                go(detentY(detentRef.current))
+                return undefined
+            }
+            enteredRef.current = true
+            let done = false
+            let pollTimer = 0
+            let timeoutTimer = 0
+            let lastContentHeight = -1
+            const startEnter = () => {
+                if (done) return
+                done = true
+                enterDoneRef.current = true
+                window.clearTimeout(pollTimer)
+                window.clearTimeout(timeoutTimer)
+                y.jump(closedY())
+                go(detentY(detentRef.current))
+            }
+            const pollStable = () => {
+                if (done) return
+                const contentHeight = sheet.scrollHeight
+                // 双条件收敛：scrollHeight 连续两轮相同 **且** 内容里没有「高度未量到」的
+                // 标记（AutoHeightHost 挂 data-height-pending）——估计高阶段 scrollHeight
+                // 同样稳定，只有测量方自己知道「这还不是真实高」
+                const pending = sheet.querySelector('[data-height-pending]')
+                if (contentHeight === lastContentHeight && !pending) {
+                    startEnter()
+                    return
+                }
+                lastContentHeight = contentHeight
+                pollTimer = window.setTimeout(pollStable, ENTER_SETTLE_MS)
+            }
+            pollStable()
+            timeoutTimer = window.setTimeout(startEnter, ENTER_MAX_WAIT_MS)
+            return () => {
+                window.clearTimeout(pollTimer)
+                window.clearTimeout(timeoutTimer)
+            }
         }
 
         // 离场：屏内则带速度滑出，落定卸载；已在屏外（拖拽已把 sheet 甩出去）直卸载。
@@ -501,6 +558,10 @@ function Sheet({
             height.set(next)
             setHasPeek(peek && peekOffsetOf(next) > 0)
             if (drag.current || !isPresent) return
+            // **首次入场起跳前不重定位**：收敛等待期间内容收缩（估计高 → 真实高）到这里时
+            // startEnter 马上会用最新高度起跳——先抢跑一次 go 再被 startEnter 拽回，就是
+            // 又一次可见跳变。height/hasPeek 已更新，startEnter 的定位即最终档。
+            if (!enterDoneRef.current) return
             // 展开档固定在 0，不需要动；peek 档要按新高度重算（内容变短到两档重合时归位）
             if (!wasAtTop) go(peekY())
         })

@@ -43,6 +43,14 @@ const SETTLE_PASSES = 3
 /** 内容迟迟量不到（异步渲染）时的轮询上限 */
 const MEASURE_TIMEOUT_MS = 2000
 
+/**
+ * 「高度还是估计值、尚未量到真实内容」的标记：挂在宿主元素上，量到真实高（或量测超时
+ * 兜底放行）后摘除。消费方是 BottomSheet 的入场收敛检测——估计高被容器上限裁住时盒高
+ * 恒定不变、scrollHeight 也停在估计值，外部无法从布局区分「估计值的稳定」与「真实值的
+ * 稳定」，只能由测量方显式声明。跨模块走 data 属性（不引类名，同 sheetSurface 约定）。
+ */
+export const HEIGHT_PENDING_ATTR = 'data-height-pending'
+
 /** 第一个带 shadow root 的后代 = 第三方 web component 的宿主；量它的 shadow 才有意义。
  *  轮询里每 50ms 走一次，故用早退循环而不是 `[...querySelectorAll('*')].find()`（后者每次
  *  都要把整棵子树的节点表摊成数组） */
@@ -76,10 +84,14 @@ export function AutoHeightHost({ maxHeightPx, contentKey, testId, children }: {
         setHeight(INITIAL_ESTIMATE_HEIGHT)
         const el = hostRef.current
         if (!el) return undefined
+        // 重新量的全程挂 pending 标记（见 HEIGHT_PENDING_ATTR）：BottomSheet 等它摘除才起跳
+        el.setAttribute(HEIGHT_PENDING_ATTR, '')
         const cap = maxHeightPx ?? Number.POSITIVE_INFINITY
         let timer: ReturnType<typeof setTimeout> | undefined
         let passes = 0
         const startedAt = Date.now()
+        /** 量到真实高（或放弃量测）后摘标记 */
+        const markMeasured = () => { el.removeAttribute(HEIGHT_PENDING_ATTR) }
         const measure = () => {
             const shadow = findShadowRoot(el)
             const contentHeight = shadow ? shadowContentHeight(shadow) : 0
@@ -87,6 +99,7 @@ export function AutoHeightHost({ maxHeightPx, contentKey, testId, children }: {
                 const needed = Math.ceil(contentHeight)
                 const scrollbarBox = el.offsetHeight - el.clientHeight
                 setHeight(needed <= cap ? needed + scrollbarBox : cap)
+                markMeasured()
                 if (passes < SETTLE_PASSES) {
                     passes += 1
                     timer = setTimeout(measure, 50)
@@ -94,9 +107,10 @@ export function AutoHeightHost({ maxHeightPx, contentKey, testId, children }: {
                 return
             }
             if (Date.now() - startedAt < MEASURE_TIMEOUT_MS) timer = setTimeout(measure, 50)
+            else markMeasured()
         }
         timer = setTimeout(measure, 50)
-        return () => clearTimeout(timer)
+        return () => { clearTimeout(timer); markMeasured() }
     }, [contentKey, maxHeightPx])
 
     return (

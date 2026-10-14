@@ -53,6 +53,15 @@
     will-change: transform;
 }
 
+/* PC（≥768，与 useIsMobile 同断点）放宽一档：36rem 是移动端上限，大屏上工具详情
+   （diff / 终端输出）这类宽内容会显得局促；两侧留缝（100% − 48px）保持「浮起一张纸」
+   的层次，不再顶满 */
+@media (min-width: 768px) {
+    .sheet {
+        width: min(calc(100% - 48px), 56rem);
+    }
+}
+
 /* 离场途中：sheet 不可再被抓取（Radix 会给它写 inline pointer-events: auto，
    只有 !important 压得住） */
 .sheet[data-state='closed'] {
