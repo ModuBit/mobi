@@ -55,6 +55,7 @@ import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
 import { SKETCH_MARK, sketchFilename } from '@/domain/sketch/sketchFile'
 import { SKETCH_MORPH_MS, SKETCH_SHEET_IN_MS, SKETCH_SHEET_OUT_MS, SKETCH_DOCK_GAP, SKETCH_Z_MASK, sketchSheetZIndex } from '@/domain/sketch/sketchLayout'
 import { lockBodyScroll } from '@/ui/base/interactive/bodyScrollLock'
+import { useVetoableClose } from '@/ui/base/interactive/useVetoableClose'
 import { useOpenOverlayLayer } from '@/ui/base/layout/overlayLayer'
 import { SheetGrabber, SheetHeader, SheetIconButton, sheetClass, sheetSurfaceClass } from '@/ui/base/layout/sheetSurface'
 import { PULL_SETTLE_EASING, PULL_SETTLE_MS, useHeaderPullClose } from './useHeaderPullClose'
@@ -98,9 +99,10 @@ const FULLSCREEN_INSET = 8
 const MOBILE_SHEET_INSET = 8
 
 /** 停靠 ↔ 全屏几何过渡：四边 inset 均为像素值，全程可连续插值（像调整窗口大小）。
- *  时长单源 sketchLayout（画布 settle 定时从它派生，改这里自动跟随） */
+ *  时长单源 sketchLayout（画布 settle 定时从它派生，改这里自动跟随），
+ *  曲线与下拉回位同一档（PULL_SETTLE_EASING）——浮层里所有几何过渡一个语言 */
 const MORPH_TRANSITION_CSS = (['top', 'right', 'bottom', 'left'] as const)
-    .map(prop => `${prop} ${SKETCH_MORPH_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`)
+    .map(prop => `${prop} ${SKETCH_MORPH_MS}ms ${PULL_SETTLE_EASING}`)
     .join(', ')
 
 /** 开合动画：滑沉消隐——出场原地微沉一段小距离 + 淡出（纸片「沉降归于页面」），
@@ -133,10 +135,6 @@ const MASK_OUT_KEYFRAMES = keyframes`
 /** 开合相位：enter 滑入中 / open 常驻 / exit 滑出中（结束后卸载） */
 type SheetPhase = 'enter' | 'open' | 'exit'
 
-/** 否决检测的宽限窗口（ms）：首拍之外再看一拍，跨过父组件 setState 的那次提交。
- *  与 BottomSheet 同值同义（同一种「先通知后决定」的关闭契约） */
-const VETO_GRACE_MS = 100
-
 /** 滑入/滑出动画时长：单源在 domain/sketch/sketchLayout（与画布 settle 定时、测量方共享），
  *  相位切换用定时驱动（不用 portal 内动画事件——经 React 委托在部分环境收不到） */
 const SHEET_IN_MS = SKETCH_SHEET_IN_MS
@@ -166,18 +164,18 @@ const Sheet = styled.div<{
     $zIndex: number
     $phase: SheetPhase
     $morphing: boolean
-    $dragging: boolean
 }>`
     position: absolute;
     z-index: ${(p) => p.$zIndex};
     /* 下拉位移的唯一通道：手势写 --sheet-drag-y，跟手、退场续上、被否决时回位都走它
        （写 inline transform 会和退场关键帧打架，见 SHEET_OUT_KEYFRAMES） */
     transform: translateY(var(--sheet-drag-y, 0px));
-    /* 拖拽中不给 transform 过渡（跟手会黏滞）；松手后的回位靠它，停靠↔全屏的几何过渡
-       也在这里 —— 两条过渡互不重叠（前者移动端、后者 PC），各写各的属性 */
-    ${(p) => (p.$dragging
-        ? ''
-        : `transition: transform ${PULL_SETTLE_MS}ms ${PULL_SETTLE_EASING}${p.$morphing ? `, ${MORPH_TRANSITION_CSS}` : ''};`)}
+    /* 松手后的回位过渡 + 停靠↔全屏的几何过渡（两条互不重叠：前者移动端、后者 PC） */
+    transition: transform ${PULL_SETTLE_MS}ms ${PULL_SETTLE_EASING}${(p) => (p.$morphing ? `, ${MORPH_TRANSITION_CSS}` : '')};
+    /* 跟手期间必须无过渡（有就是黏滞感）：由载体在拖拽中挂上 data-dragging（见 applyPull） */
+    &[data-dragging] {
+        transition: none;
+    }
     ${(p) =>
         p.$phase === 'enter'
             ? css`
@@ -216,54 +214,37 @@ export function SketchDrawer({
     // 移动端恒全屏（最大手指操作空间）；全屏切换仅 PC 提供
     const canFullscreen = !isMobile && !!layerEl
 
-    // 「父组件是否仍要它开着」= open：否决检测（下面）必须读最新值——onClose 之后父组件
-    // setState 才 flush，闭包捕获会读到旧值
-    const openRef = useRef(open)
-    openRef.current = open
-
     // ── 关闭语义（四条通道 → 同一条取消入口）──
     // 拖拽的沉降动作来自手势钩子，而钩子又要调取消入口 —— 用 ref 打破这个环
     // （钩子内部已用 ref 持有回调，这里只补一层间接）
     const dismissRef = useRef<() => void>(() => {})
-    const pull = useHeaderPullClose({
+    /**
+     * 手势把「当前拖拽态」写到这里，**不进 React state**：一次下拉 60~120 个 pointermove，
+     * 进 state 就是每帧重渲整棵浮层树（这层还挂着 excalidraw）。只动一个 CSS 变量与一个属性，
+     * 与 BottomSheet 用 motion values 绕开重渲是同一个理由。
+     */
+    const applyPull = useCallback((offset: number, dragging: boolean) => {
+        const sheet = sheetRef.current
+        if (!sheet) return
+        sheet.style.setProperty('--sheet-drag-y', `${offset}px`)
+        if (dragging) sheet.setAttribute('data-dragging', '')
+        else sheet.removeAttribute('data-dragging')
+    }, [])
+    const { settle: settlePull, handlers: pullHandlers } = useHeaderPullClose({
         // 只有移动端贴底形态有下拉语义（PC 是停靠矩形）
         enabled: mounted && isMobile,
         onPullClose: () => dismissRef.current(),
         // 量不到（尚未布局）时退回视口高：退回 0 会让「判据 = 高度 / 3」恒成立，任何滑动都关
         measureHeight: () => sheetRef.current?.getBoundingClientRect().height || window.innerHeight,
+        applyPull,
     })
-    const { offset: pullOffset, dragging: pulling, settle: settlePull, handlers: pullHandlers } = pull
 
-    /** 手势返回发起过的关闭：哨兵已被 popstate 消费，被否决时要重臂（见下） */
-    const guardConsumedRef = useRef(false)
-    const [guardEpoch, setGuardEpoch] = useState(0)
-    const vetoTimerRef = useRef<number | null>(null)
-
-    /**
-     * 否决检测：关闭是**同步通知**父组件的，父组件在同一拍里决定收不收。两拍之后仍
-     * `open` 就是被否决（典型：画布脏 → 画布内弹取消确认），此时把浮层沉降回原位，
-     * 而不是让它悬在拖拽停下的位置。
-     *
-     * 为什么要两拍（首拍 + 宽限）：React 的 setState 到 DOM 生效要跨一次提交，单看首拍
-     * 会把「已接受」误判成「被否决」。
-     */
-    const scheduleVetoCheck = useCallback(function schedule(delayMs: number): number {
-        return window.setTimeout(() => {
-            vetoTimerRef.current = null
-            if (!openRef.current) return
-            if (delayMs === 0) {
-                vetoTimerRef.current = schedule(VETO_GRACE_MS)
-                return
-            }
-            settlePull()
-            // 哨兵已被本次返回手势消费但关闭被否决 → 重臂，否则下一次返回会穿透到路由层。
-            // 仅「确实被消费」才重臂：下拉 / ESC / 遮罩发起的关闭否决时哨兵还在栈上，
-            // 再推一条只是多压一层 entry
-            const consumed = guardConsumedRef.current
-            guardConsumedRef.current = false
-            if (consumed) setGuardEpoch((epoch) => epoch + 1)
-        }, delayMs)
-    }, [settlePull])
+    // 否决检测 / 连点防重入 / 哨兵重臂的记账全在 useVetoableClose（关闭契约的单一实现，
+    // 与 BottomSheet 共用）；本层只提供「被否决时沉到哪」——沉回原位（默认 0）
+    const { request: requestVeto, markGuardConsumed, guardEpoch } = useVetoableClose({
+        open,
+        onVetoed: settlePull,
+    })
 
     /**
      * 统一取消入口：下拉 / ESC / 点遮罩 / 手势返回都走它。取消是否真的发生（脏数据要先过
@@ -271,20 +252,15 @@ export function SketchDrawer({
      */
     const requestDismiss = useCallback(() => {
         canvasRef.current?.requestCancel()
-        // 连点防重入：作废旧链只留最后一条（检测的只是「最终是否被否决」，一条足够）
-        if (vetoTimerRef.current !== null) {
-            window.clearTimeout(vetoTimerRef.current)
-            vetoTimerRef.current = null
-        }
-        vetoTimerRef.current = scheduleVetoCheck(0)
-    }, [scheduleVetoCheck])
+        requestVeto()
+    }, [requestVeto])
     dismissRef.current = requestDismiss
 
     // 手势返回（iOS 边缘滑动 / Android 返回键）收画板而不是退出页面。移动端专属（桌面
-    // back 语义不同，且 PC 是页内停靠层）。重臂纪律照 BottomSheet：**不在滑出起手重臂**
-    // ——popstate 里再补 entry 会踩中 Chromium #330744614，真机表现为下一次返回直接退出 PWA
+    // back 语义不同，且 PC 是页内停靠层）。重臂纪律由 useVetoableClose 守着：**不在滑出起手
+    // 重臂**——popstate 里再补 entry 会踩中 Chromium #330744614，真机表现为下一次返回直接退出 PWA
     useHistoryGuard(mounted && isMobile, () => {
-        guardConsumedRef.current = true
+        markGuardConsumed()
         requestDismiss()
     }, guardEpoch)
 
@@ -346,11 +322,6 @@ export function SketchDrawer({
         return undefined
     }, [open])
 
-    // 卸载清理：作废否决检测定时器（否则会对着已卸载的浮层沉降）
-    useEffect(() => () => {
-        if (vetoTimerRef.current !== null) window.clearTimeout(vetoTimerRef.current)
-    }, [])
-
     // 几何过渡窗口期：render 期从「fullscreen 与上次渲染不同」派生——transition
     // 必须与目标几何在同一次渲染中就位才能产生过渡（commit 后再置标记会先以无
     // transition 状态跳到新几何，动画丢失）。layout effect 在渲染完成后退出窗口期，
@@ -402,6 +373,10 @@ export function SketchDrawer({
 
     const fullscreenLabel = t(fullscreen ? 'sketch.exitFullscreen' : 'sketch.fullscreen')
 
+    /* header 工具条上的按钮与图标钮同高（一条工具条三种控件不该有三种高度）：
+       移动端取 40 与图标钮的触达档对齐，PC 取紧凑的 32 */
+    const headerControlHeight = isMobile ? 40 : 32
+
     // 层号：移动端领号（先领到的在下面，后开者在上，与其它移动浮层同一套）；PC 走阶梯。
     // 遮罩与面差一号（同层内面压在遮罩上），与 BottomSheet 的 --sheet-z / --sheet-z-top 同构
     const maskZ = mobileLayerZ ?? SKETCH_Z_MASK
@@ -432,10 +407,8 @@ export function SketchDrawer({
                 $zIndex={sheetZ}
                 $phase={phase}
                 $morphing={morphing}
-                $dragging={pulling}
-                /* 拖拽中的标记给壳（抓手与光标样式读它，见 sheetSurface.module.css） */
-                data-dragging={pulling ? '' : undefined}
-                style={{ ...sheetStyle, '--sheet-drag-y': `${pullOffset}px` } as CSSProperties}
+                /* 位置/尺寸走 style；下拉位移与拖拽标记由 applyPull 直接写 DOM（见上） */
+                style={sheetStyle}
             >
                 <SheetHeader
                     data-testid="sketch-header"
@@ -453,7 +426,7 @@ export function SketchDrawer({
                                 type="text"
                                 size="small"
                                 disabled={exporting}
-                                style={{ minHeight: isMobile ? 40 : 32 }}
+                                style={{ minHeight: headerControlHeight }}
                                 onClick={() => canvasRef.current?.requestCancel()}
                             >
                                 {t('common.cancel')}
@@ -481,9 +454,8 @@ export function SketchDrawer({
                                 size="small"
                                 icon={<Check size={14} strokeWidth={2} />}
                                 loading={exporting}
-                                /* 与图标钮同高：一条工具条上三种控件不该有三种高度
-                                   （移动端 40 与图标钮的触达档对齐） */
-                                style={{ minHeight: isMobile ? 40 : 32 }}
+                                /* 与图标钮同高（见 headerControlHeight） */
+                                style={{ minHeight: headerControlHeight }}
                                 onClick={() => void handleComplete()}
                             >
                                 {t('sketch.complete')}

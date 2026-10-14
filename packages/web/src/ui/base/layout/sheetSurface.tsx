@@ -114,7 +114,7 @@ export function SheetGrabber({ interactive = false, label, expanded, onClick }: 
  * **纯呈现件**：点击行为与「关什么」由外部决定。Radix 的 `DialogPrimitive.Close`
  * 用 `asChild` 包住它即可拿到 Radix 的关闭 / 焦点语义。
  */
-export function SheetIconButton({ label, icon, bordered = true, size = 'compact', className, children, ...rest }: Omit<ComponentPropsWithoutRef<'button'>, 'aria-label'> & {
+export function SheetIconButton({ label, icon, bordered = true, size = 'compact', className, ...rest }: Omit<ComponentPropsWithoutRef<'button'>, 'aria-label'> & {
     /** 无障碍名（形如「关闭 工具详情」——光一个 × 读屏读不出来） */
     label: string
     icon: ReactNode
@@ -124,13 +124,11 @@ export function SheetIconButton({ label, icon, bordered = true, size = 'compact'
     return (
         <button
             type="button"
-            data-sheet-icon-button=""
             aria-label={label}
             className={[sheetIconButtonClass({ bordered, size }), className].filter(Boolean).join(' ')}
             {...rest}
         >
             {icon}
-            {children}
         </button>
     )
 }
@@ -163,7 +161,6 @@ export function SheetHeader({
     title,
     trailing,
     className,
-    children,
     ...rest
 }: Omit<ComponentPropsWithoutRef<'div'>, 'title'> & {
     layout?: HeaderLayout
@@ -182,7 +179,6 @@ export function SheetHeader({
             <div className={sheetClass.headRow}>
                 <div className={sheetClass.headText}>{layout === 'toolbar' ? leading : title}</div>
                 <div className={sheetClass.headActions}>{trailing}</div>
-                {children}
             </div>
         </div>
     )

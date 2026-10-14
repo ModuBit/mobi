@@ -17,6 +17,16 @@
 /** 释放速度判定阈值（px/s）：超过即按速度符号决定，快甩快收 */
 const VELOCITY_THRESHOLD = 500
 
+/**
+ * 「这一落点不归拖拽」的选择器：落在真控件上的按下不接管手势——按钮 / 链接 / 输入要能按，
+ * 标题上的长按选择也要能选。
+ *
+ * 与 `resolveDragDisposition` 同处是因为这是同一次判定的前置：**两个使用方**（BottomSheet
+ * 的头部拖拽、画板的头部下拉）必须用同一套落点判据。曾各写一份并已分叉（一处有
+ * `[contenteditable]`、一处没有），漏掉的那边会让标题长按选字失效。
+ */
+export const DRAG_EXEMPT_SELECTOR = 'button, a, input, textarea, select, [role="button"], [contenteditable="true"]'
+
 /** 速度采样窗口（ms）：只看最近这一段位移；松手前停顿会掉动量（慢而稳的释放落回原处） */
 const VELOCITY_WINDOW_MS = 80
 /** 采样失效门（ms）：最后一个采样点离松手太远说明手势早已停住，按零速度算 */

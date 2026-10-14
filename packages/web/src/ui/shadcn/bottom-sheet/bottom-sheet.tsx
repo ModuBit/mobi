@@ -65,8 +65,9 @@ import { useTranslation } from 'react-i18next'
 import { lockBodyScroll } from '@/ui/base/interactive/bodyScrollLock'
 import { findScrollableInPath } from '@/ui/base/interactive/scrollableInPath'
 import { spring } from '@/ui/base/motion/presets'
-import { dragVelocity, resolveDragDisposition, type DragSample } from '@/ui/base/interactive/resolveDragDisposition'
+import { dragVelocity, DRAG_EXEMPT_SELECTOR, resolveDragDisposition, type DragSample } from '@/ui/base/interactive/resolveDragDisposition'
 import { resolveDetentRelease } from '@/ui/base/interactive/resolveDetentRelease'
+import { useVetoableClose } from '@/ui/base/interactive/useVetoableClose'
 import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
 import { nextOverlayLayer, retainOverlayLayer } from '@/ui/base/layout/overlayLayer'
 import { SheetClose, SheetGrabber, SheetHeader, sheetClass, sheetSurfaceClass } from '@/ui/base/layout/sheetSurface'
@@ -83,9 +84,6 @@ const STRETCH = 120
 const PEEK_RATIO = 0.45
 /** peek 档残留的遮罩强度：停在 peek 档时背景不亮到头（上游同值同义） */
 const LOW_DIM = 0.78
-/** 否决检测的第二拍宽限：首拍后 open 仍 true 时再等这一窗口，覆盖 startTransition /
- *  短异步消费者；仍 true 才判定否决（两段式：首拍覆盖同步消费者、宽限拍覆盖短异步消费者，见 scheduleVetoCheck） */
-const VETO_GRACE_MS = 100
 /** 内容区手势的方向判定阈值（px）：累计位移不到它就不表态。
  *  判定一旦落在「拖 sheet」上，后续每个 touchmove 都会被 preventDefault——真机手指落点带
  *  1~3px 抖动，按首帧判方向会把整段横向滑动（diff 的横向滚动）一并吞掉（2026-10-13 实测：
@@ -289,16 +287,6 @@ function Sheet({
     const onCloseRef = useRef(onClose)
     onCloseRef.current = onClose
 
-    /** 手势释放速度暂存：关闭是「先通知后动画」，父组件 setState 翻转 open 需一拍才
-     *  触发滑出——速度经此传递，滑出继承释放动量；非手势路径为 null */
-    const pendingVelocityRef = useRef<number | null>(null)
-    /** 否决检测定时器：关闭接管时作废，卸载时清理（防对已分离的 MotionValue 起动画） */
-    const vetoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    /** 哨兵已被 popstate 消费（本次关闭由手势返回发起）：消费后栈上已无本 sheet 的哨兵，
-     *  滑出动画窗口内的第二次返回会穿透路由——关闭起手时要补一个（见滑出分支） */
-    const guardConsumedRef = useRef(false)
-    /** 重臂纪元：变化即重推哨兵 */
-    const [guardEpoch, setGuardEpoch] = useState(0)
     /** 真人在场时刻（presence 变化点）：离场途中落在触发按钮上的点按不得再把 sheet 关一次 */
     const presenceChange = useRef({ present: isPresent, at: 0 })
     useLayoutEffect(() => {
@@ -401,61 +389,26 @@ function Sheet({
         [rest],
     )
 
-    /** 否决检测调度：delayMs=0 是首拍，之后进宽限第二拍；宽限后仍 open=true 才沉降。
-     *  句柄始终记在 vetoTimerRef（关闭接管 / 卸载时统一作废） */
-    const scheduleVetoCheck = useCallback(
-        function scheduleVeto(delayMs: number): ReturnType<typeof setTimeout> {
-            return setTimeout(() => {
-                vetoTimerRef.current = null
-                if (!openRef.current) return
-                if (delayMs === 0) {
-                    vetoTimerRef.current = scheduleVeto(VETO_GRACE_MS)
-                    return
-                }
-                const v = pendingVelocityRef.current
-                // 沉降即消费掉暂存速度，防陈旧速度被后续关闭复用
-                pendingVelocityRef.current = null
-                settleBack(v ?? undefined)
-                // 哨兵已被本次返回手势消费但关闭被否决：重臂覆盖仍开着的 sheet。
-                // 仅「哨兵确实被消费」（手势返回发起）才重臂——点遮罩 / 拖拽释放发起的关闭被
-                // 否决时哨兵仍在栈上，再推一条只会多压一条 entry
-                const consumed = guardConsumedRef.current
-                guardConsumedRef.current = false
-                if (consumed) setGuardEpoch((epoch) => epoch + 1)
-            }, delayMs)
-        },
-        [settleBack],
-    )
-
-    // 「父组件是否仍要它开着」= isPresent：open 翻 false 时 AnimatePresence 立刻把
-    // presence 翻 false（即便组件还在播滑出动画）。否决判定必须读最新值——父组件
-    // setState flush 之后才知道关没关，闭包捕获会读到旧值
-    const openRef = useRef(true)
-    openRef.current = isPresent
+    // 否决检测 / 连点防重入 / 哨兵重臂的记账全在 useVetoableClose（关闭契约的单一实现：
+    // 两拍检测、宽限窗口、重臂条件都只有一处）；本层只提供「被否决时沉到哪」——
+    // 沉回**当前档**（不是回 0：从展开档下拉被否决时要回 peek）
+    const { request: requestVeto, markGuardConsumed, takeVelocity, guardEpoch } = useVetoableClose({
+        open: isPresent,
+        onVetoed: settleBack,
+    })
 
     /** 统一关闭入口：**先通知后动画**——立即 onClose，父组件翻转 open 后由滑出接管。
      *  倒转时序的原因与旧底部抽屉相同：否决式消费者（onClose 传 noop）在旧时序下会
-     *  让 sheet 滑出屏后被拦下、停在屏外永不回来 */
-    const requestClose = useCallback(
-        (velocity?: number) => {
-            pendingVelocityRef.current = velocity ?? null
-            onCloseRef.current?.(createSyntheticCloseEvent())
-            // 连点防重入（单链重启语义）：宽限窗口内的第二次关闭会再排一条检测链，旧链
-            // 回调先置 vetoTimerRef=null 会 clobber 新链句柄，两条链先后触发 → 双份沉降
-            // + 双份哨兵重臂。作废旧链只留最后一条——onClose 已再次通知过，检测的只是
-            // 「最终是否被否决」，一条链足够
-            if (vetoTimerRef.current != null) {
-                clearTimeout(vetoTimerRef.current)
-                vetoTimerRef.current = null
-            }
-            vetoTimerRef.current = scheduleVetoCheck(0)
-        },
-        [scheduleVetoCheck],
-    )
+     *  让 sheet 滑出屏后被拦下、停在屏外永不回来。
+     *  速度先记账再通知：onClose 的 setState 可能在同一拍里就驱动退场读取它 */
+    const requestClose = useCallback((velocity?: number) => {
+        requestVeto(velocity)
+        onCloseRef.current?.(createSyntheticCloseEvent())
+    }, [requestVeto])
     requestCloseRef.current = requestClose
 
     // 手势返回（iOS 边缘滑动 / Android 返回键 / 浏览器 back）关闭本 sheet 而非穿透到
-    // 路由层。哨兵存活期 = 组件挂载期（含滑出动画窗口）；guardConsumedRef 记「本次关闭由
+    // 路由层。哨兵存活期 = 组件挂载期（含滑出动画窗口）；markGuardConsumed 记「本次关闭由
     // 手势返回发起」（哨兵已被 popstate 消费），供否决检测决定是否重臂。
     //
     // **为什么不做「滑出窗口重臂」（2026-10-13 删）**：早期实现于此在滑出起手再 push 一条
@@ -466,17 +419,16 @@ function Sheet({
     useHistoryGuard(
         true,
         () => {
-            guardConsumedRef.current = true
+            markGuardConsumed()
             requestCloseRef.current?.()
         },
         guardEpoch,
     )
 
-    // 卸载清理：作废否决检测定时器 + 摘掉交给 Root 的关闭入口（防卸载后仍被
-    // onOpenChange 调到、对已分离的 MotionValue 起动画）
+    // 卸载清理：摘掉交给 Root 的关闭入口（防卸载后仍被 onOpenChange 调到、对已分离的
+    // MotionValue 起动画）。否决检测定时器由 useVetoableClose 自己作废
     useEffect(
         () => () => {
-            if (vetoTimerRef.current != null) clearTimeout(vetoTimerRef.current)
             requestCloseRef.current = null
         },
         [requestCloseRef],
@@ -504,7 +456,7 @@ function Sheet({
             }
             presence.jump(1)
             // 进场不继承速度（父直调重开时暂存的甩动速度不得复用）
-            pendingVelocityRef.current = null
+            takeVelocity()
             // 进场落**初始档**：长内容开在 peek（先露一截），矮面板 peekY = 0 即全开位
             go(detentY(detentRef.current))
             return undefined
@@ -516,11 +468,10 @@ function Sheet({
         const measured = visibleHeightOf(sheet)
         const visible = measured || height.get()
         if (y.get() < visible - 8) {
-            const v = pendingVelocityRef.current
-            pendingVelocityRef.current = null
-            // 复位哨兵消费标记：**不再在滑出起手重臂**（见 useHistoryGuard 调用处的说明）——
-            // 滑出窗口内的第二次返回由按落点对齐的记账处理：落到下一层哨兵即收下一层
-            guardConsumedRef.current = false
+            // 取走手势释放速度：滑出继承释放动量（哨兵消费标记由 useVetoableClose 在
+            // 观察到「关闭被接受」时自行复位——**不在滑出起手重臂**，见 useHistoryGuard
+            // 调用处的说明：滑出窗口内的第二次返回由按落点对齐的记账处理）
+            const v = takeVelocity()
             const target = (visible || window.innerHeight) + CLOSED_GAP
             if (reduced) {
                 y.jump(target)
@@ -533,10 +484,10 @@ function Sheet({
 
         // 已出屏：直卸载。暂存速度一并清空——本分支不消费速度，残留会被下次父直调关闭
         // 误继承（旧甩动速度 → sheet 暴速滑出）
-        pendingVelocityRef.current = null
+        takeVelocity()
         deferUnmount(safeToRemove)
         return undefined
-    }, [closedY, detentY, go, height, isPresent, presence, reduced, safeToRemove, y])
+    }, [closedY, detentY, go, height, isPresent, presence, reduced, safeToRemove, takeVelocity, y])
 
     // 视口变化（旋转 / 移动端工具栏收起 / 内容增减）后重测高度，并把 sheet 重新对齐到
     // **当前档**——档位是像素值，内容一变 peekY 就变了，不重定位会停在半截位置
@@ -691,7 +642,7 @@ function Sheet({
     function headerDown(event: ReactPointerEvent<HTMLDivElement>) {
         const target = event.target instanceof Element ? event.target : null
         if (event.button !== 0 || !event.isPrimary) return
-        if (target?.closest("button, a, input, select, textarea, [role='button']")) return
+        if (target?.closest(DRAG_EXEMPT_SELECTOR)) return
         beginDrag(event.clientY, event.timeStamp)
         // 快速甩动可能在第一帧 move 落地前就离开 header：未捕获指针前由 window 接管，
         // 捕获后交回 header 自己的处理器
