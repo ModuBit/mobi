@@ -33,7 +33,7 @@
  * 挤出几像素的纵向余量，顶出一条假的竖向滚动条。
  */
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 /** 估计初始高度：宁大勿小（首帧后按实际收缩），但封顶防超大内容撑出滚动闪跳 */
 const INITIAL_ESTIMATE_HEIGHT = 1600
@@ -51,6 +51,12 @@ export const MEASURE_TIMEOUT_MS = 2000
  * 稳定」，只能由测量方显式声明。跨模块走 data 属性（不引类名，同 sheetSurface 约定）。
  */
 export const HEIGHT_PENDING_ATTR = 'data-height-pending'
+
+/** root 子树里是否还有「高度未量到」的 AutoHeightHost。查询语义收在这里：消费方
+ * （BottomSheet 的入场收敛等待等）不自己拼选择器，属性名与判定只有这一处 */
+export function hasPendingAutoHeight(root: HTMLElement): boolean {
+    return root.querySelector(`[${HEIGHT_PENDING_ATTR}]`) !== null
+}
 
 /** 第一个带 shadow root 的后代 = 第三方 web component 的宿主；量它的 shadow 才有意义。
  *  轮询里每 50ms 走一次，故用早退循环而不是 `[...querySelectorAll('*')].find()`（后者每次
@@ -85,8 +91,6 @@ export function AutoHeightHost({ maxHeightPx, contentKey, testId, children }: {
         setHeight(INITIAL_ESTIMATE_HEIGHT)
         const el = hostRef.current
         if (!el) return undefined
-        // 重新量的全程挂 pending 标记（见 HEIGHT_PENDING_ATTR）：BottomSheet 等它摘除才起跳
-        el.setAttribute(HEIGHT_PENDING_ATTR, '')
         const cap = maxHeightPx ?? Number.POSITIVE_INFINITY
         let timer: ReturnType<typeof setTimeout> | undefined
         let passes = 0
@@ -112,6 +116,15 @@ export function AutoHeightHost({ maxHeightPx, contentKey, testId, children }: {
         }
         timer = setTimeout(measure, 50)
         return () => { clearTimeout(timer) }
+    }, [contentKey, maxHeightPx])
+
+    // 挂标记必须在 layout effect：消费方 BottomSheet 在它自己的 useLayoutEffect（commit 阶段、
+    // 先于本组件的 passive effect 运行）里启动收敛检测与 2000ms 兜底计时——标记若拖到
+    // passive effect 才挂上，检测起点可能看不到它，慢路径下兜底抢先起跳、闪烁回归
+    // （见 bottom-sheet.tsx 的 waitForContentSettle：「本兜底不得抢先」的承诺以此为前提）
+    useLayoutEffect(() => {
+        const el = hostRef.current
+        el?.setAttribute(HEIGHT_PENDING_ATTR, '')
     }, [contentKey, maxHeightPx])
 
     return (

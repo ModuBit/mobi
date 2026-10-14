@@ -261,6 +261,43 @@ describe('BottomSheet', () => {
         await waitFor(() => expect(animateCalls.some((call) => call.target === 0)).toBe(true))
     })
 
+    it('收敛等待期内点外部不关闭（sheet 尚未露过面），起跳后恢复', async () => {
+        const onClose = vi.fn()
+        render(<Host onClose={onClose} />)
+        const outsideDown = () => {
+            const event = new Event('pointerdown', { bubbles: true, cancelable: true })
+            document.dispatchEvent(event)
+        }
+        // 等待收敛期间 sheet 还在屏下、遮罩全透明：点外部（含再点触发钮）不得关掉
+        // 一个用户从未见过的面板
+        outsideDown()
+        expect(onClose).not.toHaveBeenCalled()
+
+        await waitSettled()
+        outsideDown()
+        expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
+    it('收敛等待期内滚动展开被忽略，起跳落初始档后照常生效', async () => {
+        const restore = forceOffsetHeightOnPrototype(LONG_SURFACE_H)
+        try {
+            render(<Host />)
+            // 等待收敛期间滚轮下滚 = 展开意图：此刻 sheet 在屏下，按估计高展开随后会被
+            // startEnter 拽回屏下重放（「弹起→消失→再弹出」换个入口），必须忽略
+            fireEvent.wheel(bodyEl(), { deltaY: 10 })
+
+            // 起跳落初始档 peek（长内容 peekY > 0），期间没有任何到 top（0）的动画
+            await waitFor(() => expect(offsetY()).toBeCloseTo(PEEK_Y, 1))
+            expect(animateCalls.some((call) => call.target === 0)).toBe(false)
+
+            // 起跳后滚动展开照常生效
+            fireEvent.wheel(bodyEl(), { deltaY: 10 })
+            await waitFor(() => expect(animateCalls.some((call) => call.target === 0)).toBe(true))
+        } finally {
+            restore()
+        }
+    })
+
     it('关闭：滑出目标 = 实测可见高 + CLOSED_GAP，落定后卸载', async () => {
         const onClose = vi.fn()
         const { rerender } = render(<BottomSheet open onClose={onClose} title="测试" />)
@@ -775,7 +812,8 @@ describe('BottomSheet', () => {
         const restore = forceOffsetHeightOnPrototype(LONG_SURFACE_H)
         try {
             render(<Host />)
-            await waitFor(() => expect(offsetY()).toBeGreaterThan(0))
+            // 等到起跳落定 peek（等待期内 transform=4000 同样 > 0，不能当落定判据）
+            await waitFor(() => expect(offsetY()).toBeCloseTo(PEEK_Y, 1))
 
             fireEvent.wheel(bodyEl(), { deltaY: 12 })
             await waitFor(() => expect(surface()!.hasAttribute('data-scroll-locked')).toBe(false))

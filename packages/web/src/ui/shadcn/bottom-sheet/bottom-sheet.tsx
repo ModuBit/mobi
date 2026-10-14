@@ -73,7 +73,7 @@ import { dragVelocity, DRAG_EXEMPT_SELECTOR, resolveDragDisposition, type DragSa
 import { resolveDetentRelease } from '@/ui/base/interactive/resolveDetentRelease'
 import { useVetoableClose } from '@/ui/base/interactive/useVetoableClose'
 import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
-import { HEIGHT_PENDING_ATTR, MEASURE_TIMEOUT_MS } from '@/ui/base/layout/AutoHeightHost'
+import { hasPendingAutoHeight, MEASURE_TIMEOUT_MS } from '@/ui/base/layout/AutoHeightHost'
 import { nextOverlayLayer, retainOverlayLayer } from '@/ui/base/layout/overlayLayer'
 import { SheetClose, SheetGrabber, SheetHeader, sheetClass, sheetSurfaceClass } from '@/ui/base/layout/sheetSurface'
 import styles from './bottom-sheet.module.css'
@@ -120,9 +120,9 @@ const unrubber = (stretch: number) => (1 / (1 - Math.min(stretch, STRETCH - 1) /
  * 的标记即回调 onSettle。盯 scrollHeight 而不是盒高：估计高被 max-height 裁住时盒高恒定
  * 不变（曾因此假收敛失效），scrollHeight 才反映内容的真实需求高。
  *
- * 「高度未量到」的标记（HEIGHT_PENDING_ATTR）由测量方 AutoHeightHost 自声明——估计高阶段
- * scrollHeight 同样稳定，外部无法从布局区分「估计值的稳定」与「真实值的稳定」，只能由
- * 测量方显式声明。
+ * 「高度未量到」由测量方 AutoHeightHost 自声明（hasPendingAutoHeight 查询其标记）——
+ * 估计高阶段 scrollHeight 同样稳定，外部无法从布局区分「估计值的稳定」与「真实值的
+ * 稳定」，只能由测量方显式声明。
  *
  * 兜底上限对齐测量方自己的放弃时限（MEASURE_TIMEOUT_MS）：生产者承诺 2000ms 内必摘标记，
  * 本兜底**不得抢先**——pending 未摘就起跳，「弹出→消失→再弹出」会在慢路径（大 diff /
@@ -151,7 +151,7 @@ function waitForContentSettle(sheet: HTMLElement, onSettle: () => void): () => v
             pollTimer = window.setTimeout(poll, ENTER_SETTLE_MS)
             return
         }
-        if (!sheet.querySelector(`[${HEIGHT_PENDING_ATTR}]`)) {
+        if (!hasPendingAutoHeight(sheet)) {
             settle()
             return
         }
@@ -394,8 +394,12 @@ function Sheet({
         [detentY, go],
     )
 
-    /** 展开到上限档（内容不超 peek 档时两档同值，等于空操作） */
+    /** 展开到上限档（内容不超 peek 档时两档同值，等于空操作）。
+     *  首次入场的收敛等待期内忽略：sheet 还在屏下，此刻展开（Tab 聚焦屏外元素 / 滚轮）
+     *  会按估计高把它拉起，随后 startEnter 的 y.jump(closedY()) 又拽回屏下重放——
+     *  「弹起→消失→再弹出」换个入口复发 */
     const expand = useCallback(() => {
+        if (!enterDoneRef.current) return
         if (detentRef.current !== 'top') rest('top')
     }, [rest])
 
@@ -443,9 +447,12 @@ function Sheet({
     })
 
     /** 沉降回**当前档**（否决 / 未跨档的拖拽释放共用）。不是「回 0」：从展开档
-     *  下拉被否决时要回到 peek，跳到展开位会显得「弹回去了」 */
+     *  下拉被否决时要回到 peek，跳到展开位会显得「弹回去了」。
+     *  首次入场的收敛等待期内忽略：sheet 本就停在屏下起点（closedY），这就是它的
+     *  「沉降位」；照常 rest() 反而会按估计高拉起，等 startEnter 再拽回重放 */
     const settleBack = useCallback(
         (velocity?: number) => {
+            if (!enterDoneRef.current) return
             rest(detentRef.current, velocity)
         },
         [rest],
@@ -512,6 +519,10 @@ function Sheet({
 
         if (isPresent) {
             if (reduced) {
+                // reduced-motion 直接跳、没有收敛等待：入场即视作完成。不置位的话 RO 的
+                // 「起跳前不重定位」门（enterDoneRef）会永远关着，内容收缩 / 旋转后 sheet
+                // 停在按旧高度算出的错位上
+                enterDoneRef.current = true
                 y.jump(detentY(detentRef.current))
                 animate(presence, 1, { duration: 0.16 })
                 return undefined
@@ -803,6 +814,9 @@ function Sheet({
                     event.preventDefault()
                     const { present, at } = presenceChange.current
                     if (!present || event.detail.originalEvent.timeStamp < at) return
+                    // 收敛等待期内 sheet 还没露过面（屏下 + 遮罩全透明），点遮罩/触发钮
+                    // 不该关掉一个用户从未见过的面板——等待最长 2s，误关窗口同倍放大
+                    if (!enterDoneRef.current) return
                     requestCloseRef.current?.()
                 }}
             >
