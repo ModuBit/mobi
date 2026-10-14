@@ -27,27 +27,37 @@
  * 重载（闪 excalidraw 的 Loading scene）、初始测量被动画 transform 污染
  * （canvas 尺寸滞后追赶）、过渡只能缩放空壳（FLIP）。
  *
- * 防误关不变量（画到一半丢失不可接受）：mask 不绑定关闭、不监听 ESC、无 X
- * 关闭键，唯一出口是 header 的「取消/完成」（取消的非空二次确认在 SketchCanvas 内）。
- * 注意：刻意不用 BottomSheet——它的下拉关闭手势与防误关不变量冲突。
+ * 关闭语义（2026-10-14 与其它移动浮层统一）：头部下拉 / ESC / 点遮罩 / 手势返回
+ * 四条通道**都走同一条取消入口**（`requestDismiss` → 画布内的 `requestCancel`），
+ * 脏数据由取消的二次确认兜底、净则直接走。此前「唯一出口是 header 的取消/完成」
+ * 的防误关不变量已放弃——它与「浮层该有的关闭心智」冲突，且确认框已经拦住了误触丢作品
+ * 的唯一真实损失（画到一半的内容）。**画板仍刻意不用 BottomSheet 组件本身**：它需要
+ * 自管几何（停靠测量 / 全屏切换 / morph 过渡），而共用的是壳（`sheetSurface`）+ 手势与
+ * 层号那几件小事（`lockBodyScroll` / `useHistoryGuard` / `overlayLayer`）。
  *
  * 开合动画与 stacking 约定：滑沉消隐——出场原地微沉一小段距离 + 淡出，入场反向
  * （升起归位 + 淡入），整层不发生穿越位移（早先的整片下滑会从 composer 周边透明
- * 缝隙中穿出，视觉穿帮）。停靠形态 z 1001 < composer z 1002（ChatContainer），
- * 全屏形态升到 z 1003 盖过 composer（画布上不悬浮 composer）。
+ * 缝隙中穿出，视觉穿帮）。PC 保持 100–103 阶梯（停靠 < composer < 全屏）：浮层是页内
+ * 临时层，不得盖过 antd 抽屉/对话框；移动端形态与其它移动浮层一样**领层号**
+ * （overlayLayer，后开者在上）。
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { Button, Space, Tooltip } from 'antd'
-import { Check, Maximize, Minimize, X } from 'lucide-react'
+import { Button, Tooltip } from 'antd'
+import { Check, Maximize, Minimize } from 'lucide-react'
 import { css, keyframes } from '@emotion/react'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import type { SketchMark } from '@mobi/shared'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
 import { SKETCH_MARK, sketchFilename } from '@/domain/sketch/sketchFile'
 import { SKETCH_MORPH_MS, SKETCH_SHEET_IN_MS, SKETCH_SHEET_OUT_MS, SKETCH_DOCK_GAP, SKETCH_Z_MASK, sketchSheetZIndex } from '@/domain/sketch/sketchLayout'
+import { lockBodyScroll } from '@/ui/base/interactive/bodyScrollLock'
+import { useOpenOverlayLayer } from '@/ui/base/layout/overlayLayer'
+import { SheetGrabber, SheetHeader, SheetIconButton, sheetClass, sheetSurfaceClass } from '@/ui/base/layout/sheetSurface'
+import { PULL_SETTLE_EASING, PULL_SETTLE_MS, useHeaderPullClose } from './useHeaderPullClose'
 import { SketchCanvas, type SketchCanvasHandle } from './SketchCanvas'
 
 export interface SketchDrawerProps {
@@ -96,14 +106,18 @@ const MORPH_TRANSITION_CSS = (['top', 'right', 'bottom', 'left'] as const)
 /** 开合动画：滑沉消隐——出场原地微沉一段小距离 + 淡出（纸片「沉降归于页面」），
  *  入场为其时间反演（自下方升起归位 + 淡入）。位移量小（8%），全程不接触 composer，
  *  不存在穿过其透明缝隙的穿帮；移动端全屏形态同一对 keyframes。时长单源 sketchLayout
- *  （同一段曲线正放/倒放，出入场天然对称） */
+ *  （同一段曲线正放/倒放，出入场天然对称）
+ *
+ *  退场的起点取自 `--sheet-drag-y`（不是写死的 0）：下拉关闭时浮层已经跟着手指下去了一段，
+ *  退场必须**从那继续**——写死 0 会先弹回原位再滑出，看着像「松手没生效」。没有下拉时该
+ *  变量是 0，等于原行为 */
 const SHEET_SINK_OFFSET = '8%'
 const SHEET_IN_KEYFRAMES = keyframes`
     from { transform: translateY(${SHEET_SINK_OFFSET}); opacity: 0 }
     to { transform: translateY(0); opacity: 1 }
 `
 const SHEET_OUT_KEYFRAMES = keyframes`
-    from { transform: translateY(0); opacity: 1 }
+    from { transform: translateY(var(--sheet-drag-y, 0px)); opacity: 1 }
     to { transform: translateY(${SHEET_SINK_OFFSET}); opacity: 0 }
 `
 /** 移动端背景暗化的淡入/淡出 */
@@ -119,6 +133,10 @@ const MASK_OUT_KEYFRAMES = keyframes`
 /** 开合相位：enter 滑入中 / open 常驻 / exit 滑出中（结束后卸载） */
 type SheetPhase = 'enter' | 'open' | 'exit'
 
+/** 否决检测的宽限窗口（ms）：首拍之外再看一拍，跨过父组件 setState 的那次提交。
+ *  与 BottomSheet 同值同义（同一种「先通知后决定」的关闭契约） */
+const VETO_GRACE_MS = 100
+
 /** 滑入/滑出动画时长：单源在 domain/sketch/sketchLayout（与画布 settle 定时、测量方共享），
  *  相位切换用定时驱动（不用 portal 内动画事件——经 React 委托在部分环境收不到） */
 const SHEET_IN_MS = SKETCH_SHEET_IN_MS
@@ -127,9 +145,6 @@ const SHEET_OUT_MS = SKETCH_SHEET_OUT_MS
 const Mask = styled.div<{ $zIndex: number; $dim: boolean; $phase: SheetPhase; $fixed: boolean }>`
     position: ${(p) => (p.$fixed ? 'fixed' : 'absolute')};
     inset: 0;
-    /* PC：遮罩只挡交互不改视觉，背后消息保持原样可读（用户指定纯透明）；
-     * 移动端：暗化背景，强化「浮起一张纸」的层次。均不绑定 click——防误关不变量 */
-    background: ${(p) => (p.$dim ? 'rgba(0, 0, 0, 0.45)' : 'transparent')};
     z-index: ${(p) => p.$zIndex};
     ${(p) =>
         p.$dim && p.$phase === 'enter'
@@ -145,16 +160,24 @@ const Mask = styled.div<{ $zIndex: number; $dim: boolean; $phase: SheetPhase; $f
             : ''}
 `
 
+/* 位置与层号在本地（壳不拥有定位）：PC 是宿主层内 absolute，移动端是 fixed。
+   开合动画与停靠↔全屏过渡同样归本地；「面」（圆角/描边/底色/阴影/裁切）来自壳 */
 const Sheet = styled.div<{
     $zIndex: number
     $phase: SheetPhase
     $morphing: boolean
+    $dragging: boolean
 }>`
     position: absolute;
     z-index: ${(p) => p.$zIndex};
-    display: flex;
-    flex-direction: column;
-    background: transparent;
+    /* 下拉位移的唯一通道：手势写 --sheet-drag-y，跟手、退场续上、被否决时回位都走它
+       （写 inline transform 会和退场关键帧打架，见 SHEET_OUT_KEYFRAMES） */
+    transform: translateY(var(--sheet-drag-y, 0px));
+    /* 拖拽中不给 transform 过渡（跟手会黏滞）；松手后的回位靠它，停靠↔全屏的几何过渡
+       也在这里 —— 两条过渡互不重叠（前者移动端、后者 PC），各写各的属性 */
+    ${(p) => (p.$dragging
+        ? ''
+        : `transition: transform ${PULL_SETTLE_MS}ms ${PULL_SETTLE_EASING}${p.$morphing ? `, ${MORPH_TRANSITION_CSS}` : ''};`)}
     ${(p) =>
         p.$phase === 'enter'
             ? css`
@@ -167,38 +190,6 @@ const Sheet = styled.div<{
                   animation: ${SHEET_OUT_KEYFRAMES} ${SHEET_OUT_MS}ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
               `
             : ''}
-    ${(p) => (p.$morphing ? `transition: ${MORPH_TRANSITION_CSS};` : '')}
-`
-
-/* 圆角经 section + overflow hidden 裁切（sheet 层有过渡动画，圆角放这层会被拉伸）。
- * 圆角走面板档（--radius-lg，DESIGN.md「Shapes」的双档之一：卡片 / 悬浮面板 / 菜单同档）——
- * 不写死数值，档位调整时随 token 一起走；细边框画边界：dark 下深色画布与页面底色
- * 接近，靠它确认画板范围；抬升层底色用 paper-elevated（DESIGN.md 唯一允许净白的层） */
-const Section = styled.div`
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-    border-radius: var(--radius-panel);
-    border: 1px solid var(--ant-color-border);
-    background: var(--ant-color-bg-elevated);
-`
-
-/* header 出口栏：取消居左、完成实心 CTA 居右（左右分离防误触），全屏切换（仅 PC）
- * 与完成同侧——非破坏动作误触无害。无标题：打开上下文已说明是什么，高度还给画布 */
-const Header = styled.div<{ $mobile: boolean }>`
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-    padding: ${(p) => (p.$mobile ? '8px 12px' : '6px 12px')};
-    border-bottom: 1px solid var(--ant-color-split);
-
-    /* 移动端图标按钮触达目标 ≥40px（size small 本体 24px 太小）；完成 CTA 带文字本就
-     * 易点，40px 视觉过重（用户反馈），移动端 34px 适度放大即可 */
-    .exit-btn { min-width: ${(p) => (p.$mobile ? '40px' : '28px')}; min-height: ${(p) => (p.$mobile ? '40px' : '28px')}; }
-    .complete-btn { min-height: ${(p) => (p.$mobile ? '34px' : '24px')}; }
 `
 
 export function SketchDrawer({
@@ -220,9 +211,114 @@ export function SketchDrawer({
     // 完成/取消导出在途：header 出口按钮统一禁用，防连点重复导出
     const [exporting, setExporting] = useState(false)
     const canvasRef = useRef<SketchCanvasHandle>(null)
+    const sheetRef = useRef<HTMLDivElement>(null)
 
     // 移动端恒全屏（最大手指操作空间）；全屏切换仅 PC 提供
     const canFullscreen = !isMobile && !!layerEl
+
+    // 「父组件是否仍要它开着」= open：否决检测（下面）必须读最新值——onClose 之后父组件
+    // setState 才 flush，闭包捕获会读到旧值
+    const openRef = useRef(open)
+    openRef.current = open
+
+    // ── 关闭语义（四条通道 → 同一条取消入口）──
+    // 拖拽的沉降动作来自手势钩子，而钩子又要调取消入口 —— 用 ref 打破这个环
+    // （钩子内部已用 ref 持有回调，这里只补一层间接）
+    const dismissRef = useRef<() => void>(() => {})
+    const pull = useHeaderPullClose({
+        // 只有移动端贴底形态有下拉语义（PC 是停靠矩形）
+        enabled: mounted && isMobile,
+        onPullClose: () => dismissRef.current(),
+        // 量不到（尚未布局）时退回视口高：退回 0 会让「判据 = 高度 / 3」恒成立，任何滑动都关
+        measureHeight: () => sheetRef.current?.getBoundingClientRect().height || window.innerHeight,
+    })
+    const { offset: pullOffset, dragging: pulling, settle: settlePull, handlers: pullHandlers } = pull
+
+    /** 手势返回发起过的关闭：哨兵已被 popstate 消费，被否决时要重臂（见下） */
+    const guardConsumedRef = useRef(false)
+    const [guardEpoch, setGuardEpoch] = useState(0)
+    const vetoTimerRef = useRef<number | null>(null)
+
+    /**
+     * 否决检测：关闭是**同步通知**父组件的，父组件在同一拍里决定收不收。两拍之后仍
+     * `open` 就是被否决（典型：画布脏 → 画布内弹取消确认），此时把浮层沉降回原位，
+     * 而不是让它悬在拖拽停下的位置。
+     *
+     * 为什么要两拍（首拍 + 宽限）：React 的 setState 到 DOM 生效要跨一次提交，单看首拍
+     * 会把「已接受」误判成「被否决」。
+     */
+    const scheduleVetoCheck = useCallback(function schedule(delayMs: number): number {
+        return window.setTimeout(() => {
+            vetoTimerRef.current = null
+            if (!openRef.current) return
+            if (delayMs === 0) {
+                vetoTimerRef.current = schedule(VETO_GRACE_MS)
+                return
+            }
+            settlePull()
+            // 哨兵已被本次返回手势消费但关闭被否决 → 重臂，否则下一次返回会穿透到路由层。
+            // 仅「确实被消费」才重臂：下拉 / ESC / 遮罩发起的关闭否决时哨兵还在栈上，
+            // 再推一条只是多压一层 entry
+            const consumed = guardConsumedRef.current
+            guardConsumedRef.current = false
+            if (consumed) setGuardEpoch((epoch) => epoch + 1)
+        }, delayMs)
+    }, [settlePull])
+
+    /**
+     * 统一取消入口：下拉 / ESC / 点遮罩 / 手势返回都走它。取消是否真的发生（脏数据要先过
+     * 二次确认）由画布决定，这里只负责通知与「否决后回位」。
+     */
+    const requestDismiss = useCallback(() => {
+        canvasRef.current?.requestCancel()
+        // 连点防重入：作废旧链只留最后一条（检测的只是「最终是否被否决」，一条足够）
+        if (vetoTimerRef.current !== null) {
+            window.clearTimeout(vetoTimerRef.current)
+            vetoTimerRef.current = null
+        }
+        vetoTimerRef.current = scheduleVetoCheck(0)
+    }, [scheduleVetoCheck])
+    dismissRef.current = requestDismiss
+
+    // 手势返回（iOS 边缘滑动 / Android 返回键）收画板而不是退出页面。移动端专属（桌面
+    // back 语义不同，且 PC 是页内停靠层）。重臂纪律照 BottomSheet：**不在滑出起手重臂**
+    // ——popstate 里再补 entry 会踩中 Chromium #330744614，真机表现为下一次返回直接退出 PWA
+    useHistoryGuard(mounted && isMobile, () => {
+        guardConsumedRef.current = true
+        requestDismiss()
+    }, guardEpoch)
+
+    // ESC 走同一条：只认没被内层消费掉的 ESC（`defaultPrevented`）——画布自己的 ESC 语义
+    // （取消当前图形 / 取消选择 / 退出文本编辑）优先级更高，抢过来会让「按 ESC 想撤销一笔」
+    // 变成「弹出放弃确认」。取消确认框开着时同样让路（否则 ESC 关掉确认框后又被重新弹出）
+    //
+    // **必须截住这一记 ESC（stopPropagation）**：取消确认框是**同步**弹出来的（本处理器跑在
+    // document 冒泡相，`requestCancel` 里 modal.confirm 立刻渲染），而 rc 系弹层的全局 ESC
+    // 监听挂在 **window** 上（`@rc-component/portal/useEscKeyDown`，window 是冒泡路径的最后一站）。
+    // 于是确认框挂载时装上监听，紧接着就被**同一记** ESC 关掉——弹出与关闭在同一帧里先后发生，
+    // 真机表现是「按 ESC 什么都没发生」（实测：modal root 出现后 60ms 开始退场）。rc-dialog
+    // 自己的 onEsc 也这么处理（见 DialogWrap：`event.stopPropagation()`）。
+    //
+    // 弹层已经在上时（isConfirmOpen 早退）不截——那一记 ESC 就该交给确认框自己收。
+    useEffect(() => {
+        if (!mounted) return undefined
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return
+            if (canvasRef.current?.isConfirmOpen()) return
+            event.stopPropagation()
+            requestDismiss()
+        }
+        document.addEventListener('keydown', onKeyDown)
+        return () => document.removeEventListener('keydown', onKeyDown)
+    }, [mounted, requestDismiss])
+
+    // 背景滚动锁：用钉 body 的方式（不碰触摸事件），滚动区归属仍交回浏览器——
+    // 与其它浮层同一套（见 bodyScrollLock 文档）
+    useEffect(() => (mounted ? lockBodyScroll() : undefined), [mounted])
+
+    // 层号：移动端与其它移动浮层同一套（后开者在上）；PC 保持 100–103 阶梯——
+    // 那是页内临时层，不得盖过 antd 抽屉/对话框（见 sketchLayout 的阶梯说明）
+    const mobileLayerZ = useOpenOverlayLayer(mounted && isMobile)
 
     // 开合相位机（见上）。enter/exit 定时器共用一个 ref 槽位——开合切换时必须清掉
     // 未触发的旧定时器（close 不清 enter 定时器会在 exit 动画中途把 phase 打回 open，
@@ -249,6 +345,11 @@ export function SketchDrawer({
         }, SHEET_OUT_MS + 40)
         return undefined
     }, [open])
+
+    // 卸载清理：作废否决检测定时器（否则会对着已卸载的浮层沉降）
+    useEffect(() => () => {
+        if (vetoTimerRef.current !== null) window.clearTimeout(vetoTimerRef.current)
+    }, [])
 
     // 几何过渡窗口期：render 期从「fullscreen 与上次渲染不同」派生——transition
     // 必须与目标几何在同一次渲染中就位才能产生过渡（commit 后再置标记会先以无
@@ -278,10 +379,11 @@ export function SketchDrawer({
 
     if (!mounted) return null
 
-    // 几何（自上而下）：移动端 = 「浮起画纸」卡片（fixed，safe-area 缝隙 + 圆角，
-    // 背景暗化）——全屏画布空间与聊天上下文锚点兼得；PC 停靠 → 层内聊天列区域
-    // （贴 composer 顶、70% 吊顶、宽对齐聊天列）；PC 全屏 → 层内四边留白撑满；
-    // 未挂层 → fixed 全屏兜底。停靠↔全屏四边均为像素/比例值，全部可连续插值
+    // 几何（自上而下）：移动端 = 贴底 sheet（左右与底贴屏、上半圆角、顶边留一缝 + 底部
+    // 安全区内衬）——与其它移动浮层同一形状语言（原「四周留缝的浮起画纸」已弃）；
+    // PC 停靠 → 层内聊天列区域（贴 composer 顶、70% 吊顶、宽对齐聊天列）；
+    // PC 全屏 → 层内四边留白撑满；未挂层 → fixed 全屏兜底。
+    // 停靠↔全屏四边均为像素/比例值，全部可连续插值
     const sheetStyle: CSSProperties = layerEl && !isMobile
         ? fullscreen
             ? { top: FULLSCREEN_INSET, right: FULLSCREEN_INSET, bottom: FULLSCREEN_INSET, left: FULLSCREEN_INSET }
@@ -290,51 +392,85 @@ export function SketchDrawer({
             ? {
                 position: 'fixed',
                 top: `max(${MOBILE_SHEET_INSET}px, env(safe-area-inset-top))`,
-                left: `${MOBILE_SHEET_INSET}px`,
-                right: `${MOBILE_SHEET_INSET}px`,
-                bottom: `max(${MOBILE_SHEET_INSET}px, env(safe-area-inset-bottom))`,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                // 画布不吃 home indicator 那条：底部内衬让出去（贴底形态下底边没有缝隙兜底）
+                paddingBottom: `max(${MOBILE_SHEET_INSET}px, env(safe-area-inset-bottom))`,
             }
             : { position: 'fixed', inset: 0 }
 
     const fullscreenLabel = t(fullscreen ? 'sketch.exitFullscreen' : 'sketch.fullscreen')
 
+    // 层号：移动端领号（先领到的在下面，后开者在上，与其它移动浮层同一套）；PC 走阶梯。
+    // 遮罩与面差一号（同层内面压在遮罩上），与 BottomSheet 的 --sheet-z / --sheet-z-top 同构
+    const maskZ = mobileLayerZ ?? SKETCH_Z_MASK
+    const sheetZ = mobileLayerZ ? mobileLayerZ + 1 : sketchSheetZIndex({ mobile: isMobile, fullscreen, hasLayer: !!layerEl })
+
     return createPortal(
         <>
-            <Mask $zIndex={SKETCH_Z_MASK} $dim={isMobile} $phase={phase} $fixed={isMobile} data-testid="sketch-mask" />
+            <Mask
+                className={sheetClass.mask}
+                $zIndex={maskZ}
+                $dim={isMobile}
+                $phase={phase}
+                $fixed={isMobile}
+                /* 底色来自壳的 .mask（同一套 token）；PC 只挡交互不改视觉——把壳的
+                   默认档就地换成透明，背后消息保持原样可读。
+                   移动端点遮罩走同一条取消入口；PC 不接（停靠态遮罩只是挡交互，点它关闭会误伤） */
+                style={isMobile ? undefined : ({ '--sheet-mask-bg': 'transparent' } as CSSProperties)}
+                onClick={isMobile ? requestDismiss : undefined}
+                data-testid="sketch-mask"
+            />
             <Sheet
+                ref={sheetRef}
+                className={sheetSurfaceClass(isMobile ? 'bottom' : 'floating')}
                 data-testid="sketch-sheet"
-                /* z 序按形态取档（sketchSheetZIndex）：全屏三种形态（PC 全屏/移动端恒全屏/
-                   未挂层兜底）盖过 composer（z 102）——画布上不该悬浮 composer；停靠形态
-                   保持 101（滑沉消隐不发生穿越位移，z 序只为保持既有 stacking 阶梯）。
-                   退全屏 state 立即复位 → 收回过程回到 composer 之下，符合「浮层归位」方向感 */
-                $zIndex={sketchSheetZIndex({ mobile: isMobile, fullscreen, hasLayer: !!layerEl })}
+                /* z 序：移动端领号（盖过一切页内层，与其它移动浮层同序）；PC 按形态取档
+                   （全屏三种形态盖过 composer、停靠保持 101）——PC 是页内临时层，
+                   不得盖过 antd 抽屉/对话框 */
+                $zIndex={sheetZ}
                 $phase={phase}
                 $morphing={morphing}
-                style={sheetStyle}
+                $dragging={pulling}
+                /* 拖拽中的标记给壳（抓手与光标样式读它，见 sheetSurface.module.css） */
+                data-dragging={pulling ? '' : undefined}
+                style={{ ...sheetStyle, '--sheet-drag-y': `${pullOffset}px` } as CSSProperties}
             >
-                <Section>
-                    <Header data-testid="sketch-header" $mobile={isMobile}>
+                <SheetHeader
+                    data-testid="sketch-header"
+                    layout="toolbar"
+                    /* 画布不滚 → 壳的 data-scrolled 显线规则永不触发：头部与画布之间要一道常驻界 */
+                    data-bordered=""
+                    /* 可拖 = 移动端（PC 是停靠矩形，没有下拉语义）：壳据此给抓取光标与
+                       touch-action，并在这里接手势处理器 */
+                    data-draggable={isMobile ? '' : undefined}
+                    {...(isMobile ? pullHandlers : null)}
+                    grabber={isMobile ? <SheetGrabber /> : undefined}
+                    leading={(
                         <Tooltip title={t('common.cancel')}>
                             <Button
-                                className="exit-btn"
                                 type="text"
                                 size="small"
-                                aria-label={t('common.cancel')}
-                                icon={<X size={16} />}
                                 disabled={exporting}
+                                style={{ minHeight: isMobile ? 40 : 32 }}
                                 onClick={() => canvasRef.current?.requestCancel()}
-                            />
+                            >
+                                {t('common.cancel')}
+                            </Button>
                         </Tooltip>
-                        <Space size={8}>
+                    )}
+                    trailing={(
+                        <>
                             {/* 仅 PC 且挂层可切全屏：移动端已全屏；与完成同侧但非破坏动作，误触无害 */}
                             {canFullscreen && (
                                 <Tooltip title={fullscreenLabel}>
-                                    <Button
-                                        className="exit-btn"
-                                        type="text"
-                                        size="small"
-                                        aria-label={fullscreenLabel}
-                                        icon={fullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+                                    <SheetIconButton
+                                        label={fullscreenLabel}
+                                        bordered={false}
+                                        icon={fullscreen
+                                            ? <Minimize size={16} strokeWidth={1.75} aria-hidden="true" />
+                                            : <Maximize size={16} strokeWidth={1.75} aria-hidden="true" />}
                                         onClick={() => setFullscreen((v) => !v)}
                                     />
                                 </Tooltip>
@@ -343,23 +479,26 @@ export function SketchDrawer({
                                 className="complete-btn"
                                 type="primary"
                                 size="small"
-                                icon={<Check size={14} />}
+                                icon={<Check size={14} strokeWidth={2} />}
                                 loading={exporting}
+                                /* 与图标钮同高：一条工具条上三种控件不该有三种高度
+                                   （移动端 40 与图标钮的触达档对齐） */
+                                style={{ minHeight: isMobile ? 40 : 32 }}
                                 onClick={() => void handleComplete()}
                             >
                                 {t('sketch.complete')}
                             </Button>
-                        </Space>
-                    </Header>
-                    <div style={{ flex: 1, minHeight: 0 }}>
-                        {/* 压感默认恒为速度模拟（全设备手感一致）；触控笔真实压力通道留待用户偏好 */}
-                        <SketchCanvas
-                            ref={canvasRef}
-                            initialSketch={initialSketch}
-                            onCancel={onClose}
-                        />
-                    </div>
-                </Section>
+                        </>
+                    )}
+                />
+                <div style={{ flex: 1, minHeight: 0 }}>
+                    {/* 压感默认恒为速度模拟（全设备手感一致）；触控笔真实压力通道留待用户偏好 */}
+                    <SketchCanvas
+                        ref={canvasRef}
+                        initialSketch={initialSketch}
+                        onCancel={onClose}
+                    />
+                </div>
             </Sheet>
         </>,
         layerEl ?? document.body,

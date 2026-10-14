@@ -37,6 +37,7 @@ import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import { exportSketch, loadSketch } from '@/domain/sketch/sketchFile'
 import { prepareSceneUpdate } from '@/domain/sketch/sceneAssembly'
 import { SKETCH_CANVAS_SETTLE_MS } from '@/domain/sketch/sketchLayout'
+import { nextOverlayLayer } from '@/ui/base/layout/overlayLayer'
 import { attachPressureRewrite, createPressureFixer } from './pressureFix'
 import { useIsDark } from '@/core/data/hooks/useIsDark'
 
@@ -55,6 +56,11 @@ export interface SketchCanvasProps {
 export interface SketchCanvasHandle {
     /** 取消：场景相对打开时有变化才二次确认，防空手误触丢作品 */
     requestCancel: () => void
+    /**
+     * 取消确认框是否开着。**宿主据此让开自己的取消通道**（画板载体的 ESC 监听）：确认框
+     * 自己会吃掉 ESC，宿主再走一次取消会把确认框重新弹出来，真机表现是「ESC 关不掉确认框」。
+     */
+    isConfirmOpen: () => boolean
     /**
      * 完成导出。四态：
      * - Blob：场景有内容且相对打开时有修改，导出的内嵌 scene PNG
@@ -92,11 +98,74 @@ const Root = styled.div`
     position: relative;
     width: 100%;
     height: 100%;
-    background: var(--ant-color-bg-container, #ffffff);
+    /* 底色取全局中性阶（--mobi-elevated = 面板底色，与浮层壳的 --popover 同档）。
+       曾用 --ant-color-bg-container：那是 antd **子树内**的变量，而本组件在移动端
+       portal 到 document.body（CSS 变量沿 DOM 继承，不跟 React 树），解析不到就回落
+       #ffffff —— 暗色下画布加载前闪一格白 */
+    background: var(--mobi-elevated, #ffffff);
 
     .excalidraw {
         width: 100%;
         height: 100%;
+    }
+
+    /* 换皮：excalidraw 自带「淡紫强调 + 8px 圆角 + 三层岛影」的外观语言，与本工程的
+       净墨系统不搭（选中态淡紫、岛 8px 圆角、按钮带三层投影）。下面把它的主题变量重绑
+       到 mobi 中性阶——**只换皮不改行为**：画布内容与导出走 JS 渲染，不吃这些变量
+       （canvas 的暗色是 CSS 反显，见 --theme-filter），这里改的只有 UI 与选中框。
+
+       选择器叠一次自身类来提权重：上游 .excalidraw（0,1,0）与
+       .excalidraw.theme--dark（0,2,0）都是上游声明，而本文件与上游 CSS 的注入顺序不保证
+       （两边都是运行时插 style）——平手时谁后谁赢，必须靠权重稳压。
+
+       两档共用一份声明：取值全是 mobi 变量，变量自己按明暗档解析，不必分两份 */
+    .excalidraw.excalidraw,
+    .excalidraw.theme--dark.excalidraw {
+        /* 强调色 = 净墨（原为淡紫 #6965db / #a8a5ff）：选中框 / 激活控件 / 勾选框走深浅灰，
+           重要性靠深度不靠色相（DESIGN「Colors」） */
+        --color-primary: var(--mobi-ink);
+        --color-primary-hover: var(--mobi-ink-secondary);
+        --color-primary-darker: var(--mobi-ink);
+        --color-primary-darkest: var(--mobi-ink);
+        /* 激活态的淡底芯片：取选中档（hover < selected < pressed，见 DESIGN「Hover & Selected」） */
+        --color-primary-light: var(--mobi-selected);
+        --color-primary-light-darker: var(--mobi-pressed);
+        --color-surface-primary-container: var(--mobi-selected);
+        --color-on-primary-container: var(--mobi-ink);
+        /* 框选矩形是**唯一被 JS 读走画在 canvas 上**的变量（getComputedStyle 读
+           --color-selection），于是和画布一起过 --theme-filter 的反显——所以这里填的是
+           画布存储色而不是屏显色：必须取**中调**的三级墨，反显后仍是中调的灰，明暗两档
+           都看得见。取一级墨（深）在暗档反显成近黑、取浅色在明档糊在白纸上，两档各会
+           有一种「选中框消失」（上游的靛蓝正是中调才两边都好使） */
+        --color-selection: var(--mobi-ink-tertiary);
+
+        /* 面：岛（工具条 / 属性面板）抬起一档；工具按钮的常态与悬浮取中性阶 */
+        --color-on-surface: var(--mobi-ink);
+        --color-surface-lowest: var(--mobi-elevated);
+        --color-surface-low: var(--mobi-hover);
+        --color-surface-mid: var(--mobi-hover);
+        --color-surface-high: var(--mobi-selected);
+        --island-bg-color: var(--mobi-elevated);
+
+        /* 描边与弱文字取发丝线 / 墨阶（原为紫灰 #767680 系） */
+        --color-border-outline: var(--mobi-hairline-strong);
+        --color-border-outline-variant: var(--mobi-hairline);
+        --color-muted: var(--mobi-ink-tertiary);
+        --color-muted-darker: var(--mobi-ink-secondary);
+        --color-muted-darkest: var(--mobi-ink);
+        --color-muted-background: var(--mobi-hover);
+        --color-muted-background-darker: var(--mobi-selected);
+
+        /* 形状：岛是悬浮面板 → 控件档（14）；工具条里的纯图标按钮按 DESIGN 收一档取
+           图标键档（6，「比控件档收一档才不像药丸」），与壳里的图标钮同档 */
+        --border-radius-lg: var(--radius-control);
+        --border-radius-md: var(--radius-icon);
+
+        /* 投影：三层岛影换成 mobi 的两档标准投影（静置 / 弹层），不再自带一套 */
+        --shadow-island: var(--shadow-resting);
+        --library-dropdown-shadow: var(--shadow-resting);
+        --modal-shadow: var(--shadow-floating);
+        --sidebar-shadow: var(--shadow-floating);
     }
 
     /* UI 裁剪：画板的导出/打开由 mobi 上传管线接管，无素材库/帮助/社区外链语义；
@@ -118,12 +187,19 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
     // 不消费 ConfigProvider 主题（dark 下白底蓝按钮，与暖调设计系统脱节）
     const { modal } = App.useApp()
     const [editor, setEditorState] = useState<ExcalidrawImperativeAPI | null>(null)
+    // 取消确认框在屏上：宿主（画板载体）据此让开自己的 ESC 通道（见 SketchCanvasHandle）
+    const [confirming, setConfirming] = useState(false)
     const cancelledRef = useRef(false)
     // 打开时的场景指纹（变更检测基准）：null = 未捕获（捕获前不弹确认，宁多勿丢）
     const initialFingerprintRef = useRef<string | null>(null)
 
     /** 取消：场景相对打开时有变化才二次确认（空画布直接开、重编辑未动笔直接关），防误触丢作品 */
     const handleCancel = useCallback(() => {
+        // 确认框已经在上：这次取消请求什么都不做。取消有多个来源（头部取消 / ESC / 下拉 /
+        // 遮罩 / 系统返回），其中**系统返回不经过任何在屏判据**——手持设备连按返回会在确认框
+        // 之上再叠一层一模一样的确认框（实测 1 → 2），而那一层既不在载体的 ESC 让路判据里、
+        // 也不属于「否决后回位」的语义。取消是幂等的：在屏即已受理
+        if (confirming) return
         // 变化检测：与打开时的场景指纹比对。editor 未就绪/指纹未捕获（异常时序）按
         // 有变化处理——宁可多弹一次确认也不静默丢作品
         const changed = !!editor && !!initialFingerprintRef.current
@@ -133,20 +209,31 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
             return
         }
         // 放弃修改是危险操作：确认按钮走 danger 语义（土地砖红，非 primary 灰）。
-        // zIndex 抬过 antd 弹层默认区间（1000）——确认框必须压过一切页内浮层
+        // zIndex 从浮层层号分配器现领（`useOpenOverlayLayer` 那套）——写死值在移动端
+        // 画板领号（overlayLayer，1080 起）之后会被自己的载体压在下面，点不到
+        setConfirming(true)
         modal.confirm({
-            zIndex: 1100,
+            zIndex: nextOverlayLayer(),
             title: t('sketch.discardConfirm'),
             okText: t('common.confirm'),
             cancelText: t('common.cancel'),
             okButtonProps: { danger: true },
-            onOk: onCancel,
+            onOk: () => {
+                setConfirming(false)
+                onCancel()
+            },
+            onCancel: () => setConfirming(false),
+            // 兜底：无论确认框因哪条路走掉（确认 / 取消 / ESC / 遮罩 / 外部销毁），
+            // 都要让「在屏」标记落到真实状态——漏掉一次会让 isConfirmOpen 永远为真，
+            // 取消通道从此被判据挡住（取消是幂等的，反过来就再也弹不出来）
+            afterClose: () => setConfirming(false),
         })
-    }, [editor, modal, onCancel, t])
+    }, [editor, confirming, modal, onCancel, t])
 
     // 载体 header 的取消/完成出口与画布内语义共用同一实现（React 19 ref-as-prop 手柄）
     useImperativeHandle(ref, () => ({
         requestCancel: handleCancel,
+        isConfirmOpen: () => confirming,
         // 指纹未捕获 = 场景尚未就绪（编辑器初始化中 / 重编辑内容载入中）→ undefined：
         // 调用方必须忽略，绝不能落进「null = 删光」语义（会把有内容的附件静默删除）。
         // 场景就绪后：无内容（空画布 / 重编辑后删光）→ null（重编辑 = 删除附件，新建 = 仅关闭），
@@ -158,7 +245,7 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
             if (sceneFingerprint(editor) === initialFingerprintRef.current) return Promise.resolve('unchanged')
             return exportSketch(editor)
         },
-    }), [editor, handleCancel])
+    }), [editor, handleCancel, confirming])
 
     // 卸载后不再回写（载入是异步的，Drawer 关闭后完成会 setState 在卸载组件上）
     useEffect(() => () => { cancelledRef.current = true }, [])
