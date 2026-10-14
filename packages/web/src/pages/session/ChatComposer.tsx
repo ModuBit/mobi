@@ -38,6 +38,7 @@ import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { AttachPanel } from '@/features/composer/AttachPanel'
 import { QuoteChipBar } from '@/features/composer/QuoteChipBar'
+import { composerSenderCard, composerSubmitButton } from '@/features/composer/composerSurface.styles'
 import { ComposerInfoPanel } from '@/pages/session/ComposerInfoPanel'
 import { resolveCopyShortcut } from '@/features/composer/copyShortcut'
 import { StatusBar } from '@/ui/shared/StatusBar'
@@ -166,61 +167,30 @@ function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null
     return wrapper?.querySelector('textarea') ?? null
 }
 
-// Dock 容器：包裹整个 Composer 区域，和 BubbleList 形成视觉分隔
+// Dock 容器：包裹整个 Composer 区域，和 BubbleList 形成视觉分隔。
+// 白卡与圆钮样式来自 composerSurface.styles 共享片段（与新会话页 InputCard 同一套）
 const ComposerDock = styled.div`
-    /* 默认退场：背后没有内容层时（InfoPanel / StatusBar 空态都渲染 null，Dock 里只剩
-       wrapper 一个孩子），灰底只剩上下两条空圆角带——比没有 Dock 更难看。此时白卡
-       直接落在页面底色上，分层只靠底色差 + 圆角 */
-    background: transparent;
-    border-radius: var(--ant-border-radius-lg, 12px);
+    ${composerSenderCard}
+    ${composerSubmitButton}
 
-    /* 背后有内容层（InfoPanel / StatusBar 渲染了非 null，⟺ 直接子元素不止 wrapper
-       一个）才回来：灰底 + 内衬，白卡悬挑其上的分层样式（对齐手绘稿：灰卡装着
-       内容行、白卡悬挑在中间） */
-    &&:not(:has(> :only-child)) {
-        background: var(--ant-color-fill-quaternary);
-        padding: 8px;
-    }
-
-    /* Sender 浮出 Dock 的「卡中卡」：白底 + 大圆角。左右 margin -16px = 抵消 Dock 内衬
-       8px + 真悬挑 8px——悬挑量就是「超出 Dock 边缘」的部分，只抵消内衬的话卡和 Dock
-       永远同宽（踩过）。外层 16px 内衬 − 悬挑 8px = 任何视口宽度下与屏幕边保底 8px 缝
-       （聊天列在全宽渲染的中等宽度下内衬就是唯一的安全边距，断点 hack 不可靠）。
-       无投影：两侧悬挑外与下方永远是空底，投影没有可依附的内容层，展示出来只像
-       一块污渍；分层靠白卡与灰底的底色差 + 圆角 */
+    /* 聊天页 Dock 无内容层时白卡上下不留垂直空隙（新会话页始终 8px）——覆盖共享片段 */
     && .ant-sender {
-        border: none !important;
-        box-shadow: none !important;
-        border-radius: 24px !important;
-        background: var(--ant-color-bg-container) !important;
-        width: auto !important;
         margin: 0 -16px;
     }
 
-    /* 有内容层时白卡与上下层拉开呼吸空隙 */
+    /* 背后有内容层（InfoPanel / StatusBar 渲染了非 null，⟺ 直接子元素不止 wrapper
+       一个）才现身：灰底 + 内衬 + 圆角，白卡悬挑其上的分层样式（对齐手绘稿：灰卡
+       装着内容行、白卡悬挑在中间），并与上下层拉开呼吸空隙。空态时 Dock 若仍上灰底，
+       只剩上下两条空圆角带——比没有 Dock 更难看；此时白卡直接落在页面底色上，
+       分层只靠底色差 + 圆角 */
+    &&:not(:has(> :only-child)) {
+        background: var(--ant-color-fill-quaternary);
+        border-radius: var(--ant-border-radius-lg, 12px);
+        padding: 8px;
+    }
+
     &&:not(:has(> :only-child)) .ant-sender {
         margin: 8px -16px;
-    }
-
-    /* 提交/停止按钮：深色大圆钮（中性反色，双档主题各自成立——light 黑底白标、dark 白底黑标）。
-       disabled 回落灰底弱化（ChatGPT 同款语义：不可发送时按钮退后） */
-    && .ant-sender .ant-btn-primary.ant-btn-circle {
-        width: 40px;
-        height: 40px;
-        min-width: 40px;
-        font-size: 18px;
-        background: var(--ant-color-text) !important;
-        color: var(--ant-color-bg-container) !important;
-        transition: opacity 0.15s ease;
-    }
-
-    && .ant-sender .ant-btn-primary.ant-btn-circle:not(:disabled):hover {
-        opacity: 0.88;
-    }
-
-    && .ant-sender .ant-btn-primary.ant-btn-circle:disabled {
-        background: var(--ant-color-fill-secondary) !important;
-        color: var(--ant-color-text-quaternary) !important;
     }
 
     /* bash 模式：恢复 Sender 橙色发光边框（输入 ! 空格 触发 .bash-mode）。
@@ -871,11 +841,15 @@ export function ChatComposer(props: ChatComposerProps) {
     ].filter(Boolean)
 
     return (
-        // composer 永远不贴左右边缘：统一 8px 侧边距。不依赖 CHAT_MAX_WIDTH 居中兜底——
+        // composer 永远不贴左右边缘：统一 16px 侧边距。不依赖 CHAT_MAX_WIDTH 居中兜底——
         // 视口减去侧栏/面板不足 1200 时聊天列按 100% 宽渲染，无侧边距即贴边
+        // （16px 内衬 − 白卡悬挑 8px = 任何视口宽度下与屏幕边保底 8px 缝）
         // data-perf-region：dev-only layout-shift 归因观测器；位于 chat 区域内部，
         // 归因时内层标注优先（composer 内位移源归 composer 不归 chat）
         <div style={{ padding: '0 16px max(12px, env(safe-area-inset-bottom))' }} data-perf-region="composer">
+            {/* Dock 的进退场（ComposerDock 的 :has(> :only-child)）依赖此处的结构契约：
+                InfoPanel 与 StatusBar 空态必须渲染 null——直接子元素只剩 wrapper 一个时
+                Dock 背后无内容层，整体退场；多出任何一个非 null 孩子即现身 */}
             <ComposerDock>
             {/* 信息面板：工具交互请求、任务列表等 */}
             <ComposerInfoPanel

@@ -18,6 +18,7 @@ import { useState, useCallback, useMemo, useRef, useEffect, type ReactNode } fro
 import { App, Input, Spin, Popover, Typography, Segmented, theme as antTheme } from 'antd'
 import styled from '@emotion/styled'
 import { AttachPanel } from '@/features/composer/AttachPanel'
+import { composerSenderCard, composerSubmitButton } from '@/features/composer/composerSurface.styles'
 import { Sender } from '@ant-design/x'
 import { PlusOutlined, InboxOutlined, RightOutlined, BranchesOutlined } from '@ant-design/icons'
 import { Cpu } from 'lucide-react'
@@ -132,47 +133,17 @@ const TitleBar = styled.div<{ $color: string }>`
     margin-bottom: 24px;
 `
 
+// 新会话页输入卡：与新会话 ComposerDock 同一套「灰底容器 + 白卡浮出」叠层，
+// 白卡与圆钮样式来自 composerSurface.styles 共享片段（本页 Dock 背后恒有 SubBar
+// chips 作内容层，垂直 8px 呼吸空隙由共享片段自带，无需 :has 进退场）
 const InputCard = styled.div`
     background: var(--ant-color-fill-tertiary);
     border: 1px solid var(--ant-color-border-secondary);
     border-radius: var(--ant-border-radius-lg, 12px);
     padding: 8px;
 
-    /* Sender 浮出卡片的「卡中卡」：白底 + 大圆角 + 投影，左右负 margin 吃掉卡片内衬
-       （左右悬挑出卡片边缘 8px，移动端恰好贴满视口）、上下正 margin 与相邻层拉开呼吸空隙（上：环境条，下：SubBar chips）——
-       输入卡是前景主体（与 ChatComposer 的 ComposerDock 同一套叠层样式） */
-    && .ant-sender {
-        border: none !important;
-        /* 无投影：白卡悬挑出灰卡后，投影跟着白卡走、比灰卡还宽，投在上下两条薄灰条上
-           就是一圈光晕（无论有没有输入文字都在）；分层靠白卡与灰底的底色差 + 圆角即可，
-           与 ChatComposer 的 ComposerDock 同一套（两页都无投影） */
-        box-shadow: none !important;
-        border-radius: 24px !important;
-        background: var(--ant-color-bg-container) !important;
-        width: auto !important;
-        margin: 8px -16px;
-    }
-
-    /* 提交按钮：深色大圆钮（中性反色，双档主题各自成立），disabled 回落灰底弱化。
-       样式与 ChatComposer 的 ComposerDock 保持同一套 */
-    && .ant-sender .ant-btn-primary.ant-btn-circle {
-        width: 40px;
-        height: 40px;
-        min-width: 40px;
-        font-size: 18px;
-        background: var(--ant-color-text) !important;
-        color: var(--ant-color-bg-container) !important;
-        transition: opacity 0.15s ease;
-    }
-
-    && .ant-sender .ant-btn-primary.ant-btn-circle:not(:disabled):hover {
-        opacity: 0.88;
-    }
-
-    && .ant-sender .ant-btn-primary.ant-btn-circle:disabled {
-        background: var(--ant-color-fill-secondary) !important;
-        color: var(--ant-color-text-quaternary) !important;
-    }
+    ${composerSenderCard}
+    ${composerSubmitButton}
 `
 
 /* ========== 辅助组件 ========== */

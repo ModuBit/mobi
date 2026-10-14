@@ -40,7 +40,7 @@ interface SuggestionChipProps {
 /**
  * 下一轮建议 chip, 显示在 Sender header 中, 用 antd Tag 呈现。
  * 点击 chip → 回填草稿(onAccept); 点击 ✕ → 关闭(onDismiss)。
- * 外层 padding 让 chip 不紧贴 Sender 的上/左边界。
+ * 外层 padding 让 chip 不紧贴 Sender 白卡的上/侧边界。
  * hidden=true 时丝滑收起（opacity + 上移 + max-height 塌缩），清空 draft 即恢复。
  * 纯受控组件, 生命周期由父级(ChatComposer)通过 store 管理。
  */
@@ -51,7 +51,8 @@ export function SuggestionChip({ text, hidden, onAccept, onDismiss }: Suggestion
                 // 外圆角=内圆角+内衬：白卡 24px 圆角下，内衬 <12px 会被左上圆弧咬住
                 // （曾只有 4px 8px 0 4px，chip 顶在圆角上）。侧/上对齐卡片 16px/12px 基准
                 padding: '12px 16px 0',
-                // border-box：maxHeight 收缩时把 padding 也算进盒高，hidden 态彻底塌缩无 4px 缝
+                // border-box：maxHeight 收缩时把 padding 也算进盒高，hidden 态彻底塌缩、
+                // 不残留上内衬的缝
                 boxSizing: 'border-box',
                 opacity: hidden ? 0 : 1,
                 transform: hidden ? 'translateY(-4px)' : 'translateY(0)',
