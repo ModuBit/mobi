@@ -143,7 +143,10 @@ const InputCard = styled.div`
        输入卡是前景主体（与 ChatComposer 的 ComposerDock 同一套叠层样式） */
     && .ant-sender {
         border: none !important;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.14) !important;
+        /* 无投影：白卡悬挑出灰卡后，投影跟着白卡走、比灰卡还宽，投在上下两条薄灰条上
+           就是一圈光晕（无论有没有输入文字都在）；分层靠白卡与灰底的底色差 + 圆角即可，
+           与 ChatComposer 的 ComposerDock 同一套（两页都无投影） */
+        box-shadow: none !important;
         border-radius: 24px !important;
         background: var(--ant-color-bg-container) !important;
         width: auto !important;
