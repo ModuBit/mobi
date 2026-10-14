@@ -16,7 +16,7 @@
 
 /**
  * CLI 输出详情抽屉
- * 在 Drawer 中展示完整的 stdout/stderr 输出
+ * 在 BottomSheet 中展示完整的 stdout/stderr 输出
  */
 
 import { memo, useMemo, type CSSProperties } from 'react'

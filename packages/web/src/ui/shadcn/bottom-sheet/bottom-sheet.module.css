@@ -24,6 +24,8 @@
  *  3. 底部安全区内衬：延伸段 + max(24px, env(safe-area-inset-bottom))
  *  4. 层号注入的 z（--sheet-z-top，见 overlayLayer）
  *  5. 锁滚态（data-scroll-locked）：纵向锁死、横向放行
+ *  6. PC（≥768，与 useIsMobile 同断点）放宽到 56rem：36rem 是移动端上限，大屏上 diff /
+ *     终端输出这类宽内容会局促；两侧留缝保持「浮起一张纸」的层次
  * 跨模块的类名互不可见：要命中壳里的元素一律走 data 属性（[data-sheet-body]）。
  */
 

@@ -55,6 +55,10 @@
  *     （Tab 可以从 sheet 走到页面其他元素）也**不给背景加 aria-hidden**。面板内不要依赖
  *     「焦点出不去」；背景的滚动由自建 bodyScrollLock 钉住（视觉与滚动上仍是模态）。
  *     要重拾焦点陷阱得自己接 FocusScope——当前无此需求，先记在这里而不是让读者去猜。
+ *  9. **首次入场延迟起跳**：内容组件（AutoHeightHost 宿下的 pierre diff 等）挂载帧只有
+ *     估计高度，照它起跳会在内容就绪后收缩+重定位——「弹出→消失→再弹出」（真机实锤，
+ *     Edit 详情必闪）。首次入场等内容收敛（scrollHeight 稳定 + 无 HEIGHT_PENDING_ATTR
+ *     标记）才屏外对齐起跳，机制与四轮迭代教训见 waitForContentSettle 及入场 effect 注释。
  */
 
 import * as DialogPrimitive from '@radix-ui/react-dialog'
@@ -69,6 +73,7 @@ import { dragVelocity, DRAG_EXEMPT_SELECTOR, resolveDragDisposition, type DragSa
 import { resolveDetentRelease } from '@/ui/base/interactive/resolveDetentRelease'
 import { useVetoableClose } from '@/ui/base/interactive/useVetoableClose'
 import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
+import { HEIGHT_PENDING_ATTR, MEASURE_TIMEOUT_MS } from '@/ui/base/layout/AutoHeightHost'
 import { nextOverlayLayer, retainOverlayLayer } from '@/ui/base/layout/overlayLayer'
 import { SheetClose, SheetGrabber, SheetHeader, sheetClass, sheetSurfaceClass } from '@/ui/base/layout/sheetSurface'
 import styles from './bottom-sheet.module.css'
@@ -83,10 +88,8 @@ const STRETCH = 120
  *  内容高不超这一档时两档重合，等于没有 peek（矮面板观感不变） */
 const PEEK_RATIO = 0.45
 
-/** 首次入场的「内容收敛」检测步距（ms）：scrollHeight 连续两轮相同才起跳（见入场 effect 注释） */
+/** 首次入场的「内容收敛」检测步距（ms）：scrollHeight 连续两轮相同才起跳（见 waitForContentSettle） */
 const ENTER_SETTLE_MS = 32
-/** 收敛等待的上限（ms）：内容持续流式时也不能永远不开 */
-const ENTER_MAX_WAIT_MS = 600
 /** peek 档残留的遮罩强度：停在 peek 档时背景不亮到头（上游同值同义） */
 const LOW_DIM = 0.78
 /** 内容区手势的方向判定阈值（px）：累计位移不到它就不表态。
@@ -111,6 +114,57 @@ const createSyntheticCloseEvent = () =>
 /** iOS 式阻尼：先跟手，再渐近 STRETCH */
 const rubber = (distance: number) => (1 - 1 / (distance * 0.55 / STRETCH + 1)) * STRETCH
 const unrubber = (stretch: number) => (1 / (1 - Math.min(stretch, STRETCH - 1) / STRETCH) - 1) * STRETCH / 0.55
+
+/**
+ * 首次入场的「内容收敛」等待：轮询 scrollHeight 连续两轮相同、**且**内容里没有「高度未量到」
+ * 的标记即回调 onSettle。盯 scrollHeight 而不是盒高：估计高被 max-height 裁住时盒高恒定
+ * 不变（曾因此假收敛失效），scrollHeight 才反映内容的真实需求高。
+ *
+ * 「高度未量到」的标记（HEIGHT_PENDING_ATTR）由测量方 AutoHeightHost 自声明——估计高阶段
+ * scrollHeight 同样稳定，外部无法从布局区分「估计值的稳定」与「真实值的稳定」，只能由
+ * 测量方显式声明。
+ *
+ * 兜底上限对齐测量方自己的放弃时限（MEASURE_TIMEOUT_MS）：生产者承诺 2000ms 内必摘标记，
+ * 本兜底**不得抢先**——pending 未摘就起跳，「弹出→消失→再弹出」会在慢路径（大 diff /
+ * 低端机，恰是 MEASURE_TIMEOUT_MS 存在的原因）原样回归。
+ *
+ * 返回清理函数（取消轮询与兜底、并让后续回调失效）。
+ */
+function waitForContentSettle(sheet: HTMLElement, onSettle: () => void): () => void {
+    let done = false
+    let pollTimer = 0
+    let timeoutTimer = 0
+    let lastContentHeight = -1
+    const settle = () => {
+        if (done) return
+        done = true
+        window.clearTimeout(pollTimer)
+        window.clearTimeout(timeoutTimer)
+        onSettle()
+    }
+    const poll = () => {
+        if (done) return
+        const contentHeight = sheet.scrollHeight
+        // 高度变了必然未收敛，先短路：子树属性查询只在高度持平时才有意义
+        if (contentHeight !== lastContentHeight) {
+            lastContentHeight = contentHeight
+            pollTimer = window.setTimeout(poll, ENTER_SETTLE_MS)
+            return
+        }
+        if (!sheet.querySelector(`[${HEIGHT_PENDING_ATTR}]`)) {
+            settle()
+            return
+        }
+        pollTimer = window.setTimeout(poll, ENTER_SETTLE_MS)
+    }
+    poll()
+    timeoutTimer = window.setTimeout(settle, MEASURE_TIMEOUT_MS)
+    return () => {
+        done = true
+        window.clearTimeout(pollTimer)
+        window.clearTimeout(timeoutTimer)
+    }
+}
 
 /**
  * 量 sheet 的可见高 = 盒高 − 屏下延伸段，**下界钳到 0**。
@@ -289,9 +343,8 @@ function Sheet({
 
     const drag = useRef<Drag | null>(null)
     const mountedRef = useRef(false)
-    /** 首次入场是否已起跳（延迟起跳只该发生在第一次，见入场 effect 内注释） */
-    const enteredRef = useRef(false)
-    /** 首次入场是否已起跳：起跳前的内容收缩不得触发 RO 重定位（见 RO 回调注释） */
+    /** 首次入场是否已起跳：收敛等待只该发生在第一次；起跳前的内容收缩不得触发 RO
+     *  重定位（见 RO 回调注释） */
     const enterDoneRef = useRef(false)
     const onCloseRef = useRef(onClose)
     onCloseRef.current = onClose
@@ -474,49 +527,19 @@ function Sheet({
             // 下沉」观感就是「弹出→消失→再弹出」（真机实锤，Edit 详情必闪；Bash 详情内容
             // 同步渲染，挂载帧即最终值，所以从不闪）。
             // 盯 **scrollHeight** 而不是盒高：估计高被 max-height 裁住时盒高恒定不变
-            // （上一版因此假收敛失效），scrollHeight 才反映内容的真实需求高。轮询到连续
-            // 两轮不变即收敛，`ENTER_MAX_WAIT_MS` 兜底防流式内容永远不开。
-            // 父直调重开（enteredRef 已置位）立即起跳——那时高度早已稳定。
-            if (enteredRef.current) {
-                enterDoneRef.current = true
+            // （上一版因此假收敛失效），scrollHeight 才反映内容的真实需求高。
+            // 父直调重开（已起跳过）立即起跳——收敛等待已走过，高度早已稳定。
+            if (enterDoneRef.current) {
                 y.jump(closedY())
                 go(detentY(detentRef.current))
                 return undefined
             }
-            enteredRef.current = true
-            let done = false
-            let pollTimer = 0
-            let timeoutTimer = 0
-            let lastContentHeight = -1
             const startEnter = () => {
-                if (done) return
-                done = true
                 enterDoneRef.current = true
-                window.clearTimeout(pollTimer)
-                window.clearTimeout(timeoutTimer)
                 y.jump(closedY())
                 go(detentY(detentRef.current))
             }
-            const pollStable = () => {
-                if (done) return
-                const contentHeight = sheet.scrollHeight
-                // 双条件收敛：scrollHeight 连续两轮相同 **且** 内容里没有「高度未量到」的
-                // 标记（AutoHeightHost 挂 data-height-pending）——估计高阶段 scrollHeight
-                // 同样稳定，只有测量方自己知道「这还不是真实高」
-                const pending = sheet.querySelector('[data-height-pending]')
-                if (contentHeight === lastContentHeight && !pending) {
-                    startEnter()
-                    return
-                }
-                lastContentHeight = contentHeight
-                pollTimer = window.setTimeout(pollStable, ENTER_SETTLE_MS)
-            }
-            pollStable()
-            timeoutTimer = window.setTimeout(startEnter, ENTER_MAX_WAIT_MS)
-            return () => {
-                window.clearTimeout(pollTimer)
-                window.clearTimeout(timeoutTimer)
-            }
+            return waitForContentSettle(sheet, startEnter)
         }
 
         // 离场：屏内则带速度滑出，落定卸载；已在屏外（拖拽已把 sheet 甩出去）直卸载。

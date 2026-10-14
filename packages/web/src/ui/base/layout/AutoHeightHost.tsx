@@ -40,8 +40,9 @@ const INITIAL_ESTIMATE_HEIGHT = 1600
 
 /** 内容测到后还要再量几轮：滚动条占位会改变目标高度，不收敛会停在中途 */
 const SETTLE_PASSES = 3
-/** 内容迟迟量不到（异步渲染）时的轮询上限 */
-const MEASURE_TIMEOUT_MS = 2000
+/** 内容迟迟量不到（异步渲染）时的轮询上限；**也是对消费方的时序承诺**——量到（或放弃
+ *  量测）必摘 HEIGHT_PENDING_ATTR 标记，BottomSheet 的入场兜底按它对齐（不得抢先起跳） */
+export const MEASURE_TIMEOUT_MS = 2000
 
 /**
  * 「高度还是估计值、尚未量到真实内容」的标记：挂在宿主元素上，量到真实高（或量测超时
@@ -110,7 +111,7 @@ export function AutoHeightHost({ maxHeightPx, contentKey, testId, children }: {
             else markMeasured()
         }
         timer = setTimeout(measure, 50)
-        return () => { clearTimeout(timer); markMeasured() }
+        return () => { clearTimeout(timer) }
     }, [contentKey, maxHeightPx])
 
     return (

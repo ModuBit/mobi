@@ -256,7 +256,8 @@ describe('BottomSheet', () => {
         // 首帧不得出现在屏内：位移量初值远在屏下，随后由实测高度校正到「刚出屏」位置
         expect(el.style.transform).toBe('translateY(4000px)')
         // 弹入目标 0（而非退化成 0→0 的「无动画直出」）。
-        // 起跳延迟两个动画帧（等内容首测稳定，见入场 effect），断言须等它真正起跳
+        // 起跳延迟至内容收敛（scrollHeight 稳定 + 无 pending 标记，见 waitForContentSettle），
+        // 断言须等它真正起跳
         await waitFor(() => expect(animateCalls.some((call) => call.target === 0)).toBe(true))
     })
 
