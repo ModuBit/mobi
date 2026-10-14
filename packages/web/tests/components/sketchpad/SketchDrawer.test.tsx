@@ -212,10 +212,12 @@ describe('SketchDrawer 头部下拉关闭（移动端）', () => {
      * 天文数字（位移 ÷ 0.01ms），判定分支就永远落在「速度」那条上，位置阈值根本测不到。
      * 把 down / up 拉开 200ms、中途只有一次 move，最近 80ms 窗口里就只剩一个采样点
      * （dragVelocity 判为 0），判定交回位置阈值——正是下面几条要测的。
+     * `isPrimary` 要显式给真（jsdom 默认 false，而钩子按主指针判）
      */
-    function pointer(el: HTMLElement, type: 'pointerdown' | 'pointermove' | 'pointerup', y: number, t: number): void {
+    function pointer(el: HTMLElement, type: 'pointerdown' | 'pointermove' | 'pointerup', y: number, t: number, init?: { pointerId?: number; isPrimary?: boolean }): void {
         const event = new PointerEvent(type, {
-            bubbles: true, cancelable: true, pointerId: 1, pointerType: 'touch', clientY: y,
+            bubbles: true, cancelable: true, pointerId: init?.pointerId ?? 1, pointerType: 'touch', clientY: y,
+            isPrimary: init?.isPrimary ?? true,
         })
         Object.defineProperty(event, 'timeStamp', { value: t })
         // 手工派发不在 testing-library 的 act 里，状态更新不会当拍 flush（断言会读到上一帧）
@@ -281,6 +283,49 @@ describe('SketchDrawer 头部下拉关闭（移动端）', () => {
         }
     })
 
+    /** 甩动可能在同一帧里按下即抬起（一条 move 都没有）：位移必须按**抬起坐标**算 */
+    it('无 pointermove 的甩动也按抬起位置判去向', () => {
+        const onClose = vi.fn()
+        render(<SketchDrawer open onClose={onClose} onComplete={vi.fn()} />)
+        stubSheetHeight()
+        const el = header()
+        pointer(el, 'pointerdown', 100, 1000)
+        pointer(el, 'pointerup', 500, 1200)
+        expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
+    /** 多指：主指针在画布上作画，第二根手指落到头部不该把浮层拖走 */
+    it('非主指针不起手', () => {
+        render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} />)
+        const sheet = stubSheetHeight()
+        const el = header()
+        const second = { pointerId: 2, isPrimary: false }
+        pointer(el, 'pointerdown', 100, 1000, second)
+        pointer(el, 'pointermove', 400, 1010, second)
+        expect(sheet.style.getPropertyValue('--sheet-drag-y')).toBe('0px')
+        expect(sheet.hasAttribute('data-dragging')).toBe(false)
+    })
+
+    /**
+     * 退场动画没放完就被重开：`mounted` 全程为真 → `enabled` 认不出重开，
+     * 上一次下拉刻意留着的位移会残留（浮层整块停在下沉位置）
+     */
+    it('关后立刻重开 → 位移复位，不残留上一次下拉的位置', () => {
+        vi.useFakeTimers()
+        try {
+            const { rerender } = render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} />)
+            const sheet = stubSheetHeight()
+            drag(header(), 100, 500)
+            expect(sheet.style.getPropertyValue('--sheet-drag-y')).toBe('400px')
+            // 关（进 exit，卸载定时器还没到）→ 又开
+            act(() => { rerender(<SketchDrawer open={false} onClose={vi.fn()} onComplete={vi.fn()} />) })
+            act(() => { rerender(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} />) })
+            expect(sheet.style.getPropertyValue('--sheet-drag-y')).toBe('0px')
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
     it('PC 不接：头部无可拖标记，也不接手势处理器', () => {
         isMobileRef.value = false
         render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} />)
@@ -320,6 +365,15 @@ describe('SketchDrawer 开合相位机', () => {
         } finally {
             vi.useRealTimers()
         }
+    })
+
+    /** 离场那一段遮罩还在屏上：壳按 data-state 放行指针，不写就整段动画吞掉下层点按 */
+    it('离场期间遮罩标 closed', () => {
+        const { rerender } = render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} />)
+        const mask = () => document.querySelector('[data-testid="sketch-mask"]') as HTMLElement
+        expect(mask().getAttribute('data-state')).toBe('open')
+        act(() => { rerender(<SketchDrawer open={false} onClose={vi.fn()} onComplete={vi.fn()} />) })
+        expect(mask().getAttribute('data-state')).toBe('closed')
     })
 })
 

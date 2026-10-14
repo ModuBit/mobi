@@ -57,9 +57,16 @@ export interface HeaderPullClose {
     handlers: HeaderPullHandlers
 }
 
-export function useHeaderPullClose({ enabled, onPullClose, measureHeight, applyPull }: {
-    /** 只有移动端贴底形态有下拉语义（PC 是停靠矩形） */
+export function useHeaderPullClose({ enabled, open, onPullClose, measureHeight, applyPull }: {
+    /** 只有移动端贴底形态有下拉语义（PC 是停靠矩形）——只门控「接不接手势」 */
     enabled: boolean
+    /**
+     * 浮层是否打开：只用来认**重新打开**并复位位移。不复用 `enabled` 是因为它认不出重开
+     * ——退场动画期间浮层仍挂载（`mounted` 仍真），若关闭动画没放完就被重新打开，`enabled`
+     * 全程没变，上一次下拉**刻意留着**的位移（给退场关键帧当起点）会留在面上，重开后的
+     * 浮层整块停在下沉位置。
+     */
+    open: boolean
     /** 松手判为关闭：调用方的统一取消入口（内部可能弹二次确认） */
     onPullClose: () => void
     /** 面的可视高度：阈值 = 高度 / 3（判据见 resolveDragDisposition） */
@@ -73,7 +80,7 @@ export function useHeaderPullClose({ enabled, onPullClose, measureHeight, applyP
      */
     applyPull: (offset: number, dragging: boolean) => void
 }): HeaderPullClose {
-    const dragRef = useRef<{ pointerId: number; startY: number; offset: number; samples: DragSample[] } | null>(null)
+    const dragRef = useRef<{ pointerId: number; startY: number; samples: DragSample[] } | null>(null)
     // 回调经 ref 持有：手势处理器必须是稳定引用，否则拖拽中途换手会丢指针捕获
     const onPullCloseRef = useRef(onPullClose)
     onPullCloseRef.current = onPullClose
@@ -82,24 +89,25 @@ export function useHeaderPullClose({ enabled, onPullClose, measureHeight, applyP
     const applyRef = useRef(applyPull)
     applyRef.current = applyPull
 
-    /** 复位只认**重新打开**的上升沿——关闭时清零会把退场关键帧的起点一起清掉，
-     *  那正是「从手指停住的位置继续滑出」的来源 */
+    /** 打开时复位（上升沿由依赖给出）：关闭那一下故意不清零，见 `open` 的说明 */
     useEffect(() => {
-        if (!enabled) return
+        if (!open) return
         dragRef.current = null
         applyRef.current(0, false)
-    }, [enabled])
+    }, [open])
 
     const settle = useCallback(() => applyRef.current(0, false), [])
 
     const onPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
         if (!enabled || dragRef.current) return
+        // 非主指针不起手：多指时主指针在画布上作画，第二根手指落到头部不该把浮层拖走
+        // （与 BottomSheet 的 headerDown 同判据）
+        if (!event.isPrimary) return
         if (event.target instanceof Element && event.target.closest(DRAG_EXEMPT_SELECTOR)) return
         if (event.pointerType === 'mouse' && event.button !== 0) return
         dragRef.current = {
             pointerId: event.pointerId,
             startY: event.clientY,
-            offset: 0,
             samples: [{ t: event.timeStamp, y: event.clientY }],
         }
         // 指针捕获：手指移出头部（甚至移出浮层）仍收得到 move/up，否则半途丢手会卡在拖动态
@@ -119,8 +127,7 @@ export function useHeaderPullClose({ enabled, onPullClose, measureHeight, applyP
         // 只留够判速度的一小段（dragVelocity 只看最近 80ms）
         if (drag.samples.length > 8) drag.samples.shift()
         // 只吃向下：往上没有可去的档位，不做橡皮筋
-        drag.offset = Math.max(0, event.clientY - drag.startY)
-        applyRef.current(drag.offset, true)
+        applyRef.current(Math.max(0, event.clientY - drag.startY), true)
     }, [])
 
     const finish = useCallback((event: ReactPointerEvent<HTMLElement>, cancelled: boolean) => {
@@ -131,14 +138,17 @@ export function useHeaderPullClose({ enabled, onPullClose, measureHeight, applyP
             applyRef.current(0, false)
             return
         }
+        // 落点取**抬起坐标**而不是最后一条 move：甩动可能在同一帧里按下即抬起（一条 move
+        // 都没有），按最后一条 move 算位移恒为 0，判据会把这个手势整个吞掉
+        const dropped = Math.max(0, event.clientY - drag.startY)
         const disposition = resolveDragDisposition({
-            offset: drag.offset,
+            offset: dropped,
             velocity: dragVelocity(drag.samples, event.timeStamp),
             height: measureRef.current(),
         })
         // 判为关闭时**位移留着**：退场从这继续；被判为回位（或关闭被否决）才复位
         if (disposition === 'close') {
-            applyRef.current(drag.offset, false)
+            applyRef.current(dropped, false)
             onPullCloseRef.current()
         } else {
             applyRef.current(0, false)

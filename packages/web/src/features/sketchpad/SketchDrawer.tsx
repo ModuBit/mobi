@@ -233,6 +233,8 @@ export function SketchDrawer({
     const { settle: settlePull, handlers: pullHandlers } = useHeaderPullClose({
         // 只有移动端贴底形态有下拉语义（PC 是停靠矩形）
         enabled: mounted && isMobile,
+        // 复位认 open 的上升沿（不是 enabled）：退场动画期间 mounted 仍为真，见钩子文档
+        open,
         onPullClose: () => dismissRef.current(),
         // 量不到（尚未布局）时退回视口高：退回 0 会让「判据 = 高度 / 3」恒成立，任何滑动都关
         measureHeight: () => sheetRef.current?.getBoundingClientRect().height || window.innerHeight,
@@ -390,6 +392,10 @@ export function SketchDrawer({
                 $dim={isMobile}
                 $phase={phase}
                 $fixed={isMobile}
+                /* 壳的 .mask[data-state='closed'] 靠它放行指针：离场那一段遮罩还在屏上
+                   （面在播退场动画），不写就是把落点吞掉一整个动画时长；点在那 8px 边条上
+                   还会再触发一次 requestDismiss */
+                data-state={phase === 'exit' ? 'closed' : 'open'}
                 /* 底色来自壳的 .mask（同一套 token）；PC 只挡交互不改视觉——把壳的
                    默认档就地换成透明，背后消息保持原样可读。
                    移动端点遮罩走同一条取消入口；PC 不接（停靠态遮罩只是挡交互，点它关闭会误伤） */
@@ -449,7 +455,6 @@ export function SketchDrawer({
                                 </Tooltip>
                             )}
                             <Button
-                                className="complete-btn"
                                 type="primary"
                                 size="small"
                                 icon={<Check size={14} strokeWidth={2} />}
