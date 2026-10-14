@@ -138,12 +138,15 @@ const InputCard = styled.div`
     border-radius: var(--ant-border-radius-lg, 12px);
     padding: 8px;
 
-    /* Sender 在卡片内：白色背景 + 圆角，形成卡中卡 */
+    /* Sender 浮出卡片的「卡中卡」：白底 + 大圆角 + 投影，左右负 margin 吃掉卡片内衬、
+       上下负 margin 轻叠相邻层（上：环境条，下：SubBar chips）——输入卡是前景主体
+       （与 ChatComposer 的 ComposerDock 同一套叠层样式） */
     && .ant-sender {
         border: none !important;
-        box-shadow: none !important;
-        border-radius: var(--ant-border-radius, 8px) !important;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 6px 24px rgba(0, 0, 0, 0.12) !important;
+        border-radius: 16px !important;
         background: var(--ant-color-bg-container) !important;
+        margin: -4px -6px;
     }
 `
 

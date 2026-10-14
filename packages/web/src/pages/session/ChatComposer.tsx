@@ -172,12 +172,15 @@ const ComposerDock = styled.div`
     border-radius: var(--ant-border-radius-lg, 12px);
     padding: 8px;
 
-    /* Sender 在 Dock 内：白色背景 + 圆角，卡中卡效果 */
+    /* Sender 浮出 Dock 的「卡中卡」：白底 + 大圆角 + 投影，左右负 margin 吃掉 Dock 内衬、
+       上下负 margin 轻叠相邻层（信息面板 / StatusBar）——输入卡是前景主体，周边条退为背景
+       （参考 ChatGPT/Codex composer 的叠层样式） */
     && .ant-sender {
         border: none !important;
-        box-shadow: none !important;
-        border-radius: var(--ant-border-radius, 8px) !important;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 6px 24px rgba(0, 0, 0, 0.12) !important;
+        border-radius: 16px !important;
         background: var(--ant-color-bg-container) !important;
+        margin: -4px -6px;
     }
 
     /* bash 模式：恢复 Sender 橙色发光边框（输入 ! 空格 触发 .bash-mode）。

@@ -120,7 +120,7 @@ export function ToolCallGroupRenderer({
           />
         ))}
         {blocks.length > COLLAPSE_FOOTER_MIN_ITEMS && (
-          <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 4 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-start', paddingTop: 4 }}>
             <Button
               type="text"
               size="small"
