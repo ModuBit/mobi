@@ -150,13 +150,6 @@ const InputCard = styled.div`
         margin: 8px -16px;
     }
 
-    /* 窄屏：悬挑收窄到两侧各 4px——外层 24px 内衬下 -16px 悬挑过宽，且小屏上贴边难看 */
-    @media (max-width: 767px) {
-        && .ant-sender {
-            margin: 6px -12px;
-        }
-    }
-
     /* 提交按钮：深色大圆钮（中性反色，双档主题各自成立），disabled 回落灰底弱化。
        样式与 ChatComposer 的 ComposerDock 保持同一套 */
     && .ant-sender .ant-btn-primary.ant-btn-circle {

@@ -172,9 +172,10 @@ const ComposerDock = styled.div`
     border-radius: var(--ant-border-radius-lg, 12px);
     padding: 8px;
 
-    /* Sender 浮出 Dock 的「卡中卡」：白底 + 大圆角 + 投影，左右负 margin 吃掉 Dock 内衬
-       （左右悬挑出 Dock 边缘 8px，移动端恰好贴满视口）、上下正 margin 与相邻层拉开呼吸空隙——输入卡是
-       前景主体，周边条退为背景（参考 ChatGPT/Codex composer 的叠层样式） */
+    /* Sender 浮出 Dock 的「卡中卡」：白底 + 大圆角 + 投影，左右负 margin 悬挑出 Dock
+       边缘 8px（外层 16px 内衬保证任何视口宽度下与屏幕边都有 8px 缝——聊天列在全宽
+       渲染的中等宽度下内衬就是唯一的安全边距，断点 hack 不可靠）、上下正 margin 与
+       相邻层拉开呼吸空隙——输入卡是前景主体（参考 ChatGPT/Codex composer 的叠层样式） */
     && .ant-sender {
         border: none !important;
         /* 无投影：聊天页 composer 下方永远是空底（dock 末位）、两侧悬挑外也是空底——
@@ -184,14 +185,7 @@ const ComposerDock = styled.div`
         border-radius: 24px !important;
         background: var(--ant-color-bg-container) !important;
         width: auto !important;
-        margin: 8px -16px;
-    }
-
-    /* 窄屏：悬挑收窄到两侧各 4px——外层 8px 边距下 -16px 会正好贴死屏幕边 */
-    @media (max-width: 767px) {
-        && .ant-sender {
-            margin: 6px -12px;
-        }
+        margin: 8px -8px;
     }
 
     /* 提交/停止按钮：深色大圆钮（中性反色，双档主题各自成立——light 黑底白标、dark 白底黑标）。
@@ -867,7 +861,7 @@ export function ChatComposer(props: ChatComposerProps) {
         // 视口减去侧栏/面板不足 1200 时聊天列按 100% 宽渲染，无侧边距即贴边
         // data-perf-region：dev-only layout-shift 归因观测器；位于 chat 区域内部，
         // 归因时内层标注优先（composer 内位移源归 composer 不归 chat）
-        <div style={{ padding: '0 8px max(12px, env(safe-area-inset-bottom))' }} data-perf-region="composer">
+        <div style={{ padding: '0 16px max(12px, env(safe-area-inset-bottom))' }} data-perf-region="composer">
             <ComposerDock>
             {/* 信息面板：工具交互请求、任务列表等 */}
             <ComposerInfoPanel
