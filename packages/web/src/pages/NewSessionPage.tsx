@@ -139,14 +139,14 @@ const InputCard = styled.div`
     padding: 8px;
 
     /* Sender 浮出卡片的「卡中卡」：白底 + 大圆角 + 投影，左右负 margin 吃掉卡片内衬
-       （与卡片外缘平齐）、上下负 margin 轻叠相邻层（上：环境条，下：SubBar chips）——
+       （左右悬挑出卡片边缘 8px，移动端恰好贴满视口）、上下负 margin 轻叠相邻层（上：环境条，下：SubBar chips）——
        输入卡是前景主体（与 ChatComposer 的 ComposerDock 同一套叠层样式） */
     && .ant-sender {
         border: none !important;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.14) !important;
         border-radius: 24px !important;
         background: var(--ant-color-bg-container) !important;
-        margin: -6px -8px;
+        margin: -6px -16px;
     }
 
     /* 提交按钮：深色大圆钮（中性反色，双档主题各自成立），disabled 回落灰底弱化。

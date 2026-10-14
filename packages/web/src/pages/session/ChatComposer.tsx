@@ -173,14 +173,14 @@ const ComposerDock = styled.div`
     padding: 8px;
 
     /* Sender 浮出 Dock 的「卡中卡」：白底 + 大圆角 + 投影，左右负 margin 吃掉 Dock 内衬
-       （与灰卡外缘平齐）、上下负 margin 轻叠相邻层（信息面板 / StatusBar）——输入卡是
+       （左右悬挑出 Dock 边缘 8px，移动端恰好贴满视口）、上下负 margin 轻叠相邻层——输入卡是
        前景主体，周边条退为背景（参考 ChatGPT/Codex composer 的叠层样式） */
     && .ant-sender {
         border: none !important;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.14) !important;
         border-radius: 24px !important;
         background: var(--ant-color-bg-container) !important;
-        margin: -6px -8px;
+        margin: -6px -16px;
     }
 
     /* 提交/停止按钮：深色大圆钮（中性反色，双档主题各自成立——light 黑底白标、dark 白底黑标）。
