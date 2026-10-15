@@ -40,11 +40,11 @@ export interface CopyButtonProps {
   disabled?: boolean;
 }
 
-/** Copy feedback is deliberately unhurried: a slow, almost critically damped spring and long, soft crossfades read as calm, never busy.
- *  The same motion plays in reverse when the confirmation hands back to idle, so nothing ever snaps. */
-const settle = { type: "spring", visualDuration: .5, bounce: .06 } as const;
-const enter = { duration: .36, ease: [...motionTokens.ease.enter] } as const;
-const leave = { duration: .2, ease: [...motionTokens.ease.standard] } as const;
+/** Copy feedback stays calm but keeps pace with the rest of the UI (mobi 动效调速，与 morph-select 同比例提速约 30%):
+ *  a critically damped spring and soft crossfades, same motion in reverse when the confirmation hands back to idle — nothing snaps. */
+const settle = { type: "spring", visualDuration: .35, bounce: .06 } as const;
+const enter = { duration: .25, ease: [...motionTokens.ease.enter] } as const;
+const leave = { duration: .14, ease: [...motionTokens.ease.standard] } as const;
 const instant = { duration: motionTokens.duration.instant } as const;
 const soft = `blur(${motionTokens.blur.soft}px)`;
 const rest: TargetAndTransition = { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" };
@@ -52,8 +52,8 @@ const fadeIn: TargetAndTransition = { ...rest, opacity: 0 };
 const fadeOut: TargetAndTransition = { opacity: 0, transition: instant };
 /** Icons trade places in one soft breath: the old glyph shrinks into a blur while the new one grows out of it on the slow spring. */
 const iconIn: TargetAndTransition = { opacity: 0, scale: .6, filter: soft };
-const iconOut: TargetAndTransition = { opacity: 0, scale: .6, filter: soft, transition: { duration: .24, ease: [...motionTokens.ease.standard] } };
-const iconEnter: Transition = { scale: settle, opacity: { ...enter, delay: .03 }, filter: { ...enter, delay: .03 } };
+const iconOut: TargetAndTransition = { opacity: 0, scale: .6, filter: soft, transition: { duration: .16, ease: [...motionTokens.ease.standard] } };
+const iconEnter: Transition = { scale: settle, opacity: { ...enter, delay: .02 }, filter: { ...enter, delay: .02 } };
 /** Letters rise about .3em out of a soft blur; the outgoing ones lift away a little faster. */
 const glyphIn: TargetAndTransition = { opacity: 0, y: 4, filter: soft };
 const glyphOut: TargetAndTransition = { opacity: 0, y: -3, filter: soft, transition: leave };
@@ -61,7 +61,7 @@ const glyphOut: TargetAndTransition = { opacity: 0, y: -3, filter: soft, transit
 /** The success tick draws itself from its short stroke, the way a hand would write it: quick to start, then easing into place while the icon settles. */
 function DrawnCheck({ reduced }: { reduced: boolean }) {
   return <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
-    <motion.path d="M4 12l5 5L20 6" initial={reduced ? false : { pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ pathLength: { duration: .5, ease: [...motionTokens.ease.standard], delay: .05 }, opacity: { duration: .01, delay: .05 } }} />
+    <motion.path d="M4 12l5 5L20 6" initial={reduced ? false : { pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ pathLength: { duration: .35, ease: [...motionTokens.ease.standard], delay: .03 }, opacity: { duration: .01, delay: .03 } }} />
   </svg>;
 }
 
@@ -93,7 +93,7 @@ function MorphText({ text, reduced }: { text: string; reduced: boolean }) {
   const glyphs = useGlyphs(text);
   return <motion.span className={styles.glyphs} layoutRoot>
     <AnimatePresence mode="popLayout" initial={false}>
-      {glyphs.map(glyph => <motion.span key={glyph.id} className={styles.glyph} layout={reduced ? false : "position"} layoutDependency={text} initial={reduced ? fadeIn : glyphIn} animate={rest} exit={reduced ? fadeOut : glyphOut} transition={reduced ? instant : { ...enter, delay: Math.min(glyph.order * .02, .12), layout: settle }}>{glyph.char}</motion.span>)}
+      {glyphs.map(glyph => <motion.span key={glyph.id} className={styles.glyph} layout={reduced ? false : "position"} layoutDependency={text} initial={reduced ? fadeIn : glyphIn} animate={rest} exit={reduced ? fadeOut : glyphOut} transition={reduced ? instant : { ...enter, delay: Math.min(glyph.order * .015, .08), layout: settle }}>{glyph.char}</motion.span>)}
     </AnimatePresence>
   </motion.span>;
 }
