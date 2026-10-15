@@ -680,3 +680,40 @@ describe('messageWindowStore - snapshot delta apply（.scratch/snapshot-delta �
         expect(getMessageWindowState('s1').messages.at(-1)).toBe(plain) // 原引用未动
     })
 })
+
+describe('迟到 snapshot 帧闸门（turn 尾孤立工具块根因，2026-10 报障）', () => {
+    beforeEach(() => _resetForTest())
+
+    /** agent 落库行（full 形状：seq/positionAt 齐全，行 id = localId = 流 uuid） */
+    function agentFull(id: string, seq: number, messageId: string): DecryptedMessage {
+        return {
+            id, seq, localId: id, positionAt: seq, createdAt: seq, snapshot: false,
+            content: { role: 'agent', content: { type: 'output', data: { type: 'assistant', message: { role: 'assistant', id: messageId, content: [{ type: 'tool_use', id: 'tu-1', name: 'Edit', input: {} }], model: 'm' } } } },
+        } as unknown as DecryptedMessage
+    }
+
+    /** agent 全量 snapshot 帧（500ms 节流 flush 与落库广播竞态的迟到帧，行 id 复用流 uuid） */
+    function agentSnapshotFrame(id: string, messageId: string): DecryptedMessage {
+        return {
+            id, seq: null, localId: id, positionAt: null, createdAt: 999, snapshot: true,
+            content: { role: 'agent', content: { type: 'output', data: { type: 'assistant', message: { role: 'assistant', id: messageId, content: [{ type: 'tool_use', id: 'tu-1', name: 'Edit', input: {} }], model: 'm' } } } },
+        } as unknown as DecryptedMessage
+    }
+
+    it('full 已落库后迟到全量 snapshot 帧被丢弃——窗口无 ghost 行、落库行 seq 不丢', () => {
+        // 时序：user 消息 → assistant 消息落库（行 id 复用流 uuid）→ turn 定格 →
+        // 终态全量 snapshot 帧后到。旧逻辑把落库行打回 snapshot=true（seq/positionAt
+        // 丢失）→ compareMessages 判「锚点在未来」坠到 turn-result 之后 → turn 状态行
+        // 下方孤立 Edit 工具块；刷新后（窗口只剩落库行）消失。
+        ingestIncomingMessages('s1', [msg('user-1', 1)])
+        ingestIncomingMessages('s1', [agentFull('stream-uuid-1', 2, 'anthropic-A')])
+        ingestIncomingMessages('s1', [agentSnapshotFrame('stream-uuid-1', 'anthropic-A')])
+
+        const messages = getMessageWindowState('s1').messages
+        expect(messages).toHaveLength(2)
+        expect(messages.every(m => !m.snapshot)).toBe(true)
+        const tail = messages.at(-1) as unknown as { id: string; seq: number }
+        expect(tail.id).toBe('stream-uuid-1')
+        expect(tail.seq).toBe(2)
+    })
+})

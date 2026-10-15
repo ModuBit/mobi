@@ -375,4 +375,43 @@ describe('resolveMessageCache', () => {
         expect(result).toHaveLength(1)
         expect(result[0].id).toBe('msg-1')
     })
+
+    it('full 已落库后，迟到全量 snapshot 帧不得把落库行打回 snapshot（turn 尾孤立工具块根因）', () => {
+        // 报障时序（2026-10-15）：snapshot 行与落库行共用 stream uuid 作行 id（daemon
+        // addMessage id = localId = body.uuid = snapshot 的 sdkUuid），落库广播与 snapshot
+        // 帧（500ms 节流 flush / 快照通道）之间无全局定序——full 先入窗口、终态全量帧后到时，
+        // 旧逻辑沿「snapshot → full 替换」分支无条件接受，落库行被打回 snapshot=true
+        // （seq/positionAt 丢失）→ compareMessages 判「锚点在未来」坠到 turn-result 之后
+        // → turn 状态行下方孤立工具块；reducer 第二道防线（dedupeSnapshotBlocks）因 full
+        // 行已被替换、deliveredKeys 为空而失效；刷新后（窗口只剩落库行）消失。
+        const streamUuid = 'stream-uuid-1'
+        const streaming = makeMsg({ id: streamUuid, snapshot: true, content: makeContent('p1', [text('流式预览')], 'anthropic-A') })
+        const full = makeMsg({ id: streamUuid, localId: streamUuid, seq: 42, content: makeContent('p1', [text('完整正文')], 'anthropic-A') })
+
+        // 落库广播先到：snapshot 行被清理，full 行入窗口
+        let cache = resolveMessageCache([streaming], full)
+        expect(cache).toHaveLength(1)
+        expect(cache[0].snapshot).toBeFalsy()
+        expect(cache[0].seq).toBe(42)
+
+        // 终态全量 snapshot 帧后到：必须原样丢弃（full 是消息终态权威）
+        const lateFrame = makeMsg({ id: streamUuid, snapshot: true, content: makeContent('p1', [text('完整正文')], 'anthropic-A') })
+        const result = resolveMessageCache(cache, lateFrame)
+        expect(result).toBe(cache)
+        expect(result[0].snapshot).toBeFalsy()
+        expect(result[0].seq).toBe(42)
+    })
+
+    it('full 已落库（迟到帧行 id 与落库行不同）时，迟到 snapshot 帧不得 append 成 ghost 行', () => {
+        // 同根因的 append 侧：旧 snapshot 行已被 full 到达时的清理分支删掉，迟到帧又用了
+        // 与落库行不同的行 id（如 sdkUuid 缺失时的 SNAPSHOT_PENDING_ID 兜底）——无
+        // messageId 守卫会在窗口尾 append，同样成为排序坠尾的 ghost 行
+        const full = makeMsg({ id: 'msg-uuid-1', seq: 42, content: makeContent('p1', [text('完整正文')], 'anthropic-A') })
+        const lateFrame = makeMsg({ id: 'snap-pending', snapshot: true, content: makeContent('p1', [text('完整正文')], 'anthropic-A') })
+
+        const cache = [full]
+        const result = resolveMessageCache(cache, lateFrame)
+        expect(result).toBe(cache)
+        expect(result).toHaveLength(1)
+    })
 })

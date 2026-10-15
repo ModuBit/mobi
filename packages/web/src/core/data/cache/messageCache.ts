@@ -120,9 +120,25 @@ export function resolveMessageCache(
             return base
         }
         // snapshot 原地更新，或 snapshot → full message 替换
+        // 迟到 snapshot 闸门：full 是消息的终态权威，落库行不得被打回 snapshot。
+        // snapshot 行与落库行共用 stream uuid 作行 id（daemon addMessage 的 id = localId
+        // = body.uuid = snapshot 的 sdkUuid），落库广播与 snapshot 帧（500ms 节流 flush /
+        // 快照通道）之间无全局定序——full 先入窗口、终态全量帧后到时，无条件替换会把落库行
+        // 打回 snapshot=true（seq/positionAt 丢失）→ compareMessages 判「锚点在未来」坠到
+        // turn-result 之后 → turn 状态行下方孤立工具块（2026-10-15 报障）；reducer 第二道
+        // 防线 dedupeSnapshotBlocks 因 full 行已被替换、deliveredKeys 为空而失效。
+        if (msg.snapshot && !base[existingIdx].snapshot) return base
         const updated = base.slice()
         updated[existingIdx] = msg
         return updated
+    }
+    // 迟到 snapshot 闸门（append 侧）：同 Anthropic messageId 的落库行已在窗口（旧 snapshot
+    // 行已被 full 到达时的清理分支删掉、迟到帧行 id 又与落库行不同的路径）→ 该消息的终态
+    // full 已到，迟到帧必为陈旧帧，append 会成为排序坠尾的 ghost 行。messageId 是稳定关联键
+    // （parentUuid 有链尾漂移，不可用）；无 messageId 的历史格式帧不设防，走原 append 语义
+    if (msg.snapshot) {
+        const lateMsgId = extractAnthropicMessageId(msg.content)
+        if (lateMsgId && base.some(m => !m.snapshot && extractAnthropicMessageId(m.content) === lateMsgId)) return base
     }
     return [...base, msg]
 }
