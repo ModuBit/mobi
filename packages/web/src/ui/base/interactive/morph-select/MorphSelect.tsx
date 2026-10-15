@@ -102,7 +102,6 @@ export interface MorphSelectProps {
 }
 
 type Section = { key: string; label?: string; options: MorphSelectOption[] };
-type Change = { key: number; value: string | null; dir: number; fly: { x: number; y: number } | null };
 
 const { blur } = motionTokens;
 type Bezier = [number, number, number, number];
@@ -117,8 +116,6 @@ const physical = (visualDuration: number, bounce: number): Transition => {
 const GROW = physical(.28, .12), SHRINK = physical(.24, 0), GLIDE = physical(.2, .08), WIDTH = physical(.3, .16);
 /** Width that narrows never overshoots: dipping even half a pixel under the closed width ellipsizes the label and nudges the chevron. */
 const NARROW = physical(.3, 0);
-/** The lifted label travels a touch faster than the surface folds, so the closing edge never catches it. */
-const FLY = physical(.22, .06);
 const OPEN_RADIUS = 22;
 const TYPEAHEAD_RESET = 600, PAGE = 8;
 
@@ -147,14 +144,14 @@ function matches(option: MorphSelectOption, needle: string) {
 }
 
 /**
- * Lid 值切换：去方向性滚动（2026-10-15 用户定稿），blur 柔焦保留；
- * fly 路径位移来自列表项实测坐标（无滚动/掉落感），飞入收尾方向不变。
+ * Lid 值切换：blur 柔焦交叉（2026-10-15 用户定稿：方向滚动与 fly 飞入均去——
+ * composer 贴底、面板向上展开时 fly 即「label 从上向下掉落」的来源，与滚动同砍）。
  */
-const valueVariants = (sign: number): Variants => ({
-  enter: (change: Change) => change.fly ? { opacity: 1, x: change.fly.x, y: change.fly.y, filter: "blur(0px)" } : { opacity: 0, filter: `blur(${blur.soft}px)` },
-  rest: { opacity: 1, x: 0, y: 0, filter: "blur(0px)" },
-  exit: (change: Change) => ({ opacity: 0, y: change.fly ? `${-.3 * sign}em` : 0, filter: `blur(${blur.subtle}px)`, transition: { duration: .08, ease: standard } }),
-});
+const valueVariants: Variants = {
+  enter: { opacity: 0, filter: `blur(${blur.soft}px)` },
+  rest: { opacity: 1, filter: "blur(0px)" },
+  exit: { opacity: 0, filter: `blur(${blur.subtle}px)`, transition: { duration: .08, ease: standard } },
+};
 const valueFade: Variants = { enter: { opacity: 0 }, rest: { opacity: 1, x: 0, y: 0, filter: "blur(0px)" }, exit: { opacity: 0, transition: { duration: .08 } } };
 
 /** The closed trigger's width, rounded up. offsetWidth rounds to the nearest pixel, and half a pixel short is enough to ellipsize the label. */
@@ -183,16 +180,15 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
   const scrollRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const slotRef = useRef<HTMLSpanElement>(null);
   const optionRefs = useRef(new Map<string, HTMLElement>());
 
   const sections = useMemo(() => normalize(items), [items]);
   const all = useMemo(() => sections.flatMap(section => section.options), [sections]);
   const indexOf = useMemo(() => new Map(all.map((option, index) => [option.value, index])), [all]);
   const canSearch = searchable === "auto" ? all.length > 8 : searchable;
-  /** up 档的 y 向符号：面板在 lid 上方，滚动/飞行的几何方向全部取反 */
+  /** up 档的 y 向符号：面板在 lid 上方，开合动画的几何方向取反 */
   const sign = directionValue === "up" ? -1 : 1;
-  const variants = useMemo(() => (reduced ? valueFade : valueVariants(sign)), [reduced, sign]);
+  const variants = useMemo(() => (reduced ? valueFade : valueVariants), [reduced]);
 
   /** 水平钳制偏移（mobi）：面板理想位置出视窗时平移回视口内，展开内容完整可见 */
   const shapeX = useMotionValue(0);
@@ -205,7 +201,6 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState<string | null>(null);
-  const [change, setChange] = useState<Change>({ key: 0, value: null, dir: 1, fly: null });
 
   const needle = query.trim().toLowerCase();
   const visibleSections = useMemo(() => needle
@@ -359,19 +354,9 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
     setOpen(false);
   }, []);
 
-  const commit = (option: MorphSelectOption | undefined, source?: HTMLElement | null) => {
+  const commit = (option: MorphSelectOption | undefined) => {
     if (!option || option.disabled) return;
     if (option.value !== selected) {
-      let fly: Change["fly"] = null;
-      const slot = slotRef.current;
-      const part = source?.querySelector<HTMLElement>("[data-part='value']");
-      if (!reduced && part && slot) {
-        const from = part.getBoundingClientRect(), to = slot.getBoundingClientRect();
-        // fly 是真实 rect 差，方向自适应（up 档 lid 在下方，y 天然为正）
-        fly = { x: from.left - to.left, y: from.top + from.height / 2 - (to.top + to.height / 2) };
-      }
-      const from = selected === null ? -1 : indexOf.get(selected) ?? -1, to = indexOf.get(option.value) ?? 0;
-      setChange(last => ({ key: last.key + 1, value: option.value, dir: from < 0 ? 1 : Math.sign(to - from) || 1, fly }));
       if (value === undefined) setInner(option.value);
       onValueChange?.(option.value, option);
     }
@@ -422,18 +407,18 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
       case "ArrowDown": event.preventDefault(); move(enabled[Math.min(enabled.length - 1, at + 1)]?.value); return;
       case "ArrowUp":
         event.preventDefault();
-        if (event.altKey) { commit(enabled[at], optionRefs.current.get(current ?? "")); return; }
+        if (event.altKey) { commit(enabled[at]); return; }
         move(enabled[Math.max(0, at - 1)]?.value); return;
       case "PageDown": event.preventDefault(); move(enabled[Math.min(enabled.length - 1, at + PAGE)]?.value); return;
       case "PageUp": event.preventDefault(); move(enabled[Math.max(0, at - PAGE)]?.value); return;
       case "Home": if (caretKeys) return; event.preventDefault(); move(enabled[0]?.value); return;
       case "End": if (caretKeys) return; event.preventDefault(); move(enabled[enabled.length - 1]?.value); return;
-      case "Enter": event.preventDefault(); commit(enabled[at], optionRefs.current.get(current ?? "")); return;
+      case "Enter": event.preventDefault(); commit(enabled[at]); return;
       case "Escape": event.preventDefault(); event.stopPropagation(); close(true); return;
       case "Tab": close(false); return;
     }
     if (fromInput) return;
-    if (key === " " && !typing) { event.preventDefault(); commit(enabled[at], optionRefs.current.get(current ?? "")); return; }
+    if (key === " " && !typing) { event.preventDefault(); commit(enabled[at]); return; }
     if (printable) { event.preventDefault(); move(typeTo(key)?.value); }
   };
 
@@ -469,7 +454,6 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
 
   const showSearch = open && canSearch;
   const layerKey = selected ?? "__empty";
-  const changeForLayer: Change = change.value === selected ? change : { ...change, fly: null };
   const rootStyle = { "--ms-panel-w": fullWidth ? "calc(100vw - 2rem)" : `${panelWidth}px`, "--ms-list-max": `${maxListHeight}px`, ...style } as CSSProperties;
 
   return <div ref={rootRef} className={[styles.root, className].filter(Boolean).join(" ")} style={rootStyle} data-open={open || undefined} data-align={align} data-direction={directionValue} data-disabled={disabled || undefined} onBlur={onBlur}>
@@ -489,10 +473,10 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
             {/* prefix 在 button 的 flex 行内占位（slot 内会被绝对定位的 value 层覆盖）；measure 同构保宽度测量一致。
                 搜索行展开时覆盖整个 lid，prefix 一并隐藏（否则圆点叠在搜索图标上） */}
             {prefix && !showSearch && <span className={styles.triggerPrefix} aria-hidden="true">{prefix}</span>}
-            <span ref={slotRef} className={styles.slot} data-hidden={showSearch || undefined}>
-              <AnimatePresence initial={false} custom={changeForLayer}>
-                <motion.span key={layerKey} className={styles.layer} custom={changeForLayer} variants={variants} initial="enter" animate="rest" exit="exit"
-                  transition={reduced ? { duration: .12 } : changeForLayer.fly ? { x: FLY, y: FLY, opacity: { duration: 0 } } : { y: GLIDE, opacity: { duration: .14, ease: enter }, filter: { duration: .16, ease: enter } }}>
+            <span className={styles.slot} data-hidden={showSearch || undefined}>
+              <AnimatePresence initial={false}>
+                <motion.span key={layerKey} className={styles.layer} variants={variants} initial="enter" animate="rest" exit="exit"
+                  transition={reduced ? { duration: .12 } : { opacity: { duration: .14, ease: enter }, filter: { duration: .16, ease: enter } }}>
                   {renderValue(selectedOption, !iconOnly)}
                 </motion.span>
               </AnimatePresence>
@@ -538,9 +522,9 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
                     ref={node => { if (node) optionRefs.current.set(option.value, node); else optionRefs.current.delete(option.value); }}
                     onPointerMove={event => { if (event.pointerType === "mouse" && !option.disabled && option.value !== current) setActive(option.value); }}
                     onPointerDown={event => event.preventDefault()}
-                    onClick={event => commit(option, event.currentTarget)}>
+                    onClick={() => commit(option)}>
                     <span className={styles.optionBody}>
-                      <span className={styles.optionValue} data-part="value">{option.icon && <span className={styles.icon} aria-hidden="true">{option.icon}</span>}<span className={styles.valueText}>{option.label}</span></span>
+                      <span className={styles.optionValue}>{option.icon && <span className={styles.icon} aria-hidden="true">{option.icon}</span>}<span className={styles.valueText}>{option.label}</span></span>
                       {option.description && <span className={styles.optionDescription}>{option.description}</span>}
                     </span>
                     {option.trailing && <span className={styles.trailing} onClick={event => event.stopPropagation()}>{option.trailing}</span>}
