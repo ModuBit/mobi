@@ -62,17 +62,20 @@ export interface MultiSelectProps {
 
 const enter = motionTokens.ease.enter;
 const standard = motionTokens.ease.standard;
-/** 每个 chip 坐在一个弹簧开合的宽度槽里，邻居随之移动，互不重叠。 */
+/** 每个 chip 坐在一个宽度槽里，邻居随之移动。进场保留 spring width（单个进场
+    reflow 压力小、观感有生命感）；退场改短 ease——chip 增删是高频交互，且清空时
+    N 个槽同时退，spring width 逐帧 reflow + 尾摆是移动端卡顿主因（2026-10-15 真机反馈） */
 const slot: Variants = {
   hidden: { width: 0, opacity: 0 },
   shown: { width: "auto", opacity: 1, transition: { width: motionTokens.spring.smooth, opacity: { duration: motionTokens.duration.fast, ease: enter } } },
-  gone: { width: 0, opacity: 0, transition: { width: motionTokens.spring.smooth, opacity: { duration: motionTokens.duration.instant, ease: standard } } },
+  gone: { width: 0, opacity: 0, transition: { width: { duration: motionTokens.duration.exit, ease: standard }, opacity: { duration: motionTokens.duration.instant, ease: standard } } },
 };
-/** chip 本体从 .9 缩放带柔焦长入，离开时缩回。 */
+/** chip 本体轻缩放长入。blur 滤镜动画已移除——滤镜逐帧重 raster 是移动端
+    掉帧大头，高频交互不值得；退场即时（收尾观感由槽的 width 收缩承担） */
 const chip: Variants = {
-  hidden: { scale: 0.9, filter: `blur(${motionTokens.blur.soft}px)` },
-  shown: { scale: 1, filter: "blur(0px)", transition: { ...motionTokens.spring.snappy, filter: { duration: motionTokens.duration.standard, ease: enter } } },
-  gone: { scale: 0.9, filter: `blur(${motionTokens.blur.subtle}px)`, transition: { duration: motionTokens.duration.instant, ease: standard } },
+  hidden: { scale: 0.9, opacity: 0 },
+  shown: { scale: 1, opacity: 1, transition: motionTokens.spring.snappy },
+  gone: { opacity: 0, transition: { duration: motionTokens.duration.instant } },
 };
 /** reduced motion 保留短交叉淡入；静止态与动效变体一致，保证服务端与客户端标记一致。 */
 const fade: Variants = { hidden: { opacity: 0 }, shown: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: motionTokens.duration.instant } }, gone: { opacity: 0, transition: { duration: motionTokens.duration.instant } } };
