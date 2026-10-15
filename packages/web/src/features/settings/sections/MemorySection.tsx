@@ -297,24 +297,19 @@ export function MemorySection() {
                             <RuleTarget $token={token} title={rule.target.type === 'path' ? rule.target.path : undefined}>
                                 {rule.target.type === 'workspace' ? workspaceNameOf(rule.target.id) : rule.target.path}
                             </RuleTarget>
-                            <div style={{ width: 120 }}>
-                                <UiSelect
-                                    ariaLabel={t('settings.memory.mapTitle')}
-                                    value={rule.mode}
-                                    onValueChange={(mode) => {
-                                        // 无 allowClear，""（清空哨兵）不可达，收窄保护
-                                        if (mode === "") return
-                                        setRules(rules.map((x, j) => j === i
-                                            ? { ...x, mode, ...(mode !== 'normal' ? { tag: undefined } : {}), ...(mode !== 'isolated' ? { bank: undefined } : {}) }
-                                            : x))
-                                    }}
-                                    options={[
-                                        { value: 'normal', label: t('settings.memory.modeNormal'), title: t('settings.memory.modeNormalHint') },
-                                        { value: 'open', label: t('settings.memory.modeOpen'), title: t('settings.memory.modeOpenHint') },
-                                        { value: 'isolated', label: t('settings.memory.modeIsolated'), title: t('settings.memory.modeIsolatedHint') },
-                                    ]}
-                                />
-                            </div>
+                            <UiSelect
+                                style={{ width: 120 }}
+                                ariaLabel={t('settings.memory.mapTitle')}
+                                value={rule.mode}
+                                onValueChange={(mode) => setRules(rules.map((x, j) => j === i
+                                    ? { ...x, mode, ...(mode !== 'normal' ? { tag: undefined } : {}), ...(mode !== 'isolated' ? { bank: undefined } : {}) }
+                                    : x))}
+                                options={[
+                                    { value: 'normal', label: t('settings.memory.modeNormal'), title: t('settings.memory.modeNormalHint') },
+                                    { value: 'open', label: t('settings.memory.modeOpen'), title: t('settings.memory.modeOpenHint') },
+                                    { value: 'isolated', label: t('settings.memory.modeIsolated'), title: t('settings.memory.modeIsolatedHint') },
+                                ]}
+                            />
                             {rule.mode === 'normal' && (
                                 <Tooltip title={t('settings.memory.tagPlaceholder')}>
                                     <Input
@@ -347,20 +342,19 @@ export function MemorySection() {
                         </RuleRow>
                     ))}
                     <RowActions>
-                        <div style={{ minWidth: 200 }}>
-                            {/* 恒占位 picker：选中即建规则，value 恒 ""（回显交由规则行） */}
-                            <Combobox
-                                value=""
-                                aria-label={t('settings.memory.ruleAddWorkspace')}
-                                placeholder={t('settings.memory.ruleAddWorkspace')}
-                                options={addableWorkspaces}
-                                onValueChange={(id) => {
-                                    if (id) {
-                                        setRules([...rules, { target: { type: 'workspace', id }, mode: 'normal' }])
-                                    }
-                                }}
-                            />
-                        </div>
+                        {/* 恒占位 picker：选中即建规则，value 恒 ""（回显交由规则行） */}
+                        <Combobox
+                            style={{ minWidth: 200 }}
+                            value=""
+                            aria-label={t('settings.memory.ruleAddWorkspace')}
+                            placeholder={t('settings.memory.ruleAddWorkspace')}
+                            options={addableWorkspaces}
+                            onValueChange={(id) => {
+                                if (id) {
+                                    setRules([...rules, { target: { type: 'workspace', id }, mode: 'normal' }])
+                                }
+                            }}
+                        />
                         <Input
                             size="small"
                             style={{ width: 220 }}
@@ -402,23 +396,18 @@ export function MemorySection() {
                     <Hint $token={token}>{t('settings.memory.injectHint')}</Hint>
                     <div>
                         <FieldLabel $token={token}>{t('settings.memory.injectModeLabel')}</FieldLabel>
-                        <div style={{ width: 260 }}>
-                            <UiSelect
-                                ariaLabel={t('settings.memory.injectModeLabel')}
-                                value={autoInject}
-                                onValueChange={(v) => {
-                                    // 无 allowClear，""（清空哨兵）不可达，收窄保护
-                                    if (v === "") return
-                                    setAutoInject(v)
-                                }}
-                                options={[
-                                    { value: 'reflect', label: t('settings.memory.injectReflect'), title: t('settings.memory.injectReflectHint') },
-                                    { value: 'recall', label: t('settings.memory.injectRecall'), title: t('settings.memory.injectRecallHint') },
-                                    { value: 'pages', label: t('settings.memory.injectPages'), title: t('settings.memory.injectPagesHint') },
-                                    { value: 'none', label: t('settings.memory.injectNone'), title: t('settings.memory.injectNoneHint') },
-                                ]}
-                            />
-                        </div>
+                        <UiSelect
+                            style={{ width: 260 }}
+                            ariaLabel={t('settings.memory.injectModeLabel')}
+                            value={autoInject}
+                            onValueChange={(v) => setAutoInject(v)}
+                            options={[
+                                { value: 'reflect', label: t('settings.memory.injectReflect'), title: t('settings.memory.injectReflectHint') },
+                                { value: 'recall', label: t('settings.memory.injectRecall'), title: t('settings.memory.injectRecallHint') },
+                                { value: 'pages', label: t('settings.memory.injectPages'), title: t('settings.memory.injectPagesHint') },
+                                { value: 'none', label: t('settings.memory.injectNone'), title: t('settings.memory.injectNoneHint') },
+                            ]}
+                        />
                     </div>
                     <div>
                         <FieldLabel $token={token}>{t('settings.memory.pageRefreshLabel')}</FieldLabel>

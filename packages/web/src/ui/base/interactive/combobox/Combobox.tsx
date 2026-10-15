@@ -16,6 +16,7 @@
 
 // uiarc combobox（registry 快照，自管件：深度本地化后脱离 registry，不登记 registry.json）。
 // 本地修改：①label 改可选 ②占位/清空/空态文案走 i18n ③motionTokens 改引 @/ui/base/motion/motionTokens
+// ④className/style 挂组件根（field）——布局尺寸从根上给，消费方无需包裹 div
 "use client";
 
 import { animate, AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -29,7 +30,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { InputHTMLAttributes, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { CSSProperties, InputHTMLAttributes, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
 import { GlidingHighlight } from "@/ui/base/motion/GlidingHighlight";
@@ -52,7 +53,9 @@ export interface ComboboxProps
   description?: string;
   placeholder?: string;
   emptyMessage?: string;
+  /** 挂组件根（field）的类名与样式——布局尺寸从根上给，消费方无需包裹 div */
   className?: string;
+  style?: CSSProperties;
 }
 
 /** 高度追随 listbox，走临界阻尼弹簧，过滤时菜单不跳变。 */
@@ -81,6 +84,7 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     emptyMessage,
     id,
     className,
+    style,
     disabled,
     onFocus,
     ...inputProps
@@ -218,9 +222,9 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
   const activeTarget = (open && activeOption ? optionRefs.current[activeOption.value] : null) ?? null;
 
   return (
-    <div ref={rootRef} className={styles.field}>
+    <div ref={rootRef} className={[styles.field, className].filter(Boolean).join(" ")} style={style}>
       {label && <label htmlFor={controlId}>{label}</label>}
-      <div className={[styles.control, open ? styles.open : "", disabled ? styles.disabled : "", className ?? ""].filter(Boolean).join(" ")}>
+      <div className={[styles.control, open ? styles.open : "", disabled ? styles.disabled : ""].filter(Boolean).join(" ")}>
         <Search className={styles.searchIcon} size={16} strokeWidth={1.75} aria-hidden="true" />
         <input
           {...inputProps}

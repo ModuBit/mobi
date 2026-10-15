@@ -72,9 +72,10 @@ describe('uiarc Select 基础开合', () => {
         expect(viewport!.querySelector('[data-on]')).not.toBeNull()
     })
 
-    it('allowClear：有值渲染清除钮（chevron 隐藏），点击回调 "" 且不开菜单', () => {
-        const onValueChange = vi.fn<(v: 'normal' | 'open' | '') => void>()
-        render(<Select ariaLabel="档位" options={[...OPTIONS]} value="normal" allowClear onValueChange={onValueChange} />)
+    it('allowClear：有值渲染清除钮（chevron 隐藏），点击只触发 onClear 且不开菜单', () => {
+        const onValueChange = vi.fn<(v: 'normal' | 'open') => void>()
+        const onClear = vi.fn()
+        render(<Select ariaLabel="档位" options={[...OPTIONS]} value="normal" allowClear onValueChange={onValueChange} onClear={onClear} />)
 
         const clear = screen.getByRole('button', { name: 'common.clearSelection' })
         expect(clear).toBeInTheDocument()
@@ -82,7 +83,9 @@ describe('uiarc Select 基础开合', () => {
         expect(clear.closest('[role="combobox"]')).toBeNull()
 
         fireEvent.click(clear)
-        expect(onValueChange).toHaveBeenCalledWith('')
+        // 清空与选中是两条回调通道：onClear 触发、onValueChange 不动
+        expect(onClear).toHaveBeenCalledTimes(1)
+        expect(onValueChange).not.toHaveBeenCalled()
     })
 
     it('无 allowClear 或无值时不渲染清除钮；清除后受控 value="" 回占位', () => {

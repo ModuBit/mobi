@@ -21,10 +21,11 @@
 // ⑤options 支持 title（悬停提示，antd 迁移站点的能力保留）
 // ⑥受控判定改 value !== undefined（上游 ?? 回退会把受控清空误读成未受控旧值）
 // ⑦ariaLabel 透传到触发器（无可见 label 场景的可访问名）
+// ⑧className/style 挂组件根（field）——布局尺寸从根上给，消费方无需包裹 div
 "use client";
 
 import { forwardRef, useEffect, useId, useState } from "react";
-import type { ComponentPropsWithoutRef, ForwardedRef, ReactElement, RefAttributes } from "react";
+import type { ComponentPropsWithoutRef, CSSProperties, ForwardedRef, ReactElement, RefAttributes } from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { Variants } from "motion/react";
@@ -40,14 +41,19 @@ export interface SelectProps<T extends string = string> extends Omit<ComponentPr
   description?: string;
   placeholder?: string;
   id?: string;
+  /** 挂组件根（field）的类名与样式——布局尺寸从根上给，消费方无需包裹 div */
   className?: string;
-  /** 清空入口（触发器内清除钮）；清空发 onValueChange("") */
+  style?: CSSProperties;
+  /** 清空入口（触发器内清除钮）；清空发 onValueChange(undefined) */
   allowClear?: boolean;
   /** 触发器的可访问名（无可见 label 场景） */
   ariaLabel?: string;
   value?: T | "";
   defaultValue?: T;
-  onValueChange?: (value: T | "") => void;
+  /** 选中回调（恒发合法项值；清空走 onClear，不触发本回调） */
+  onValueChange?: (value: T) => void;
+  /** 清空回调（仅 allowClear 渲染的清除钮触发）；与 onValueChange 分离，消费方无需收窄 "" 哨兵 */
+  onClear?: () => void;
   options: { value: T; label: string; disabled?: boolean; /** 悬停提示（antd 迁移站点的能力保留） */ title?: string }[];
 }
 
@@ -62,7 +68,7 @@ const valueFade: Variants = { enter: { opacity: 0 }, center: { opacity: 1, y: 0,
 
 // 泛型组件 + forwardRef：外层 cast 保留 T 推断（forwardRef 本身无法带泛型参数）
 export const Select = forwardRef(function SelectInner<T extends string>(
-  { label, description, placeholder, options, id, className, disabled, allowClear, ariaLabel, onValueChange, ...rootProps }: SelectProps<T>,
+  { label, description, placeholder, options, id, className, style, disabled, allowClear, ariaLabel, onValueChange, onClear, ...rootProps }: SelectProps<T>,
   ref: ForwardedRef<HTMLButtonElement>,
 ) {
   const { t } = useTranslation();
@@ -99,11 +105,11 @@ export const Select = forwardRef(function SelectInner<T extends string>(
     event.preventDefault();
     event.stopPropagation();
     if (rootProps.value === undefined) setUncontrolledValue("");
-    onValueChange?.("");
+    onClear?.();
   };
 
   return (
-    <div className={styles.field}>
+    <div className={[styles.field, className].filter(Boolean).join(" ")} style={style}>
       {label && <label htmlFor={controlId}>{label}</label>}
       <SelectPrimitive.Root {...rootProps} disabled={disabled} onValueChange={(next) => { setUncontrolledValue(next); onValueChange?.(next as T); }}>
         <div className={styles.triggerWrap}>
@@ -112,7 +118,7 @@ export const Select = forwardRef(function SelectInner<T extends string>(
             id={controlId}
             aria-label={ariaLabel}
             aria-describedby={hintId}
-            className={[styles.trigger, showClear ? styles.hasClear : "", className].filter(Boolean).join(" ")}
+            className={[styles.trigger, showClear ? styles.hasClear : ""].filter(Boolean).join(" ")}
           >
             {/* Radix 为辅助技术保留真实值；下方的可见文案在值之间做动画。 */}
             <span className={styles.srOnly}><SelectPrimitive.Value placeholder={placeholderText} /></span>

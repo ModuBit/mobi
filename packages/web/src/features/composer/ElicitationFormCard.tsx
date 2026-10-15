@@ -76,17 +76,20 @@ function EnumSelect({ field, value, onChange, disabled }: {
 }) {
     const enumValues = field.enum ?? []
     return (
-        <div style={{ width: '100%' }}>
-            <Select
-                value={value == null ? "" : encodeEnumValue(value)}
-                onValueChange={(next) => {
-                    onChange?.(next === "" ? undefined : enumValues.find((v) => encodeEnumValue(v) === next))
-                }}
-                options={enumValues.map((v) => ({ value: encodeEnumValue(v), label: String(v) }))}
-                allowClear
-                disabled={disabled}
-            />
-        </div>
+        <Select
+            style={{ width: '100%' }}
+            value={value == null ? "" : encodeEnumValue(value)}
+            onValueChange={(next) => {
+                onChange?.(enumValues.find((v) => encodeEnumValue(v) === next))
+            }}
+            onClear={() => {
+                // 清空：可选字段留空不回传
+                onChange?.(undefined)
+            }}
+            options={enumValues.map((v) => ({ value: encodeEnumValue(v), label: String(v) }))}
+            allowClear
+            disabled={disabled}
+        />
     )
 }
 
