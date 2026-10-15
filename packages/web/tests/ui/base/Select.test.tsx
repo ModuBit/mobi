@@ -21,6 +21,9 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import '@testing-library/jest-dom/vitest'
 import { render, cleanup, fireEvent, screen } from '@testing-library/react'
 import { Select } from '@/ui/base/interactive/select/Select'
@@ -82,5 +85,24 @@ describe('uiarc Select 基础开合', () => {
         expect(screen.queryByRole('button', { name: 'common.clearSelection' })).toBeNull()
         // 受控清空（value 从有值改回 ""）回占位，不回显旧值
         expect(screen.getByRole('combobox', { name: '档位' })).toHaveTextContent('common.select')
+    })
+})
+
+/**
+ * portal 变量映射守卫：菜单是 Radix Portal 挂 body，CSS 变量不走组件树——
+ * 设计变量→mobi token 映射块若只挂 .field，.content 的 surface 系解析不到、背景退化透明
+ * （2026-10-15 真机实踩）。守卫：映射块的选择器必须同时含 .field 与 .content。
+ */
+describe('uiarc Select 的 portal 变量映射', () => {
+    it('映射块同时挂在 .field 与 .content（portal 侧自带映射）', () => {
+        const css = readFileSync(
+            resolve(dirname(fileURLToPath(import.meta.url)), '../../../src/ui/base/interactive/select/select.module.css'),
+            'utf8',
+        )
+        // 取首个含 --surface-raised 声明的规则的选择器段
+        const mappingRule = css.match(/([^{}]*?)\{[^{}]*--surface-raised:/)
+        expect(mappingRule).not.toBeNull()
+        expect(mappingRule![1]).toContain('.field')
+        expect(mappingRule![1]).toContain('.content')
     })
 })
