@@ -93,9 +93,10 @@ export function CompactHoverSelect({
     useEffortPopoverStyle()
     // CompactHoverSelectOption 与 MorphSelectOption 结构同构（value/label/description/icon/trailing/disabled）
     const items: MorphSelectItem[] = options
-    // inline-flex：morph root 是 inline-grid，默认按基线参与行内排版，会相对 footer 行中心下坠
+    // display:flex：span 若是 inline 级（含 inline-flex），在包裹 div 的行盒里按基线排版，
+    // 基线下方的 descender 空隙会把包裹撑高、pill 顶在顶部——相对同行控件偏移 ~2.7px
     return (
-        <span title={title} style={{ display: 'inline-flex' }}>
+        <span title={title} style={{ display: 'flex', alignItems: 'center' }}>
             <MorphSelect
                 label={label}
                 // label 仅作可访问名（morph 上游默认把 label 可见渲染在控件上方，composer 不要）
