@@ -957,7 +957,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                     // permissionmode
                                     ...(showSettingsButton ? [{
                                         key: 'permission',
-                                        render: () => (
+                                        content: (
                                             <CompactHoverSelect
                                                 label={t('composer.permissionMode')}
                                                 iconOnly
@@ -971,7 +971,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                     // model + effort
                                     ...(onModelChange ? [{
                                         key: 'model',
-                                        render: () => (
+                                        content: (
                                             <CompactHoverSelect
                                                 label={t('composer.model')}
                                                 prefix={<EffortDot level={effort ?? 'medium'} />}
@@ -985,7 +985,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                     // output style 切换器（/clear 语义，运行中 / clear 进行中禁用）；排模型之后
                                     {
                                         key: 'outputStyle',
-                                        render: () => (
+                                        content: (
                                             <OutputStyleSwitch
                                                 sessionId={sessionId}
                                                 outputStyle={outputStyle}
@@ -999,7 +999,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                     // 上下文水位圆环（仅 PC；移动端挂 ChatPane header，避免挤占底部空间）
                                     ...(!isMobile && contextUsage ? [{
                                         key: 'contextRing',
-                                        render: () => <ContextRing usage={contextUsage} />,
+                                        content: <ContextRing usage={contextUsage} />,
                                     }] : []),
                                 ]}
                                 />

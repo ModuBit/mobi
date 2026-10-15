@@ -21,7 +21,8 @@
  * ③ 拖拽（PC 与触摸统一 pointer 事件）过阈值才平移，且夹在 [-(content-view), 0]；
  * ④ 松手吸附到项边界；⑤ 拖拽收势吞点击；⑥ 展开面板内部按下不触发拖动；
  * ⑦ 焦点进入时自动平移可见。
- * 视觉裁剪（clip-path）与「展开放开裁剪」的 `:has()` 是纯 CSS（jsdom 无布局），只验属性投影。
+ * 视觉裁剪与渐隐是纯 CSS（jsdom 无布局）；「展开放开裁剪」只验 data-panel 属性投影
+ * （开合信号来自 morph 根元素的 data-open 属性）与逐项修饰的样式结果。
  */
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
@@ -39,12 +40,17 @@ vi.stubGlobal('ResizeObserver', class {
     disconnect() { resizeCallbacks.pop() }
 })
 
+/** 手动触发一次尺寸重算（真实环境由 ResizeObserver 驱动） */
+function fireResize() {
+    act(() => { resizeCallbacks.forEach((cb) => cb([], undefined as unknown as ResizeObserver)) })
+}
+
 const clickedLog: string[] = []
 function clicked(key: string) { clickedLog.push(key) }
 
 const ITEMS: ToolStripItem[] = [
-    { key: 'a', render: () => <button onClick={() => clicked('a')}>A</button> },
-    { key: 'b', render: () => <button onClick={() => clicked('b')}>B</button> },
+    { key: 'a', content: <button onClick={() => clicked('a')}>A</button> },
+    { key: 'b', content: <button onClick={() => clicked('b')}>B</button> },
 ]
 
 /** 造出「内容 400 / 视口 200」的布局：两个项各 200 宽，项起点 0 与 200 */
@@ -59,13 +65,19 @@ function strip(items: ToolStripItem[] = ITEMS) {
         Object.defineProperty(span, 'offsetLeft', { configurable: true, value: i * 200 })
         Object.defineProperty(span, 'offsetWidth', { configurable: true, value: 200 })
     })
-    // 尺寸就位后重算一次（真实环境由 ResizeObserver 触发）
-    act(() => { resizeCallbacks.forEach((cb) => cb([], undefined as unknown as ResizeObserver)) })
+    fireResize()
     return { root, row, spans }
 }
 
 function rowTransform(row: HTMLElement): string {
     return row.style.transform
+}
+
+/** 一次「从 fromX 按下并拖到 toX」的指针序列（是否跨越 slop 阈值由移动距离决定） */
+function dragTo(el: HTMLElement, root: HTMLElement, toX: number,
+    { fromX = 100, pointerId = 1, pointerType = 'mouse' } = {}) {
+    fireEvent.pointerDown(el, { pointerType, clientX: fromX, pointerId })
+    fireEvent.pointerMove(root, { pointerType, clientX: toX, pointerId })
 }
 
 beforeEach(() => { clickedLog.length = 0 })
@@ -77,8 +89,7 @@ describe('平移与渐隐', () => {
         expect(rowTransform(row)).toBe('translateX(0px)')
         expect(root).toHaveAttribute('data-fade', 'end')
 
-        fireEvent.pointerDown(screen.getByText('A'), { pointerType: 'mouse', clientX: 100, pointerId: 1 })
-        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 40, pointerId: 1 })
+        dragTo(screen.getByText('A'), root, 40)
         expect(rowTransform(row)).toBe('translateX(-60px)')
         expect(root).toHaveAttribute('data-fade', 'both')
 
@@ -91,9 +102,8 @@ describe('平移与渐隐', () => {
     it('不溢出时不位移、无渐隐', () => {
         const { root, row } = strip()
         row.getBoundingClientRect = () => ({ width: 200 }) as DOMRect
-        act(() => { fireEvent(window, new Event('resize')) })
-        fireEvent.pointerDown(screen.getByText('A'), { pointerType: 'mouse', clientX: 100, pointerId: 1 })
-        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 0, pointerId: 1 })
+        fireResize()
+        dragTo(screen.getByText('A'), root, 0)
         expect(rowTransform(row)).toBe('translateX(0px)')
         expect(root).toHaveAttribute('data-fade', 'none')
     })
@@ -102,22 +112,19 @@ describe('平移与渐隐', () => {
 describe('拖拽判据', () => {
     it('触摸端同样可拖（pointer 事件统一处理）', () => {
         const { root, row } = strip()
-        fireEvent.pointerDown(screen.getByText('A'), { pointerType: 'touch', clientX: 100, pointerId: 1 })
-        fireEvent.pointerMove(root, { pointerType: 'touch', clientX: 60, pointerId: 1 })
+        dragTo(screen.getByText('A'), root, 60, { pointerType: 'touch' })
         expect(rowTransform(row)).toBe('translateX(-40px)')
     })
 
     it('阈值内视为点击，不平移', () => {
         const { root, row } = strip()
-        fireEvent.pointerDown(screen.getByText('A'), { pointerType: 'mouse', clientX: 100, pointerId: 1 })
-        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 97, pointerId: 1 })
+        dragTo(screen.getByText('A'), root, 97)
         expect(rowTransform(row)).toBe('translateX(0px)')
     })
 
     it('展开面板内部（listbox/input）按下不触发拖动', () => {
-        const { root, row } = strip([{ key: 'p', render: () => <div role="listbox"><span>opt</span></div> }])
-        fireEvent.pointerDown(screen.getByText('opt'), { pointerType: 'mouse', clientX: 100, pointerId: 1 })
-        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 40, pointerId: 1 })
+        const { root, row } = strip([{ key: 'p', content: <div role="listbox"><span>opt</span></div> }])
+        dragTo(screen.getByText('opt'), root, 40)
         expect(rowTransform(row)).toBe('translateX(0px)')
     })
 
@@ -128,8 +135,7 @@ describe('拖拽判据', () => {
         fireEvent.click(screen.getByText('A'))
         expect(clickedLog).toEqual(['a'])
 
-        fireEvent.pointerDown(screen.getByText('B'), { pointerType: 'mouse', clientX: 100, pointerId: 2 })
-        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 60, pointerId: 2 })
+        dragTo(screen.getByText('B'), root, 60, { pointerId: 2 })
         fireEvent.pointerUp(root, { pointerType: 'mouse', pointerId: 2 })
         fireEvent.click(screen.getByText('B'))
         expect(clickedLog).toEqual(['a'])
@@ -139,13 +145,11 @@ describe('拖拽判据', () => {
 describe('松手吸附', () => {
     it('吸附到最近的项边界 / 两端（-60 → 0；-140 距 -200 更近 → -200）', () => {
         const { root, row } = strip()
-        fireEvent.pointerDown(screen.getByText('A'), { pointerType: 'mouse', clientX: 100, pointerId: 1 })
-        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 40, pointerId: 1 })
+        dragTo(screen.getByText('A'), root, 40)
         fireEvent.pointerUp(root, { pointerType: 'mouse', pointerId: 1 })
         expect(rowTransform(row)).toBe('translateX(0px)')
 
-        fireEvent.pointerDown(screen.getByText('A'), { pointerType: 'mouse', clientX: 300, pointerId: 2 })
-        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 160, pointerId: 2 })
+        dragTo(screen.getByText('A'), root, 160, { fromX: 300, pointerId: 2 })
         fireEvent.pointerUp(root, { pointerType: 'mouse', pointerId: 2 })
         expect(rowTransform(row)).toBe('translateX(-200px)')
     })
@@ -179,19 +183,19 @@ describe('焦点可见（仅键盘）', () => {
 })
 
 describe('展开期间撤视觉裁剪（交互契约）', () => {
-    it('面板展开 → data-panel=open；收起后延时恢复（保住 morph 退场动画）', async () => {
-        const { root } = strip([{ key: 'p', render: () => <button role="combobox" aria-expanded="false">P</button> }])
+    it('面板展开（morph 根元素带 data-open）→ data-panel=open；收起后延时恢复（保住 morph 退场动画）', async () => {
+        const { root } = strip([{ key: 'p', content: <button>P</button> }])
         const trigger = screen.getByText('P')
         expect(root).not.toHaveAttribute('data-panel')
 
         await act(async () => {
-            trigger.setAttribute('aria-expanded', 'true')
+            trigger.setAttribute('data-open', '')
             await Promise.resolve()
         })
         expect(root).toHaveAttribute('data-panel', 'open')
 
         await act(async () => {
-            trigger.setAttribute('aria-expanded', 'false')
+            trigger.removeAttribute('data-open')
             await Promise.resolve()
         })
         // 退场窗口内仍不裁剪
@@ -203,18 +207,18 @@ describe('展开期间撤视觉裁剪（交互契约）', () => {
 
     it('展开时逐项窗口修饰：越界项裁到窗口 + 按条渐隐曲线投影 mask；展开项两者都不加', async () => {
         const { root, spans } = strip([
-            { key: 'a', render: () => <button role="combobox" aria-expanded="false">A</button> },
-            { key: 'b', render: () => <button>B</button> },
+            { key: 'a', content: <button>A</button> },
+            { key: 'b', content: <button>B</button> },
         ])
         const triggerA = screen.getByText('A')
         // 项 B 跨窗口右缘（视口 200）：[150, 250] → 项内 50px 起是窗口外
         Object.defineProperty(spans[1], 'offsetLeft', { configurable: true, value: 150 })
         Object.defineProperty(spans[1], 'offsetWidth', { configurable: true, value: 100 })
         await act(async () => {
-            triggerA.setAttribute('aria-expanded', 'true')
+            triggerA.setAttribute('data-open', '')
             await Promise.resolve()
         })
-        await act(async () => { resizeCallbacks.forEach((cb) => cb([], undefined as unknown as ResizeObserver)) })
+        fireResize()
 
         expect(spans[0].style.clipPath).toBe('')          // 展开项：面板要越出条边界
         expect(spans[0].style.maskImage).toBe('')          // 展开项：渐隐也不能加（会裁面板）
@@ -225,7 +229,7 @@ describe('展开期间撤视觉裁剪（交互契约）', () => {
         expect(spans[1].style.maskImage).toMatch(/rgba\(0, 0, 0, 0\) 50\.0px/)  // 窗口外 alpha 0
 
         await act(async () => {
-            triggerA.setAttribute('aria-expanded', 'false')
+            triggerA.removeAttribute('data-open')
             await new Promise((resolve) => setTimeout(resolve, 260))
         })
         expect(spans[1].style.clipPath).toBe('')

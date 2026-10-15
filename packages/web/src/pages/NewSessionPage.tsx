@@ -41,7 +41,7 @@ import { SlashCommandDropdown } from '@/features/composer/SlashCommandDropdown'
 import { CommandHintBar } from '@/features/composer/CommandHintBar'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { ResponsiveActionBar, type ActionItem } from '@/features/composer/ResponsiveActionBar'
-import { ToolStrip } from '@/features/composer/ToolStrip'
+import { ToolStrip, type ToolStripItem } from '@/features/composer/ToolStrip'
 import { EnvironmentBar, extractWorkspaceName } from '@/features/composer/EnvironmentBar'
 import { useMobiApi } from '@/core/data/api/client'
 import type { Workspace } from '@/core/data/api/types'
@@ -718,25 +718,15 @@ export function NewSessionPage() {
         [t],
     )
 
-    // ============ ActionItems ============
+    // ============ ToolStripItems ============
 
-    // Sender footer（内部）：attach + permission + model（同 ChatComposer）
-    const footerItems: ActionItem[] = useMemo(() => [
-        // 附件按钮
-        {
-            key: 'attach',
-            label: t('composer.attach'),
-            render: () => (
-                <AttachPanel
-                    disabled={inputDisabled}
-                    onAttach={handleAttach}
-                />
-            ),
-        },
+    // 参数条（ToolStrip）：permission + model + outputStyle。
+    // attach 不进条——它固定在条外左端（见 footer 接线，同 ChatComposer）
+    const toolStripItems: ToolStripItem[] = useMemo(() => [
         // 权限模式
         {
             key: 'permission',
-            render: () => (
+            content: (
                 <CompactHoverSelect
                     label={t('newSession.permissionMode')}
                     value={permissionMode}
@@ -749,7 +739,7 @@ export function NewSessionPage() {
         // Model + Effort 选择（移动端下拉满宽：698493a5 的有意调整，收编共享组件后保留）
         {
             key: 'model',
-            render: () => (
+            content: (
                 <CompactHoverSelect
                     label={t('newSession.model')}
                     prefix={<EffortDot level={effort} />}
@@ -764,7 +754,7 @@ export function NewSessionPage() {
         // Output style（默认跟随 CC settings；显式选中才随 spawn 透传；无 /clear 语义故不做确认弹窗）；排模型之后
         {
             key: 'outputStyle',
-            render: () => (
+            content: (
                 <OutputStyleSelect
                     value={outputStyle}
                     onChange={v => {
@@ -782,8 +772,7 @@ export function NewSessionPage() {
         t, inputDisabled, effort, model, permissionMode,
         permissionSelectOptions, modelOptionsWithEffort,
         outputStyle, outputStyleOptions,
-        handleAttach, handleModelSelect, handleModelEffortSelect, hasFinePointer,
-        effortPopoverModel,
+        handleModelSelect,
     ])
 
     // SubBar（Sender 下方抽屉）：次要配置项
@@ -906,11 +895,14 @@ export function NewSessionPage() {
                         footer={(_oriNode, { components: { SendButton } }) => (
                             /* 参数条：+（附件）与 send 两端固定，中间可横向拖动滚动（见 ToolStrip 组件注释） */
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                {/* 附件面板（+）——左端固定锚，其余项进可滚动条 */}
-                                {footerItems.find(item => item.key === 'attach')?.render()}
+                                {/* 附件面板（+）——左端固定锚，其余项进可拖动条 */}
+                                <AttachPanel
+                                    disabled={inputDisabled}
+                                    onAttach={handleAttach}
+                                />
                                 <ToolStrip
                                     style={{ flex: 1, minWidth: 0 }}
-                                    items={footerItems.filter(item => item.key !== 'attach')}
+                                    items={toolStripItems}
                                 />
                                 {hasContent ? (
                                     <SendButton disabled={!canSubmit} />

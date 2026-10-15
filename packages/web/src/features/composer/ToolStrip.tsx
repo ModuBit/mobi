@@ -19,14 +19,11 @@ import styled from '@emotion/styled'
 
 export interface ToolStripItem {
   key: string
-  render: () => ReactNode
+  content: ReactNode
 }
 
 export interface ToolStripProps {
   items: ToolStripItem[]
-  /** 项间距（composer 参数区与 ResponsiveActionBar 同档 4px） */
-  gap?: number
-  className?: string
   /** 布局占用透传（主栏里 flex:1 占满 + 与 send 之间的全部剩余空间） */
   style?: CSSProperties
 }
@@ -35,6 +32,9 @@ export interface ToolStripProps {
 const DRAG_SLOP_PX = 5
 /** 两侧渐隐的过渡带宽 */
 const FADE_WIDTH = 32
+/** 渐隐缓坡的中间停点（带内 40% 处 alpha 0.45）——条级 CSS mask 与逐项投影 mask 共用同一条曲线，只此一份 */
+const FADE_MID_ALPHA = 0.45
+const FADE_MID_POS = 0.4
 /** 松手吸附的回弹时长（与 morph 的定长过渡同档） */
 const SNAP_MS = 260
 const SNAP_EASE = 'cubic-bezier(.2, 0, 0, 1)'
@@ -58,6 +58,11 @@ const UNCLIP_HOLDOVER_MS = 200
  * - **松手吸附**：就近落到项边界或两端，静止态永远是完整 pill 起头，不切半个；
  * - **键盘可达**：焦点进入条内控件时自动把它平移进视野。
  */
+/** 条级渐隐 mask 的三态渐变（停点与 fadeAlphaAt 是同一条曲线，见 FADE_MID_* 注释）；-webkit- 前缀给 iOS PWA（同 tabStrip） */
+const MASK_END = `linear-gradient(to right, #000 calc(100% - ${FADE_WIDTH}px), rgb(0 0 0 / ${FADE_MID_ALPHA}) calc(100% - ${FADE_WIDTH * FADE_MID_POS}px), transparent)`
+const MASK_START = `linear-gradient(to right, transparent, rgb(0 0 0 / ${FADE_MID_ALPHA}) ${FADE_WIDTH * FADE_MID_POS}px, #000 ${FADE_WIDTH}px)`
+const MASK_BOTH = `linear-gradient(to right, transparent, rgb(0 0 0 / ${FADE_MID_ALPHA}) ${FADE_WIDTH * FADE_MID_POS}px, #000 ${FADE_WIDTH}px, #000 calc(100% - ${FADE_WIDTH}px), rgb(0 0 0 / ${FADE_MID_ALPHA}) calc(100% - ${FADE_WIDTH * FADE_MID_POS}px), transparent)`
+
 const Root = styled.div<{ 'data-fade'?: 'none' | 'start' | 'end' | 'both' }>`
   position: relative;
   display: flex;
@@ -79,17 +84,21 @@ const Root = styled.div<{ 'data-fade'?: 'none' | 'start' | 'end' | 'both' }>`
   }
   /* 渐隐双停点缓坡：描边淡出是渐进的，不是线性硬切 */
   &[data-fade='end'] {
-    mask-image: linear-gradient(to right, #000 calc(100% - ${FADE_WIDTH}px), rgb(0 0 0 / 0.45) calc(100% - ${FADE_WIDTH * 0.4}px), transparent);
+    mask-image: ${MASK_END};
+    -webkit-mask-image: ${MASK_END};
   }
   &[data-fade='start'] {
-    mask-image: linear-gradient(to right, transparent, rgb(0 0 0 / 0.45) ${FADE_WIDTH * 0.4}px, #000 ${FADE_WIDTH}px);
+    mask-image: ${MASK_START};
+    -webkit-mask-image: ${MASK_START};
   }
   &[data-fade='both'] {
-    mask-image: linear-gradient(to right, transparent, rgb(0 0 0 / 0.45) ${FADE_WIDTH * 0.4}px, #000 ${FADE_WIDTH}px, #000 calc(100% - ${FADE_WIDTH}px), rgb(0 0 0 / 0.45) calc(100% - ${FADE_WIDTH * 0.4}px), transparent);
+    mask-image: ${MASK_BOTH};
+    -webkit-mask-image: ${MASK_BOTH};
   }
   /* 展开中的 morph 面板不容裁剪：渐隐一并撤（mask 同样会裁到条外的面板） */
   &[data-panel='open'] {
     mask-image: none;
+    -webkit-mask-image: none;
   }
   @media (hover: hover) {
     /* 有溢出才提示可拖；拖动进行中换抓握 */
@@ -102,15 +111,19 @@ const Root = styled.div<{ 'data-fade'?: 'none' | 'start' | 'end' | 'both' }>`
   }
 `
 
-const Row = styled.div<{ gap: number }>`
+const Row = styled.div`
   display: flex;
   align-items: center;
   flex: none;
-  gap: ${(props) => props.gap}px;
+  /* 项间距与 ResponsiveActionBar 同档 4px */
+  gap: 4px;
   will-change: transform;
 `
 
 type FadeState = 'none' | 'start' | 'end' | 'both'
+
+/** morph-select 展开态在其根元素上的公开标记（registry 组件有意暴露的 data-open），勿再探测其内部 ARIA 结构 */
+const OPEN_PANEL_SELECTOR = '[data-open]'
 
 /** 展开面板（列表/搜索框）内部的按下不属于拖条——拖的是面板自己的内容 */
 function insideOpenPanel(target: Element): boolean {
@@ -127,11 +140,13 @@ function computeFade(offset: number, max: number): FadeState {
 /**
  * 条级渐隐的 alpha 曲线（条坐标 x，视口宽 view，渐隐带 band）：
  * 带内 0 → 0.45(40%) → 1 的缓坡，带外为 1（窗口内）或 0（窗口外）。
- * 与条自身 mask-image 的停点同形——逐项渐隐靠它投影。
+ * 与条自身 mask-image 的停点同形（FADE_MID_* 双方共用）——逐项渐隐靠它投影。
  */
 function fadeAlphaAt(x: number, view: number, band: number): number {
   if (x <= 0 || x >= view) return 0
-  const ramp = (r: number) => r < 0.4 ? 0.45 * (r / 0.4) : 0.45 + 0.55 * ((r - 0.4) / 0.6)
+  const ramp = (r: number) => r < FADE_MID_POS
+    ? FADE_MID_ALPHA * (r / FADE_MID_POS)
+    : FADE_MID_ALPHA + (1 - FADE_MID_ALPHA) * ((r - FADE_MID_POS) / (1 - FADE_MID_POS))
   if (x < band) return ramp(x / band)
   if (x > view - band) return ramp((view - x) / band)
   return 1
@@ -143,15 +158,15 @@ function fadeAlphaAt(x: number, view: number, band: number): number {
  * 返回空串表示该项区间内 alpha 恒为 1（无需 mask）。
  */
 function itemFadeMask(left: number, width: number, view: number, band: number): string {
-  const keyPoints = [0, band * 0.4, band, view - band, view - band * 0.4, view]
-  const stops = new Map<number, number>()
-  for (const x of keyPoints) {
-    const local = Math.round(Math.min(Math.max(x - left, 0), width) * 10) / 10
-    stops.set(local, fadeAlphaAt(Math.min(Math.max(x, 0), view), view, band))
+  const stops = new Map<number, number>([
+    // 项两端各取一次，保证覆盖整个项宽
+    [0, fadeAlphaAt(left, view, band)],
+    [width, fadeAlphaAt(left + width, view, band)],
+  ])
+  // 落在项区间内的曲线关键点（停点转折处）逐个采样
+  for (const x of [0, band * FADE_MID_POS, band, view - band, view - band * FADE_MID_POS, view]) {
+    if (x > left && x < left + width) stops.set(Math.round((x - left) * 10) / 10, fadeAlphaAt(x, view, band))
   }
-  // 项两端也取一次，保证覆盖整个项宽
-  stops.set(0, fadeAlphaAt(Math.min(Math.max(left, 0), view), view, band))
-  stops.set(width, fadeAlphaAt(Math.min(Math.max(left + width, 0), view), view, band))
 
   const ordered = [...stops.entries()].sort((a, b) => a[0] - b[0])
   if (ordered.every(([, alpha]) => alpha >= 0.999)) return ''
@@ -159,14 +174,15 @@ function itemFadeMask(left: number, width: number, view: number, band: number): 
   return `linear-gradient(to right, ${parts.join(', ')})`
 }
 
-export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) {
+export function ToolStrip({ items, style }: ToolStripProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const rowRef = useRef<HTMLDivElement>(null)
   const [fade, setFade] = useState<FadeState>('none')
   const [dragging, setDragging] = useState(false)
   const [unclipped, setUnclipped] = useState(false)
   const offsetRef = useRef(0)
-  const unclippedRef = useRef(false)
+  // 内容宽 − 视口宽，只在 ResizeObserver 回调里现测（避免拖拽/滚轮热路径强制布局）
+  const maxRef = useRef(0)
 
   /**
    * 展开期间逐项「窗口修饰」：裁到条的可视窗口（防止滚出条外的项漏出来）+
@@ -181,7 +197,7 @@ export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) 
     if (!root || !row) return
     const view = root.clientWidth
     for (const el of Array.from(row.children) as HTMLElement[]) {
-      const isExpanded = el.querySelector('[role="combobox"][aria-expanded="true"]') !== null
+      const isExpanded = el.querySelector(OPEN_PANEL_SELECTOR) !== null
       if (!active || isExpanded) {
         el.style.clipPath = ''
         el.style.maskImage = ''
@@ -200,24 +216,22 @@ export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) 
 
   /** 平移量（≤0，左移为正）→ 绘制。materialize=false 跟手，true 走吸附回弹 */
   const applyOffset = useCallback((next: number, animate: boolean) => {
-    const root = rootRef.current
     const row = rowRef.current
-    if (!root || !row) return
-    const max = Math.max(0, row.getBoundingClientRect().width - root.clientWidth)
+    if (!row) return
+    const max = maxRef.current
     const clamped = Math.min(0, Math.max(-max, next))
     offsetRef.current = clamped
     row.style.transition = animate ? `transform ${SNAP_MS}ms ${SNAP_EASE}` : 'none'
     row.style.transform = `translateX(${clamped}px)`
     setFade(computeFade(clamped, max))
-    if (unclippedRef.current) decorateItems(true)
-  }, [decorateItems])
+    if (unclipped) decorateItems(true)
+  }, [decorateItems, unclipped])
 
   /** 就近吸附：候选为两端与每个项的起点，松手后静止态不切半个 pill */
   const snapTarget = useCallback((current: number) => {
-    const root = rootRef.current
     const row = rowRef.current
-    if (!root || !row) return 0
-    const max = Math.max(0, row.getBoundingClientRect().width - root.clientWidth)
+    if (!row) return 0
+    const max = maxRef.current
     if (max <= 0) return 0
     const candidates = [0, -max]
     for (const el of Array.from(row.children) as HTMLElement[]) {
@@ -231,27 +245,30 @@ export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) 
     return best
   }, [])
 
-  // 尺寸变化（容器收窄、项增删）后重新夹紧；items 变化保持当前位置
+  // 尺寸变化（容器收窄、项增删——row 尺寸随项增删变化，ResizeObserver 即可覆盖）后
+  // 重测溢出量并重新夹紧。items 数组身份每渲染都变（父组件内联构造），不作依赖，
+  // 否则每次击键都拆建观察器 + 强制布局。
   useEffect(() => {
     const root = rootRef.current
     const row = rowRef.current
     if (!root || !row) return
-    const sync = () => applyOffset(offsetRef.current, false)
+    const sync = () => {
+      maxRef.current = Math.max(0, row.getBoundingClientRect().width - root.clientWidth)
+      applyOffset(offsetRef.current, false)
+    }
     sync()
     const observer = new ResizeObserver(sync)
     observer.observe(root)
     observer.observe(row)
     return () => observer.disconnect()
-  }, [items, applyOffset])
+  }, [applyOffset])
 
   // 触控板/滚轮横向滑动：仅接管横向分量，纵向放行给页面
   useEffect(() => {
     const root = rootRef.current
     if (!root) return
     const onWheel = (event: WheelEvent) => {
-      const row = rowRef.current
-      if (!row) return
-      if (Math.max(0, row.getBoundingClientRect().width - root.clientWidth) <= 0) return
+      if (maxRef.current <= 0) return
       if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return
       event.preventDefault()
       applyOffset(offsetRef.current - event.deltaX, false)
@@ -267,21 +284,19 @@ export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) 
     if (!root) return
     let timer: number | null = null
     const sync = () => {
-      const open = root.querySelector('[role="combobox"][aria-expanded="true"]') !== null
+      const open = root.querySelector(OPEN_PANEL_SELECTOR) !== null
       if (open) {
         if (timer !== null) { window.clearTimeout(timer); timer = null }
-        unclippedRef.current = true
         setUnclipped(true)
-      } else if (timer === null && unclippedRef.current) {
+      } else if (timer === null) {
         timer = window.setTimeout(() => {
           timer = null
-          unclippedRef.current = false
           setUnclipped(false)
         }, UNCLIP_HOLDOVER_MS)
       }
     }
     const observer = new MutationObserver(sync)
-    observer.observe(root, { subtree: true, attributes: true, attributeFilter: ['aria-expanded'] })
+    observer.observe(root, { subtree: true, attributes: true, attributeFilter: ['data-open'] })
     sync()
     return () => {
       observer.disconnect()
@@ -289,8 +304,10 @@ export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) 
     }
   }, [])
 
-  // items 增删（权限模式等条件渲染）或展开态切换时重算逐项裁剪
-  useEffect(() => { decorateItems(unclipped) }, [unclipped, decorateItems, items])
+  // 项增删（权限模式等条件渲染）或展开态切换时重算逐项裁剪；
+  // 依赖用 key 序列而非数组身份（items 每渲染都是新数组）
+  const itemKeys = items.map(item => item.key).join()
+  useEffect(() => { decorateItems(unclipped) }, [unclipped, decorateItems, itemKeys])
 
   const drag = useRef({ active: false, moved: false, startX: 0, startOffset: 0, pointerId: -1 })
 
@@ -370,15 +387,15 @@ export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) 
 
   return (
     <Root ref={rootRef} data-fade={fade} data-dragging={dragging} data-panel={unclipped ? 'open' : undefined}
-      className={className} style={style}
+      style={style}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove}
       onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
       onClickCapture={onClickCapture} onFocusCapture={onFocusCapture}
     >
-      <Row ref={rowRef} gap={gap}>
+      <Row ref={rowRef}>
         {items.map(item => (
           <span key={item.key} data-strip-item style={{ display: 'flex', alignItems: 'center', flex: 'none' }}>
-            {item.render()}
+            {item.content}
           </span>
         ))}
       </Row>
