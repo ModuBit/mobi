@@ -60,7 +60,10 @@
    触摸端无 hover 恒显 ×（清空比展开指示有用）。让位 = 角标热区 31px。
    热区 28px：图标 16px 视觉不变，触屏点偏不再落到触发器空白处误触展开 */
 .corner { position: absolute; top: 4px; right: 3px; display: inline-block; width: 28px; height: 28px; }
-.cornerChevron { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted); opacity: 1; transition: opacity 140ms var(--ease-standard); }
+/* pointer-events none 必须：chevron 在 DOM 里排在 cornerClear 之后恒叠上层，
+   不禁用会吞掉角标区域的全部点击冒泡到触发器（= 点清空变展开，实测所有端复现）。
+   chevron 是纯视觉指示，禁掉后点击落到 cornerClear（有选中）或穿透触发器（空态） */
+.cornerChevron { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; color: var(--text-muted); opacity: 1; transition: opacity 140ms var(--ease-standard); }
 .cornerClear { position: absolute; inset: 0; display: grid; place-items: center; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-muted); cursor: pointer; opacity: 0; transform: scale(.85); pointer-events: none; transition: opacity 140ms var(--ease-standard), transform 160ms cubic-bezier(0.2, 0, 0, 1), color var(--duration-fast) var(--ease-standard); }
 @media (hover: hover) and (pointer: fine) {
   .triggerTags:hover .cornerChevron { opacity: 0; }
