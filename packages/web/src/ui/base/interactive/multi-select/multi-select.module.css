@@ -28,9 +28,10 @@
    label 收进独立截断盒承担 ellipsis，× 永远可见。右内衬收窄给 × 让位 */
 .triggerTags .chip { display: inline-flex; align-items: center; gap: 3px; padding-right: 3px; }
 .chipLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* chip 完整显示：slot 不收缩、chip 上限到容器宽——路径/普通值/重名都不丢信息，
-   放不下就整个 chip 换行，超过容器宽才 ellipsis（悬停 AppTooltip 兜底） */
-.triggerTags .slot { flex: 0 0 auto; }
+/* chip 完整显示：slot 不收缩但**必须钳到容器内容宽**（max-width 100% 相对 flex 容器）——
+   没有这条，长值 slot 无上限撑开直接溢出触发器；钳制链：slot ≤ 容器 → chip ≤ slot →
+   chipLabel ellipsis 收尾。放不下就整个 chip 换行，超容器宽才 ellipsis（悬停 AppTooltip 兜底） */
+.triggerTags .slot { flex: 0 0 auto; max-width: 100%; }
 .triggerTags .chip { max-width: 100%; }
 /* tags 模式清空钮在流内（多行 chip 时绝对定位钉位会压住 chip 内容）：
    抵掉 .clear 的绝对定位钉位三件套 */
