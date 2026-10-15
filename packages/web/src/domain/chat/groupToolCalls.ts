@@ -181,6 +181,27 @@ export function formatGroupTitle(
 }
 
 /**
+ * 组活跃时组头应展示的工具名（与 formatGroupActiveTitle 的动态标题同源选块）：
+ * 从组尾回溯第一个活跃块——是 tool-call 返回其工具名（组头 icon 换成该工具的图标，
+ * 与「正在 xxx」标题互证）；回溯先命中活跃 reasoning（思考中）或无活跃块返回 null
+ * （组头回退 Layers 图标——思考没有工具图标可借）。
+ */
+export function activeGroupToolName(
+  blocks: CollapsibleBlock[],
+  opts: { isActiveReasoning?: IsActiveReasoning } = {},
+): string | null {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const block = blocks[i]
+    if (block.kind === 'agent-reasoning') {
+      if (opts.isActiveReasoning?.(block)) return null
+      continue
+    }
+    if (isActiveTool(block)) return block.tool.name
+  }
+  return null
+}
+
+/**
  * 格式化折叠组标题（动态形态：有活跃块时展示「正在 xxx」/「等待确认」）。
  * 多个活跃块取时序最新的一个（数组序最后）；无活跃块返回 null（调用方回退汇总形态）。
  * 尾随目标内容拿不到时退回类别文案（如 Write 运行中尚未拿到文件目标 → 「正在写入文件」）。

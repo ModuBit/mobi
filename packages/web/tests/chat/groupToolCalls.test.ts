@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { groupCollapsibleToolCalls, formatGroupTitle, formatGroupActiveTitle, countFailedInGroup } from '@/domain/chat/groupToolCalls'
+import { groupCollapsibleToolCalls, formatGroupTitle, formatGroupActiveTitle, countFailedInGroup, activeGroupToolName } from '@/domain/chat/groupToolCalls'
 import zhLocale from '@/core/config/i18n/locales/zh.json'
 import type { AgentReasoningBlock, ToolCallBlock } from '@/domain/chat'
 import type { ChatBlock } from '@/domain/chat'
@@ -402,12 +402,12 @@ describe('formatGroupTitle', () => {
       makeToolCall({ id: 'r2', name: 'Read' }),
       makeToolCall({ id: 'r3', name: 'Read' }),
     ]
-    expect(formatGroupTitle(blocks, t)).toBe('运行了 2 个命令、读取了 3 个文件')
+    expect(formatGroupTitle(blocks, t)).toBe('运行 2 个命令、读取 3 个文件')
   })
 
   it('单一工具类别单数', () => {
     const blocks = [makeToolCall({ id: 'r1', name: 'Read' })]
-    expect(formatGroupTitle(blocks, t)).toBe('读取了 1 个文件')
+    expect(formatGroupTitle(blocks, t)).toBe('读取 1 个文件')
   })
 
   it('Glob 和 Grep 分开统计', () => {
@@ -415,7 +415,7 @@ describe('formatGroupTitle', () => {
       makeToolCall({ id: 'g1', name: 'Glob' }),
       makeToolCall({ id: 'g2', name: 'Grep' }),
     ]
-    expect(formatGroupTitle(blocks, t)).toBe('匹配了 1 个模式、搜索了 1 处内容')
+    expect(formatGroupTitle(blocks, t)).toBe('匹配 1 个模式、搜索 1 处内容')
   })
 
   it('全四类混合', () => {
@@ -427,7 +427,7 @@ describe('formatGroupTitle', () => {
       makeToolCall({ id: 'gr1', name: 'Grep' }),
       makeToolCall({ id: 'gr2', name: 'Grep' }),
     ]
-    expect(formatGroupTitle(blocks, t)).toBe('运行了 1 个命令、读取了 2 个文件、匹配了 1 个模式、搜索了 2 处内容')
+    expect(formatGroupTitle(blocks, t)).toBe('运行 1 个命令、读取 2 个文件、匹配 1 个模式、搜索 2 处内容')
   })
 
   it('空数组返回空字符串', () => {
@@ -440,7 +440,7 @@ describe('formatGroupTitle', () => {
       makeToolCall({ id: 'b2', name: 'Bash' }),
       makeToolCall({ id: 'b3', name: 'Bash' }),
     ]
-    expect(formatGroupTitle(blocks, t)).toBe('运行了 3 个命令')
+    expect(formatGroupTitle(blocks, t)).toBe('运行 3 个命令')
   })
 
   describe('reasoning 标题（thinking 总时长，非次数）', () => {
@@ -451,7 +451,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'b1', name: 'Bash' }),
         makeToolCall({ id: 'b2', name: 'Bash' }),
       ]
-      expect(formatGroupTitle(blocks, t)).toBe('思考 11.0 秒、运行了 2 个命令')
+      expect(formatGroupTitle(blocks, t)).toBe('思考 11.0 秒、运行 2 个命令')
     })
 
     it('全无 durationMs（local/历史）兜底为思考，无时长', () => {
@@ -462,7 +462,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'r2', name: 'Read' }),
         makeToolCall({ id: 'r3', name: 'Read' }),
       ]
-      expect(formatGroupTitle(blocks, t)).toBe('思考、读取了 3 个文件')
+      expect(formatGroupTitle(blocks, t)).toBe('思考、读取 3 个文件')
     })
 
     it('纯 reasoning 有时长', () => {
@@ -506,7 +506,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
         makeToolCall({ id: 'r3', name: 'Read', state: 'completed' }),
       ]
-      expect(formatGroupTitle(blocks, t)).toBe('读取了 3 个文件')
+      expect(formatGroupTitle(blocks, t)).toBe('读取 3 个文件')
     })
 
     it('全 error 时同样不带失败后缀', () => {
@@ -514,7 +514,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
         makeToolCall({ id: 'r2', name: 'Read', state: 'error' }),
       ]
-      expect(formatGroupTitle(blocks, t)).toBe('读取了 2 个文件')
+      expect(formatGroupTitle(blocks, t)).toBe('读取 2 个文件')
     })
 
     it('含 error 与 reasoning 混合：标题只含正常计数', () => {
@@ -523,7 +523,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
         makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
       ]
-      expect(formatGroupTitle(blocks, t)).toBe('思考 1.0 秒、读取了 2 个文件')
+      expect(formatGroupTitle(blocks, t)).toBe('思考 1.0 秒、读取 2 个文件')
     })
   })
 
@@ -534,7 +534,7 @@ describe('formatGroupTitle', () => {
         b.tool.input = { file_path: 'src/a.md' }
         return b
       })
-      expect(formatGroupTitle(blocks, t)).toBe('编辑了 1 个文件')
+      expect(formatGroupTitle(blocks, t)).toBe('编辑 1 个文件')
     })
 
     it('同一文件多次 write 与另一文件混合计 2 个文件', () => {
@@ -544,7 +544,7 @@ describe('formatGroupTitle', () => {
       w2.tool.input = { file_path: 'src/a.md' }
       const w3 = makeToolCall({ id: 'w3', name: 'Write' })
       w3.tool.input = { file_path: 'src/b.md' }
-      expect(formatGroupTitle([w1, w2, w3], t)).toBe('写入了 2 个文件')
+      expect(formatGroupTitle([w1, w2, w3], t)).toBe('写入 2 个文件')
     })
 
     it('文件目标的兼容字段跨调用按同一路径去重', () => {
@@ -554,7 +554,7 @@ describe('formatGroupTitle', () => {
       w2.tool.input = { path: 'src/a.md' }
       const w3 = makeToolCall({ id: 'w3', name: 'Write' })
       w3.tool.input = { file: 'src/a.md' }
-      expect(formatGroupTitle([w1, w2, w3], t)).toBe('写入了 1 个文件')
+      expect(formatGroupTitle([w1, w2, w3], t)).toBe('写入 1 个文件')
     })
 
     it('read 按文件路径去重，MultiEdit 与 Edit 合并到 edit 类别后再去重', () => {
@@ -566,7 +566,7 @@ describe('formatGroupTitle', () => {
       e1.tool.input = { file_path: 'src/a.md' }
       const e2 = makeToolCall({ id: 'e2', name: 'MultiEdit' })
       e2.tool.input = { file_path: 'src/a.md' }
-      expect(formatGroupTitle([r1, r2, e1, e2], t)).toBe('读取了 1 个文件、编辑了 1 个文件')
+      expect(formatGroupTitle([r1, r2, e1, e2], t)).toBe('读取 1 个文件、编辑 1 个文件')
     })
 
     it('拿不到目标内容的块各自计 1（无法合并）', () => {
@@ -574,7 +574,7 @@ describe('formatGroupTitle', () => {
       w1.tool.input = {}
       const w2 = makeToolCall({ id: 'w2', name: 'Write' })
       w2.tool.input = {}
-      expect(formatGroupTitle([w1, w2], t)).toBe('写入了 2 个文件')
+      expect(formatGroupTitle([w1, w2], t)).toBe('写入 2 个文件')
     })
 
     it('有路径与无路径混合：去重路径数 + 无路径块数', () => {
@@ -584,7 +584,7 @@ describe('formatGroupTitle', () => {
       w2.tool.input = { file_path: 'src/a.md' }
       const w3 = makeToolCall({ id: 'w3', name: 'Write' })
       w3.tool.input = {}
-      expect(formatGroupTitle([w1, w2, w3], t)).toBe('写入了 2 个文件')
+      expect(formatGroupTitle([w1, w2, w3], t)).toBe('写入 2 个文件')
     })
 
     it('shell/glob/grep/webfetch/websearch 保持调用次数计数（不参与文件去重）', () => {
@@ -596,8 +596,8 @@ describe('formatGroupTitle', () => {
       g1.tool.input = { pattern: '**/*.ts' }
       const g2 = makeToolCall({ id: 'g2', name: 'Glob' })
       g2.tool.input = { pattern: '**/*.ts' }
-      expect(formatGroupTitle([b1, b2], t)).toBe('运行了 2 个命令')
-      expect(formatGroupTitle([g1, g2], t)).toBe('匹配了 2 个模式')
+      expect(formatGroupTitle([b1, b2], t)).toBe('运行 2 个命令')
+      expect(formatGroupTitle([g1, g2], t)).toBe('匹配 2 个模式')
     })
 
     it('MCP 仍按调用次数计数', () => {
@@ -605,7 +605,7 @@ describe('formatGroupTitle', () => {
       m1.tool.input = { query: 'x' }
       const m2 = makeToolCall({ id: 'm2', name: 'mcp__github__search' })
       m2.tool.input = { query: 'y' }
-      expect(formatGroupTitle([m1, m2], t)).toBe('调用了 github 2 次')
+      expect(formatGroupTitle([m1, m2], t)).toBe('调用 github 2 次')
     })
   })
 
@@ -640,7 +640,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'm2', name: 'mcp__github__read' }),
         makeToolCall({ id: 'm3', name: 'mcp__github__write' }),
       ]
-      expect(formatGroupTitle(blocks, t)).toBe('调用了 github 3 次')
+      expect(formatGroupTitle(blocks, t)).toBe('调用 github 3 次')
     })
 
     it('多个 MCP server 分别计数', () => {
@@ -649,7 +649,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'm2', name: 'mcp__serverA__tool2' }),
         makeToolCall({ id: 'm3', name: 'mcp__serverB__tool1' }),
       ]
-      expect(formatGroupTitle(blocks, t)).toBe('调用了 serverA 2 次、调用了 serverB 1 次')
+      expect(formatGroupTitle(blocks, t)).toBe('调用 serverA 2 次、调用 serverB 1 次')
     })
 
     it('Plugin MCP server 显示名用冒号分隔', () => {
@@ -659,7 +659,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'm3', name: 'mcp__plugin_chrome-devtools-mcp_chrome-devtools__navigate' }),
         makeToolCall({ id: 'm4', name: 'mcp__plugin_chrome-devtools-mcp_chrome-devtools__type' }),
       ]
-      expect(formatGroupTitle(blocks, t)).toBe('调用了 plugin:chrome-devtools-mcp:chrome-devtools 4 次')
+      expect(formatGroupTitle(blocks, t)).toBe('调用 plugin:chrome-devtools-mcp:chrome-devtools 4 次')
     })
 
     it('MCP + 内置工具混合计数', () => {
@@ -668,7 +668,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'm1', name: 'mcp__github__search' }),
         makeToolCall({ id: 'm2', name: 'mcp__github__read' }),
       ]
-      expect(formatGroupTitle(blocks, t)).toBe('运行了 1 个命令、调用了 github 2 次')
+      expect(formatGroupTitle(blocks, t)).toBe('运行 1 个命令、调用 github 2 次')
     })
 
     it('非 MCP 工具不影响现有行为', () => {
@@ -677,7 +677,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'r2', name: 'Read' }),
         makeToolCall({ id: 'r3', name: 'Read' }),
       ]
-      expect(formatGroupTitle(blocks, t)).toBe('读取了 3 个文件')
+      expect(formatGroupTitle(blocks, t)).toBe('读取 3 个文件')
     })
   })
 
@@ -712,11 +712,11 @@ describe('formatGroupTitle', () => {
     })
 
     it('WebFetch 计数（单数/复数）', () => {
-      expect(formatGroupTitle([makeToolCall({ id: 'w1', name: 'WebFetch' })], t)).toBe('抓取了 1 个网页')
+      expect(formatGroupTitle([makeToolCall({ id: 'w1', name: 'WebFetch' })], t)).toBe('抓取 1 个网页')
       expect(formatGroupTitle([
         makeToolCall({ id: 'w1', name: 'WebFetch' }),
         makeToolCall({ id: 'w2', name: 'WebFetch' }),
-      ], t)).toBe('抓取了 2 个网页')
+      ], t)).toBe('抓取 2 个网页')
     })
 
     it('WebSearch 计数', () => {
@@ -731,16 +731,16 @@ describe('formatGroupTitle', () => {
       expect(formatGroupTitle([
         makeToolCall({ id: 'w1', name: 'Write' }),
         makeToolCall({ id: 'w2', name: 'Write' }),
-      ], t)).toBe('写入了 2 个文件')
+      ], t)).toBe('写入 2 个文件')
       expect(formatGroupTitle([
         makeToolCall({ id: 'e1', name: 'Edit' }),
         makeToolCall({ id: 'e2', name: 'MultiEdit' }),
-      ], t)).toBe('编辑了 2 个文件')
+      ], t)).toBe('编辑 2 个文件')
       // 混合：各自计数并列
       expect(formatGroupTitle([
         makeToolCall({ id: 'w1', name: 'Write' }),
         makeToolCall({ id: 'e1', name: 'Edit' }),
-      ], t)).toBe('写入了 1 个文件、编辑了 1 个文件')
+      ], t)).toBe('写入 1 个文件、编辑 1 个文件')
     })
 
     it('read + websearch + edit 混合按固定顺序拼接', () => {
@@ -749,7 +749,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'w1', name: 'WebSearch' }),
         makeToolCall({ id: 'e1', name: 'Edit' }),
       ]
-      expect(formatGroupTitle(blocks, t)).toBe('读取了 1 个文件、网页搜索 1 次、编辑了 1 个文件')
+      expect(formatGroupTitle(blocks, t)).toBe('读取 1 个文件、网页搜索 1 次、编辑 1 个文件')
     })
 
     it('全类别混合', () => {
@@ -762,7 +762,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'ws1', name: 'WebSearch' }),
         makeToolCall({ id: 'e1', name: 'Edit' }),
       ]
-      expect(formatGroupTitle(blocks, t)).toBe('运行了 1 个命令、读取了 1 个文件、匹配了 1 个模式、搜索了 1 处内容、抓取了 1 个网页、网页搜索 1 次、编辑了 1 个文件')
+      expect(formatGroupTitle(blocks, t)).toBe('运行 1 个命令、读取 1 个文件、匹配 1 个模式、搜索 1 处内容、抓取 1 个网页、网页搜索 1 次、编辑 1 个文件')
     })
   })
 })
@@ -895,5 +895,37 @@ describe('formatGroupActiveTitle', () => {
     const pending = makeToolCall({ id: 'e1', name: 'Edit', state: 'pending' })
     pending.tool.input = { file_path: 'src/a.ts' }
     expect(formatGroupActiveTitle([pending], { t })).toBe('等待确认 src/a.ts')
+  })
+})
+
+describe('activeGroupToolName（组活跃时头图标用工具名，与动态标题同源选块）', () => {
+  const notActive = () => false
+
+  it('运行中工具 → 返回其工具名', () => {
+    const done = makeToolCall({ id: 'b1', name: 'Read', state: 'completed' })
+    const running = makeToolCall({ id: 'b2', name: 'Bash', state: 'running' })
+    expect(activeGroupToolName([done, running], { isActiveReasoning: notActive })).toBe('Bash')
+  })
+
+  it('多活跃取时序最新（数组序最后）', () => {
+    const a = makeToolCall({ id: 'b1', name: 'Bash', state: 'running' })
+    const b = makeToolCall({ id: 'b2', name: 'Grep', state: 'running' })
+    expect(activeGroupToolName([a, b], { isActiveReasoning: notActive })).toBe('Grep')
+  })
+
+  it('pending（待审批）同算活跃', () => {
+    const pending = makeToolCall({ id: 'b1', name: 'Edit', state: 'pending' })
+    expect(activeGroupToolName([pending], { isActiveReasoning: notActive })).toBe('Edit')
+  })
+
+  it('回溯先命中活跃 reasoning（思考中）→ null（无工具图标可借，组头回退 Layers）', () => {
+    const running = makeToolCall({ id: 'b1', name: 'Bash', state: 'running' })
+    const thinking = makeReasoning({ id: 'rs1' })
+    expect(activeGroupToolName([running, thinking], { isActiveReasoning: () => true })).toBeNull()
+  })
+
+  it('无活跃块 → null', () => {
+    const done = makeToolCall({ id: 'b1', name: 'Read', state: 'completed' })
+    expect(activeGroupToolName([done], { isActiveReasoning: notActive })).toBeNull()
   })
 })

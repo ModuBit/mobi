@@ -24,24 +24,26 @@ import type { ChatBlockContext } from './index'
 import { ToolCallRenderer, TOOL_THINK_CONTENT_STYLES } from './toolCallBlock'
 import { ReasoningBlock } from './ReasoningBlock'
 import { STATUS_DOT_COLORS } from '@/core/utils/statusColor'
-import { StatusIcon } from '@/ui/base/display/toolIcons'
+import { StatusIcon, getToolIcon } from '@/ui/base/display/toolIcons'
 import {
   countFailedInGroup,
   formatGroupTitle,
   formatGroupActiveTitle,
+  activeGroupToolName,
   type IsActiveReasoning,
 } from '@/domain/chat/groupToolCalls'
 import { CrossfadeText } from '@/ui/base/motion/CrossfadeText'
 
 /**
- * 组头状态 icon：Layers 图标承载组状态——组活跃（运行/审批中）蓝呼吸，落定绿静态；
- * 含失败工具时右上角叠小红角标提示（失败提示的唯一载体，标题不带失败计数文案）。
- * 主体不染红（避免一个失败染红整组）。
+ * 组头状态 icon：组活跃（运行/审批中）蓝呼吸——有正在执行的工具时换用该工具的图标
+ * （与「正在 xxx」动态标题同源选块，见 activeGroupToolName），思考中或无活跃工具
+ * 回退 Layers；落定绿静态 Layers。含失败工具时右上角叠小红角标提示（失败提示的
+ * 唯一载体，标题不带失败计数文案）。主体不染红（避免一个失败染红整组）。
  */
-function ToolCallGroupIcon({ hasError, hasActive }: { hasError: boolean; hasActive: boolean }) {
+function ToolCallGroupIcon({ toolName, hasError, hasActive }: { toolName: string | null; hasError: boolean; hasActive: boolean }) {
   return (
     <StatusIcon state={hasActive ? 'running' : 'completed'} style={{ position: 'relative' }}>
-      <Layers size={14} />
+      {toolName ? getToolIcon(toolName) : <Layers size={14} />}
       {hasError && (
         <span
           style={{
@@ -86,12 +88,14 @@ export function ToolCallGroupRenderer({
   const activeTitle = formatGroupActiveTitle(blocks, { t, isActiveReasoning })
   const hasActive = activeTitle != null
   const title = activeTitle ?? formatGroupTitle(blocks, t)
+  // 组活跃时的头图标工具名（与动态标题同源；思考中为 null → Layers）
+  const activeToolName = hasActive ? activeGroupToolName(blocks, { isActiveReasoning }) : null
 
   return (
     <Think
       className="tool-call-think"
       styles={TOOL_THINK_CONTENT_STYLES}
-      icon={<ToolCallGroupIcon hasError={failedCount > 0} hasActive={hasActive} />}
+      icon={<ToolCallGroupIcon toolName={activeToolName} hasError={failedCount > 0} hasActive={hasActive} />}
       title={
         <span style={{ fontWeight: 500, fontSize: 13 }}>
           {/* 组活跃时标题微光扫过（强调「正在推进」），落定回汇总文案自动停止；
