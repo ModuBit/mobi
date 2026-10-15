@@ -114,7 +114,8 @@
 .listFace { position: absolute; top: var(--ms-h); left: 0; box-sizing: border-box; width: max(var(--ms-trigger-w), min(var(--ms-panel-w), calc(100vw - 2rem))); padding: 0 6px 6px; }
 .listFace::before { content: ""; position: absolute; top: 0; right: 14px; left: 14px; height: 1px; background: var(--border-subtle); }
 .listFace[inert] { pointer-events: none; }
-.scroll { max-height: var(--ms-list-max); overflow-y: auto; overscroll-behavior: contain; padding-top: 6px; scrollbar-width: thin; }
+.scroll { max-height: var(--ms-list-max); overflow-y: auto; overscroll-behavior: contain; padding-top: 6px; scrollbar-width: none; }
+.scroll::-webkit-scrollbar { display: none; }
 .options { position: relative; display: grid; gap: 2px; }
 .highlight { position: absolute; top: 0; right: 0; left: 0; border-radius: 16px; background: color-mix(in oklab, var(--foreground) 6.5%, transparent); pointer-events: none; }
 

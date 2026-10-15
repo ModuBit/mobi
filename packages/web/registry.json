@@ -58,6 +58,7 @@
                 "结构扁平化：上游 arc/lib/motion-tokens → src/ui/shadcn/motion-tokens.ts（既有上提位）",
                 "全部文件补版权头",
                 "morph-select.module.css：收起态 pill 去投影（--shadow-resting 移除，平面化由 ::after 描边兜底分隔）——参数条滚动渐隐带会截断 pill 阴影，静止/滚动中观感均像「突然剪断」；展开面板保留 floating 投影提供浮层高度感",
+                "morph-select.module.css：.scroll 隐藏滚动条（scrollbar-width: none + ::-webkit-scrollbar display:none，原 thin）——morph 面板是浮层形态，高亮滑动与滚动位置已给足方向感，滚动条纯属视觉噪音",
                 "morph-select.module.css 首个 .root 块：设计变量→mobi token 映射（--surface/--surface-raised/--surface-muted/--text-muted/字号/间距/时长/缓动；foundation.css 不全局引入，dropdown-menu 先例；--control-height-md 取 36px 与 dropdown-menu 控件档同阶）",
                 "morph-select.tsx：direction 扩为 \"up\" | \"down\" | \"auto\"（默认 auto=按打开时刻视口空间自动决策，open 前同步定锚不中途翻面；显式值强制）——root data-direction，up 档 shape/lid 锚底、listFace 挂 lid 上方、分隔线翻底、listFace 入场位移与 valueVariants 数值滚动 y 向镜像（sign 工厂）",
                 "morph-select.tsx：视口钳制——展开内容恒落在视窗内：水平方向 shape x 位移钳回 [12, vw-12-w]（align 只参与理想锚位决策，shape 恒 left:0），垂直方向 --ms-list-max 按所选侧剩余空间收缩（下限 160，超出列表内部滚动）",
