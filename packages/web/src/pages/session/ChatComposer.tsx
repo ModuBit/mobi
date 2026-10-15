@@ -59,6 +59,7 @@ import { MentionDropdown } from '@/features/composer/MentionDropdown'
 import { SlashCommandDropdown } from '@/features/composer/SlashCommandDropdown'
 import { CommandHintBar } from '@/features/composer/CommandHintBar'
 import { ResponsiveActionBar, type ActionItem } from '@/features/composer/ResponsiveActionBar'
+import { ToolStrip } from '@/features/composer/ToolStrip'
 import { ActivateCover } from '@/ui/shared/ActivateCover'
 import { buildPermissionModeHoverOptions } from '@/features/composer/permissionModeOption'
 import { CompactHoverSelect } from '@/features/composer/CompactHoverSelect'
@@ -941,77 +942,75 @@ export function ChatComposer(props: ChatComposerProps) {
                                 可见按钮用下方自定义 SubmitButton（无 SVG <title>，不会 hover 弹原生 tooltip；
                                 且不挂 Sender disabled 上下文，请求权限期间仍可点）。display:none 不影响 effect 执行。 */}
                             <div style={{ display: 'none' }} aria-hidden>{oriNode}</div>
-                            <ResponsiveActionBar
-                                items={[
-                                // 附件面板：文件/拍照（移动端）/画板聚合入口（Codex 风格富面板）
-                                {
-                                    key: 'attach',
-                                    label: t('composer.attach'),
-                                    render: () => (
-                                        <AttachPanel
-                                            disabled={controlsDisabled || showLocalModeCover || hasPendingPermission}
-                                            onAttach={handleAttach}
-                                            onSketch={() => handleOpenSketch()}
-                                        />
-                                    ),
-                                },
-                                // permissionmode
-                                ...(showSettingsButton ? [{
-                                    key: 'permission',
-                                    render: () => (
-                                        <CompactHoverSelect
-                                            label={t('composer.permissionMode')}
-                                            iconOnly
-                                            value={permissionMode ?? 'default'}
-                                            onChange={v => onPermissionModeChange?.(v as PermissionMode)}
-                                            disabled={controlsDisabled || showLocalModeCover}
-                                            options={permissionModeIconOptions}
-                                        />
-                                    ),
-                                }] : []),
-                                // model + effort
-                                ...(onModelChange ? [{
-                                    key: 'model',
-                                    render: () => (
-                                        <CompactHoverSelect
-                                            label={t('composer.model')}
-                                            prefix={<EffortDot level={effort ?? 'medium'} />}
-                                            value={model ?? 'auto'}
-                                            onChange={v => handleModelSelect(v as string)}
-                                            disabled={controlsDisabled || showLocalModeCover}
-                                            options={modelOptionsWithEffort}
-                                        />
-                                    ),
-                                }] : []),
-                                // output style 切换器（/clear 语义，运行中 / clear 进行中禁用）；排模型之后
-                                {
-                                    key: 'outputStyle',
-                                    render: () => (
-                                        <OutputStyleSwitch
-                                            sessionId={sessionId}
-                                            outputStyle={outputStyle}
-                                            availableStyles={availableOutputStyles}
-                                            running={running}
-                                            clearInProgress={clearInProgress}
-                                            disabled={controlsDisabled || showLocalModeCover}
-                                        />
-                                    ),
-                                },
-                                // 上下文水位圆环（仅 PC；移动端挂 ChatPane header，避免挤占底部空间）
-                                ...(!isMobile && contextUsage ? [{
-                                    key: 'contextRing',
-                                    render: () => <ContextRing usage={contextUsage} />,
-                                }] : []),
-                            ]}
-                            suffix={showLocalModeCover ? null : (
-                                <SubmitButton
-                                    state={submitButtonState}
-                                    onSubmit={() => handleSubmit(text)}
-                                    onAbort={onAbort}
+                            {/* 参数条：+（附件）与 send 两端固定，中间可横向拖动滚动
+                               （ResponsiveActionBar 的溢出收纳在参数条上退役，见 ToolStrip 组件注释） */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                {/* 附件面板：文件/拍照（移动端）/画板聚合入口（Codex 风格富面板）——左端固定锚 */}
+                                <AttachPanel
+                                    disabled={controlsDisabled || showLocalModeCover || hasPendingPermission}
+                                    onAttach={handleAttach}
+                                    onSketch={() => handleOpenSketch()}
                                 />
-                            )}
-                            gap={4}
-                            />
+                                <ToolStrip
+                                    style={{ flex: 1, minWidth: 0 }}
+                                    items={[
+                                    // permissionmode
+                                    ...(showSettingsButton ? [{
+                                        key: 'permission',
+                                        render: () => (
+                                            <CompactHoverSelect
+                                                label={t('composer.permissionMode')}
+                                                iconOnly
+                                                value={permissionMode ?? 'default'}
+                                                onChange={v => onPermissionModeChange?.(v as PermissionMode)}
+                                                disabled={controlsDisabled || showLocalModeCover}
+                                                options={permissionModeIconOptions}
+                                            />
+                                        ),
+                                    }] : []),
+                                    // model + effort
+                                    ...(onModelChange ? [{
+                                        key: 'model',
+                                        render: () => (
+                                            <CompactHoverSelect
+                                                label={t('composer.model')}
+                                                prefix={<EffortDot level={effort ?? 'medium'} />}
+                                                value={model ?? 'auto'}
+                                                onChange={v => handleModelSelect(v as string)}
+                                                disabled={controlsDisabled || showLocalModeCover}
+                                                options={modelOptionsWithEffort}
+                                            />
+                                        ),
+                                    }] : []),
+                                    // output style 切换器（/clear 语义，运行中 / clear 进行中禁用）；排模型之后
+                                    {
+                                        key: 'outputStyle',
+                                        render: () => (
+                                            <OutputStyleSwitch
+                                                sessionId={sessionId}
+                                                outputStyle={outputStyle}
+                                                availableStyles={availableOutputStyles}
+                                                running={running}
+                                                clearInProgress={clearInProgress}
+                                                disabled={controlsDisabled || showLocalModeCover}
+                                            />
+                                        ),
+                                    },
+                                    // 上下文水位圆环（仅 PC；移动端挂 ChatPane header，避免挤占底部空间）
+                                    ...(!isMobile && contextUsage ? [{
+                                        key: 'contextRing',
+                                        render: () => <ContextRing usage={contextUsage} />,
+                                    }] : []),
+                                ]}
+                                />
+                                {showLocalModeCover ? null : (
+                                    <SubmitButton
+                                        state={submitButtonState}
+                                        onSubmit={() => handleSubmit(text)}
+                                        onAbort={onAbort}
+                                    />
+                                )}
+                            </div>
                         </>
                     )}
                 />

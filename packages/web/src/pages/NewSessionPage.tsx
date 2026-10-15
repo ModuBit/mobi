@@ -41,6 +41,7 @@ import { SlashCommandDropdown } from '@/features/composer/SlashCommandDropdown'
 import { CommandHintBar } from '@/features/composer/CommandHintBar'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { ResponsiveActionBar, type ActionItem } from '@/features/composer/ResponsiveActionBar'
+import { ToolStrip } from '@/features/composer/ToolStrip'
 import { EnvironmentBar, extractWorkspaceName } from '@/features/composer/EnvironmentBar'
 import { useMobiApi } from '@/core/data/api/client'
 import type { Workspace } from '@/core/data/api/types'
@@ -903,21 +904,24 @@ export function NewSessionPage() {
                         }}
                         suffix={false}
                         footer={(_oriNode, { components: { SendButton } }) => (
-                            <ResponsiveActionBar
-                                items={footerItems}
-                                gap={4}
-                                suffix={
-                                    hasContent ? (
-                                        <SendButton disabled={!canSubmit} />
-                                    ) : (
-                                        <SendButton
-                                            disabled={!canSubmit}
-                                            icon={<PlusOutlined />}
-                                            onClick={() => { if (canSubmit) handleSubmit() }}
-                                        />
-                                    )
-                                }
-                            />
+                            /* 参数条：+（附件）与 send 两端固定，中间可横向拖动滚动（见 ToolStrip 组件注释） */
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                {/* 附件面板（+）——左端固定锚，其余项进可滚动条 */}
+                                {footerItems.find(item => item.key === 'attach')?.render()}
+                                <ToolStrip
+                                    style={{ flex: 1, minWidth: 0 }}
+                                    items={footerItems.filter(item => item.key !== 'attach')}
+                                />
+                                {hasContent ? (
+                                    <SendButton disabled={!canSubmit} />
+                                ) : (
+                                    <SendButton
+                                        disabled={!canSubmit}
+                                        icon={<PlusOutlined />}
+                                        onClick={() => { if (canSubmit) handleSubmit() }}
+                                    />
+                                )}
+                            </div>
                         )}
                     />
 
