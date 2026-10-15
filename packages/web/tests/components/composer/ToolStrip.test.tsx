@@ -201,26 +201,35 @@ describe('展开期间撤视觉裁剪（交互契约）', () => {
         expect(root).not.toHaveAttribute('data-panel')
     })
 
-    it('展开时逐项裁到可视窗口（窗外项裁掉、窗内项与展开项不裁）；收起后清除', async () => {
+    it('展开时逐项窗口修饰：越界项裁到窗口 + 按条渐隐曲线投影 mask；展开项两者都不加', async () => {
         const { root, spans } = strip([
             { key: 'a', render: () => <button role="combobox" aria-expanded="false">A</button> },
             { key: 'b', render: () => <button>B</button> },
         ])
         const triggerA = screen.getByText('A')
-        // 视口 200，A 在 [0,200] 窗内、B 在 [200,400] 窗外
+        // 项 B 跨窗口右缘（视口 200）：[150, 250] → 项内 50px 起是窗口外
+        Object.defineProperty(spans[1], 'offsetLeft', { configurable: true, value: 150 })
+        Object.defineProperty(spans[1], 'offsetWidth', { configurable: true, value: 100 })
         await act(async () => {
             triggerA.setAttribute('aria-expanded', 'true')
             await Promise.resolve()
         })
         await act(async () => { resizeCallbacks.forEach((cb) => cb([], undefined as unknown as ResizeObserver)) })
-        expect(spans[0].style.clipPath).toBe('')          // 展开项：面板要溢出可见
-        expect(spans[1].style.clipPath).toBe('inset(0px 200.0px 0px 0.0px)') // 窗外项：右缘裁到可视窗口
+
+        expect(spans[0].style.clipPath).toBe('')          // 展开项：面板要越出条边界
+        expect(spans[0].style.maskImage).toBe('')          // 展开项：渐隐也不能加（会裁面板）
+        expect(spans[1].style.clipPath).toBe('inset(0px 50.0px 0px 0.0px)') // 越界项：右缘裁到窗口
+        // 跨边界项带完整渐隐段：窗口内 alpha 1 → 窗口外 alpha 0
+        expect(spans[1].style.maskImage).toContain('linear-gradient')
+        expect(spans[1].style.maskImage).toMatch(/rgb\(0, 0, 0\) 0\.0px/)       // 窗口内 alpha 1
+        expect(spans[1].style.maskImage).toMatch(/rgba\(0, 0, 0, 0\) 50\.0px/)  // 窗口外 alpha 0
 
         await act(async () => {
             triggerA.setAttribute('aria-expanded', 'false')
             await new Promise((resolve) => setTimeout(resolve, 260))
         })
         expect(spans[1].style.clipPath).toBe('')
+        expect(spans[1].style.maskImage).toBe('')
         expect(root).not.toHaveAttribute('data-panel')
     })
 })

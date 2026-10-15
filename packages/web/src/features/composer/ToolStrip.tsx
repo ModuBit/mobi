@@ -68,7 +68,8 @@ const Root = styled.div<{ 'data-fade'?: 'none' | 'start' | 'end' | 'both' }>`
   touch-action: pan-y;
   /* 视觉裁剪：内容溢出不外泄。展开期间撤掉（data-panel=open，纯绘制属性、零布局影响），
      收起后由 JS 延时恢复以播完 morph 退场动画（见 UNCLIP_HOLDOVER_MS 注释）。
-     撤裁剪的同时逐项裁到可视窗口（clipItems），否则滚出条外的项会一起漏出来 */
+     撤裁剪的同时逐项做「窗口修饰」（decorateItems：裁到可视窗口 + 逐项渐隐），
+     否则滚出条外的项会一起漏出来、而条级渐隐又跟着丢了 */
   clip-path: inset(0);
   &[data-panel='open'] {
     clip-path: inset(-9999px);
@@ -123,6 +124,41 @@ function computeFade(offset: number, max: number): FadeState {
   return 'both'
 }
 
+/**
+ * 条级渐隐的 alpha 曲线（条坐标 x，视口宽 view，渐隐带 band）：
+ * 带内 0 → 0.45(40%) → 1 的缓坡，带外为 1（窗口内）或 0（窗口外）。
+ * 与条自身 mask-image 的停点同形——逐项渐隐靠它投影。
+ */
+function fadeAlphaAt(x: number, view: number, band: number): number {
+  if (x <= 0 || x >= view) return 0
+  const ramp = (r: number) => r < 0.4 ? 0.45 * (r / 0.4) : 0.45 + 0.55 * ((r - 0.4) / 0.6)
+  if (x < band) return ramp(x / band)
+  if (x > view - band) return ramp((view - x) / band)
+  return 1
+}
+
+/**
+ * 把条的渐隐曲线投影到单个项自身的坐标（项在条内的区间 [left, left+width]）。
+ * 展开期间条级的 mask 必须撤（否则面板被裁），渐隐改由每个「未展开项」自己表达。
+ * 返回空串表示该项区间内 alpha 恒为 1（无需 mask）。
+ */
+function itemFadeMask(left: number, width: number, view: number, band: number): string {
+  const keyPoints = [0, band * 0.4, band, view - band, view - band * 0.4, view]
+  const stops = new Map<number, number>()
+  for (const x of keyPoints) {
+    const local = Math.round(Math.min(Math.max(x - left, 0), width) * 10) / 10
+    stops.set(local, fadeAlphaAt(Math.min(Math.max(x, 0), view), view, band))
+  }
+  // 项两端也取一次，保证覆盖整个项宽
+  stops.set(0, fadeAlphaAt(Math.min(Math.max(left, 0), view), view, band))
+  stops.set(width, fadeAlphaAt(Math.min(Math.max(left + width, 0), view), view, band))
+
+  const ordered = [...stops.entries()].sort((a, b) => a[0] - b[0])
+  if (ordered.every(([, alpha]) => alpha >= 0.999)) return ''
+  const parts = ordered.map(([pos, alpha]) => `rgba(0, 0, 0, ${alpha.toFixed(3)}) ${pos.toFixed(1)}px`)
+  return `linear-gradient(to right, ${parts.join(', ')})`
+}
+
 export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const rowRef = useRef<HTMLDivElement>(null)
@@ -133,29 +169,32 @@ export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) 
   const unclippedRef = useRef(false)
 
   /**
-   * 展开期间逐项裁到条的可视窗口（条自身的裁剪已撤，面板才能溢出可见）。
-   * 被展开的那项跳过——它的面板正是要溢出的。判据用布局盒（offsetLeft/offsetWidth），
-   * 不用 getBoundingClientRect：面板是绝对定位的子孙，会让 rect 远大于项本身。
+   * 展开期间逐项「窗口修饰」：裁到条的可视窗口（防止滚出条外的项漏出来）+
+   * 按条的渐隐曲线做逐项 mask（条级 mask 已撤，渐隐不能跟着丢）。
+   * 被展开的那项整体跳过——它的面板正是要越出条边界的。
+   * 判据用布局盒（offsetLeft/offsetWidth），不用 getBoundingClientRect：
+   * 面板是绝对定位的子孙，会让 rect 远大于项本身。
    */
-  const clipItems = useCallback((active: boolean) => {
+  const decorateItems = useCallback((active: boolean) => {
     const root = rootRef.current
     const row = rowRef.current
     if (!root || !row) return
     const view = root.clientWidth
     for (const el of Array.from(row.children) as HTMLElement[]) {
-      if (!active || el.querySelector('[role="combobox"][aria-expanded="true"]')) {
+      const isExpanded = el.querySelector('[role="combobox"][aria-expanded="true"]') !== null
+      if (!active || isExpanded) {
         el.style.clipPath = ''
+        el.style.maskImage = ''
         continue
       }
       const left = el.offsetLeft + offsetRef.current
       const right = left + el.offsetWidth
-      if (left >= -0.5 && right <= view + 0.5) {
-        el.style.clipPath = ''
-        continue
-      }
-      const insetLeft = Math.max(0, -left)
-      const insetRight = Math.max(0, right - view)
-      el.style.clipPath = `inset(0px ${insetRight.toFixed(1)}px 0px ${insetLeft.toFixed(1)}px)`
+      el.style.clipPath = (left >= -0.5 && right <= view + 0.5)
+        ? ''
+        : `inset(0px ${Math.max(0, right - view).toFixed(1)}px 0px ${Math.max(0, -left).toFixed(1)}px)`
+      el.style.maskImage = (left < FADE_WIDTH || right > view - FADE_WIDTH)
+        ? itemFadeMask(left, el.offsetWidth, view, FADE_WIDTH)
+        : ''
     }
   }, [])
 
@@ -170,8 +209,8 @@ export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) 
     row.style.transition = animate ? `transform ${SNAP_MS}ms ${SNAP_EASE}` : 'none'
     row.style.transform = `translateX(${clamped}px)`
     setFade(computeFade(clamped, max))
-    if (unclippedRef.current) clipItems(true)
-  }, [clipItems])
+    if (unclippedRef.current) decorateItems(true)
+  }, [decorateItems])
 
   /** 就近吸附：候选为两端与每个项的起点，松手后静止态不切半个 pill */
   const snapTarget = useCallback((current: number) => {
@@ -251,7 +290,7 @@ export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) 
   }, [])
 
   // items 增删（权限模式等条件渲染）或展开态切换时重算逐项裁剪
-  useEffect(() => { clipItems(unclipped) }, [unclipped, clipItems, items])
+  useEffect(() => { decorateItems(unclipped) }, [unclipped, decorateItems, items])
 
   const drag = useRef({ active: false, moved: false, startX: 0, startOffset: 0, pointerId: -1 })
 
