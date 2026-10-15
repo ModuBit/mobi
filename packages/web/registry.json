@@ -60,6 +60,7 @@
                 "morph-select.tsx：direction 扩为 \"up\" | \"down\" | \"auto\"（默认 auto=按打开时刻视口空间自动决策，open 前同步定锚不中途翻面；显式值强制）——root data-direction，up 档 shape/lid 锚底、listFace 挂 lid 上方、分隔线翻底、listFace 入场位移与 valueVariants 数值滚动 y 向镜像（sign 工厂）",
                 "morph-select.tsx：视口钳制——展开内容恒落在视窗内：水平方向 shape x 位移钳回 [12, vw-12-w]（align 只参与理想锚位决策，shape 恒 left:0），垂直方向 --ms-list-max 按所选侧剩余空间收缩（下限 160，超出列表内部滚动）",
                 "morph-select.tsx：新增 prefix?: ReactNode（lid 内 value 前静态缀，button flex 行占位；measure 同构；搜索态隐藏）、style?: CSSProperties（root 透传）、MorphSelectOption 新增 trailing?: ReactNode（行尾嵌套交互入口，组件内 stopPropagation 防误选）",
+                "morph-select.tsx：动效调速（mobi）——上游观感偏缓，spring 视觉时长整体提速约 30%（GROW .4→.28 / WIDTH .42→.3 / GLIDE .28→.2 / FLY .3→.22 / SHRINK .34→.24 / NARROW .42→.3），定长 opacity/filter 过渡同步收短并去掉入场 delay",
                 "morph-select.tsx：MorphSelectOption 新增 description?: string 双行槽（label 下 12px 弱化行，.optionBody 包裹，参与搜索匹配）",
                 "morph-select.tsx：新增 iconOnly?: boolean——lid 只渲染 icon+chevron（收起图标 pill），可访问名仍走 label（srOnly）；列表项恒渲染完整 label"
             ]
