@@ -27,9 +27,10 @@
  * tracked / adopted）——「认领」不改落位目录（落位根由 registry 模型决定），只改这个字段。
  * 规范见 docs/conventions/web.md「组件选型」章。
  *
- * 2026-10-15 起首批四件（bottom-sheet / copy-button / dropdown-menu / morph-select）
- * 转全量自管：迁落 src/ui/base/interactive/、脱离本表（账本定格于迁出 commit）；
- * 本守卫继续约束 ui/shadcn/ 落位根与登记表的双向一致（当前为空集）。
+ * 2026-10-15 起自管件（首批 bottom-sheet / copy-button / dropdown-menu / morph-select，
+ * 同日又迁 select / combobox / multi-select）迁落 src/ui/base/interactive/、脱离本表
+ * （账本定格于各自迁出 commit）；本守卫继续约束 ui/shadcn/ 落位根与登记表的双向一致
+ * （当前为空集）。
  */
 
 import { describe, it, expect } from 'vitest'

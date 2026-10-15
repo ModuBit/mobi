@@ -15,11 +15,13 @@
  */
 
 import { useMemo } from 'react'
-import { Button, Form, Input, InputNumber, Select, Switch, theme as antTheme } from 'antd'
+import { Button, Form, Input, InputNumber, Switch, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { PermissionAnswers, SDKUIHints } from '@mobi/shared'
 import type { ElicitationFieldSchema, ElicitationRequestedSchema } from '@/domain/tool/elicitation'
 import { AwaitingConfirmBadge } from '@/ui/base/display/AwaitingConfirmBadge'
+// uiarc 自管件（antd Select 迁移）：enum 字段选择
+import { Select } from '@/ui/base/interactive/select/Select'
 
 const { useToken } = antTheme
 
@@ -57,20 +59,45 @@ function requiredRule(field: ElicitationFieldSchema): { required: true; type?: '
     return { required: true }
 }
 
+/** enum 原始值 ↔ Radix 字符串值的编解码（Radix Select 只收 string；enum 可能是 number/boolean） */
+function encodeEnumValue(value: string | number | boolean): string {
+    return typeof value === 'string' ? value : JSON.stringify(value)
+}
+
+/**
+ * enum 字段控件：桥接 antd Form.Item 注入的 value/onChange 与 uiarc Select 的
+ * value/onValueChange（string）；清空（allowClear 发 ""）归一为 undefined（可选字段留空不回传）
+ */
+function EnumSelect({ field, value, onChange, disabled }: {
+    field: ElicitationFieldSchema
+    value?: string | number | boolean
+    onChange?: (value: string | number | boolean | undefined) => void
+    disabled?: boolean
+}) {
+    const enumValues = field.enum ?? []
+    return (
+        <div style={{ width: '100%' }}>
+            <Select
+                value={value == null ? "" : encodeEnumValue(value)}
+                onValueChange={(next) => {
+                    onChange?.(next === "" ? undefined : enumValues.find((v) => encodeEnumValue(v) === next))
+                }}
+                options={enumValues.map((v) => ({ value: encodeEnumValue(v), label: String(v) }))}
+                allowClear
+                disabled={disabled}
+            />
+        </div>
+    )
+}
+
 /**
  * 按 requestedSchema 单字段生成表单控件（spec D4：string→Input、enum→Select、
  * number/integer→InputNumber、boolean→Switch；array/object 等不支持类型渲染禁用 input——
  * cli 端无法转型，避免用户填值后被静默 decline）
  */
-function renderFieldControl(field: ElicitationFieldSchema) {
+function renderFieldControl(field: ElicitationFieldSchema, disabled: boolean) {
     if (field.enum && field.enum.length > 0) {
-        return (
-            <Select
-                options={field.enum.map((value) => ({ value, label: typeof value === 'string' ? value : String(value) }))}
-                allowClear
-                style={{ width: '100%' }}
-            />
-        )
+        return <EnumSelect field={field} disabled={disabled} />
     }
     switch (field.type) {
         case 'number':
@@ -171,7 +198,7 @@ export function ElicitationFormCard({
                         initialValue={initialBoolean}
                         rules={required ? [requiredRule(field)] : undefined}
                     >
-                        {renderFieldControl(field)}
+                        {renderFieldControl(field, disabled)}
                     </Form.Item>
                     )
                 })}

@@ -99,7 +99,10 @@ src/
 | bottom-sheet | arc（uiarc） | 2026-10-15 | 移动端底部弹出面板的唯一实现（`BottomSheet`）。Radix Dialog 底座 + motion；关闭「先通知后动画」且可否决、手势返回哨兵自接、像素档位 detents、z 按层号注入。消费方约束见 [packages/web/CLAUDE.md「移动端底部 sheet 规范」](../../packages/web/CLAUDE.md)。**例外**：无需交互关闭的纯提示框仍用原生 antd `Drawer` + `MOBILE_SHEET_DRAWER_CLASS` |
 | copy-button | arc（uiarc） | 2026-10-15 | 首个迁移组件；零 headless 后端（motion+lucide 自足）；消费入口 `chat/CopyButton`（iconOnly 适配壳） |
 | dropdown-menu | arc（uiarc） | 2026-10-15 | 全站菜单的唯一实现（antd `Dropdown` 不再是菜单选项）；Radix 后端；items 是递归树（子菜单 / 自绘面板 content）。**两条消费方约束**（组件侧不兜底）：触发器必须常驻布局、且不能落在 `role="tab"` 的 label 内 |
-| morph-select | arc（uiarc） | 2026-10-15 | composer 参数区的「工具栏 pill 选择器」（权限模式/模型/output style/agent；语义域裁决：**通用表单 Select 仍默认 antd**）。零 Radix 后端（motion+lucide 自足）；trigger 弹簧长成列表、typeahead、>8 项 searchable auto。消费入口 `features/composer/CompactHoverSelect` 壳。**消费方约束**：面板内联生长（非 portal），任何祖先的 `overflow: hidden` 都会裁掉展开面板 |
+| morph-select | arc（uiarc） | 2026-10-15 | composer 参数区的「工具栏 pill 选择器」（权限模式/模型/output style/agent；面板内联生长，与 portal 系 select/combobox 分工：**参数条 pill 场景归它，通用表单选择归下表 select/combobox**）。零 Radix 后端（motion+lucide 自足）；trigger 弹簧长成列表、typeahead、>8 项 searchable auto。消费入口 `features/composer/CompactHoverSelect` 壳。**消费方约束**：面板内联生长（非 portal），任何祖先的 `overflow: hidden` 都会裁掉展开面板 |
+| select | arc（uiarc） | 2026-10-15 | 通用单选（Radix Select 底座；value 方向感滚动动画）。本地化：label 可选 / i18n 占位 / `allowClear`（清除钮，清空发 `""` 哨兵）/ option `title` 悬停提示 / 泛型字面量回调 / `ariaLabel` / 受控清空判定。首批消费：MemorySection 档位与注入模式、RouteCard 路由、ElicitationFormCard enum 字段 |
+| combobox | arc（uiarc） | 2026-10-15 | 可搜索单选（input+listbox 自足，零 headless 后端；AutoHeight 弹簧跟高）。本地化：label 可选 / i18n / aria-label 透传（`aria-label` 走 inputProps）。首批消费：MemorySection「添加规则」workspace picker（`value` 恒 `""` 的恒占位用法）。**边界**：自由文本输入不归它（仍是 antd AutoComplete 的场景） |
+| multi-select | arc（uiarc） | 2026-10-15 | chip 多选（motion 自足；chip 弹簧开合 + 溢出 +N 计数）。已装**待消费**——antd `mode="tags"` 是自由输入不归它，语义匹配的多选站点出现时迁 |
 
 ### 单组件迁移流程
 

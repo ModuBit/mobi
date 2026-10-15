@@ -1,0 +1,57 @@
+/* uiarc combobox 样式（registry 快照，自管件）。本地修改（不登记 registry.json）：
+   ①首个 .field 块：设计变量→mobi token 映射（foundation.css 不全局引入，morph-select 先例）
+   ②删除上游遗留的 .clear:focus-visible --focus-outline-offset 死变量（无全局规则消费）
+   ③.control:focus-within 描边由 --accent 改 --border-strong（与 select trigger 焦点一致） */
+
+/* 变量映射：全局 cssVars.ts 已供给 --foreground/--border/--popover/--ring 等；此处只补组件专有
+   与 arc foundation 名（surface 系/字号/间距/时长/缓动/焦点环），值取 mobi token 单源 */
+.field {
+  --surface: var(--card);
+  --surface-raised: var(--popover);
+  --surface-muted: var(--accent);
+  --text-muted: var(--muted-foreground);
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --space-2: 8px;
+  --space-3: 12px;
+  /* 控件高取 dropdown-menu 同档（--control-height-sm 36px 的 md 对应档） */
+  --control-height-md: 36px;
+  --duration-instant: var(--mobi-duration-fast);
+  --duration-fast: var(--mobi-duration-fast);
+  --duration-standard: var(--mobi-duration-mid);
+  --duration-spring: var(--mobi-duration-mid);
+  --ease-standard: var(--mobi-ease-in-out);
+  --ease-spring: var(--mobi-ease-in-out);
+  --ease-enter: var(--mobi-ease-out);
+  /* 焦点环走 ring 色 30% 透明（arc foundation 的 --focus-ring 语义） */
+  --focus-ring: color-mix(in oklab, var(--ring) 30%, transparent);
+}
+
+.field { position: relative; display: grid; gap: var(--space-2); min-width: 0; }
+.field label { font-size: var(--text-sm); font-weight: 500; }
+.control { position: relative; z-index: 2; display: flex; min-height: var(--control-height-md); align-items: center; gap: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-control); padding: 0 var(--space-3); background: var(--surface); color: var(--foreground); transition: border-color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard); }
+@media (hover: hover) and (pointer: fine) { .control:hover:not(.disabled) { border-color: var(--border-strong); background: var(--surface-muted); } }
+.control:focus-within { border-color: var(--border-strong); box-shadow: 0 0 0 3px var(--focus-ring); }
+.control.open { border-color: var(--border-strong); background: var(--surface-muted); }
+.control.disabled { opacity: .5; cursor: not-allowed; }
+.searchIcon { flex: 0 0 auto; color: var(--text-muted); }
+.control input { width: 100%; min-width: 0; border: 0; outline: 0; padding: 0; background: transparent; color: var(--foreground); font: inherit; font-size: var(--text-sm); }
+.control input:focus-visible { outline: none; }
+.control input::placeholder { color: var(--text-muted); }
+.chevron { flex: 0 0 auto; color: var(--text-muted); transition: transform var(--duration-spring) var(--ease-spring); }
+.open .chevron { transform: rotate(180deg); }
+.clear { display: grid; width: 22px; height: 22px; flex: 0 0 auto; place-items: center; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text-muted); cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
+@media (hover: hover) and (pointer: fine) { .clear:hover { background: var(--surface-muted); color: var(--foreground); } }
+.hint { color: var(--text-muted); font-size: var(--text-xs); }
+.popover { position: absolute; z-index: 80; top: calc(100% + 8px); right: 0; left: 0; overflow: hidden; transform-origin: top center; border: 1px solid var(--border); border-radius: var(--radius-panel); padding: 5px; background: var(--surface-raised); color: var(--foreground); box-shadow: var(--shadow-floating); will-change: transform, opacity; }
+.autoHeight { overflow: hidden; }
+.listbox { max-height: min(300px, 40vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.listbox::-webkit-scrollbar { display: none; }
+/* 方向键高频移动高亮，所以背景几乎即时变化。 */
+.option { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: var(--space-3); border-radius: calc(var(--radius-panel) - 5px); padding: 0 12px; color: var(--foreground); font-size: var(--text-sm); cursor: pointer; outline: none; user-select: none; transition: background-color 80ms var(--ease-standard), color 80ms var(--ease-standard); }
+.option > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.option[data-active="true"] { background: var(--surface-muted); }
+.option[data-disabled="true"] { opacity: .42; cursor: not-allowed; }
+.check { flex: 0 0 auto; color: var(--foreground); }
+.empty { padding: var(--space-3); color: var(--text-muted); font-size: var(--text-sm); }
+@media (prefers-reduced-motion: reduce) { .control, .chevron, .clear, .option { transition: none; } }

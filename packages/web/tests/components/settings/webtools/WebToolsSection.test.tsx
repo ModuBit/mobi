@@ -304,12 +304,10 @@ describe('WebToolsSection', () => {
         await waitFor(() => expect(screen.getByText('web_search')).toBeTruthy())
         // 两行均不锁定：值非空的单 provider 行也可清除（旧版锁定会让路由永远设不上/撤不掉）
         for (const label of ['搜索', '抓取']) {
-            expect(screen.getByRole('combobox', { name: label }).closest('.ant-select')).not.toHaveClass(
-                'ant-select-disabled',
-            )
+            expect(screen.getByRole('combobox', { name: label })).not.toBeDisabled()
         }
-        // allowClear 生效：有值的行渲染清除按钮
-        expect(screen.getByRole('combobox', { name: '抓取' }).closest('.ant-select')).toBeTruthy()
+        // allowClear 生效：有值的行渲染清除按钮（测试 i18n 桩缺 key 时直通 key 名）
+        expect(screen.getByRole('button', { name: 'common.clearSelection' })).toBeTruthy()
     })
 
     it('路由清除（null）：set payload 不含被清除的路由字段（区别于「未提及回填现值」）', async () => {

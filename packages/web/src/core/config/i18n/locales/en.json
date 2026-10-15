@@ -22,6 +22,8 @@
         "sheetExpanded": "Sheet expanded",
         "sheetCollapsed": "Sheet collapsed",
         "select": "Select",
+        "searchOrSelect": "Search or select…",
+        "clearSelection": "Clear selection",
         "search": "Search",
         "searchField": "Search {{name}}",
         "clearSearch": "Clear search",

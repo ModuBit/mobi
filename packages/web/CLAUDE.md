@@ -4,7 +4,7 @@
 
 ## 组件选型
 
-**默认 antd**（含新代码）。shadcn 系组件仅限「归属登记表」内已迁移组件——机器事实源 `registry.json`（`tests/conventions/componentRegistry.test.ts` 守卫一致性），表与迁移流程见 [docs/conventions/web.md「组件选型」章](../../docs/conventions/web.md#组件选型)。要点：官方组件默认 Base UI（components.json 已锁）；同一组件禁止多实现（替换迁移先删旧再登记）；registry 组件不预装、迁移须真机验收后登记入表；registry 组件统一落 `src/ui/shadcn/<组件名>/`（shadcn 是体系名非来源名，来源只记 registry.json）；antx + 流式渲染管线为永久禁区；registry 后端包（@radix-ui/@base-ui 等）只允许被 `src/ui/shadcn/` 消费（lint 已强制）。**自管件**（深度本地化后脱离 registry 的组件，如 bottom-sheet/copy-button/dropdown-menu/morph-select）落 `src/ui/base/interactive/<组件名>/`，后端包禁区同样覆盖 `src/ui/base/**`
+**默认 antd**（含新代码）。shadcn 系组件仅限「归属登记表」内已迁移组件——机器事实源 `registry.json`（`tests/conventions/componentRegistry.test.ts` 守卫一致性），表与迁移流程见 [docs/conventions/web.md「组件选型」章](../../docs/conventions/web.md#组件选型)。要点：官方组件默认 Base UI（components.json 已锁）；同一组件禁止多实现（替换迁移先删旧再登记）；registry 组件不预装、迁移须真机验收后登记入表；registry 组件统一落 `src/ui/shadcn/<组件名>/`（shadcn 是体系名非来源名，来源只记 registry.json）；antx + 流式渲染管线为永久禁区；registry 后端包（@radix-ui/@base-ui 等）只允许被 `src/ui/shadcn/` 消费（lint 已强制）。**自管件**（深度本地化后脱离 registry 的组件，如 bottom-sheet/copy-button/dropdown-menu/morph-select/select/combobox/multi-select）落 `src/ui/base/interactive/<组件名>/`，后端包禁区同样覆盖 `src/ui/base/**`。表单选择器分工：通用单选/可搜索选择归自管 `Select`/`Combobox`，chip 多选归 `MultiSelect`；antd `Select` 仅存于自由输入（tags/AutoComplete）与深度定制站点（EnvironmentBar）
 
 ## 编码规范
 

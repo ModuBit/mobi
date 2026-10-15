@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 
-import { Select, theme as antTheme } from 'antd'
+import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { Search, FileText } from 'lucide-react'
 import styled from '@emotion/styled'
 import type { RedactedWebToolsConfig, WebToolProviderId } from '@mobi/shared'
 import { SettingsCard } from '@/features/settings/blocks/shared'
+// uiarc 自管件（antd Select 迁移）：allowClear 清空发 ""，归一为 null 回传
+import { Select } from '@/ui/base/interactive/select/Select'
 
 const { useToken } = antTheme
 
@@ -122,20 +124,20 @@ export function RouteCard({ config, enabledIds, saving, onChange }: RouteCardPro
                                 </RowIcon>
                                 <RowLabel $token={token}>{t(labelKey)}</RowLabel>
                                 <ToolPill $token={token}>{tool}</ToolPill>
-                                <Select<WebToolProviderId>
-                                    size="small"
-                                    style={{ marginLeft: 'auto', minWidth: 140 }}
-                                    aria-label={t(labelKey)}
-                                    value={value}
-                                    options={options}
-                                    disabled={saving}
-                                    allowClear
-                                    placeholder={t('settings.webTools.routePlaceholder')}
-                                    // antd 清除时 onChange 收到 undefined → 归一为 null（显式清除，区别于「未提及回填现值」）
-                                    onChange={(next) => {
-                                        void onChange(key === 'search' ? { searchProviderId: next ?? null } : { fetchProviderId: next ?? null })
-                                    }}
-                                />
+                                <div style={{ marginLeft: 'auto', minWidth: 140 }}>
+                                    <Select
+                                        ariaLabel={t(labelKey)}
+                                        value={value ?? ""}
+                                        options={options}
+                                        disabled={saving}
+                                        allowClear
+                                        placeholder={t('settings.webTools.routePlaceholder')}
+                                        // uiarc 清空发 "" → 归一为 null（显式清除，区别于「未提及回填现值」）
+                                        onValueChange={(next) => {
+                                            void onChange(key === 'search' ? { searchProviderId: next || null } : { fetchProviderId: next || null })
+                                        }}
+                                    />
+                                </div>
                             </Row>
                         )
                     })}

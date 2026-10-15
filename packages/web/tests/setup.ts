@@ -114,3 +114,11 @@ Object.defineProperty(window, 'ResizeObserver', {
     configurable: true,
     value: ResizeObserverStub,
 })
+
+// jsdom 不实现 Pointer Capture API，Radix Select 在条目指针事件里查询
+// hasPointerCapture（primitive 的 handleEvent 链）——最小桩化让选择路径可走
+Element.prototype.hasPointerCapture = () => false
+Element.prototype.setPointerCapture = () => {}
+Element.prototype.releasePointerCapture = () => {}
+// jsdom 不实现 scrollIntoView，Radix Select 打开时要滚动到当前选中项
+Element.prototype.scrollIntoView = () => {}

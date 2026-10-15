@@ -200,8 +200,8 @@ describe('MemorySection hindsight 开启态', () => {
         renderSection()
         await waitFor(() => expect(screen.getByLabelText('API 地址')).toBeInTheDocument())
 
-        // 添加 workspace 规则（默认 normal）
-        fireEvent.mouseDown(screen.getByLabelText('选择工作区添加规则'))
+        // 添加 workspace 规则（默认 normal）——uiarc Combobox 聚焦即展开
+        fireEvent.focus(screen.getByLabelText('选择工作区添加规则'))
         await waitFor(() => expect(screen.getByText('学习')).toBeInTheDocument())
         fireEvent.click(screen.getByText('学习'))
         await waitFor(() => expect(screen.getByLabelText('共享组名')).toBeInTheDocument())
@@ -209,8 +209,8 @@ describe('MemorySection hindsight 开启态', () => {
         // 填共享组名
         fireEvent.change(screen.getByLabelText('共享组名'), { target: { value: 'learn' } })
 
-        // 切到 isolated → 共享组名消失、隔离库名出现
-        fireEvent.mouseDown(screen.getByLabelText('记忆隔离'))
+        // 切到 isolated → 共享组名消失、隔离库名出现（uiarc Select：pointerDown(mouse) 展开、click 选中）
+        fireEvent.pointerDown(screen.getByLabelText('记忆隔离'), { button: 0, pointerType: 'mouse' })
         await waitFor(() => expect(screen.getByText('完全隔离')).toBeInTheDocument())
         fireEvent.click(screen.getByText('完全隔离'))
         await waitFor(() => expect(screen.queryByLabelText('共享组名')).not.toBeInTheDocument())
@@ -241,8 +241,8 @@ describe('MemorySection hindsight 开启态', () => {
         expect(payload.autoInject).toBe('none')
         expect(payload.pageRefreshEveryTurns).toBe(0)
 
-        // 显式开档：每轮合成 + 间隔 5
-        fireEvent.mouseDown(screen.getByLabelText(i18nMap['settings.memory.injectModeLabel']))
+        // 显式开档：每轮合成 + 间隔 5（uiarc Select：pointerDown(mouse) 展开、click 选中）
+        fireEvent.pointerDown(screen.getByLabelText(i18nMap['settings.memory.injectModeLabel']), { button: 0, pointerType: 'mouse' })
         await waitFor(() => expect(screen.getByText(i18nMap['settings.memory.injectReflect'])).toBeInTheDocument())
         fireEvent.click(screen.getByText(i18nMap['settings.memory.injectReflect']))
         fireEvent.change(screen.getByLabelText(i18nMap['settings.memory.pageRefreshLabel']), { target: { value: '5' } })
