@@ -1214,3 +1214,13 @@ HINDSIGHT_API_RERANKER_ALIBABA_API_KEY=sk-你的DashScope-key
 
 **待验证**：云 rerank 的端到端延迟 / 计费 / 与本地版排序质量对比（真机跑同一批 query 对比 top-k 命中）。
 
+
+## 119. snapshot 帧与落库广播的源头定序收口（2026-10-15 提出）
+
+**背景**：web 端已修「turn 尾孤立工具块」（71ea0bc1）——full 落库广播先入窗口、终态全量 snapshot 帧后到时，落库行被打回 snapshot=true 坠到 turn-result 之后。web 侧 `resolveMessageCache` 已加两道迟到帧闸门（替换侧 + append 侧），正常流不受影响。
+
+**遗留**：竞态本身在 session/daemon 侧未收口——`StreamSnapshotSender` 的 500ms interval flush 与 `markFullDelivered` 后的落库广播之间无全局定序，陈旧全量帧仍会被发出（web 现在丢弃，纯属防御）。若未来 web 端防线被重构掉（如窗口换 store），ghost 行会回归。
+
+**改法（可选）**：daemon `snapshotSync` 在收到某 message 的 full 落库（message-received 发出）后，丢弃同 `sdkUuid` 的后续全量 snapshot 帧（增量帧已有 snapshotRev 链断保护，全量帧没有）。或 session 侧 `flush()` 增加 `fullDelivered` 守卫（`forceFullFlush` 已有同款注释防线，interval flush 路径没有）。
+
+**验证**：修后在 E2E 人为注入「full 先到 + 全量帧后到」时序，确认两端均无 ghost 行。
