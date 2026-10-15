@@ -206,6 +206,19 @@ describe('uiarc MultiSelect mode="tags"（chip 内联输入自由值）', () => 
         expect(screen.getByText('/ws/mobi-long-name')).toBeInTheDocument()
     })
 
+    it('角标清空钮存在且点击只清空（hover 交叉淡替是 CSS 态，jsdom 断言 DOM）', () => {
+        const onChange = vi.fn<(v: string[]) => void>()
+        render(<TagsHarness onChange={onChange} />)
+
+        const input = screen.getByRole('combobox', { name: '排除路径' })
+        fireEvent.change(input, { target: { value: '/a' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+
+        const clearAll = screen.getByRole('button', { name: 'common.clearSelection' })
+        fireEvent.click(clearAll)
+        expect(onChange).toHaveBeenLastCalledWith([])
+    })
+
     it('tags 模式 chip 全显不折叠（maxVisible 缺省全显）', () => {
         const onChange = vi.fn<(v: string[]) => void>()
         render(<TagsHarness onChange={onChange} />)

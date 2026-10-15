@@ -50,11 +50,25 @@
 .trigger[aria-expanded="true"] .chevron { transform: rotate(180deg); }
 /* tags 模式（本地修改 ⑥）：chip 内联输入自由值——trigger 换 wrap 流，chips 与输入框
    同行换行、全部展示不折叠；点空白聚焦输入框（cursor: text 提示） */
-.triggerTags { flex-wrap: wrap; row-gap: 2px; padding-top: 3px; padding-bottom: 3px; cursor: text; }
+.triggerTags { flex-wrap: wrap; row-gap: 2px; padding: 3px 28px 3px 12px; cursor: text; }
 .tagsInput { flex: 1 1 80px; min-width: 80px; height: 26px; border: 0; outline: 0; padding: 0; background: transparent; color: var(--foreground); font: inherit; font-size: var(--text-sm); }
 .tagsInput::placeholder { color: var(--text-muted); }
-/* chevron 钉行尾；hasClear 的 26px 让位规则不适用（清除钮绝对定位不占流） */
-.triggerTags .chevron { margin-left: auto; }
+/* 角标（B' 方案）：chevron 常驻右上，hover 触发器同位交叉淡替为清空 ×——
+   高频 hover 切换只走 ≤150ms opacity（× 附加轻微 scale 长入）；
+   触摸端无 hover 恒显 ×（清空比展开指示有用）。让位 = 角标自身 28px */
+.corner { position: absolute; top: 10px; right: 9px; display: inline-block; width: 16px; height: 16px; }
+.cornerChevron { position: absolute; inset: 0; color: var(--text-muted); opacity: 1; transition: opacity 140ms var(--ease-standard); }
+.cornerClear { position: absolute; inset: 0; display: grid; place-items: center; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-muted); cursor: pointer; opacity: 0; transform: scale(.85); pointer-events: none; transition: opacity 140ms var(--ease-standard), transform 160ms cubic-bezier(0.2, 0, 0, 1), color var(--duration-fast) var(--ease-standard); }
+@media (hover: hover) and (pointer: fine) {
+  .triggerTags:hover .cornerChevron { opacity: 0; }
+  .triggerTags:hover .cornerClear:not(:disabled) { opacity: 1; transform: none; pointer-events: auto; }
+  .cornerClear:not(:disabled):hover { color: var(--foreground); }
+}
+@media (hover: none) {
+  .cornerChevron { opacity: 0; }
+  .cornerClear { opacity: 1; transform: none; pointer-events: auto; }
+}
+.cornerClear:disabled { cursor: not-allowed; }
 .description { font-size: var(--text-xs); }
 /* 方向键高频移动高亮，所以几乎即时变化。选中由对勾表达而非字重，label 不回流。
    高亮背景由 gliding highlight 色块弹簧跟随当前项（共享组件），不再逐项瞬时刷背景 */
@@ -68,4 +82,4 @@
 .option[data-active="true"] { color: var(--foreground); }
 .option:disabled { opacity: .42; cursor: not-allowed; }
 .check { flex: 0 0 auto; }
-@media (prefers-reduced-motion: reduce) { .trigger, .chevron, .option, .clear, .chip, .more, .highlight { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .trigger, .chevron, .option, .clear, .chip, .more, .highlight { transition: none; } .cornerChevron, .cornerClear { transition: none; } .cornerClear { transform: none; } }

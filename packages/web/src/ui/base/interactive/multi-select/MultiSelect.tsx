@@ -250,9 +250,21 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
           onChange={(event) => { setQuery(event.target.value); setOpen(true); setActiveIndex(-1); }}
           onKeyDown={onTagsKeyDown}
         />
-        {/* 清空钮在流内（多行 chip 时绝对定位的钉位会压住 chip 内容） */}
-        <AnimatePresence initial={false}>{clearBtn}</AnimatePresence>
-        <ChevronDown className={styles.chevron} size={16} aria-hidden="true" />
+        {/* 角标：chevron 常驻右上，hover 触发器同位交叉淡替为清空 ×（B' 方案，
+            2026-10-15 与用户 mock 定稿）；触摸端无 hover 恒显 ×。× 点击只清空，
+            不聚焦/不展开。default 单行模式仍走触发器外的 ClearButton 钉位 */}
+        <span className={styles.corner} aria-hidden={disabled || undefined}>
+          <button
+            type="button"
+            className={styles.cornerClear}
+            aria-label={t("common.clearSelection")}
+            disabled={disabled}
+            onClick={(event) => { event.stopPropagation(); clear(); }}
+          >
+            <X size={13} strokeWidth={2} aria-hidden="true" />
+          </button>
+          <ChevronDown className={styles.cornerChevron} size={16} strokeWidth={1.75} aria-hidden="true" />
+        </span>
       </div> : <button type="button" className={`${styles.trigger} ${selected.length ? styles.hasClear : ""}`} disabled={disabled} aria-label={ariaLabel} aria-labelledby={label && !ariaLabel ? `${labelId} ${valueId}` : undefined} aria-haspopup="listbox" aria-expanded={open} aria-controls={`${id}-listbox`} onClick={() => setOpen((current) => !current)} onKeyDown={onKeyDown}>
         <span id={valueId} className={styles.srOnly}>{selected.length ? selected.map(labelFor).join(", ") : placeholderText}</span>
         <span className={styles.value} aria-hidden="true">
