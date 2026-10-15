@@ -32,6 +32,7 @@ import { useTranslation } from "react-i18next";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
 import { GlidingHighlight } from "@/ui/base/motion/GlidingHighlight";
 import { ClearButton } from "@/ui/base/motion/ClearButton";
+import { AppTooltip } from "@/ui/base/interactive/AppTooltip";
 import styles from "./multi-select.module.css";
 
 export interface MultiSelectOption {
@@ -199,13 +200,19 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
 
   // chips 溢出折叠 + 弹簧开合动效（default/tags 两种触发器共用）；tags 模式 chip 带单删 ×
   const removeItem = (item: string) => { if (!disabled) update(selected.filter((v) => v !== item)); };
+  const clearBtn = selected.length > 0 && !disabled && (
+    <ClearButton reduce={reduce} ariaLabel={t("common.clearSelection")} className={styles.clear} onClick={clear} />
+  );
   const chipsNode = (
     <AnimatePresence initial={false}>
       {visible.map((item) => <motion.span key={`chip-${item.value}`} className={styles.slot} variants={reduce ? slotFade : slot} initial="hidden" animate="shown" exit="gone"><motion.span className={styles.chip} variants={reduce ? chipStill : chip}>{tags ? (
         <>
-          {/* label 收进独立截断盒：× 常驻流内不被长值挤出裁掉；title 悬停全值——
-              chip 完整显示（容器内自适应），只有超过容器宽才截断兜底 */}
-          <span className={styles.chipLabel} title={item.label}>{item.label}</span>
+          {/* label 收进独立截断盒：× 常驻流内不被长值挤出裁掉；AppTooltip 悬停全值——
+              chip 完整显示（容器内自适应），只有超过容器宽才截断兜底。
+              原生 title 在无边框内联文本上不可靠且不可样式化，走全站统一 AppTooltip */}
+          <AppTooltip title={item.label} mouseEnterDelay={0.3}>
+            <span className={styles.chipLabel}>{item.label}</span>
+          </AppTooltip>
           <button
             type="button"
             className={styles.chipX}
@@ -224,7 +231,7 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
   return <div ref={rootRef} className={[styles.field, className].filter(Boolean).join(" ")} style={style}>
     {label && <span id={labelId} className={styles.label}>{label}</span>}
     <div className={styles.control}>
-      {tags ? <div className={`${styles.trigger} ${styles.triggerTags} ${selected.length ? styles.hasClear : ""}`} onClick={() => inputRef.current?.focus()}>
+      {tags ? <div className={styles.triggerTags} onClick={() => inputRef.current?.focus()}>
         {chipsNode}
         <input
           ref={inputRef}
@@ -243,6 +250,8 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
           onChange={(event) => { setQuery(event.target.value); setOpen(true); setActiveIndex(-1); }}
           onKeyDown={onTagsKeyDown}
         />
+        {/* 清空钮在流内（多行 chip 时绝对定位的钉位会压住 chip 内容） */}
+        <AnimatePresence initial={false}>{clearBtn}</AnimatePresence>
         <ChevronDown className={styles.chevron} size={16} aria-hidden="true" />
       </div> : <button type="button" className={`${styles.trigger} ${selected.length ? styles.hasClear : ""}`} disabled={disabled} aria-label={ariaLabel} aria-labelledby={label && !ariaLabel ? `${labelId} ${valueId}` : undefined} aria-haspopup="listbox" aria-expanded={open} aria-controls={`${id}-listbox`} onClick={() => setOpen((current) => !current)} onKeyDown={onKeyDown}>
         <span id={valueId} className={styles.srOnly}>{selected.length ? selected.map(labelFor).join(", ") : placeholderText}</span>
@@ -252,7 +261,7 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
         </span>
         <ChevronDown className={styles.chevron} size={16} aria-hidden="true" />
       </button>}
-      <AnimatePresence initial={false}>{selected.length > 0 && !disabled && <ClearButton reduce={reduce} ariaLabel={t("common.clearSelection")} className={styles.clear} onClick={clear} />}</AnimatePresence>
+      {!tags && <AnimatePresence initial={false}>{clearBtn}</AnimatePresence>}
       <AnimatePresence initial={false}>
         {open && <motion.div id={`${id}-listbox`} className={[styles.menu, dropUp ? styles.dropUp : ""].filter(Boolean).join(" ")} role="listbox" aria-label={label} aria-multiselectable="true"
           initial={reduce ? { opacity: 0 } : { opacity: 0, y: dropUp ? 6 : -6, scale: .97 }}

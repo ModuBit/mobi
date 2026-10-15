@@ -29,9 +29,12 @@
 .triggerTags .chip { display: inline-flex; align-items: center; gap: 3px; padding-right: 3px; }
 .chipLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* chip 完整显示：slot 不收缩、chip 上限到容器宽——路径/普通值/重名都不丢信息，
-   放不下就整个 chip 换行，超过容器宽才 ellipsis（悬停 title 兜底） */
+   放不下就整个 chip 换行，超过容器宽才 ellipsis（悬停 AppTooltip 兜底） */
 .triggerTags .slot { flex: 0 0 auto; }
 .triggerTags .chip { max-width: 100%; }
+/* tags 模式清空钮在流内（多行 chip 时绝对定位钉位会压住 chip 内容）：
+   抵掉 .clear 的绝对定位钉位三件套 */
+.triggerTags .clear { position: static; transform: none; margin: 0 2px 0 0; align-self: center; }
 .chipX { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 2px; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-muted); cursor: pointer; transition: color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard); }
 @media (hover: hover) and (pointer: fine) { .chipX:hover:not(:disabled) { background: color-mix(in oklab, var(--foreground) 10%, transparent); color: var(--foreground); } }
 .chipX:disabled { opacity: .45; cursor: not-allowed; }

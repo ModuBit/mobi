@@ -190,7 +190,7 @@ describe('uiarc MultiSelect mode="tags"（chip 内联输入自由值）', () => 
         expect(screen.queryByRole('button', { name: 'common.removeItem' })).toBeNull()
     })
 
-    it('chip title 悬停承载完整值；chip 完整显示不做短化', () => {
+    it('chip 完整显示 label（AppTooltip 悬停全值兜底）', () => {
         const onChange = vi.fn<(v: string[]) => void>()
         render(
             <MultiSelect
@@ -202,9 +202,8 @@ describe('uiarc MultiSelect mode="tags"（chip 内联输入自由值）', () => 
             />,
         )
 
-        // chip 显示完整 label，title 同值（超容器宽截断时的悬停兜底）
-        const chip = screen.getByTitle('/ws/mobi-long-name')
-        expect(chip).toHaveTextContent('/ws/mobi-long-name')
+        // chip 文本为完整 label；AppTooltip（全站统一 tooltip）承载悬停全值
+        expect(screen.getByText('/ws/mobi-long-name')).toBeInTheDocument()
     })
 
     it('tags 模式 chip 全显不折叠（maxVisible 缺省全显）', () => {
