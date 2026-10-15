@@ -225,8 +225,9 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
         width: '100%',
       }}
     >
-      {/* 左侧：可见项 + 更多按钮 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap, flexWrap: 'nowrap', overflow: 'hidden' }}>
+      {/* 左侧：可见项 + 更多按钮。不设 overflow hidden：折叠测量在 useLayoutEffect（paint 前
+          收口，不会有溢出帧），而裁剪会切掉 morph-select 内联向上生长的展开面板 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap, flexWrap: 'nowrap' }}>
         {visibleItems.map((item) => (
           <div key={item.key}>{item.render()}</div>
         ))}
