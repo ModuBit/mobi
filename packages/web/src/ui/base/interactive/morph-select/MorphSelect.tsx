@@ -147,13 +147,13 @@ function matches(option: MorphSelectOption, needle: string) {
 }
 
 /**
- * Lid values roll with the list: a later option rises from below, an earlier one drops from above.
- * 面板在 lid 上方（direction="up"）时整组 y 向镜像（sign = -1），滚动方向观感与几何一致。
+ * Lid 值切换：去方向性滚动（2026-10-15 用户定稿），blur 柔焦保留；
+ * fly 路径位移来自列表项实测坐标（无滚动/掉落感），飞入收尾方向不变。
  */
 const valueVariants = (sign: number): Variants => ({
-  enter: (change: Change) => change.fly ? { opacity: 1, x: change.fly.x, y: change.fly.y, filter: "blur(0px)" } : { opacity: 0, x: 0, y: `${change.dir * .5 * sign}em`, filter: `blur(${blur.soft}px)` },
+  enter: (change: Change) => change.fly ? { opacity: 1, x: change.fly.x, y: change.fly.y, filter: "blur(0px)" } : { opacity: 0, filter: `blur(${blur.soft}px)` },
   rest: { opacity: 1, x: 0, y: 0, filter: "blur(0px)" },
-  exit: (change: Change) => ({ opacity: 0, x: 0, y: change.fly ? `${-.3 * sign}em` : `${change.dir * -.45 * sign}em`, filter: `blur(${blur.subtle}px)`, transition: { duration: .08, ease: standard } }),
+  exit: (change: Change) => ({ opacity: 0, y: change.fly ? `${-.3 * sign}em` : 0, filter: `blur(${blur.subtle}px)`, transition: { duration: .08, ease: standard } }),
 });
 const valueFade: Variants = { enter: { opacity: 0 }, rest: { opacity: 1, x: 0, y: 0, filter: "blur(0px)" }, exit: { opacity: 0, transition: { duration: .08 } } };
 

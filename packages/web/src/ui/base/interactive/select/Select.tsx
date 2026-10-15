@@ -64,11 +64,11 @@ export interface SelectProps<T extends string = string> extends Omit<ComponentPr
   options: { value: T; label: string; disabled?: boolean; /** 悬停提示（antd 迁移站点的能力保留） */ title?: string }[];
 }
 
-/** 展示值朝列表方向滚动：选更靠后的项从下方升起，更靠前的项从上方落下。 */
+/** 展示值切换：去方向性滚动（2026-10-15 用户定稿），blur 柔焦保留。 */
 const valueRoll: Variants = {
-  enter: (direction: number) => ({ opacity: 0, y: `${direction * 0.35}em`, filter: `blur(${motionTokens.blur.soft}px)` }),
+  enter: () => ({ opacity: 0, filter: `blur(${motionTokens.blur.soft}px)` }),
   center: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: motionTokens.duration.standard, ease: [...motionTokens.ease.enter] } },
-  exit: (direction: number) => ({ opacity: 0, y: `${direction * -0.3}em`, filter: `blur(${motionTokens.blur.subtle}px)`, transition: { duration: motionTokens.duration.fast, ease: [...motionTokens.ease.standard] } }),
+  exit: () => ({ opacity: 0, filter: `blur(${motionTokens.blur.subtle}px)`, transition: { duration: motionTokens.duration.fast, ease: [...motionTokens.ease.standard] } }),
 };
 /** reduced motion 保留短交叉淡入；静止态与 valueRoll 一致，保证服务端与客户端标记一致。 */
 const valueFade: Variants = { enter: { opacity: 0 }, center: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: motionTokens.duration.instant } }, exit: { opacity: 0, transition: { duration: motionTokens.duration.instant } } };
