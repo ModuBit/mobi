@@ -22,8 +22,8 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { FolderClosed, FolderOpen, Plus } from 'lucide-react'
 import { useWorkspaceSessions } from '@/core/data/hooks/queries/useWorkspaceSessions'
-import { DropdownMenu } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
-import type { DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
+import { DropdownMenu } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
+import type { DropdownItem } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
 import type { Session, Workspace } from '@/core/data/api/types'
 import {
     GroupContainer, GroupHeader, HeaderActionButton, FolderIcon, GroupName,

@@ -18,7 +18,7 @@
  * 消息流复制按钮适配壳（uiarc copy-button iconOnly 形态）：
  * - 可访问名走 i18n key（label/aria-label）；
  * - 复制成功后 aria-live status 区报「label: 已复制」，2s 后复位；
- * - clipboard 失败时报失败文案（use-copy-feedback 降级路径）。
+ * - clipboard 失败时报失败文案（useCopyFeedback 降级路径）。
  */
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'

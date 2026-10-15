@@ -24,7 +24,7 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { DropdownMenu } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
+import { DropdownMenu } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
 
 // jsdom 无 ResizeObserver（组件内 TriggerLabel 依赖）
 beforeAll(() => {

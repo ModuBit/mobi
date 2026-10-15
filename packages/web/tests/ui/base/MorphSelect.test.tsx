@@ -25,7 +25,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, cleanup, fireEvent, screen } from '@testing-library/react'
 import { useState } from 'react'
-import { MorphSelect, type MorphSelectItem } from '@/ui/shadcn/morph-select/morph-select'
+import { MorphSelect, type MorphSelectItem } from '@/ui/base/interactive/morph-select/MorphSelect'
 
 /** jsdom 无 matchMedia：reduced 恒 false；animate 打桩成立即达（尺寸 spring 不必真跑） */
 vi.mock('motion/react', async (importOriginal) => {

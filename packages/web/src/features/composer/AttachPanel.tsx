@@ -33,7 +33,7 @@ import { PlusOutlined } from '@ant-design/icons'
 import { Camera, Paperclip, PenLine, Video } from 'lucide-react'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
-import { DropdownMenu, type DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
+import { DropdownMenu, type DropdownItem } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
 export interface AttachPanelProps {

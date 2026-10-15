@@ -17,7 +17,7 @@
 import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
-import type { DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
+import type { DropdownItem } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
 import { SessionListContainer, EmptyRow } from './sidebarWorkspaces.styles'
 import { SessionRow } from './SessionRow'
 import { SessionSkeletonRows } from './SessionSkeletonRows'

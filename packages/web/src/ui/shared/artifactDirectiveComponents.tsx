@@ -34,7 +34,7 @@ import { ChevronDown, File, FileText, Globe, Image as ImageIcon, Link2, Music, V
 import { buildActionUri } from '@mobi/shared'
 import { copyTextToClipboard } from '@/core/utils/clipboard'
 import { useActionDispatcher } from '@/ui/shared/ActionLink'
-import { DropdownMenu, type DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
+import { DropdownMenu, type DropdownItem } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
 import { useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { basename } from '@/core/utils/path'
 import { buildReadFileUrl, type FileRefContext } from '@/core/utils/fileUrl'

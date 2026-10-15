@@ -29,7 +29,7 @@ import {
     RotateCw,
 } from 'lucide-react'
 import styled from '@emotion/styled'
-import { DropdownMenu, type DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
+import { DropdownMenu, type DropdownItem } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { useThemeLocaleToggle } from '@/ui/base/theme/useThemeLocaleToggle'

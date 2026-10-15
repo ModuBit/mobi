@@ -29,7 +29,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { useState } from 'react'
 import type { AnimationPlaybackControls, MotionValue } from 'motion/react'
-import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
+import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
 import { sheetClass } from '@/ui/base/layout/sheetSurface'
 import { __resetHistoryGuardForTest } from '@/core/lib/drawerHistoryGuard'
 import { __resetBodyScrollLockForTest } from '@/ui/base/interactive/bodyScrollLock'
@@ -845,7 +845,7 @@ describe('BottomSheet', () => {
         // （先例：tests/components/StatusDot.test.tsx）。
         // 两个文件：sheet 自己的定位/状态规则，与共享壳（面 + 头部 + 内容区滚动链）——
         // 后者的不变量对画板载体同样成立，故断言也要落在壳上，别只盯 sheet
-        const css = readFileSync(join(process.cwd(), 'src/ui/shadcn/bottom-sheet/bottom-sheet.module.css'), 'utf8')
+        const css = readFileSync(join(process.cwd(), 'src/ui/base/interactive/bottom-sheet/bottom-sheet.module.css'), 'utf8')
         const shell = readFileSync(join(process.cwd(), 'src/ui/base/layout/sheetSurface.module.css'), 'utf8')
         // 高度：内容自适应（height:auto）+ 上限 = 调用方档位（--sheet-max-height，默认 85dvh）
         expect(css).toMatch(/\.sheet \{[^}]*height: auto;/)

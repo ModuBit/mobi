@@ -24,7 +24,7 @@ import { theme } from 'antd'
 import type { GlobalToken } from 'antd/es/theme/interface'
 import { useTranslation } from 'react-i18next'
 import { ansiToHtml } from '@/core/lib/ansiUtils'
-import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
+import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
 
 // 用于 pre 标签的通用样式
 const preStyle = (token: GlobalToken, extra?: CSSProperties): CSSProperties => ({

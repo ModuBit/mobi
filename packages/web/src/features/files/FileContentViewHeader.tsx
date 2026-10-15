@@ -16,7 +16,7 @@
 
 import { Fragment, useLayoutEffect, useRef, useState } from 'react'
 import { Button, Popover, theme as antTheme } from 'antd'
-import { DropdownMenu, type DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
+import { DropdownMenu, type DropdownItem } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
 import { Ellipsis, Folders } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'

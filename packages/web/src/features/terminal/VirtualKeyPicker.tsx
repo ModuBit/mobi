@@ -24,7 +24,7 @@ import {
     buildKeySequence,
     type Modifier,
 } from './keySequence'
-import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
+import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
 import type { VirtualKey } from '@/core/data/stores/virtualKeysStore'
 
 const KeyGrid = styled.div`

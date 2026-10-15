@@ -50,7 +50,7 @@ vi.mock('@/core/data/hooks/queries/useWorkspaces', () => ({
 }))
 
 // BottomSheet 桩：绕开 Radix portal + motion 在 jsdom 下的开销（既有惯例，见 MobileMenu.test）
-vi.mock('@/ui/shadcn/bottom-sheet/bottom-sheet', () => ({
+vi.mock('@/ui/base/interactive/bottom-sheet/BottomSheet', () => ({
     BottomSheet: ({ open, title, children }: { open: boolean; title?: string; children: ReactNode }) =>
         open ? (
             <div data-testid="mobile-drawer">

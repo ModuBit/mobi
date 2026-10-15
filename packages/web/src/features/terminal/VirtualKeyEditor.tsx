@@ -19,7 +19,7 @@ import { Button, Space, Typography, Tag } from 'antd'
 import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useVirtualKeysStore, type VirtualKey } from '@/core/data/stores/virtualKeysStore'
-import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
+import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
 import { VirtualKeyPicker } from './VirtualKeyPicker'
 
 interface VirtualKeyEditorProps {

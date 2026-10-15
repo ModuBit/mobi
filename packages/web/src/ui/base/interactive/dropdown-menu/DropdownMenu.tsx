@@ -48,7 +48,7 @@ import type { CSSProperties, FocusEvent, ReactNode, RefCallback } from "react";
 import * as DropdownPrimitive from "@radix-ui/react-dropdown-menu";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { motionTokens } from "../motion-tokens";
+import { motionTokens } from "../../motion/motionTokens";
 import styles from "./dropdown-menu.module.css";
 
 export interface DropdownItem {

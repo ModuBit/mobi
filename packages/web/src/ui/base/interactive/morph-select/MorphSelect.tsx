@@ -29,7 +29,7 @@ import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion } fr
 import type { Transition, Variants } from "motion/react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronDown, Search, X } from "lucide-react";
-import { motionTokens } from "../motion-tokens";
+import { motionTokens } from "../../motion/motionTokens";
 import styles from "./morph-select.module.css";
 
 export interface MorphSelectOption {

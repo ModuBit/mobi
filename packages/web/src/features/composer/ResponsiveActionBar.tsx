@@ -20,7 +20,7 @@ import { MoreOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ReactNode } from 'react'
 import styled from '@emotion/styled'
-import { DropdownMenu, type DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
+import { DropdownMenu, type DropdownItem } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
 
 export interface ActionItem {
   key: string

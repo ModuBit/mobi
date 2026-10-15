@@ -27,7 +27,7 @@
 
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { MorphSelect, type MorphSelectItem } from '@/ui/shadcn/morph-select/morph-select'
+import { MorphSelect, type MorphSelectItem } from '@/ui/base/interactive/morph-select/MorphSelect'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
 export interface CompactHoverSelectOption {

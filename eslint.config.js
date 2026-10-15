@@ -87,10 +87,11 @@ module.exports = tseslint.config(
   // registry 后端依赖门禁（shadcn 底座票 04）：shadcn 生态的原语后端包只允许被
   // registry 组件源码消费，业务代码直接 import → error。registry 组件统一落
   // packages/web/src/ui/shadcn/（该目录是组件体系名，非来源名；组件归属见
-  // packages/web/registry.json）。新增后端家族（如 @ark-ui/*）时扩充 group。
+  // packages/web/registry.json）。2026-10-15 起自管组件迁落 ui/base/（归 base 体系），
+  // 门禁随之覆盖 ui/base/**。新增后端家族（如 @ark-ui/*）时扩充 group。
   {
     files: ['packages/web/src/**/*.ts', 'packages/web/src/**/*.tsx'],
-    ignores: ['packages/web/src/ui/shadcn/**'],
+    ignores: ['packages/web/src/ui/shadcn/**', 'packages/web/src/ui/base/**'],
     rules: {
       'no-restricted-imports': ['error', {
         patterns: [{
@@ -103,7 +104,7 @@ module.exports = tseslint.config(
             '@react-aria/*',
             'react-aria-components',
           ],
-          message: 'shadcn registry 后端包只能被 registry 组件源码（packages/web/src/ui/shadcn/）消费（组件选型规范见 docs/conventions/web.md「组件选型」章）',
+          message: 'shadcn registry 后端包只能被 registry 组件源码（packages/web/src/ui/shadcn/ 与自管件 packages/web/src/ui/base/）消费（组件选型规范见 docs/conventions/web.md「组件选型」章）',
         }],
       }],
     },

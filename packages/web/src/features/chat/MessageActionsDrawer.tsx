@@ -16,7 +16,7 @@
 
 import { Copy, MoreHorizontal, Split, Undo2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
+import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
 import { RewindConfirmView, type RewindDryRunResult } from './RewindConfirmView'
 import { ForkConfirmView } from './ForkConfirmView'
 import { copyTextToClipboard } from '@/core/utils/clipboard'

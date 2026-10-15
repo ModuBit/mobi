@@ -73,7 +73,7 @@ vi.mock('@/features/layout/MobileWorkspaceList', () => ({
 }))
 
 // BottomSheet 渲染重(Radix portal + history guard + motion),mock 成裸 div 透传 children
-vi.mock('@/ui/shadcn/bottom-sheet/bottom-sheet', () => ({
+vi.mock('@/ui/base/interactive/bottom-sheet/BottomSheet', () => ({
     BottomSheet: ({ children, open }: { children: ReactNode; open: boolean }) =>
         open ? <div data-testid="drawer">{children}</div> : null,
 }))

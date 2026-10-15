@@ -34,7 +34,7 @@ import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { ToolViewScopeProvider } from './views/toolViewScope'
 import { getToolResultViewComponent } from './views/_results'
 import { truncate } from '@/core/lib/toolInputUtils'
-import { BottomSheet } from '@/ui/shadcn/bottom-sheet/bottom-sheet'
+import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
 import { AgentDrawerContent } from './AgentDrawerContent'
 
 const { Text } = Typography

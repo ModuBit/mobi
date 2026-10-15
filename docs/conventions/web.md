@@ -88,10 +88,18 @@ src/
 
 | 组件 | 归属 | 与上游 | 迁移于 | 说明 |
 |---|---|---|---|---|
-| copy-button | arc（uiarc） | tracked | 2026-10-12 | 首个迁移组件；零 headless 后端（motion+lucide 自足）；消费入口 `chat/CopyButton`（iconOnly 适配壳） |
-| dropdown-menu | arc（uiarc） | tracked（待判定，见 `.scratch/shadcn-adoption/`） | 2026-10-12 | 全站菜单的唯一实现（antd `Dropdown` 不再是菜单选项）；Radix 后端；items 是递归树（子菜单 / 自绘面板 content）；消费入口 `ui/shadcn/dropdown-menu`。**两条消费方约束**（组件侧不兜底）：触发器必须常驻布局、且不能落在 `role="tab"` 的 label 内——见 registry.json localMods |
-| bottom-sheet | arc（uiarc） | adopted | 2026-10-13 | 移动端底部弹出面板的唯一实现（`BottomSheet`；同日全量替代旧 `MobileDrawer`，旧组件已删）。Radix Dialog 底座 + motion；关闭「先通知后动画」且可否决、手势返回哨兵自接、像素档位 detents、z 按层号注入。消费方约束见 registry.json 的 note 与 [packages/web/CLAUDE.md「移动端底部 sheet 规范」](../../packages/web/CLAUDE.md)。**例外**：无需交互关闭的纯提示框仍用原生 antd `Drawer` + `MOBILE_SHEET_DRAWER_CLASS` |
-| morph-select | arc（uiarc） | tracked | 2026-10-15 | composer 参数区的「工具栏 pill 选择器」（权限模式/模型/output style/agent；语义域裁决：**通用表单 Select 仍默认 antd**）。零 Radix 后端（motion+lucide 自足）；trigger 弹簧长成列表、typeahead、>8 项 searchable auto。消费入口 `features/composer/CompactHoverSelect` 壳（onChange 单参归一 / direction="up" / 满宽变体 / effort-popover 样式注入收口）。**消费方约束**：面板内联生长（非 portal），任何祖先的 `overflow: hidden` 都会裁掉展开面板（ResponsiveActionBar 曾踩，2026-10-15 修复） |
+| （当前为空——首批四件已转自管，见下节） | | | | |
+
+### 已自管组件（脱离 registry，归 `ui/base/` 体系）
+
+组件深度本地化后（localMods 多到 `--overwrite` 等于重写、产品语义已进组件），**转全量自管**：目录迁 `src/ui/base/interactive/<语义名>/`、主文件改名对齐导出名、从 registry.json 除名（localMods 账本定格于迁出 commit），此后按 base 体系纪律维护、不再有上游升级动作。eslint 的后端包禁区随之覆盖 `src/ui/base/**`。
+
+| 组件 | 来源 | 自管于 | 说明 |
+|---|---|---|---|
+| bottom-sheet | arc（uiarc） | 2026-10-15 | 移动端底部弹出面板的唯一实现（`BottomSheet`）。Radix Dialog 底座 + motion；关闭「先通知后动画」且可否决、手势返回哨兵自接、像素档位 detents、z 按层号注入。消费方约束见 [packages/web/CLAUDE.md「移动端底部 sheet 规范」](../../packages/web/CLAUDE.md)。**例外**：无需交互关闭的纯提示框仍用原生 antd `Drawer` + `MOBILE_SHEET_DRAWER_CLASS` |
+| copy-button | arc（uiarc） | 2026-10-15 | 首个迁移组件；零 headless 后端（motion+lucide 自足）；消费入口 `chat/CopyButton`（iconOnly 适配壳） |
+| dropdown-menu | arc（uiarc） | 2026-10-15 | 全站菜单的唯一实现（antd `Dropdown` 不再是菜单选项）；Radix 后端；items 是递归树（子菜单 / 自绘面板 content）。**两条消费方约束**（组件侧不兜底）：触发器必须常驻布局、且不能落在 `role="tab"` 的 label 内 |
+| morph-select | arc（uiarc） | 2026-10-15 | composer 参数区的「工具栏 pill 选择器」（权限模式/模型/output style/agent；语义域裁决：**通用表单 Select 仍默认 antd**）。零 Radix 后端（motion+lucide 自足）；trigger 弹簧长成列表、typeahead、>8 项 searchable auto。消费入口 `features/composer/CompactHoverSelect` 壳。**消费方约束**：面板内联生长（非 portal），任何祖先的 `overflow: hidden` 都会裁掉展开面板 |
 
 ### 单组件迁移流程
 
@@ -115,7 +123,7 @@ src/
 ### 禁区（不随迁移改变）
 
 - **antx + x-markdown + 流式渲染管线**：永久不迁移（Streamdown 换栈回滚是先例）
-- **shadcn registry 后端包**（`@radix-ui/*`、`@base-ui-components/*` 等）：只允许被 registry 组件源码（`src/ui/shadcn/`）消费——eslint `no-restricted-imports` 已强制（`eslint.config.js`）
+- **shadcn registry 后端包**（`@radix-ui/*`、`@base-ui-components/*` 等）：只允许被 registry 组件源码（`src/ui/shadcn/`）与自管组件源码（`src/ui/base/`）消费——eslint `no-restricted-imports` 已强制（`eslint.config.js`）
 
 ### 升级与本地修改纪律
 
@@ -134,7 +142,7 @@ shadcn 模型下组件源码进项目即归我们维护。本地修改（含版�
 |---|---|
 | 接线（版权头、import 路径、token 映射、上游 bug 的本地修复） | 留 `tracked` |
 | 补上游缺的**通用**能力（上游可能接收，如插槽、受控开合） | 可留 `tracked`，但每条问一句「上游会不会收」 |
-| **产品语义**（mobi 的会话 / 工作区 / 终端概念进了组件）或 localMods 多到 `--overwrite` 实际等于重写 | 翻 `adopted` |
+| **产品语义**（mobi 的会话 / 工作区 / 终端概念进了组件）或 localMods 多到 `--overwrite` 实际等于重写 | 翻 `adopted`；后续继续深度演化则**转自管**（见「已自管组件」节：迁 `ui/base/interactive/`、除名 registry） |
 
 最实用的判据是一句话：**「下次 `add --overwrite` 你还敢跑吗？」** 不敢跑，说明事实上已经脱钩、只是没人承认——那就把状态改成如实描述，别继续付无人受益的恢复劳动。
 

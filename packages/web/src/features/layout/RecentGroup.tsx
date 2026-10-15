@@ -21,7 +21,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronRight } from 'lucide-react'
 import { useRecentSessions } from '@/core/data/hooks/queries/useRecentSessions'
 import type { Session } from '@/core/data/api/types'
-import type { DropdownItem } from '@/ui/shadcn/dropdown-menu/dropdown-menu'
+import type { DropdownItem } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
 import {
     GroupContainer, SectionTitleRow, SectionTitle, SectionChevron,
     SessionListWrapper, SessionListInner,

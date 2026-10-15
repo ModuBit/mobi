@@ -17,7 +17,7 @@
 /**
  * 消息流复制按钮适配壳（uiarc copy-button 的 iconOnly 形态，shadcn 底座首个迁移组件）：
  * 只做 i18n 文案适配与调用点收口；复制行为/动效由 registry 组件承担，
- * clipboard 降级见 copy-button/use-copy-feedback（copyTextToClipboard）。
+ * clipboard 降级见 copy-button/useCopyFeedback（copyTextToClipboard）。
  *
  * 不挂 Tooltip：按钮的可访问名（aria-label）与 aria-live 状态区已表达「是什么 / 结果如何」，
  * 气泡在此并无增量信息；且点击时文案从「复制」变「已复制」会让正开着的气泡改宽重排，
@@ -26,7 +26,7 @@
  */
 
 import { useTranslation } from 'react-i18next'
-import { CopyButton as ArcCopyButton } from '@/ui/shadcn/copy-button/copy-button'
+import { CopyButton as ArcCopyButton } from '@/ui/base/interactive/copy-button/CopyButton'
 
 interface CopyButtonProps {
     text: string
