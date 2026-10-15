@@ -33,8 +33,8 @@ export interface ToolStripProps {
 
 /** 拖拽位移超过该阈值才算拖动（否则是点击，须原样放行给控件） */
 const DRAG_SLOP_PX = 5
-/** 两侧渐隐的过渡带宽 */
-const FADE_WIDTH = 24
+/** 两侧渐隐的过渡带宽（也是 scroll-snap 的对齐内缩量：静止时 pill 起点恰落在渐隐带外） */
+const FADE_WIDTH = 32
 
 /**
  * 横向滚动条（composer 参数区专用，替代 ResponsiveActionBar 的溢出收纳）：
@@ -55,25 +55,37 @@ const Root = styled.div<{ 'data-fade'?: 'none' | 'start' | 'end' | 'both' }>`
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
+  /* 静止位置对齐 pill 边界：微滚松手回弹到 0，渐隐带里永远是 pill 尾巴而非半个新 pill。
+     proximity 档不打扰拖拽；PC 拖拽期间显式关掉（scrollLeft 逐帧赋值会和 snap 打架），松手恢复由浏览器吸附 */
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: ${FADE_WIDTH}px;
+  &[data-dragging='true'] {
+    scroll-snap-type: none;
+  }
+  /* 内衬让 pill 的描边/投影不贴 overflow 边界硬裁；负外边距把占位还回去，内容起点不变 */
+  padding-inline: 6px;
+  margin-inline: -6px;
   /* 条很矮，滚动条不占空间：藏掉但保留可滚性（滚轮/拖拽/触摸都在） */
   scrollbar-width: none;
   &::-webkit-scrollbar {
     display: none;
   }
-  /* 渐隐挂在滚动容器自身（mask 会裁剪全部子树，展开态必须整条撤掉） */
+  /* 渐隐挂在滚动容器自身（mask 会裁剪全部子树，展开态必须整条撤掉）。
+     双停点缓坡：阴影/描边淡出是渐进的，不是线性硬切 */
   &[data-fade='end'] {
-    mask-image: linear-gradient(to right, #000 calc(100% - ${FADE_WIDTH}px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - ${FADE_WIDTH}px), rgb(0 0 0 / 0.45) calc(100% - ${FADE_WIDTH * 0.4}px), transparent);
   }
   &[data-fade='start'] {
-    mask-image: linear-gradient(to right, transparent, #000 ${FADE_WIDTH}px);
+    mask-image: linear-gradient(to right, transparent, rgb(0 0 0 / 0.45) ${FADE_WIDTH * 0.4}px, #000 ${FADE_WIDTH}px);
   }
   &[data-fade='both'] {
-    mask-image: linear-gradient(to right, transparent, #000 ${FADE_WIDTH}px, #000 calc(100% - ${FADE_WIDTH}px), transparent);
+    mask-image: linear-gradient(to right, transparent, rgb(0 0 0 / 0.45) ${FADE_WIDTH * 0.4}px, #000 ${FADE_WIDTH}px, #000 calc(100% - ${FADE_WIDTH}px), rgb(0 0 0 / 0.45) calc(100% - ${FADE_WIDTH * 0.4}px), transparent);
   }
   /* 展开中的 morph 面板不容裁剪：两轴一起放开（见组件头注释），渐隐一并撤 */
   &:has([role='combobox'][aria-expanded='true']) {
     overflow: visible;
     mask-image: none;
+    scroll-snap-type: none;
   }
   @media (hover: hover) {
     /* 有溢出才提示可拖；拖动进行中换抓握 */
@@ -91,6 +103,10 @@ const Row = styled.div<{ gap: number }>`
   align-items: center;
   flex: none;
   gap: ${(props) => props.gap}px;
+  /* snap 目标 = 每个项的起点（scroll-padding 把对齐线推到渐隐带外） */
+  & > * {
+    scroll-snap-align: start;
+  }
 `
 
 type FadeState = 'none' | 'start' | 'end' | 'both'
