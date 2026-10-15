@@ -23,10 +23,14 @@ import type { AnimationPlaybackControls, MotionValue } from 'motion/react'
 
 export async function motionReactStub(importOriginal: () => Promise<typeof import('motion/react')>) {
     const actual = await importOriginal()
-    const animateStub = (value: MotionValue<number>, target: number): AnimationPlaybackControls => {
-        value.set(target)
+    // 两种形态都接：morph 系 animate(MotionValue, number)（置值即达）；
+    // combobox 系 animate(Element, keyframes)（jsdom 无渲染管线，直接 resolve）
+    const animateStub = (value: MotionValue<number> | Element, target?: number): AnimationPlaybackControls => {
+        if (target !== undefined && value && typeof (value as MotionValue<number>).set === 'function') {
+            ;(value as MotionValue<number>).set(target)
+        }
         const promise = new Promise<void>((resolve) => { setTimeout(resolve, 0) })
-        return { stop() {}, then: (resolve, reject) => promise.then(resolve, reject) } as AnimationPlaybackControls
+        return { stop() {}, complete() {}, then: (resolve, reject) => promise.then(resolve, reject) } as unknown as AnimationPlaybackControls
     }
     return { ...actual, animate: animateStub, useReducedMotion: () => false }
 }

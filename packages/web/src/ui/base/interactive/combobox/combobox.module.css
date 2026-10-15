@@ -16,6 +16,12 @@
 .control:focus-within { border-color: var(--border-strong); box-shadow: 0 0 0 3px var(--focus-ring); }
 .control.open { border-color: var(--border-strong); background: var(--surface-muted); }
 .control.disabled { opacity: .5; cursor: not-allowed; }
+/* borderless 变体（本地修改 ⑦）：嵌入工具条/环境条——透明边框占位保住盒尺寸不跳，
+   紧凑高度与小字号随环境条基调 */
+.control.borderless { min-height: 28px; border-color: transparent; padding: 0 8px 0 6px; background: transparent; }
+.control.borderless input { font-size: 13px; }
+@media (hover: hover) and (pointer: fine) { .control.borderless:hover:not(.disabled) { border-color: transparent; } }
+.control.borderless:focus-within, .control.borderless.open { border-color: transparent; box-shadow: none; }
 .searchIcon { flex: 0 0 auto; color: var(--text-muted); }
 .control input { width: 100%; min-width: 0; border: 0; outline: 0; padding: 0; background: transparent; color: var(--foreground); font: inherit; font-size: var(--text-sm); }
 .control input:focus-visible { outline: none; }
@@ -41,4 +47,6 @@
 .option[data-disabled="true"] { opacity: .42; cursor: not-allowed; }
 .check { flex: 0 0 auto; color: var(--foreground); }
 .empty { padding: var(--space-3); color: var(--text-muted); font-size: var(--text-sm); }
+/* 弹层底部固定区（本地修改 ⑥）：listbox 滚动区之后，常驻入口不随列表滚走（Select 同款） */
+.footer { margin-top: 2px; border-top: 1px solid var(--border-subtle); padding-top: 4px; }
 @media (prefers-reduced-motion: reduce) { .control, .chevron, .clear, .option, .highlight { transition: none; } }

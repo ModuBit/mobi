@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { Monitor, FolderOpen, Plus } from 'lucide-react'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
-import { Select } from '@/ui/base/interactive/select/Select'
+import { Combobox } from '@/ui/base/interactive/combobox/Combobox'
 
 /**
  * 从目录路径提取工作区名（取最后一段）
@@ -49,7 +49,7 @@ interface EnvironmentBarProps {
     disabled?: boolean
 }
 
-/** 弹层底部「+ 新建工作区」（uiarc Select footer）：与侧边栏新建工作区共用 WorkspaceFormModal */
+/** 弹层底部「+ 新建工作区」（Combobox footer）：与侧边栏新建工作区共用 WorkspaceFormModal */
 const CreateButton = styled.button`
     display: flex; width: 100%; min-height: 30px; align-items: center; justify-content: center; gap: 6px;
     border: 0; border-radius: calc(var(--radius-control) - 4px);
@@ -66,9 +66,9 @@ const CreateButton = styled.button`
  * 环境选择栏：工作区即环境
  * 在 NewSessionPage 中位于 Sender 上方——新建会话必须选工作区，
  * 机器与工作目录从工作区派生（primary folder），不再提供手动选择/输入。
- * 工作区下拉底部固定「+ 新建工作区」入口（uiarc Select footer）。
- * 旧 antd Select 的 showSearch 打字过滤未随迁：Radix Select 无输入框，键盘连打
- * typeahead 保留；工作区数量级小，输入过滤收益有限（2026-10-15 迁移裁决）。
+ * 工作区下拉可搜索（Combobox 输入过滤，2026-10-15 由 Select 换回——搜索是明确需求，
+ * showSearch 在 Select 迁移时被裁掉的交互由 Combobox 的输入框形态恢复），
+ * 底部固定「+ 新建工作区」入口（footer）。
  */
 export function EnvironmentBar(props: EnvironmentBarProps) {
     const { t } = useTranslation()
@@ -98,15 +98,19 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                 gap: 6,
             }}>
                 <FolderOpen size={13} strokeWidth={1.75} style={{ color: 'var(--text-muted)', flexShrink: 0 }} aria-hidden="true" />
-                <Select
-                    ariaLabel={t('newSession.workspacePlaceholder')}
+                {/* 工作区选择无「未选后清除」语义（父组件没有 null 接口），关清除钮；
+                    受控 open：footer 点击先收起下拉再开新建弹窗，浮层不残留 */}
+                <Combobox
+                    aria-label={t('newSession.workspacePlaceholder')}
                     value={selectedWorkspaceId ?? ""}
-                    onValueChange={onWorkspaceChange}
+                    onValueChange={(next) => { if (next) onWorkspaceChange(next) }}
                     open={selectOpen}
                     onOpenChange={setSelectOpen}
                     disabled={disabled}
                     placeholder={t('newSession.workspacePlaceholder')}
+                    emptyMessage={t('workspace.empty')}
                     variant="borderless"
+                    allowClear={false}
                     options={workspaces.map(p => ({ value: p.id, label: p.name }))}
                     style={{ flex: 1, minWidth: 0 }}
                     footer={onCreateWorkspace && (

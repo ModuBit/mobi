@@ -17,6 +17,10 @@
 // uiarc combobox（registry 快照，自管件：深度本地化后脱离 registry，不登记 registry.json）。
 // 本地修改：①label 改可选 ②占位/清空/空态文案走 i18n ③motionTokens 改引 @/ui/base/motion/motionTokens
 // ④className/style 挂组件根（field）——布局尺寸从根上给，消费方无需包裹 div
+// ⑤受控 open/onOpenChange（footer 入口需主动收起弹层的场景，缺省内部自管）
+// ⑥footer：弹层底部固定区（listbox 滚动区之后，如「+ 新建」入口，EnvironmentBar 先例）
+// ⑦variant="borderless"：无边框紧凑触发器（嵌入工具条/环境条场景）
+// ⑧allowClear 开关（默认 true）：环境条无清空语义（父组件没有「未选」态接口），关掉清除钮
 "use client";
 
 import { animate, AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -55,6 +59,15 @@ export interface ComboboxProps
   description?: string;
   placeholder?: string;
   emptyMessage?: string;
+  /** 受控开合（footer 入口需主动收起弹层的场景）；缺省 = 内部自管 */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** 弹层底部固定区（listbox 滚动区之后）——放「+ 新建」这类常驻入口 */
+  footer?: ReactNode;
+  /** borderless：无边框紧凑触发器（嵌入工具条场景） */
+  variant?: "default" | "borderless";
+  /** 有值时显示清除钮（默认 true） */
+  allowClear?: boolean;
   /** 挂组件根（field）的类名与样式——布局尺寸从根上给，消费方无需包裹 div */
   className?: string;
   style?: CSSProperties;
@@ -89,6 +102,11 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     style,
     disabled,
     onFocus,
+    open: openProp,
+    onOpenChange,
+    footer,
+    variant = "default",
+    allowClear = true,
     ...inputProps
   },
   forwardedRef,
@@ -105,7 +123,13 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
   const optionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const reduceMotion = useReducedMotion();
   const [uncontrolledValue, setUncontrolledValue] = useState(defaultValue);
-  const [open, setOpen] = useState(false);
+  // 半受控开合：open prop 在 props 上（!== undefined）即受控（Select 同款判定）
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = openProp !== undefined ? openProp : uncontrolledOpen;
+  const updateOpen = (next: boolean) => {
+    if (openProp === undefined) setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  };
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
   // 受控判定：value 在 props 上（!== undefined）即受控——`?? uncontrolled` 的写法会把
@@ -157,7 +181,7 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
+        updateOpen(false);
         setQuery("");
       }
     };
@@ -183,7 +207,7 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     setUncontrolledValue(option.value);
     onValueChange?.(option.value);
     setQuery("");
-    setOpen(false);
+    updateOpen(false);
     inputRef.current?.focus();
   };
 
@@ -192,13 +216,13 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     setUncontrolledValue("");
     onValueChange?.("");
     setQuery("");
-    setOpen(true);
+    updateOpen(true);
     inputRef.current?.focus();
   };
 
   const openMenu = () => {
     if (disabled) return;
-    setOpen(true);
+    updateOpen(true);
     setQuery("");
     setActiveIndex(-1);
   };
@@ -228,7 +252,7 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     }
     if (event.key === "Escape" && open) {
       event.preventDefault();
-      setOpen(false);
+      updateOpen(false);
       setQuery("");
       return;
     }
@@ -242,7 +266,7 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
   return (
     <div ref={rootRef} className={[styles.field, className].filter(Boolean).join(" ")} style={style}>
       {label && <label htmlFor={controlId}>{label}</label>}
-      <div className={[styles.control, open ? styles.open : "", disabled ? styles.disabled : ""].filter(Boolean).join(" ")}>
+      <div className={[styles.control, variant === "borderless" ? styles.borderless : "", open ? styles.open : "", disabled ? styles.disabled : ""].filter(Boolean).join(" ")}>
         <Search className={styles.searchIcon} size={16} strokeWidth={1.75} aria-hidden="true" />
         <input
           {...inputProps}
@@ -268,13 +292,13 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
           onClick={openMenu}
           onChange={(event) => {
             setQuery(event.target.value);
-            setOpen(true);
+            updateOpen(true);
             setActiveIndex(-1);
           }}
           onKeyDown={handleKeyDown}
         />
         <AnimatePresence initial={false}>
-          {selectedOption && !disabled && (
+          {selectedOption && allowClear && !disabled && (
             <ClearButton
               reduce={reduceMotion}
               ariaLabel={t("common.clearSelection")}
@@ -325,6 +349,7 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
                 </div>
               )) : <motion.div className={styles.empty} role="status" initial={reduceMotion ? false : { opacity: 0, y: 4, filter: `blur(${motionTokens.blur.soft}px)` }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} transition={{ duration: motionTokens.duration.standard, ease: [...motionTokens.ease.enter] }}>{emptyMessageText}</motion.div>}
             </div>
+            {footer && <div className={styles.footer}>{footer}</div>}
             </AutoHeight>
           </motion.div>
         )}

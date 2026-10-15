@@ -18,9 +18,10 @@
  * 回归守卫：EnvironmentBar 工作区即环境
  *
  * 新建会话必须选工作区——机器与工作目录从工作区派生，不再提供机器选择/目录输入。
- * 2026-10-15 起工作区选择迁 uiarc Select（jsdom 可真实交互，不再 mock）：
- * - 展开/选项/选中回调走真组件
+ * 2026-10-15 起工作区选择走 uiarc Combobox（搜索是明确需求，jsdom 可真实交互）：
+ * - 聚焦展开/输入过滤/选中回调走真组件
  * - 底部固定「+ 新建工作区」入口（footer）且点击先收起下拉再回调
+ * - 无清空语义（allowClear=false）：有值不渲染清除钮
  * - 选中工作区后派生环境只读回显
  */
 
@@ -47,11 +48,11 @@ const WORKSPACES = [
     { id: 'p2', name: 'demo' },
 ]
 
-/** jsdom 无 PointerEvent 布局：Radix trigger 只认 pointerType=mouse 的 pointerdown 展开 */
-const openMenu = (el: HTMLElement) => fireEvent.pointerDown(el, { button: 0, pointerType: 'mouse' })
+/** jsdom 无 PointerEvent 布局：Combobox 聚焦即展开 */
+const openMenu = (el: HTMLElement) => fireEvent.focus(el)
 
 describe('EnvironmentBar 工作区即环境', () => {
-    it('展开后选项为全量工作区，点击选项回调', () => {
+    it('聚焦展开全量工作区；输入按 label 过滤（搜索是明确需求）', () => {
         const onWorkspaceChange = vi.fn()
         render(
             <EnvironmentBar
@@ -61,13 +62,41 @@ describe('EnvironmentBar 工作区即环境', () => {
             />,
         )
 
-        const trigger = screen.getByRole('combobox', { name: 'newSession.workspacePlaceholder' })
-        openMenu(trigger)
+        const input = screen.getByRole('combobox', { name: 'newSession.workspacePlaceholder' })
+        openMenu(input)
         expect(screen.getByRole('option', { name: 'mobi' })).toBeInTheDocument()
         expect(screen.getByRole('option', { name: 'demo' })).toBeInTheDocument()
 
+        fireEvent.change(input, { target: { value: 'de' } })
+        expect(screen.queryByRole('option', { name: 'mobi' })).not.toBeInTheDocument()
+        expect(screen.getByRole('option', { name: 'demo' })).toBeInTheDocument()
+    })
+
+    it('点击选项回调 onWorkspaceChange', () => {
+        const onWorkspaceChange = vi.fn()
+        render(
+            <EnvironmentBar
+                workspaces={WORKSPACES}
+                selectedWorkspaceId={null}
+                onWorkspaceChange={onWorkspaceChange}
+            />,
+        )
+
+        openMenu(screen.getByRole('combobox', { name: 'newSession.workspacePlaceholder' }))
         fireEvent.click(screen.getByRole('option', { name: 'demo' }))
         expect(onWorkspaceChange).toHaveBeenCalledWith('p2')
+    })
+
+    it('无清空语义（allowClear=false）：选中后不渲染清除钮', () => {
+        render(
+            <EnvironmentBar
+                workspaces={WORKSPACES}
+                selectedWorkspaceId="p1"
+                onWorkspaceChange={vi.fn()}
+            />,
+        )
+
+        expect(screen.queryByRole('button', { name: 'common.clearSelection' })).not.toBeInTheDocument()
     })
 
     it('下拉底部固定「+ 新建工作区」入口：点击先收起下拉（受控 open）再回调，避免浮层残留', () => {
@@ -82,14 +111,14 @@ describe('EnvironmentBar 工作区即环境', () => {
             />,
         )
 
-        const trigger = screen.getByRole('combobox', { name: 'newSession.workspacePlaceholder' })
-        openMenu(trigger)
-        expect(trigger).toHaveAttribute('aria-expanded', 'true')
+        const input = screen.getByRole('combobox', { name: 'newSession.workspacePlaceholder' })
+        openMenu(input)
+        expect(input).toHaveAttribute('aria-expanded', 'true')
 
         fireEvent.click(screen.getByText('workspace.create'))
         expect(onCreateWorkspace).toHaveBeenCalledTimes(1)
         expect(onWorkspaceChange).not.toHaveBeenCalled() // footer 点击不是选项选中
-        expect(trigger).toHaveAttribute('aria-expanded', 'false') // 宿主下拉已收起
+        expect(input).toHaveAttribute('aria-expanded', 'false') // 宿主下拉已收起
     })
 
     it('选中工作区后展示派生环境只读回显（机器 + 主目录）', () => {

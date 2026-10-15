@@ -78,6 +78,26 @@ describe('uiarc Combobox 过滤与选择', () => {
         expect(screen.getByRole('listbox')).toBeInTheDocument()
     })
 
+    it('allowClear=false 关掉清除钮（无清空语义的嵌入场景，如环境条）', () => {
+        const onValueChange = vi.fn<(v: string) => void>()
+        render(<Combobox aria-label="工作区" options={OPTIONS} value="w-1" allowClear={false} onValueChange={onValueChange} />)
+
+        expect(screen.queryByRole('button', { name: 'common.clearSelection' })).toBeNull()
+    })
+
+    it('受控 open/onOpenChange：外部翻转 prop 收起/展开弹层', () => {
+        const onOpenChange = vi.fn<(open: boolean) => void>()
+        const { rerender } = render(
+            <Combobox aria-label="工作区" options={OPTIONS} value="w-1" open onOpenChange={onOpenChange} />,
+        )
+        const input = screen.getByRole('combobox', { name: '工作区' })
+        expect(input).toHaveAttribute('aria-expanded', 'true')
+
+        // 退出动画 jsdom 不收敛（Select.test 同坑），断言 aria-expanded 而非 listbox 卸载
+        rerender(<Combobox aria-label="工作区" options={OPTIONS} value="w-1" open={false} onOpenChange={onOpenChange} />)
+        expect(input).toHaveAttribute('aria-expanded', 'false')
+    })
+
     it('无匹配渲染空态（i18n key 直通）', () => {
         render(<Combobox aria-label="工作区" options={OPTIONS} />)
         fireEvent.focus(screen.getByRole('combobox', { name: '工作区' }))
