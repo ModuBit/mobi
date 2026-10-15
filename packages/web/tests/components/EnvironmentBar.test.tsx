@@ -18,126 +18,78 @@
  * 回归守卫：EnvironmentBar 工作区即环境
  *
  * 新建会话必须选工作区——机器与工作目录从工作区派生，不再提供机器选择/目录输入。
- * jsdom 无法渲染 antd Select 的真实 dropdown（portal + 虚拟列表），
- * 所以 mock Select 为 prop 记录器，直接断言：
- * - 可搜索（showSearch）且按 label 过滤
- * - 底部固定「+ 新建工作区」入口（popupRender）且点击回调
+ * 2026-10-15 起工作区选择迁 uiarc Select（jsdom 可真实交互，不再 mock）：
+ * - 展开/选项/选中回调走真组件
+ * - 底部固定「+ 新建工作区」入口（footer）且点击先收起下拉再回调
  * - 选中工作区后派生环境只读回显
  */
 
-import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import type { ReactNode, JSX } from 'react'
-import { ConfigProvider } from 'antd'
 
-// vi.hoisted：mock factory（hoisted 到顶部）也能引用的 prop 记录器
-const { selectProps } = vi.hoisted(() => ({
-    selectProps: { current: {} as Record<string, unknown> },
-}))
-
-vi.mock('antd', async importActual => {
-    const actual = await importActual<typeof import('antd')>()
-    // 用 prop 记录器替换 Select，绕开 jsdom 不渲染 dropdown 的限制
-    const MockSelect = (props: Record<string, unknown>): JSX.Element => {
-        selectProps.current = props
-        return <input data-testid="mock-select" />
-    }
-    return { ...actual, Select: MockSelect as unknown as typeof actual.Select }
+vi.mock('motion/react', async (importOriginal) => {
+    const { motionReactStub } = await import('../helpers/motionReactStub')
+    return motionReactStub(importOriginal)
 })
 
-vi.mock('react-i18next', () => ({
-    useTranslation: () => ({ t: (key: string) => key }),
-}))
+vi.mock('react-i18next', async () => {
+    const { i18nKeyStub } = await import('../helpers/motionReactStub')
+    return i18nKeyStub()
+})
 
 import { EnvironmentBar } from '@/features/composer/EnvironmentBar'
 
-beforeAll(() => {
-    // @ts-expect-error jsdom 无 ResizeObserver
-    globalThis.ResizeObserver = class {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-    }
-})
-
-afterEach(() => {
-    cleanup()
-    selectProps.current = {}
-})
-
-const cpWrapper = ({ children }: { children: ReactNode }) => (
-    <ConfigProvider>{children}</ConfigProvider>
-)
+afterEach(cleanup)
 
 const WORKSPACES = [
     { id: 'p1', name: 'mobi' },
     { id: 'p2', name: 'demo' },
 ]
 
-/** 渲染 popupRender 产物（模拟 antd 展开下拉时的自定义内容） */
-function renderPopup(): ReturnType<typeof render> {
-    const popupRender = selectProps.current.popupRender as (menu: ReactNode) => ReactNode
-    return render(<div>{popupRender(<div>menu</div>)}</div>)
-}
+/** jsdom 无 PointerEvent 布局：Radix trigger 只认 pointerType=mouse 的 pointerdown 展开 */
+const openMenu = (el: HTMLElement) => fireEvent.pointerDown(el, { button: 0, pointerType: 'mouse' })
 
 describe('EnvironmentBar 工作区即环境', () => {
-    it('工作区 Select 可搜索且按 label 过滤，选项为全量工作区', () => {
+    it('展开后选项为全量工作区，点击选项回调', () => {
+        const onWorkspaceChange = vi.fn()
         render(
             <EnvironmentBar
                 workspaces={WORKSPACES}
                 selectedWorkspaceId={null}
-                onWorkspaceChange={vi.fn()}
+                onWorkspaceChange={onWorkspaceChange}
             />,
-            { wrapper: cpWrapper },
         )
 
-        expect(selectProps.current.showSearch).toBe(true)
-        expect(selectProps.current.optionFilterProp).toBe('label')
-        const options = selectProps.current.options as Array<{ value: string; label: string }>
-        expect(options.map(o => o.value)).toEqual(['p1', 'p2'])
+        const trigger = screen.getByRole('combobox', { name: 'newSession.workspacePlaceholder' })
+        openMenu(trigger)
+        expect(screen.getByRole('option', { name: 'mobi' })).toBeInTheDocument()
+        expect(screen.getByRole('option', { name: 'demo' })).toBeInTheDocument()
+
+        fireEvent.click(screen.getByRole('option', { name: 'demo' }))
+        expect(onWorkspaceChange).toHaveBeenCalledWith('p2')
     })
 
-    it('下拉底部固定「+ 新建工作区」入口，点击触发 onCreateWorkspace', () => {
+    it('下拉底部固定「+ 新建工作区」入口：点击先收起下拉（受控 open）再回调，避免浮层残留', () => {
         const onCreateWorkspace = vi.fn()
+        const onWorkspaceChange = vi.fn()
         render(
             <EnvironmentBar
                 workspaces={WORKSPACES}
                 selectedWorkspaceId={null}
-                onWorkspaceChange={vi.fn()}
+                onWorkspaceChange={onWorkspaceChange}
                 onCreateWorkspace={onCreateWorkspace}
             />,
-            { wrapper: cpWrapper },
         )
 
-        const { getByText } = renderPopup()
-        fireEvent.click(getByText('workspace.create'))
+        const trigger = screen.getByRole('combobox', { name: 'newSession.workspacePlaceholder' })
+        openMenu(trigger)
+        expect(trigger).toHaveAttribute('aria-expanded', 'true')
+
+        fireEvent.click(screen.getByText('workspace.create'))
         expect(onCreateWorkspace).toHaveBeenCalledTimes(1)
-    })
-
-    it('点击「+ 新建工作区」先收起宿主下拉（受控 open），避免弹窗关闭后浮层残留', () => {
-        const onCreateWorkspace = vi.fn()
-        render(
-            <EnvironmentBar
-                workspaces={WORKSPACES}
-                selectedWorkspaceId={null}
-                onWorkspaceChange={vi.fn()}
-                onCreateWorkspace={onCreateWorkspace}
-            />,
-            { wrapper: cpWrapper },
-        )
-
-        // 通过受控 onOpenChange 模拟 antd 展开
-        act(() => {
-            (selectProps.current.onOpenChange as (visible: boolean) => void)(true)
-        })
-        expect(selectProps.current.open).toBe(true)
-
-        // 点击下拉底部「+ 新建工作区」：下拉收起 + 回调触发
-        const { getByText } = renderPopup()
-        fireEvent.click(getByText('workspace.create'))
-        expect(onCreateWorkspace).toHaveBeenCalledTimes(1)
-        expect(selectProps.current.open).toBe(false)
+        expect(onWorkspaceChange).not.toHaveBeenCalled() // footer 点击不是选项选中
+        expect(trigger).toHaveAttribute('aria-expanded', 'false') // 宿主下拉已收起
     })
 
     it('选中工作区后展示派生环境只读回显（机器 + 主目录）', () => {
@@ -149,7 +101,6 @@ describe('EnvironmentBar 工作区即环境', () => {
                 hostLabel="Dev Box"
                 directoryLabel="~/workspace/mobi"
             />,
-            { wrapper: cpWrapper },
         )
 
         expect(screen.getByText('Dev Box · ~/workspace/mobi')).toBeInTheDocument()
@@ -164,7 +115,6 @@ describe('EnvironmentBar 工作区即环境', () => {
                 hostLabel="Dev Box"
                 directoryLabel="~/workspace/mobi"
             />,
-            { wrapper: cpWrapper },
         )
 
         expect(screen.queryByText('Dev Box · ~/workspace/mobi')).not.toBeInTheDocument()

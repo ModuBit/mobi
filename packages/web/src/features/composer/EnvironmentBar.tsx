@@ -16,9 +16,10 @@
 
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Divider, Select, theme } from 'antd'
+import styled from '@emotion/styled'
+import { Monitor, FolderOpen, Plus } from 'lucide-react'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
-import { DesktopOutlined, FolderOpenOutlined, PlusOutlined } from '@ant-design/icons'
+import { Select } from '@/ui/base/interactive/select/Select'
 
 /**
  * 从目录路径提取工作区名（取最后一段）
@@ -48,16 +49,28 @@ interface EnvironmentBarProps {
     disabled?: boolean
 }
 
+/** 弹层底部「+ 新建工作区」（uiarc Select footer）：与侧边栏新建工作区共用 WorkspaceFormModal */
+const CreateButton = styled.button`
+    display: flex; width: 100%; min-height: 30px; align-items: center; justify-content: center; gap: 6px;
+    border: 0; border-radius: calc(var(--radius-control) - 4px);
+    background: transparent; color: var(--foreground); font: inherit; font-size: var(--text-sm);
+    cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard);
+    @media (hover: hover) and (pointer: fine) { &:hover:not(:disabled) { background: var(--surface-muted); } }
+    &:active:not(:disabled) { background: color-mix(in oklab, var(--surface-muted), var(--border) 55%); }
+    &:disabled { opacity: .45; cursor: not-allowed; }
+`
+
 /* ========== 组件 ========== */
 
 /**
  * 环境选择栏：工作区即环境
  * 在 NewSessionPage 中位于 Sender 上方——新建会话必须选工作区，
  * 机器与工作目录从工作区派生（primary folder），不再提供手动选择/输入。
- * 工作区下拉可搜索，底部固定「+ 新建工作区」入口。
+ * 工作区下拉底部固定「+ 新建工作区」入口（uiarc Select footer）。
+ * 旧 antd Select 的 showSearch 打字过滤未随迁：Radix Select 无输入框，键盘连打
+ * typeahead 保留；工作区数量级小，输入过滤收益有限（2026-10-15 迁移裁决）。
  */
 export function EnvironmentBar(props: EnvironmentBarProps) {
-    const { token } = theme.useToken()
     const { t } = useTranslation()
     // 受控 open：点下拉底部「+ 新建工作区」时需主动收起下拉，否则弹窗关闭后浮层残留
     const [selectOpen, setSelectOpen] = useState(false)
@@ -84,43 +97,32 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                 alignItems: 'center',
                 gap: 6,
             }}>
-                <FolderOpenOutlined style={{ color: token.colorTextQuaternary, fontSize: 12, flexShrink: 0 }} />
+                <FolderOpen size={13} strokeWidth={1.75} style={{ color: 'var(--text-muted)', flexShrink: 0 }} aria-hidden="true" />
                 <Select
-                    value={selectedWorkspaceId ?? undefined}
-                    onChange={onWorkspaceChange}
+                    ariaLabel={t('newSession.workspacePlaceholder')}
+                    value={selectedWorkspaceId ?? ""}
+                    onValueChange={onWorkspaceChange}
                     open={selectOpen}
                     onOpenChange={setSelectOpen}
                     disabled={disabled}
                     placeholder={t('newSession.workspacePlaceholder')}
-                    size="small"
                     variant="borderless"
-                    showSearch
-                    optionFilterProp="label"
                     options={workspaces.map(p => ({ value: p.id, label: p.name }))}
-                    notFoundContent={t('workspace.empty')}
                     style={{ flex: 1, minWidth: 0 }}
-                    popupRender={(menu) => (
-                        <>
-                            {menu}
-                            {/* 底部固定「+ 新建工作区」：与侧边栏新建工作区共用 WorkspaceFormModal，
-                                完成后由父组件自动回填选中 */}
-                            <Divider style={{ margin: '4px 0' }} />
-                            <Button
-                                block
-                                type="text"
-                                size="small"
-                                icon={<PlusOutlined />}
-                                disabled={disabled}
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => {
-                                    // 先收起宿主下拉再打开新建工作区弹窗（点击在下拉内部 antd 不会自动收起）
-                                    setSelectOpen(false)
-                                    onCreateWorkspace?.()
-                                }}
-                            >
-                                {t('workspace.create')}
-                            </Button>
-                        </>
+                    footer={onCreateWorkspace && (
+                        <CreateButton
+                            type="button"
+                            disabled={disabled}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                                // 先收起宿主下拉再打开新建工作区弹窗（点击在下拉内部不会自动收起）
+                                setSelectOpen(false)
+                                onCreateWorkspace()
+                            }}
+                        >
+                            <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+                            {t('workspace.create')}
+                        </CreateButton>
                     )}
                 />
             </div>
@@ -132,13 +134,13 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                     alignItems: 'center',
                     gap: 6,
                 }}>
-                    <DesktopOutlined style={{ color: token.colorTextQuaternary, fontSize: 12, flexShrink: 0 }} />
+                    <Monitor size={13} strokeWidth={1.75} style={{ color: 'var(--text-muted)', flexShrink: 0 }} aria-hidden="true" />
                     <AppTooltip title={directoryLabel} mouseEnterDelay={0.3}>
                         <span style={{
                             flex: 1,
                             minWidth: 0,
                             fontSize: 12,
-                            color: token.colorTextTertiary,
+                            color: 'var(--text-muted)',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',

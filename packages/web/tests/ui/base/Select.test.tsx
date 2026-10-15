@@ -117,4 +117,26 @@ describe('uiarc Select 基础开合', () => {
         fireEvent.click(screen.getByRole('option', { name: /独立记忆/ }))
         expect(onValueChange).toHaveBeenCalledWith('normal')
     })
+
+    it('footer 渲染在弹层底部：入口可点击且点击不触发选项选中', () => {
+        const onValueChange = vi.fn<(v: 'normal' | 'open') => void>()
+        const onCreate = vi.fn()
+        render(
+            <Select
+                ariaLabel="工作区"
+                options={[...OPTIONS]}
+                value=""
+                onValueChange={onValueChange}
+                footer={<button type="button" onClick={onCreate}>+ 新建</button>}
+            />,
+        )
+        openMenu(screen.getByRole('combobox', { name: '工作区' }))
+        const create = screen.getByText('+ 新建')
+        // 在 viewport 滚动区之外（Radix Content 本身带 role=listbox，footer 挂在其尾部）
+        expect(create.closest('[data-radix-select-viewport]')).toBeNull()
+
+        fireEvent.click(create)
+        expect(onCreate).toHaveBeenCalledTimes(1)
+        expect(onValueChange).not.toHaveBeenCalled() // footer 点击不是选项选中
+    })
 })

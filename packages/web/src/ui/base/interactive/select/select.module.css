@@ -12,6 +12,11 @@
 .trigger:active:not([data-disabled]), .trigger[data-state="open"] { border-color: var(--border-strong); background: var(--surface-muted); }
 .trigger:focus-visible { border-color: var(--border-strong); }
 .trigger[data-disabled] { opacity: .5; cursor: not-allowed; }
+/* borderless 变体（本地修改 ⑩）：嵌入工具条/环境条——透明边框占位保住盒尺寸不跳，
+   紧凑高度与小字号随环境条基调 */
+.triggerBorderless { min-height: 28px; border-color: transparent; padding: 0 8px 0 6px; font-size: 13px; background: transparent; }
+@media (hover: hover) and (pointer: fine) { .triggerBorderless:hover:not([data-disabled]) { border-color: transparent; } }
+.triggerBorderless:active:not([data-disabled]), .triggerBorderless[data-state="open"], .triggerBorderless:focus-visible { border-color: transparent; }
 /* 清除钮叠层（mobi 本地修改 ④）：绝对定位在 chevron 位；有清除钮时 chevron 隐藏、文本让位 */
 .triggerWrap { position: relative; min-width: 0; }
 .trigger.hasClear { padding-right: 36px; }
@@ -40,6 +45,8 @@
 .highlight[data-on] { opacity: 1; }
 .indicator { position: absolute; right: 10px; display: inline-flex; align-items: center; color: var(--foreground); animation: indicator-in var(--duration-standard) var(--ease-enter) 40ms both; }
 .scrollButton { display: grid; height: 28px; place-items: center; color: var(--text-muted); }
+/* 弹层底部固定区（本地修改 ⑨）：viewport 滚动区之外，常驻入口不随列表滚走 */
+.footer { margin-top: 2px; border-top: 1px solid var(--border-subtle); padding-top: 4px; }
 @keyframes select-in { from { opacity: 0; transform: translate(var(--menu-x), var(--menu-y)) scale(.97); } }
 @keyframes select-out { to { opacity: 0; transform: translate(calc(var(--menu-x) / 2), calc(var(--menu-y) / 2)) scale(.98); } }
 @keyframes indicator-in { from { opacity: 0; transform: scale(.6); filter: blur(2px); } }

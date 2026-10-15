@@ -23,10 +23,12 @@
 //   值恒由镜像 state 驱动（"" = 清空态），否则非受控 clear 后 Radix 内部值失同步，重选同一项不再回调
 // ⑦ariaLabel 透传到触发器（无可见 label 场景的可访问名）
 // ⑧className/style 挂组件根（field）——布局尺寸从根上给，消费方无需包裹 div
+// ⑨footer：弹层底部固定区（viewport 滚动区之外，如「+ 新建」入口，EnvironmentBar 先例）
+// ⑩variant="borderless"：无边框紧凑触发器（嵌入工具条/环境条场景，antd borderless 对应物）
 "use client";
 
 import { forwardRef, useEffect, useId, useState } from "react";
-import type { ComponentPropsWithoutRef, CSSProperties, ForwardedRef, ReactElement, RefAttributes } from "react";
+import type { ComponentPropsWithoutRef, CSSProperties, ForwardedRef, ReactElement, ReactNode, RefAttributes } from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { Variants } from "motion/react";
@@ -49,6 +51,10 @@ export interface SelectProps<T extends string = string> extends Omit<ComponentPr
   allowClear?: boolean;
   /** 触发器的可访问名（无可见 label 场景） */
   ariaLabel?: string;
+  /** 弹层底部固定区（viewport 滚动区之外）——放「+ 新建」这类常驻入口 */
+  footer?: ReactNode;
+  /** borderless：无边框紧凑触发器（嵌入工具条场景） */
+  variant?: "default" | "borderless";
   value?: T | "";
   defaultValue?: T;
   /** 选中回调（恒发合法项值；清空走 onClear，不触发本回调） */
@@ -69,7 +75,7 @@ const valueFade: Variants = { enter: { opacity: 0 }, center: { opacity: 1, y: 0,
 
 // 泛型组件 + forwardRef：外层 cast 保留 T 推断（forwardRef 本身无法带泛型参数）
 export const Select = forwardRef(function SelectInner<T extends string>(
-  { label, description, placeholder, options, id, className, style, disabled, allowClear, ariaLabel, onValueChange, onClear, ...rootProps }: SelectProps<T>,
+  { label, description, placeholder, options, id, className, style, disabled, allowClear, ariaLabel, footer, variant = "default", onValueChange, onClear, ...rootProps }: SelectProps<T>,
   ref: ForwardedRef<HTMLButtonElement>,
 ) {
   const { t } = useTranslation();
@@ -121,7 +127,7 @@ export const Select = forwardRef(function SelectInner<T extends string>(
             id={controlId}
             aria-label={ariaLabel}
             aria-describedby={hintId}
-            className={[styles.trigger, showClear ? styles.hasClear : ""].filter(Boolean).join(" ")}
+            className={[styles.trigger, variant === "borderless" ? styles.triggerBorderless : "", showClear ? styles.hasClear : ""].filter(Boolean).join(" ")}
           >
             {/* Radix 为辅助技术保留真实值；下方的可见文案在值之间做动画。 */}
             <span className={styles.srOnly}><SelectPrimitive.Value placeholder={placeholderText} /></span>
@@ -161,6 +167,7 @@ export const Select = forwardRef(function SelectInner<T extends string>(
             <SelectPrimitive.ScrollDownButton className={styles.scrollButton}>
               <ChevronDown size={16} strokeWidth={1.75} aria-hidden="true" />
             </SelectPrimitive.ScrollDownButton>
+            {footer && <div className={styles.footer}>{footer}</div>}
           </SelectPrimitive.Content>
         </SelectPrimitive.Portal>
       </SelectPrimitive.Root>
