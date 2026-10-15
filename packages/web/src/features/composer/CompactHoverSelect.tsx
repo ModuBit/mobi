@@ -106,6 +106,9 @@ export function CompactHoverSelect({
                 disabled={disabled || loading}
                 prefix={prefix}
                 iconOnly={iconOnly}
+                // 模型列表 >8 项时 morph 默认出搜索（searchable auto）——composer 不需要：
+                // 展开即全列表滚动选取，typeahead 键盘检索仍可用
+                searchable={false}
                 // composer 全部贴屏幕底：默认向上展开
                 direction="up"
                 panelWidth={mobileFullWidth ? 9999 : undefined}

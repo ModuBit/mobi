@@ -434,8 +434,9 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
             disabled={disabled} inert={showSearch || undefined} tabIndex={showSearch ? -1 : 0}
             onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } if (open) close(true); else openList(); }}
             onKeyDown={event => onKey(event, false)} onKeyUp={event => { if (event.key === " ") window.setTimeout(() => { suppressClick.current = false; }); }}>
-            {/* prefix 在 button 的 flex 行内占位（slot 内会被绝对定位的 value 层覆盖）；measure 同构保宽度测量一致 */}
-            {prefix && <span className={styles.triggerPrefix} aria-hidden="true">{prefix}</span>}
+            {/* prefix 在 button 的 flex 行内占位（slot 内会被绝对定位的 value 层覆盖）；measure 同构保宽度测量一致。
+                搜索行展开时覆盖整个 lid，prefix 一并隐藏（否则圆点叠在搜索图标上） */}
+            {prefix && !showSearch && <span className={styles.triggerPrefix} aria-hidden="true">{prefix}</span>}
             <span ref={slotRef} className={styles.slot} data-hidden={showSearch || undefined}>
               <AnimatePresence initial={false} custom={changeForLayer}>
                 <motion.span key={layerKey} className={styles.layer} custom={changeForLayer} variants={variants} initial="enter" animate="rest" exit="exit"
