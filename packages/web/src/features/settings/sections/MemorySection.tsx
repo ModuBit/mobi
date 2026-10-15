@@ -15,9 +15,10 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Alert, App, Button, Input, InputNumber, Radio, Select, Tag, theme as antTheme, Tooltip } from 'antd'
-// uiarc 自管件：单选/可搜索选择（antd Select 迁移；tags 模式保持 antd——需自由输入）
+import { Alert, App, Button, Input, InputNumber, Radio, Tag, theme as antTheme, Tooltip } from 'antd'
+// uiarc 自管件：单选/可搜索选择（antd Select 已全站清零；tags 模式归 MultiSelect mode="tags"）
 import { Select as UiSelect } from '@/ui/base/interactive/select/Select'
+import { MultiSelect } from '@/ui/base/interactive/multi-select/MultiSelect'
 import { Combobox } from '@/ui/base/interactive/combobox/Combobox'
 import { useTranslation } from 'react-i18next'
 import { Brain, ExternalLink, Plus, Trash2 } from 'lucide-react'
@@ -430,16 +431,13 @@ export function MemorySection() {
             <Card $token={token}>
                 <Title $token={token}>{t('settings.memory.excludedTitle')}</Title>
                 <Hint $token={token}>{t('settings.memory.excludedHint')}</Hint>
-                <Select
+                <MultiSelect
                     mode="tags"
-                    style={{ width: '100%' }}
                     value={disabledWorkspaces}
-                    onChange={(v) => setDisabledWorkspaces(v ?? [])}
+                    onValueChange={(v) => setDisabledWorkspaces(v)}
                     options={workspaceOptions}
                     placeholder={t('settings.memory.excludedPlaceholder')}
-                    open={false}
-                    tokenSeparators={[',']}
-                    aria-label={t('settings.memory.excludedTitle')}
+                    ariaLabel={t('settings.memory.excludedTitle')}
                 />
             </Card>
 

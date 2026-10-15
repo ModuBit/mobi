@@ -92,3 +92,94 @@ describe('uiarc MultiSelect 选择语义', () => {
         expect(onChange).toHaveBeenLastCalledWith([])
     })
 })
+
+describe('uiarc MultiSelect mode="tags"（chip 内联输入自由值）', () => {
+    const TAG_OPTIONS = [
+        { value: '/ws/mobi', label: '/ws/mobi' },
+        { value: '/ws/demo', label: '/ws/demo' },
+    ]
+
+    function TagsHarness({ onChange }: { onChange?: (v: string[]) => void }) {
+        const [value, setValue] = useState<string[]>([])
+        return (
+            <MultiSelect
+                mode="tags"
+                ariaLabel="排除路径"
+                options={TAG_OPTIONS}
+                value={value}
+                onValueChange={(next) => { setValue(next); onChange?.(next) }}
+            />
+        )
+    }
+
+    it('触发器是输入框（非 button）；聚焦展开候选，点候选入 chip 并清搜索词', () => {
+        const onChange = vi.fn<(v: string[]) => void>()
+        render(<TagsHarness onChange={onChange} />)
+
+        // tags 触发器无 button（输入框承载 role=combobox）
+        expect(screen.queryByRole('button', { name: '排除路径' })).toBeNull()
+        const input = screen.getByRole('combobox', { name: '排除路径' })
+        fireEvent.focus(input)
+        expect(screen.getByRole('option', { name: '/ws/mobi' })).toBeInTheDocument()
+
+        fireEvent.click(screen.getByRole('option', { name: '/ws/mobi' }))
+        expect(onChange).toHaveBeenCalledWith(['/ws/mobi'])
+        // 点选后搜索词清空（antd tags 行为）
+        expect(input).toHaveValue('')
+    })
+
+    it('输入过滤候选；Enter 创建自由值 chip，重复值去重不再回调', () => {
+        const onChange = vi.fn<(v: string[]) => void>()
+        render(<TagsHarness onChange={onChange} />)
+
+        const input = screen.getByRole('combobox', { name: '排除路径' })
+        fireEvent.focus(input)
+        fireEvent.change(input, { target: { value: 'bi' } })
+        // 过滤：只剩匹配候选（'bi' 只命中 /ws/mobi，不命中 /ws/demo）
+        expect(screen.queryByRole('option', { name: '/ws/demo' })).not.toBeInTheDocument()
+
+        // 自由值（不在候选里）Enter 创建
+        fireEvent.change(input, { target: { value: '/custom/path' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(onChange).toHaveBeenCalledWith(['/custom/path'])
+
+        // 重复创建去重：不再回调
+        fireEvent.change(input, { target: { value: '/custom/path' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(onChange).toHaveBeenCalledTimes(1)
+    })
+
+    it('逗号也是创建键（antd tokenSeparators 语义）；空查询 Backspace 删尾 chip', () => {
+        const onChange = vi.fn<(v: string[]) => void>()
+        render(<TagsHarness onChange={onChange} />)
+
+        const input = screen.getByRole('combobox', { name: '排除路径' })
+        fireEvent.change(input, { target: { value: '/a' } })
+        fireEvent.keyDown(input, { key: ',' })
+        expect(onChange).toHaveBeenCalledWith(['/a'])
+
+        // 有查询词时 Backspace 是编辑，不删 chip；清空后删尾
+        fireEvent.change(input, { target: { value: 'x' } })
+        fireEvent.keyDown(input, { key: 'Backspace' })
+        expect(onChange).toHaveBeenCalledTimes(1)
+        fireEvent.change(input, { target: { value: '' } })
+        fireEvent.keyDown(input, { key: 'Backspace' })
+        expect(onChange).toHaveBeenCalledWith([])
+    })
+
+    it('tags 模式 chip 全显不折叠（maxVisible 缺省全显）', () => {
+        const onChange = vi.fn<(v: string[]) => void>()
+        render(<TagsHarness onChange={onChange} />)
+
+        const input = screen.getByRole('combobox', { name: '排除路径' })
+        for (const v of ['/ws/mobi', '/ws/demo', '/c']) {
+            fireEvent.change(input, { target: { value: v } })
+            fireEvent.keyDown(input, { key: 'Enter' })
+        }
+        // 3 个 chip 全部渲染（下拉 option 同文案，getAllByText），无 +N 折叠
+        expect(screen.getAllByText('/ws/mobi').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('/ws/demo').length).toBeGreaterThan(0)
+        expect(screen.getByText('/c')).toBeInTheDocument()
+        expect(screen.queryByText('+')).not.toBeInTheDocument()
+    })
+})
