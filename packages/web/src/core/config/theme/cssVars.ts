@@ -145,6 +145,36 @@ const STAGE_VARS: ReadonlyArray<readonly [string, string]> = [
 export const SHADCN_TOKENS_STYLE_ID = 'mobi-shadcn-tokens'
 
 /**
+ * arc（uiarc/shadcn）foundation 变量在 :root 的单源别名——自管件 css 模块的公共子集。
+ * 这些名字（--surface 系/字号/间距/控件高/时长/缓动）是上游 foundation.css 的语义名，
+ * 此前由各组件 css 模块各自复制映射块（五个模块五份，靠守卫测试防漂）；提升到 :root 后
+ * **portal 到 body 的弹层天然可见**，组件模块只保留组件专有覆盖（如 dropdown 的
+ * --surface: transparent、morph 的 --tracking-*）。
+ * 双档各注入一份（值只引别名目标，自身无明暗差异）；.dark 落在 documentElement（= :root
+ * 同元素），替换后 var() 在同元素重解析，暗档取值正确。
+ * 注意：此表不可收录与目标同名的变量（自引用整体失效）；copy-button 的 --surface-muted
+ * 走 antd 别名，属组件本地决策，留在其模块内。
+ */
+const UIARC_ALIAS_VARS: ReadonlyArray<readonly [string, string]> = [
+    ['--surface', 'var(--card)'],
+    ['--surface-raised', 'var(--popover)'],
+    ['--surface-muted', 'var(--accent)'],
+    ['--text-muted', 'var(--muted-foreground)'],
+    ['--text-xs', '12px'],
+    ['--text-sm', '14px'],
+    ['--space-2', '8px'],
+    ['--space-3', '12px'],
+    ['--control-height-md', '36px'],
+    ['--duration-instant', 'var(--mobi-duration-fast)'],
+    ['--duration-fast', 'var(--mobi-duration-fast)'],
+    ['--duration-standard', 'var(--mobi-duration-mid)'],
+    ['--duration-spring', 'var(--mobi-duration-mid)'],
+    ['--ease-standard', 'var(--mobi-ease-in-out)'],
+    ['--ease-enter', 'var(--mobi-ease-out)'],
+    ['--ease-spring', 'var(--mobi-ease-in-out)'],
+]
+
+/**
  * shadcn/arc 弹层的统一 z-index 基线（spec D6）：antd 弹层 z 从 1000 起（mask/wrap），
  * shadcn 生态默认 z-50 会在空间重叠处被 antd 弹层整层盖住（票 03 实测）。
  * arc 组件源码经 var(--mobi-z-overlay) 消费此值；缺省回落 50 维持生态默认。
@@ -176,6 +206,7 @@ export function buildShadcnThemeCss(mode: Mode): string {
         ...renderVars(STAGE_VARS, (value) => value),
         ...renderVars(RADIUS_VARS, (value) => `${value}px`),
         ...renderVars(MOTION_VARS, (value) => value),
+        ...renderVars(UIARC_ALIAS_VARS, (value) => value),
         `  --mobi-z-overlay: ${Z_OVERLAY};`,
         '}',
     ].join('\n')

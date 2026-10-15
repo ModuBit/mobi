@@ -1,29 +1,11 @@
 /* uiarc combobox 样式（registry 快照，自管件）。本地修改（不登记 registry.json）：
-   ①首个 .field 块：设计变量→mobi token 映射（foundation.css 不全局引入，morph-select 先例）
-   ②删除上游遗留的 .clear:focus-visible --focus-outline-offset 死变量（无全局规则消费）
-   ③.control:focus-within 描边由 --accent 改 --border-strong（与 select trigger 焦点一致） */
+   ①删除上游遗留的 .clear:focus-visible --focus-outline-offset 死变量（无全局规则消费）
+   ②.control:focus-within 描边由 --accent 改 --border-strong（与 select trigger 焦点一致）
+   ③arc foundation 变量（--surface 系/字号/间距/时长/缓动）已提升到 cssVars.ts :root 单源，
+    本模块只留组件专有的 --focus-ring */
 
-/* 变量映射：全局 cssVars.ts 已供给 --foreground/--border/--popover/--ring 等；此处只补组件专有
-   与 arc foundation 名（surface 系/字号/间距/时长/缓动/焦点环），值取 mobi token 单源 */
+/* 焦点环走 ring 色 30% 透明（arc foundation 的 --focus-ring 语义，仅本组件消费） */
 .field {
-  --surface: var(--card);
-  --surface-raised: var(--popover);
-  --surface-muted: var(--accent);
-  --text-muted: var(--muted-foreground);
-  --text-xs: 12px;
-  --text-sm: 14px;
-  --space-2: 8px;
-  --space-3: 12px;
-  /* 控件高取 dropdown-menu 同档（--control-height-sm 36px 的 md 对应档） */
-  --control-height-md: 36px;
-  --duration-instant: var(--mobi-duration-fast);
-  --duration-fast: var(--mobi-duration-fast);
-  --duration-standard: var(--mobi-duration-mid);
-  --duration-spring: var(--mobi-duration-mid);
-  --ease-standard: var(--mobi-ease-in-out);
-  --ease-spring: var(--mobi-ease-in-out);
-  --ease-enter: var(--mobi-ease-out);
-  /* 焦点环走 ring 色 30% 透明（arc foundation 的 --focus-ring 语义） */
   --focus-ring: color-mix(in oklab, var(--ring) 30%, transparent);
 }
 

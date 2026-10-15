@@ -28,36 +28,21 @@
  *
  * 全局已供给的同名变量（--border / --border-strong / --border-subtle / --foreground /
  * --text-secondary / --shadow-resting / --shadow-floating）**不在此重复声明**：同名重复
- * 声明会构成自引用（--border: var(--border)）而整体失效。此处只声明上游专有、全局没有的名字。
+ * 声明会构成自引用（--border: var(--border)）而整体失效。上游 foundation 公共子集
+ * （--surface 系/字号/间距/时长/缓动）2026-10-15 起提升到 cssVars.ts :root 单源
+ * （UIARC_ALIAS_VARS），此处只声明本组件专有的名字。
  * 升级 add --overwrite 会冲掉本头与映射，需按 registry.json localMods 恢复。 */
 
 :where(.trigger, .menu) {
-    /* 尺寸字面量取上游 foundation 原值（--space-1/2/3 = .25/.5/.75rem、--control-height-sm =
-     * 2.25rem、--text-sm = .875rem）——不沿用别的组件的数值。text-sm 14px 与 mobi 既有 antd
-     * 菜单项（.ant-dropdown-menu-item font-size 14px）同档；半径经 --radius-panel 走 mobi 的
-     * 面板档（22px），项半径 = 面板半径 − 6px（uiarc 的同心公式）＝ 16px。此项不与 antd 菜单项
-     * 的数值对齐——同心公式优先：外圆角放大后内层必须跟着收，观感由「外圆内也圆」决定 */
+    /* 尺寸字面量取上游 foundation 原值（--space-1 = .25rem、--control-height-sm =
+     * 2.25rem）——不沿用别的组件的数值。text-sm/space-2/space-3 与时长/缓动等公共子集
+     * 已提升到 cssVars.ts :root 单源，此处只留本组件专有：--surface 走透明（菜单悬在
+     * 业务表面上，trigger 常态不填色）、--danger、--space-1、--control-height-sm。
+     * 半径不在此映射：--radius-control / --radius-panel 由 cssVars.ts 按 mobi 档位直接注入 */
     --surface: transparent;
-    --surface-muted: var(--accent);
-    --surface-raised: var(--popover);
-    --text-muted: var(--muted-foreground);
     --danger: var(--destructive);
     --space-1: 4px;
-    --space-2: 8px;
-    --space-3: 12px;
     --control-height-sm: 36px;
-    /* 圆角不在此映射：--radius-control / --radius-panel 由 cssVars.ts 按 mobi 档位直接注入
-       :root，组件内直接用即可 */
-    --text-sm: 14px;
-    /* 上游四档时长 / 三档曲线收敛到主题 motion token（cssVars.ts 单源）——按 DESIGN.md
-     * 「registry 组件禁止自带第二套缓动语言」，--ease-spring 不做弹簧曲线，与 standard 同档 */
-    --duration-instant: var(--mobi-duration-fast);
-    --duration-fast: var(--mobi-duration-fast);
-    --duration-standard: var(--mobi-duration-mid);
-    --duration-spring: var(--mobi-duration-mid);
-    --ease-standard: var(--mobi-ease-in-out);
-    --ease-enter: var(--mobi-ease-out);
-    --ease-spring: var(--mobi-ease-in-out);
 }
 
 .trigger { display: inline-flex; max-width: 100%; min-height: var(--control-height-sm); align-items: center; gap: var(--space-2); padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface); color: var(--foreground); font: inherit; font-size: var(--text-sm); font-weight: 500; cursor: pointer; transition: background-color var(--duration-instant) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard); }

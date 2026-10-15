@@ -20,11 +20,12 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { Variants } from "motion/react";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
 import { GlidingHighlight } from "@/ui/base/motion/GlidingHighlight";
+import { ClearButton } from "@/ui/base/motion/ClearButton";
 import styles from "./multi-select.module.css";
 
 export interface MultiSelectOption {
@@ -143,11 +144,7 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
       </span>
       <ChevronDown className={styles.chevron} size={16} aria-hidden="true" />
     </button>
-    <AnimatePresence initial={false}>{selected.length > 0 && !disabled && <motion.button type="button" aria-label={t("common.clearSelection")} className={styles.clear} onClick={clear}
-      initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6, filter: `blur(${motionTokens.blur.subtle}px)` }}
-      animate={{ opacity: 1, scale: 1, filter: "blur(0px)", transition: reduce ? { duration: motionTokens.duration.instant } : { ...motionTokens.spring.snappy, opacity: { duration: motionTokens.duration.fast } } }}
-      exit={{ opacity: 0, ...(reduce ? {} : { scale: 0.6, filter: `blur(${motionTokens.blur.subtle}px)` }), transition: { duration: motionTokens.duration.instant, ease: standard } }}
-      whileTap={{ scale: reduce ? 1 : 0.96, transition: { duration: motionTokens.duration.instant, ease: standard } }}><X size={14} aria-hidden="true" /></motion.button>}</AnimatePresence>
+    <AnimatePresence initial={false}>{selected.length > 0 && !disabled && <ClearButton reduce={reduce} ariaLabel={t("common.clearSelection")} className={styles.clear} onClick={clear} />}</AnimatePresence>
     <AnimatePresence initial={false}>
       {open && <motion.div id={`${id}-listbox`} className={styles.menu} role="listbox" aria-label={label} aria-multiselectable="true"
         initial={reduce ? { opacity: 0 } : { opacity: 0, y: -6, scale: .97 }}

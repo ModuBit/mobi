@@ -20,7 +20,7 @@
 "use client";
 
 import { animate, AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Check, ChevronDown, Search, X } from "lucide-react";
+import { Check, ChevronDown, Search } from "lucide-react";
 import {
   forwardRef,
   useEffect,
@@ -34,6 +34,7 @@ import type { CSSProperties, InputHTMLAttributes, KeyboardEvent, MouseEvent as R
 import { useTranslation } from "react-i18next";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
 import { GlidingHighlight } from "@/ui/base/motion/GlidingHighlight";
+import { ClearButton } from "@/ui/base/motion/ClearButton";
 import styles from "./combobox.module.css";
 
 export interface ComboboxOption {
@@ -257,19 +258,15 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
         />
         <AnimatePresence initial={false}>
           {selectedOption && !disabled && (
-            <motion.button
-              type="button"
+            <ClearButton
+              reduce={reduceMotion}
+              ariaLabel={t("common.clearSelection")}
               className={styles.clear}
-              aria-label={t("common.clearSelection")}
+              iconSize={16}
+              strokeWidth={1.75}
               onMouseDown={event => event.preventDefault()}
               onClick={clear}
-              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.6, filter: `blur(${motionTokens.blur.subtle}px)` }}
-              animate={{ opacity: 1, scale: 1, filter: "blur(0px)", transition: reduceMotion ? { duration: motionTokens.duration.instant } : { ...motionTokens.spring.snappy, opacity: { duration: motionTokens.duration.fast } } }}
-              exit={{ opacity: 0, ...(reduceMotion ? {} : { scale: 0.6, filter: `blur(${motionTokens.blur.subtle}px)` }), transition: { duration: motionTokens.duration.instant, ease: [...motionTokens.ease.standard] } }}
-              whileTap={{ scale: reduceMotion ? 1 : 0.96, transition: { duration: motionTokens.duration.instant, ease: [...motionTokens.ease.standard] } }}
-            >
-              <X size={16} strokeWidth={1.75} aria-hidden="true" />
-            </motion.button>
+            />
           )}
         </AnimatePresence>
         <ChevronDown className={styles.chevron} size={16} strokeWidth={1.75} aria-hidden="true" />

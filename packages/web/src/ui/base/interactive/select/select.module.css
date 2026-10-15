@@ -1,31 +1,8 @@
 /* uiarc select 样式（registry 快照，自管件）。本地修改（不登记 registry.json）：
-   ①首个 .field 块：设计变量→mobi token 映射（foundation.css 不全局引入，morph-select 先例）
-   ②.triggerWrap/.clear/.hasClear：allowClear 清除叠层（见 Select.tsx 头注 ④） */
-
-/* 变量映射：全局 cssVars.ts 已供给 --foreground/--border/--popover/--ring 等；此处只补组件专有
-   与 arc foundation 名（surface 系/字号/间距/时长/缓动），值取 mobi token 单源。
-   挂 .field 与 .content 两处：菜单是 Radix Portal 挂 body（DOM 树上不在 .field 内，
-   CSS 变量不走组件树），portal 侧必须自带映射——否则 surface 系解析不到，背景退化透明 */
-.field,
-.content {
-  --surface: var(--card);
-  --surface-raised: var(--popover);
-  --surface-muted: var(--accent);
-  --text-muted: var(--muted-foreground);
-  --text-xs: 12px;
-  --text-sm: 14px;
-  --space-2: 8px;
-  --space-3: 12px;
-  /* 控件高取 dropdown-menu 同档（--control-height-sm 36px 的 md 对应档） */
-  --control-height-md: 36px;
-  --duration-instant: var(--mobi-duration-fast);
-  --duration-fast: var(--mobi-duration-fast);
-  --duration-standard: var(--mobi-duration-mid);
-  --duration-spring: var(--mobi-duration-mid);
-  --ease-standard: var(--mobi-ease-in-out);
-  --ease-spring: var(--mobi-ease-in-out);
-  --ease-enter: var(--mobi-ease-out);
-}
+   ①.triggerWrap/.clear/.hasClear：allowClear 清除叠层（见 Select.tsx 头注 ④）
+   ②arc foundation 变量（--surface 系/字号/间距/时长/缓动）已提升到 cssVars.ts :root 单源
+    （portal 到 body 的弹层天然可见），本模块不再自带映射块；组件专有的
+    .triggerWrap/.clear/.hasClear/.highlight 样式留在本文件 */
 
 .field { display: grid; gap: var(--space-2); min-width: 0; }
 .field label { font-size: var(--text-sm); font-weight: 500; }

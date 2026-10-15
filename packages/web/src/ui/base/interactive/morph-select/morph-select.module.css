@@ -19,27 +19,13 @@
    ②data-direction="up"：面板锚 lid 上方生长（shape/lid/listFace/分隔线四锚点翻转）
    ③.optionBody/.optionDescription：description 双行槽 */
 
-/* 变量映射：全局 cssVars.ts 已供给 --foreground/--border/--popover 等；此处只补组件专有
-   与 arc foundation 名（surface 系/字号/字距/间距/时长/缓动），值取 mobi token 单源 */
+/* 变量映射：arc foundation 公共子集（--surface 系/字号/间距/控件高/时长/缓动）已提升到
+   cssVars.ts :root 单源；此处只留本组件专有（字距/行高/字体与 --duration-considered） */
 .root {
-  --surface: var(--card);
-  --surface-raised: var(--popover);
-  --surface-muted: var(--accent);
-  --text-muted: var(--muted-foreground);
-  --text-xs: 12px;
-  --text-sm: 14px;
   --tracking-body: normal;
   --leading-body: normal;
   --font-body: inherit;
-  --space-2: 8px;
-  /* 控件高取 dropdown-menu 同档（--control-height-sm 36px 的 md 对应档） */
-  --control-height-md: 36px;
-  --duration-instant: var(--mobi-duration-fast);
-  --duration-fast: var(--mobi-duration-fast);
   --duration-considered: var(--mobi-duration-mid);
-  --duration-spring: var(--mobi-duration-mid);
-  --ease-standard: var(--mobi-ease-in-out);
-  --ease-spring: var(--mobi-ease-in-out);
 }
 
 /* The root lays out the label and the anchor. The anchor holds the closed trigger's place; the shape floats over it and grows past it when open. */
