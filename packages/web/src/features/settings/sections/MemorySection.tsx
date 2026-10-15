@@ -170,8 +170,6 @@ export function MemorySection() {
     const workspaceOptions = Array.from(new Set(
         (workspacesQuery.data ?? []).flatMap((w) => w.folders.map((f) => f.path)),
     )).map((path) => ({ value: path, label: path }))
-    // 自由输入的值直接进 selected（chip 完整显示，无需动态补 option）
-    const handleExcludedChange = setDisabledWorkspaces
     // workspace id → 名（规则行目标展示）；folders 平铺去重
     const workspaceNameOf = (id: string): string =>
         workspacesQuery.data?.find((w) => w.id === id)?.name ?? id
@@ -437,7 +435,7 @@ export function MemorySection() {
                 <MultiSelect
                     mode="tags"
                     value={disabledWorkspaces}
-                    onValueChange={handleExcludedChange}
+                    onValueChange={setDisabledWorkspaces}
                     options={workspaceOptions}
                     placeholder={t('settings.memory.excludedPlaceholder')}
                     ariaLabel={t('settings.memory.excludedTitle')}

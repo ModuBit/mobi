@@ -33,6 +33,7 @@ import { motionTokens } from "@/ui/base/motion/motionTokens";
 import { GlidingHighlight } from "@/ui/base/motion/GlidingHighlight";
 import { ClearButton } from "@/ui/base/motion/ClearButton";
 import { AppTooltip } from "@/ui/base/interactive/AppTooltip";
+import { normalizeNeedle, optionMatches } from "@/ui/base/interactive/optionSearch";
 import styles from "./multi-select.module.css";
 
 export interface MultiSelectOption {
@@ -63,19 +64,15 @@ export interface MultiSelectProps {
 const enter = motionTokens.ease.enter;
 const standard = motionTokens.ease.standard;
 /** 每个 chip 坐在一个槽里。宽度就位/收缩完全即时，观感只剩渐显渐隐
-    （2026-10-15 用户定稿：不要缩放/弹簧宽度展开，太花哨） */
+    （2026-10-15 用户定稿：不要缩放/弹簧宽度展开，太花哨）。chip 本体
+    已无独立动效（普通 span），渐显由槽层承担 */
 const slot: Variants = {
   hidden: { width: 0, opacity: 0 },
   shown: { width: "auto", opacity: 1, transition: { width: { duration: 0 }, opacity: { duration: motionTokens.duration.fast, ease: enter } } },
   gone: { width: 0, opacity: 0, transition: { width: { duration: 0 }, opacity: { duration: motionTokens.duration.instant } } },
 };
-const chip: Variants = {
-  hidden: { opacity: 0 },
-  shown: { opacity: 1, transition: { duration: motionTokens.duration.fast, ease: enter } },
-  gone: { opacity: 0, transition: { duration: motionTokens.duration.instant } },
-};
 /** reduced motion 与常规分支已同形（都是渐显渐隐，无位移/缩放），共享同一组 variants。 */
-const fade: Variants = { hidden: { opacity: 0 }, shown: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: motionTokens.duration.instant } }, gone: { opacity: 0, transition: { duration: motionTokens.duration.instant } } };
+const fade: Variants = { hidden: { opacity: 0 }, shown: { opacity: 1, transition: { duration: motionTokens.duration.instant } }, gone: { opacity: 0, transition: { duration: motionTokens.duration.instant } } };
 /** 溢出计数滚动：更大的数从下方升起，更小的从上方落下。 */
 const roll: Variants = {
   hidden: (direction: number) => ({ opacity: 0, y: `${direction * 0.5}em`, filter: `blur(${motionTokens.blur.subtle}px)` }),
@@ -106,9 +103,11 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
   const [query, setQuery] = useState("");
   const selected = value ?? internal;
   const selectedSet = useMemo(() => new Set(selected), [selected]);
-  const labelFor = (item: string) => options.find((option) => option.value === item)?.label ?? item;
+  // label 查表 O(1)：tags 击键热路径上 visible 与 srOnly 都要走它，线性 find 是 n·m
+  const labelMap = useMemo(() => new Map(options.map((option) => [option.value, option.label])), [options]);
+  const labelFor = (item: string) => labelMap.get(item) ?? item;
   const effectiveMaxVisible = maxVisible ?? (tags ? Number.POSITIVE_INFINITY : 2);
-  const visible = selected.slice(0, effectiveMaxVisible).map((item) => ({ value: item, label: labelFor(item) }));
+  const visible = useMemo(() => selected.slice(0, effectiveMaxVisible).map((item) => ({ value: item, label: labelFor(item) })), [selected, effectiveMaxVisible, labelMap]);
   const remaining = Math.max(0, selected.length - visible.length);
   // 关闭的菜单忘记高亮与搜索词，下次打开从干净状态开始，而非停在过期的悬停行。
   const [wasOpen, setWasOpen] = useState(open);
@@ -136,12 +135,12 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
     setDropUp(below < menu.scrollHeight + 12 && rect.top > below);
   }, [open]);
 
-  // tags 模式：输入过滤候选（自由值不在候选里，Enter 直接创建）
+  // tags 模式：输入过滤候选（自由值不在候选里，Enter 直接创建）；匹配走共享 optionMatches
   const filteredOptions = useMemo(() => {
     if (!tags) return options;
-    const normalizedQuery = query.trim().toLocaleLowerCase();
-    if (!normalizedQuery) return options;
-    return options.filter((option) => option.label.toLocaleLowerCase().includes(normalizedQuery));
+    const needle = normalizeNeedle(query);
+    if (!needle) return options;
+    return options.filter((option) => optionMatches(option, needle));
   }, [tags, options, query]);
 
   const update = (next: string[]) => { if (value === undefined) setInternal(next); onValueChange?.(next); };
@@ -158,23 +157,32 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
     setActiveIndex(-1);
     if (next && !selectedSet.has(next)) update([...selected, next]);
   };
+  /** 点选一项：tags 模式点选后清输入词与高亮（「选中后重置输入」语义收口在此） */
+  const pick = (option: MultiSelectOption) => {
+    if (tags) { setQuery(""); setActiveIndex(-1); }
+    toggle(option);
+  };
   const pickActive = () => {
     const option = activeIndex >= 0 ? menuOptions[activeIndex] : undefined;
     setQuery("");
     setActiveIndex(-1);
     if (option) toggle(option);
   };
+  /** 方向键环绕导航（default/tags 两个键盘处理器共用）：展开菜单并把高亮移到下一/上一可用项 */
+  const moveActive = (event: KeyboardEvent, key: "ArrowDown" | "ArrowUp") => {
+    if (!enabled.length) return;
+    event.preventDefault();
+    setOpen(true);
+    const current = enabled.indexOf(activeIndex);
+    const next = current < 0 ? (key === "ArrowDown" ? 0 : enabled.length - 1) : key === "ArrowDown" ? (current + 1) % enabled.length : (current - 1 + enabled.length) % enabled.length;
+    setActiveIndex(enabled[next]!);
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (disabled) return;
-    if (event.key === "Enter" && open && activeIndex >= 0) { event.preventDefault(); toggle(options[activeIndex]!); return; }
+    if (event.key === "Enter" && open && activeIndex >= 0) { event.preventDefault(); toggle(menuOptions[activeIndex]!); return; }
     if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setOpen((current) => !current); return; }
     if (event.key === "Escape") { setOpen(false); return; }
-    if ((event.key === "ArrowDown" || event.key === "ArrowUp") && enabled.length) {
-      event.preventDefault(); setOpen(true);
-      const current = enabled.indexOf(activeIndex);
-      const next = current < 0 ? (event.key === "ArrowDown" ? 0 : enabled.length - 1) : event.key === "ArrowDown" ? (current + 1) % enabled.length : (current - 1 + enabled.length) % enabled.length;
-      setActiveIndex(enabled[next]!);
-    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") moveActive(event, event.key);
   };
   // tags 输入框键盘：Enter/逗号创建自由值（有导航项时优先点选）、空查询 Backspace 删尾 chip
   const onTagsKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -187,23 +195,20 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
     }
     if (event.key === "Backspace" && !query && selected.length) { event.preventDefault(); update(selected.slice(0, -1)); return; }
     if (event.key === "Escape" && open) { event.preventDefault(); setOpen(false); return; }
-    if ((event.key === "ArrowDown" || event.key === "ArrowUp") && enabled.length) {
-      event.preventDefault(); setOpen(true);
-      const current = enabled.indexOf(activeIndex);
-      const next = current < 0 ? (event.key === "ArrowDown" ? 0 : enabled.length - 1) : event.key === "ArrowDown" ? (current + 1) % enabled.length : (current - 1 + enabled.length) % enabled.length;
-      setActiveIndex(enabled[next]!);
-    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") moveActive(event, event.key);
   };
   const reduce = useReducedMotion();
 
-  // chips 溢出折叠 + 弹簧开合动效（default/tags 两种触发器共用）；tags 模式 chip 带单删 ×
-  const removeItem = (item: string) => { if (!disabled) update(selected.filter((v) => v !== item)); };
-  const clearBtn = selected.length > 0 && !disabled && (
+  // chips 溢出折叠 + 渐显动效（default/tags 两种触发器共用）；tags 模式 chip 带单删 ×
+  const removeItem = (item: string) => update(selected.filter((v) => v !== item));
+  const clearBtn = !tags && selected.length > 0 && !disabled && (
     <ClearButton reduce={reduce} ariaLabel={t("common.clearSelection")} className={styles.clear} onClick={clear} />
   );
+  // chips 子树：slot 层挂渐显/即时宽度 variants，chip 本体是普通 span（双层 motion 已无必要——
+  // 动效收敛后只剩一层 opacity 过渡）；击键全量重建成本在 chip 数量级（<10），不做 memo
   const chipsNode = (
     <AnimatePresence initial={false}>
-      {visible.map((item) => <motion.span key={`chip-${item.value}`} className={styles.slot} variants={slot} initial="hidden" animate="shown" exit="gone"><motion.span className={styles.chip} variants={chip}>{tags ? (
+      {visible.map((item) => <motion.span key={`chip-${item.value}`} className={styles.slot} variants={slot} initial="hidden" animate="shown" exit="gone"><span className={styles.chip}>{tags ? (
         <>
           {/* label 收进独立截断盒：× 常驻流内不被长值挤出裁掉；AppTooltip 悬停全值——
               chip 完整显示（容器内自适应），只有超过容器宽才截断兜底。
@@ -221,8 +226,8 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
             <X size={11} strokeWidth={2} aria-hidden="true" />
           </button>
         </>
-      ) : item.label}</motion.span></motion.span>)}
-      {remaining > 0 && <motion.span key="more" className={styles.slot} variants={slot} initial="hidden" animate="shown" exit="gone"><motion.span className={styles.more} variants={chip}>+<span className={styles.count}><AnimatePresence initial={false} custom={countDirection}><motion.span key={remaining} custom={countDirection} variants={reduce ? fade : roll} initial="hidden" animate="shown" exit="gone">{remaining}</motion.span></AnimatePresence></span></motion.span></motion.span>}
+      ) : item.label}</span></motion.span>)}
+      {remaining > 0 && <motion.span key="more" className={styles.slot} variants={slot} initial="hidden" animate="shown" exit="gone"><span className={styles.more}>+<span className={styles.count}><AnimatePresence initial={false} custom={countDirection}><motion.span key={remaining} custom={countDirection} variants={reduce ? fade : roll} initial="hidden" animate="shown" exit="gone">{remaining}</motion.span></AnimatePresence></span></span></motion.span>}
     </AnimatePresence>
   );
 
@@ -243,7 +248,7 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
           role="combobox"
           aria-expanded={open}
           aria-haspopup="listbox"
-          aria-controls={open ? `${id}-listbox` : undefined}
+          aria-controls={`${id}-listbox`}
           onFocus={() => { if (!disabled) setOpen(true); }}
           onChange={(event) => { setQuery(event.target.value); setOpen(true); setActiveIndex(-1); }}
           onKeyDown={onTagsKeyDown}
@@ -283,7 +288,7 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
           exit={{ opacity: 0, ...(reduce ? {} : { y: dropUp ? 4 : -4, scale: .98 }), transition: { duration: motionTokens.duration.instant, ease: standard } }}>
           {/* gliding highlight 的当前项（键盘 activeIndex 与悬停 onPointerMove 同源） */}
           <GlidingHighlight className={styles.highlight} target={(activeIndex >= 0 ? optionRefs.current[menuOptions[activeIndex]?.value ?? ""] : null) ?? null} />
-          {menuOptions.map((option, index) => <button type="button" role="option" aria-selected={selectedSet.has(option.value)} aria-disabled={option.disabled || undefined} key={option.value} ref={(el) => { if (el) optionRefs.current[option.value] = el; else delete optionRefs.current[option.value]; }} className={styles.option} data-active={activeIndex === index} disabled={option.disabled} onPointerMove={() => { if (activeIndex !== index) setActiveIndex(index); }} onClick={() => { toggle(option); if (tags) { setQuery(""); setActiveIndex(-1); } }}>
+          {menuOptions.map((option, index) => <button type="button" role="option" aria-selected={selectedSet.has(option.value)} aria-disabled={option.disabled || undefined} key={option.value} ref={(el) => { if (el) optionRefs.current[option.value] = el; else delete optionRefs.current[option.value]; }} className={styles.option} data-active={activeIndex === index} disabled={option.disabled} onPointerMove={() => { if (activeIndex !== index) setActiveIndex(index); }} onClick={() => pick(option)}>
             <span>{option.label}</span><AnimatePresence initial={false}>{selectedSet.has(option.value) && <CheckMark key="check" reduce={reduce} />}</AnimatePresence>
           </button>)}
         </motion.div>}

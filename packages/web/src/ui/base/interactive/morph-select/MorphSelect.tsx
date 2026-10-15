@@ -188,7 +188,7 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
   const canSearch = searchable === "auto" ? all.length > 8 : searchable;
   /** up 档的 y 向符号：面板在 lid 上方，开合动画的几何方向取反 */
   const sign = directionValue === "up" ? -1 : 1;
-  const variants = useMemo(() => (reduced ? valueFade : valueVariants), [reduced]);
+  const variants = reduced ? valueFade : valueVariants;
 
   /** 水平钳制偏移（mobi）：面板理想位置出视窗时平移回视口内，展开内容完整可见 */
   const shapeX = useMotionValue(0);

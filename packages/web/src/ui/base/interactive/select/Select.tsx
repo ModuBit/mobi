@@ -64,11 +64,12 @@ export interface SelectProps<T extends string = string> extends Omit<ComponentPr
   options: { value: T; label: string; disabled?: boolean; /** 悬停提示（antd 迁移站点的能力保留） */ title?: string }[];
 }
 
-/** 展示值切换：去方向性滚动（2026-10-15 用户定稿），blur 柔焦保留。 */
+/** 展示值切换：blur 柔焦交叉（2026-10-15 用户定稿去方向性滚动后，无 custom 消费）。
+    reduced motion 的 valueFade 与之同形（纯 opacity）。 */
 const valueRoll: Variants = {
-  enter: () => ({ opacity: 0, filter: `blur(${motionTokens.blur.soft}px)` }),
+  enter: { opacity: 0, filter: `blur(${motionTokens.blur.soft}px)` },
   center: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: motionTokens.duration.standard, ease: [...motionTokens.ease.enter] } },
-  exit: () => ({ opacity: 0, filter: `blur(${motionTokens.blur.subtle}px)`, transition: { duration: motionTokens.duration.fast, ease: [...motionTokens.ease.standard] } }),
+  exit: { opacity: 0, filter: `blur(${motionTokens.blur.subtle}px)`, transition: { duration: motionTokens.duration.fast, ease: [...motionTokens.ease.standard] } },
 };
 /** reduced motion 保留短交叉淡入；静止态与 valueRoll 一致，保证服务端与客户端标记一致。 */
 const valueFade: Variants = { enter: { opacity: 0 }, center: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: motionTokens.duration.instant } }, exit: { opacity: 0, transition: { duration: motionTokens.duration.instant } } };
@@ -103,9 +104,6 @@ export const Select = forwardRef(function SelectInner<T extends string>(
   const currentValue: string = rootProps.value !== undefined ? rootProps.value : uncontrolledValue;
   const index = options.findIndex((option) => option.value === currentValue);
   const shown = currentValue ? options[index]?.label ?? "" : placeholderText;
-  const [previousIndex, setPreviousIndex] = useState(index);
-  const [direction, setDirection] = useState(1);
-  if (previousIndex !== index) { setPreviousIndex(index); setDirection(index > previousIndex ? 1 : -1); }
   const showClear = allowClear && !!currentValue && !disabled;
   const clear = (event: React.MouseEvent) => {
     // 拦住冒泡：清除不该顺带开菜单
@@ -132,8 +130,8 @@ export const Select = forwardRef(function SelectInner<T extends string>(
             {/* Radix 为辅助技术保留真实值；下方的可见文案在值之间做动画。 */}
             <span className={styles.srOnly}><SelectPrimitive.Value placeholder={placeholderText} /></span>
             <span className={styles.valueText} aria-hidden="true">
-              <AnimatePresence initial={false} custom={direction}>
-                <motion.span key={currentValue ? `value-${currentValue}` : "placeholder"} data-placeholder={currentValue ? undefined : ""} custom={direction} variants={reduceMotion ? valueFade : valueRoll} initial="enter" animate="center" exit="exit">{shown}</motion.span>
+              <AnimatePresence initial={false}>
+                <motion.span key={currentValue ? `value-${currentValue}` : "placeholder"} data-placeholder={currentValue ? undefined : ""} variants={reduceMotion ? valueFade : valueRoll} initial="enter" animate="center" exit="exit">{shown}</motion.span>
               </AnimatePresence>
             </span>
             {/* 清除态由 CSS 隐藏 chevron（.triggerWrap:has(.clear)），位置让给外层清除钮 */}

@@ -40,6 +40,7 @@ import { useTranslation } from "react-i18next";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
 import { GlidingHighlight } from "@/ui/base/motion/GlidingHighlight";
 import { ClearButton } from "@/ui/base/motion/ClearButton";
+import { normalizeNeedle, optionMatches } from "@/ui/base/interactive/optionSearch";
 import styles from "./combobox.module.css";
 
 export interface ComboboxOption {
@@ -153,11 +154,9 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
   }, [selectedValue, reduceMotion, open]);
 
   const filteredOptions = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase();
-    if (!normalizedQuery) return options;
-    return options.filter((option) =>
-      [option.label, ...(option.keywords ?? [])].some((term) => term.toLocaleLowerCase().includes(normalizedQuery)),
-    );
+    const needle = normalizeNeedle(query);
+    if (!needle) return options;
+    return options.filter((option) => optionMatches(option, needle));
   }, [options, query]);
 
   const enabledIndices = filteredOptions.reduce<number[]>((indices, option, index) => {
@@ -178,10 +177,14 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     }
   }, [activeIndex, filteredOptions, open]);
 
+  // 单次注册 + latest ref：document 级监听器持有首帧闭包，转发到最新 updateOpen
+  // （受控形态切换/回调更换后外点关闭依旧走新回调，不重挂监听）
+  const updateOpenRef = useRef(updateOpen);
+  updateOpenRef.current = updateOpen;
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        updateOpen(false);
+        updateOpenRef.current(false);
         setQuery("");
       }
     };

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { Monitor, FolderOpen, Plus } from 'lucide-react'
@@ -83,6 +83,8 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
         directoryLabel,
         disabled = false,
     } = props
+    // options 引用稳定：否则 Combobox 内 filteredOptions 的 useMemo 每渲染失效
+    const workspaceOptions = useMemo(() => workspaces.map(p => ({ value: p.id, label: p.name })), [workspaces])
 
     return (
         <div style={{
@@ -111,7 +113,7 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                     emptyMessage={t('workspace.empty')}
                     variant="borderless"
                     allowClear={false}
-                    options={workspaces.map(p => ({ value: p.id, label: p.name }))}
+                    options={workspaceOptions}
                     style={{ flex: 1, minWidth: 0 }}
                     footer={onCreateWorkspace && (
                         <CreateButton
