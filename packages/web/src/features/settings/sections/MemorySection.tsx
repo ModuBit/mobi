@@ -170,13 +170,26 @@ export function MemorySection() {
     const uiUrl = deriveMemoryUiUrl(endpoint)
     const offMachine = engine === 'hindsight' && isOffMachineEndpoint(endpoint)
     // workspace 排除下拉可选项：全部工作区 folder 路径（tags 模式仍可自由输入任意路径）。
-    // chip 窄盒只放得下尾段目录名（全路径截断后不可读），完整路径走悬停 title
+    // chip 窄盒放不下全路径，但只留尾段会让重名不同父路径的目录不可区分——
+    // 短形态走「头部省略、尾部多级保留」（…/github/modu/mochy vs …/workspace/mochy）；
+    // 非绝对路径的值不做短化（无路径结构可依），截断由组件 ellipsis + 悬停 title 兜底
+    const chipPath = (path: string, budget = 20): string => {
+        if (!path.startsWith('/') || path.length <= budget) return path
+        const segments = path.split('/').filter(Boolean)
+        let tail = ''
+        for (let i = segments.length - 1; i >= 0; i--) {
+            const candidate = `/${segments.slice(i).join('/')}`
+            if (candidate.length > budget - 1) break
+            tail = candidate
+        }
+        return tail ? `…${tail}` : path
+    }
     const workspaceOptions = Array.from(new Set(
         (workspacesQuery.data ?? []).flatMap((w) => w.folders.map((f) => f.path)),
     )).map((path) => ({
         value: path,
         label: path,
-        shortLabel: path.split('/').filter(Boolean).pop() || path,
+        shortLabel: chipPath(path),
         title: path,
     }))
     // 自由输入的路径动态补成 option（antd tags 同语义）：chip 才有短形态与悬停全值
@@ -187,7 +200,7 @@ export function MemorySection() {
             const known = new Set([...workspaceOptions, ...prev].map((o) => o.value))
             const added = next
                 .filter((v) => !known.has(v))
-                .map((path) => ({ value: path, label: path, shortLabel: path.split('/').filter(Boolean).pop() || path, title: path }))
+                .map((path) => ({ value: path, label: path, shortLabel: chipPath(path), title: path }))
             return added.length ? [...prev, ...added] : prev
         })
     }
