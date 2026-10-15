@@ -17,11 +17,10 @@
 /**
  * CompactHoverSelect（morph-select 壳）行为契约：
  * ① onChange 单参归一（morph 的 (value, option) 双参在壳内吞掉）；
- * ② composer 固定形态——direction 恒 up（贴屏幕底）；
+ * ② 展开方向/视口钳制交 morph auto 决策（展开内容恒在视窗内），壳不干预；
  * ③ loading 一并禁用触发器；
- * ④ effort-popover 全局样式注入（单点收口，首渲染即注入一次）。
- * 面板宽度参数化（mobileFullWidth → panelWidth 9999）是纯数值透传，
- * jsdom 无真实布局测不出满宽效果，归真机验收（票 03）。
+ * ④ effort-popover 全局样式注入（单点收口，首渲染即注入一次）；
+ * ⑤ mobileFullWidth 仅移动端生效（PC 传了不放大面板，防撑出屏幕）。
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -30,7 +29,7 @@ import { render, cleanup, fireEvent, screen } from '@testing-library/react'
 import type { AnimationPlaybackControls, MotionValue } from 'motion/react'
 import { CompactHoverSelect, type CompactHoverSelectOption } from '@/features/composer/CompactHoverSelect'
 
-/** jsdom 无 matchMedia：reduced 恒 false；animate 打桩成立即达（尺寸 spring 不必真跑） */
+// jsdom 无 matchMedia：morph 动效打桩成立即达（尺寸 spring 不必真跑）
 vi.mock('motion/react', async (importOriginal) => {
     const actual = await importOriginal<typeof import('motion/react')>()
     const animateStub = (value: MotionValue<number>, target: number): AnimationPlaybackControls => {
@@ -40,6 +39,16 @@ vi.mock('motion/react', async (importOriginal) => {
     }
     return { ...actual, animate: animateStub, useReducedMotion: () => false }
 })
+
+// useIsMobile 可控桩（mobileFullWidth 收窄语义的断言面）
+const { isMobileMock, setIsMobile } = vi.hoisted(() => {
+    const isMobileMock = { value: false }
+    return { isMobileMock, setIsMobile: (v: boolean) => { isMobileMock.value = v } }
+})
+vi.mock('@/core/data/hooks/useMediaQuery', () => ({
+    useIsMobile: () => isMobileMock.value,
+    useHasFinePointer: () => true,
+}))
 
 const OPTIONS: CompactHoverSelectOption[] = [
     { value: 'default', label: '默认', description: '跟随 CC 设置' },
@@ -69,9 +78,20 @@ describe('CompactHoverSelect 壳行为', () => {
         expect(onChange).toHaveBeenCalledWith('acceptEdits')
     })
 
-    it('composer 固定向上展开：root 恒带 data-direction="up"', () => {
+    it('展开方向交 morph auto 决策：jsdom 视口空间充足 → down（壳不再硬编码 up）', () => {
         const { container } = render(<Harness />)
-        expect(container.querySelector('[data-direction]')).toHaveAttribute('data-direction', 'up')
+        expect(container.querySelector('[data-direction]')).toHaveAttribute('data-direction', 'down')
+    })
+
+    it('mobileFullWidth 仅移动端生效：PC 面板宽保持默认 272，移动端顶满宽上限', () => {
+        setIsMobile(false)
+        const { container } = render(<Harness mobileFullWidth />)
+        expect(container.querySelector('[data-direction]')?.getAttribute('style')).toContain('--ms-panel-w: 272px')
+        cleanup()
+
+        setIsMobile(true)
+        const { container: mobileContainer } = render(<Harness mobileFullWidth />)
+        expect(mobileContainer.querySelector('[data-direction]')?.getAttribute('style')).toContain('--ms-panel-w: 9999px')
     })
 
     it('disabled 与 loading 都禁用触发器', () => {

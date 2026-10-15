@@ -70,10 +70,11 @@ export interface MorphSelectProps {
   /** Trigger 内 value 前的静态缀（mobi 本地槽位，如 effort 圆点）；仅 lid，不进列表项。 */
   prefix?: ReactNode;
   /**
-   * 展开方向（mobi 本地槽位）：上游只向下生长；composer 贴屏幕底部需要 "up"——
-   * shape 锚底生长、listFace 挂 lid 上方、入场位移与数值滚动 y 向镜像。
+   * 展开方向（mobi 本地槽位）：上游只向下生长。"auto"（默认）按打开时刻的视口空间自动
+   * 决策（向下放得下 → down；否则向上放得下 → up；都放不下取空间大的一侧，列表内部滚动）；
+   * 显式 "up"/"down" 强制。决策在 open 前同步完成，动画不会中途翻面。
    */
-  direction?: "up" | "down";
+  direction?: "up" | "down" | "auto";
   items: MorphSelectItem[];
   value?: string | null;
   defaultValue?: string | null;
@@ -158,11 +159,16 @@ const triggerWidth = (node: HTMLElement) => {
   return Math.abs(exact - rounded) <= .5 ? Math.ceil(exact - .01) : rounded + 1;
 };
 
-export function MorphSelect({ label, hideLabel = false, iconOnly = false, direction = "down", prefix, items, value, defaultValue = null, onValueChange, placeholder = "Select", searchable = "auto", searchPlaceholder,
+export function MorphSelect({ label, hideLabel = false, iconOnly = false, direction = "auto", prefix, items, value, defaultValue = null, onValueChange, placeholder = "Select", searchable = "auto", searchPlaceholder,
   panelWidth = 272, maxListHeight = 296, align = "start", name, disabled = false, className, style }: MorphSelectProps) {
   const reduced = useReducedFlag();
   const uid = useId();
   const labelId = `${uid}-label`, listId = `${uid}-list`, optionId = (index: number) => `${uid}-option-${index}`;
+
+  // 方向决策结果（mobi：auto 档在 open 前同步定锚）；sign 驱动全部 y 向镜像。
+  // 手动档（up/down）即时生效不经过 state，prop 变更立刻反映到 DOM
+  const [autoDirection, setAutoDirection] = useState<"up" | "down">("down");
+  const directionValue = direction === "auto" ? autoDirection : direction;
 
   const rootRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLSpanElement>(null);
@@ -178,8 +184,12 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
   const indexOf = useMemo(() => new Map(all.map((option, index) => [option.value, index])), [all]);
   const canSearch = searchable === "auto" ? all.length > 8 : searchable;
   /** up 档的 y 向符号：面板在 lid 上方，滚动/飞行的几何方向全部取反 */
-  const sign = direction === "up" ? -1 : 1;
+  const sign = directionValue === "up" ? -1 : 1;
   const variants = useMemo(() => (reduced ? valueFade : valueVariants(sign)), [reduced, sign]);
+
+  /** 水平钳制偏移（mobi）：面板理想位置出视窗时平移回视口内，展开内容完整可见 */
+  const shapeX = useMotionValue(0);
+  const pendingShift = useRef(0);
 
   const [inner, setInner] = useState<string | null>(defaultValue);
   const selected = value !== undefined ? value : inner;
@@ -255,8 +265,10 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
       rootRef.current?.style.setProperty("--ms-trigger-w", `${triggerWidth(measure)}px`);
       sizes.current = { trigger: triggerWidth(measure), lid: measure.offsetHeight, listW: face.offsetWidth, listH: face.offsetHeight };
     }
+    // 水平钳制随开合往返：open 位移到决策位（openList 已算好），closed 归零
+    animate(shapeX, open ? pendingShift.current : 0, open ? WIDTH : NARROW);
     place(true);
-  }, [open, place]);
+  }, [open, place, shapeX]);
 
   /* The highlight glides between options on its own spring and fades when nothing is active. */
   const hy = useMotionValue(0), hh = useMotionValue(0), ho = useMotionValue(0);
@@ -291,8 +303,40 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
   const suppressClick = useRef(false);
   const [announcement, setAnnouncement] = useState("");
 
+  /**
+   * 视口适配决策（mobi 本地槽位，open 前同步执行）：垂直方向 auto 决策 + 水平钳制 +
+   * 列表高度按剩余空间收缩。目标只有一个——展开内容完整落在视窗内。
+   */
+  const resolveViewportFit = () => {
+    const root = rootRef.current;
+    if (!root || typeof window === "undefined") return;
+    const rect = root.getBoundingClientRect();
+    const vh = window.innerHeight, vw = window.innerWidth, margin = 12;
+    const { lid, listH } = sizes.current;
+    const panelH = lid + Math.min(listH, maxListHeight);
+    // 垂直：down 放得下 → down；否则 up 放得下 → up；都放不下取空间大的一侧（列表内部滚动）
+    let dir: "up" | "down";
+    if (direction !== "auto") {
+      dir = direction;
+    } else {
+      const upSpace = rect.top - margin, downSpace = vh - rect.bottom - margin;
+      dir = downSpace >= panelH ? "down" : upSpace >= panelH ? "up" : upSpace >= downSpace ? "up" : "down";
+    }
+    setAutoDirection(dir);
+    // 列表高度收缩：所选方向放不下完整列表时压 --ms-list-max，面板整体仍不出视窗
+    const sideSpace = dir === "up" ? rect.top - margin : vh - rect.bottom - margin;
+    const listMax = Math.max(160, Math.min(maxListHeight, sideSpace - lid - 12));
+    root.style.setProperty("--ms-list-max", `${Math.floor(listMax)}px`);
+    // 水平：align 决定理想锚位，出视窗则平移回 [margin, vw - margin - w]
+    const w = Math.max(sizes.current.trigger, Math.min(panelWidth, vw - 2 * margin));
+    const idealLeft = align === "end" ? rect.right - w : rect.left;
+    const clampedLeft = Math.max(margin, Math.min(idealLeft, vw - margin - w));
+    pendingShift.current = clampedLeft - rect.left;
+  };
+
   const openList = (focus?: string | null, seed = "") => {
     if (disabled || open) return;
+    resolveViewportFit();
     setQuery(seed);
     setActive(focus !== undefined ? focus : selected);
     scrollIntent.current = true;
@@ -420,14 +464,14 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
   const changeForLayer: Change = change.value === selected ? change : { ...change, fly: null };
   const rootStyle = { "--ms-panel-w": `${panelWidth}px`, "--ms-list-max": `${maxListHeight}px`, ...style } as CSSProperties;
 
-  return <div ref={rootRef} className={[styles.root, className].filter(Boolean).join(" ")} style={rootStyle} data-open={open || undefined} data-align={align} data-direction={direction} data-disabled={disabled || undefined} onBlur={onBlur}>
+  return <div ref={rootRef} className={[styles.root, className].filter(Boolean).join(" ")} style={rootStyle} data-open={open || undefined} data-align={align} data-direction={directionValue} data-disabled={disabled || undefined} onBlur={onBlur}>
     <span id={labelId} className={hideLabel || iconOnly ? styles.srOnly : styles.label}>{label}</span>
 
     <motion.div className={styles.anchor} style={{ width: anchorW }}>
       {/* Sizes the closed trigger. It holds the chosen label with the trigger's own padding, so the width spring has a target before anything moves. */}
       <span ref={measureRef} className={`${styles.trigger} ${styles.measure}`} aria-hidden="true">{prefix && <span className={styles.triggerPrefix} aria-hidden="true">{prefix}</span>}{renderValue(selectedOption, !iconOnly)}</span>
 
-      <motion.div className={styles.shape} style={{ width: shapeW, height: shapeH, borderRadius: radius }}>
+      <motion.div className={styles.shape} style={{ width: shapeW, height: shapeH, borderRadius: radius, x: shapeX }}>
         <div className={styles.lid}>
           <button ref={triggerRef} type="button" className={styles.trigger} role="combobox" aria-labelledby={labelId} aria-haspopup="listbox" aria-expanded={open} aria-controls={listId}
             aria-activedescendant={open && !canSearch && current !== null ? optionId(indexOf.get(current) ?? 0) : undefined}

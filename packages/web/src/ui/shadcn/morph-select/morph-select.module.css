@@ -44,7 +44,8 @@
 
 /* The root lays out the label and the anchor. The anchor holds the closed trigger's place; the shape floats over it and grows past it when open. */
 .root { --ms-h: var(--control-height-md); --ms-trigger-w: 0px; position: relative; display: inline-grid; justify-items: start; gap: var(--space-2); min-width: 0; color: var(--foreground); font-family: var(--font-body); font-size: var(--text-sm); letter-spacing: var(--tracking-body); line-height: var(--leading-body); }
-.root[data-align="end"] { justify-items: end; }
+/* 水平钳制（mobi）：shape 恒 left:0 锚 root 左缘，出视窗的偏移由组件 x 驱动（--ms-shift 语义），
+   align 只参与理想锚位决策——不再用 right:0 翻面，x 数学恒以 root 左缘为基准 */
 .root[data-open] { z-index: 30; }
 .label { color: var(--text-secondary); font-size: var(--text-sm); font-weight: 500; }
 
@@ -53,7 +54,6 @@
 /* One material for both states. The border is an overlay so it never changes a measurement. */
 .shape { position: absolute; top: 0; left: 0; overflow: clip; background: var(--surface); box-shadow: var(--shadow-resting); transition: box-shadow var(--duration-considered) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard); }
 .shape::after { content: ""; position: absolute; inset: 0; z-index: 2; border: 1px solid var(--border); border-radius: inherit; pointer-events: none; transition: border-color var(--duration-fast) var(--ease-standard); }
-.root[data-align="end"] .shape { right: 0; left: auto; }
 .root[data-open] .shape { background: var(--surface-raised); box-shadow: var(--shadow-floating); }
 .root[data-disabled] .shape { opacity: .55; }
 @media (hover: hover) and (pointer: fine) {
@@ -76,7 +76,6 @@
 /* An invisible copy that says how wide the closed trigger wants to be. It sits in flow until the first measurement lands, so the server render already has the right size. */
 .measure { position: static; visibility: hidden; pointer-events: none; width: max-content; max-width: min(20rem, calc(100vw - 2rem)); }
 .root[data-ready] .measure { position: absolute; top: 0; left: 0; }
-.root[data-align="end"][data-ready] .measure { right: 0; left: auto; }
 
 /* value 层（layer）绝对定位垂直居中，prefix 静态缀走同一 flex 行居中——
    slot 若是纯 block，prefix 会贴顶悬在 pill 上缘（2026-10-15 实踩） */
@@ -111,7 +110,6 @@
 
 /* The list hangs under the lid at its own width, so it measures the same whatever size the surface is mid spring. */
 .listFace { position: absolute; top: var(--ms-h); left: 0; box-sizing: border-box; width: max(var(--ms-trigger-w), min(var(--ms-panel-w), calc(100vw - 2rem))); padding: 0 6px 6px; }
-.root[data-align="end"] .listFace { right: 0; left: auto; }
 .listFace::before { content: ""; position: absolute; top: 0; right: 14px; left: 14px; height: 1px; background: var(--border-subtle); }
 .listFace[inert] { pointer-events: none; }
 .scroll { max-height: var(--ms-list-max); overflow-y: auto; overscroll-behavior: contain; padding-top: 6px; scrollbar-width: thin; }

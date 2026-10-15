@@ -86,14 +86,28 @@ describe('morph-select 基础开合', () => {
     })
 })
 
-describe('direction 向上档（mobi 本地槽位）', () => {
+describe('direction 方向档（mobi 本地槽位）', () => {
     afterEach(cleanup)
 
-    it('默认 down，显式 up 时 root 带 data-direction="up"', () => {
+    it('默认 auto（jsdom 视口空间充足 → down）；显式 up 强制', () => {
         const { container, rerender } = render(<Harness />)
         expect(container.firstElementChild).toHaveAttribute('data-direction', 'down')
         rerender(<Harness props={{ direction: 'up' }} />)
         expect(container.firstElementChild).toHaveAttribute('data-direction', 'up')
+    })
+
+    it('auto：贴底时翻转为 up（open 前同步定锚）', () => {
+        // stub 全部元素 rect 贴视口底：downSpace 为负、upSpace 充足
+        const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            return { top: 760, bottom: 796, left: 100, right: 240, width: 140, height: 36, x: 100, y: 760, toJSON: () => {} } as DOMRect
+        })
+        try {
+            const { container } = render(<Harness />)
+            fireEvent.click(screen.getByRole('combobox'))
+            expect(container.firstElementChild).toHaveAttribute('data-direction', 'up')
+        } finally {
+            spy.mockRestore()
+        }
     })
 
     it('up 档展开后列表仍在文档流内且行为不变（点击可选）', () => {

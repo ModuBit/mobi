@@ -18,16 +18,17 @@
  * composer 参数区共用的紧凑选择器（权限模式 / 模型 / output style / agent）。
  * 底座是 registry 件 morph-select（uiarc，见 registry.json）；本壳职责：
  * ① 选项 API 归一——调用方维持 `onChange(value)` 单参形态，morph 的
- *    `(value, option)` 双参在壳内吞掉；② composer 固定形态——向上展开
- *    （composer 贴屏幕底）、模型列表 >8 项自动出搜索（morph searchable auto）；
- * ③ 满宽变体（NewSessionPage 698493a5）——morph 面板宽 = max(trigger,
- *    min(panelWidth, 100vw-2rem))，panelWidth 顶到上限即满宽减 2rem 边距；
+ *    `(value, option)` 双参在壳内吞掉；② composer 固定形态——展开方向/视口钳制
+ *    交 morph auto 决策（展开内容恒在视窗内）、关闭 >8 项自动搜索；
+ * ③ 满宽变体（NewSessionPage 698493a5）——仅移动端生效：panelWidth 顶到上限
+ *    即满宽减 2rem 边距（PC 传了也无效果，防面板撑出屏幕）；
  * ④ effort-popover 全局样式注入（antd Popover 形态归此单点，不随调用方复制）。
  */
 
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { MorphSelect, type MorphSelectItem } from '@/ui/shadcn/morph-select/morph-select'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
 export interface CompactHoverSelectOption {
     value: string
@@ -91,6 +92,7 @@ export function CompactHoverSelect({
     mobileFullWidth,
 }: CompactHoverSelectProps) {
     useEffortPopoverStyle()
+    const isMobile = useIsMobile()
     // CompactHoverSelectOption 与 MorphSelectOption 结构同构（value/label/description/icon/trailing/disabled）
     const items: MorphSelectItem[] = options
     // display:flex：span 若是 inline 级（含 inline-flex），在包裹 div 的行盒里按基线排版，
@@ -111,9 +113,9 @@ export function CompactHoverSelect({
                 // 模型列表 >8 项时 morph 默认出搜索（searchable auto）——composer 不需要：
                 // 展开即全列表滚动选取，typeahead 键盘检索仍可用
                 searchable={false}
-                // composer 全部贴屏幕底：默认向上展开
-                direction="up"
-                panelWidth={mobileFullWidth ? 9999 : undefined}
+                // 展开方向与视口钳制归 morph auto 决策（垂直翻转 + 水平钳制 + 列表高度收缩），
+                // 展开内容恒落在视窗内；composer 不再硬编码 up
+                panelWidth={mobileFullWidth && isMobile ? 9999 : undefined}
             />
         </span>
     )
