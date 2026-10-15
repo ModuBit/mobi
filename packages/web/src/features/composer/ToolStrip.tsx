@@ -33,47 +33,46 @@ export interface ToolStripProps {
 
 /** 拖拽位移超过该阈值才算拖动（否则是点击，须原样放行给控件） */
 const DRAG_SLOP_PX = 5
-/** 两侧渐隐的过渡带宽（也是 scroll-snap 的对齐内缩量：静止时 pill 起点恰落在渐隐带外） */
+/** 两侧渐隐的过渡带宽 */
 const FADE_WIDTH = 32
+/** 松手吸附的回弹时长（与 morph 的定长过渡同档） */
+const SNAP_MS = 260
+const SNAP_EASE = 'cubic-bezier(.2, 0, 0, 1)'
+/** 收起后维持「不裁剪」的时长：morph 退场动画播完再收回裁剪，否则面板被切在半途
+ *  （不能交给 CSS transition——clip-path 的 none ↔ inset() 是离散属性，delay 不生效） */
+const UNCLIP_HOLDOVER_MS = 200
 
 /**
- * 横向滚动条（composer 参数区专用，替代 ResponsiveActionBar 的溢出收纳）：
+ * 横向平移条（composer 参数区专用，替代 ResponsiveActionBar 的溢出收纳）：
  *
- * - **空间不够不折叠、不进「更多」面板**——直接横向滚动，移动端吃原生触摸滚动，
- *   PC（鼠标/触控板指针）走自实现拖拽滚动（按下横移即滚，超过 SLOP 判拖拽）；
- * - **拖拽结尾吞点击**：拖过的那次 click 是拖拽收势，不是选择，capture 阶段拦掉，
- *   避免拖完顺手误开触发器；morph 触发器是 click 开合，阈值判定天然错过拖拽；
- * - **两侧渐进渐隐**（mask-image）：只给真正溢出的一侧上淡出，滚到头即撤；
- * - **morph-select 展开的兼容**：展开面板是 inline 生长（非 portal），会被滚动容器
- *   裁剪，展开期间须整条放开裁剪与渐隐。但 overflow 转 visible 会把 scrollLeft 强制
- *   归零——整行内容瞬间右弹 scrollLeft 像素（收起再弹回去）。故放开由 JS 接管
- *   （MutationObserver 盯 aria-expanded），在样式重算前读旧 scrollLeft、同批写入
- *   负 margin 补偿位移 + 隐藏滚出可视窗的项（它们原本就被裁剪不可见），视觉零跳动；
- *   收起时恢复 margin 与滚动位。展开中滚动天然停在面板（指针都在面板里）。
+ * - **空间不够不折叠、不进「更多」面板**——内容整体横向平移，拖拽 / 滚轮 / 触摸都直接驱动；
+ * - **条不做滚动容器**（`overflow: visible`）：裁剪只做视觉（`clip-path: inset(0)`），
+ *   平移只做绘制（row 的 `translateX`）。这是与 morph-select 共存的关键——展开面板是
+ *   inline 生长、要被条外的空间容纳，若条是滚动容器就必须在展开期间切换 `overflow`，
+ *   而那次切换会把 `scrollLeft` 强制归零（整行跳位）、抢在 morph 测量之后改布局
+ *   （面板钳制算错）、收起时又把退场动画裁掉。改绘制层平移后三者一并消失；
+ * - **展开期间撤视觉裁剪与渐隐**（纯绘制属性，零布局影响）：展开即撤；收起后按
+ *   `UNCLIP_HOLDOVER_MS` **延时恢复**（JS 定时器，见常量注释——CSS transition 的
+ *   delay 对 clip-path 的离散值切换不生效），让 morph 退场动画播完再收裁剪；
+ * - **拖拽结尾吞点击**：拖过的那次 click 是拖拽收势，不是选择，capture 阶段拦掉；
+ * - **松手吸附**：就近落到项边界或两端，静止态永远是完整 pill 起头，不切半个；
+ * - **键盘可达**：焦点进入条内控件时自动把它平移进视野。
  */
 const Root = styled.div<{ 'data-fade'?: 'none' | 'start' | 'end' | 'both' }>`
+  position: relative;
   display: flex;
   align-items: center;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  /* 静止位置对齐 pill 边界：微滚松手回弹到 0，渐隐带里永远是 pill 尾巴而非半个新 pill。
-     proximity 档不打扰拖拽；PC 拖拽期间显式关掉（scrollLeft 逐帧赋值会和 snap 打架），松手恢复由浏览器吸附 */
-  scroll-snap-type: x proximity;
-  scroll-padding-inline: ${FADE_WIDTH}px;
-  &[data-dragging='true'] {
-    scroll-snap-type: none;
+  overflow: visible;
+  /* 横向交给我们自己拖（pointer 事件），纵向仍归浏览器（页面滚动、面板内长列表） */
+  touch-action: pan-y;
+  /* 视觉裁剪：内容溢出不外泄。展开期间撤掉（data-panel=open，纯绘制属性、零布局影响），
+     收起后由 JS 延时恢复以播完 morph 退场动画（见 UNCLIP_HOLDOVER_MS 注释） */
+  clip-path: inset(0);
+  &[data-panel='open'] {
+    clip-path: inset(-9999px);
   }
-  /* 内衬让 pill 的描边/投影不贴 overflow 边界硬裁；负外边距把占位还回去，内容起点不变 */
-  padding-inline: 6px;
-  margin-inline: -6px;
-  /* 条很矮，滚动条不占空间：藏掉但保留可滚性（滚轮/拖拽/触摸都在） */
-  scrollbar-width: none;
-  &::-webkit-scrollbar {
-    display: none;
-  }
-  /* 渐隐挂在滚动容器自身（mask 会裁剪全部子树，展开态必须整条撤掉）。
-     双停点缓坡：阴影/描边淡出是渐进的，不是线性硬切 */
+  /* 渐隐双停点缓坡：描边淡出是渐进的，不是线性硬切 */
   &[data-fade='end'] {
     mask-image: linear-gradient(to right, #000 calc(100% - ${FADE_WIDTH}px), rgb(0 0 0 / 0.45) calc(100% - ${FADE_WIDTH * 0.4}px), transparent);
   }
@@ -83,13 +82,9 @@ const Root = styled.div<{ 'data-fade'?: 'none' | 'start' | 'end' | 'both' }>`
   &[data-fade='both'] {
     mask-image: linear-gradient(to right, transparent, rgb(0 0 0 / 0.45) ${FADE_WIDTH * 0.4}px, #000 ${FADE_WIDTH}px, #000 calc(100% - ${FADE_WIDTH}px), rgb(0 0 0 / 0.45) calc(100% - ${FADE_WIDTH * 0.4}px), transparent);
   }
-  /* 展开中的 morph 面板不容裁剪：两轴一起放开（见组件头注释），渐隐一并撤。
-     放开时机由 JS 接管（data-panel-open），不用 :has——attribute 变更与补偿写入必须
-     落在同一次样式重算里，:has 会让 scrollLeft 在 JS 读到旧值前就先归零 */
-  &[data-panel-open='true'] {
-    overflow: visible;
+  /* 展开中的 morph 面板不容裁剪：渐隐一并撤（mask 同样会裁到条外的面板） */
+  &[data-panel='open'] {
     mask-image: none;
-    scroll-snap-type: none;
   }
   @media (hover: hover) {
     /* 有溢出才提示可拖；拖动进行中换抓握 */
@@ -107,10 +102,7 @@ const Row = styled.div<{ gap: number }>`
   align-items: center;
   flex: none;
   gap: ${(props) => props.gap}px;
-  /* snap 目标 = 每个项的起点（scroll-padding 把对齐线推到渐隐带外） */
-  & > * {
-    scroll-snap-align: start;
-  }
+  will-change: transform;
 `
 
 type FadeState = 'none' | 'start' | 'end' | 'both'
@@ -120,130 +112,195 @@ function insideOpenPanel(target: Element): boolean {
   return target.closest('[role="listbox"], input, textarea') !== null
 }
 
+function computeFade(offset: number, max: number): FadeState {
+  if (max <= 1) return 'none'
+  if (offset >= -1) return 'end'
+  if (offset <= -max + 1) return 'start'
+  return 'both'
+}
+
 export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const rowRef = useRef<HTMLDivElement>(null)
   const [fade, setFade] = useState<FadeState>('none')
   const [dragging, setDragging] = useState(false)
+  const [unclipped, setUnclipped] = useState(false)
+  const offsetRef = useRef(0)
 
-  const updateFade = useCallback(() => {
-    const el = rootRef.current
-    if (!el) return
-    const max = el.scrollWidth - el.clientWidth
-    const next: FadeState = max <= 1
-      ? 'none'
-      : el.scrollLeft <= 1 ? 'end'
-        : el.scrollLeft >= max - 1 ? 'start'
-          : 'both'
-    setFade((prev) => prev === next ? prev : next)
+  /** 平移量（≤0，左移为正）→ 绘制。materialize=false 跟手，true 走吸附回弹 */
+  const applyOffset = useCallback((next: number, animate: boolean) => {
+    const root = rootRef.current
+    const row = rowRef.current
+    if (!root || !row) return
+    const max = Math.max(0, row.getBoundingClientRect().width - root.clientWidth)
+    const clamped = Math.min(0, Math.max(-max, next))
+    offsetRef.current = clamped
+    row.style.transition = animate ? `transform ${SNAP_MS}ms ${SNAP_EASE}` : 'none'
+    row.style.transform = `translateX(${clamped}px)`
+    setFade(computeFade(clamped, max))
   }, [])
 
-  // 尺寸（容器/内容任一）与滚动位置变化都重算两侧渐隐
-  useEffect(() => {
-    const el = rootRef.current
+  /** 就近吸附：候选为两端与每个项的起点，松手后静止态不切半个 pill */
+  const snapTarget = useCallback((current: number) => {
+    const root = rootRef.current
     const row = rowRef.current
-    if (!el || !row) return
-    const observer = new ResizeObserver(updateFade)
-    observer.observe(el)
-    observer.observe(row)
-    el.addEventListener('scroll', updateFade, { passive: true })
-    return () => {
-      observer.disconnect()
-      el.removeEventListener('scroll', updateFade)
+    if (!root || !row) return 0
+    const max = Math.max(0, row.getBoundingClientRect().width - root.clientWidth)
+    if (max <= 0) return 0
+    const candidates = [0, -max]
+    for (const el of Array.from(row.children) as HTMLElement[]) {
+      const c = -el.offsetLeft
+      if (c < 0 && c > -max) candidates.push(c)
     }
-  }, [updateFade])
+    let best = candidates[0]
+    for (const c of candidates) {
+      if (Math.abs(c - current) < Math.abs(best - current)) best = c
+    }
+    return best
+  }, [])
 
-  // items 增删（权限模式等条件渲染）也可能改变溢出态
-  useEffect(updateFade, [items, updateFade])
-
-  // 展开补偿（组件头注释「morph-select 展开的兼容」条目）：滚动容器放开裁剪的瞬间
-  // scrollLeft 归零会右弹整行——读旧值、同批写入补偿与隐藏，收起时一并恢复。
-  const panelOpenRef = useRef(false)
-  const savedScrollRef = useRef(0)
+  // 尺寸变化（容器收窄、项增删）后重新夹紧；items 变化保持当前位置
   useEffect(() => {
     const root = rootRef.current
     const row = rowRef.current
     if (!root || !row) return
+    const sync = () => applyOffset(offsetRef.current, false)
+    sync()
+    const observer = new ResizeObserver(sync)
+    observer.observe(root)
+    observer.observe(row)
+    return () => observer.disconnect()
+  }, [items, applyOffset])
 
-    const apply = (open: boolean) => {
-      if (open === panelOpenRef.current) return
-      panelOpenRef.current = open
+  // 触控板/滚轮横向滑动：仅接管横向分量，纵向放行给页面
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    const onWheel = (event: WheelEvent) => {
+      const row = rowRef.current
+      if (!row) return
+      if (Math.max(0, row.getBoundingClientRect().width - root.clientWidth) <= 0) return
+      if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return
+      event.preventDefault()
+      applyOffset(offsetRef.current - event.deltaX, false)
+    }
+    root.addEventListener('wheel', onWheel, { passive: false })
+    return () => root.removeEventListener('wheel', onWheel)
+  }, [applyOffset])
+
+  // 裁剪开关归 JS：展开即撤（面板是 inline 生长，条会把它切掉），收起延时恢复
+  // （morph 退场动画要播完）。只切纯绘制属性，不碰布局，与 morph 的测量无交互。
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    let timer: number | null = null
+    const sync = () => {
+      const open = root.querySelector('[role="combobox"][aria-expanded="true"]') !== null
       if (open) {
-        const saved = root.scrollLeft // 此时裁剪仍在，scrollLeft 尚未归零
-        savedScrollRef.current = saved
-        row.style.marginLeft = saved > 0 ? `-${saved}px` : ''
-        const win = [saved, saved + root.clientWidth]
-        for (const item of Array.from(row.children) as HTMLElement[]) {
-          // 滚出可视窗的项原本被裁剪不可见，放开后会漏出来叠到 +/-send 上，临时藏掉
-          if (item.offsetLeft + item.offsetWidth < win[0] || item.offsetLeft > win[1]) {
-            item.style.visibility = 'hidden'
-          }
-        }
-        root.setAttribute('data-panel-open', 'true')
-      } else {
-        row.style.marginLeft = ''
-        for (const item of Array.from(row.children) as HTMLElement[]) item.style.visibility = ''
-        root.removeAttribute('data-panel-open')
-        root.scrollLeft = savedScrollRef.current // overflow 回 auto 后恢复滚动位
+        if (timer !== null) { window.clearTimeout(timer); timer = null }
+        setUnclipped(true)
+      } else if (timer === null && root.getAttribute('data-panel') === 'open') {
+        timer = window.setTimeout(() => { timer = null; setUnclipped(false) }, UNCLIP_HOLDOVER_MS)
       }
     }
-
-    const observer = new MutationObserver(() => apply(!!root.querySelector('[role="combobox"][aria-expanded="true"]')))
+    const observer = new MutationObserver(sync)
     observer.observe(root, { subtree: true, attributes: true, attributeFilter: ['aria-expanded'] })
+    sync()
     return () => {
       observer.disconnect()
-      panelOpenRef.current = false
+      if (timer !== null) window.clearTimeout(timer)
     }
   }, [])
 
-  const drag = useRef({ active: false, dragged: false, startX: 0, startScroll: 0, pointerId: -1 })
+  const drag = useRef({ active: false, moved: false, startX: 0, startOffset: 0, pointerId: -1 })
 
   const onPointerDown = (event: React.PointerEvent) => {
-    // 触摸端交给原生滚动；面板内部按下不拖
-    if (event.pointerType === 'touch') return
     const target = event.target
     if (!(target instanceof Element) || insideOpenPanel(target)) return
-    const el = rootRef.current
-    if (!el) return
-    drag.current = { active: true, dragged: false, startX: event.clientX, startScroll: el.scrollLeft, pointerId: event.pointerId }
+    drag.current = { active: true, moved: false, startX: event.clientX, startOffset: offsetRef.current, pointerId: event.pointerId }
   }
 
   const onPointerMove = (event: React.PointerEvent) => {
     const d = drag.current
     if (!d.active) return
     const dx = event.clientX - d.startX
-    if (!d.dragged && Math.abs(dx) < DRAG_SLOP_PX) return
-    const el = rootRef.current
-    if (!el) return
-    if (!d.dragged) {
+    if (!d.moved && Math.abs(dx) < DRAG_SLOP_PX) return
+    const root = rootRef.current
+    if (!root) return
+    if (!d.moved) {
       // 过阈值才算拖：捕获指针，移出条外也继续收 move；此后同指针的 click 是收势
-      d.dragged = true
+      d.moved = true
       setDragging(true)
-      try { el.setPointerCapture(d.pointerId) } catch { /* 指针可能已抬起 */ }
+      try { root.setPointerCapture(d.pointerId) } catch { /* 指针可能已抬起 */ }
     }
-    el.scrollLeft = d.startScroll - dx
+    applyOffset(d.startOffset + dx, false)
   }
 
-  const endDrag = () => {
-    drag.current.active = false
+  const onPointerUp = () => {
+    const d = drag.current
+    if (!d.active) return
+    const moved = d.moved
+    d.active = false
     setDragging(false)
+    if (moved) applyOffset(snapTarget(offsetRef.current), true)
   }
 
   const onClickCapture = (event: React.MouseEvent) => {
-    if (!drag.current.dragged) return
-    // 拖拽收势不是选择：拦掉本次点击，并复位标记（下一次按下重置，双保险）
+    if (!drag.current.moved) return
+    // 拖拽收势不是选择：拦掉本次点击，并复位标记
     event.preventDefault()
     event.stopPropagation()
-    drag.current.dragged = false
+    drag.current.moved = false
+  }
+
+  // 键盘焦点进入条内控件时，把它平移进视野（条本身不可滚动，须显式保证可达）。
+  // 判据是「最近一次交互来自键盘」：指针的点击/拖动也会让控件获得焦点（morph 展开时
+  // 还会主动 focus trigger），而它就在指针下、本来可见——此时平移反而把内容顶走
+  // （曾导致每次展开内容跳动）。不用 :focus-visible：Chrome 对程序化 focus 的判定
+  // 会把它算作可见（实测拦不住）。
+  const lastInputRef = useRef<'keyboard' | 'pointer'>('pointer')
+  useEffect(() => {
+    const onKeyDown = () => { lastInputRef.current = 'keyboard' }
+    const onPointerDown = () => { lastInputRef.current = 'pointer' }
+    document.addEventListener('keydown', onKeyDown, true)
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true)
+      document.removeEventListener('pointerdown', onPointerDown, true)
+    }
+  }, [])
+
+  const onFocusCapture = (event: React.FocusEvent) => {
+    const target = event.target
+    if (!(target instanceof HTMLElement)) return
+    window.requestAnimationFrame(() => {
+      const root = rootRef.current
+      const row = rowRef.current
+      if (!root || !row || !target.isConnected) return
+      if (lastInputRef.current !== 'keyboard') return
+      const item = (target.closest('[data-strip-item]') as HTMLElement | null) ?? target
+      const left = item.offsetLeft + offsetRef.current
+      const right = left + item.offsetWidth
+      let next = offsetRef.current
+      if (left < 0) next = -item.offsetLeft
+      else if (right > root.clientWidth) next = root.clientWidth - item.offsetLeft - item.offsetWidth
+      if (next !== offsetRef.current) applyOffset(next, true)
+    })
   }
 
   return (
-    <Root ref={rootRef} data-fade={fade} data-dragging={dragging} className={className} style={style}
+    <Root ref={rootRef} data-fade={fade} data-dragging={dragging} data-panel={unclipped ? 'open' : undefined}
+      className={className} style={style}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove}
-      onPointerUp={endDrag} onPointerCancel={endDrag} onClickCapture={onClickCapture}
+      onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+      onClickCapture={onClickCapture} onFocusCapture={onFocusCapture}
     >
       <Row ref={rowRef} gap={gap}>
-        {items.map(item => <span key={item.key} style={{ display: 'flex', alignItems: 'center' }}>{item.render()}</span>)}
+        {items.map(item => (
+          <span key={item.key} data-strip-item style={{ display: 'flex', alignItems: 'center', flex: 'none' }}>
+            {item.render()}
+          </span>
+        ))}
       </Row>
     </Root>
   )

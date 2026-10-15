@@ -16,11 +16,12 @@
 
 /**
  * ToolStrip（composer 参数条）行为契约：
- * ① 溢出态渐隐标记 data-fade（ResizeObserver/滚动驱动的投影，jsdom 断属性而非像素）；
- * ② PC 指针拖拽滚动（move 过阈值才写 scrollLeft），触摸端不接管（原生滚动）；
- * ③ 拖拽收势吞点击——拖过的那次 click 不落到子控件；
- * ④ 展开面板内部（listbox/input）的按下不触发拖拽。
- * 渐隐 mask 与「展开放开裁剪」的 `:has()` 是纯 CSS（jsdom 无布局），只验属性投影。
+ * ① 条不是滚动容器——平移写在 row 的 transform 上（展开面板因此无需切换 overflow）；
+ * ② 溢出态渐隐标记 data-fade 随平移量变化；
+ * ③ 拖拽（PC 与触摸统一 pointer 事件）过阈值才平移，且夹在 [-(content-view), 0]；
+ * ④ 松手吸附到项边界；⑤ 拖拽收势吞点击；⑥ 展开面板内部按下不触发拖动；
+ * ⑦ 焦点进入时自动平移可见。
+ * 视觉裁剪（clip-path）与「展开放开裁剪」的 `:has()` 是纯 CSS（jsdom 无布局），只验属性投影。
  */
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
@@ -28,170 +29,175 @@ import '@testing-library/jest-dom/vitest'
 import { render, cleanup, fireEvent, screen, act } from '@testing-library/react'
 import { ToolStrip, type ToolStripItem } from '@/features/composer/ToolStrip'
 
-// jsdom 无 ResizeObserver：可控行为桩——实例注册进回调表，测试手动触发
-const { observers, fireResize, setScrollBox } = vi.hoisted(() => {
-    const observers: { cb: ResizeObserverCallback }[] = []
-    return {
-        observers,
-        // cb 驱动的是 React 状态更新，须在 act 内调用才会冲刷
-        fireResize: () => act(() => { observers.forEach(({ cb }) => cb([], undefined as unknown as ResizeObserver)) }),
-        // scrollWidth/clientWidth 可控（jsdom 布局恒 0）
-        setScrollBox: (el: Element, scrollWidth: number, clientWidth: number, scrollLeft = 0) => {
-            Object.defineProperty(el, 'scrollWidth', { configurable: true, value: scrollWidth })
-            Object.defineProperty(el, 'clientWidth', { configurable: true, value: clientWidth })
-            Object.defineProperty(el, 'scrollLeft', { configurable: true, value: scrollLeft, writable: true })
-        },
-    }
+// jsdom 无布局：把 root.clientWidth / row 宽度 / 项 offsetLeft 设成可控值；
+// ResizeObserver 桩收集回调供测试手动触发（尺寸设好后重算一次渐隐/夹紧）
+const resizeCallbacks: ResizeObserverCallback[] = []
+vi.stubGlobal('ResizeObserver', class {
+    constructor(cb: ResizeObserverCallback) { resizeCallbacks.push(cb) }
+    observe() {}
+    unobserve() {}
+    disconnect() { resizeCallbacks.pop() }
 })
 
-vi.stubGlobal('ResizeObserver', class {
-    constructor(cb: ResizeObserverCallback) { observers.push({ cb }) }
-    observe() {} unobserve() {} disconnect() { observers.length = 0 }
-})
+const clickedLog: string[] = []
+function clicked(key: string) { clickedLog.push(key) }
 
 const ITEMS: ToolStripItem[] = [
     { key: 'a', render: () => <button onClick={() => clicked('a')}>A</button> },
     { key: 'b', render: () => <button onClick={() => clicked('b')}>B</button> },
 ]
-const clickedLog: string[] = []
-function clicked(key: string) { clickedLog.push(key) }
 
-function strip() {
-    return render(<ToolStrip items={ITEMS} />)
+/** 造出「内容 400 / 视口 200」的布局：两个项各 200 宽，项起点 0 与 200 */
+function strip(items: ToolStripItem[] = ITEMS) {
+    const utils = render(<ToolStrip items={items} />)
+    const root = utils.container.firstElementChild as HTMLElement
+    const row = root.firstElementChild as HTMLElement
+    Object.defineProperty(root, 'clientWidth', { configurable: true, value: 200 })
+    row.getBoundingClientRect = () => ({ width: 400, height: 36, top: 0, left: 0, right: 400, bottom: 36, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    const spans = Array.from(row.children) as HTMLElement[]
+    spans.forEach((span, i) => {
+        Object.defineProperty(span, 'offsetLeft', { configurable: true, value: i * 200 })
+        Object.defineProperty(span, 'offsetWidth', { configurable: true, value: 200 })
+    })
+    // 尺寸就位后重算一次（真实环境由 ResizeObserver 触发）
+    act(() => { resizeCallbacks.forEach((cb) => cb([], undefined as unknown as ResizeObserver)) })
+    return { root, row, spans }
 }
 
-function rootEl() {
-    return screen.getByText('A').closest('div')!.parentElement!
+function rowTransform(row: HTMLElement): string {
+    return row.style.transform
 }
 
 beforeEach(() => { clickedLog.length = 0 })
 afterEach(cleanup)
 
-describe('渐隐标记 data-fade', () => {
-    it('不溢出 → none；右侧溢出 → end；滚动到中段 → both；滚到头 → start', () => {
-        const { container } = strip()
-        const root = container.firstElementChild as HTMLElement
-        setScrollBox(root, 200, 200)
-        fireResize()
-        expect(root).toHaveAttribute('data-fade', 'none')
-
-        setScrollBox(root, 400, 200)
-        fireResize()
+describe('平移与渐隐', () => {
+    it('初始不位移；拖动后 transform 跟手、渐隐从 end 转 both、夹到右端转 start', () => {
+        const { root, row } = strip()
+        expect(rowTransform(row)).toBe('translateX(0px)')
         expect(root).toHaveAttribute('data-fade', 'end')
 
-        setScrollBox(root, 400, 200, 50)
-        fireEvent.scroll(root)
+        fireEvent.pointerDown(screen.getByText('A'), { pointerType: 'mouse', clientX: 100, pointerId: 1 })
+        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 40, pointerId: 1 })
+        expect(rowTransform(row)).toBe('translateX(-60px)')
         expect(root).toHaveAttribute('data-fade', 'both')
 
-        setScrollBox(root, 400, 200, 200)
-        fireEvent.scroll(root)
+        // 越过右端被夹在 -(400-200)
+        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: -400, pointerId: 1 })
+        expect(rowTransform(row)).toBe('translateX(-200px)')
         expect(root).toHaveAttribute('data-fade', 'start')
     })
-})
 
-describe('PC 拖拽滚动', () => {
-    it('指针横移过阈值后驱动 scrollLeft，未过阈值不动', () => {
-        const { container } = strip()
-        const root = container.firstElementChild as HTMLElement
-        setScrollBox(root, 400, 200)
-        root.scrollLeft = 100
-
+    it('不溢出时不位移、无渐隐', () => {
+        const { root, row } = strip()
+        row.getBoundingClientRect = () => ({ width: 200 }) as DOMRect
+        act(() => { fireEvent(window, new Event('resize')) })
         fireEvent.pointerDown(screen.getByText('A'), { pointerType: 'mouse', clientX: 100, pointerId: 1 })
-        // 2px 内：判点击，不滚
-        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 98, pointerId: 1 })
-        expect(root.scrollLeft).toBe(100)
-        // 8px：判拖拽，scrollLeft = 起始 - 位移
-        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 92, pointerId: 1 })
-        expect(root.scrollLeft).toBe(108)
-    })
-
-    it('触摸端不接管——指针事件不驱动 scrollLeft（原生滚动负责）', () => {
-        const { container } = strip()
-        const root = container.firstElementChild as HTMLElement
-        setScrollBox(root, 400, 200)
-        root.scrollLeft = 100
-
-        fireEvent.pointerDown(screen.getByText('A'), { pointerType: 'touch', clientX: 100, pointerId: 1 })
-        fireEvent.pointerMove(root, { pointerType: 'touch', clientX: 50, pointerId: 1 })
-        expect(root.scrollLeft).toBe(100)
-    })
-
-    it('展开面板内部（listbox/input）按下不触发拖拽', () => {
-        render(
-            <ToolStrip items={[{ key: 'p', render: () => <div role="listbox"><span>opt</span></div> }]} />,
-        )
-        const root = document.querySelector('[data-fade]') as HTMLElement
-        setScrollBox(root, 400, 200)
-        root.scrollLeft = 100
-
-        fireEvent.pointerDown(screen.getByText('opt'), { pointerType: 'mouse', clientX: 100, pointerId: 1 })
-        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 50, pointerId: 1 })
-        expect(root.scrollLeft).toBe(100)
+        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 0, pointerId: 1 })
+        expect(rowTransform(row)).toBe('translateX(0px)')
+        expect(root).toHaveAttribute('data-fade', 'none')
     })
 })
 
-describe('拖拽收势吞点击', () => {
-    it('拖过之后落点的 click 不进子控件；纯点击照常进', () => {
-        const { container } = strip()
-        const root = container.firstElementChild as HTMLElement
-        setScrollBox(root, 400, 200)
+describe('拖拽判据', () => {
+    it('触摸端同样可拖（pointer 事件统一处理）', () => {
+        const { root, row } = strip()
+        fireEvent.pointerDown(screen.getByText('A'), { pointerType: 'touch', clientX: 100, pointerId: 1 })
+        fireEvent.pointerMove(root, { pointerType: 'touch', clientX: 60, pointerId: 1 })
+        expect(rowTransform(row)).toBe('translateX(-40px)')
+    })
 
-        // 纯点击：进子控件
+    it('阈值内视为点击，不平移', () => {
+        const { root, row } = strip()
+        fireEvent.pointerDown(screen.getByText('A'), { pointerType: 'mouse', clientX: 100, pointerId: 1 })
+        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 97, pointerId: 1 })
+        expect(rowTransform(row)).toBe('translateX(0px)')
+    })
+
+    it('展开面板内部（listbox/input）按下不触发拖动', () => {
+        const { root, row } = strip([{ key: 'p', render: () => <div role="listbox"><span>opt</span></div> }])
+        fireEvent.pointerDown(screen.getByText('opt'), { pointerType: 'mouse', clientX: 100, pointerId: 1 })
+        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 40, pointerId: 1 })
+        expect(rowTransform(row)).toBe('translateX(0px)')
+    })
+
+    it('拖拽收势吞点击；纯点击照常进子控件', () => {
+        const { root } = strip()
         fireEvent.pointerDown(screen.getByText('A'), { pointerType: 'mouse', clientX: 100, pointerId: 1 })
         fireEvent.pointerUp(root, { pointerType: 'mouse', pointerId: 1 })
         fireEvent.click(screen.getByText('A'))
         expect(clickedLog).toEqual(['a'])
 
-        // 拖拽收势：click 被吞
         fireEvent.pointerDown(screen.getByText('B'), { pointerType: 'mouse', clientX: 100, pointerId: 2 })
-        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 90, pointerId: 2 })
+        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 60, pointerId: 2 })
         fireEvent.pointerUp(root, { pointerType: 'mouse', pointerId: 2 })
         fireEvent.click(screen.getByText('B'))
         expect(clickedLog).toEqual(['a'])
     })
 })
 
-describe('展开补偿（滚动容器放开裁剪时防跳位）', () => {
-    it('展开：data-panel-open 置位、负 margin 补回 scrollLeft、窗外项隐藏、窗内项保留', async () => {
-        const { container } = strip()
-        const root = container.firstElementChild as HTMLElement
-        setScrollBox(root, 400, 200)
-        root.scrollLeft = 80
-        // 两项都在窗外：A 在窗左缘外（offsetLeft 0+宽 < 80），B 需造一项在窗内
-        const inner = document.createElement('span')
-        inner.innerHTML = '<button role="combobox" aria-expanded="false">M</button>'
-        Object.defineProperty(inner, 'offsetLeft', { configurable: true, value: 100 })
-        Object.defineProperty(inner, 'offsetWidth', { configurable: true, value: 40 })
-        root.querySelector('div')!.appendChild(inner)
+describe('松手吸附', () => {
+    it('吸附到最近的项边界 / 两端（-60 → 0；-140 距 -200 更近 → -200）', () => {
+        const { root, row } = strip()
+        fireEvent.pointerDown(screen.getByText('A'), { pointerType: 'mouse', clientX: 100, pointerId: 1 })
+        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 40, pointerId: 1 })
+        fireEvent.pointerUp(root, { pointerType: 'mouse', pointerId: 1 })
+        expect(rowTransform(row)).toBe('translateX(0px)')
 
+        fireEvent.pointerDown(screen.getByText('A'), { pointerType: 'mouse', clientX: 300, pointerId: 2 })
+        fireEvent.pointerMove(root, { pointerType: 'mouse', clientX: 160, pointerId: 2 })
+        fireEvent.pointerUp(root, { pointerType: 'mouse', pointerId: 2 })
+        expect(rowTransform(row)).toBe('translateX(-200px)')
+    })
+})
+
+describe('焦点可见（仅键盘）', () => {
+    it('键盘交互后焦点落到滚动外的项时自动平移进视野', async () => {
+        const { root, row } = strip()
+        const itemB = screen.getByText('B').closest('[data-strip-item]') as HTMLElement
         await act(async () => {
-            inner.querySelector('button')!.setAttribute('aria-expanded', 'true')
-            await Promise.resolve()
+            fireEvent.keyDown(document, { key: 'Tab' })
+            itemB.querySelector('button')!.focus()
+            await new Promise((resolve) => window.requestAnimationFrame(() => resolve(null)))
         })
-        expect(root.getAttribute('data-panel-open')).toBe('true')
-        expect((root.querySelector('div') as HTMLElement).style.marginLeft).toBe('-80px')
-        expect((screen.getByText('A').parentElement as HTMLElement).style.visibility).toBe('hidden')
-        expect(inner.style.visibility).toBe('')
+        // B 在 [200,400]，视口 [0,200] → 平移到 -200 使其右缘齐视口
+        expect(rowTransform(row)).toBe('translateX(-200px)')
+        expect(root).toHaveAttribute('data-fade', 'start')
     })
 
-    it('收起：恢复 margin 与隐藏项，并把滚动位还原到展开前的 scrollLeft', async () => {
-        const { container } = strip()
-        const root = container.firstElementChild as HTMLElement
-        setScrollBox(root, 400, 200)
-        root.scrollLeft = 80
-        const button = screen.getByText('A')
+    it('指针交互后焦点不再平移（展开 pill 时 morph 会把焦点设到 trigger，平移会把内容顶走）', async () => {
+        const { root, row } = strip()
+        const itemB = screen.getByText('B').closest('[data-strip-item]') as HTMLElement
+        await act(async () => {
+            fireEvent.pointerDown(screen.getByText('A'), { pointerType: 'mouse', clientX: 100, pointerId: 1 })
+            itemB.querySelector('button')!.focus()
+            await new Promise((resolve) => window.requestAnimationFrame(() => resolve(null)))
+        })
+        expect(rowTransform(row)).toBe('translateX(0px)')
+        expect(root).toHaveAttribute('data-fade', 'end')
+    })
+})
+
+describe('展开期间撤视觉裁剪（交互契约）', () => {
+    it('面板展开 → data-panel=open；收起后延时恢复（保住 morph 退场动画）', async () => {
+        const { root } = strip([{ key: 'p', render: () => <button role="combobox" aria-expanded="false">P</button> }])
+        const trigger = screen.getByText('P')
+        expect(root).not.toHaveAttribute('data-panel')
 
         await act(async () => {
-            button.setAttribute('aria-expanded', 'true')
+            trigger.setAttribute('aria-expanded', 'true')
             await Promise.resolve()
         })
+        expect(root).toHaveAttribute('data-panel', 'open')
+
         await act(async () => {
-            button.setAttribute('aria-expanded', 'false')
+            trigger.setAttribute('aria-expanded', 'false')
             await Promise.resolve()
         })
-        expect(root.getAttribute('data-panel-open')).toBeNull()
-        expect((root.querySelector('div') as HTMLElement).style.marginLeft).toBe('')
-        expect(button.parentElement!.style.visibility).toBe('')
-        expect(root.scrollLeft).toBe(80)
+        // 退场窗口内仍不裁剪
+        expect(root).toHaveAttribute('data-panel', 'open')
+
+        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 260)) })
+        expect(root).not.toHaveAttribute('data-panel')
     })
 })
