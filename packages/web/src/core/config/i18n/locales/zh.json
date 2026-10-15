@@ -24,6 +24,7 @@
         "select": "请选择",
         "searchOrSelect": "搜索或选择",
         "clearSelection": "清除选择",
+        "removeItem": "移除 {{name}}",
         "search": "搜索",
         "searchField": "搜索{{name}}",
         "clearSearch": "清除搜索",

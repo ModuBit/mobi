@@ -167,6 +167,29 @@ describe('uiarc MultiSelect mode="tags"（chip 内联输入自由值）', () => 
         expect(onChange).toHaveBeenCalledWith([])
     })
 
+    it('chip 上的 × 单删该项（默认模式 chip 无 ×）', () => {
+        const onChange = vi.fn<(v: string[]) => void>()
+        render(<TagsHarness onChange={onChange} />)
+
+        const input = screen.getByRole('combobox', { name: '排除路径' })
+        for (const v of ['/ws/mobi', '/custom']) {
+            fireEvent.change(input, { target: { value: v } })
+            fireEvent.keyDown(input, { key: 'Enter' })
+        }
+        // i18n key 直通桩：每个 × 的可访问名都是 common.removeItem
+        const xs = screen.getAllByRole('button', { name: 'common.removeItem' })
+        expect(xs).toHaveLength(2)
+        fireEvent.click(xs[0]!)
+        expect(onChange).toHaveBeenLastCalledWith(['/custom'])
+
+        // default 模式 chip 无 ×（jsdom cleanup 后重渲染对比）
+        cleanup()
+        render(<Harness />)
+        fireEvent.click(screen.getByRole('button', { name: '排除' }))
+        fireEvent.click(screen.getByRole('option', { name: /甲/ }))
+        expect(screen.queryByRole('button', { name: 'common.removeItem' })).toBeNull()
+    })
+
     it('tags 模式 chip 全显不折叠（maxVisible 缺省全显）', () => {
         const onChange = vi.fn<(v: string[]) => void>()
         render(<TagsHarness onChange={onChange} />)

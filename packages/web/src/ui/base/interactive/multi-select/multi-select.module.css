@@ -24,6 +24,11 @@
 .slot { display: flex; flex: 0 1 auto; min-width: 0; overflow: hidden; }
 .slot:has(.more) { flex-shrink: 0; }
 .chip, .more { box-sizing: border-box; flex: 0 0 auto; max-width: 9rem; overflow: hidden; margin-right: 5px; border-radius: var(--radius-pill); padding: 4px 8px; background: var(--surface-muted); box-shadow: inset 0 0 0 1px var(--border-subtle); color: var(--foreground); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); transition: background-color var(--duration-fast) var(--ease-standard); }
+/* tags 模式 chip 单删 ×：右内衬收窄给 × 让位（× 自带右外衬抵回视觉间距） */
+.triggerTags .chip { padding-right: 3px; }
+.chipX { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 2px; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-muted); cursor: pointer; transition: color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard); }
+@media (hover: hover) and (pointer: fine) { .chipX:hover:not(:disabled) { background: color-mix(in oklab, var(--foreground) 10%, transparent); color: var(--foreground); } }
+.chipX:disabled { opacity: .45; cursor: not-allowed; }
 .trigger[aria-expanded="true"] .chip, .trigger[aria-expanded="true"] .more { background: var(--surface); }
 @media (hover: hover) and (pointer: fine) { .trigger:hover:not(:disabled) .chip, .trigger:hover:not(:disabled) .more { background: var(--surface); } }
 .more { display: inline-flex; color: var(--text-secondary); font-variant-numeric: tabular-nums; }

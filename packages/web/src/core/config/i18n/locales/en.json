@@ -24,6 +24,7 @@
         "select": "Select",
         "searchOrSelect": "Search or select…",
         "clearSelection": "Clear selection",
+        "removeItem": "Remove {{name}}",
         "search": "Search",
         "searchField": "Search {{name}}",
         "clearSearch": "Clear search",

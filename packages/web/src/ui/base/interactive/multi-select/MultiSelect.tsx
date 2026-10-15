@@ -25,7 +25,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { Variants } from "motion/react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -197,10 +197,21 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
   };
   const reduce = useReducedMotion();
 
-  // chips 溢出折叠 + 弹簧开合动效（default/tags 两种触发器共用）
+  // chips 溢出折叠 + 弹簧开合动效（default/tags 两种触发器共用）；tags 模式 chip 带单删 ×
+  const removeItem = (item: string) => { if (!disabled) update(selected.filter((v) => v !== item)); };
   const chipsNode = (
     <AnimatePresence initial={false}>
-      {visible.map((item) => <motion.span key={`chip-${item.value}`} className={styles.slot} variants={reduce ? slotFade : slot} initial="hidden" animate="shown" exit="gone"><motion.span className={styles.chip} variants={reduce ? chipStill : chip}>{item.label}</motion.span></motion.span>)}
+      {visible.map((item) => <motion.span key={`chip-${item.value}`} className={styles.slot} variants={reduce ? slotFade : slot} initial="hidden" animate="shown" exit="gone"><motion.span className={styles.chip} variants={reduce ? chipStill : chip}>{item.label}{tags && (
+        <button
+          type="button"
+          className={styles.chipX}
+          aria-label={t("common.removeItem", { name: item.label })}
+          disabled={disabled}
+          onClick={(event) => { event.stopPropagation(); removeItem(item.value); }}
+        >
+          <X size={11} strokeWidth={2} aria-hidden="true" />
+        </button>
+      )}</motion.span></motion.span>)}
       {remaining > 0 && <motion.span key="more" className={styles.slot} variants={reduce ? slotFade : slot} initial="hidden" animate="shown" exit="gone"><motion.span className={styles.more} variants={reduce ? chipStill : chip}>+<span className={styles.count}><AnimatePresence initial={false} custom={countDirection}><motion.span key={remaining} custom={countDirection} variants={reduce ? fade : roll} initial="hidden" animate="shown" exit="gone">{remaining}</motion.span></AnimatePresence></span></motion.span></motion.span>}
     </AnimatePresence>
   );
