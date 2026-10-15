@@ -59,9 +59,13 @@ function requiredRule(field: ElicitationFieldSchema): { required: true; type?: '
     return { required: true }
 }
 
-/** enum 原始值 ↔ Radix 字符串值的编解码（Radix Select 只收 string；enum 可能是 number/boolean） */
+/**
+ * enum 原始值 ↔ Radix 字符串值的编解码（Radix Select 只收 string；enum 可能是 number/boolean）。
+ * 字符串带 's:' 前缀：裸字符串与 JSON.stringify 产物会碰撞（[true, "true"] 编码成同一个
+ * "true"，find 选中错的那个）——前缀使两个域不相交，按值反查才唯一。
+ */
 function encodeEnumValue(value: string | number | boolean): string {
-    return typeof value === 'string' ? value : JSON.stringify(value)
+    return typeof value === 'string' ? `s:${value}` : JSON.stringify(value)
 }
 
 /**

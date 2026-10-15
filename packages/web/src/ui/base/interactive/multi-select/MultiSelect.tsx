@@ -21,7 +21,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { Variants } from "motion/react";
 import { ChevronDown } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
 import { GlidingHighlight } from "@/ui/base/motion/GlidingHighlight";
@@ -110,6 +110,19 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
     return () => document.removeEventListener("pointerdown", close);
   }, []);
 
+  // 弹层翻转：视口底缘放不下且上方空间更大时向上弹（开合各测一次，开合间不追踪）。
+  // close 时保留 dropUp——重开时 effect 会重测，中间态不可见
+  const [dropUp, setDropUp] = useState(false);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const root = rootRef.current;
+    const menu = root?.querySelector<HTMLDivElement>("." + styles.menu);
+    if (!root || !menu) return;
+    const rect = root.getBoundingClientRect();
+    const below = window.innerHeight - rect.bottom;
+    setDropUp(below < menu.scrollHeight + 12 && rect.top > below);
+  }, [open]);
+
   const update = (next: string[]) => { if (value === undefined) setInternal(next); onValueChange?.(next); };
   const toggle = (option: MultiSelectOption) => {
     if (disabled || option.disabled) return;
@@ -146,13 +159,13 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
     </button>
     <AnimatePresence initial={false}>{selected.length > 0 && !disabled && <ClearButton reduce={reduce} ariaLabel={t("common.clearSelection")} className={styles.clear} onClick={clear} />}</AnimatePresence>
     <AnimatePresence initial={false}>
-      {open && <motion.div id={`${id}-listbox`} className={styles.menu} role="listbox" aria-label={label} aria-multiselectable="true"
-        initial={reduce ? { opacity: 0 } : { opacity: 0, y: -6, scale: .97 }}
+      {open && <motion.div id={`${id}-listbox`} className={[styles.menu, dropUp ? styles.dropUp : ""].filter(Boolean).join(" ")} role="listbox" aria-label={label} aria-multiselectable="true"
+        initial={reduce ? { opacity: 0 } : { opacity: 0, y: dropUp ? 6 : -6, scale: .97 }}
         animate={{ opacity: 1, y: 0, scale: 1, transition: reduce ? { duration: motionTokens.duration.instant } : { ...motionTokens.spring.snappy, opacity: { duration: motionTokens.duration.fast, ease: enter } } }}
-        exit={{ opacity: 0, ...(reduce ? {} : { y: -4, scale: .98 }), transition: { duration: motionTokens.duration.instant, ease: standard } }}>
+        exit={{ opacity: 0, ...(reduce ? {} : { y: dropUp ? 4 : -4, scale: .98 }), transition: { duration: motionTokens.duration.instant, ease: standard } }}>
         {/* gliding highlight 的当前项（键盘 activeIndex 与悬停 onPointerMove 同源） */}
         <GlidingHighlight className={styles.highlight} target={(activeIndex >= 0 ? optionRefs.current[options[activeIndex]?.value ?? ""] : null) ?? null} />
-        {options.map((option, index) => <button type="button" role="option" aria-selected={selectedSet.has(option.value)} aria-disabled={option.disabled || undefined} key={option.value} ref={(el) => { optionRefs.current[option.value] = el; }} className={styles.option} data-active={activeIndex === index} disabled={option.disabled} onPointerMove={() => { if (activeIndex !== index) setActiveIndex(index); }} onClick={() => toggle(option)}>
+        {options.map((option, index) => <button type="button" role="option" aria-selected={selectedSet.has(option.value)} aria-disabled={option.disabled || undefined} key={option.value} ref={(el) => { if (el) optionRefs.current[option.value] = el; else delete optionRefs.current[option.value]; }} className={styles.option} data-active={activeIndex === index} disabled={option.disabled} onPointerMove={() => { if (activeIndex !== index) setActiveIndex(index); }} onClick={() => toggle(option)}>
           <span>{option.label}</span><AnimatePresence initial={false}>{selectedSet.has(option.value) && <CheckMark key="check" reduce={reduce} />}</AnimatePresence>
         </button>)}
       </motion.div>}

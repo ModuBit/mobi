@@ -100,4 +100,21 @@ describe('uiarc Select 基础开合', () => {
         // 受控清空（value 从有值改回 ""）回占位，不回显旧值
         expect(screen.getByRole('combobox', { name: '档位' })).toHaveTextContent('common.select')
     })
+
+    it('非受控清除后重选同一项仍触发 onValueChange（Root 恒受控化，Radix 内部值不失同步）', () => {
+        const onValueChange = vi.fn<(v: 'normal' | 'open') => void>()
+        const onClear = vi.fn()
+        render(<Select ariaLabel="档位" options={[...OPTIONS]} defaultValue="normal" allowClear onValueChange={onValueChange} onClear={onClear} />)
+
+        // 清除 → 占位回显
+        fireEvent.click(screen.getByRole('button', { name: 'common.clearSelection' }))
+        expect(onClear).toHaveBeenCalledTimes(1)
+        expect(screen.getByRole('combobox', { name: '档位' })).toHaveTextContent('common.select')
+
+        // 重开选回同一项：Radix 内部值若停在旧值会因「值未变」不回调——恒受控化后必须回调
+        openMenu(screen.getByRole('combobox', { name: '档位' }))
+        // 用 role 查询：退出动画的旧值 span 留在 DOM，与 option 文案重复
+        fireEvent.click(screen.getByRole('option', { name: /独立记忆/ }))
+        expect(onValueChange).toHaveBeenCalledWith('normal')
+    })
 })

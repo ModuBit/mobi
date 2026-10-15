@@ -36,7 +36,7 @@
 
 ## 移动端底部 sheet 规范
 
-移动端底部弹出面板**一律用 `BottomSheet`**（`src/ui/shadcn/bottom-sheet/bottom-sheet`，registry 登记件；2026-10-13 起全量替代旧 `MobileDrawer`——旧组件与其 antd 自管位移实现已删除），不变量由组件收口，调用方不要再手动配置：
+移动端底部弹出面板**一律用 `BottomSheet`**（`src/ui/base/interactive/bottom-sheet/`，自管件；2026-10-13 起全量替代旧 `MobileDrawer`——旧组件与其 antd 自管位移实现已删除），不变量由组件收口，调用方不要再手动配置：
 
 - **高度自适应 + 上限**：`height: auto` + `maxHeight`（默认 `85dvh`）；内容超过 peek 档（45dvh）先停 peek，滚内容 / 上推 / 点把手展开到上限。**菜单 / 表单 / 列表这类「打开就要看全」的传 `peek={false}`**：被裁掉的行对它们不是「还有更多」，是残缺（单档 sheet 的内容区照常滚，不会被 peek 的锁滚态挡住）
 - **底部安全边界 / 开合动画 / 下拉关闭 / 手势返回哨兵 / 滚动锁**：组件内置

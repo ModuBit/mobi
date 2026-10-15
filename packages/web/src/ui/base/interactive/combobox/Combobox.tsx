@@ -26,6 +26,7 @@ import {
   useEffect,
   useId,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -107,7 +108,9 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
-  const selectedValue = controlledValue ?? uncontrolledValue;
+  // 受控判定：value 在 props 上（!== undefined）即受控——`?? uncontrolled` 的写法会把
+  // 受控清空（value 从有值改回 undefined）误读成未受控而回显旧值（Select 同款修复）
+  const selectedValue = controlledValue !== undefined ? controlledValue : uncontrolledValue;
   const selectedOption = options.find((option) => option.value === selectedValue);
 
   useImperativeHandle(forwardedRef, () => inputRef.current as HTMLInputElement);
@@ -162,6 +165,19 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, []);
 
+  // 弹层翻转：视口底缘放不下且上方空间更大时向上弹（open 时测一次，开合间不追踪）。
+  // close 时保留 dropUp——重开时 effect 会重测，中间态不可见
+  const [dropUp, setDropUp] = useState(false);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const root = rootRef.current;
+    const popover = root?.querySelector<HTMLDivElement>("." + styles.popover);
+    if (!root || !popover) return;
+    const rect = root.getBoundingClientRect();
+    const below = window.innerHeight - rect.bottom;
+    setDropUp(below < popover.scrollHeight + 12 && rect.top > below);
+  }, [open]);
+
   const choose = (option: ComboboxOption) => {
     if (option.disabled) return;
     setUncontrolledValue(option.value);
@@ -203,9 +219,10 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
       setActiveIndex(enabledIndices[nextPosition]!);
       return;
     }
-    if (event.key === "Enter" && open && activeIndex >= 0) {
+    if (event.key === "Enter" && open) {
       event.preventDefault();
-      const option = filteredOptions[activeIndex];
+      // open 未导航（activeIndex=-1）时也要拦住：Enter 冒泡会误触外层表单提交
+      const option = activeIndex >= 0 ? filteredOptions[activeIndex] : undefined;
       if (option) choose(option);
       return;
     }
@@ -275,10 +292,10 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
-            className={styles.popover}
-            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.97 }}
+            className={[styles.popover, dropUp ? styles.dropUp : ""].filter(Boolean).join(" ")}
+            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: dropUp ? 6 : -6, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1, transition: reduceMotion ? { duration: motionTokens.duration.instant } : { ...motionTokens.spring.snappy, opacity: { duration: motionTokens.duration.fast, ease: [...motionTokens.ease.enter] } } }}
-            exit={{ opacity: 0, ...(reduceMotion ? {} : { y: -4, scale: 0.98 }), transition: { duration: motionTokens.duration.instant, ease: [...motionTokens.ease.standard] } }}
+            exit={{ opacity: 0, ...(reduceMotion ? {} : { y: dropUp ? 4 : -4, scale: 0.98 }), transition: { duration: motionTokens.duration.instant, ease: [...motionTokens.ease.standard] } }}
             role="presentation"
           >
             <AutoHeight reduceMotion={reduceMotion}>
@@ -287,7 +304,11 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
               {filteredOptions.length ? filteredOptions.map((option, index) => (
                 <div
                   key={option.value}
-                  ref={(element) => { optionRefs.current[option.value] = element; }}
+                  ref={(element) => {
+                    // 卸载侧 delete（而非置 null 留键）：历史出现过的 value 键不无限累积
+                    if (element) optionRefs.current[option.value] = element;
+                    else delete optionRefs.current[option.value];
+                  }}
                   id={`${controlId}-option-${option.value}`}
                   className={styles.option}
                   data-active={index === activeIndex ? "true" : undefined}

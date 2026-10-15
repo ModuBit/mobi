@@ -17,9 +17,10 @@
 // uiarc select（registry 快照，自管件：深度本地化后脱离 registry，不登记 registry.json）。
 // 本地修改：①label 改可选（mobi 大量内联场景无可见 label）②占位文案走 i18n
 // ③motionTokens 改引 @/ui/base/motion/motionTokens
-// ④allowClear：触发器内叠清除钮（替代 chevron 位），清空发 onValueChange("")（与 Combobox 清空语义一致）
+// ④allowClear：清除钮在触发器外（button 不嵌套），清空走独立 onClear（onValueChange 恒发合法项值）
 // ⑤options 支持 title（悬停提示，antd 迁移站点的能力保留）
-// ⑥受控判定改 value !== undefined（上游 ?? 回退会把受控清空误读成未受控旧值）
+// ⑥受控判定改 value !== undefined（上游 ?? 回退会把受控清空误读成未受控旧值）；Root 恒受控化——
+//   值恒由镜像 state 驱动（"" = 清空态），否则非受控 clear 后 Radix 内部值失同步，重选同一项不再回调
 // ⑦ariaLabel 透传到触发器（无可见 label 场景的可访问名）
 // ⑧className/style 挂组件根（field）——布局尺寸从根上给，消费方无需包裹 div
 "use client";
@@ -104,14 +105,16 @@ export const Select = forwardRef(function SelectInner<T extends string>(
     // 拦住冒泡：清除不该顺带开菜单
     event.preventDefault();
     event.stopPropagation();
-    if (rootProps.value === undefined) setUncontrolledValue("");
+    setUncontrolledValue("");
     onClear?.();
   };
 
   return (
     <div className={[styles.field, className].filter(Boolean).join(" ")} style={style}>
       {label && <label htmlFor={controlId}>{label}</label>}
-      <SelectPrimitive.Root {...rootProps} disabled={disabled} onValueChange={(next) => { setUncontrolledValue(next); onValueChange?.(next as T); }}>
+      {/* Root 恒受控化：值恒由镜像 state 驱动（"" 是 Radix 认可的清空态，占位正常显示）。
+          非受控 clear 若只改本地 state，Radix 内部值还停在旧值——重选同一项因值未变不再回调 */}
+      <SelectPrimitive.Root {...rootProps} value={currentValue} disabled={disabled} onValueChange={(next) => { setUncontrolledValue(next); onValueChange?.(next as T); }}>
         <div className={styles.triggerWrap}>
           <SelectPrimitive.Trigger
             ref={ref}

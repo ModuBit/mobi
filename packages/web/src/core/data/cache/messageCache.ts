@@ -61,6 +61,35 @@ function mergeNativeMetadata(
 }
 
 /**
+ * append 侧迟到帧闸门的索引：窗口数组每次 immutable 替换，按**引用**缓存非 snapshot 行的
+ * Anthropic messageId 集合——命中缓存的帧 O(1) 查询，数组换引用自然失效重算一次。
+ * 集合不变的替换/追加路径（snapshot 帧更新 snapshot 行、snapshot 帧入尾）把缓存传给新数组，
+ * 流式期间每帧免扫；纯函数语义不受影响（WeakMap 只加速，不改变任何返回值）。
+ */
+const fullIdIndex = new WeakMap<DecryptedMessage[], Set<string>>()
+
+function fullMessageIds(base: DecryptedMessage[]): Set<string> {
+    const cached = fullIdIndex.get(base)
+    if (cached) return cached
+    const ids = new Set<string>()
+    for (const m of base) {
+        if (m.snapshot) continue
+        const id = extractAnthropicMessageId(m.content)
+        if (id) ids.add(id)
+    }
+    fullIdIndex.set(base, ids)
+    return ids
+}
+
+/** 缓存传递：集合不变的窗口替换（两行都是 snapshot）把旧数组缓存的集合转给新数组 */
+function propagateFullIdIndex(prev: DecryptedMessage[], next: DecryptedMessage[], replacedRow: DecryptedMessage, newRow: DecryptedMessage): void {
+    if (replacedRow.snapshot && newRow.snapshot) {
+        const cached = fullIdIndex.get(prev)
+        if (cached) fullIdIndex.set(next, cached)
+    }
+}
+
+/**
  * 解析消息缓存更新
  * 纯函数，便于测试
  */
@@ -130,15 +159,22 @@ export function resolveMessageCache(
         if (msg.snapshot && !base[existingIdx].snapshot) return base
         const updated = base.slice()
         updated[existingIdx] = msg
+        propagateFullIdIndex(base, updated, base[existingIdx], msg)
         return updated
     }
     // 迟到 snapshot 闸门（append 侧）：同 Anthropic messageId 的落库行已在窗口（旧 snapshot
     // 行已被 full 到达时的清理分支删掉、迟到帧行 id 又与落库行不同的路径）→ 该消息的终态
     // full 已到，迟到帧必为陈旧帧，append 会成为排序坠尾的 ghost 行。messageId 是稳定关联键
-    // （parentUuid 有链尾漂移，不可用）；无 messageId 的历史格式帧不设防，走原 append 语义
+    // （parentUuid 有链尾漂移，不可用）；无 messageId 的历史格式帧不设防，走原 append 语义。
+    // 集合经 fullIdIndex 按引用缓存，流式期间热路径 O(1) 查询
     if (msg.snapshot) {
         const lateMsgId = extractAnthropicMessageId(msg.content)
-        if (lateMsgId && base.some(m => !m.snapshot && extractAnthropicMessageId(m.content) === lateMsgId)) return base
+        if (lateMsgId && fullMessageIds(base).has(lateMsgId)) return base
     }
-    return [...base, msg]
+    const appended = [...base, msg]
+    if (msg.snapshot) {
+        const cached = fullIdIndex.get(base)
+        if (cached) fullIdIndex.set(appended, cached)
+    }
+    return appended
 }

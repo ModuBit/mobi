@@ -84,4 +84,19 @@ describe('uiarc Combobox 过滤与选择', () => {
         fireEvent.change(screen.getByRole('combobox', { name: '工作区' }), { target: { value: '不存在' } })
         expect(screen.getByText('common.noMatches')).toBeInTheDocument()
     })
+
+    it('菜单展开时 Enter 未导航（activeIndex=-1）也拦住默认行为——不冒泡提交外层表单', () => {
+        const onSubmit = vi.fn<(e: Event) => void>()
+        const { container } = render(
+            <form onSubmit={onSubmit}>
+                <Combobox aria-label="工作区" options={OPTIONS} />
+            </form>,
+        )
+        const input = screen.getByRole('combobox', { name: '工作区' })
+        fireEvent.focus(input)
+        // 菜单开着但未键盘导航，直接 Enter：只拦（preventDefault），不误选也不提交表单
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(onSubmit).not.toHaveBeenCalled()
+        expect(container.querySelector('form')).toBeInTheDocument()
+    })
 })

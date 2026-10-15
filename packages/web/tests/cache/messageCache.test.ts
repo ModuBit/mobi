@@ -414,4 +414,25 @@ describe('resolveMessageCache', () => {
         expect(result).toBe(cache)
         expect(result).toHaveLength(1)
     })
+
+    it('迟到帧闸门连续命中（fullIdIndex 缓存热路径）：第二次起仍必须拦截', () => {
+        // fullIdIndex 按数组引用缓存 full messageId 集合——缓存命中路径与首扫路径行为必须一致：
+        // 中间穿插的 snapshot 帧更新（引用不变集传递）不得让闸门失效
+        const full = makeMsg({ id: 'msg-uuid-1', seq: 42, content: makeContent('p1', [text('完整正文')], 'anthropic-A') })
+        const otherSnap = makeMsg({ id: 'snap-other', snapshot: true, content: makeContent('p2', [text('另一条流式')], 'anthropic-B') })
+        let cache = resolveMessageCache([full], otherSnap)
+
+        // 同 id 快照更新（replace 路径传递缓存）
+        const otherSnap2 = makeMsg({ id: 'snap-other', snapshot: true, content: makeContent('p2', [text('另一条流式更新')], 'anthropic-B') })
+        cache = resolveMessageCache(cache, otherSnap2)
+        expect(cache).toHaveLength(2)
+
+        // 迟到帧（行 id 不同、messageId 同 full）连续到达：每帧都要被闸
+        for (let i = 0; i < 3; i++) {
+            const lateFrame = makeMsg({ id: `snap-pending-${i}`, snapshot: true, content: makeContent('p1', [text('陈旧全量')], 'anthropic-A') })
+            const result = resolveMessageCache(cache, lateFrame)
+            expect(result).toBe(cache)
+            expect(result).toHaveLength(2)
+        }
+    })
 })
