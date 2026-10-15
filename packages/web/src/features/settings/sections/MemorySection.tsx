@@ -19,6 +19,7 @@ import { Alert, App, Button, Input, InputNumber, Radio, Tag, theme as antTheme, 
 // uiarc 自管件：单选/可搜索选择（antd Select 已全站清零；tags 模式归 MultiSelect mode="tags"）
 import { Select as UiSelect } from '@/ui/base/interactive/select/Select'
 import { MultiSelect } from '@/ui/base/interactive/multi-select/MultiSelect'
+import type { MultiSelectOption } from '@/ui/base/interactive/multi-select/MultiSelect'
 import { Combobox } from '@/ui/base/interactive/combobox/Combobox'
 import { useTranslation } from 'react-i18next'
 import { Brain, ExternalLink, Plus, Trash2 } from 'lucide-react'
@@ -132,6 +133,9 @@ export function MemorySection() {
     const [rules, setRules] = useState<MemoryRule[]>([])
     const [bankName, setBankName] = useState('')
     const [disabledWorkspaces, setDisabledWorkspaces] = useState<string[]>([])
+    // 自由输入的路径动态补成 option（antd tags 同语义）：chip 才有短形态与悬停全值。
+    // hook 必须在 early return 之前（Rules of Hooks）
+    const [extraExcludedOptions, setExtraExcludedOptions] = useState<Array<MultiSelectOption>>([])
     // 注入策略草稿（mobi 默认关：不自动注入 + 不刷目录；要在设置里显式开）
     const [autoInject, setAutoInject] = useState<MemoryAutoInjectMode>('none')
     const [pageRefreshEveryTurns, setPageRefreshEveryTurns] = useState(0)
@@ -165,10 +169,28 @@ export function MemorySection() {
 
     const uiUrl = deriveMemoryUiUrl(endpoint)
     const offMachine = engine === 'hindsight' && isOffMachineEndpoint(endpoint)
-    // workspace 排除下拉可选项：全部工作区 folder 路径（tags 模式仍可自由输入任意路径）
+    // workspace 排除下拉可选项：全部工作区 folder 路径（tags 模式仍可自由输入任意路径）。
+    // chip 窄盒只放得下尾段目录名（全路径截断后不可读），完整路径走悬停 title
     const workspaceOptions = Array.from(new Set(
         (workspacesQuery.data ?? []).flatMap((w) => w.folders.map((f) => f.path)),
-    )).map((path) => ({ value: path, label: path }))
+    )).map((path) => ({
+        value: path,
+        label: path,
+        shortLabel: path.split('/').filter(Boolean).pop() || path,
+        title: path,
+    }))
+    // 自由输入的路径动态补成 option（antd tags 同语义）：chip 才有短形态与悬停全值
+    const excludedOptions = [...workspaceOptions, ...extraExcludedOptions]
+    const handleExcludedChange = (next: string[]) => {
+        setDisabledWorkspaces(next)
+        setExtraExcludedOptions((prev) => {
+            const known = new Set([...workspaceOptions, ...prev].map((o) => o.value))
+            const added = next
+                .filter((v) => !known.has(v))
+                .map((path) => ({ value: path, label: path, shortLabel: path.split('/').filter(Boolean).pop() || path, title: path }))
+            return added.length ? [...prev, ...added] : prev
+        })
+    }
     // workspace id → 名（规则行目标展示）；folders 平铺去重
     const workspaceNameOf = (id: string): string =>
         workspacesQuery.data?.find((w) => w.id === id)?.name ?? id
@@ -434,8 +456,8 @@ export function MemorySection() {
                 <MultiSelect
                     mode="tags"
                     value={disabledWorkspaces}
-                    onValueChange={(v) => setDisabledWorkspaces(v)}
-                    options={workspaceOptions}
+                    onValueChange={handleExcludedChange}
+                    options={excludedOptions}
                     placeholder={t('settings.memory.excludedPlaceholder')}
                     ariaLabel={t('settings.memory.excludedTitle')}
                 />
