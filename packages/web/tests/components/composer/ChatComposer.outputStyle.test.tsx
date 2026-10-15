@@ -25,16 +25,28 @@
  * - 当前值：outputStyle 透传（runtimeState.outputStyle 为权威），undefined → 'default'
  * - availableStyles：init 上报的可选名，非内置名（如 my-style）追加为下拉项可切回；内置名去重
  *
- * Select 交互说明：antd v6 的 DOM 结构与 v5 不同——选中值在 `.ant-select-content`
- * （无 .ant-select-selection-item），展开用 fireEvent.mouseDown(`.ant-select`)，选项
- * portal 到 body 后按文本点击（组件侧 virtual={false} 保证选项同步渲染）。
+ * Select 交互说明：底座是 morph-select（CompactHoverSelect 壳）——触发器是
+ * role=combobox 的 button（click 展开），选项 portal 为 role=listbox/option；
+ * 收起态 iconOnly 只渲染图标，下拉项恒完整（名称 + 描述）。
  */
 
-import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { App } from 'antd'
 import '@testing-library/jest-dom/vitest'
+import type { AnimationPlaybackControls, MotionValue } from 'motion/react'
 import { OutputStyleSwitch } from '@/features/composer/OutputStyleSwitch'
+
+// jsdom 无 matchMedia：morph 动效打桩成立即达（尺寸 spring 不必真跑）
+vi.mock('motion/react', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('motion/react')>()
+    const animateStub = (value: MotionValue<number>, target: number): AnimationPlaybackControls => {
+        value.set(target)
+        const promise = new Promise<void>((resolve) => { setTimeout(resolve, 0) })
+        return { stop() {}, then: (resolve, reject) => promise.then(resolve, reject) } as AnimationPlaybackControls
+    }
+    return { ...actual, animate: animateStub, useReducedMotion: () => false }
+})
 
 // mock mutation hook：模块级稳定引用（mock 对象跨渲染保持同一身份，避免 effect 无限循环）
 const { mutateSpy, mutationMock } = vi.hoisted(() => {
@@ -55,32 +67,6 @@ vi.mock('react-i18next', () => ({
     }),
 }))
 
-// jsdom 无 ResizeObserver / matchMedia，antd Select 弹层路径依赖——最小 stub
-class ResizeObserverStub {
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
-}
-const origResizeObserver = globalThis.ResizeObserver
-const origMatchMedia = globalThis.matchMedia
-beforeAll(() => {
-    globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
-    globalThis.matchMedia = ((query: string) => ({
-        matches: false,
-        media: query,
-        onchange: null,
-        addListener: () => {},
-        removeListener: () => {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        dispatchEvent: () => false,
-    })) as unknown as typeof matchMedia
-})
-afterAll(() => {
-    globalThis.ResizeObserver = origResizeObserver
-    globalThis.matchMedia = origMatchMedia
-})
-
 // vitest 未开 globals，渲染型测试必须显式 cleanup，否则 DOM 跨用例累积
 afterEach(() => {
     cleanup()
@@ -95,121 +81,107 @@ function renderSwitch(props: Partial<Parameters<typeof OutputStyleSwitch>[0]> = 
     )
 }
 
-/** 展开下拉并点击指定选项（antd v6：mouseDown 触发在 .ant-select 根上） */
-async function selectOption(optionText: string) {
-    fireEvent.mouseDown(document.querySelector('.ant-select')!)
-    const option = await screen.findByText(optionText)
-    fireEvent.click(option)
+/** 触发器：morph 的 trigger button（搜索框也是 combobox，按标签名区分） */
+function trigger(): HTMLElement {
+    return screen.getAllByRole('combobox').find(el => el.tagName === 'BUTTON')!
 }
 
-/** 弹窗按钮容器为 .ant-modal-confirm-btns（confirm 弹窗无 .ant-modal-footer）；
- * v6 confirm 有重复节点 + 上个用例的关闭动画残留，取 body 中最后一份 modal——最新触发的确认框 */
-function modalButton(primary: boolean): HTMLElement {
-    const modals = document.querySelectorAll('.ant-modal')
-    const modal = modals[modals.length - 1]
-    if (!(modal instanceof HTMLElement)) throw new Error('modal not found')
-    const selector = primary
-        ? '.ant-modal-confirm-btns .ant-btn-primary'
-        : '.ant-modal-confirm-btns .ant-btn:not(.ant-btn-primary)'
-    const btn = modal.querySelector(selector)
-    if (!(btn instanceof HTMLElement)) throw new Error(`modal button not found: ${selector}`)
-    return btn
-}
-
-/** 确认弹窗出现且标题/说明正确（v6 confirm 存在重复渲染节点，用 querySelector 断言首份） */
-async function expectConfirmDialog(label: string) {
-    await waitFor(() => {
-        const title = document.querySelector('.ant-modal-title')
-        expect(title?.textContent).toBe('composer.outputStyleSwitchTitle')
-    })
-    expect(document.querySelector('.ant-modal-body')?.textContent)
-        .toContain(`composer.outputStyleSwitchConfirm:${label}`)
+/** 展开下拉并点击指定选项（morph：click 触发，选项按可访问名匹配） */
+async function selectOption(optionText: string | RegExp) {
+    fireEvent.click(trigger())
+    fireEvent.click(await screen.findByRole('option', { name: optionText }))
 }
 
 describe('OutputStyleSwitch', () => {
     it('idle 可选：选中后弹确认框，确认 → mutation 以 { sessionId, style } 调用', async () => {
         renderSwitch()
-        const root = document.querySelector('.ant-select')!
-        expect(root).not.toHaveClass('ant-select-disabled')
+        expect(trigger()).not.toBeDisabled()
 
-        await selectOption('Explanatory')
+        await selectOption(/Explanatory/)
 
         // 确认框：标题 + 带选中项 label 的说明（/clear 语义）
-        await expectConfirmDialog('Explanatory')
+        await waitFor(() => {
+            const title = document.querySelector('.ant-modal-title')
+            expect(title?.textContent).toBe('composer.outputStyleSwitchTitle')
+        })
+        expect(document.querySelector('.ant-modal-body')?.textContent)
+            .toContain('composer.outputStyleSwitchConfirm:Explanatory')
 
-        fireEvent.click(modalButton(true))
+        const modals = document.querySelectorAll('.ant-modal')
+        const btn = modals[modals.length - 1].querySelector('.ant-modal-confirm-btns .ant-btn-primary')
+        fireEvent.click(btn!)
         expect(mutateSpy).toHaveBeenCalledWith({ sessionId: 's1', style: 'Explanatory' })
     })
 
     it('running 时 disabled，外层 title 提示结束后可切换', () => {
         renderSwitch({ running: true })
-        expect(document.querySelector('.ant-select')).toHaveClass('ant-select-disabled')
-        const wrapper = document.querySelector('.ant-select')?.parentElement
+        expect(trigger()).toBeDisabled()
+        const wrapper = trigger().closest('span[title]')
         expect(wrapper).toHaveAttribute('title', 'composer.outputStyleRunningDisabled')
     })
 
     it('/clear 进行中（clearInProgress）同样 disabled', () => {
         renderSwitch({ clearInProgress: true })
-        expect(document.querySelector('.ant-select')).toHaveClass('ant-select-disabled')
+        expect(trigger()).toBeDisabled()
     })
 
     it('弹窗取消 → mutation 未被调用', async () => {
         renderSwitch()
-        await selectOption('Explanatory')
-        await expectConfirmDialog('Explanatory')
+        await selectOption(/Explanatory/)
+        await waitFor(() => {
+            expect(document.querySelector('.ant-modal-title')?.textContent).toBe('composer.outputStyleSwitchTitle')
+        })
 
-        fireEvent.click(modalButton(false))
+        const modals = document.querySelectorAll('.ant-modal')
+        const btn = modals[modals.length - 1]
+            .querySelector('.ant-modal-confirm-btns .ant-btn:not(.ant-btn-primary)')
+        fireEvent.click(btn!)
         await waitFor(() => {
             expect(mutateSpy).not.toHaveBeenCalled()
         })
     })
 
-    it('收起态仅图标（label 征用为图标节点，同权限切换器）；下拉项仍走名称+描述', async () => {
-        // iconOnly 后选中值渲染的是图标节点而非名称文本（.ant-select-content 内无 label 文本）
-        const { unmount } = renderSwitch({ outputStyle: 'Learning' })
-        const content = document.querySelector('.ant-select-content')
-        expect(content?.textContent).not.toBe('Learning')
-        expect(content?.querySelector('svg')).not.toBeNull()
-        unmount()
-
-        // 展开下拉：选项仍按名称+描述渲染（label 不承担名称，optionRender 从 options 元数据取）
+    it('收起态仅图标（iconOnly）；下拉项仍按名称+描述完整渲染', async () => {
         renderSwitch({ outputStyle: 'Learning' })
-        const options = await openDropdown()
-        const learning = Array.from(options).find((el) => el.textContent?.includes('Learning'))
-        expect(learning).toBeDefined()
-    })
+        // iconOnly 后触发器只渲染图标 + srOnly 可访问名（srOnly 文本不进可见 textContent 之外，
+        // 但仍是文本节点，这里断言图标存在即可）
+        expect(trigger().querySelector('svg')).not.toBeNull()
 
-    /** 展开下拉（不选），返回当前展开的选项元素列表 */
-    async function openDropdown(): Promise<NodeListOf<Element>> {
-        fireEvent.mouseDown(document.querySelector('.ant-select')!)
-        await waitFor(() => {
-            expect(document.querySelectorAll('.ant-select-item-option')).not.toHaveLength(0)
-        })
-        return document.querySelectorAll('.ant-select-item-option')
-    }
+        // 展开下拉：选项按名称 + 描述渲染
+        fireEvent.click(trigger())
+        expect(await screen.findByRole('option', { name: /Learning/ })).toBeInTheDocument()
+    })
 
     it('availableStyles 含自定义名（如 my-style）→ 下拉追加该项，可被选中', async () => {
         // 内置名（规范形 Proactive）已在基础列表 → 去重不追加；仅追加非内置的 my-style
         renderSwitch({ availableStyles: ['default', 'Proactive', 'my-style'] })
 
-        const options = await openDropdown()
+        fireEvent.click(trigger())
+        expect(await screen.findByRole('option', { name: /my-style/ })).toBeInTheDocument()
         // 内置五项 + 自定义 my-style = 6
-        expect(options).toHaveLength(6)
-        expect(screen.getByText('my-style')).toBeInTheDocument()
+        expect(screen.getAllByRole('option')).toHaveLength(6)
 
         // 自定义项可被选中并走确认流程（原名直出，无 i18n label）
-        fireEvent.click(screen.getByText('my-style'))
-        await expectConfirmDialog('my-style')
+        fireEvent.click(screen.getByRole('option', { name: /my-style/ }))
+        await waitFor(() => {
+            expect(document.querySelector('.ant-modal-body')?.textContent)
+                .toContain('composer.outputStyleSwitchConfirm:my-style')
+        })
     })
 
     it('availableStyles 为 undefined 或全为内置名 → 下拉只有内置五项', async () => {
-        const { unmount } = renderSwitch({ availableStyles: undefined })
-        expect(await openDropdown()).toHaveLength(5)
-        unmount()
+        renderSwitch({ availableStyles: undefined })
+        fireEvent.click(trigger())
+        await waitFor(() => {
+            expect(screen.getAllByRole('option')).toHaveLength(5)
+        })
         cleanup()
 
         renderSwitch({ availableStyles: ['default', 'Concise'] })
-        expect(await openDropdown()).toHaveLength(5)
-        expect(screen.queryByText('my-style')).not.toBeInTheDocument()
+        fireEvent.click(trigger())
+        await waitFor(() => {
+            expect(screen.getAllByRole('option')).toHaveLength(5)
+        })
+        expect(screen.queryByRole('option', { name: /my-style/ })).not.toBeInTheDocument()
     })
 })

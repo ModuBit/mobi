@@ -701,6 +701,8 @@
         "attach": "添加附件",
         "abort": "中断",
         "send": "发送",
+        "permissionMode": "权限模式",
+        "model": "模型",
         "permissionModes": {
             "auto": "自动审批",
             "default": "请求批准",

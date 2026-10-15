@@ -710,6 +710,8 @@
         "attach": "Add attachment",
         "abort": "Abort",
         "send": "Send",
+        "permissionMode": "Permission Mode",
+        "model": "Model",
         "permissionModes": {
             "auto": "Auto",
             "default": "Request Approval",

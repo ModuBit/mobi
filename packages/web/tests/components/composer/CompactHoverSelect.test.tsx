@@ -15,103 +15,80 @@
  */
 
 /**
- * CompactHoverSelect 移动端宽度参数化规格。
- *
- * 两种形态的由来（收编时保留差异、不静默回退任一侧）：
- * - 默认钉左（right:auto）：ChatComposer 形态
- * - mobileFullWidth 满宽（left+right 双钉 12px）：NewSessionPage 在 698493a5
- *   有意调整的形态，经 prop 参数化后继续生效
- *
- * jsdom 不做真实 CSS 布局，断言落在两点：注入的全局样式文本（两条规则共存、
- * 满宽规则书写在钉左之后——同元素双 class 时靠同表内顺序决胜）、下拉根 class
- * 的有无（antd v6：fireEvent.mouseDown(`.ant-select`) 展开，选项 portal 到 body）。
+ * CompactHoverSelect（morph-select 壳）行为契约：
+ * ① onChange 单参归一（morph 的 (value, option) 双参在壳内吞掉）；
+ * ② composer 固定形态——direction 恒 up（贴屏幕底）；
+ * ③ loading 一并禁用触发器；
+ * ④ effort-popover 全局样式注入（单点收口，首渲染即注入一次）。
+ * 面板宽度参数化（mobileFullWidth → panelWidth 9999）是纯数值透传，
+ * jsdom 无真实布局测不出满宽效果，归真机验收（票 03）。
  */
 
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
-import { render, fireEvent, cleanup } from '@testing-library/react'
-import { theme } from 'antd'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import {
-    CompactHoverSelect,
-    COMPACT_DROPDOWN_CLASS,
-    MODEL_DROPDOWN_FULLWIDTH_CLASS,
-} from '@/features/composer/CompactHoverSelect'
+import { render, cleanup, fireEvent, screen } from '@testing-library/react'
+import type { AnimationPlaybackControls, MotionValue } from 'motion/react'
+import { CompactHoverSelect, type CompactHoverSelectOption } from '@/features/composer/CompactHoverSelect'
 
-// jsdom 无 ResizeObserver / matchMedia，antd Select 弹层路径依赖——最小 stub
-class ResizeObserverStub {
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
-}
-const origResizeObserver = globalThis.ResizeObserver
-const origMatchMedia = globalThis.matchMedia
-beforeAll(() => {
-    globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
-    globalThis.matchMedia = ((query: string) => ({
-        matches: false,
-        media: query,
-        onchange: null,
-        addListener: () => {},
-        removeListener: () => {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        dispatchEvent: () => false,
-    })) as unknown as typeof matchMedia
+/** jsdom 无 matchMedia：reduced 恒 false；animate 打桩成立即达（尺寸 spring 不必真跑） */
+vi.mock('motion/react', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('motion/react')>()
+    const animateStub = (value: MotionValue<number>, target: number): AnimationPlaybackControls => {
+        value.set(target)
+        const promise = new Promise<void>((resolve) => { setTimeout(resolve, 0) })
+        return { stop() {}, then: (resolve, reject) => promise.then(resolve, reject) } as AnimationPlaybackControls
+    }
+    return { ...actual, animate: animateStub, useReducedMotion: () => false }
 })
-afterAll(() => {
-    globalThis.ResizeObserver = origResizeObserver
-    globalThis.matchMedia = origMatchMedia
-})
-// vitest 未开 globals，渲染型测试必须显式 cleanup
-afterEach(() => cleanup())
 
-/** $token 从 styled 必填 prop 中取（真实 token，经 useToken） */
-function Harness(props: { mobileFullWidth?: boolean }) {
-    const { token } = theme.useToken()
+const OPTIONS: CompactHoverSelectOption[] = [
+    { value: 'default', label: '默认', description: '跟随 CC 设置' },
+    { value: 'acceptEdits', label: '接受编辑' },
+]
+
+function Harness(props: Partial<Parameters<typeof CompactHoverSelect>[0]> = {}) {
     return (
         <CompactHoverSelect
-            $token={token}
-            value="a"
-            options={[{ value: 'a', label: 'A' }]}
-            virtual={false}
+            label="权限模式"
+            value="default"
+            options={OPTIONS}
             {...props}
         />
     )
 }
 
-/** 组件渲染后注入的全局样式文本（首渲染即注入一次） */
-function injectedStyleText(): string {
-    const styles = Array.from(document.querySelectorAll('style'))
-        .map(el => el.textContent ?? '')
-    return styles.find(text => text.includes(COMPACT_DROPDOWN_CLASS)) ?? ''
-}
+describe('CompactHoverSelect 壳行为', () => {
+    afterEach(cleanup)
 
-/** 展开下拉后取最新一份 dropdown 根节点 */
-function openDropdown(): HTMLElement {
-    fireEvent.mouseDown(document.querySelector('.ant-select')!)
-    const dropdowns = document.querySelectorAll('.ant-select-dropdown')
-    const dropdown = dropdowns[dropdowns.length - 1]
-    if (!(dropdown instanceof HTMLElement)) throw new Error('dropdown not found')
-    return dropdown
-}
-
-describe('CompactHoverSelect 移动端宽度参数化', () => {
-    it('全局样式同时含钉左（默认）与满宽（变体）两条移动端规则，且满宽在后', () => {
-        render(<Harness />)
-        const text = injectedStyleText()
-        const pinLeft = text.indexOf('right: auto !important; left: 12px')
-        const fullWidth = text.indexOf('left: 12px !important; right: 12px')
-        expect(pinLeft).toBeGreaterThanOrEqual(0)
-        expect(fullWidth).toBeGreaterThan(pinLeft)
+    it('点击选项回调单参 onChange(value)——morph 的 (value, option) 双参被壳吞掉', () => {
+        const onChange = vi.fn()
+        render(<Harness onChange={onChange} />)
+        fireEvent.click(screen.getByRole('combobox'))
+        fireEvent.click(screen.getByRole('option', { name: /接受编辑/ }))
+        expect(onChange).toHaveBeenCalledTimes(1)
+        expect(onChange).toHaveBeenCalledWith('acceptEdits')
     })
 
-    it('mobileFullWidth：下拉根带满宽 class；不传则不带（默认钉左，行为不变）', () => {
-        const { unmount } = render(<Harness mobileFullWidth />)
-        expect(openDropdown()).toHaveClass(MODEL_DROPDOWN_FULLWIDTH_CLASS)
-        unmount()
-        cleanup()
+    it('composer 固定向上展开：root 恒带 data-direction="up"', () => {
+        const { container } = render(<Harness />)
+        expect(container.querySelector('[data-direction]')).toHaveAttribute('data-direction', 'up')
+    })
 
+    it('disabled 与 loading 都禁用触发器', () => {
+        const { rerender } = render(<Harness disabled />)
+        expect(screen.getByRole('combobox')).toBeDisabled()
+        rerender(<Harness loading />)
+        expect(screen.getByRole('combobox')).toBeDisabled()
+    })
+
+    it('effort-popover 全局样式首渲染即注入，且重复挂载只注入一次', () => {
         render(<Harness />)
-        expect(openDropdown()).not.toHaveClass(MODEL_DROPDOWN_FULLWIDTH_CLASS)
+        const injected = () => Array.from(document.querySelectorAll('style'))
+            .map(el => el.textContent ?? '')
+            .filter(text => text.includes('.effort-popover'))
+        expect(injected()).toHaveLength(1)
+        cleanup()
+        render(<Harness />)
+        expect(injected()).toHaveLength(1)
     })
 })

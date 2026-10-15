@@ -15,14 +15,16 @@
  */
 
 /**
- * 权限模式下拉共享渲染规格。
- * 回归背景：composer 运行时切换器的收起态把 label 征用为「图标节点」（只展示
- * 图标），此时 optionRender 必须仍从 i18n 取名称，不得回落到 label。
+ * 权限模式下拉共享构建规格。
+ * 迁移 morph-select 后选项形态 = 名称 + 描述双行（description 槽）+ tone 色图标；
+ * renderPermissionModeOption 已随 antd optionRender 退役，改为断言
+ * buildPermissionModeHoverOptions 的组装契约（morph 壳直接消费）。
  */
 
-import { describe, it, expect, afterEach } from 'vitest'
-import { render, cleanup } from '@testing-library/react'
-import { buildPermissionModeSelectOptions, renderPermissionModeOption } from '@/features/composer/permissionModeOption'
+import { describe, it, expect } from 'vitest'
+import { createElement } from 'react'
+import { buildPermissionModeSelectOptions, buildPermissionModeHoverOptions } from '@/features/composer/permissionModeOption'
+import type { GlobalToken } from 'antd/es/theme/interface'
 
 const t = (key: string) => {
     const dict: Record<string, string> = {
@@ -30,7 +32,6 @@ const t = (key: string) => {
         'composer.permissionModes.default': '请求批准',
         'composer.permissionModes.acceptEdits': '接受编辑',
         'composer.permissionModes.plan': '计划模式',
-        'composer.permissionModes.dontAsk': '静默拒绝',
         'composer.permissionModes.bypassPermissions': 'YOLO',
         'composer.permissionModeDescriptions.acceptEdits': '自动接受文件编辑与文件操作',
         'composer.permissionModeDescriptions.bypassPermissions': '跳过所有检查立即执行（谨慎）',
@@ -38,7 +39,10 @@ const t = (key: string) => {
     return dict[key] ?? key
 }
 
-afterEach(cleanup)
+const token = {
+    colorText: '#000000',
+    getPermissionModeColor: undefined,
+} as unknown as GlobalToken
 
 describe('buildPermissionModeSelectOptions', () => {
     it('隐藏 dontAsk；label 为 i18n 名称，附带 tone', () => {
@@ -49,22 +53,24 @@ describe('buildPermissionModeSelectOptions', () => {
     })
 })
 
-describe('renderPermissionModeOption', () => {
-    it('label 被征用为图标节点时，名称仍按 mode 从 i18n 取', () => {
-        // 模拟 ChatComposer 收起态改造后的 options：label 已替换为 ReactNode
-        const option = { value: 'acceptEdits', label: <span data-testid="icon-placeholder" />, tone: 'success' }
-        const { container, getByText } = render(
-            <div>{renderPermissionModeOption(option, t, {} as never)}</div>,
-        )
-        expect(getByText('接受编辑')).toBeTruthy()   // 名称来自 i18n，而非被征用的 label
-        expect(getByText('自动接受文件编辑与文件操作')).toBeTruthy()
-        expect(container.querySelector('svg')).toBeTruthy()   // 模式自带图标正常渲染
+describe('buildPermissionModeHoverOptions', () => {
+    it('名称 + 描述双行齐全，dontAsk 仍隐藏', () => {
+        const opts = buildPermissionModeHoverOptions(t, token)
+        expect(opts.map(o => o.value)).not.toContain('dontAsk')
+        const acceptEdits = opts.find(o => o.value === 'acceptEdits')!
+        expect(acceptEdits.label).toBe('接受编辑')
+        expect(acceptEdits.description).toBe('自动接受文件编辑与文件操作')
+        const yolo = opts.find(o => o.value === 'bypassPermissions')!
+        expect(yolo.description).toBe('跳过所有检查立即执行（谨慎）')
     })
 
-    it('兼容 FlattenOptionData 包装结构（option.data 携带原始对象）', () => {
-        const option = { data: { value: 'bypassPermissions', label: 'YOLO' } }
-        const { getByText } = render(<div>{renderPermissionModeOption(option, t, {} as never)}</div>)
-        expect(getByText('YOLO')).toBeTruthy()
-        expect(getByText('跳过所有检查立即执行（谨慎）')).toBeTruthy()
+    it('图标节点带 tone 色（写死在图标上，触发器选中态与列表项同色）', () => {
+        const opts = buildPermissionModeHoverOptions(t, token)
+        for (const opt of opts) {
+            expect(createElement('div', {}, opt.icon)).toBeTruthy()
+            // 图标是 React 元素（svg 组件），props.style 携带显式颜色
+            const icon = opt.icon as { props?: { style?: { color?: string } } } | undefined
+            expect(typeof icon?.props?.style?.color).toBe('string')
+        }
     })
 })

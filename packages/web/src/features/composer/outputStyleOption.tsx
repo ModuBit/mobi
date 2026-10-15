@@ -23,8 +23,6 @@
  * 自定义 style（init 上报的非内置名）只渲染原名、无描述行（SDK 不透传 frontmatter）。
  */
 
-import type { ReactNode } from 'react'
-import { theme } from 'antd'
 import { LineStyle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { OUTPUT_STYLES, OUTPUT_STYLE_LABELS } from '@mobi/shared'
@@ -49,42 +47,13 @@ export function buildOutputStyleSelectOptions(): OutputStyleSelectOption[] {
     }))
 }
 
-/**
- * 渲染下拉项：名称 + 描述（secondary 12px，自动换行）
- *
- * 用于 antd Select 的 optionRender。入参放宽为 unknown —— antd v6 的
- * optionRender 传入的是 FlattenOptionData 包装类型，原始对象在 .data，
- * 兼容直接对象与 .data 包装两种结构。
- * 调用方可能在 options 里追加自定义 style 项（init 上报的非内置名），
- * options 未命中时按 value 兜底：内置名取 CC 原名，其余原名直出、无描述行。
- */
-export function renderOutputStyleOption(
-    option: unknown,
-    options: OutputStyleSelectOption[],
-    t: (key: string) => string,
-): ReactNode {
-    const raw = (option ?? {}) as { value?: string; data?: { value?: string } }
-    const source = raw.data ?? raw
-    // ?? 而非 ||：'' 是「跟随 CC 设置」哨兵值，不能坍缩为 'default'
-    const value = source.value ?? raw.value ?? 'default'
-    const known = options.find((o) => o.value === value)
-    const label = known?.label ?? OUTPUT_STYLE_LABELS[value as keyof typeof OUTPUT_STYLE_LABELS] ?? value
-    // 描述键：override（完整 i18n 键，如「跟随 CC 设置」项）优先，内置项走 Descriptions 后缀拼接
-    const descriptionI18nKey = known?.descriptionOverrideKey
-        ?? (known?.descriptionKey ? `composer.outputStyleDescriptions.${known.descriptionKey}` : undefined)
-    return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 0' }}>
-            <span style={{ fontWeight: 500 }}>{label}</span>
-            {descriptionI18nKey && (
-                <span style={{ fontSize: 12, lineHeight: 1.35, color: 'var(--ant-color-text-secondary)', whiteSpace: 'normal' }}>
-                    {t(descriptionI18nKey)}
-                </span>
-            )}
-        </div>
-    )
+/** 解析描述行 i18n：override（完整键）优先，内置项走 Descriptions 后缀拼接 */
+function resolveDescriptionI18nKey(option: OutputStyleSelectOption): string | undefined {
+    return option.descriptionOverrideKey
+        ?? (option.descriptionKey ? `composer.outputStyleDescriptions.${option.descriptionKey}` : undefined)
 }
 
-/** 收起态图标（lucide LineStyle——样式线列表，直观对应对话风格）：两处调用共用，单点维护 */
+/** Output style 收起态图标（lucide LineStyle——样式线列表，直观对应对话风格）：单点维护 */
 export function OutputStyleIcon() {
     return <LineStyle size={12} strokeWidth={2} className="opacity-55" />
 }
@@ -97,37 +66,35 @@ export interface OutputStyleSelectProps {
     disabled?: boolean
     loading?: boolean
     title?: string
-    /** 收起态仅图标（label 征用为图标节点，同 ChatComposer 权限切换器同款）；
-     *  下拉项详情由 optionRender 全权渲染，label 不再承担名称 */
+    /** 收起态仅图标（可访问名转 srOnly）；下拉项详情恒完整渲染 */
     iconOnly?: boolean
 }
 
 /**
  * output style 紧凑选择器（纯展示）：CompactHoverSelect 装配收口点
- * （icon prefix + 双行 optionRender + 虚拟滚动关闭，两处调用不再各自装配）。
+ * （图标 + 描述双行 + 满宽语义，两处调用不再各自装配）。
  * 无确认弹窗 / 无 mutation——会话页（/clear 语义）用 OutputStyleSwitch 包确认后复用本组件，
  * 新建页（本地 state，无 /clear 语义）直接使用。
  */
 export function OutputStyleSelect({ value, options, onChange, disabled, loading, title, iconOnly }: OutputStyleSelectProps) {
-    const { token } = theme.useToken()
     const { t } = useTranslation()
-    // iconOnly：label 换成图标节点，收起态宽度塌缩为单个 icon（与权限模式切换器一致）
-    const displayOptions = iconOnly
-        ? options.map((o) => ({ ...o, label: <OutputStyleIcon /> }))
-        : options
+    // ?? 而非 ||：'' 是「跟随 CC 设置」哨兵值，不能坍缩为 'default'
+    const known = (v: string) => options.find((o) => o.value === v)
+    const labelOf = (v: string) => known(v)?.label ?? OUTPUT_STYLE_LABELS[v as keyof typeof OUTPUT_STYLE_LABELS] ?? v
+    const shellOptions = options.map((o) => {
+        const key = resolveDescriptionI18nKey(o)
+        return { value: o.value, label: labelOf(o.value), description: key ? t(key) : undefined, icon: <OutputStyleIcon /> }
+    })
     return (
         <CompactHoverSelect
-            $token={token}
-            // iconOnly 时 label 已是图标节点，prefix 不再叠加（避免双图标，同权限切换器）
-            prefix={iconOnly ? undefined : <OutputStyleIcon />}
-            value={value}
-            options={displayOptions}
+            label={t('composer.outputStyle')}
+            value={value ?? null}
+            options={shellOptions}
+            onChange={onChange}
             disabled={disabled}
             loading={loading}
-            onChange={onChange}
-            optionRender={(option) => renderOutputStyleOption(option, options, t)}
-            virtual={false}
             title={title}
+            iconOnly={iconOnly}
         />
     )
 }

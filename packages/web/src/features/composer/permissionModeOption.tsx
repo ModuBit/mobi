@@ -15,26 +15,20 @@
  */
 
 /**
- * 权限模式下拉框共享渲染
+ * 权限模式下拉框共享构建
  *
- * 三处复用：NewSessionPage（新建页 footer）、ChatComposer（桌面端运行时切换）、
- * ChatComposer（移动端运行时切换）。
- *
- * 渲染策略：
- * - ChatComposer 运行时切换器：收起态仅图标（options.label 被征用为图标节点，色随容器 tone），
- *   下拉项（optionRender）展示名称 + 描述
- * - NewSessionPage：收起态显示名称（label 原义）
- * - 下拉项（optionRender）：名称（tone 色）+ 描述（secondary 小字），描述自动换行；
- *   名称恒从 i18n 取，不读 option.label
- *   描述直接展示比悬停 tooltip 更直观；popupMatchSelectWidth=false 让宽度自适应
+ * 两处复用：NewSessionPage（新建页 footer，收起态 图标+名称）、ChatComposer
+ * （桌面端运行时切换，iconOnly 收起态仅图标）。选项统一由 buildPermissionModeHoverOptions
+ * 组装——morph-select 壳的 description 槽承载描述行，tone 色随选项图标。
  */
 
-import type { ReactNode } from 'react'
+import { createElement } from 'react'
 import type { GlobalToken } from 'antd/es/theme/interface'
 import type { PermissionMode, PermissionModeTone } from '@mobi/shared'
-import { getPermissionModeOptionsForFlavor, getPermissionModeTone } from '@mobi/shared'
+import { getPermissionModeOptionsForFlavor } from '@mobi/shared'
 import { getPermissionModeColor } from './permissionModeColors'
 import { getPermissionModeIcon } from './permissionModeIcons'
+import type { CompactHoverSelectOption } from './CompactHoverSelect'
 
 export interface PermissionModeSelectOption {
     value: string
@@ -44,32 +38,7 @@ export interface PermissionModeSelectOption {
 }
 
 /**
- * 权限模式下拉 popup 的 className（用于隐藏滚动条等样式作用域）
- */
-export const PERMISSION_MODE_DROPDOWN_CLASS = 'permission-mode-dropdown'
-
-let permStyleInjected = false
-/**
- * 注入下拉样式：隐藏滚动条
- *
- * 双行 option（名称+描述）在 6 项内可完整展示，无需滚动条。
- * 兜底覆盖 rc-virtual-list 与 webkit/firefox 两种滚动条。
- */
-export function usePermissionModeDropdownStyle(): void {
-    if (!permStyleInjected && typeof document !== 'undefined') {
-        const style = document.createElement('style')
-        style.textContent = `
-.${PERMISSION_MODE_DROPDOWN_CLASS} .rc-virtual-list-scrollbar { display: none !important; }
-.${PERMISSION_MODE_DROPDOWN_CLASS} .rc-virtual-list-holder { overflow: hidden !important; scrollbar-width: none !important; }
-.${PERMISSION_MODE_DROPDOWN_CLASS} .rc-virtual-list-holder::-webkit-scrollbar { display: none !important; }
-`
-        document.head.appendChild(style)
-        permStyleInjected = true
-    }
-}
-
-/**
- * 构建权限模式下拉选项（label 仅名称，附带 tone 供 optionRender 取用）
+ * 构建权限模式下拉选项（label 仅名称，附带 tone 供取色）
  *
  * 注意：dontAsk 在 UI 隐藏（仅过滤选项展示），功能完全保留——
  * PermissionMode 枚举 / SDK 协议 / daemon / cli 均不变；
@@ -86,40 +55,20 @@ export function buildPermissionModeSelectOptions(t: (key: string) => string): Pe
 }
 
 /**
- * 渲染下拉项：名称（tone 色）+ 描述（secondary 12px）
- *
- * 用于 antd Select 的 optionRender。入参放宽为 unknown —— antd v6 的
- * optionRender 传入的是 FlattenOptionData 包装类型，但运行时即原始 option 对象，
- * 内部按需取 value/tone。
- * 名称恒从 i18n 按 mode 取，不读 option.label —— composer 运行时切换器已把
- * options.label 征用为「收起态图标节点」（只展示图标），label 不再承担名称。
- * neutral 色调回落到正文色（不染灰，避免视觉弱化）。
+ * 组装 CompactHoverSelect 选项：名称 + 描述双行（description 槽），tone 色随选项图标
+ * （neutral 色调回落正文色，不染灰避免视觉弱化）。图标色写死在图标节点上——
+ * 触发器选中态与列表项展示同一节点，tone 语义两处一致。
  */
-export function renderPermissionModeOption(
-    option: unknown,
+export function buildPermissionModeHoverOptions(
     t: (key: string) => string,
-    token: GlobalToken
-): ReactNode {
-    // antd optionRender 的 option 是 FlattenOptionData，原始数据在 option.data；
-    // 兼容直接 option 与 .data 包装两种结构，确保 value 可靠取到
-    const raw = (option ?? {}) as {
-        value?: string;
-        data?: { value?: string }
-    }
-    const source = raw.data ?? raw
-    const mode = (source.value || raw.value || 'default') as PermissionMode
-    const tone = getPermissionModeTone(mode)
-    const color = getPermissionModeColor(token, tone)
-    const Icon = getPermissionModeIcon(mode)
-    return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 0' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: color ?? token.colorText, fontWeight: 500 }}>
-                <Icon style={{ fontSize: 13 }} />
-                {t(`composer.permissionModes.${mode}`)}
-            </span>
-            <span style={{ fontSize: 12, lineHeight: 1.35, color: token.colorTextSecondary, whiteSpace: 'normal' }}>
-                {t(`composer.permissionModeDescriptions.${mode}`)}
-            </span>
-        </div>
-    )
+    token: GlobalToken,
+): CompactHoverSelectOption[] {
+    return buildPermissionModeSelectOptions(t).map(option => ({
+        value: option.value,
+        label: option.label,
+        description: t(`composer.permissionModeDescriptions.${option.value}`),
+        icon: createElement(getPermissionModeIcon(option.value as PermissionMode), {
+            style: { fontSize: 12, color: getPermissionModeColor(token, option.tone) ?? token.colorText },
+        }),
+    }))
 }

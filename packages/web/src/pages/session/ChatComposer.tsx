@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useMemo, useRef, useEffect, useImperativeHandle, lazy, Suspense, createElement, type Ref } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect, useImperativeHandle, lazy, Suspense, type Ref } from 'react'
 import styled from '@emotion/styled'
-import { Button, theme, Typography, Popover, message } from 'antd'
+import { Button, theme, Popover, message } from 'antd'
 import { SwapOutlined, RightOutlined, InboxOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import type { AgentState, CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, StopKind, TodoItem, TaskItem } from '@mobi/shared'
-import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
+import { getPermissionModeOptionsForFlavor, EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
 import {
     isSegmentEmpty,
     QUOTE_MAX_COUNT,
@@ -60,10 +60,8 @@ import { SlashCommandDropdown } from '@/features/composer/SlashCommandDropdown'
 import { CommandHintBar } from '@/features/composer/CommandHintBar'
 import { ResponsiveActionBar, type ActionItem } from '@/features/composer/ResponsiveActionBar'
 import { ActivateCover } from '@/ui/shared/ActivateCover'
-import { getPermissionModeColor } from '@/features/composer/permissionModeColors'
-import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermissionModeDropdownStyle, PERMISSION_MODE_DROPDOWN_CLASS } from '@/features/composer/permissionModeOption'
-import { getPermissionModeIcon } from '@/features/composer/permissionModeIcons'
-import { CompactHoverSelect, MODEL_DROPDOWN_CLASS } from '@/features/composer/CompactHoverSelect'
+import { buildPermissionModeHoverOptions } from '@/features/composer/permissionModeOption'
+import { CompactHoverSelect } from '@/features/composer/CompactHoverSelect'
 import { OutputStyleSwitch } from '@/features/composer/OutputStyleSwitch'
 import { SubmitButton } from '@/features/composer/SubmitButton'
 import { ContextRing } from '@/ui/shared/ContextRing'
@@ -561,21 +559,52 @@ export function ChatComposer(props: ChatComposerProps) {
         if (v !== model) onModelChange?.(v)
     }, [model, onModelChange])
 
-    usePermissionModeDropdownStyle()
-    const permissionSelectOptions = useMemo(
-        () => buildPermissionModeSelectOptions(t),
-        [t]
-    )
-    // 收起态仅展示图标：options.label 征用为各模式图标节点（色继承容器 tone 色），
-    // 下拉项详情由 optionRender 全权渲染（名称恒从 i18n 取，不读 label）
-    const permissionModeIconOptions = useMemo(
-        () => permissionSelectOptions.map(option => ({
+    // 模型行尾缀 effort 子菜单入口（morph trailing 槽，组件内已对 trailing stopPropagation，
+    // 点入口不会误选模型）；无 effort 回调的调用形态无此缀
+    const modelOptionsWithEffort = useMemo(
+        () => modelSelectOptions.map(option => ({
             ...option,
-            label: createElement(getPermissionModeIcon(option.value as PermissionMode), {
-                style: { fontSize: 12 },
-            }),
+            trailing: onEffortChange ? (
+                <Popover
+                    open={effortPopoverModel === option.value}
+                    onOpenChange={(open) => setEffortPopoverModel(open ? option.value : null)}
+                    placement="leftTop"
+                    trigger={hasFinePointer ? 'hover' : 'click'}
+                    mouseEnterDelay={0.1}
+                    mouseLeaveDelay={0.3}
+                    zIndex={1051}
+                    rootClassName="effort-popover"
+                    content={
+                        <EffortPopoverContent
+                            modelValue={option.value}
+                            effort={effort ?? 'medium'}
+                            onEffortSelect={(m, e) => {
+                                handleModelEffortSelect(m, e)
+                                setEffortPopoverModel(null)
+                            }}
+                        />
+                    }
+                >
+                    <span
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            minWidth: 24, minHeight: 24, borderRadius: 4, cursor: 'pointer',
+                        }}
+                        onClick={(ev) => ev.stopPropagation()}
+                    >
+                        <RightOutlined style={{ fontSize: 10, opacity: 0.4 }} />
+                    </span>
+                </Popover>
+            ) : undefined,
         })),
-        [permissionSelectOptions],
+        [modelSelectOptions, onEffortChange, effortPopoverModel, effort, hasFinePointer, handleModelEffortSelect],
+    )
+
+    // 权限模式选项：名称 + 描述双行（morph description 槽），tone 色随选项图标；
+    // 触发器 iconOnly（收起态仅当前模式图标 + chevron），色不再依赖容器 tint
+    const permissionModeIconOptions = useMemo(
+        () => buildPermissionModeHoverOptions(t, token),
+        [t, token],
     )
 
     // 点击外部关闭下拉
@@ -789,9 +818,6 @@ export function ChatComposer(props: ChatComposerProps) {
     const showLocalModeCover = active && mode === 'local'
     const isBashMode = text.startsWith('! ')
 
-    const permissionModeTone = getPermissionModeTone(permissionMode ?? 'default')
-    const permissionModeColor = getPermissionModeColor(token, permissionModeTone) ?? undefined
-
     // running 时的 loading 状态，驱动 ComposerInfoPanel 下方的 StatusBar
     const loadingStatus = running
         ? getAgentStatus({ active, running, agentState })
@@ -934,16 +960,12 @@ export function ChatComposer(props: ChatComposerProps) {
                                     key: 'permission',
                                     render: () => (
                                         <CompactHoverSelect
-                                            $token={token}
+                                            label={t('composer.permissionMode')}
+                                            iconOnly
                                             value={permissionMode ?? 'default'}
                                             onChange={v => onPermissionModeChange?.(v as PermissionMode)}
                                             disabled={controlsDisabled || showLocalModeCover}
                                             options={permissionModeIconOptions}
-                                            optionRender={(option) => renderPermissionModeOption(option, t, token)}
-                                            virtual={false}
-                                            listHeight={320}
-                                            classNames={{ popup: { root: PERMISSION_MODE_DROPDOWN_CLASS } }}
-                                            style={{ color: permissionModeColor }}
                                         />
                                     ),
                                 }] : []),
@@ -952,65 +974,12 @@ export function ChatComposer(props: ChatComposerProps) {
                                     key: 'model',
                                     render: () => (
                                         <CompactHoverSelect
-                                            $token={token}
+                                            label={t('composer.model')}
                                             prefix={<EffortDot level={effort ?? 'medium'} />}
                                             value={model ?? 'auto'}
                                             onChange={v => handleModelSelect(v as string)}
                                             disabled={controlsDisabled || showLocalModeCover}
-                                            options={modelSelectOptions}
-                                            classNames={{ popup: { root: MODEL_DROPDOWN_CLASS } }}
-                                            optionRender={(option) => {
-                                                const desc = (option.data as { description?: string })?.description
-                                                const modelValue = option.value as string
-                                                return (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-                                                        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-                                                            <span>{option.label}</span>
-                                                            {desc && (
-                                                                <Typography.Text
-                                                                    type="secondary"
-                                                                    ellipsis={{ tooltip: desc }}
-                                                                    style={{ fontSize: 11, lineHeight: '16px' }}
-                                                                >
-                                                                    {desc}
-                                                                </Typography.Text>
-                                                            )}
-                                                        </div>
-                                                        {onEffortChange && (
-                                                            <Popover
-                                                                open={effortPopoverModel === modelValue}
-                                                                onOpenChange={(open) => setEffortPopoverModel(open ? modelValue : null)}
-                                                                placement="leftTop"
-                                                                trigger={hasFinePointer ? 'hover' : 'click'}
-                                                                mouseEnterDelay={0.1}
-                                                                mouseLeaveDelay={0.3}
-                                                                zIndex={1051}
-                                                                rootClassName="effort-popover"
-                                                                content={
-                                                                    <EffortPopoverContent
-                                                                        modelValue={modelValue}
-                                                                        effort={effort ?? 'medium'}
-                                                                        onEffortSelect={(m, e) => {
-                                                                            handleModelEffortSelect(m, e)
-                                                                            setEffortPopoverModel(null)
-                                                                        }}
-                                                                    />
-                                                                }
-                                                            >
-                                                                <span
-                                                                    style={{
-                                                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                                        minWidth: 24, minHeight: 24, borderRadius: 4, cursor: 'pointer',
-                                                                    }}
-                                                                    onClick={(ev) => ev.stopPropagation()}
-                                                                >
-                                                                    <RightOutlined style={{ fontSize: 10, opacity: 0.4 }} />
-                                                                </span>
-                                                            </Popover>
-                                                        )}
-                                                    </div>
-                                                )
-                                            }}
+                                            options={modelOptionsWithEffort}
                                         />
                                     ),
                                 }] : []),

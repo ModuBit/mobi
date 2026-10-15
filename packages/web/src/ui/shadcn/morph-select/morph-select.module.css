@@ -86,6 +86,10 @@
 .icon { display: grid; width: 20px; height: 20px; flex: none; place-items: center; color: var(--text-secondary); }
 .icon > svg { width: 16px; height: 16px; }
 .icon > img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }
+/* triggerPrefix（mobi）：lid 内 value 前的静态缀（effort 圆点等） */
+.triggerPrefix { display: grid; flex: none; place-items: center; color: var(--text-secondary); }
+/* trailing（mobi）：行尾嵌套交互入口（effort 子菜单），stopPropagation 已在组件内收口 */
+.trailing { display: grid; flex: none; place-items: center; }
 
 .chevron { position: absolute; top: 50%; right: 12px; display: grid; width: 16px; height: 16px; margin-top: -8px; place-items: center; color: var(--text-muted); pointer-events: none; }
 

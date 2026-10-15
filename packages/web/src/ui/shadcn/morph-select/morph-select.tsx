@@ -37,6 +37,8 @@ export interface MorphSelectOption {
   icon?: ReactNode;
   /** A second line under the label (mobi 本地槽位)：12px 弱化文字，参与搜索匹配。 */
   description?: string;
+  /** Row trailing node before the check mark (mobi 本地槽位)：行内嵌套交互入口（如 effort 子菜单），点击代理由消费方自行 stopPropagation。 */
+  trailing?: ReactNode;
   /** Short trailing detail such as an offset or a count. Rendered with tabular numerals. */
   meta?: string;
   /** Extra words that match this option when searching. */
@@ -65,6 +67,8 @@ export interface MorphSelectProps {
   hideLabel?: boolean;
   /** Trigger 只渲染 icon + chevron（mobi 本地槽位，composer 收起形态）；可访问名仍走 label（srOnly）。 */
   iconOnly?: boolean;
+  /** Trigger 内 value 前的静态缀（mobi 本地槽位，如 effort 圆点）；仅 lid，不进列表项。 */
+  prefix?: ReactNode;
   /**
    * 展开方向（mobi 本地槽位）：上游只向下生长；composer 贴屏幕底部需要 "up"——
    * shape 锚底生长、listFace 挂 lid 上方、入场位移与数值滚动 y 向镜像。
@@ -87,6 +91,8 @@ export interface MorphSelectProps {
   /** Adds a hidden input for native form submission. */
   name?: string;
   disabled?: boolean;
+  /** Root 上的内联样式透传（mobi 本地槽位，调用方 tint 触发器文字色）。 */
+  style?: CSSProperties;
   className?: string;
 }
 
@@ -152,8 +158,8 @@ const triggerWidth = (node: HTMLElement) => {
   return Math.abs(exact - rounded) <= .5 ? Math.ceil(exact - .01) : rounded + 1;
 };
 
-export function MorphSelect({ label, hideLabel = false, iconOnly = false, direction = "down", items, value, defaultValue = null, onValueChange, placeholder = "Select", searchable = "auto", searchPlaceholder,
-  panelWidth = 272, maxListHeight = 296, align = "start", name, disabled = false, className }: MorphSelectProps) {
+export function MorphSelect({ label, hideLabel = false, iconOnly = false, direction = "down", prefix, items, value, defaultValue = null, onValueChange, placeholder = "Select", searchable = "auto", searchPlaceholder,
+  panelWidth = 272, maxListHeight = 296, align = "start", name, disabled = false, className, style }: MorphSelectProps) {
   const reduced = useReducedFlag();
   const uid = useId();
   const labelId = `${uid}-label`, listId = `${uid}-list`, optionId = (index: number) => `${uid}-option-${index}`;
@@ -412,14 +418,14 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
   const showSearch = open && canSearch;
   const layerKey = selected ?? "__empty";
   const changeForLayer: Change = change.value === selected ? change : { ...change, fly: null };
-  const rootStyle = { "--ms-panel-w": `${panelWidth}px`, "--ms-list-max": `${maxListHeight}px` } as CSSProperties;
+  const rootStyle = { "--ms-panel-w": `${panelWidth}px`, "--ms-list-max": `${maxListHeight}px`, ...style } as CSSProperties;
 
   return <div ref={rootRef} className={[styles.root, className].filter(Boolean).join(" ")} style={rootStyle} data-open={open || undefined} data-align={align} data-direction={direction} data-disabled={disabled || undefined} onBlur={onBlur}>
     <span id={labelId} className={hideLabel || iconOnly ? styles.srOnly : styles.label}>{label}</span>
 
     <motion.div className={styles.anchor} style={{ width: anchorW }}>
       {/* Sizes the closed trigger. It holds the chosen label with the trigger's own padding, so the width spring has a target before anything moves. */}
-      <span ref={measureRef} className={`${styles.trigger} ${styles.measure}`} aria-hidden="true">{renderValue(selectedOption, !iconOnly)}</span>
+      <span ref={measureRef} className={`${styles.trigger} ${styles.measure}`} aria-hidden="true">{prefix && <span className={styles.triggerPrefix} aria-hidden="true">{prefix}</span>}{renderValue(selectedOption, !iconOnly)}</span>
 
       <motion.div className={styles.shape} style={{ width: shapeW, height: shapeH, borderRadius: radius }}>
         <div className={styles.lid}>
@@ -429,6 +435,7 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
             onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } if (open) close(true); else openList(); }}
             onKeyDown={event => onKey(event, false)} onKeyUp={event => { if (event.key === " ") window.setTimeout(() => { suppressClick.current = false; }); }}>
             <span ref={slotRef} className={styles.slot} data-hidden={showSearch || undefined}>
+              {prefix && <span className={styles.triggerPrefix} aria-hidden="true">{prefix}</span>}
               <AnimatePresence initial={false} custom={changeForLayer}>
                 <motion.span key={layerKey} className={styles.layer} custom={changeForLayer} variants={variants} initial="enter" animate="rest" exit="exit"
                   transition={reduced ? { duration: .12 } : changeForLayer.fly ? { x: FLY, y: FLY, opacity: { duration: 0 } } : { y: GLIDE, opacity: { duration: .2, ease: enter }, filter: { duration: .22, ease: enter } }}>
@@ -482,6 +489,7 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
                       <span className={styles.optionValue} data-part="value">{option.icon && <span className={styles.icon} aria-hidden="true">{option.icon}</span>}<span className={styles.valueText}>{option.label}</span></span>
                       {option.description && <span className={styles.optionDescription}>{option.description}</span>}
                     </span>
+                    {option.trailing && <span className={styles.trailing} onClick={event => event.stopPropagation()}>{option.trailing}</span>}
                     {option.meta && <span className={styles.meta}>{option.meta}</span>}
                     <span className={styles.check} data-on={isSelected || undefined} aria-hidden="true"><Check size={16} strokeWidth={1.75} /></span>
                   </div>;

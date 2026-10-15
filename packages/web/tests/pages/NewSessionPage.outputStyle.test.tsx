@@ -26,19 +26,32 @@
  * 环境注入：通过 localStorage「最近使用工作区」恢复路径预选工作区（绕开
  * EnvironmentBar 交互），让 gate（目录）直接通过以便提交。
  *
- * Select 交互说明（antd v6）：选中值在 `.ant-select-content`，展开用
- * fireEvent.mouseDown(`.ant-select`)，选项 portal 到 body（virtual={false}）。
+ * Select 交互说明：底座是 morph-select（CompactHoverSelect 壳）——触发器是
+ * role=combobox 的 button（click 展开），选项 role=option 同文档渲染；
+ * identity i18n mock 下「跟随 CC 设置」项 label 即 i18n key 原文。
  * 提交走空输入 create 分支（点击 Sender 发送按钮）——jsdom 下带内容的受控
  * 回车提交存在重渲染不触发的问题，不作为本规格的断言路径。
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest'
-import { render, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, fireEvent, waitFor, cleanup, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { ConfigProvider, App as AntdApp } from 'antd'
 import '@testing-library/jest-dom/vitest'
+import type { AnimationPlaybackControls, MotionValue } from 'motion/react'
 import type { Workspace } from '@mobi/shared'
 import { NewSessionPage } from '@/pages/NewSessionPage'
+
+// jsdom 无 matchMedia：morph 动效打桩成立即达（尺寸 spring 不必真跑）
+vi.mock('motion/react', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('motion/react')>()
+    const animateStub = (value: MotionValue<number>, target: number): AnimationPlaybackControls => {
+        value.set(target)
+        const promise = new Promise<void>((resolve) => { setTimeout(resolve, 0) })
+        return { stop() {}, then: (resolve, reject) => promise.then(resolve, reject) } as AnimationPlaybackControls
+    }
+    return { ...actual, animate: animateStub, useReducedMotion: () => false }
+})
 
 // —— mock spawn mutation：模块级稳定引用（mock 对象跨渲染保持同一身份，避免 effect 无限循环）——
 const { spawnSpy } = vi.hoisted(() => ({ spawnSpy: vi.fn() }))
@@ -129,32 +142,6 @@ vi.mock('@/features/layout/mobileMenu', () => ({ MobileMenuButton: () => null })
 vi.mock('@/ui/base/brand/Logo', () => ({ Logo: () => null }))
 vi.mock('@/ui/shared/WorkspaceFormModal', () => ({ WorkspaceFormModal: () => null }))
 
-// jsdom 无 ResizeObserver / matchMedia，antd Select 弹层路径依赖——最小 stub
-class ResizeObserverStub {
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
-}
-const origResizeObserver = globalThis.ResizeObserver
-const origMatchMedia = globalThis.matchMedia
-beforeAll(() => {
-    globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
-    globalThis.matchMedia = ((query: string) => ({
-        matches: false,
-        media: query,
-        onchange: null,
-        addListener: () => {},
-        removeListener: () => {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        dispatchEvent: () => false,
-    })) as unknown as typeof matchMedia
-})
-afterAll(() => {
-    globalThis.ResizeObserver = origResizeObserver
-    globalThis.matchMedia = origMatchMedia
-})
-
 beforeEach(() => {
     spawnSpy.mockReset()
     spawnSpy.mockResolvedValue({ type: 'success', sessionId: 'sess-1' })
@@ -176,33 +163,20 @@ function renderPage() {
     return render(<NewSessionPage />, { wrapper })
 }
 
-/** 定位 output style 选择器根节点：按选中值文本匹配（跟随 CC 设置 / Default / Explanatory 等，
- *  与其它 Select 区分：模型=Auto、工作区名、权限模式为 i18n key）。identity i18n mock 下
- *  「跟随 CC 设置」项 label 即 i18n key 原文 */
-function outputStyleSelect(selectedLabel = 'composer.outputStyleFollowSetting'): HTMLElement {
-    const select = Array.from(document.querySelectorAll('.ant-select'))
-        .find(el => el.querySelector('.ant-select-content')?.textContent === selectedLabel)
-    if (!(select instanceof HTMLElement)) throw new Error(`output style select not found: ${selectedLabel}`)
-    return select
-}
-
-/** 展开下拉后取当前下拉的选项文本列表（portal 到 body，取最新一份 dropdown） */
-function dropdownOptionTexts(): string[] {
-    const dropdowns = document.querySelectorAll('.ant-select-dropdown')
-    const dropdown = dropdowns[dropdowns.length - 1]
-    if (!(dropdown instanceof HTMLElement)) throw new Error('select dropdown not found')
-    return Array.from(dropdown.querySelectorAll('.ant-select-item-option'))
-        .map(el => el.textContent ?? '')
+/** 定位 output style 触发器：morph trigger（role=combobox 的 button），按选中值文本匹配
+ *  （默认「跟随 CC 设置」的 i18n key，与权限/模型触发器区分——它们的选中值不含该 key） */
+function outputStyleTrigger(selectedLabel = 'composer.outputStyleFollowSetting'): HTMLElement {
+    const trigger = screen.getAllByRole('combobox')
+        .filter(el => el.tagName === 'BUTTON')
+        .find(el => el.textContent?.includes(selectedLabel))
+    if (!(trigger instanceof HTMLElement)) throw new Error(`output style trigger not found: ${selectedLabel}`)
+    return trigger
 }
 
 /** 展开 output style 下拉并点击含指定 label 的选项 */
 async function selectOutputStyle(label: string) {
-    fireEvent.mouseDown(outputStyleSelect())
-    const dropdowns = document.querySelectorAll('.ant-select-dropdown')
-    const dropdown = dropdowns[dropdowns.length - 1]
-    const option = Array.from(dropdown.querySelectorAll('.ant-select-item-option'))
-        .find(el => (el.textContent ?? '').includes(label))
-    if (!(option instanceof HTMLElement)) throw new Error(`option not found: ${label}`)
+    fireEvent.click(outputStyleTrigger())
+    const option = await screen.findByRole('option', { name: new RegExp(label) })
     fireEvent.click(option)
 }
 
@@ -222,35 +196,33 @@ describe('NewSessionPage output style 选择器', () => {
         renderPage()
         // gate 经 localStorage 恢复路径通过后输入区启用，选择器随即渲染
         await waitFor(() => {
-            expect(outputStyleSelect()).not.toHaveClass('ant-select-disabled')
+            expect(outputStyleTrigger()).not.toBeDisabled()
         })
-        expect(outputStyleSelect().querySelector('.ant-select-content')?.textContent)
-            .toBe('composer.outputStyleFollowSetting')
+        expect(outputStyleTrigger().textContent).toContain('composer.outputStyleFollowSetting')
     })
 
     it('下拉展开后「跟随 CC 设置」+ 五个内置选项完整（共 6 项）', async () => {
         renderPage()
         await waitFor(() => {
-            expect(outputStyleSelect()).not.toHaveClass('ant-select-disabled')
+            expect(outputStyleTrigger()).not.toBeDisabled()
         })
-        fireEvent.mouseDown(outputStyleSelect())
-        await waitFor(() => {
-            const texts = dropdownOptionTexts().join('\n')
-            for (const label of ['composer.outputStyleFollowSetting', 'Default', 'Proactive', 'Concise', 'Explanatory', 'Learning']) {
-                expect(texts).toContain(label)
-            }
-        })
-        expect(dropdownOptionTexts()).toHaveLength(6)
+        fireEvent.click(outputStyleTrigger())
+        await screen.findByRole('option', { name: /composer\.outputStyleFollowSetting/ })
+        const texts = screen.getAllByRole('option').map(el => el.textContent ?? '').join('\n')
+        for (const label of ['composer.outputStyleFollowSetting', 'Default', 'Proactive', 'Concise', 'Explanatory', 'Learning']) {
+            expect(texts).toContain(label)
+        }
+        expect(screen.getAllByRole('option')).toHaveLength(6)
     })
 
     it('选中 Explanatory 后提交 → spawnSession 收到 outputStyle: Explanatory（CC 规范形）', async () => {
         renderPage()
         await waitFor(() => {
-            expect(outputStyleSelect()).not.toHaveClass('ant-select-disabled')
+            expect(outputStyleTrigger()).not.toBeDisabled()
         })
         await selectOutputStyle('Explanatory')
         await waitFor(() => {
-            expect(outputStyleSelect('Explanatory')).not.toHaveClass('ant-select-disabled')
+            expect(outputStyleTrigger('Explanatory')).not.toBeDisabled()
         })
 
         await submit()
@@ -263,11 +235,11 @@ describe('NewSessionPage output style 选择器', () => {
     it('显式选中 Default 后提交 → spawnSession 收到 outputStyle: default（显式选择仍显式传）', async () => {
         renderPage()
         await waitFor(() => {
-            expect(outputStyleSelect()).not.toHaveClass('ant-select-disabled')
+            expect(outputStyleTrigger()).not.toBeDisabled()
         })
         await selectOutputStyle('Default')
         await waitFor(() => {
-            expect(outputStyleSelect('Default')).not.toHaveClass('ant-select-disabled')
+            expect(outputStyleTrigger('Default')).not.toBeDisabled()
         })
 
         await submit()
@@ -277,7 +249,7 @@ describe('NewSessionPage output style 选择器', () => {
     it('默认（跟随 CC 设置）直接提交 → spawnSession 入参不含 outputStyle 字段', async () => {
         renderPage()
         await waitFor(() => {
-            expect(outputStyleSelect()).not.toHaveClass('ant-select-disabled')
+            expect(outputStyleTrigger()).not.toBeDisabled()
         })
 
         await submit()
