@@ -17,7 +17,8 @@
 /**
  * uiarc morph-select（registry 快照 .scratch/morph-select-migration/）。本地修改
  * （registry.json localMods 逐项登记）：①direction 向上展开 ②选项 description 双行槽
- * ③iconOnly 收起态 ④motion-tokens 路径对齐 shadcn 根。升级 add --overwrite 后照单恢复。
+ * ③iconOnly 收起态 ④motion-tokens 路径对齐 shadcn 根 ⑤fullWidth 满宽槽位
+ * ⑥用户可见文案与可访问名接 i18n（common.*）。升级 add --overwrite 后照单恢复。
  */
 
 "use client";
@@ -26,6 +27,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { CSSProperties, FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion } from "motion/react";
 import type { Transition, Variants } from "motion/react";
+import { useTranslation } from "react-i18next";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 import { motionTokens } from "../motion-tokens";
 import styles from "./morph-select.module.css";
@@ -85,6 +87,8 @@ export interface MorphSelectProps {
   searchPlaceholder?: string;
   /** Width of the open surface in px. It never gets narrower than the trigger. Defaults to 272. */
   panelWidth?: number;
+  /** 面板满宽（mobi 本地槽位）：宽度顶到视口上限（减两侧 1rem 边距），忽略 panelWidth。 */
+  fullWidth?: boolean;
   /** Tallest the option list gets before it scrolls, in px. Defaults to 296. */
   maxListHeight?: number;
   /** Which edge of the trigger stays put while the surface grows. */
@@ -160,8 +164,10 @@ const triggerWidth = (node: HTMLElement) => {
   return Math.abs(exact - rounded) <= .5 ? Math.ceil(exact - .01) : rounded + 1;
 };
 
-export function MorphSelect({ label, hideLabel = false, iconOnly = false, direction = "auto", prefix, items, value, defaultValue = null, onValueChange, placeholder = "Select", searchable = "auto", searchPlaceholder,
-  panelWidth = 272, maxListHeight = 296, align = "start", name, disabled = false, className, style }: MorphSelectProps) {
+export function MorphSelect({ label, hideLabel = false, iconOnly = false, direction = "auto", prefix, items, value, defaultValue = null, onValueChange, placeholder, searchable = "auto", searchPlaceholder,
+  panelWidth = 272, fullWidth = false, maxListHeight = 296, align = "start", name, disabled = false, className, style }: MorphSelectProps) {
+  const { t } = useTranslation();
+  const placeholderText = placeholder ?? t("common.select");
   const reduced = useReducedFlag();
   const uid = useId();
   const labelId = `${uid}-label`, listId = `${uid}-list`, optionId = (index: number) => `${uid}-option-${index}`;
@@ -328,8 +334,9 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
     const sideSpace = dir === "up" ? rect.top - margin : vh - rect.bottom - margin;
     const listMax = Math.max(160, Math.min(maxListHeight, sideSpace - lid - 12));
     root.style.setProperty("--ms-list-max", `${Math.floor(listMax)}px`);
-    // 水平：align 决定理想锚位，出视窗则平移回 [margin, vw - margin - w]
-    const w = Math.max(sizes.current.trigger, Math.min(panelWidth, vw - 2 * margin));
+    // 水平：align 决定理想锚位，出视窗则平移回 [margin, vw - margin - w]；
+    // fullWidth 直接取满宽（与 CSS 端 --ms-panel-w 的 100vw - 2rem 同式）
+    const w = fullWidth ? vw - 2 * margin : Math.max(sizes.current.trigger, Math.min(panelWidth, vw - 2 * margin));
     const idealLeft = align === "end" ? rect.right - w : rect.left;
     const clampedLeft = Math.max(margin, Math.min(idealLeft, vw - margin - w));
     pendingShift.current = clampedLeft - rect.left;
@@ -449,12 +456,12 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
     const text = next.trim().toLowerCase();
     const count = text ? all.filter(option => matches(option, text)).length : all.length;
-    setAnnouncement(text ? count ? `${count} ${count === 1 ? "option" : "options"}` : "No matches" : "");
+    setAnnouncement(text ? count ? t("common.optionsCount", { count }) : t("common.noMatches") : "");
   };
 
   /** iconOnly 只作用于 lid（收起态图标 pill）：列表项恒渲染完整 label */
   const renderValue = (option: MorphSelectOption | undefined, withText = true) => {
-    if (!option) return <span className={styles.placeholder}>{placeholder}</span>;
+    if (!option) return <span className={styles.placeholder}>{placeholderText}</span>;
     const icon = option.icon && <span className={styles.icon} aria-hidden="true">{option.icon}</span>;
     if (!withText) return <>{icon}</>;
     return <>{icon}<span className={styles.valueText}>{option.label}</span></>;
@@ -463,7 +470,7 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
   const showSearch = open && canSearch;
   const layerKey = selected ?? "__empty";
   const changeForLayer: Change = change.value === selected ? change : { ...change, fly: null };
-  const rootStyle = { "--ms-panel-w": `${panelWidth}px`, "--ms-list-max": `${maxListHeight}px`, ...style } as CSSProperties;
+  const rootStyle = { "--ms-panel-w": fullWidth ? "calc(100vw - 2rem)" : `${panelWidth}px`, "--ms-list-max": `${maxListHeight}px`, ...style } as CSSProperties;
 
   return <div ref={rootRef} className={[styles.root, className].filter(Boolean).join(" ")} style={rootStyle} data-open={open || undefined} data-align={align} data-direction={directionValue} data-disabled={disabled || undefined} onBlur={onBlur}>
     <span id={labelId} className={hideLabel || iconOnly ? styles.srOnly : styles.label}>{label}</span>
@@ -496,18 +503,18 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
             animate={showSearch ? { opacity: 1, filter: "blur(0px)" } : { opacity: 0, filter: reduced ? "blur(0px)" : `blur(${blur.subtle}px)` }}
             transition={showSearch ? { duration: .12, ease: enter } : { duration: .08, ease: standard }}>
             <Search className={styles.searchIcon} size={16} strokeWidth={1.75} aria-hidden="true" />
-            <input ref={inputRef} className={styles.input} type="text" role="combobox" aria-label={`Search ${label.toLowerCase()}`} aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
+            <input ref={inputRef} className={styles.input} type="text" role="combobox" aria-label={t("common.searchField", { name: label.toLowerCase() })} aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
               aria-activedescendant={open && current !== null ? optionId(indexOf.get(current) ?? 0) : undefined}
-              placeholder={searchPlaceholder ?? selectedOption?.label ?? "Search"} value={query} autoComplete="off" spellCheck={false}
+              placeholder={searchPlaceholder ?? selectedOption?.label ?? t("common.search")} value={query} autoComplete="off" spellCheck={false}
               onChange={event => onQuery(event.target.value)} onKeyDown={event => onKey(event, true)} />
             <AnimatePresence initial={false}>
-              {query && <motion.button key="clear" type="button" className={styles.clear} aria-label="Clear search" onPointerDown={event => event.preventDefault()}
+              {query && <motion.button key="clear" type="button" className={styles.clear} aria-label={t("common.clearSearch")} onPointerDown={event => event.preventDefault()}
                 onClick={() => { onQuery(""); inputRef.current?.focus(); }}
                 initial={{ opacity: 0, scale: .6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: .6, transition: { duration: .1 } }} transition={reduced ? { duration: 0 } : GLIDE}>
                 <X size={14} strokeWidth={1.75} aria-hidden="true" />
               </motion.button>}
             </AnimatePresence>
-            <button type="button" className={styles.closeHit} aria-label={`Close ${label.toLowerCase()}`} onClick={() => close(true)} />
+            <button type="button" className={styles.closeHit} aria-label={t("common.closeField", { name: label.toLowerCase() })} onClick={() => close(true)} />
           </motion.div>}
 
           <motion.span className={styles.chevron} aria-hidden="true" initial={false} animate={{ rotate: open ? 180 : 0 }} transition={reduced ? { duration: 0 } : GLIDE}>
@@ -548,7 +555,7 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
                   </div>
                   : <div key={section.key} role="presentation" className={styles.group}>{rows}</div>;
               })}
-              {resultCount === 0 && <p className={styles.empty}>No matches for “{query.trim()}”</p>}
+              {resultCount === 0 && <p className={styles.empty}>{t("common.noMatchesFor", { query: query.trim() })}</p>}
             </div>
           </div>
         </motion.div>

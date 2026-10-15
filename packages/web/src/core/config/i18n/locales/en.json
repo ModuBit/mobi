@@ -20,7 +20,16 @@
         "expandSheet": "Expand sheet",
         "collapseSheet": "Collapse sheet",
         "sheetExpanded": "Sheet expanded",
-        "sheetCollapsed": "Sheet collapsed"
+        "sheetCollapsed": "Sheet collapsed",
+        "select": "Select",
+        "search": "Search",
+        "searchField": "Search {{name}}",
+        "clearSearch": "Clear search",
+        "closeField": "Close {{name}}",
+        "noMatches": "No matches",
+        "noMatchesFor": "No matches for \"{{query}}\"",
+        "optionsCount_one": "{{count}} option",
+        "optionsCount_other": "{{count}} options"
     },
     "time": {
         "justNow": "just now",
@@ -184,7 +193,10 @@
         }
     },
     "chat": {
-        "origin": { "openui": "UI action", "app": "App action" },
+        "origin": {
+            "openui": "UI action",
+            "app": "App action"
+        },
         "openuiMessage": {
             "formValues": "Current values of form \"{{formName}}\":",
             "uiValues": "Current UI values:"

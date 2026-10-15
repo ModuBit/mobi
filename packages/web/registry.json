@@ -64,7 +64,9 @@
                 "morph-select.tsx：新增 prefix?: ReactNode（lid 内 value 前静态缀，button flex 行占位；measure 同构；搜索态隐藏）、style?: CSSProperties（root 透传）、MorphSelectOption 新增 trailing?: ReactNode（行尾嵌套交互入口，组件内 stopPropagation 防误选）",
                 "morph-select.tsx：动效调速（mobi）——上游观感偏缓，spring 视觉时长整体提速约 30%（GROW .4→.28 / WIDTH .42→.3 / GLIDE .28→.2 / FLY .3→.22 / SHRINK .34→.24 / NARROW .42→.3），定长 opacity/filter 过渡同步收短并去掉入场 delay",
                 "morph-select.tsx：MorphSelectOption 新增 description?: string 双行槽（label 下 12px 弱化行，.optionBody 包裹，参与搜索匹配）",
-                "morph-select.tsx：新增 iconOnly?: boolean——lid 只渲染 icon+chevron（收起图标 pill），可访问名仍走 label（srOnly）；列表项恒渲染完整 label"
+                "morph-select.tsx：新增 iconOnly?: boolean——lid 只渲染 icon+chevron（收起图标 pill），可访问名仍走 label（srOnly）；列表项恒渲染完整 label",
+                "morph-select.tsx：新增 fullWidth?: boolean 满宽槽位——面板宽顶到视口上限（--ms-panel-w=calc(100vw - 2rem)，水平钳制同式），忽略 panelWidth；消费方不再伪造 9999px 宽度哨兵借道内部钳制",
+                "morph-select.tsx：用户可见文案与可访问名接 i18n（react-i18next，common.* 命名空间）——空态/placeholder 默认/搜索与清除/关闭 aria-label/结果数播报，原为全站唯一硬编码英文的 registry 件"
             ]
         }
     ]

@@ -115,7 +115,7 @@ export function CompactHoverSelect({
                 searchable={false}
                 // 展开方向与视口钳制归 morph auto 决策（垂直翻转 + 水平钳制 + 列表高度收缩），
                 // 展开内容恒落在视窗内；composer 不再硬编码 up
-                panelWidth={mobileFullWidth && isMobile ? 9999 : undefined}
+                fullWidth={mobileFullWidth && isMobile}
             />
         </span>
     )

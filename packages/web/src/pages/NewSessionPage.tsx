@@ -15,17 +15,17 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from 'react'
-import { App, Input, Spin, Popover, Segmented, theme as antTheme } from 'antd'
+import { App, Input, Spin, Segmented, theme as antTheme } from 'antd'
 import styled from '@emotion/styled'
 import { AttachPanel } from '@/features/composer/AttachPanel'
 import { composerSenderCard, composerSubmitButton } from '@/features/composer/composerSurface.styles'
 import { Sender } from '@ant-design/x'
-import { PlusOutlined, InboxOutlined, RightOutlined, BranchesOutlined } from '@ant-design/icons'
+import { PlusOutlined, InboxOutlined, BranchesOutlined } from '@ant-design/icons'
 import { Cpu } from 'lucide-react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
-import { EFFORT_LEVELS, EFFORT_LABELS, OUTPUT_STYLE_FOLLOW_SETTING } from '@mobi/shared'
+import { OUTPUT_STYLE_FOLLOW_SETTING } from '@mobi/shared'
 import { useDaemonStatus } from '@/core/data/hooks/queries/useDaemonStatus'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
@@ -42,6 +42,7 @@ import { CommandHintBar } from '@/features/composer/CommandHintBar'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { ResponsiveActionBar, type ActionItem } from '@/features/composer/ResponsiveActionBar'
 import { ToolStrip, type ToolStripItem } from '@/features/composer/ToolStrip'
+import { EffortDot, useModelOptionsWithEffort } from '@/features/composer/modelEffortMenu'
 import { EnvironmentBar, extractWorkspaceName } from '@/features/composer/EnvironmentBar'
 import { useMobiApi } from '@/core/data/api/client'
 import type { Workspace } from '@/core/data/api/types'
@@ -86,13 +87,7 @@ const SESSION_TYPE_OPTIONS: { value: SessionType; label: string }[] = [
     { value: 'worktree', label: 'Worktree' },
 ]
 
-// Effort 级别颜色
-const EFFORT_COLORS: Record<EffortLevel, string> = {
-    low: 'var(--ant-color-text-quaternary)',
-    medium: 'var(--ant-color-info)',
-    high: 'var(--ant-color-warning)',
-    xhigh: 'var(--ant-color-error)',
-}
+// Effort 级别颜色 / 圆点 / effort 子菜单装配在 features/composer/modelEffortMenu.tsx
 
 /* ========== 样式组件 ========== */
 
@@ -147,53 +142,6 @@ const InputCard = styled.div`
 
 /* ========== 辅助组件 ========== */
 
-/** Effort 级别小圆点 */
-function EffortDot({ level }: { level: EffortLevel }) {
-    return (
-        <span style={{
-            display: 'inline-block',
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            background: EFFORT_COLORS[level],
-            flexShrink: 0,
-        }} />
-    )
-}
-
-/** model option 中的 effort 选择 Popover 内容 */
-function EffortPopoverContent({ modelValue, effort, onEffortSelect }: {
-    modelValue: string
-    effort: EffortLevel
-    onEffortSelect: (model: string, effort: EffortLevel) => void
-}) {
-    const { token } = antTheme.useToken()
-    const [hovered, setHovered] = useState<string | null>(null)
-    return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 100 }}>
-            {EFFORT_LEVELS.map(e => (
-                <div
-                    key={e}
-                    onClick={(ev) => { ev.stopPropagation(); onEffortSelect(modelValue, e) }}
-                    style={{
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        padding: '4px 8px', margin: '0 4px', borderRadius: token.borderRadiusSM,
-                        cursor: 'pointer',
-                        background: e === effort ? token.colorBgTextHover
-                            : hovered === e ? token.colorBgTextHover : undefined,
-                        transition: 'background 0.2s',
-                    }}
-                    onMouseEnter={() => setHovered(e)}
-                    onMouseLeave={() => setHovered(null)}
-                >
-                    <EffortDot level={e} />
-                    <span style={{ fontSize: 12 }}>{EFFORT_LABELS[e]}</span>
-                </div>
-            ))}
-        </div>
-    )
-}
-
 /* ========== 页面组件 ========== */
 
 /**
@@ -245,9 +193,6 @@ export function NewSessionPage() {
 
     // 延迟加载 metadata：首次输入 '/' 时才请求，避免每输入一个目录字符就触发 metadata 请求
     const [metadataNeeded, setMetadataNeeded] = useState(false)
-
-    // effort popover 状态
-    const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 
     // 数据
     // 宿主身份（homeDir/显示名）与就绪源走 daemon status（机器列表层已随 machine 概念移除）
@@ -657,46 +602,11 @@ export function NewSessionPage() {
         if (v !== model) setModel(v)
     }, [model])
 
-    // 模型行尾缀 effort 子菜单入口（morph trailing 槽，组件内已对 trailing stopPropagation，
-    // 点入口不会误选模型）
-    const modelOptionsWithEffort = useMemo(
-        () => modelSelectOptions.map(option => ({
-            ...option,
-            trailing: (
-                <Popover
-                    open={effortPopoverModel === option.value}
-                    onOpenChange={(open) => setEffortPopoverModel(open ? option.value : null)}
-                    placement="leftTop"
-                    trigger={hasFinePointer ? 'hover' : 'click'}
-                    mouseEnterDelay={0.1}
-                    mouseLeaveDelay={0.3}
-                    zIndex={1051}
-                    rootClassName="effort-popover"
-                    content={
-                        <EffortPopoverContent
-                            modelValue={option.value}
-                            effort={effort}
-                            onEffortSelect={(m, e) => {
-                                handleModelEffortSelect(m, e)
-                                setEffortPopoverModel(null)
-                            }}
-                        />
-                    }
-                >
-                    <span
-                        style={{
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                            minWidth: 24, minHeight: 24, borderRadius: 4, cursor: 'pointer',
-                        }}
-                        onClick={(ev) => ev.stopPropagation()}
-                    >
-                        <RightOutlined style={{ fontSize: 10, opacity: 0.4 }} />
-                    </span>
-                </Popover>
-            ),
-        })),
-        [modelSelectOptions, effortPopoverModel, effort, hasFinePointer, handleModelEffortSelect],
-    )
+    // 模型行尾缀 effort 子菜单入口：共享装配（同 ChatComposer）
+    const modelOptionsWithEffort = useModelOptionsWithEffort(modelSelectOptions, {
+        effort: effort,
+        onSelect: handleModelEffortSelect,
+    })
 
     // permission mode 选项（带颜色 + 国际化，同 ChatComposer）：名称 + 描述双行，tone 色随选项图标
     const permissionSelectOptions = useMemo(

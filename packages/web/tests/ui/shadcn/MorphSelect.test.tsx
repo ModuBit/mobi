@@ -25,18 +25,17 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, cleanup, fireEvent, screen } from '@testing-library/react'
 import { useState } from 'react'
-import type { AnimationPlaybackControls, MotionValue } from 'motion/react'
 import { MorphSelect, type MorphSelectItem } from '@/ui/shadcn/morph-select/morph-select'
 
 /** jsdom 无 matchMedia：reduced 恒 false；animate 打桩成立即达（尺寸 spring 不必真跑） */
 vi.mock('motion/react', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('motion/react')>()
-    const animateStub = (value: MotionValue<number>, target: number): AnimationPlaybackControls => {
-        value.set(target)
-        const promise = new Promise<void>((resolve) => { setTimeout(resolve, 0) })
-        return { stop() {}, then: (resolve, reject) => promise.then(resolve, reject) } as AnimationPlaybackControls
-    }
-    return { ...actual, animate: animateStub, useReducedMotion: () => false }
+    const { motionReactStub } = await import('../../helpers/motionReactStub')
+    return motionReactStub(importOriginal)
+})
+
+vi.mock('react-i18next', async () => {
+    const { i18nKeyStub } = await import('../../helpers/motionReactStub')
+    return i18nKeyStub()
 })
 
 const ITEMS: MorphSelectItem[] = [

@@ -183,6 +183,9 @@ export function ToolStrip({ items, style }: ToolStripProps) {
   const offsetRef = useRef(0)
   // 内容宽 − 视口宽，只在 ResizeObserver 回调里现测（避免拖拽/滚轮热路径强制布局）
   const maxRef = useRef(0)
+  // unclipped 的 ref 镜像，仅供拖拽/滚轮热路径读取——applyOffset 身份因此稳定，
+  // ResizeObserver 与 wheel 监听不随面板开合拆除重建；state 仍是渲染事实源
+  const unclippedRef = useRef(false)
 
   /**
    * 展开期间逐项「窗口修饰」：裁到条的可视窗口（防止滚出条外的项漏出来）+
@@ -205,12 +208,16 @@ export function ToolStrip({ items, style }: ToolStripProps) {
       }
       const left = el.offsetLeft + offsetRef.current
       const right = left + el.offsetWidth
-      el.style.clipPath = (left >= -0.5 && right <= view + 0.5)
+      const clip = (left >= -0.5 && right <= view + 0.5)
         ? ''
         : `inset(0px ${Math.max(0, right - view).toFixed(1)}px 0px ${Math.max(0, -left).toFixed(1)}px)`
-      el.style.maskImage = (left < FADE_WIDTH || right > view - FADE_WIDTH)
+      const mask = (left < FADE_WIDTH || right > view - FADE_WIDTH)
         ? itemFadeMask(left, el.offsetWidth, view, FADE_WIDTH)
         : ''
+      // -webkit- 前缀给 iOS PWA（同条级 mask 三态，见 Root 样式）
+      el.style.clipPath = clip
+      el.style.maskImage = mask
+      el.style.webkitMaskImage = mask
     }
   }, [])
 
@@ -224,8 +231,8 @@ export function ToolStrip({ items, style }: ToolStripProps) {
     row.style.transition = animate ? `transform ${SNAP_MS}ms ${SNAP_EASE}` : 'none'
     row.style.transform = `translateX(${clamped}px)`
     setFade(computeFade(clamped, max))
-    if (unclipped) decorateItems(true)
-  }, [decorateItems, unclipped])
+    if (unclippedRef.current) decorateItems(true)
+  }, [decorateItems])
 
   /** 就近吸附：候选为两端与每个项的起点，松手后静止态不切半个 pill */
   const snapTarget = useCallback((current: number) => {
@@ -305,9 +312,13 @@ export function ToolStrip({ items, style }: ToolStripProps) {
   }, [])
 
   // 项增删（权限模式等条件渲染）或展开态切换时重算逐项裁剪；
-  // 依赖用 key 序列而非数组身份（items 每渲染都是新数组）
+  // 依赖用 key 序列而非数组身份（items 每渲染都是新数组）；
+  // 同一处把 unclipped 同步进热路径 ref（单一写点，见 unclippedRef 注释）
   const itemKeys = items.map(item => item.key).join()
-  useEffect(() => { decorateItems(unclipped) }, [unclipped, decorateItems, itemKeys])
+  useEffect(() => {
+    unclippedRef.current = unclipped
+    decorateItems(unclipped)
+  }, [unclipped, decorateItems, itemKeys])
 
   const drag = useRef({ active: false, moved: false, startX: 0, startOffset: 0, pointerId: -1 })
 
@@ -319,7 +330,8 @@ export function ToolStrip({ items, style }: ToolStripProps) {
 
   const onPointerMove = (event: React.PointerEvent) => {
     const d = drag.current
-    if (!d.active) return
+    // 只认启动拖拽的那根指针：多指触摸时第二指的 move 不参与位移计算
+    if (!d.active || event.pointerId !== d.pointerId) return
     const dx = event.clientX - d.startX
     if (!d.moved && Math.abs(dx) < DRAG_SLOP_PX) return
     const root = rootRef.current
@@ -333,13 +345,18 @@ export function ToolStrip({ items, style }: ToolStripProps) {
     applyOffset(d.startOffset + dx, false)
   }
 
-  const onPointerUp = () => {
+  const onPointerUp = (event: React.PointerEvent) => {
     const d = drag.current
-    if (!d.active) return
+    if (!d.active || event.pointerId !== d.pointerId) return
     const moved = d.moved
     d.active = false
     setDragging(false)
-    if (moved) applyOffset(snapTarget(offsetRef.current), true)
+    if (!moved) return
+    applyOffset(snapTarget(offsetRef.current), true)
+    // 吞点击判据须活到收势 click（pointerup 之后同步派发）之后，用宏任务兜底复位：
+    // 否则被中断的拖拽（pointercancel / 条外松手，无 click 跟随）会让 moved 残留，
+    // 误吞下一次不经 pointerdown 的 click（如键盘 Tab + Enter）
+    window.setTimeout(() => { drag.current.moved = false })
   }
 
   const onClickCapture = (event: React.MouseEvent) => {

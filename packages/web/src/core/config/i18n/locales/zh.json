@@ -20,7 +20,16 @@
         "expandSheet": "展开面板",
         "collapseSheet": "收起面板",
         "sheetExpanded": "面板已展开",
-        "sheetCollapsed": "面板已收起"
+        "sheetCollapsed": "面板已收起",
+        "select": "请选择",
+        "search": "搜索",
+        "searchField": "搜索{{name}}",
+        "clearSearch": "清除搜索",
+        "closeField": "关闭{{name}}",
+        "noMatches": "没有匹配项",
+        "noMatchesFor": "没有匹配「{{query}}」的结果",
+        "optionsCount_one": "{{count}} 个选项",
+        "optionsCount_other": "{{count}} 个选项"
     },
     "time": {
         "justNow": "刚刚",
@@ -184,7 +193,10 @@
         }
     },
     "chat": {
-        "origin": { "openui": "界面触发", "app": "应用触发" },
+        "origin": {
+            "openui": "界面触发",
+            "app": "应用触发"
+        },
         "openuiMessage": {
             "formValues": "表单「{{formName}}」当前值：",
             "uiValues": "UI 当前值："
