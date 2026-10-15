@@ -45,9 +45,11 @@ const FADE_WIDTH = 32
  *   避免拖完顺手误开触发器；morph 触发器是 click 开合，阈值判定天然错过拖拽；
  * - **两侧渐进渐隐**（mask-image）：只给真正溢出的一侧上淡出，滚到头即撤；
  * - **morph-select 展开的兼容**：展开面板是 inline 生长（非 portal），会被滚动容器
- *   裁剪。展开期间（`:has([aria-expanded="true"])`）整条放开裁剪与渐隐——滚动天然
- *   停在展开态（指针都在面板里），收起后恢复；滚动容器规则里 overflow 一旦非
- *   visible，另一轴的 visible 会被计算成 auto，所以放开时两轴一起放开。
+ *   裁剪，展开期间须整条放开裁剪与渐隐。但 overflow 转 visible 会把 scrollLeft 强制
+ *   归零——整行内容瞬间右弹 scrollLeft 像素（收起再弹回去）。故放开由 JS 接管
+ *   （MutationObserver 盯 aria-expanded），在样式重算前读旧 scrollLeft、同批写入
+ *   负 margin 补偿位移 + 隐藏滚出可视窗的项（它们原本就被裁剪不可见），视觉零跳动；
+ *   收起时恢复 margin 与滚动位。展开中滚动天然停在面板（指针都在面板里）。
  */
 const Root = styled.div<{ 'data-fade'?: 'none' | 'start' | 'end' | 'both' }>`
   display: flex;
@@ -81,8 +83,10 @@ const Root = styled.div<{ 'data-fade'?: 'none' | 'start' | 'end' | 'both' }>`
   &[data-fade='both'] {
     mask-image: linear-gradient(to right, transparent, rgb(0 0 0 / 0.45) ${FADE_WIDTH * 0.4}px, #000 ${FADE_WIDTH}px, #000 calc(100% - ${FADE_WIDTH}px), rgb(0 0 0 / 0.45) calc(100% - ${FADE_WIDTH * 0.4}px), transparent);
   }
-  /* 展开中的 morph 面板不容裁剪：两轴一起放开（见组件头注释），渐隐一并撤 */
-  &:has([role='combobox'][aria-expanded='true']) {
+  /* 展开中的 morph 面板不容裁剪：两轴一起放开（见组件头注释），渐隐一并撤。
+     放开时机由 JS 接管（data-panel-open），不用 :has——attribute 变更与补偿写入必须
+     落在同一次样式重算里，:has 会让 scrollLeft 在 JS 读到旧值前就先归零 */
+  &[data-panel-open='true'] {
     overflow: visible;
     mask-image: none;
     scroll-snap-type: none;
@@ -151,6 +155,46 @@ export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) 
 
   // items 增删（权限模式等条件渲染）也可能改变溢出态
   useEffect(updateFade, [items, updateFade])
+
+  // 展开补偿（组件头注释「morph-select 展开的兼容」条目）：滚动容器放开裁剪的瞬间
+  // scrollLeft 归零会右弹整行——读旧值、同批写入补偿与隐藏，收起时一并恢复。
+  const panelOpenRef = useRef(false)
+  const savedScrollRef = useRef(0)
+  useEffect(() => {
+    const root = rootRef.current
+    const row = rowRef.current
+    if (!root || !row) return
+
+    const apply = (open: boolean) => {
+      if (open === panelOpenRef.current) return
+      panelOpenRef.current = open
+      if (open) {
+        const saved = root.scrollLeft // 此时裁剪仍在，scrollLeft 尚未归零
+        savedScrollRef.current = saved
+        row.style.marginLeft = saved > 0 ? `-${saved}px` : ''
+        const win = [saved, saved + root.clientWidth]
+        for (const item of Array.from(row.children) as HTMLElement[]) {
+          // 滚出可视窗的项原本被裁剪不可见，放开后会漏出来叠到 +/-send 上，临时藏掉
+          if (item.offsetLeft + item.offsetWidth < win[0] || item.offsetLeft > win[1]) {
+            item.style.visibility = 'hidden'
+          }
+        }
+        root.setAttribute('data-panel-open', 'true')
+      } else {
+        row.style.marginLeft = ''
+        for (const item of Array.from(row.children) as HTMLElement[]) item.style.visibility = ''
+        root.removeAttribute('data-panel-open')
+        root.scrollLeft = savedScrollRef.current // overflow 回 auto 后恢复滚动位
+      }
+    }
+
+    const observer = new MutationObserver(() => apply(!!root.querySelector('[role="combobox"][aria-expanded="true"]')))
+    observer.observe(root, { subtree: true, attributes: true, attributeFilter: ['aria-expanded'] })
+    return () => {
+      observer.disconnect()
+      panelOpenRef.current = false
+    }
+  }, [])
 
   const drag = useRef({ active: false, dragged: false, startX: 0, startScroll: 0, pointerId: -1 })
 

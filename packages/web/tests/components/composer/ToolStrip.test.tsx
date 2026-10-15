@@ -150,3 +150,48 @@ describe('拖拽收势吞点击', () => {
         expect(clickedLog).toEqual(['a'])
     })
 })
+
+describe('展开补偿（滚动容器放开裁剪时防跳位）', () => {
+    it('展开：data-panel-open 置位、负 margin 补回 scrollLeft、窗外项隐藏、窗内项保留', async () => {
+        const { container } = strip()
+        const root = container.firstElementChild as HTMLElement
+        setScrollBox(root, 400, 200)
+        root.scrollLeft = 80
+        // 两项都在窗外：A 在窗左缘外（offsetLeft 0+宽 < 80），B 需造一项在窗内
+        const inner = document.createElement('span')
+        inner.innerHTML = '<button role="combobox" aria-expanded="false">M</button>'
+        Object.defineProperty(inner, 'offsetLeft', { configurable: true, value: 100 })
+        Object.defineProperty(inner, 'offsetWidth', { configurable: true, value: 40 })
+        root.querySelector('div')!.appendChild(inner)
+
+        await act(async () => {
+            inner.querySelector('button')!.setAttribute('aria-expanded', 'true')
+            await Promise.resolve()
+        })
+        expect(root.getAttribute('data-panel-open')).toBe('true')
+        expect((root.querySelector('div') as HTMLElement).style.marginLeft).toBe('-80px')
+        expect((screen.getByText('A').parentElement as HTMLElement).style.visibility).toBe('hidden')
+        expect(inner.style.visibility).toBe('')
+    })
+
+    it('收起：恢复 margin 与隐藏项，并把滚动位还原到展开前的 scrollLeft', async () => {
+        const { container } = strip()
+        const root = container.firstElementChild as HTMLElement
+        setScrollBox(root, 400, 200)
+        root.scrollLeft = 80
+        const button = screen.getByText('A')
+
+        await act(async () => {
+            button.setAttribute('aria-expanded', 'true')
+            await Promise.resolve()
+        })
+        await act(async () => {
+            button.setAttribute('aria-expanded', 'false')
+            await Promise.resolve()
+        })
+        expect(root.getAttribute('data-panel-open')).toBeNull()
+        expect((root.querySelector('div') as HTMLElement).style.marginLeft).toBe('')
+        expect(button.parentElement!.style.visibility).toBe('')
+        expect(root.scrollLeft).toBe(80)
+    })
+})
