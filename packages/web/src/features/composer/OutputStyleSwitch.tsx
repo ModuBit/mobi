@@ -78,21 +78,17 @@ export function OutputStyleSwitch({
         })
     }
 
+    // title 直传壳层（CompactHoverSelect 的 wrapper span）：这里不再包 inline 级 span——
+    // inline 盒按基线参与行盒排版，descender 空隙会把行撑高、pill 相对同行控件偏移
     return (
-        // 外层原生 title：idle 显示控件名，running 时改为「结束后可切换」提示
-        //（与权限模式切换器一致的极简做法，无气泡组件）
-        <span
-            style={{ display: 'inline-flex' }}
+        <OutputStyleSelect
+            value={currentOutputStyle}
+            options={outputStyleOptions}
+            disabled={switchDisabled}
+            loading={outputStyleMutation.isPending}
+            onChange={handleOutputStyleChange}
+            iconOnly
             title={running ? t('composer.outputStyleRunningDisabled') : t('composer.outputStyle')}
-        >
-            <OutputStyleSelect
-                value={currentOutputStyle}
-                options={outputStyleOptions}
-                disabled={switchDisabled}
-                loading={outputStyleMutation.isPending}
-                onChange={handleOutputStyleChange}
-                iconOnly
-            />
-        </span>
+        />
     )
 }
