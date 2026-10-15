@@ -50,7 +50,7 @@
 .trigger[aria-expanded="true"] .chevron { transform: rotate(180deg); }
 /* tags 模式（本地修改 ⑥）：chip 内联输入自由值——trigger 换 wrap 流，chips 与输入框
    同行换行、全部展示不折叠；点空白聚焦输入框（cursor: text 提示） */
-.triggerTags { flex-wrap: wrap; row-gap: 2px; padding: 3px 28px 3px 12px; cursor: text; }
+.triggerTags { flex-wrap: wrap; row-gap: 2px; padding: 3px 44px 3px 12px; cursor: text; }
 .tagsInput { flex: 1 1 80px; min-width: 80px; height: 26px; border: 0; outline: 0; padding: 0; background: transparent; color: var(--foreground); font: inherit; font-size: var(--text-sm); }
 .tagsInput::placeholder { color: var(--text-muted); }
 /* 角标（B' 方案）：chevron 常驻右上，hover 触发器同位交叉淡替为清空 ×——
