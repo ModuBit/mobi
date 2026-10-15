@@ -47,6 +47,20 @@
             "upstream": "adopted",
             "migratedIn": "2026-10-13 底部 sheet 全量替代 MobileDrawer（票 01 落组件、试点见 .scratch/bottom-sheet/；同日五个调用点全迁完并删除旧组件）",
             "note": "已认领：不再跑 add --overwrite、不维护照单恢复清单，改动直接写在源码里（改前先读 bottom-sheet.tsx 文件头「与上游的差异」七条）。要点：①内容自适应高度 + maxHeight（细则见⑦）；②关闭改「先通知后动画 + 两拍否决检测 + 沉降回原位」（上游先跑动画再通知，否决式消费者会把 sheet 卡在屏外）——消费方不翻转 open 即可否决，别另加 maskClosable 式开关；③手势返回哨兵自接（Radix 无 Android 返回键概念），含滑出窗口内拦截与否决后重臂（**手势返回发起的正常关闭不重臂**：重臂会让 Android Chrome 第二次返回零事件、直接退出 PWA，见 drawerHistoryGuard.ts 文件头）；④z-index 按层号注入（上游写死 50/51，嵌套时子层压不住父层）；层号来自 ui/base/layout/overlayLayer 的共享分配器——**antd 原生浮层（含 modal.confirm）也必须从同一个分配器领号**，否则默认 z 1000 会压在 sheet 后面；⑤外壳对齐旧底部抽屉（居中三栏标题 + extra 槽 + 可选关闭按钮 + bodyStyle；内容内衬归调用方，组件默认不加 padding）；⑥动效走 ui/base/motion/presets（DESIGN.md 单源）；⑦停靠点为像素档位（票 04）：长内容先开在 peek=min(内容高,45dvh)，滚内容/上推/focus 到屏外元素/点把手展开到 85dvh 上限，可回落（展开档慢拖回落 peek、快甩才关）；内容不超 peek 时两档重合，矮面板观感与无停靠点一致。**peek 档的「锁滚」只锁纵向**（`data-scroll-locked` → body `overflow: hidden` + `touch-action: pan-x`）：纵向上推展开、下拉回落/关闭（两个方向都归 sheet，判据不能只看 scrollTop——锁滚档内容区滚不动、scrollTop 恒 0），横向仍交回浏览器，放行 diff 这类嵌套滚动区（写 `none` 会把子树横向一起锁死，真机「横竖都不能滚」）；**非锁滚档的纵向判据是「落点所在滚动链上还有可滚容器」**（`ui/base/interactive/scrollableInPath`：吃 `event.composedPath()`，从落点往外逐个看到内容区为止，同时看 `overflowY` 与当前方向的余量），不是「内容区能不能滚」——工具卡里的 diff / 终端各自带一层小滚动区，内容区装得下它们时只看内容区会把手势抢走并 preventDefault（真机「详情里 diff / bash 输出横竖都滚不动」）；**方向判定另有 8px 起步阈值**（`GESTURE_SLOP_PX`）——判定一旦落在「拖 sheet」上，后续每个 touchmove 都会被 preventDefault，按首帧（真机落点常带 1~3px 抖动）定方向会把整段横向滑动一起吞掉。**内容区里 shadow DOM 的滚动区由 sheet 负责放行，消费方零接入**（对消费方的承诺）：Radix Dialog 默认的滚动锁（react-remove-scroll）是 **document 级**、非 passive 的 touchmove，只沿浅 DOM 的 `parentNode` 找可滚祖先，判不出 shadow DOM 内的滚动容器（pierre diff 的 `<code>`、终端视口都算）就把整段手势 preventDefault（真机「diff 本来就支持横向滚动，却横竖都滚不动」）。本组件因此走 `modal={false}`（不要那把锁）+ 自建 `ui/base/interactive/bodyScrollLock`（钉 body，不碰触摸事件；遮罩、Esc、初始焦点都显式自接）；手势归属由内容区仲裁一处决定，判据是 `ui/base/interactive/scrollableInPath`（吃 `event.composedPath()`，穿透 shadow 边界）。2026-10-13 实测：裸 pierre diff 在闸前/闸后分别拿到 `[true,true]` / `[false,false]`，纵向仍归 sheet，遮罩点击与 Esc 照常关闭；此前在消费方（DiffView）里挂 hook 手动接管是错的层次，已删除。⑧「面」的实现在 `ui/base/layout/sheetSurface`（2026-10-14 抽壳）：圆角 / 描边 / 底色 / 阴影 / 裁切 / 头部基线（居中三栏与工具条两档）/ 抓手 / 图标钮全在壳里，**移动端画板共用同一个壳**（视觉统一）——本组件与画板只持有定位、尺寸与动画编排（画板要自管停靠测量与 morph，故不套本组件，但壳是同一套；抓取光标与 touch-action 归 `data-draggable`，没有下拉语义的头部不付这个代价）"
+        },
+        {
+            "name": "morph-select",
+            "source": "arc",
+            "upstream": "tracked",
+            "migratedIn": "2026-10-15 composer 三选择器（权限模式/模型/output style）换底座（.scratch/morph-select-migration/）；语义域=「工具栏 pill 选择器」，通用表单 Select 仍默认 antd",
+            "localMods": [
+                "结构扁平化：上游 arc/lib/motion-tokens → src/ui/shadcn/motion-tokens.ts（既有上提位）",
+                "全部文件补版权头",
+                "morph-select.module.css 首个 .root 块：设计变量→mobi token 映射（--surface/--surface-raised/--surface-muted/--text-muted/字号/间距/时长/缓动；foundation.css 不全局引入，dropdown-menu 先例；--control-height-md 取 36px 与 dropdown-menu 控件档同阶）",
+                "morph-select.tsx：新增 direction?: \"up\" | \"down\"（默认 down=上游行为）——root data-direction，up 档 shape/lid 锚底、listFace 挂 lid 上方、分隔线翻底、listFace 入场位移与 valueVariants 数值滚动 y 向镜像（sign 工厂）；composer 贴屏底必须向上展开",
+                "morph-select.tsx：MorphSelectOption 新增 description?: string 双行槽（label 下 12px 弱化行，.optionBody 包裹，参与搜索匹配）",
+                "morph-select.tsx：新增 iconOnly?: boolean——lid 只渲染 icon+chevron（收起图标 pill），可访问名仍走 label（srOnly）；列表项恒渲染完整 label"
+            ]
         }
     ]
 }
