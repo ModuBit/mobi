@@ -39,8 +39,12 @@ const FADE_MID_POS = 0.4
 const SNAP_MS = 260
 const SNAP_EASE = 'cubic-bezier(.2, 0, 0, 1)'
 /** 收起后维持「不裁剪」的时长：morph 退场动画播完再收回裁剪，否则面板被切在半途
- *  （不能交给 CSS transition——clip-path 的 none ↔ inset() 是离散属性，delay 不生效） */
-const UNCLIP_HOLDOVER_MS = 200
+ *  （不能交给 CSS transition——clip-path 的 none ↔ inset() 是离散属性，delay 不生效）。
+ *  预算对齐 morph 收起全程（物理 spring 的 visual duration 即近似 settle 时长）：
+ *  shapeW/shapeX 归位 NARROW .3s、shapeH 收缩 SHRINK .24s、listFace 退场 fade .08s，
+ *  取上限加裕量定 400ms——定时器若先于动画到期，条级裁剪与 z 提层在动画中途恢复，
+ *  仍宽于 pill 的 shape 会被突然截断、并跌到相邻 pill 下层（描边交叉，真机实锤） */
+const UNCLIP_HOLDOVER_MS = 400
 
 /**
  * 横向平移条（composer 参数区专用，替代 ResponsiveActionBar 的溢出收纳）：

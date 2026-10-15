@@ -198,10 +198,12 @@ describe('展开期间撤视觉裁剪（交互契约）', () => {
             trigger.removeAttribute('data-open')
             await Promise.resolve()
         })
-        // 退场窗口内仍不裁剪
+        // 退场窗口内仍不裁剪；且必须活过 morph 收起动画全程（~300ms）——
+        // 定时器若中途到期，仍宽于 pill 的 shape 会被突然截断（回归判据）
+        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 320)) })
         expect(root).toHaveAttribute('data-panel', 'open')
 
-        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 260)) })
+        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 160)) })
         expect(root).not.toHaveAttribute('data-panel')
     })
 
@@ -230,7 +232,7 @@ describe('展开期间撤视觉裁剪（交互契约）', () => {
 
         await act(async () => {
             triggerA.removeAttribute('data-open')
-            await new Promise((resolve) => setTimeout(resolve, 260))
+            await new Promise((resolve) => setTimeout(resolve, 460))
         })
         expect(spans[1].style.clipPath).toBe('')
         expect(spans[1].style.maskImage).toBe('')
