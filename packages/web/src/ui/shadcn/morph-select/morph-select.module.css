@@ -78,7 +78,9 @@
 .root[data-ready] .measure { position: absolute; top: 0; left: 0; }
 .root[data-align="end"][data-ready] .measure { right: 0; left: auto; }
 
-.slot { position: relative; display: block; min-width: 0; height: 100%; flex: 1; }
+/* value 层（layer）绝对定位垂直居中，prefix 静态缀走同一 flex 行居中——
+   slot 若是纯 block，prefix 会贴顶悬在 pill 上缘（2026-10-15 实踩） */
+.slot { position: relative; display: flex; align-items: center; gap: var(--space-2); min-width: 0; height: 100%; flex: 1; }
 .slot[data-hidden] { opacity: 0; transition: opacity var(--duration-instant) var(--ease-standard); }
 .layer { position: absolute; inset: 0; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .valueText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

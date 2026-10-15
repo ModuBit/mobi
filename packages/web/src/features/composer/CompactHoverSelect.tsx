@@ -97,6 +97,8 @@ export function CompactHoverSelect({
         <span title={title}>
             <MorphSelect
                 label={label}
+                // label 仅作可访问名（morph 上游默认把 label 可见渲染在控件上方，composer 不要）
+                hideLabel
                 items={items}
                 value={value ?? null}
                 // morph 回调是 (value, option) 双参，壳内吞掉 option，调用方维持 onChange(value) 单参形态
