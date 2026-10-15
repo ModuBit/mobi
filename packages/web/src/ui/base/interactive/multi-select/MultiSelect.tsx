@@ -201,17 +201,21 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
   const removeItem = (item: string) => { if (!disabled) update(selected.filter((v) => v !== item)); };
   const chipsNode = (
     <AnimatePresence initial={false}>
-      {visible.map((item) => <motion.span key={`chip-${item.value}`} className={styles.slot} variants={reduce ? slotFade : slot} initial="hidden" animate="shown" exit="gone"><motion.span className={styles.chip} variants={reduce ? chipStill : chip}>{item.label}{tags && (
-        <button
-          type="button"
-          className={styles.chipX}
-          aria-label={t("common.removeItem", { name: item.label })}
-          disabled={disabled}
-          onClick={(event) => { event.stopPropagation(); removeItem(item.value); }}
-        >
-          <X size={11} strokeWidth={2} aria-hidden="true" />
-        </button>
-      )}</motion.span></motion.span>)}
+      {visible.map((item) => <motion.span key={`chip-${item.value}`} className={styles.slot} variants={reduce ? slotFade : slot} initial="hidden" animate="shown" exit="gone"><motion.span className={styles.chip} variants={reduce ? chipStill : chip}>{tags ? (
+        <>
+          {/* label 收进独立截断盒：× 常驻流内不被长路径的 ellipsis 挤出裁掉 */}
+          <span className={styles.chipLabel}>{item.label}</span>
+          <button
+            type="button"
+            className={styles.chipX}
+            aria-label={t("common.removeItem", { name: item.label })}
+            disabled={disabled}
+            onClick={(event) => { event.stopPropagation(); removeItem(item.value); }}
+          >
+            <X size={11} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </>
+      ) : item.label}</motion.span></motion.span>)}
       {remaining > 0 && <motion.span key="more" className={styles.slot} variants={reduce ? slotFade : slot} initial="hidden" animate="shown" exit="gone"><motion.span className={styles.more} variants={reduce ? chipStill : chip}>+<span className={styles.count}><AnimatePresence initial={false} custom={countDirection}><motion.span key={remaining} custom={countDirection} variants={reduce ? fade : roll} initial="hidden" animate="shown" exit="gone">{remaining}</motion.span></AnimatePresence></span></motion.span></motion.span>}
     </AnimatePresence>
   );

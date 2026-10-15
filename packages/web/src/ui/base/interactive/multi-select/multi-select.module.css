@@ -24,8 +24,11 @@
 .slot { display: flex; flex: 0 1 auto; min-width: 0; overflow: hidden; }
 .slot:has(.more) { flex-shrink: 0; }
 .chip, .more { box-sizing: border-box; flex: 0 0 auto; max-width: 9rem; overflow: hidden; margin-right: 5px; border-radius: var(--radius-pill); padding: 4px 8px; background: var(--surface-muted); box-shadow: inset 0 0 0 1px var(--border-subtle); color: var(--foreground); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); transition: background-color var(--duration-fast) var(--ease-standard); }
-/* tags 模式 chip 单删 ×：右内衬收窄给 × 让位（× 自带右外衬抵回视觉间距） */
-.triggerTags .chip { padding-right: 3px; }
+/* tags 模式 chip 单删 ×：chip 转 inline-flex 才能让 × 与 label 垂直居中、且常驻流内——
+   inline 格式化下长 label 的 ellipsis 会把流内 × 挤出 max-width 被 overflow 裁掉；
+   label 收进独立截断盒承担 ellipsis，× 永远可见。右内衬收窄给 × 让位 */
+.triggerTags .chip { display: inline-flex; align-items: center; gap: 3px; padding-right: 3px; }
+.chipLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chipX { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 2px; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-muted); cursor: pointer; transition: color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard); }
 @media (hover: hover) and (pointer: fine) { .chipX:hover:not(:disabled) { background: color-mix(in oklab, var(--foreground) 10%, transparent); color: var(--foreground); } }
 .chipX:disabled { opacity: .45; cursor: not-allowed; }
