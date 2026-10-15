@@ -45,13 +45,16 @@
 .hint { color: var(--text-muted); font-size: var(--text-xs); }
 .popover { position: absolute; z-index: 80; top: calc(100% + 8px); right: 0; left: 0; overflow: hidden; transform-origin: top center; border: 1px solid var(--border); border-radius: var(--radius-panel); padding: 5px; background: var(--surface-raised); color: var(--foreground); box-shadow: var(--shadow-floating); will-change: transform, opacity; }
 .autoHeight { overflow: hidden; }
-.listbox { max-height: min(300px, 40vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.listbox { position: relative; max-height: min(300px, 40vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
 .listbox::-webkit-scrollbar { display: none; }
+/* 高亮由 gliding highlight 色块弹簧跟随当前项（共享组件），不再逐项瞬时刷背景 */
+.highlight { position: absolute; top: 0; right: 2px; left: 2px; border-radius: calc(var(--radius-panel) - 5px); background: color-mix(in oklab, var(--foreground) 6.5%, transparent); opacity: 0; pointer-events: none; transition: opacity var(--duration-instant) var(--ease-standard); }
+.highlight[data-on] { opacity: 1; }
 /* 方向键高频移动高亮，所以背景几乎即时变化。 */
-.option { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: var(--space-3); border-radius: calc(var(--radius-panel) - 5px); padding: 0 12px; color: var(--foreground); font-size: var(--text-sm); cursor: pointer; outline: none; user-select: none; transition: background-color 80ms var(--ease-standard), color 80ms var(--ease-standard); }
+.option { position: relative; display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: var(--space-3); border-radius: calc(var(--radius-panel) - 5px); padding: 0 12px; color: var(--foreground); font-size: var(--text-sm); cursor: pointer; outline: none; user-select: none; transition: color 80ms var(--ease-standard); }
 .option > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.option[data-active="true"] { background: var(--surface-muted); }
+.option[data-active="true"] { color: var(--foreground); }
 .option[data-disabled="true"] { opacity: .42; cursor: not-allowed; }
 .check { flex: 0 0 auto; color: var(--foreground); }
 .empty { padding: var(--space-3); color: var(--text-muted); font-size: var(--text-sm); }
-@media (prefers-reduced-motion: reduce) { .control, .chevron, .clear, .option { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .control, .chevron, .clear, .option, .highlight { transition: none; } }

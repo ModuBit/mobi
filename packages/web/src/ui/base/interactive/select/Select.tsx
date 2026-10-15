@@ -23,7 +23,7 @@
 // ⑦ariaLabel 透传到触发器（无可见 label 场景的可访问名）
 "use client";
 
-import { forwardRef, useId, useState } from "react";
+import { forwardRef, useEffect, useId, useState } from "react";
 import type { ComponentPropsWithoutRef, ForwardedRef, ReactElement, RefAttributes } from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -31,6 +31,7 @@ import type { Variants } from "motion/react";
 import { Check, ChevronDown, ChevronUp, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
+import { GlidingHighlight } from "@/ui/base/motion/GlidingHighlight";
 import styles from "./select.module.css";
 
 /** 泛型 over 选项值字面量类型（antd 迁移站点多为联合字面量，onValueChange 不得放宽成 string） */
@@ -71,6 +72,19 @@ export const Select = forwardRef(function SelectInner<T extends string>(
   const hintId = description ? `${controlId}-description` : undefined;
   const reduceMotion = useReducedMotion();
   const [uncontrolledValue, setUncontrolledValue] = useState<string>(rootProps.defaultValue ?? "");
+  // viewport 用回调 ref 存 state（Radix Viewport 不收 onFocusIn 这类事件 prop，原生监听挂它）
+  const [viewportEl, setViewportEl] = useState<HTMLDivElement | null>(null);
+  // gliding highlight 的当前项：Radix 对键盘导航与鼠标悬停（pointermove 聚焦当前项）都会发
+  // focusin，借它感知「当前项」
+  const [activeEl, setActiveEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!viewportEl) return;
+    const handleFocusIn = (event: FocusEvent) => {
+      setActiveEl((event.target as HTMLElement).closest<HTMLElement>('[role="option"]'));
+    };
+    viewportEl.addEventListener("focusin", handleFocusIn);
+    return () => viewportEl.removeEventListener("focusin", handleFocusIn);
+  }, [viewportEl]);
   // 受控判定：value 在 props 上（!== undefined）即受控——上游 `value ?? uncontrolled` 的写法会把
   // 受控清空（value 从有值改回 undefined）误读成未受控而回显旧值
   const currentValue: string = rootProps.value !== undefined ? rootProps.value : uncontrolledValue;
@@ -124,7 +138,8 @@ export const Select = forwardRef(function SelectInner<T extends string>(
             <SelectPrimitive.ScrollUpButton className={styles.scrollButton}>
               <ChevronUp size={16} strokeWidth={1.75} aria-hidden="true" />
             </SelectPrimitive.ScrollUpButton>
-            <SelectPrimitive.Viewport className={styles.viewport}>
+            <SelectPrimitive.Viewport ref={setViewportEl} className={styles.viewport}>
+              <GlidingHighlight className={styles.highlight} target={activeEl} />
               {options.map((option) => (
                 <SelectPrimitive.Item key={option.value} value={option.value} disabled={option.disabled} title={option.title} className={styles.item}>
                   <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>

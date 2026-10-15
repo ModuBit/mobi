@@ -62,6 +62,16 @@ describe('uiarc Select 基础开合', () => {
         expect(onValueChange).toHaveBeenCalledWith('open')
     })
 
+    it('gliding highlight 色块在首个当前项上落下（data-on 标记）', () => {
+        render(<Select ariaLabel="档位" options={[...OPTIONS]} value="normal" />)
+        openMenu(screen.getByRole('combobox', { name: '档位' }))
+        // Radix 打开后聚焦当前项 → focusin 驱动色块定位（RTL 的 focusIn 直发 focusin 事件）
+        fireEvent.focusIn(screen.getByRole('option', { name: /独立记忆/ }))
+        const viewport = screen.getByRole('option', { name: /独立记忆/ }).parentElement
+        expect(viewport).not.toBeNull()
+        expect(viewport!.querySelector('[data-on]')).not.toBeNull()
+    })
+
     it('allowClear：有值渲染清除钮（chevron 隐藏），点击回调 "" 且不开菜单', () => {
         const onValueChange = vi.fn<(v: 'normal' | 'open' | '') => void>()
         render(<Select ariaLabel="档位" options={[...OPTIONS]} value="normal" allowClear onValueChange={onValueChange} />)

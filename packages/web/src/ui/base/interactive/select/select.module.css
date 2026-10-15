@@ -55,16 +55,18 @@
 .content[data-side="left"] { --menu-x: 6px; --menu-y: 0px; }
 .content[data-side="right"] { --menu-x: -6px; --menu-y: 0px; }
 .content[data-state="closed"] { animation: select-out var(--duration-instant) var(--ease-standard) both; }
-.viewport { padding: 2px 0; }
-.item { position: relative; display: flex; align-items: center; min-height: 36px; border-radius: calc(var(--radius-control) - 4px); padding: 0 34px 0 11px; color: var(--foreground); font-size: var(--text-sm); cursor: default; outline: none; user-select: none; transition: background-color var(--duration-instant) var(--ease-standard), color var(--duration-instant) var(--ease-standard); }
-.item[data-highlighted] { background: var(--surface-muted); }
-.item[data-disabled] { opacity: .45; }
+.viewport { position: relative; padding: 2px 0; }
+.item { position: relative; display: flex; align-items: center; min-height: 36px; border-radius: calc(var(--radius-control) - 4px); padding: 0 34px 0 11px; color: var(--foreground); font-size: var(--text-sm); cursor: pointer; outline: none; user-select: none; transition: color var(--duration-instant) var(--ease-standard); }
+.item[data-disabled] { opacity: .45; cursor: not-allowed; }
+/* 高亮不再逐项瞬时刷背景（上游风格），由 gliding highlight 色块弹簧跟随当前项 */
+.highlight { position: absolute; top: 0; right: 2px; left: 2px; border-radius: calc(var(--radius-control) - 4px); background: color-mix(in oklab, var(--foreground) 6.5%, transparent); opacity: 0; pointer-events: none; transition: opacity var(--duration-instant) var(--ease-standard); }
+.highlight[data-on] { opacity: 1; }
 .indicator { position: absolute; right: 10px; display: inline-flex; align-items: center; color: var(--foreground); animation: indicator-in var(--duration-standard) var(--ease-enter) 40ms both; }
 .scrollButton { display: grid; height: 28px; place-items: center; color: var(--text-muted); }
 @keyframes select-in { from { opacity: 0; transform: translate(var(--menu-x), var(--menu-y)) scale(.97); } }
 @keyframes select-out { to { opacity: 0; transform: translate(calc(var(--menu-x) / 2), calc(var(--menu-y) / 2)) scale(.98); } }
 @keyframes indicator-in { from { opacity: 0; transform: scale(.6); filter: blur(2px); } }
 @media (prefers-reduced-transparency: reduce) { .content { background: var(--surface-raised); backdrop-filter: none; -webkit-backdrop-filter: none; } }
-@media (prefers-reduced-motion: reduce) { .trigger, .chevron, .item { transition: none; } .content { animation: select-fade var(--duration-instant) var(--ease-standard) both; } .content[data-state="closed"] { animation: select-fade-out var(--duration-instant) var(--ease-standard) both; } .indicator { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .trigger, .chevron, .item, .highlight { transition: none; } .content { animation: select-fade var(--duration-instant) var(--ease-standard) both; } .content[data-state="closed"] { animation: select-fade-out var(--duration-instant) var(--ease-standard) both; } .indicator { animation: none; } }
 @keyframes select-fade { from { opacity: 0; } }
 @keyframes select-fade-out { to { opacity: 0; } }

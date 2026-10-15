@@ -32,6 +32,7 @@ import {
 import type { InputHTMLAttributes, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
+import { GlidingHighlight } from "@/ui/base/motion/GlidingHighlight";
 import styles from "./combobox.module.css";
 
 export interface ComboboxOption {
@@ -213,6 +214,8 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
 
   const inputValue = open ? query : selectedOption?.label ?? "";
   const activeOption = activeIndex >= 0 ? filteredOptions[activeIndex] : undefined;
+  // gliding highlight 的当前项（键盘 activeIndex 与悬停 onMouseEnter 同源）
+  const activeTarget = (open && activeOption ? optionRefs.current[activeOption.value] : null) ?? null;
 
   return (
     <div ref={rootRef} className={styles.field}>
@@ -279,6 +282,7 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
           >
             <AutoHeight reduceMotion={reduceMotion}>
             <div id={listboxId} className={styles.listbox} role="listbox" aria-label={label}>
+              <GlidingHighlight className={styles.highlight} target={activeTarget} />
               {filteredOptions.length ? filteredOptions.map((option, index) => (
                 <div
                   key={option.value}
