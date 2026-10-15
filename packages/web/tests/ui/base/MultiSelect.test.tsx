@@ -190,22 +190,21 @@ describe('uiarc MultiSelect mode="tags"（chip 内联输入自由值）', () => 
         expect(screen.queryByRole('button', { name: 'common.removeItem' })).toBeNull()
     })
 
-    it('shortLabel 短形态显示于 chip（title 悬停全值），保证截断后可辨认', () => {
+    it('chip title 悬停承载完整值；chip 完整显示不做短化', () => {
         const onChange = vi.fn<(v: string[]) => void>()
         render(
             <MultiSelect
                 mode="tags"
                 ariaLabel="路径"
-                options={[{ value: '/ws/mobi-long-name', label: '/ws/mobi-long-name', shortLabel: 'mobi-long-name', title: '/ws/mobi-long-name' }]}
+                options={[{ value: '/ws/mobi-long-name', label: '/ws/mobi-long-name' }]}
                 value={['/ws/mobi-long-name']}
                 onValueChange={onChange}
             />,
         )
 
-        // chip 显示 shortLabel，title 承载完整值
+        // chip 显示完整 label，title 同值（超容器宽截断时的悬停兜底）
         const chip = screen.getByTitle('/ws/mobi-long-name')
-        expect(chip).toHaveTextContent('mobi-long-name')
-        expect(chip).not.toHaveTextContent('/ws/')
+        expect(chip).toHaveTextContent('/ws/mobi-long-name')
     })
 
     it('tags 模式 chip 全显不折叠（maxVisible 缺省全显）', () => {

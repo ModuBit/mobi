@@ -19,7 +19,6 @@ import { Alert, App, Button, Input, InputNumber, Radio, Tag, theme as antTheme, 
 // uiarc 自管件：单选/可搜索选择（antd Select 已全站清零；tags 模式归 MultiSelect mode="tags"）
 import { Select as UiSelect } from '@/ui/base/interactive/select/Select'
 import { MultiSelect } from '@/ui/base/interactive/multi-select/MultiSelect'
-import type { MultiSelectOption } from '@/ui/base/interactive/multi-select/MultiSelect'
 import { Combobox } from '@/ui/base/interactive/combobox/Combobox'
 import { useTranslation } from 'react-i18next'
 import { Brain, ExternalLink, Plus, Trash2 } from 'lucide-react'
@@ -133,9 +132,6 @@ export function MemorySection() {
     const [rules, setRules] = useState<MemoryRule[]>([])
     const [bankName, setBankName] = useState('')
     const [disabledWorkspaces, setDisabledWorkspaces] = useState<string[]>([])
-    // 自由输入的路径动态补成 option（antd tags 同语义）：chip 才有短形态与悬停全值。
-    // hook 必须在 early return 之前（Rules of Hooks）
-    const [extraExcludedOptions, setExtraExcludedOptions] = useState<Array<MultiSelectOption>>([])
     // 注入策略草稿（mobi 默认关：不自动注入 + 不刷目录；要在设置里显式开）
     const [autoInject, setAutoInject] = useState<MemoryAutoInjectMode>('none')
     const [pageRefreshEveryTurns, setPageRefreshEveryTurns] = useState(0)
@@ -170,40 +166,12 @@ export function MemorySection() {
     const uiUrl = deriveMemoryUiUrl(endpoint)
     const offMachine = engine === 'hindsight' && isOffMachineEndpoint(endpoint)
     // workspace 排除下拉可选项：全部工作区 folder 路径（tags 模式仍可自由输入任意路径）。
-    // chip 窄盒放不下全路径，但只留尾段会让重名不同父路径的目录不可区分——
-    // 短形态走「头部省略、尾部多级保留」（…/github/modu/mochy vs …/workspace/mochy）；
-    // 非绝对路径的值不做短化（无路径结构可依），截断由组件 ellipsis + 悬停 title 兜底
-    const chipPath = (path: string, budget = 20): string => {
-        if (!path.startsWith('/') || path.length <= budget) return path
-        const segments = path.split('/').filter(Boolean)
-        let tail = ''
-        for (let i = segments.length - 1; i >= 0; i--) {
-            const candidate = `/${segments.slice(i).join('/')}`
-            if (candidate.length > budget - 1) break
-            tail = candidate
-        }
-        return tail ? `…${tail}` : path
-    }
+    // chip 完整显示路径（放不下换行，超容器宽才截断 + 悬停全值），不做任何短化猜测
     const workspaceOptions = Array.from(new Set(
         (workspacesQuery.data ?? []).flatMap((w) => w.folders.map((f) => f.path)),
-    )).map((path) => ({
-        value: path,
-        label: path,
-        shortLabel: chipPath(path),
-        title: path,
-    }))
-    // 自由输入的路径动态补成 option（antd tags 同语义）：chip 才有短形态与悬停全值
-    const excludedOptions = [...workspaceOptions, ...extraExcludedOptions]
-    const handleExcludedChange = (next: string[]) => {
-        setDisabledWorkspaces(next)
-        setExtraExcludedOptions((prev) => {
-            const known = new Set([...workspaceOptions, ...prev].map((o) => o.value))
-            const added = next
-                .filter((v) => !known.has(v))
-                .map((path) => ({ value: path, label: path, shortLabel: chipPath(path), title: path }))
-            return added.length ? [...prev, ...added] : prev
-        })
-    }
+    )).map((path) => ({ value: path, label: path }))
+    // 自由输入的值直接进 selected（chip 完整显示，无需动态补 option）
+    const handleExcludedChange = setDisabledWorkspaces
     // workspace id → 名（规则行目标展示）；folders 平铺去重
     const workspaceNameOf = (id: string): string =>
         workspacesQuery.data?.find((w) => w.id === id)?.name ?? id
@@ -470,7 +438,7 @@ export function MemorySection() {
                     mode="tags"
                     value={disabledWorkspaces}
                     onValueChange={handleExcludedChange}
-                    options={excludedOptions}
+                    options={workspaceOptions}
                     placeholder={t('settings.memory.excludedPlaceholder')}
                     ariaLabel={t('settings.memory.excludedTitle')}
                 />

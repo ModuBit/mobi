@@ -38,10 +38,6 @@ export interface MultiSelectOption {
   value: string;
   label: string;
   disabled?: boolean;
-  /** chip 窄盒里的短形态（长值截断后不可读时用，如路径取尾段目录名）；下拉仍显 label */
-  shortLabel?: string;
-  /** chip 悬停提示（默认 chip 上显示完整 label；shortLabel 场景传全值） */
-  title?: string;
 }
 
 export interface MultiSelectProps {
@@ -111,13 +107,9 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
   const [query, setQuery] = useState("");
   const selected = value ?? internal;
   const selectedSet = useMemo(() => new Set(selected), [selected]);
-  const optionOf = (item: string) => options.find((option) => option.value === item);
-  const labelFor = (item: string) => optionOf(item)?.label ?? item;
+  const labelFor = (item: string) => options.find((option) => option.value === item)?.label ?? item;
   const effectiveMaxVisible = maxVisible ?? (tags ? Number.POSITIVE_INFINITY : 2);
-  const visible = selected.slice(0, effectiveMaxVisible).map((item) => {
-    const option = optionOf(item);
-    return { value: item, label: labelFor(item), shortLabel: option?.shortLabel, title: option?.title ?? option?.label };
-  });
+  const visible = selected.slice(0, effectiveMaxVisible).map((item) => ({ value: item, label: labelFor(item) }));
   const remaining = Math.max(0, selected.length - visible.length);
   // 关闭的菜单忘记高亮与搜索词，下次打开从干净状态开始，而非停在过期的悬停行。
   const [wasOpen, setWasOpen] = useState(open);
@@ -211,13 +203,13 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
     <AnimatePresence initial={false}>
       {visible.map((item) => <motion.span key={`chip-${item.value}`} className={styles.slot} variants={reduce ? slotFade : slot} initial="hidden" animate="shown" exit="gone"><motion.span className={styles.chip} variants={reduce ? chipStill : chip}>{tags ? (
         <>
-          {/* label 收进独立截断盒：× 常驻流内不被长路径的 ellipsis 挤出裁掉；
-              shortLabel 短形态 + title 悬停全值保证截断后仍可辨认 */}
-          <span className={styles.chipLabel} title={item.title}>{item.shortLabel ?? item.label}</span>
+          {/* label 收进独立截断盒：× 常驻流内不被长值挤出裁掉；title 悬停全值——
+              chip 完整显示（容器内自适应），只有超过容器宽才截断兜底 */}
+          <span className={styles.chipLabel} title={item.label}>{item.label}</span>
           <button
             type="button"
             className={styles.chipX}
-            aria-label={t("common.removeItem", { name: item.shortLabel ?? item.label })}
+            aria-label={t("common.removeItem", { name: item.label })}
             disabled={disabled}
             onClick={(event) => { event.stopPropagation(); removeItem(item.value); }}
           >
