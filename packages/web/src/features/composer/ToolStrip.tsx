@@ -67,10 +67,14 @@ const Root = styled.div<{ 'data-fade'?: 'none' | 'start' | 'end' | 'both' }>`
   /* 横向交给我们自己拖（pointer 事件），纵向仍归浏览器（页面滚动、面板内长列表） */
   touch-action: pan-y;
   /* 视觉裁剪：内容溢出不外泄。展开期间撤掉（data-panel=open，纯绘制属性、零布局影响），
-     收起后由 JS 延时恢复以播完 morph 退场动画（见 UNCLIP_HOLDOVER_MS 注释） */
+     收起后由 JS 延时恢复以播完 morph 退场动画（见 UNCLIP_HOLDOVER_MS 注释）。
+     撤裁剪的同时逐项裁到可视窗口（clipItems），否则滚出条外的项会一起漏出来 */
   clip-path: inset(0);
   &[data-panel='open'] {
     clip-path: inset(-9999px);
+    /* 展开期间整条提层：row 的 transform/will-change 自成堆叠上下文，morph 给展开态
+       root 的 z-index:30 出不去，不提层就会被 DOM 靠后的 send 按钮压住 */
+    z-index: 20;
   }
   /* 渐隐双停点缓坡：描边淡出是渐进的，不是线性硬切 */
   &[data-fade='end'] {
@@ -126,6 +130,34 @@ export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) 
   const [dragging, setDragging] = useState(false)
   const [unclipped, setUnclipped] = useState(false)
   const offsetRef = useRef(0)
+  const unclippedRef = useRef(false)
+
+  /**
+   * 展开期间逐项裁到条的可视窗口（条自身的裁剪已撤，面板才能溢出可见）。
+   * 被展开的那项跳过——它的面板正是要溢出的。判据用布局盒（offsetLeft/offsetWidth），
+   * 不用 getBoundingClientRect：面板是绝对定位的子孙，会让 rect 远大于项本身。
+   */
+  const clipItems = useCallback((active: boolean) => {
+    const root = rootRef.current
+    const row = rowRef.current
+    if (!root || !row) return
+    const view = root.clientWidth
+    for (const el of Array.from(row.children) as HTMLElement[]) {
+      if (!active || el.querySelector('[role="combobox"][aria-expanded="true"]')) {
+        el.style.clipPath = ''
+        continue
+      }
+      const left = el.offsetLeft + offsetRef.current
+      const right = left + el.offsetWidth
+      if (left >= -0.5 && right <= view + 0.5) {
+        el.style.clipPath = ''
+        continue
+      }
+      const insetLeft = Math.max(0, -left)
+      const insetRight = Math.max(0, right - view)
+      el.style.clipPath = `inset(0px ${insetRight.toFixed(1)}px 0px ${insetLeft.toFixed(1)}px)`
+    }
+  }, [])
 
   /** 平移量（≤0，左移为正）→ 绘制。materialize=false 跟手，true 走吸附回弹 */
   const applyOffset = useCallback((next: number, animate: boolean) => {
@@ -138,7 +170,8 @@ export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) 
     row.style.transition = animate ? `transform ${SNAP_MS}ms ${SNAP_EASE}` : 'none'
     row.style.transform = `translateX(${clamped}px)`
     setFade(computeFade(clamped, max))
-  }, [])
+    if (unclippedRef.current) clipItems(true)
+  }, [clipItems])
 
   /** 就近吸附：候选为两端与每个项的起点，松手后静止态不切半个 pill */
   const snapTarget = useCallback((current: number) => {
@@ -198,9 +231,14 @@ export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) 
       const open = root.querySelector('[role="combobox"][aria-expanded="true"]') !== null
       if (open) {
         if (timer !== null) { window.clearTimeout(timer); timer = null }
+        unclippedRef.current = true
         setUnclipped(true)
-      } else if (timer === null && root.getAttribute('data-panel') === 'open') {
-        timer = window.setTimeout(() => { timer = null; setUnclipped(false) }, UNCLIP_HOLDOVER_MS)
+      } else if (timer === null && unclippedRef.current) {
+        timer = window.setTimeout(() => {
+          timer = null
+          unclippedRef.current = false
+          setUnclipped(false)
+        }, UNCLIP_HOLDOVER_MS)
       }
     }
     const observer = new MutationObserver(sync)
@@ -211,6 +249,9 @@ export function ToolStrip({ items, gap = 4, className, style }: ToolStripProps) 
       if (timer !== null) window.clearTimeout(timer)
     }
   }, [])
+
+  // items 增删（权限模式等条件渲染）或展开态切换时重算逐项裁剪
+  useEffect(() => { clipItems(unclipped) }, [unclipped, clipItems, items])
 
   const drag = useRef({ active: false, moved: false, startX: 0, startOffset: 0, pointerId: -1 })
 

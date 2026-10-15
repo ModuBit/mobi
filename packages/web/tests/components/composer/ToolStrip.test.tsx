@@ -200,4 +200,27 @@ describe('展开期间撤视觉裁剪（交互契约）', () => {
         await act(async () => { await new Promise((resolve) => setTimeout(resolve, 260)) })
         expect(root).not.toHaveAttribute('data-panel')
     })
+
+    it('展开时逐项裁到可视窗口（窗外项裁掉、窗内项与展开项不裁）；收起后清除', async () => {
+        const { root, spans } = strip([
+            { key: 'a', render: () => <button role="combobox" aria-expanded="false">A</button> },
+            { key: 'b', render: () => <button>B</button> },
+        ])
+        const triggerA = screen.getByText('A')
+        // 视口 200，A 在 [0,200] 窗内、B 在 [200,400] 窗外
+        await act(async () => {
+            triggerA.setAttribute('aria-expanded', 'true')
+            await Promise.resolve()
+        })
+        await act(async () => { resizeCallbacks.forEach((cb) => cb([], undefined as unknown as ResizeObserver)) })
+        expect(spans[0].style.clipPath).toBe('')          // 展开项：面板要溢出可见
+        expect(spans[1].style.clipPath).toBe('inset(0px 200.0px 0px 0.0px)') // 窗外项：右缘裁到可视窗口
+
+        await act(async () => {
+            triggerA.setAttribute('aria-expanded', 'false')
+            await new Promise((resolve) => setTimeout(resolve, 260))
+        })
+        expect(spans[1].style.clipPath).toBe('')
+        expect(root).not.toHaveAttribute('data-panel')
+    })
 })
