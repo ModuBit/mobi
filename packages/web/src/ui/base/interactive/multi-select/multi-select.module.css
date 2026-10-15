@@ -36,7 +36,8 @@
 /* tags 模式清空钮在流内（多行 chip 时绝对定位钉位会压住 chip 内容）：
    抵掉 .clear 的绝对定位钉位三件套 */
 .triggerTags .clear { position: static; transform: none; margin: 0 2px 0 0; align-self: center; }
-.chipX { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 2px; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-muted); cursor: pointer; transition: color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard); }
+/* chip 单删 ×：22px 热区（负 margin 抵消视觉占位，chip 不被撑高）——触屏点偏不误触 */
+.chipX { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 22px; height: 22px; margin: -4px -5px -4px -1px; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-muted); cursor: pointer; transition: color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard); }
 @media (hover: hover) and (pointer: fine) { .chipX:hover:not(:disabled) { background: color-mix(in oklab, var(--foreground) 10%, transparent); color: var(--foreground); } }
 .chipX:disabled { opacity: .45; cursor: not-allowed; }
 .trigger[aria-expanded="true"] .chip, .trigger[aria-expanded="true"] .more { background: var(--surface); }
@@ -56,9 +57,10 @@
 .tagsInput::placeholder { color: var(--text-muted); }
 /* 角标（B' 方案）：chevron 常驻右上，hover 触发器同位交叉淡替为清空 ×——
    高频 hover 切换只走 ≤150ms opacity（× 附加轻微 scale 长入）；
-   触摸端无 hover 恒显 ×（清空比展开指示有用）。让位 = 角标自身 28px */
-.corner { position: absolute; top: 10px; right: 9px; display: inline-block; width: 16px; height: 16px; }
-.cornerChevron { position: absolute; inset: 0; color: var(--text-muted); opacity: 1; transition: opacity 140ms var(--ease-standard); }
+   触摸端无 hover 恒显 ×（清空比展开指示有用）。让位 = 角标热区 31px。
+   热区 28px：图标 16px 视觉不变，触屏点偏不再落到触发器空白处误触展开 */
+.corner { position: absolute; top: 4px; right: 3px; display: inline-block; width: 28px; height: 28px; }
+.cornerChevron { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted); opacity: 1; transition: opacity 140ms var(--ease-standard); }
 .cornerClear { position: absolute; inset: 0; display: grid; place-items: center; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-muted); cursor: pointer; opacity: 0; transform: scale(.85); pointer-events: none; transition: opacity 140ms var(--ease-standard), transform 160ms cubic-bezier(0.2, 0, 0, 1), color var(--duration-fast) var(--ease-standard); }
 @media (hover: hover) and (pointer: fine) {
   .triggerTags:hover .cornerChevron { opacity: 0; }
