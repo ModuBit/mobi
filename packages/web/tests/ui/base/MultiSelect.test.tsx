@@ -206,11 +206,14 @@ describe('uiarc MultiSelect mode="tags"（chip 内联输入自由值）', () => 
         expect(screen.getByText('/ws/mobi-long-name')).toBeInTheDocument()
     })
 
-    it('角标清空钮存在且点击只清空（hover 交叉淡替是 CSS 态，jsdom 断言 DOM）', () => {
+    it('角标清空钮：无内容不渲染；有内容点击只清空（hover 交叉淡替是 CSS 态，jsdom 断言 DOM）', () => {
         const onChange = vi.fn<(v: string[]) => void>()
         render(<TagsHarness onChange={onChange} />)
 
         const input = screen.getByRole('combobox', { name: '排除路径' })
+        // 空态没有可清的东西：角标只显 chevron
+        expect(screen.queryByRole('button', { name: 'common.clearSelection' })).toBeNull()
+
         fireEvent.change(input, { target: { value: '/a' } })
         fireEvent.keyDown(input, { key: 'Enter' })
 

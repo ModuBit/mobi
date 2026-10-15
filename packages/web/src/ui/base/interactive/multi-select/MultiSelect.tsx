@@ -231,7 +231,7 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
   return <div ref={rootRef} className={[styles.field, className].filter(Boolean).join(" ")} style={style}>
     {label && <span id={labelId} className={styles.label}>{label}</span>}
     <div className={styles.control}>
-      {tags ? <div className={styles.triggerTags} onClick={() => inputRef.current?.focus()}>
+      {tags ? <div className={`${styles.trigger} ${styles.triggerTags}`} onClick={() => inputRef.current?.focus()}>
         {chipsNode}
         <input
           ref={inputRef}
@@ -254,15 +254,18 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
             2026-10-15 与用户 mock 定稿）；触摸端无 hover 恒显 ×。× 点击只清空，
             不聚焦/不展开。default 单行模式仍走触发器外的 ClearButton 钉位 */}
         <span className={styles.corner} aria-hidden={disabled || undefined}>
-          <button
-            type="button"
-            className={styles.cornerClear}
-            aria-label={t("common.clearSelection")}
-            disabled={disabled}
-            onClick={(event) => { event.stopPropagation(); clear(); }}
-          >
-            <X size={13} strokeWidth={2} aria-hidden="true" />
-          </button>
+          {/* 无内容时不出现清空 ×（没有可清的东西），角标只显 chevron */}
+          {selected.length > 0 && (
+            <button
+              type="button"
+              className={styles.cornerClear}
+              aria-label={t("common.clearSelection")}
+              disabled={disabled}
+              onClick={(event) => { event.stopPropagation(); clear(); }}
+            >
+              <X size={13} strokeWidth={2} aria-hidden="true" />
+            </button>
+          )}
           <ChevronDown className={styles.cornerChevron} size={16} strokeWidth={1.75} aria-hidden="true" />
         </span>
       </div> : <button type="button" className={`${styles.trigger} ${selected.length ? styles.hasClear : ""}`} disabled={disabled} aria-label={ariaLabel} aria-labelledby={label && !ariaLabel ? `${labelId} ${valueId}` : undefined} aria-haspopup="listbox" aria-expanded={open} aria-controls={`${id}-listbox`} onClick={() => setOpen((current) => !current)} onKeyDown={onKeyDown}>
