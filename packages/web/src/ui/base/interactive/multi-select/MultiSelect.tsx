@@ -62,25 +62,20 @@ export interface MultiSelectProps {
 
 const enter = motionTokens.ease.enter;
 const standard = motionTokens.ease.standard;
-/** 每个 chip 坐在一个宽度槽里，邻居随之移动。进场保留 spring width（单个进场
-    reflow 压力小、观感有生命感）；退场改短 ease——chip 增删是高频交互，且清空时
-    N 个槽同时退，spring width 逐帧 reflow + 尾摆是移动端卡顿主因（2026-10-15 真机反馈） */
+/** 每个 chip 坐在一个槽里。宽度就位/收缩完全即时，观感只剩渐显渐隐
+    （2026-10-15 用户定稿：不要缩放/弹簧宽度展开，太花哨） */
 const slot: Variants = {
   hidden: { width: 0, opacity: 0 },
-  shown: { width: "auto", opacity: 1, transition: { width: motionTokens.spring.smooth, opacity: { duration: motionTokens.duration.fast, ease: enter } } },
-  gone: { width: 0, opacity: 0, transition: { width: { duration: motionTokens.duration.exit, ease: standard }, opacity: { duration: motionTokens.duration.instant, ease: standard } } },
+  shown: { width: "auto", opacity: 1, transition: { width: { duration: 0 }, opacity: { duration: motionTokens.duration.fast, ease: enter } } },
+  gone: { width: 0, opacity: 0, transition: { width: { duration: 0 }, opacity: { duration: motionTokens.duration.instant } } },
 };
-/** chip 本体轻缩放长入。blur 滤镜动画已移除——滤镜逐帧重 raster 是移动端
-    掉帧大头，高频交互不值得；退场即时（收尾观感由槽的 width 收缩承担） */
 const chip: Variants = {
-  hidden: { scale: 0.9, opacity: 0 },
-  shown: { scale: 1, opacity: 1, transition: motionTokens.spring.snappy },
+  hidden: { opacity: 0 },
+  shown: { opacity: 1, transition: { duration: motionTokens.duration.fast, ease: enter } },
   gone: { opacity: 0, transition: { duration: motionTokens.duration.instant } },
 };
-/** reduced motion 保留短交叉淡入；静止态与动效变体一致，保证服务端与客户端标记一致。 */
+/** reduced motion 与常规分支已同形（都是渐显渐隐，无位移/缩放），共享同一组 variants。 */
 const fade: Variants = { hidden: { opacity: 0 }, shown: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: motionTokens.duration.instant } }, gone: { opacity: 0, transition: { duration: motionTokens.duration.instant } } };
-const slotFade: Variants = { hidden: { opacity: 0 }, shown: { width: "auto", opacity: 1, transition: { duration: motionTokens.duration.instant } }, gone: { opacity: 0, transition: { duration: motionTokens.duration.instant } } };
-const chipStill: Variants = { hidden: { scale: 1, filter: "blur(0px)" }, shown: { scale: 1, filter: "blur(0px)" }, gone: { scale: 1, filter: "blur(0px)" } };
 /** 溢出计数滚动：更大的数从下方升起，更小的从上方落下。 */
 const roll: Variants = {
   hidden: (direction: number) => ({ opacity: 0, y: `${direction * 0.5}em`, filter: `blur(${motionTokens.blur.subtle}px)` }),
@@ -208,7 +203,7 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
   );
   const chipsNode = (
     <AnimatePresence initial={false}>
-      {visible.map((item) => <motion.span key={`chip-${item.value}`} className={styles.slot} variants={reduce ? slotFade : slot} initial="hidden" animate="shown" exit="gone"><motion.span className={styles.chip} variants={reduce ? chipStill : chip}>{tags ? (
+      {visible.map((item) => <motion.span key={`chip-${item.value}`} className={styles.slot} variants={slot} initial="hidden" animate="shown" exit="gone"><motion.span className={styles.chip} variants={chip}>{tags ? (
         <>
           {/* label 收进独立截断盒：× 常驻流内不被长值挤出裁掉；AppTooltip 悬停全值——
               chip 完整显示（容器内自适应），只有超过容器宽才截断兜底。
@@ -227,7 +222,7 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
           </button>
         </>
       ) : item.label}</motion.span></motion.span>)}
-      {remaining > 0 && <motion.span key="more" className={styles.slot} variants={reduce ? slotFade : slot} initial="hidden" animate="shown" exit="gone"><motion.span className={styles.more} variants={reduce ? chipStill : chip}>+<span className={styles.count}><AnimatePresence initial={false} custom={countDirection}><motion.span key={remaining} custom={countDirection} variants={reduce ? fade : roll} initial="hidden" animate="shown" exit="gone">{remaining}</motion.span></AnimatePresence></span></motion.span></motion.span>}
+      {remaining > 0 && <motion.span key="more" className={styles.slot} variants={slot} initial="hidden" animate="shown" exit="gone"><motion.span className={styles.more} variants={chip}>+<span className={styles.count}><AnimatePresence initial={false} custom={countDirection}><motion.span key={remaining} custom={countDirection} variants={reduce ? fade : roll} initial="hidden" animate="shown" exit="gone">{remaining}</motion.span></AnimatePresence></span></motion.span></motion.span>}
     </AnimatePresence>
   );
 
@@ -275,7 +270,8 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
         <span id={valueId} className={styles.srOnly}>{selected.length ? selected.map(labelFor).join(", ") : placeholderText}</span>
         <span className={styles.value} aria-hidden="true">
           {chipsNode}
-          {!selected.length && <motion.span key="placeholder" className={styles.placeholder} variants={fade} initial="hidden" animate="shown" exit="gone">{placeholderText}</motion.span>}
+          {/* 清空后占位直接出现，不做动画（2026-10-15 用户定稿） */}
+          {!selected.length && <span className={styles.placeholder}>{placeholderText}</span>}
         </span>
         <ChevronDown className={styles.chevron} size={16} aria-hidden="true" />
       </button>}
