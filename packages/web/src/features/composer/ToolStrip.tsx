@@ -305,6 +305,10 @@ export function ToolStrip({ items, style }: ToolStripProps) {
           setUnclipped(false)
         }, UNCLIP_HOLDOVER_MS)
       }
+      // 展开项切换（如模型 → 权限）时 unclipped 仍是 true、项数也没变，下面那条按
+      // [unclipped, itemKeys] 的重算不会跑；但「哪个项展开」变了，逐项修饰必须重算，
+      // 否则新展开项身上残留的逐项 mask 会把它的面板裁掉（表现就是「面板展不开」）
+      decorateItems(open || unclippedRef.current)
     }
     const observer = new MutationObserver(sync)
     observer.observe(root, { subtree: true, attributes: true, attributeFilter: ['data-open'] })

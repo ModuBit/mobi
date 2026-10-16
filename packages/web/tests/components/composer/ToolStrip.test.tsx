@@ -238,4 +238,32 @@ describe('展开期间撤视觉裁剪（交互契约）', () => {
         expect(spans[1].style.maskImage).toBe('')
         expect(root).not.toHaveAttribute('data-panel')
     })
+
+    it('切换展开项：新展开项先清掉上一轮的残留 mask（残留会裁掉它的面板）', async () => {
+        // 项 A 落在左渐隐带（left=0 < 32）：A 未展开时会被加 mask；A 一转成展开项，
+        // 这层 mask 必须被撤——否则它的面板会被逐项 mask 裁掉，表现就是「面板展不开」
+        const { spans } = strip([
+            { key: 'a', content: <button>A</button> },
+            { key: 'b', content: <button>B</button> },
+        ])
+        const triggerA = screen.getByText('A')
+        const triggerB = screen.getByText('B')
+
+        // 先展开 B：A 作为未展开项被加 mask
+        await act(async () => {
+            triggerB.setAttribute('data-open', '')
+            await Promise.resolve()
+        })
+        fireResize()
+        expect(spans[0].style.maskImage).toContain('linear-gradient')
+
+        // 切到 A（B 收起、A 展开）：unclipped 与 itemKeys 都不变，仍须重算逐项修饰
+        await act(async () => {
+            triggerB.removeAttribute('data-open')
+            triggerA.setAttribute('data-open', '')
+            await Promise.resolve()
+        })
+        expect(spans[0].style.maskImage).toBe('')
+        expect(spans[0].style.clipPath).toBe('')
+    })
 })
