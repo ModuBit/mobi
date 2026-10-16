@@ -31,7 +31,7 @@ vi.mock('motion/react', async (importOriginal) => {
 })
 
 vi.mock('react-i18next', async () => {
-    const { i18nKeyStub } = await import('../../helpers/motionReactStub')
+    const { i18nKeyStub } = await import('../../helpers/i18nStub')
     return i18nKeyStub()
 })
 
@@ -165,6 +165,39 @@ describe('uiarc MultiSelect mode="tags"（chip 内联输入自由值）', () => 
         fireEvent.change(input, { target: { value: '' } })
         fireEvent.keyDown(input, { key: 'Backspace' })
         expect(onChange).toHaveBeenCalledWith([])
+    })
+
+    it('输入命中候选 label 回车 → 选中该 option（value 入选），不创建 label 文本自由值', () => {
+        const onChange = vi.fn<(v: string[]) => void>()
+        const { rerender } = render(
+            <MultiSelect
+                mode="tags"
+                ariaLabel="路径"
+                options={[{ value: 'ws-a', label: '工作区甲' }, { value: 'ws-b', label: '工作区乙' }]}
+                value={[]}
+                onValueChange={onChange}
+            />,
+        )
+
+        const input = screen.getByRole('combobox', { name: '路径' })
+        // 键入的是 label 文本而非 value：命中候选必须映射回 option.value
+        fireEvent.change(input, { target: { value: '工作区甲' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(onChange).toHaveBeenCalledWith(['ws-a'])
+
+        // 未命中的输入才是自由值
+        rerender(
+            <MultiSelect
+                mode="tags"
+                ariaLabel="路径"
+                options={[{ value: 'ws-a', label: '工作区甲' }, { value: 'ws-b', label: '工作区乙' }]}
+                value={['ws-a']}
+                onValueChange={onChange}
+            />,
+        )
+        fireEvent.change(input, { target: { value: '/custom/path' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(onChange).toHaveBeenLastCalledWith(['ws-a', '/custom/path'])
     })
 
     it('chip 上的 × 单删该项（默认模式 chip 无 ×）', () => {

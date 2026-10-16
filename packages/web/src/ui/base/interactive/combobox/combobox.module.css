@@ -17,11 +17,13 @@
 .control.open { border-color: var(--border-strong); background: var(--surface-muted); }
 .control.disabled { opacity: .5; cursor: not-allowed; }
 /* borderless 变体（本地修改 ⑦）：嵌入工具条/环境条——透明边框占位保住盒尺寸不跳，
-   紧凑高度与小字号随环境条基调 */
+   紧凑高度与小字号随环境条基调；平时无边框，但键盘聚焦必须现出边框（a11y：
+   outline:0 + ring:none 的组合下 border 是唯一焦点指示，不能一并抹掉） */
 .control.borderless { min-height: 28px; border-color: transparent; padding: 0 8px 0 6px; background: transparent; }
 .control.borderless input { font-size: 13px; }
 @media (hover: hover) and (pointer: fine) { .control.borderless:hover:not(.disabled) { border-color: transparent; } }
-.control.borderless:focus-within, .control.borderless.open { border-color: transparent; box-shadow: none; }
+.control.borderless:focus-within { border-color: var(--border-strong); box-shadow: none; }
+.control.borderless.open { border-color: transparent; box-shadow: none; }
 .searchIcon { flex: 0 0 auto; color: var(--text-muted); }
 .control input { width: 100%; min-width: 0; border: 0; outline: 0; padding: 0; background: transparent; color: var(--foreground); font: inherit; font-size: var(--text-sm); }
 .control input:focus-visible { outline: none; }

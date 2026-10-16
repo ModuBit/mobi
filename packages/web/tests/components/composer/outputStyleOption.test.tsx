@@ -38,7 +38,7 @@ vi.mock('motion/react', async (importOriginal) => {
 })
 
 vi.mock('react-i18next', async () => {
-    const { i18nKeyStub } = await import('../../helpers/motionReactStub')
+    const { i18nKeyStub } = await import('../../helpers/i18nStub')
     return i18nKeyStub()
 })
 

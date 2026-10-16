@@ -155,7 +155,13 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
     const next = query.trim();
     setQuery("");
     setActiveIndex(-1);
-    if (next && !selectedSet.has(next)) update([...selected, next]);
+    if (!next || selectedSet.has(next)) return;
+    // 输入命中候选 label → 选中该 option（value 入选），而非把 label 文本当自由值
+    // （antd tags 语义；value≠label 的消费方下自由值必须是真自由值）
+    const needle = next.toLocaleLowerCase();
+    const hit = options.find((option) => option.label.toLocaleLowerCase() === needle);
+    if (hit) { if (!selectedSet.has(hit.value)) toggle(hit); return; }
+    update([...selected, next]);
   };
   /** 点选一项：tags 模式点选后清输入词与高亮（「选中后重置输入」语义收口在此） */
   const pick = (option: MultiSelectOption) => {
@@ -199,9 +205,10 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
   };
   const reduce = useReducedMotion();
 
-  // chips 溢出折叠 + 渐显动效（default/tags 两种触发器共用）；tags 模式 chip 带单删 ×
+  // chips 溢出折叠 + 渐显动效（default/tags 两种触发器共用）；tags 不用它（清空走角标），
+  // 渲染处 !tags 是唯一门禁
   const removeItem = (item: string) => update(selected.filter((v) => v !== item));
-  const clearBtn = !tags && selected.length > 0 && !disabled && (
+  const clearBtn = selected.length > 0 && !disabled && (
     <ClearButton reduce={reduce} ariaLabel={t("common.clearSelection")} className={styles.clear} onClick={clear} />
   );
   // chips 子树：slot 层挂渐显/即时宽度 variants，chip 本体是普通 span（双层 motion 已无必要——
@@ -221,6 +228,9 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
             className={styles.chipX}
             aria-label={t("common.removeItem", { name: item.label })}
             disabled={disabled}
+            /* mousedown 不夺焦：删 chip 后按钮即卸载，焦点掉 body 会打断连续输入
+               （角标 cornerClear 是刻意不聚焦，chip × 不是） */
+            onMouseDown={(event) => event.preventDefault()}
             onClick={(event) => { event.stopPropagation(); removeItem(item.value); }}
           >
             <X size={11} strokeWidth={2} aria-hidden="true" />

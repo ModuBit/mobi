@@ -34,8 +34,3 @@ export async function motionReactStub(importOriginal: () => Promise<typeof impor
     }
     return { ...actual, animate: animateStub, useReducedMotion: () => false }
 }
-
-/** react-i18next 的 key 直通桩（断言 key 而非语言文案，翻译内容由真实资源文件承载） */
-export function i18nKeyStub() {
-    return { useTranslation: () => ({ t: (key: string) => key }) }
-}

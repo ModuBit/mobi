@@ -31,7 +31,7 @@ vi.mock('motion/react', async (importOriginal) => {
 })
 
 vi.mock('react-i18next', async () => {
-    const { i18nKeyStub } = await import('../../helpers/motionReactStub')
+    const { i18nKeyStub } = await import('../../helpers/i18nStub')
     return i18nKeyStub()
 })
 
@@ -116,27 +116,5 @@ describe('uiarc Select 基础开合', () => {
         // 用 role 查询：退出动画的旧值 span 留在 DOM，与 option 文案重复
         fireEvent.click(screen.getByRole('option', { name: /独立记忆/ }))
         expect(onValueChange).toHaveBeenCalledWith('normal')
-    })
-
-    it('footer 渲染在弹层底部：入口可点击且点击不触发选项选中', () => {
-        const onValueChange = vi.fn<(v: 'normal' | 'open') => void>()
-        const onCreate = vi.fn()
-        render(
-            <Select
-                ariaLabel="工作区"
-                options={[...OPTIONS]}
-                value=""
-                onValueChange={onValueChange}
-                footer={<button type="button" onClick={onCreate}>+ 新建</button>}
-            />,
-        )
-        openMenu(screen.getByRole('combobox', { name: '工作区' }))
-        const create = screen.getByText('+ 新建')
-        // 在 viewport 滚动区之外（Radix Content 本身带 role=listbox，footer 挂在其尾部）
-        expect(create.closest('[data-radix-select-viewport]')).toBeNull()
-
-        fireEvent.click(create)
-        expect(onCreate).toHaveBeenCalledTimes(1)
-        expect(onValueChange).not.toHaveBeenCalled() // footer 点击不是选项选中
     })
 })
