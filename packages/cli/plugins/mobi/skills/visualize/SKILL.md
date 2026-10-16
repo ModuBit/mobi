@@ -9,8 +9,9 @@ description: Proactively use this skill whenever the user asks for a chart, grap
      样式（设计 token）、组件模式、性能上限等，都往 §2/§4 加章节，不改常驻 system
      prompt（wire 契约在 BASE，知识在此，分层见 generative-ui 票 09）。
      §6/§7 为 codex visualize 插件创作规范吸收（重写路线，license 合规不逐字拷贝），
-     spec/tickets 在 .scratch/visualize-runtime/；票 04 交付运行时后此处再补
-     「viz 档运行时」章节（fragment 契约 / 设计 token / 工具类 / 内置组件）。 -->
+     spec/tickets 在 .scratch/visualize-runtime/；§8 viz 档运行时章节由票 04 收口
+     （fragment 契约 / 设计 token / 工具类 / 内置组件），与 daemon vizRuntime
+     实现逐项对应——改 token/类名/组件须同步此章（验收有 grep 对照）。 -->
 
 Build visuals that live in the conversation. The user sees them inline in the chat stream — no inspector, no file hunting. Read this file in full before authoring; reread truncated ranges in smaller calls.
 
@@ -42,7 +43,8 @@ The declared HTML renders in a sandboxed iframe served by Mobi with a strict CSP
 - **Images and media**: embed as `data:` URIs, or reference files you also wrote into the same artifacts directory (same-origin relative paths work). Remote image URLs are blocked.
 - **No network calls**: `fetch`, `XMLHttpRequest`, `WebSocket`, and form submissions to servers are cut off by CSP (`connect-src 'none'`) and will fail silently. All data goes inline in the file.
 - **Size target: under 2 MB.** Aggregate, bin, downsample, or round precision for large datasets. Over the limit the visual degrades to a file card.
-- **Both themes.** Two cases, do not mix them up:
+- **Both themes.** Three cases, do not mix them up:
+  - `mode="viz"` / `mode="viz-wide"` (section 8): the host injects a full `--viz-*` palette that follows the user's theme — style with these tokens, never write your own `prefers-color-scheme` or `light-dark()`.
   - `mode="app"` (section 4): the host injects a `--mobi-*` CSS variable palette that follows the user's light/dark theme — style with these variables (`background: var(--mobi-bg)`, `color: var(--mobi-fg)`, `border: var(--mobi-border)`, accent `var(--mobi-primary)`, `border-radius: var(--mobi-radius)`, fonts `var(--mobi-font-body)` / `var(--mobi-font-mono)`, plus `--mobi-fg-secondary` / `--mobi-fg-muted` / `--mobi-success` / `--mobi-warning` / `--mobi-danger` / `--mobi-bg-elevated`) instead of hard-coded colors. Text placed ON a colored block (primary/success/warning/danger button or chip background) must use `color: var(--mobi-on-primary)` — never hardcode white/black, the primary is light in dark theme. Do NOT write your own `prefers-color-scheme` media queries or `light-dark()` here — the injected variables already track the theme, and your CSS always wins over the injected base style.
   - Any other HTML artifact (no mode, `wide`, or `card`): the iframe does not inherit Mobi's theme and nothing is injected. Use `prefers-color-scheme` with `light-dark()` (or a media-query pair) for every color; never hardcode a light-only or dark-only palette.
   - Either way, verify both directions read clearly.
@@ -59,9 +61,12 @@ The declared HTML renders in a sandboxed iframe served by Mobi with a strict CSP
 ## 4. Choosing the mode
 
 - *(default)* — let Mobi decide by file type. Almost always right.
+- `mode="viz"` — themable, runtime-assisted visuals: charts, dashboards, calendars, compact explorers. The host assembles your **fragment** into a sandboxed document with the `--viz-*` design tokens, shared utility classes and behavior components (tabs / tooltip / carousel / icons / calendar) already in place — you write only the content markup and any data logic. The frame auto-fits its height to the content. Prefer this over a bare HTML artifact whenever a themed, in-conversation visual is the goal; see section 8 for the fragment contract. `mode="viz-wide"` is the same runtime in the wider frame.
 - `mode="app"` — interactive mini-apps the user operates inside the chat: planning boards, configurators, selectors, calculators. This is the only mode that opens the **host bridge**: the page gets the `--mobi-*` theme palette (section 2) plus `window.MobiApp.issueNewTurn(text)`. Call it ONLY from explicit user actions (e.g. a "continue with these choices" button onclick) to send the app's current state back to the conversation — the message arrives as if the user typed it. Keep the text a concise plain-language summary (under 200 chars recommended); never call it automatically, never expose raw JSON dumps. It also renders in a taller frame — good for full-page layouts.
 - `mode="wide"` — only for full-screen app mockups with their application shell, or when several compact panels must sit side by side to be comparable. Never widen a single chart, map, or timeline just because it is dense.
 - `mode="card"` — complex HTML applications, multi-file projects, or anything that needs more room than an inline frame gives. The card opens the inspector pane.
+
+**viz vs app**: viz is for visuals the user reads and lightly explores (theme + behaviors come from the host, state is optional via `setWidgetState`); app is for tools the user operates (own full-page layout, `issueNewTurn` bridge). A themed fragment with a couple of toggles is viz; a planning board with its own chrome is app.
 
 ## 5. Declaration discipline
 
@@ -110,7 +115,8 @@ Choose the smallest composition that answers the request. Add only the controls 
 - Use product and platform context already in the conversation; do not search the project for its design. Match the product's chrome, navigation, typography, colors, and content; when the design is unavailable, infer one from the platform and the request.
 - Give product windows, cards, menus, and popovers opaque backgrounds; stack overlays above product content; only the surrounding conversation surface stays transparent.
 - Put app-wide navigation in the app chrome and local controls in their component. Omit single-option pickers. Show realistic states, not invented dashboards, filler cards, or oversized icons.
-- Follow the host theme (`--mobi-*` in `mode="app"`, otherwise `prefers-color-scheme`) unless the user asks for a fixed theme.
+- Follow the host theme (`--mobi-*` in `mode="app"`, `--viz-*` in `mode="viz"`, otherwise `prefers-color-scheme`) unless the user asks for a fixed theme.
+- To compare design variants side by side as a switchable set, use the shared variant carousel (section 8) — do not build your own switcher.
 
 ## 7. Layout and accessibility
 
@@ -120,3 +126,80 @@ Choose the smallest composition that answers the request. Add only the controls 
 - Coarse pointers (touch): effective targets about 44×44px without breaking narrow layouts — visible icons may stay small. Keep every essential action available without hover.
 - Fill the available conversation width and reflow by stacking or wrapping at narrow widths; no overlap, no clipping, no fixed outer widths, no internal scrolling when the content could reflow instead. Charts shrink ticks and annotations at narrow widths rather than shrinking text.
 - Do not override native focus styles; icons that carry meaning get accessible labels (`aria-label`), decorative ones `aria-hidden="true"`.
+
+## 8. The viz runtime (`mode="viz"` / `mode="viz-wide"`)
+
+The viz mode takes an HTML **fragment**, not a document. The host wraps it into a sandboxed document that already carries the design tokens, utility classes, behavior components and the widget-state bridge — your fragment consumes them and adds only content and data logic.
+
+### Fragment contract
+
+- **Fragment only**: no `<!doctype>`, `<html>`, `<head>` or `<body>` tags. A complete document is rejected with an inline error page.
+- **Single root with an id**; scripts locate elements with `document.getElementById("root")` (or per-element ids) — never `document.currentScript`.
+- Under 1 MB; same self-containment and CSP rules as section 2 (inline everything, CDN `https://` only, no `fetch`/XHR, `data:` URIs for images).
+- Declare with `mode="viz"` (or `mode="viz-wide"` for side-by-side panels); the frame auto-fits its height to your content — no fixed heights needed.
+
+### Design tokens (`--viz-*`)
+
+Already defined and theme-following (light/dark). Never redefine them; consume them. Text on a `--viz-primary` background uses `--viz-on-primary`.
+
+| Group | Tokens |
+| --- | --- |
+| Surface | `--viz-bg`, `--viz-bg-elevated`, `--viz-fg`, `--viz-fg-secondary`, `--viz-fg-muted`, `--viz-border`, `--viz-border-muted` |
+| Brand | `--viz-primary`, `--viz-on-primary`, `--viz-success`, `--viz-warning`, `--viz-danger`, `--viz-radius` |
+| Type | `--viz-font-body`, `--viz-font-mono` |
+| Categorical | `--viz-blue`, `--viz-green`, `--viz-red`, `--viz-orange`, `--viz-purple`, `--viz-yellow`; series palettes `--viz-series-1` … `--viz-series-6` |
+
+### Utility classes
+
+All themed via the tokens above; touch targets grow to 44px on coarse pointers automatically.
+
+- Surfaces: `.card` (a flat tinted panel — top-level containers only, never nested), `.viz-grid` (auto-fit card grid, 2–3 columns in practice), `.viz-row` (wrapping flex row), `.viz-stat` + `.viz-stat-value` (label + big number), `.viz-badge`, `.viz-controls` (control row), `.viz-tile` (selectable grid tile, selection shows an inset ring), `.viz-dotted-background`.
+- Buttons: `.btn` (secondary, default), `.btn-primary` (one per group), `.btn-ghost`, `.btn-block`; selected/pressed state via `[aria-pressed="true"]` / `.is-selected` on `.btn`.
+- Forms: `.form-label`, `.form-control`, `.form-select`, `.form-check` + `.form-check-input` + `.form-check-label`, `.form-switch` (toggle), `.form-range`, `[aria-invalid="true"]`.
+- Tables: `.table-responsive` + `.table` (`.table-sm` compact; `.text-end` numeric alignment).
+- Text: `.text-muted`, `.text-small`, `.text-destructive`, `.tabular-nums`, `.sr-only`.
+- Progress: `.progress` > `.progress-bar`.
+
+### Behavior components
+
+Write the markup; the runtime wires the behavior (event delegation — dynamically added elements work with zero re-wiring).
+
+- **Tooltip**: add `data-tooltip="text"` to any element (optional `data-tooltip-placement="top|bottom|left|right"`). Opens on hover (with delay), focus-visible, and tap-pin on touch.
+- **Tabs**:
+
+  ```html
+  <nav class="nav nav-pills" role="tablist">
+    <button class="nav-link active" role="tab" aria-selected="true" aria-controls="panel-a" id="tab-a">A</button>
+    <button class="nav-link" role="tab" aria-selected="false" aria-controls="panel-b" id="tab-b">B</button>
+  </nav>
+  <div id="panel-a" role="tabpanel" aria-labelledby="tab-a">…</div>
+  <div id="panel-b" role="tabpanel" aria-labelledby="tab-b" hidden>…</div>
+  ```
+
+  Click and full keyboard navigation (arrows, Home/End) are provided. Always write `aria-controls`/`aria-labelledby` — the ids are how panels pair with tabs.
+- **Variant carousel**: wrap alternative views as siblings with `data-variant="name"` inside `.viz-carousel`; the first is shown, the rest get `hidden`, and the runtime injects prev/next + a variant picker:
+
+  ```html
+  <div class="viz-carousel">
+    <section data-variant="Weekly">…</section>
+    <section data-variant="Monthly" hidden>…</section>
+  </div>
+  ```
+
+  Switching only toggles `hidden` — each variant keeps its internal state and DOM. Use for mockup variants or alternate chart cuts; two variants minimum.
+- **Icons**: `<i data-lucide="icon-name"></i>` placeholders are replaced with 16px current-color lucide icons automatically.
+
+### Widget state (`MobiApp.setWidgetState`)
+
+Persist interactive state across reloads and return visits:
+
+- `const prev = MobiApp.getWidgetState()` — synchronous, a previously saved JSON object or `null`. Read it at startup and render from it (no default-state flash).
+- `MobiApp.setWidgetState(obj)` — Promise; replaces the whole snapshot, max **16 KiB** serialized. Non-objects and oversize payloads reject and keep the old value.
+- `MobiApp.statePersistence` is `'local'` (persisted) or `'none'` (degraded — writes still resolve but only live for the frame; render must tolerate either).
+- External updates dispatch a `mobi:set-globals` CustomEvent on `window` (`detail.globals.widgetState`).
+
+Call `setWidgetState` on meaningful state changes (selections, filters, entered data) — not on every hover or animation frame.
+
+### Calendar
+
+`<viz-calendar>` renders a themed day schedule with overlap lanes, durations, a now-marker and an empty state; the host registers it automatically when your fragment mentions `viz-calendar`. Events come from the `events` attribute (JSON) or the `calendar.events` property; add `interactive` to make events emit `eventselect`. Full attribute table, JS data interface and day-switching pattern: [widgets/calendar.md](widgets/calendar.md).

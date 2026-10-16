@@ -74,11 +74,16 @@ describe('assembleVizDocument', () => {
         expect(doc.indexOf(fragment)).toBeLessThan(doc.lastIndexOf('viz-carousel-controls'))
     })
 
-    test('日历挂钩：fragment 提及 viz-calendar 时留注入位（票 04 前为空）', () => {
-        const withCalendar = assembleVizDocument('<viz-calendar></viz-calendar>')
-        expect(withCalendar).toContain('viz-calendar')
-        // 不提及时产物不含组件脚本占位
+    test('日历挂钩：fragment 提及 viz-calendar 时注入组件脚本且在 fragment 之前', () => {
+        const withCalendar = assembleVizDocument('<viz-calendar date="2026-10-16"></viz-calendar>')
+        expect(withCalendar).toContain('customElements.define')
+        // 注册在 fragment 解析前（connectedCallback 同步建 shadow，无 upgrade 闪烁）
+        expect(withCalendar.indexOf("customElements.define('viz-calendar'")).toBeLessThan(
+            withCalendar.indexOf('<viz-calendar date'),
+        )
+        // 不提及时产物不含组件脚本（按需注入）
         const plain = assembleVizDocument('<div></div>')
+        expect(plain).not.toContain('customElements.define')
         expect(plain).not.toContain('<viz-calendar')
     })
 

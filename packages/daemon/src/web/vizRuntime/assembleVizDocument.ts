@@ -28,6 +28,7 @@
  */
 
 import { VIZ_TOKENS_CSS, VIZ_KIT_CSS } from './vizStyles'
+import { VIZ_CALENDAR_SCRIPT } from './vizCalendar'
 import {
     VIZ_RUNTIME_JS,
     VIZ_FLOATING_UI_SCRIPTS,
@@ -41,9 +42,8 @@ export const VIZ_FRAGMENT_MAX_BYTES = 1_000_000
 /** 完整文档标记：doctype 或 html/head/body 开标签（大小写不敏感） */
 const DOCUMENT_MARKUP = /<!doctype\s|<\s*(?:html|head|body)(?:\s|>)/i
 
-/** 日历组件按需注入挂钩（票 04 交付组件本体；本票只留检测位） */
+/** 日历组件按需注入挂钩（票 04）：fragment 提及 viz-calendar 才注入（无谓的 ~10KB 不进产物） */
 const VIZ_CALENDAR_PATTERN = /viz-calendar/i
-const VIZ_CALENDAR_SCRIPT = ''
 
 /** fragment 校验结果：ok=false 时 error 面向用户（错误页直显） */
 export type FragmentValidation = { ok: true } | { ok: false; error: string }
@@ -63,7 +63,7 @@ export function validateVizFragment(content: string, byteLength: number): Fragme
 
 /** 把校验通过的 fragment 包成完整沙箱文档（样式/运行时全部内联，无同源二次请求） */
 export function assembleVizDocument(fragment: string, title = 'Visualization'): string {
-    const calendarScript = VIZ_CALENDAR_PATTERN.test(fragment) ? VIZ_CALENDAR_SCRIPT : ''
+    const calendarScript = VIZ_CALENDAR_PATTERN.test(fragment) ? `\n<script>${VIZ_CALENDAR_SCRIPT}</script>` : ''
     return `<!doctype html>
 <html lang="en">
 <head>
@@ -76,9 +76,8 @@ ${VIZ_KIT_CSS}</style>
 ${VIZ_FLOATING_UI_SCRIPTS}
 </head>
 <body>
-<script>${VIZ_STATE_BRIDGE_JS}</script>
+<script>${VIZ_STATE_BRIDGE_JS}</script>${calendarScript}
 ${fragment}
-${calendarScript}
 ${VIZ_LUCIDE_SCRIPT}
 <script>${VIZ_RUNTIME_JS}</script>
 </body>

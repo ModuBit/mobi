@@ -28,6 +28,14 @@ metadata:
    应 reject 且旧值保留；`statePersistence === 'local'`
 9. **高度自适应（票 03）**：`frame.style.height` 收缩到 `contentDocument.body.scrollHeight`
    （初始 640 → 内容 219 → 219px）+ `style.transition` 含 height；撑开用点开面板/加内容验
+10. **viz-calendar（票 04）**：探针点名 `<viz-calendar date start end now interactive events='[...]'>`
+    + eventselect output + setWidgetState；断言走 `cal.shadowRoot` 直查——`.event` 的
+    `--lane/--lanes`（重叠对 0/2 + 1/2）、`.past` 计数（to <= now）、`.now` 线、
+    `button[data-event-index]`、`.empty` 文案（zh → 无日程）。非法数据四类（坏日期
+    2026-02-30 / 倒序 / 201 条 / `9:00`）直接 `cal.setAttribute('date', ...)` /
+    `cal.events = ...` 改属性断言 `[role="alert"]` 中文错误，再赋合法数据验恢复。
+    tone 双档验证用 reload 法（同 #6）读 `--viz-green`/`--viz-primary`。
+    回灌：`win.MobiApp.issueNewTurn('...')` → 宿主流出现该文本
 
 ## 坑
 
