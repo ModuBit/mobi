@@ -266,4 +266,35 @@ describe('展开期间撤视觉裁剪（交互契约）', () => {
         expect(spans[0].style.maskImage).toBe('')
         expect(spans[0].style.clipPath).toBe('')
     })
+
+    it('退场中的项在退场窗口内不加逐项修饰（mask 会裁掉正在收缩的面板，收起动画消失）', async () => {
+        // 最左侧项（left=0 < FADE_WIDTH）未展开时 mask 恒非空，所以「收起没动画」只在这类项上显形
+        const { spans } = strip([
+            { key: 'a', content: <button>A</button> },
+            { key: 'b', content: <button>B</button> },
+        ])
+        const triggerA = screen.getByText('A')
+        await act(async () => {
+            triggerA.setAttribute('data-open', '')
+            await Promise.resolve()
+        })
+        expect(spans[0].style.maskImage).toBe('')
+
+        // 收起：data-open 撤了，但 shape 还在收缩——mask 不能立刻挂上，否则动画被裁没
+        await act(async () => {
+            triggerA.removeAttribute('data-open')
+            await Promise.resolve()
+        })
+        expect(spans[0].style.maskImage).toBe('')
+        expect(spans[0].style.clipPath).toBe('')
+
+        // 退场窗口过后豁免释放：再展开 B，A 回到未展开项身份，该被加 mask
+        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 460)) })
+        await act(async () => {
+            screen.getByText('B').setAttribute('data-open', '')
+            await Promise.resolve()
+        })
+        fireResize()
+        expect(spans[0].style.maskImage).toContain('linear-gradient')
+    })
 })

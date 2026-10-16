@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import styled from '@emotion/styled'
+import { CLOSE_SETTLE_MS } from '@/ui/base/interactive/morph-select/morphTiming'
 
 export interface ToolStripItem {
   key: string
@@ -40,11 +41,10 @@ const SNAP_MS = 260
 const SNAP_EASE = 'cubic-bezier(.2, 0, 0, 1)'
 /** 收起后维持「不裁剪」的时长：morph 退场动画播完再收回裁剪，否则面板被切在半途
  *  （不能交给 CSS transition——clip-path 的 none ↔ inset() 是离散属性，delay 不生效）。
- *  预算对齐 morph 收起全程（物理 spring 的 visual duration 即近似 settle 时长）：
- *  shapeW/shapeX 归位 NARROW .3s、shapeH 收缩 SHRINK .24s、listFace 退场 fade .08s，
- *  取上限加裕量定 400ms——定时器若先于动画到期，条级裁剪与 z 提层在动画中途恢复，
- *  仍宽于 pill 的 shape 会被突然截断、并跌到相邻 pill 下层（描边交叉，真机实锤） */
-const UNCLIP_HOLDOVER_MS = 400
+ *  数值取自 morph 的 spring 参数（CLOSE_SETTLE_MS 由它推导），不再在本文件里另抄一份：
+ *  定时器若先于动画到期，条级裁剪与 z 提层在动画中途恢复，仍宽于 pill 的 shape 会被
+ *  突然截断、并跌到相邻 pill 下层（描边交叉，真机实锤） */
+const UNCLIP_HOLDOVER_MS = CLOSE_SETTLE_MS
 
 /**
  * 横向平移条（composer 参数区专用，替代 ResponsiveActionBar 的溢出收纳）：
@@ -190,11 +190,19 @@ export function ToolStrip({ items, style }: ToolStripProps) {
   // unclipped 的 ref 镜像，仅供拖拽/滚轮热路径读取——applyOffset 身份因此稳定，
   // ResizeObserver 与 wheel 监听不随面板开合拆除重建；state 仍是渲染事实源
   const unclippedRef = useRef(false)
+  /**
+   * 正在退场的项（`[data-strip-item]`）。`data-open` 一撤，项立刻就不再是「展开项」，
+   * 但它的 shape 还要播完 CLOSE_SETTLE_MS 的收缩动画；这期间给它挂逐项 mask 会把
+   * 收缩中的面板裁掉——表现是「收起时没有动画」。最左侧的项必中：它落在左渐隐带里，
+   * mask 恒非空；位置靠右又在可视窗口内的项 mask/clip 都是空串，所以看不出差别。
+   * 攒够一轮（unclipped 回落的那个定时器）才整体清空。
+   */
+  const exitingRef = useRef(new Set<Element>())
 
   /**
    * 展开期间逐项「窗口修饰」：裁到条的可视窗口（防止滚出条外的项漏出来）+
    * 按条的渐隐曲线做逐项 mask（条级 mask 已撤，渐隐不能跟着丢）。
-   * 被展开的那项整体跳过——它的面板正是要越出条边界的。
+   * 展开项与**退场中的项**整体跳过——前者的面板正要越出条边界，后者的面板正在收回来。
    * 判据用布局盒（offsetLeft/offsetWidth），不用 getBoundingClientRect：
    * 面板是绝对定位的子孙，会让 rect 远大于项本身。
    */
@@ -205,9 +213,10 @@ export function ToolStrip({ items, style }: ToolStripProps) {
     const view = root.clientWidth
     for (const el of Array.from(row.children) as HTMLElement[]) {
       const isExpanded = el.querySelector(OPEN_PANEL_SELECTOR) !== null
-      if (!active || isExpanded) {
+      if (!active || isExpanded || exitingRef.current.has(el)) {
         el.style.clipPath = ''
         el.style.maskImage = ''
+        el.style.webkitMaskImage = ''
         continue
       }
       const left = el.offsetLeft + offsetRef.current
@@ -295,13 +304,18 @@ export function ToolStrip({ items, style }: ToolStripProps) {
     if (!root) return
     let timer: number | null = null
     const sync = () => {
-      const open = root.querySelector(OPEN_PANEL_SELECTOR) !== null
+      const expanded = root.querySelector(OPEN_PANEL_SELECTOR)
+      const open = expanded !== null
       if (open) {
         if (timer !== null) { window.clearTimeout(timer); timer = null }
+        // 记下这一轮的展开项：它下次收起时要豁免逐项修饰直到动画播完（见 exitingRef 注释）
+        const item = expanded?.closest('[data-strip-item]')
+        if (item) exitingRef.current.add(item)
         setUnclipped(true)
       } else if (timer === null) {
         timer = window.setTimeout(() => {
           timer = null
+          exitingRef.current.clear()
           setUnclipped(false)
         }, UNCLIP_HOLDOVER_MS)
       }
