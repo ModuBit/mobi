@@ -151,15 +151,25 @@ export const VIZ_RUNTIME_JS = `
   // 模型不写 tabs JS。
   (() => {
     const TAB = '.nav[role="tablist"] [role="tab"]';
-    const select = (selected) => {
-      const panelId = selected.getAttribute('aria-controls');
-      for (const tab of selected.closest('[role="tablist"]').querySelectorAll('[role="tab"]')) {
-        const active = tab === selected;
-        tab.classList.toggle('active', active);
-        tab.setAttribute('aria-selected', String(active));
-        const panel = tab.getAttribute('aria-controls') ? document.getElementById(tab.getAttribute('aria-controls')) : null;
-        if (panel) panel.hidden = tab.getAttribute('aria-controls') !== panelId;
+    const panelsFor = (list) => {
+      const tabsInList = Array.from(list.querySelectorAll('[role="tab"]'));
+      if (tabsInList.some((t) => t.getAttribute('aria-controls'))) {
+        return tabsInList.map((t) => document.getElementById(t.getAttribute('aria-controls') || '') || null);
       }
+      const global = Array.from(document.querySelectorAll('[role="tabpanel"]'));
+      return tabsInList.map((_, i) => global[i] ?? null);
+    };
+    const select = (selected) => {
+      const list = selected.closest('[role="tablist"]');
+      const tabs = Array.from(list.querySelectorAll('[role="tab"]'));
+      const panels = panelsFor(list);
+      const active = tabs.indexOf(selected);
+      tabs.forEach((tab, i) => {
+        const isActive = i === active;
+        tab.classList.toggle('active', isActive);
+        tab.setAttribute('aria-selected', String(isActive));
+        if (panels[i]) panels[i].hidden = !isActive;
+      });
     };
     for (const list of document.querySelectorAll('.nav[role="tablist"]')) {
       const initial = list.querySelector('[role="tab"][aria-selected="true"]') || list.querySelector('[role="tab"].active') || list.querySelector('[role="tab"]');

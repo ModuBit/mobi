@@ -25,7 +25,12 @@
 
 import type { Context } from 'hono'
 import { PREVIEW_CSP, fileMetaHttpStatus, type FileContentReader } from './serveFileContent'
-import { assembleVizDocument, validateVizFragment, vizFragmentErrorDocument } from '../vizRuntime/assembleVizDocument'
+import {
+    VIZ_FRAGMENT_MAX_BYTES,
+    assembleVizDocument,
+    validateVizFragment,
+    vizFragmentErrorDocument,
+} from '../vizRuntime/assembleVizDocument'
 import { basename } from 'node:path'
 
 /** 组装文档的响应头（text/html 恒注 CSP + nosniff + no-cache） */
@@ -48,10 +53,12 @@ export async function serveVizDocument(c: Context, reader: FileContentReader, ab
     }
     const { size } = meta.meta
 
-    // 校验先行（超限在读全文之前拒绝，1MB 以外不进内存）
-    const validation = validateVizFragment('', size)
-    if (!validation.ok) {
-        return vizResponse(vizFragmentErrorDocument(validation.error), 422)
+    // 超限在读全文之前拒绝（1MB 以外不进内存）；其余校验（空/完整文档标记）
+    // 必须等真内容到手才能判——预校验传空串会把一切请求误判成空 fragment
+    if (size > VIZ_FRAGMENT_MAX_BYTES) {
+        return vizResponse(vizFragmentErrorDocument(
+            `Fragment exceeds the 1 MB limit (${size} bytes). Aggregate or downsample the data.`,
+        ), 422)
     }
 
     const range = await reader.readFileRange(absPath, 0, size)
