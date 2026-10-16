@@ -15,7 +15,8 @@
  */
 
 import { useEffect } from 'react'
-import { App, Button } from 'antd'
+import { App } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
 import { useNotificationSetup } from '@/core/data/hooks/useNotificationSetup'
 import { claimPermissionPrompt } from '@/core/notifications/permissionPrompt'
@@ -53,8 +54,8 @@ export function NotificationPermissionGate() {
                     actions: [
                         <Button
                             key="allow"
-                            type="primary"
-                            size="small"
+                            variant="primary"
+                            size="sm"
                             onClick={() => {
                                 // enable 内部：default → requestPermission → granted → pushManager.subscribe → 上报
                                 // 即「授权即订阅」，避免授权后忘了订阅导致 Web Push 链路空转

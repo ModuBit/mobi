@@ -1,5 +1,5 @@
 ---
-last_verified: 2026-09-06
+last_verified: 2026-10-16
 ---
 
 # Agent sidechain drawer 验证
@@ -34,3 +34,12 @@ sqlite3 ~/.mobi-e2e/mobi.db "SELECT json_extract(runtime_state,'$.backgroundTask
 ## composer 发消息补充
 
 自定义 textarea 用 React setter + `input` 事件（见 input-box.md）；`fill` 工具会写 value 但不触发 React 状态，发送键仍 disabled。
+
+## 后台任务卡停止钮验证（ConfirmMorph，2026-10-16 起）
+
+- **桌面分支**：uiarc ConfirmMorph 在卡片行内——选择器 `[data-face][data-mode]`（face=idle/confirming/pending/done/error）；触发钮一击进 confirming（真实 i18n 环境下确认问题文案「确定停止该后台任务？」），3s confirmTimeout 自动复位
+- **ConfirmMorph 必须用 CDP click（uid 点击）**：evaluate 里 `el.click()` / 合成 PointerEvent 序列都不翻 face（真实输入事件才触发）；点击后立刻截 confirming，3s 后自动回 idle
+- **移动端分支**：ConfirmMorph 不渲染；sheet 入口是 `[data-testid^="bg-task-card"]` 内 `style.width === '22px'` 的 div，点击开 antd Drawer（「停止」按钮）
+- **移动端会话操作菜单**（批 D 验收用）：菜单抽屉里会话行 `⋮` 按钮 `aria-label="更多"`（不是「更多操作」——那是别处的），点开 BottomSheet（重命名/置顶/换工作区/移至最近/休眠/删除）
+- **触发素材**：发消息点名 Bash + `run_in_background=true` 执行 `sleep 900`（sleep 短于 turn 时长会错过卡片）；确认「真停止」会销毁卡片，验证形态时不要点确认
+- **jsdom 与真机 i18n 差异**：组件测试走 i18nKeyStub（断言 key），BackgroundTaskCard.test 走真实 i18n——选择器别写 key 文本，用 `button[aria-label]` 宽选择器

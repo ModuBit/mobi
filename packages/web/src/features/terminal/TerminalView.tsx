@@ -15,7 +15,8 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Button, Typography } from 'antd'
+import { Typography } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
 import { ReloadOutlined } from '@ant-design/icons'
 import '@xterm/xterm/css/xterm.css'
@@ -170,12 +171,11 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
                             {t(`terminal.status.${status}`)}
                         </Text>
                         <Button
-                            type="primary"
-                            icon={<ReloadOutlined />}
+                            variant="primary"
                             loading={reconnecting}
                             onClick={handleReconnect}
                         >
-                            {t('terminal.reconnect')}
+                            <ReloadOutlined /> {t('terminal.reconnect')}
                         </Button>
                     </div>
                 )}

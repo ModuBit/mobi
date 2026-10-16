@@ -1,0 +1,97 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* uiarc floating-button-group 源码样式（registry 快照）；本地修改（button-migration 票 01）：
+ * ①tooltip 换栈 AppTooltip（antd）：.sideTip 块（含 @starting-style / 退出 keyframes /
+ *   reduced-motion 分支 / --shadow-raised / --radix-tooltip-* 消费）整块删除——定位与开合
+ *   动画由 antd 接管；.tip/.kbd 保留作 AppTooltip title 的内容槽
+ * ②arc foundation 公共子集（--surface 系/字号/间距/时长/缓动/半径）消费 cssVars.ts :root
+ *   单源（UIARC_ALIAS_VARS），本模块不写公共映射块（dropdown-menu 先例）；单源未覆盖的
+ *   --control-on/--font-body/--tracking-body 挂 :where(.group) 本地块（morph-select 先例，
+ *   :where 保证零特异性）
+ * ③暗档判据 :global(:root[data-theme="dark"]) 改 :global(.dark)——mobi 暗档落
+ *   documentElement 的 .dark 类（ThemeProvider），data-theme 写的是 'system' 字面量 */
+
+:where(.group) {
+  --control-on: var(--foreground);
+  --font-body: inherit;
+  --tracking-body: normal;
+}
+
+/* Separate soft buttons in a quiet tray, with real gaps between them. The tray always keeps its natural size and never wraps or clips its buttons. The buttons stay transparent: one shared highlight
+   moves underneath their content, so there is only ever one moving surface. Corners are concentric with the tray. */
+.group {
+  --fbg-h: 36px; --fbg-pad: 4px; --fbg-gap: 4px; --fbg-pad-x: 12px;
+  --fbg-outer: var(--radius-control);
+  --fbg-radius: calc(var(--fbg-outer) - var(--fbg-pad) - 1px);
+  --fbg-highlight: color-mix(in oklab, var(--foreground) 7%, transparent);
+  --fbg-highlight-press: color-mix(in oklab, var(--foreground) 12%, transparent);
+  --fbg-on: color-mix(in oklab, var(--control-on) 12%, transparent);
+  --fbg-rule: color-mix(in oklab, var(--foreground) 12%, transparent);
+  /* The muted tray is a translucent tint, not --surface-muted, so it still reads when it sits on a muted surface. */
+  --fbg-tray: color-mix(in oklab, var(--foreground) 4.5%, transparent);
+  --fbg-tray-edge: color-mix(in oklab, var(--foreground) 3%, transparent);
+  position: relative; isolation: isolate; display: inline-flex; flex: none; flex-wrap: nowrap; align-items: center; gap: var(--fbg-gap); padding: var(--fbg-pad); border: 1px solid var(--fbg-tray-edge); border-radius: var(--fbg-outer); background: var(--fbg-tray); color: var(--text-secondary); font-family: var(--font-body); letter-spacing: var(--tracking-body); -webkit-tap-highlight-color: transparent;
+}
+.sm { --fbg-h: 30px; --fbg-pad: 3px; --fbg-gap: 3px; --fbg-pad-x: 10px; --fbg-outer: calc(var(--radius-control) - 3px); }
+.md { --fbg-h: 36px; }
+/* Raised for overlays such as a selection toolbar: the floating layer shadow and a hairline edge. */
+.floating { border-color: var(--border); background: var(--surface-raised); box-shadow: var(--shadow-floating); }
+.vertical { flex-direction: column; align-items: stretch; }
+:global(.dark) .group {
+  --fbg-highlight: color-mix(in oklab, var(--foreground) 9%, transparent);
+  --fbg-highlight-press: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --fbg-on: color-mix(in oklab, var(--control-on) 16%, transparent);
+  --fbg-tray: color-mix(in oklab, var(--foreground) 6%, transparent);
+  --fbg-tray-edge: color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+
+/* The highlight paints above the buttons' own backgrounds (a pressed tint) and below their content. */
+.highlight { position: absolute; z-index: 1; top: 0; left: 0; border-radius: var(--fbg-radius); background: var(--fbg-highlight); pointer-events: none; transition: background-color var(--duration-fast) var(--ease-standard); }
+.highlight[data-pressing] { background: var(--fbg-highlight-press); transition-duration: var(--duration-instant); }
+
+/* Buttons are not positioned, so the highlight measures them against the tray and stacks above their background. */
+.item { display: inline-flex; min-width: var(--fbg-h); height: var(--fbg-h); flex: none; align-items: center; justify-content: center; margin: 0; padding: 0 var(--fbg-pad-x); border: 0; border-radius: var(--fbg-radius); background: transparent; color: inherit; font: inherit; font-size: var(--text-sm); font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; transition: color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard), opacity var(--duration-fast) var(--ease-standard); }
+.sm .item { font-size: var(--text-xs); }
+.item[data-icon]:not([data-icon-only]) { padding-left: calc(var(--fbg-pad-x) - 2px); }
+.item[data-icon-only] { width: var(--fbg-h); padding: 0; }
+.item[data-active], .item[aria-pressed="true"] { color: var(--foreground); }
+.item[aria-pressed="true"] { background: var(--fbg-on); }
+.item[aria-disabled="true"] { color: var(--text-muted); cursor: not-allowed; opacity: .5; }
+.vertical .item:not([data-icon-only]) { justify-content: flex-start; }
+.vertical .item[data-icon-only] { align-self: center; }
+
+/* Ghosts of every label share one grid cell with the visible one, so the slot always has the widest label's width. */
+.slot { position: relative; z-index: 2; display: inline-grid; align-items: center; justify-items: center; }
+.slot > * { grid-area: 1 / 1; }
+.vertical .slot { justify-items: start; }
+.ghost { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; visibility: hidden; pointer-events: none; }
+.iconSpace { display: block; width: 16px; height: 16px; flex: none; }
+.phase { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.icon { display: inline-flex; flex: none; }
+.icon svg { width: 16px; height: 16px; stroke-width: 1.75; }
+.text { display: block; }
+
+.separator { flex: none; align-self: center; width: 1px; height: calc(var(--fbg-h) * .5); margin-inline: 2px; border-radius: 1px; background: var(--fbg-rule); }
+.vertical .separator { width: calc(var(--fbg-h) * .5); height: 1px; margin: 2px 0; }
+
+/* AppTooltip（antd）title 的内容槽：label + 快捷键提示（antd 弹层 portal 到 body，模块类照常生效） */
+.tip { display: inline-flex; align-items: baseline; gap: var(--space-3); white-space: nowrap; }
+.kbd { font: inherit; color: color-mix(in oklab, var(--background) 58%, var(--foreground)); font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  .item, .highlight { transition: color var(--duration-instant) linear, background-color var(--duration-instant) linear, opacity var(--duration-instant) linear; }
+}

@@ -16,7 +16,8 @@
 
 import type React from 'react'
 import { useMemo, useState } from 'react'
-import { Button, theme, Space, Image } from 'antd'
+import { theme, Space, Image } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
 import { FileCard } from '@ant-design/x'
 import { Bot, Pencil, User } from 'lucide-react'
@@ -258,12 +259,11 @@ export function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
                                     {originalNode}
                                     <Button
-                                        type="text"
-                                        size="small"
-                                        icon={<Pencil size={14} />}
+                                        variant="ghost"
+                                        size="sm"
                                         onClick={openEditor}
                                     >
-                                        {t('sketch.editSketch')}
+                                        <Pencil size={14} /> {t('sketch.editSketch')}
                                     </Button>
                                 </div>
                             ),
@@ -348,15 +348,14 @@ export function UserImageGroupView({ blocks, env }: { blocks: readonly UserImage
                                 {originalNode}
                                 {sketchBlock && (
                                     <Button
-                                        type="text"
-                                        size="small"
-                                        icon={<Pencil size={14} />}
+                                        variant="ghost"
+                                        size="sm"
                                         onClick={() => {
                                             setPreviewOpen(false)
                                             env.onEditSketch?.(sketchBlock)
                                         }}
                                     >
-                                        {t('sketch.editSketch')}
+                                        <Pencil size={14} /> {t('sketch.editSketch')}
                                     </Button>
                                 )}
                             </div>

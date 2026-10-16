@@ -100,12 +100,14 @@ function renderModal(workspace?: Workspace | null) {
 
 /** 弹窗底部主按钮（确定/保存）——Modal/sheet 均渲染在 body 门户，不能查 render 容器 */
 function okButton(): HTMLButtonElement {
-    // PC 走 Modal footer；移动端操作按钮随表单流入 sheet body
+    // PC 走 Modal footer；移动端操作按钮随表单流入 sheet body。
+    // footer 双钮均 uiarc Button（css module 哈希类名），按 DOM 序取最后一个 = 主（提交）钮
     const selector = mobileState.current
-        ? '[data-testid="bottom-sheet-surface"] .ant-btn-primary'
-        : '.ant-modal-footer .ant-btn-primary'
-    const btn = document.querySelector(selector)
-    if (!(btn instanceof HTMLButtonElement)) throw new Error('ok button not found')
+        ? '[data-testid="bottom-sheet-surface"] button'
+        : '.ant-modal-footer button'
+    const btns = [...document.querySelectorAll(selector)].filter((b): b is HTMLButtonElement => b instanceof HTMLButtonElement)
+    const btn = btns[btns.length - 1]
+    if (!btn) throw new Error('ok button not found')
     return btn
 }
 

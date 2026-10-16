@@ -15,7 +15,8 @@
  */
 
 import { useState } from 'react'
-import { Button, Space, Typography } from 'antd'
+import { Space, Typography } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import {
@@ -81,7 +82,7 @@ export function VirtualKeyPicker({ open, onAdd, onClose }: VirtualKeyPickerProps
             title={t('terminal.virtualKeys.picker.title')}
             bodyStyle={{ padding: '4px 16px 8px' }}
             extra={
-                <Button type="primary" disabled={!built} onClick={handleAdd}>
+                <Button variant="primary" disabled={!built} onClick={handleAdd}>
                     {t('terminal.virtualKeys.picker.add')}
                 </Button>
             }
@@ -92,7 +93,7 @@ export function VirtualKeyPicker({ open, onAdd, onClose }: VirtualKeyPickerProps
                     {MODIFIERS.map((m) => (
                         <Button
                             key={m.id}
-                            type={mods.includes(m.id) ? 'primary' : 'default'}
+                            variant={mods.includes(m.id) ? 'primary' : 'secondary'}
                             onClick={() => toggleMod(m.id)}
                         >
                             {m.label}
@@ -110,9 +111,9 @@ export function VirtualKeyPicker({ open, onAdd, onClose }: VirtualKeyPickerProps
                                 return (
                                     <Button
                                         key={k.id}
-                                        size="small"
+                                        size="sm"
                                         disabled={!supported}
-                                        type={selected ? 'primary' : 'default'}
+                                        variant={selected ? 'primary' : 'secondary'}
                                         style={{ fontFamily: 'var(--ant-font-family-code)' }}
                                         onClick={() => setKeyId(k.id)}
                                     >

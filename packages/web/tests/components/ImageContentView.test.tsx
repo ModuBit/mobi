@@ -63,13 +63,13 @@ describe('ImageContentView', () => {
         const { container, rerender } = render(<ImageContentView sessionId="s1" filePath="a.png" etag="bad" />)
         fireEvent.error(container.querySelector('.ant-image-img') as HTMLImageElement)
         // 失败态：兜底图 + 重试按钮，无 antd Image
-        await waitFor(() => expect(container.querySelector('.ant-btn')).toBeInTheDocument())
+        await waitFor(() => expect(container.querySelector('button')).toBeInTheDocument())
 
         // 文件被修好（etag 变）→ 回到正常渲染
         rerender(<ImageContentView sessionId="s1" filePath="a.png" etag="fixed" />)
         await waitFor(() => {
             expect(container.querySelector('.ant-image-img')).toBeInTheDocument()
-            expect(container.querySelector('.ant-btn')).toBeNull()
+            expect(container.querySelector('button')).toBeNull()
         })
     })
 
@@ -78,7 +78,7 @@ describe('ImageContentView', () => {
     it('换文件 → 清掉上一个文件的失败态（不显示继承来的重试界面）', async () => {
         const { container, rerender } = render(<ImageContentView sessionId="s1" filePath="a.png" etag="e1" />)
         fireEvent.error(container.querySelector('.ant-image-img') as HTMLImageElement)
-        await waitFor(() => expect(container.querySelector('.ant-btn')).toBeInTheDocument())
+        await waitFor(() => expect(container.querySelector('button')).toBeInTheDocument())
 
         rerender(<ImageContentView sessionId="s1" filePath="b.png" etag="e1" />)
         await waitFor(() => {
@@ -91,9 +91,9 @@ describe('ImageContentView', () => {
     it('换文件 → 重试计数归零（不把上一个文件的 _retry 带到新 src）', async () => {
         const { container, rerender } = render(<ImageContentView sessionId="s1" filePath="a.png" etag="e1" />)
         fireEvent.error(container.querySelector('.ant-image-img') as HTMLImageElement)
-        await waitFor(() => expect(container.querySelector('.ant-btn')).toBeInTheDocument())
+        await waitFor(() => expect(container.querySelector('button')).toBeInTheDocument())
         // 手点重试 → _retry=1
-        fireEvent.click(container.querySelector('.ant-btn')!)
+        fireEvent.click(container.querySelector('button')!)
         await waitFor(() => {
             const img = container.querySelector('.ant-image-img') as HTMLImageElement
             expect(srcQuery(img).get('_retry')).toBe('1')
@@ -134,9 +134,9 @@ describe('ImageContentView', () => {
         // 触发原生 onError（模拟 401/损坏）→ 切到失败态
         fireEvent.error(img0)
 
-        // 失败态显示重试按钮（antd Button 渲染 .ant-btn；用 container 局部查询避免全局累积干扰）
+        // 失败态显示重试按钮（实现无关：失败态是视图内唯一 button；用 container 局部查询避免全局累积干扰）
         const retryBtn = await waitFor(() => {
-            const btn = container.querySelector('.ant-btn') as HTMLButtonElement
+            const btn = container.querySelector('button') as HTMLButtonElement
             expect(btn).toBeInTheDocument()
             return btn
         })

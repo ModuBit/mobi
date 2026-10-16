@@ -15,7 +15,8 @@
  */
 
 import { useState, useEffect } from 'react'
-import { App, Button, Modal, Radio, Typography } from 'antd'
+import { App, Modal, Radio, Typography } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
 import { FolderOutlined } from '@ant-design/icons'
 import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
@@ -77,10 +78,9 @@ export function AssignWorkspaceModal({ session, open, onClose }: AssignWorkspace
                         {workspaces.map(workspace => (
                             <Button
                                 key={workspace.id}
-                                type="text"
-                                block
+                                variant="ghost"
                                 disabled={assignMutation.isPending}
-                                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                                 onClick={() => handlePick(workspace.id)}
                             >
                                 <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
@@ -104,12 +104,22 @@ export function AssignWorkspaceModal({ session, open, onClose }: AssignWorkspace
         <Modal
             title={t('workspace.assignTitle')}
             open={open}
-            onOk={() => selected && handlePick(selected)}
             onCancel={onClose}
-            confirmLoading={assignMutation.isPending}
-            okButtonProps={{ disabled: !selected }}
-            okText={t('common.confirm')}
-            cancelText={t('common.cancel')}
+            // okButtonProps/confirmLoading/okText/cancelText 自定义化：footer 双钮（WorkspaceFormModal 先例）
+            footer={[
+                <Button key="cancel" variant="secondary" onClick={onClose}>
+                    {t('common.cancel')}
+                </Button>,
+                <Button
+                    key="ok"
+                    variant="primary"
+                    disabled={!selected}
+                    loading={assignMutation.isPending}
+                    onClick={() => selected && handlePick(selected)}
+                >
+                    {t('common.confirm')}
+                </Button>,
+            ]}
             destroyOnHidden
         >
             {workspaces.length === 0 ? (

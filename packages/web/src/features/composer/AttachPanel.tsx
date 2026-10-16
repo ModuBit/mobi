@@ -28,7 +28,7 @@
  */
 
 import { useState, type ReactNode } from 'react'
-import { Button } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { PlusOutlined } from '@ant-design/icons'
 import { Camera, Paperclip, PenLine, Video } from 'lucide-react'
 import styled from '@emotion/styled'
@@ -149,13 +149,14 @@ export function AttachPanel({ disabled, onAttach, onSketch }: AttachPanelProps) 
         <DropdownMenu
             trigger={
                 <Button
-                    type="text"
-                    size="small"
-                    icon={<PlusOutlined />}
+                    variant="ghost"
+                    size="sm"
                     aria-label={t('composer.attach')}
                     disabled={disabled}
                     data-testid="attach-trigger"
-                />
+                >
+                    <PlusOutlined />
+                </Button>
             }
             items={items}
             side="top"

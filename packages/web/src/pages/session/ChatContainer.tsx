@@ -16,8 +16,9 @@
 
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Button, theme as antTheme, message } from 'antd'
+import { theme as antTheme, message } from 'antd'
 import { DownOutlined, LoadingOutlined, StopOutlined } from '@ant-design/icons'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
@@ -1361,10 +1362,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                                 pointerEvents: 'none',
                             }}
                         >
-                            <Button
-                                type="default"
-                                shape="circle"
-                                size="middle"
+                            {/* 原 circle 钮（antd default 白底描边）→ IconButton circle+default：icon-only 归 D4，形态归本组件 */}
+                            <IconButton
+                                size={36}
+                                circle
+                                variant="default"
                                 // running 时换用 loading 图标：用户滚离底部时仍能感知「正在生成」，点击回到底部查看
                                 icon={session?.running ? <LoadingOutlined /> : <DownOutlined />}
                                 aria-label={t('common.scrollBottom')}
@@ -1372,8 +1374,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                                 style={{
                                     pointerEvents: 'auto',
                                     boxShadow: token.boxShadowSecondary,
-                                    minWidth: 36,
-                                    minHeight: 36,
                                 }}
                             />
                         </motion.div>

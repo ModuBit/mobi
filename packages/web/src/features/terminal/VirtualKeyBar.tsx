@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
-import { Button } from 'antd'
 import { Settings } from 'lucide-react'
 import styled from '@emotion/styled'
+import { Button } from '@/ui/base/interactive/button/Button'
+import { IconButton } from '@/ui/base/interactive/IconButton'
+import type { CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useVirtualKeysStore } from '@/core/data/stores/virtualKeysStore'
 
@@ -43,11 +45,8 @@ const Bar = styled.div`
     }
 `
 
-const KeyBtn = styled(Button)`
-    flex-shrink: 0;
-    min-width: 40px;
-    font-family: var(--ant-font-family-code);
-`
+/** uiarc Button 不走 emotion 继承：触控键条的收缩与等宽字体用 style 直传 */
+const keyBtnStyle: CSSProperties = { flexShrink: 0, minWidth: 40, fontFamily: 'var(--ant-font-family-code)' }
 
 interface VirtualKeyBarProps {
     /** 发送字节序列到终端 */
@@ -63,14 +62,12 @@ export function VirtualKeyBar({ onSend, onEdit }: VirtualKeyBarProps) {
     return (
         <Bar role="toolbar" aria-label={t('terminal.virtualKeys.aria')}>
             {keys.map((k) => (
-                <KeyBtn key={k.id} size="small" onClick={() => onSend(k.data)}>
+                <Button key={k.id} variant="secondary" size="sm" style={keyBtnStyle} onClick={() => onSend(k.data)}>
                     {k.label}
-                </KeyBtn>
+                </Button>
             ))}
-            <KeyBtn
-                size="small"
-                type="text"
-                icon={<Settings size={16} />}
+            <IconButton
+                icon={<Settings size={16} />} size={28}
                 onClick={onEdit}
                 aria-label={t('terminal.virtualKeys.edit')}
             />

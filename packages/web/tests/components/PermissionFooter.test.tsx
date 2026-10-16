@@ -229,15 +229,15 @@ describe('PermissionFooter', () => {
         })
     })
 
-    it('拒绝按钮为警示样式（text + danger 红字，非 primary block）', () => {
+    it('拒绝按钮为警示样式（ghost 弱化 + danger 红字，非 primary 满宽）', () => {
         renderFooter(makeTool())
         const denyBtn = screen.getByText('拒绝').closest('button')!
-        // text 弱化（无填充）+ danger 警示色文字 —— 语义层红字提示「拒绝」，
+        // ghost 弱化（无填充）+ danger 警示红字（inline colorError）——语义层红字提示「拒绝」，
         // 但非 primary 不抢视觉锚点
-        expect(denyBtn.classList.contains('ant-btn-text')).toBe(true)
-        expect(denyBtn.classList.contains('ant-btn-dangerous')).toBe(true)
-        expect(denyBtn.classList.contains('ant-btn-primary')).toBe(false)
-        expect(denyBtn.classList.contains('ant-btn-block')).toBe(false)
+        expect(denyBtn.className).toContain('ghost')
+        expect(denyBtn.style.color).toBeTruthy()
+        expect(denyBtn.className).not.toContain('primary')
+        expect(denyBtn.style.width).not.toBe('100%')
     })
 
     it('0 suggestion：构造 session fallback 档，渲染「允许此命令」+「允许」+「拒绝」', () => {
@@ -272,9 +272,9 @@ describe('PermissionFooter', () => {
         const forSessionBtn = screen.getByText('本次会话允许').closest('button')!
         const allowBtn = screen.getByText('允许').closest('button')!
         // 最窄档（session）提为 primary
-        expect(forSessionBtn.classList.contains('ant-btn-primary')).toBe(true)
+        expect(forSessionBtn.className).toContain('primary')
         // 「允许」降为次级 default
-        expect(allowBtn.classList.contains('ant-btn-primary')).toBe(false)
+        expect(allowBtn.className).not.toContain('primary')
     })
 
     it('有 session + project + user 三档：按窄→宽排序，session 为 primary', () => {
@@ -283,9 +283,9 @@ describe('PermissionFooter', () => {
         const projectBtn = screen.getByText('当前项目允许').closest('button')!
         const userBtn = screen.getByText('当前用户允许').closest('button')!
         // session 为 primary（最窄）
-        expect(sessionBtn.classList.contains('ant-btn-primary')).toBe(true)
-        expect(projectBtn.classList.contains('ant-btn-primary')).toBe(false)
-        expect(userBtn.classList.contains('ant-btn-primary')).toBe(false)
+        expect(sessionBtn.className).toContain('primary')
+        expect(projectBtn.className).not.toContain('primary')
+        expect(userBtn.className).not.toContain('primary')
         // 窄→宽顺序：session 在 project 之前，project 在 user 之前
         expect(sessionBtn.compareDocumentPosition(projectBtn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
         expect(projectBtn.compareDocumentPosition(userBtn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -313,12 +313,12 @@ describe('PermissionFooter', () => {
         const projectBtn = screen.getByText('当前项目允许').closest('button')!
         const allowBtn = screen.getByText('允许').closest('button')!
         const denyBtn = screen.getByText('拒绝').closest('button')!
-        // 主操作 block 满宽独占
-        expect(sessionBtn.classList.contains('ant-btn-block')).toBe(true)
-        // 次操作、拒绝均非 block（在并排行 flex:1）
-        expect(projectBtn.classList.contains('ant-btn-block')).toBe(false)
-        expect(allowBtn.classList.contains('ant-btn-block')).toBe(false)
-        expect(denyBtn.classList.contains('ant-btn-block')).toBe(false)
+        // 主操作满宽独占
+        expect(sessionBtn.style.width).toBe('100%')
+        // 次操作、拒绝均非满宽（在并排行 flex:1）
+        expect(projectBtn.style.width).not.toBe('100%')
+        expect(allowBtn.style.width).not.toBe('100%')
+        expect(denyBtn.style.width).not.toBe('100%')
         // 其余档+允许+拒绝同处次要行，主操作不在次要行
         const subRow = projectBtn.closest('[data-sub-row="secondary"]')
         expect(subRow).not.toBeNull()
@@ -337,8 +337,8 @@ describe('PermissionFooter', () => {
         )
         const allowBtn = screen.getByText('允许').closest('button')!
         const allEditsBtn = screen.getByText('全部允许').closest('button')!
-        expect(allowBtn.classList.contains('ant-btn-primary')).toBe(true)
-        expect(allEditsBtn.classList.contains('ant-btn-primary')).toBe(false)
+        expect(allowBtn.className).toContain('primary')
+        expect(allEditsBtn.className).not.toContain('primary')
         // 全部允许与拒绝并排在次要行
         expect(allEditsBtn.closest('[data-sub-row="secondary"]')).not.toBeNull()
     })
@@ -373,8 +373,8 @@ describe('PermissionFooter', () => {
         expect(keepPlanning).toBeInTheDocument()
 
         // auto 为 primary（最前），acceptEdits/manual 降普通
-        expect(auto.classList.contains('ant-btn-primary')).toBe(true)
-        expect(autoAccept.classList.contains('ant-btn-primary')).toBe(false)
+        expect(auto.className).toContain('primary')
+        expect(autoAccept.className).not.toContain('primary')
 
         // 自动审批 → approveWithMode('auto') → api.permissions.approve({ mode: 'auto' })
         fireEvent.click(auto)

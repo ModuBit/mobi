@@ -15,8 +15,10 @@
  */
 
 import { Suspense, lazy, useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
-import { Layout, Button, App, Spin } from 'antd'
+import { Layout, App, Spin } from 'antd'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
+import { Button } from '@/ui/base/interactive/button/Button'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 import { TabStrip, TabStripList, TabStripPanel, TabStripTab } from '@/ui/base/interactive/tabStrip'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
@@ -128,13 +130,13 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
             maskClosable: false,
             footer: () => (
                 <>
-                    <Button danger onClick={() => { instance?.destroy(); doClose() }}>
+                    <Button variant="danger" onClick={() => { instance?.destroy(); doClose() }}>
                         {t('files.discardClose', '不保存关闭')}
                     </Button>
-                    <Button onClick={() => instance?.destroy()}>
+                    <Button variant="secondary" onClick={() => instance?.destroy()}>
                         {t('files.cancel', '取消')}
                     </Button>
-                    <Button type="primary" onClick={async () => {
+                    <Button variant="primary" onClick={async () => {
                         // 保存失败（冲突 / 业务错误）→ 不关 tab：避免静默丢弃用户编辑。
                         // 关掉确认框（让用户回到编辑器看 conflict/error 反馈），tab 保留，message 提示。
                         const { ok } = await api.saveNow()
@@ -212,10 +214,9 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
     const addTabMenu = (
         <DropdownMenu
             trigger={
-                <Button
-                    type="text"
-                    size="small"
+                <IconButton
                     icon={<Plus size={16} />}
+                    size={28}
                     aria-label={t('session.inspector.addTab')}
                 />
             }
@@ -374,16 +375,16 @@ function InspectorChrome({
             {!isMobile && (
                 chatHidden ? (
                     <AppTooltip title={t('session.inspector.restore')}>
-                        <Button type="text" size="small" icon={<Minimize size={16} />} aria-label={t('session.inspector.restore')} onClick={() => onToggleChat(false)} />
+                        <IconButton icon={<Minimize size={16} />} size={28} aria-label={t('session.inspector.restore')} onClick={() => onToggleChat(false)} />
                     </AppTooltip>
                 ) : (
                     <AppTooltip title={t('session.inspector.maximize')}>
-                        <Button type="text" size="small" icon={<Maximize size={16} />} aria-label={t('session.inspector.maximize')} onClick={() => onToggleChat(true)} />
+                        <IconButton icon={<Maximize size={16} />} size={28} aria-label={t('session.inspector.maximize')} onClick={() => onToggleChat(true)} />
                     </AppTooltip>
                 )
             )}
             <AppTooltip title={t('session.inspector.collapse')}>
-                <Button type="text" size="small" icon={<PanelRightClose size={16} />} aria-label={t('session.inspector.collapse')} onClick={onCollapse} />
+                <IconButton icon={<PanelRightClose size={16} />} size={28} aria-label={t('session.inspector.collapse')} onClick={onCollapse} />
             </AppTooltip>
         </div>
     )

@@ -15,7 +15,8 @@
  */
 
 import { useState } from 'react'
-import { Button, Spin } from 'antd'
+import { Spin } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import styled from '@emotion/styled'
 import { FolderGit2, MessageSquare, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -262,7 +263,7 @@ export function RewindConfirmView({ targetText, dryRun, loading, onConfirm, onCa
                 )}
             </Options>
 
-            <Button block type="text" disabled={loading} onClick={onCancel}>
+            <Button variant="ghost" disabled={loading} onClick={onCancel} style={{ width: '100%' }}>
                 {t('common.cancel')}
             </Button>
         </Root>

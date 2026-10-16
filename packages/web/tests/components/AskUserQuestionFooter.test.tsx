@@ -108,29 +108,9 @@ function findOptionBtn(label: string): HTMLElement {
 
 /** 查找提交按钮 */
 function getSubmitButton(): HTMLElement {
-    // Ant Design Button 的文本可能包含 "提交" 或 "提交中..."
-    const btns = Array.from(document.querySelectorAll('button'))
-    // 优先找 ant-btn
-    for (const btn of btns) {
-        const text = btn.textContent ?? ''
-        if (text.includes('提交') && !text.includes('中') &&
-            btn.classList.contains('ant-btn')) {
-            return btn as HTMLElement
-        }
-    }
-    // 兜底：找文本包含"提交"且不是选项按钮的
-    for (const btn of btns) {
-        const text = btn.textContent ?? ''
-        if (text === '提交') {
-            // 排除选项按钮（选项按钮内还有 description）
-            const labelDiv = btn.querySelector('span > div')
-            if (!labelDiv || labelDiv.textContent?.trim() !== '提交') {
-                return btn as HTMLElement
-            }
-        }
-    }
-    throw new Error('Submit button not found. Buttons: ' +
-        btns.map(b => `class="${b.className}" text="${b.textContent?.trim()?.slice(0, 20)}"`).join(' | '))
+    // 实现无关：按可访问名找提交按钮（按钮 label 切换时出口动画残留的 aria-hidden
+    // 旧 label 不进 accname，textContent 会同时含新旧文案故不可用）
+    return screen.getByRole('button', { name: /提交/ })
 }
 
 describe('AskUserQuestionFooter', () => {

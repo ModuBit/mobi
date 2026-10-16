@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { Result, Button } from 'antd'
+import { Result } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
@@ -71,7 +72,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                 title={t('session.loadFailed')}
                 subTitle={t('session.notFound')}
                 extra={
-                    <Button type="primary" onClick={() => navigate({ to: '/' })}>
+                    <Button variant="primary" onClick={() => navigate({ to: '/' })}>
                         {t('common.backHome')}
                     </Button>
                 }

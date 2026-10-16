@@ -17,7 +17,8 @@
 import type { MobiApi } from '@/core/data/api/client'
 import type { ToolInfo } from '@/domain/tool/types'
 import { memo, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, theme as antTheme, Input } from 'antd'
+import { Alert, theme as antTheme, Input } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { CheckOutlined, LoadingOutlined } from '@ant-design/icons'
 import { TabStrip, TabStripList, TabStripPanel, TabStripTab } from '@/ui/base/interactive/tabStrip'
 import { useTranslation } from 'react-i18next'
@@ -149,19 +150,17 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
     const renderSubmitButton = () => (
         <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'stretch' }}>
             <Button
-                type="primary"
+                variant="primary"
                 disabled={props.disabled || pendingAction != null || !canSubmit}
                 onClick={submit}
-                loading={pendingAction === 'submit'}
-                icon={pendingAction === 'submit' ? <LoadingOutlined /> : <CheckOutlined />}
                 style={{ flex: 1, minHeight: actionMinHeight, justifyContent: 'center' }}
             >
-                {pendingAction === 'submit' ? t('chat.tool.submitting') : t('chat.tool.submit')}
+                {pendingAction === 'submit' ? <LoadingOutlined /> : <CheckOutlined />} {pendingAction === 'submit' ? t('chat.tool.submitting') : t('chat.tool.submit')}
             </Button>
             <Button
+                variant="secondary"
                 disabled={props.disabled || pendingAction != null}
                 onClick={chatAbout}
-                loading={pendingAction === 'chatAbout'}
                 style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
             >
                 {t('chat.tool.askUserQuestion.chatAbout')}

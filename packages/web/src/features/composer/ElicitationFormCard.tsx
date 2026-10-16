@@ -15,7 +15,8 @@
  */
 
 import { useMemo } from 'react'
-import { Button, Form, Input, InputNumber, Switch, theme as antTheme } from 'antd'
+import { Form, Input, InputNumber, Switch, theme as antTheme } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
 import type { PermissionAnswers, SDKUIHints } from '@mobi/shared'
 import type { ElicitationFieldSchema, ElicitationRequestedSchema } from '@/domain/tool/elicitation'
@@ -211,10 +212,11 @@ export function ElicitationFormCard({
                 })}
 
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <Button disabled={disabled} onClick={() => onDecline()}>
+                    <Button variant="secondary" disabled={disabled} onClick={() => onDecline()}>
                         {t('chat.elicitation.decline')}
                     </Button>
-                    <Button type="primary" htmlType="submit" disabled={disabled}>
+                    {/* 原生 type="submit"（antd 的 htmlType 语义；uiarc 的 type 是原生透传） */}
+                    <Button variant="primary" type="submit" disabled={disabled}>
                         {t('chat.elicitation.submit')}
                     </Button>
                 </div>

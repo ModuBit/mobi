@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-import { Form, Input, Button, App } from 'antd'
+import { Form, Input, App } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 import {
     SunOutlined,
     MoonOutlined,
@@ -270,7 +272,7 @@ export function LoginPage() {
 
                 <TopActions>
                     <Button
-                        type="text"
+                        variant="ghost"
                         onClick={toggleLocale}
                         title={
                             locale === 'zh'
@@ -295,11 +297,11 @@ export function LoginPage() {
                             </InactiveLocale>
                         </LocaleSwitchIcon>
                     </Button>
-                    <Button
-                        shape="circle"
-                        type="text"
+                    <IconButton
                         icon={isDark ? <SunOutlined /> : <MoonOutlined />}
                         aria-label={t('common.toggleTheme')}
+                        size={32}
+                        circle
                         onClick={toggleTheme}
                     />
                 </TopActions>
@@ -349,10 +351,10 @@ export function LoginPage() {
                         </Form.Item>
                         <Form.Item style={{ marginBottom: 0 }}>
                             <Button
-                                type="primary"
-                                htmlType="submit"
-                                block
-                                size="large"
+                                variant="primary"
+                                type="submit"
+                                style={{ width: '100%' }}
+                                size="lg"
                                 loading={loading}
                             >
                                 {t('login.connect')}

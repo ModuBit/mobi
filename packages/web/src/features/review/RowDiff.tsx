@@ -20,7 +20,8 @@
  * DiffViewer（@pierre/diffs，patch 主输入 + contents hydration 懒拉）。
  */
 
-import { Button, Flex, Spin } from 'antd'
+import { Flex, Spin } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DiffTarget, ReviewFileEntry } from '@mobi/shared'
@@ -82,7 +83,8 @@ export function RowDiff({ sessionId, target, entry, version, deps, wrap = true, 
             <Flex data-testid="review-too-big" vertical align="center" justify="center" gap={10} style={{ flex: 1, fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
                 {t('review.tooBig')}
                 <Button
-                    size="small"
+                    variant="secondary"
+                    size="sm"
                     data-testid="review-too-big-open"
                     onClick={() => openFileTab(sessionId, entry.path, basename(entry.path))}
                 >

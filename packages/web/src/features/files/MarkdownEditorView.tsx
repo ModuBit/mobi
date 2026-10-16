@@ -17,7 +17,8 @@
 import { useEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
-import { Button, Popover, Tooltip, Input, theme as antTheme } from 'antd'
+import { Popover, Tooltip, Input, theme as antTheme } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { Bold, Italic, Strikethrough, Code, Link as LinkIcon, Link2, Check, ExternalLink, Unlink, Trash2, Image as ImageIcon } from 'lucide-react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
@@ -217,16 +218,17 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
     }) => (
         <Tooltip title={title}>
             <Button
-                type="text"
-                size="small"
-                icon={<Icon size={14} />}
+                variant="ghost"
+                size="sm"
                 onClick={onClick}
                 // active 用背景填充 + primary 文字色（同 MarkdownToolbar，浅色下仅 color 不可见）
                 style={active ? {
                     color: token.colorPrimary,
                     background: token.colorPrimaryBg,
                 } : undefined}
-            />
+            >
+                <Icon size={14} />
+            </Button>
         </Tooltip>
     )
 
@@ -260,18 +262,19 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
                             style={{ width: 200 }}
                             autoFocus
                         />
-                        <Button size="small" type="primary" onClick={applyLink}>确定</Button>
+                        <Button variant="primary" size="sm" onClick={applyLink}>确定</Button>
                     </div>
                 }
             >
                 {/* Popover 直接包 Button，不经 Btn/Tooltip 中间层（Tooltip 吞 trigger ref 致 clickOutside 误关） */}
                 <Button
-                    type="text"
-                    size="small"
+                    variant="ghost"
+                    size="sm"
                     title="链接"
-                    icon={<LinkIcon size={14} />}
                     style={editor.isActive('link') ? { color: token.colorPrimary, background: token.colorPrimaryBg } : undefined}
-                />
+                >
+                    <LinkIcon size={14} />
+                </Button>
             </Popover>
         </div>
     )
@@ -343,13 +346,13 @@ function LinkBubble({ editor }: { editor: Editor }) {
                 style={{ flex: 1, width: 220, fontSize: 12, fontFamily: 'var(--font-mono, JetBrains Mono, monospace)' }}
             />
             <Tooltip title="应用链接" mouseEnterDelay={0.4}>
-                <Button type="text" size="small" icon={<Check size={15} style={{ color: token.colorPrimary }} />} onClick={apply} />
+                <Button variant="ghost" size="sm" onClick={apply}><Check size={15} style={{ color: token.colorPrimary }} /></Button>
             </Tooltip>
             <Tooltip title="新窗口打开" mouseEnterDelay={0.4}>
-                <Button type="text" size="small" icon={<ExternalLink size={15} />} onClick={visit} />
+                <Button variant="ghost" size="sm" onClick={visit}><ExternalLink size={15} /></Button>
             </Tooltip>
             <Tooltip title="移除链接" mouseEnterDelay={0.4}>
-                <Button type="text" size="small" danger icon={<Unlink size={15} />} onClick={remove} />
+                <Button variant="danger" size="sm" onClick={remove}><Unlink size={15} /></Button>
             </Tooltip>
         </div>
     )
@@ -417,10 +420,10 @@ function ImageBubble({ editor }: { editor: Editor }) {
                 style={{ flex: 1, width: 260, fontSize: 12, fontFamily: 'var(--font-mono, JetBrains Mono, monospace)' }}
             />
             <Tooltip title="应用" mouseEnterDelay={0.4}>
-                <Button type="text" size="small" icon={<Check size={15} style={{ color: token.colorPrimary }} />} onClick={apply} />
+                <Button variant="ghost" size="sm" onClick={apply}><Check size={15} style={{ color: token.colorPrimary }} /></Button>
             </Tooltip>
             <Tooltip title="删除图片" mouseEnterDelay={0.4}>
-                <Button type="text" size="small" danger icon={<Trash2 size={15} />} onClick={remove} />
+                <Button variant="danger" size="sm" onClick={remove}><Trash2 size={15} /></Button>
             </Tooltip>
         </div>
     )

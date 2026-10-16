@@ -16,8 +16,9 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import styled from '@emotion/styled'
-import { Tree, Empty, Skeleton, Input, Button, type TreeProps } from 'antd'
+import { Tree, Empty, Skeleton, Input, type TreeProps } from 'antd'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 import type { DataNode } from 'antd/es/tree'
 import { FolderOpen, FolderClosed, Search, Eye, EyeOff, RotateCw, TriangleAlert } from 'lucide-react'
 import { FileTypeBadge } from '@/ui/base/display/FileTypeBadge'
@@ -613,18 +614,16 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
                     placeholder={t('files.searchPlaceholder')}
                     style={{ flex: 1 }}
                 />
-                <Button
-                    type="text"
-                    size="small"
+                <IconButton
                     icon={showHidden ? <Eye size={14} /> : <EyeOff size={14} />}
+                    size={28}
                     onClick={() => setShowHidden((v) => !v)}
                     aria-label={t(showHidden ? 'files.hideHidden' : 'files.showHidden')}
                 />
                 <AppTooltip title={t('files.refreshTree')}>
-                    <Button
-                        type="text"
-                        size="small"
+                    <IconButton
                         icon={<RotateCw size={14} className={isRefreshing ? 'refresh-spinning' : undefined} />}
+                        size={28}
                         onClick={handleRefresh}
                         // 刷新中禁用：invalidateQueries 默认 cancelRefetch，而 fetchDirectory 未接
                         // react-query 的 signal，取消只作用于 promise、请求仍会打到 daemon——连点 N 次

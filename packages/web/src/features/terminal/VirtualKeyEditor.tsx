@@ -15,9 +15,11 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Button, Space, Typography, Tag } from 'antd'
+import { Space, Typography, Tag } from 'antd'
 import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '@/ui/base/interactive/button/Button'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 import { useVirtualKeysStore, type VirtualKey } from '@/core/data/stores/virtualKeysStore'
 import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
 import { VirtualKeyPicker } from './VirtualKeyPicker'
@@ -69,7 +71,7 @@ export function VirtualKeyEditor({ open, onClose }: VirtualKeyEditorProps) {
             onClose={save}
             bodyStyle={{ padding: '4px 16px 8px' }}
             extra={
-                <Button type="primary" onClick={save}>
+                <Button variant="primary" onClick={save}>
                     {t('terminal.virtualKeys.editor.save')}
                 </Button>
             }
@@ -79,32 +81,29 @@ export function VirtualKeyEditor({ open, onClose }: VirtualKeyEditorProps) {
                     <Space key={it.id} style={{ width: '100%', justifyContent: 'space-between' }} align="center">
                         <Tag style={{ fontFamily: 'var(--ant-font-family-code)' }}>{it.label}</Tag>
                         <Space size={2}>
-                            <Button
-                                size="small"
-                                type="text"
+                            <IconButton
                                 icon={<ChevronUp size={14} />}
+                                size={28}
                                 disabled={idx === 0}
                                 onClick={() => move(idx, -1)}
                             />
-                            <Button
-                                size="small"
-                                type="text"
+                            <IconButton
                                 icon={<ChevronDown size={14} />}
+                                size={28}
                                 disabled={idx === items.length - 1}
                                 onClick={() => move(idx, 1)}
                             />
-                            <Button
-                                size="small"
-                                type="text"
-                                danger
+                            <IconButton
                                 icon={<Trash2 size={14} />}
+                                size={28}
+                                danger
                                 onClick={() => remove(it.id)}
                             />
                         </Space>
                     </Space>
                 ))}
-                <Button icon={<Plus size={14} />} onClick={() => setPickerOpen(true)} block>
-                    {t('terminal.virtualKeys.editor.add')}
+                <Button variant="secondary" onClick={() => setPickerOpen(true)} style={{ width: '100%' }}>
+                    <Plus size={14} /> {t('terminal.virtualKeys.editor.add')}
                 </Button>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     {t('terminal.virtualKeys.editor.hint')}

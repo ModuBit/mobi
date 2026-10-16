@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { Empty, Button } from 'antd'
+import { Empty } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { buildReadFileUrl } from '@/core/utils/fileUrl'
@@ -38,14 +39,15 @@ export default function FileDownloadPrompt({ sessionId, filePath, reason }: File
     return (
         <div style={{ textAlign: 'center', marginTop: 40 }}>
             <Empty description={reason} />
+            {/* uiarc Button 是 button 元素不支持 href：导航改走 onClick，下载语义由
+                端点的 Content-Disposition: attachment 承载（见组件头注释），浏览器
+                收到该响应头即触发下载、当前页不离开 */}
             <Button
-                type="primary"
-                icon={<Download size={14} />}
-                href={downloadUrl}
-                download
+                variant="primary"
                 style={{ marginTop: 12 }}
+                onClick={() => { window.location.assign(downloadUrl) }}
             >
-                {t('files.download')}
+                <Download size={14} /> {t('files.download')}
             </Button>
         </div>
     )

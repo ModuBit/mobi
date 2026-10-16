@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { Drawer, Button } from 'antd'
+import { Drawer } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { MOBILE_SHEET_DRAWER_CLASS } from '@/ui/base/layout/mobileSheetClass'
 import { useOpenOverlayLayer } from '@/ui/base/layout/overlayLayer'
 import { useTranslation } from 'react-i18next'
@@ -53,10 +54,10 @@ export function SaveConflictDialog({ open, onReload, onForceOverwrite }: Props) 
                 {t('files.conflictTip', '文件已被 Claude 修改，如何处理你的本地编辑？')}
             </p>
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                <Button block onClick={onReload}>
+                <Button variant="secondary" style={{ flex: 1 }} onClick={onReload}>
                     {t('files.reload', '丢弃本地并重新加载')}
                 </Button>
-                <Button block danger onClick={onForceOverwrite}>
+                <Button variant="danger" style={{ flex: 1 }} onClick={onForceOverwrite}>
                     {t('files.forceOverwrite', '强制覆盖')}
                 </Button>
             </div>

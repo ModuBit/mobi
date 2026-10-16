@@ -16,8 +16,9 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect, useImperativeHandle, lazy, Suspense, type Ref } from 'react'
 import styled from '@emotion/styled'
-import { Button, theme, message } from 'antd'
+import { theme, message } from 'antd'
 import { SwapOutlined, InboxOutlined } from '@ant-design/icons'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import type { AgentState, CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, StopKind, TodoItem, TaskItem } from '@mobi/shared'
@@ -1014,12 +1015,11 @@ export function ChatComposer(props: ChatComposerProps) {
                         }}
                     >
                         <Button
-                            type="primary"
-                            icon={<SwapOutlined />}
+                            variant="primary"
                             loading={switchPending}
                             onClick={onSwitchToRemote}
                         >
-                            {t('composer.switchToRemote')}
+                            <SwapOutlined /> {t('composer.switchToRemote')}
                         </Button>
                     </div>
                 )}

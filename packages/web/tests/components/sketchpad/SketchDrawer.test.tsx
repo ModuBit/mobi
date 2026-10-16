@@ -557,7 +557,8 @@ describe('画板 × 共享壳（视觉统一的接缝锁）', () => {
         // 与右端「完成」成对；移动端取触达档高度
         const cancel = document.querySelector('[data-testid="sketch-header"] button') as HTMLElement
         expect(cancel.textContent).toBe('common.cancel')
-        expect(cancel.className).toContain('ant-btn')
+        // 实现无关：取消是原生 button（uiarc Button 渲染 motion.button），不再耦合 ant-btn 类名
+        expect(cancel.tagName).toBe('BUTTON')
         expect(cancel.style.minHeight).toBe('40px')
     })
 

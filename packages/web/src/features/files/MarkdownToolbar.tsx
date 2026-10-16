@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-import { useState, useEffect, useRef, type ComponentType, type CSSProperties } from 'react'
-import { Button, Divider, Tooltip } from 'antd'
+import { useState, useEffect, useRef, type ComponentType } from 'react'
+import { Divider } from 'antd'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 import { type Editor, useEditorState } from '@tiptap/react'
 import {
     Bold, Italic, Strikethrough, Code, Heading1, Heading2, Heading3,
@@ -36,25 +37,18 @@ interface ToolBtnProps {
     disabled?: boolean
 }
 
-// active 按钮样式：背景填充 colorPrimaryBg + primary 文字色表达（纸感美学靠明度差体现层次）。
-// 仅靠 color:primary 在浅色主题下不可见（primary=深灰≈正文色）。
-const activeBtnStyle: CSSProperties = {
-    color: 'var(--ant-color-primary)',
-    background: 'var(--ant-color-primary-bg)',
-}
-
+// IconButton（自管件）内聚 tooltip 与 active 态：hover 提示、active 高亮、aria-label（tooltip 兜底）一体，
+// 取代原先 antd Tooltip+Button+activeBtnStyle 三件套
 function ToolBtn({ icon: Icon, title, onClick, active, disabled }: ToolBtnProps) {
     return (
-        <Tooltip title={title}>
-            <Button
-                type="text"
-                size="small"
-                disabled={disabled}
-                onClick={onClick}
-                icon={<Icon size={15} />}
-                style={active ? activeBtnStyle : undefined}
-            />
-        </Tooltip>
+        <IconButton
+            icon={<Icon size={15} />}
+            size={28}
+            tooltip={title}
+            active={active}
+            disabled={disabled}
+            onClick={onClick}
+        />
     )
 }
 

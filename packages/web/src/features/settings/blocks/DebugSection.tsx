@@ -27,7 +27,8 @@
  */
 
 import { useState } from 'react'
-import { App, Button, Switch, theme as antTheme } from 'antd'
+import { App, Switch, theme as antTheme } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { BugOutlined, DownloadOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
@@ -166,8 +167,8 @@ export function DebugSection() {
                 <span style={{ fontSize: 12.5, color: token.colorTextTertiary, flex: 1 }}>
                     {t('debug.diagLabel')}
                 </span>
-                <Button size="small" icon={<DownloadOutlined />} onClick={handleDownload}>
-                    {t('debug.download')}
+                <Button variant="secondary" size="sm" onClick={handleDownload}>
+                    <DownloadOutlined /> {t('debug.download')}
                 </Button>
             </SubRow>
         </Card>

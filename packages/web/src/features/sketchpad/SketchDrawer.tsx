@@ -44,7 +44,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { Button, Tooltip } from 'antd'
+import { Tooltip } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { Check, Maximize, Minimize } from 'lucide-react'
 import { css, keyframes } from '@emotion/react'
 import styled from '@emotion/styled'
@@ -429,8 +430,8 @@ export function SketchDrawer({
                     leading={(
                         <Tooltip title={t('common.cancel')}>
                             <Button
-                                type="text"
-                                size="small"
+                                variant="ghost"
+                                size="sm"
                                 disabled={exporting}
                                 style={{ minHeight: headerControlHeight }}
                                 onClick={() => canvasRef.current?.requestCancel()}
@@ -455,15 +456,14 @@ export function SketchDrawer({
                                 </Tooltip>
                             )}
                             <Button
-                                type="primary"
-                                size="small"
-                                icon={<Check size={14} strokeWidth={2} />}
+                                variant="primary"
+                                size="sm"
                                 loading={exporting}
                                 /* 与图标钮同高（见 headerControlHeight） */
                                 style={{ minHeight: headerControlHeight }}
                                 onClick={() => void handleComplete()}
                             >
-                                {t('sketch.complete')}
+                                <Check size={14} strokeWidth={2} /> {t('sketch.complete')}
                             </Button>
                         </>
                     )}

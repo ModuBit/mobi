@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Button } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
 
 /** 缩放下界（到边界 - 按钮禁用） */
@@ -70,19 +70,19 @@ export default function PdfToolbar({
             }}
         >
             {/* 工具栏行内轻操作统一 text 档（对齐 MarkdownToolbar 的 Buttons 规范） */}
-            <Button size="small" type="text" disabled={scale <= MIN_SCALE} onClick={zoomOut}>
+            <Button variant="ghost" size="sm" disabled={scale <= MIN_SCALE} onClick={zoomOut}>
                 -
             </Button>
             <span style={{ fontSize: 12, minWidth: 48, textAlign: 'center' }}>
                 {Math.round(scale * 100)}%
             </span>
-            <Button size="small" type="text" disabled={scale >= MAX_SCALE} onClick={zoomIn}>
+            <Button variant="ghost" size="sm" disabled={scale >= MAX_SCALE} onClick={zoomIn}>
                 +
             </Button>
-            <Button size="small" type="text" onClick={onFitWidth}>
+            <Button variant="ghost" size="sm" onClick={onFitWidth}>
                 {t('files.fitWidth')}
             </Button>
-            <Button size="small" type="text" onClick={onReset}>
+            <Button variant="ghost" size="sm" onClick={onReset}>
                 {t('files.actualSize')}
             </Button>
         </div>

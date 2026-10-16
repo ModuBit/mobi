@@ -19,27 +19,29 @@ import '@testing-library/jest-dom/vitest'
 import { render, cleanup, act } from '@testing-library/react'
 import FileContentViewHeader from '@/features/files/FileContentViewHeader'
 
-// 记录 ResizeObserver callback，测试主动触发宽度变化
-let roCb: ((entries: { target: HTMLElement; contentRect: { width: number } }[]) => void) | null = null
+// 记录每个 ResizeObserver 的（被观察元素, callback）对：uiarc Button 内部也会建 RO，
+// 不能再假设「全局只有一个 RO callback」，触发时按元素找各自的 callback
 const observers: HTMLElement[] = []
+const roPairs: Array<{ el: HTMLElement; cb: (entries: { target: HTMLElement; contentRect: { width: number } }[]) => void }> = []
 
 beforeEach(() => {
-    roCb = null
     observers.length = 0
+    roPairs.length = 0
     vi.stubGlobal('ResizeObserver', class {
-        constructor(cb: any) { roCb = cb }
-        observe(el: HTMLElement) { observers.push(el) }
+        cb: (entries: { target: HTMLElement; contentRect: { width: number } }[]) => void
+        constructor(cb: any) { this.cb = cb }
+        observe(el: HTMLElement) { observers.push(el); roPairs.push({ el, cb: this.cb }) }
         unobserve() {}
         disconnect() {}
     })
 })
 afterEach(() => { vi.unstubAllGlobals(); cleanup() })
 
-/** 模拟容器宽度变化并触发 layout effect */
+/** 模拟容器宽度变化并触发「观察该元素」的 RO callback */
 function setWidth(el: HTMLElement, width: number) {
     Object.defineProperty(el, 'clientWidth', { configurable: true, value: width })
     Object.defineProperty(el, 'scrollWidth', { configurable: true, value: width })
-    roCb?.([{ target: el, contentRect: { width } }])
+    roPairs.filter((p) => p.el === el).forEach((p) => p.cb([{ target: el, contentRect: { width } }]))
 }
 
 describe('FileContentViewHeader 面包屑左省略', () => {
@@ -83,7 +85,7 @@ describe('FileContentViewHeader 面包屑左省略', () => {
         await act(async () => {
             Object.defineProperty(crumb, 'clientWidth', { configurable: true, value: 50 })
             Object.defineProperty(crumb, 'scrollWidth', { configurable: true, value: 1000 })
-            roCb?.([{ target: crumb, contentRect: { width: 50 } }])
+            roPairs.filter((p) => p.el === crumb).forEach((p) => p.cb([{ target: crumb, contentRect: { width: 50 } }]))
             // ResizeObserver 回调经 rAF 合并后才 setCrumbWidth，flush 一帧让收敛链跑完
             await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
         })

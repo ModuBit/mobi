@@ -15,7 +15,8 @@
  */
 
 import { useState, useEffect } from 'react'
-import { App, Button, theme as antTheme } from 'antd'
+import { App, theme as antTheme } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { BellOutlined, CloudOutlined, SyncOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { css, keyframes } from '@emotion/react'
@@ -206,15 +207,15 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
                     </StatusInfo>
                     <Action $token={token}>
                         {permission === 'default' && (
-                            <Button type="primary" onClick={() => { void enable() }}>
+                            <Button variant="primary" onClick={() => { void enable() }}>
                                 {t('notification.settings.enable')}
                             </Button>
                         )}
                         {permission === 'granted' && (
-                            <Button onClick={() => { void sendTest() }}>{t('notification.settings.test')}</Button>
+                            <Button variant="secondary" onClick={() => { void sendTest() }}>{t('notification.settings.test')}</Button>
                         )}
                         {permission === 'denied' && (
-                            <Button onClick={() => { void refreshPermission() }}>
+                            <Button variant="secondary" onClick={() => { void refreshPermission() }}>
                                 {t('notification.settings.refreshPermission')}
                             </Button>
                         )}
@@ -231,13 +232,12 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
                         </SubValue>
                         {!subscribed && (
                             <Button
-                                size="small"
-                                type="text"
-                                icon={<SyncOutlined />}
+                                variant="ghost"
+                                size="sm"
                                 style={{ marginLeft: 'auto' }}
                                 onClick={() => { void enable() }}
                             >
-                                {t('notification.settings.resubscribe')}
+                                <SyncOutlined /> {t('notification.settings.resubscribe')}
                             </Button>
                         )}
                     </SubRow>

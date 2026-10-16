@@ -15,7 +15,8 @@
  */
 
 import { useState } from 'react'
-import { App, Button, Input, theme as antTheme } from 'antd'
+import { App, Input, theme as antTheme } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
 import { ShieldCheck } from 'lucide-react'
 import styled from '@emotion/styled'
@@ -215,8 +216,8 @@ export function CredentialEditor({ provider, onSave, onVerify }: CredentialEdito
                 {editing ? (
                     <>
                         <Button
-                            size="small"
-                            icon={<ShieldCheck size={14} />}
+                            variant="secondary"
+                            size="sm"
                             loading={verifying}
                             // 空草稿且无已存凭据 → 无可验证对象；有已存凭据时空草稿 = 用已存值验证
                             disabled={!canVerify}
@@ -224,14 +225,14 @@ export function CredentialEditor({ provider, onSave, onVerify }: CredentialEdito
                                 void handleVerify()
                             }}
                         >
-                            {t('settings.webTools.verify')}
+                            <ShieldCheck size={14} /> {t('settings.webTools.verify')}
                         </Button>
-                        <Button size="small" onClick={cancelEditing}>
+                        <Button variant="secondary" size="sm" onClick={cancelEditing}>
                             {t('settings.webTools.cancel')}
                         </Button>
                         <Button
-                            size="small"
-                            type="primary"
+                            variant="primary"
+                            size="sm"
                             loading={saving}
                             // 空草稿无可保存的凭据变更，禁用防空串提交（写侧会静默保持旧值，却弹「已保存」误导）
                             disabled={!hasSubmittableChange}
@@ -246,17 +247,17 @@ export function CredentialEditor({ provider, onSave, onVerify }: CredentialEdito
                     <>
                         {/* 预览态也提供验证（用已存凭据检查连通性——验证已落盘 key 是本按钮的主要场景） */}
                         <Button
-                            size="small"
-                            icon={<ShieldCheck size={14} />}
+                            variant="secondary"
+                            size="sm"
                             loading={verifying}
                             onClick={() => {
                                 void handleVerify()
                             }}
                         >
-                            {t('settings.webTools.verify')}
+                            <ShieldCheck size={14} /> {t('settings.webTools.verify')}
                         </Button>
                         {/* 替换是进入编辑的旁路动作（预览态的主要场景是验证已存凭据），按 Buttons 规范不占 primary */}
-                        <Button size="small" onClick={startEditing}>
+                        <Button variant="secondary" size="sm" onClick={startEditing}>
                             {t('settings.webTools.replace')}
                         </Button>
                     </>

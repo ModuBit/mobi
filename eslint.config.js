@@ -109,4 +109,22 @@ module.exports = tseslint.config(
       }],
     },
   },
+
+  // antd Button 门禁（button-migration 票 05，2026-10-16）：按钮体系已整体迁 uiarc
+  // （src/ui/base/interactive/button/ 等，迁移映射见 .scratch/button-migration/spec.md），
+  // 业务代码禁新增 antd Button。唯一存量豁免 SubmitButton（D5：composer 发送/停止特化
+  // 状态机暂不迁），若后续迁移从本名单移除即可让禁令全覆盖。
+  {
+    files: ['packages/web/src/**/*.ts', 'packages/web/src/**/*.tsx'],
+    ignores: ['packages/web/src/features/composer/SubmitButton.tsx'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [{
+          name: 'antd',
+          importNames: ['Button'],
+          message: 'antd Button 已整体迁 uiarc（@/ui/base/interactive/button/Button 等），禁止新增（映射表见 .scratch/button-migration/spec.md）',
+        }],
+      }],
+    },
+  },
 )

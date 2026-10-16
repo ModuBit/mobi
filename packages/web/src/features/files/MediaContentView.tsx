@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { Empty, Button } from 'antd'
+import { Empty } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
 import AudioPlayer from './AudioPlayer'
 import { useFileMediaSrc } from '@/core/data/hooks/useFileMediaSrc'
@@ -45,7 +46,7 @@ export default function MediaContentView({ sessionId, filePath, isAudio, etag }:
         return (
             <div style={{ textAlign: 'center', marginTop: 40 }}>
                 <Empty description={t('files.loadFailed')} />
-                <Button type="primary" style={{ marginTop: 12 }} onClick={retry}>
+                <Button variant="primary" style={{ marginTop: 12 }} onClick={retry}>
                     {t('files.retry')}
                 </Button>
             </div>

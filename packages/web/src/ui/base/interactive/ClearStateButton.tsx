@@ -15,7 +15,8 @@
  */
 
 import { useState, useCallback } from 'react'
-import { Popconfirm, Drawer, Button, theme } from 'antd'
+import { Popconfirm, Drawer, theme } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { MOBILE_SHEET_DRAWER_CLASS } from '@/ui/base/layout/mobileSheetClass'
 import { useOpenOverlayLayer } from '@/ui/base/layout/overlayLayer'
@@ -103,20 +104,17 @@ export function ClearStateButton({ sessionId, clearFields, confirmKey, onClear }
                         {confirmText}
                     </div>
                     <Button
-                        type="text"
-                        block
-                        danger
+                        variant="danger"
                         loading={loading}
-                        style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                        style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                         onClick={doClear}
                     >
                         {t('chat.clearState.confirm')}
                     </Button>
                     <Button
-                        type="text"
-                        block
+                        variant="ghost"
                         disabled={loading}
-                        style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                        style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                         onClick={() => setDrawerOpen(false)}
                     >
                         {t('chat.clearState.cancel')}

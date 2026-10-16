@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Button } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { PlayCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -61,8 +61,8 @@ export function ActivateCover({
                 zIndex,
             }}
         >
-            <Button type="primary" icon={<PlayCircle size={18} />} loading={loading} onClick={onActivate}>
-                {t(labelKey)}
+            <Button variant="primary" loading={loading} onClick={onActivate}>
+                <PlayCircle size={18} /> {t(labelKey)}
             </Button>
         </div>
     )

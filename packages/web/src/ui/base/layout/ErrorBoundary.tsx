@@ -15,7 +15,8 @@
  */
 
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import { Button, Result } from 'antd'
+import { Result } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
 import { reloadPage } from '@/core/utils/reload'
 
@@ -100,7 +101,7 @@ class ErrorBoundaryInner extends Component<ErrorBoundaryProps & { t: (key: strin
                         title={this.props.t('errorBoundary.title')}
                         subTitle={this.props.t('errorBoundary.subtitle')}
                         extra={
-                            <Button type="primary" onClick={this.handleRetry}>
+                            <Button variant="primary" onClick={this.handleRetry}>
                                 {this.props.t('errorBoundary.retry')}
                             </Button>
                         }

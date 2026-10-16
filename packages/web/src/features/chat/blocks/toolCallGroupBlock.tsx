@@ -16,7 +16,7 @@
 
 import { useState } from 'react'
 import { Think } from '@ant-design/x'
-import { Button } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { ChevronUp, Layers } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { AgentReasoningBlock, ToolCallBlock } from '@/domain/chat'
@@ -126,12 +126,11 @@ export function ToolCallGroupRenderer({
         {blocks.length > COLLAPSE_FOOTER_MIN_ITEMS && (
           <div style={{ display: 'flex', justifyContent: 'flex-start', paddingTop: 4 }}>
             <Button
-              type="text"
-              size="small"
-              icon={<ChevronUp size={14} />}
+              variant="ghost"
+              size="sm"
               onClick={() => setExpanded(false)}
             >
-              {t('chat.group.collapse')}
+              <ChevronUp size={14} /> {t('chat.group.collapse')}
             </Button>
           </div>
         )}

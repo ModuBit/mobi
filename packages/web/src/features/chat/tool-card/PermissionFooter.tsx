@@ -21,7 +21,8 @@ import type { PermissionUpdate, PermissionUpdateDestination, SDKUIHints } from '
 import { memo, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
-import { Alert, Button, Input, theme as antTheme } from 'antd'
+import { Alert, Input, theme as antTheme } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { agentCardBg } from '@/ui/base/display/agentPalette'
@@ -427,47 +428,42 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                         {isExitPlanMode ? (
                             <>
                                 <Button
-                                    type="primary"
-                                    block={isMobile}
-                                    icon={<CheckOutlined />}
+                                    variant="primary"
                                     disabled={disabledAll}
                                     loading={pendingAction === 'allow'}
                                     onClick={() => approveWithMode('auto')}
-                                    style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', width: isMobile ? '100%' : undefined }}
                                 >
-                                    {t('chat.tool.approveAuto')}
+                                    <CheckOutlined /> {t('chat.tool.approveAuto')}
                                 </Button>
                                 <Button
-                                    block={isMobile}
-                                    icon={<CheckOutlined />}
+                                    variant="secondary"
                                     disabled={disabledAll}
                                     loading={pendingAction === 'allow'}
                                     onClick={() => approveWithMode('acceptEdits')}
-                                    style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', width: isMobile ? '100%' : undefined }}
                                 >
-                                    {t('chat.tool.approveAutoAccept')}
+                                    <CheckOutlined /> {t('chat.tool.approveAutoAccept')}
                                 </Button>
                                 <Button
-                                    block={isMobile}
-                                    icon={<CheckOutlined />}
+                                    variant="secondary"
                                     disabled={disabledAll}
                                     loading={pendingAction === 'allow'}
                                     onClick={() => approveWithMode('default')}
-                                    style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', width: isMobile ? '100%' : undefined }}
                                 >
-                                    {t('chat.tool.approveManual')}
+                                    <CheckOutlined /> {t('chat.tool.approveManual')}
                                 </Button>
                                 <Button
-                                    type={isMobile ? 'text' : 'default'}
-                                    icon={<CloseOutlined />}
+                                    variant={isMobile ? 'ghost' : 'secondary'}
                                     disabled={disabledAll}
                                     loading={pendingAction === 'deny'}
                                     onClick={() => {
                                         if (!showFeedback) setShowFeedback(true)
                                     }}
-                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', color: isMobile ? token.colorTextSecondary : undefined }}
+                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', width: isMobile ? '100%' : undefined, color: isMobile ? token.colorTextSecondary : undefined }}
                                 >
-                                    {t('chat.tool.keepPlanning')}
+                                    <CloseOutlined /> {t('chat.tool.keepPlanning')}
                                 </Button>
                             </>
                         ) : (
@@ -475,16 +471,13 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                 {/* 主操作行：移动端满宽独占；PC 序列首位。
                                     defaultToNo 时主位是拒绝（danger 实心），approve 降级进次要行 */}
                                 <Button
-                                    type="primary"
-                                    danger={denyFirst}
-                                    block={isMobile}
-                                    icon={denyFirst ? <CloseOutlined /> : <CheckOutlined />}
+                                    variant={denyFirst ? 'danger' : 'primary'}
                                     disabled={mainAction.disabled}
                                     loading={mainAction.loading}
                                     onClick={mainAction.onClick}
-                                    style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', width: isMobile ? '100%' : undefined }}
                                 >
-                                    {mainAction.label}
+                                    {denyFirst ? <CloseOutlined /> : <CheckOutlined />} {mainAction.label}
                                 </Button>
                                 {/* 次要行：其余持久化档 + 允许本次 + 全部允许（default）+ 拒绝（denyFirst 时移除，已在主位）
                                     移动端 flex:1 等分并排；PC 作为一组 inline 续在主操作后 */}
@@ -497,31 +490,29 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                     {secondaryRowActions.map((action, idx) => (
                                         <Button
                                             key={idx}
-                                            icon={<CheckOutlined />}
+                                            variant="secondary"
                                             disabled={action.disabled}
                                             loading={action.loading}
                                             onClick={action.onClick}
                                             style={{ minHeight: actionMinHeight, flex: isMobile ? 1 : undefined, justifyContent: 'center' }}
                                         >
-                                            {action.label}
+                                            <CheckOutlined /> {action.label}
                                         </Button>
                                     ))}
                                     {!denyFirst && (
                                         <Button
-                                            type="text"
-                                            danger
-                                            icon={<CloseOutlined />}
+                                            variant="ghost"
                                             disabled={denyConfig.disabled}
                                             loading={denyConfig.loading}
                                             onClick={denyConfig.onClick}
-                                            style={{ minHeight: actionMinHeight, flex: isMobile ? 1 : undefined, justifyContent: 'center' }}
+                                            style={{ minHeight: actionMinHeight, flex: isMobile ? 1 : undefined, justifyContent: 'center', color: token.colorError }}
                                         >
-                                            {denyConfig.label}
+                                            <CloseOutlined /> {denyConfig.label}
                                         </Button>
                                     )}
                                     {/* 「带原因拒绝」：展开 textarea 走 denyWithFeedback（对齐 CLI reject-with-feedback） */}
                                     <Button
-                                        type="text"
+                                        variant="ghost"
                                         disabled={disabledAll}
                                         onClick={() => setShowFeedback(true)}
                                         style={{ minHeight: actionMinHeight, flex: isMobile ? 1 : undefined, justifyContent: 'center', color: token.colorTextSecondary }}
@@ -560,8 +551,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                 autoFocus
                             />
                             <Button
-                                size="small"
-                                danger
+                                variant="danger"
+                                size="sm"
                                 style={{ marginTop: 4 }}
                                 onClick={denyWithFeedback}
                                 loading={pendingAction === 'deny'}

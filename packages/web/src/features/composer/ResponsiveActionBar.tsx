@@ -15,11 +15,11 @@
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
-import { Button } from 'antd'
 import { MoreOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ReactNode } from 'react'
 import styled from '@emotion/styled'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 import { DropdownMenu, type DropdownItem } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
 
 export interface ActionItem {
@@ -156,12 +156,12 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
   const { t } = useTranslation()
 
   const moreButton = useCallback(() => (
-    <Button
-      type="text"
-      size="small"
+    // 溢出收纳触发钮（Radix asChild 挂 DropdownMenu）：icon-only 归 IconButton（D4），圆形保持原状
+    <IconButton
       icon={<MoreOutlined />}
+      size={24}
+      circle
       aria-label={t('common.more')}
-      style={{ borderRadius: '50%' }}
     />
   ), [t])
 

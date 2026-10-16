@@ -15,7 +15,8 @@
  */
 
 import { useState } from 'react'
-import { Button, Input } from 'antd'
+import { Input } from 'antd'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
@@ -135,21 +136,19 @@ export function CommentField({
                 <Count $warn={countWarn} data-testid={`${testIdPrefix}-count`}>{comment.length}/{maxLength}</Count>
                 <Actions>
                     {hasContent ? (
-                        <Button
-                            type="text"
-                            size="small"
+                        <IconButton
+                            icon={<CheckOutlined />}
+                            size={24}
                             aria-label={t('common.save')}
                             data-testid={`${testIdPrefix}-save`}
-                            icon={<CheckOutlined />}
                             onClick={save}
                         />
                     ) : (
-                        <Button
-                            type="text"
-                            size="small"
+                        <IconButton
+                            icon={<CloseOutlined />}
+                            size={24}
                             aria-label={t('common.close')}
                             data-testid={`${testIdPrefix}-close`}
-                            icon={<CloseOutlined />}
                             onClick={onClose}
                         />
                     )}

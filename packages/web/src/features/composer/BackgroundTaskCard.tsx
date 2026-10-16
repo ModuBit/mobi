@@ -15,14 +15,15 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { theme, Drawer, Button } from 'antd'
+import { theme, Drawer } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { LoadingOutlined } from '@ant-design/icons'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
-import { TwoStepConfirmButton } from '@/ui/base/interactive/TwoStepConfirmButton'
+import { ConfirmMorph } from '@/ui/base/interactive/confirm-morph/ConfirmMorph'
 import { MOBILE_SHEET_DRAWER_CLASS } from '@/ui/base/layout/mobileSheetClass'
 import { useOpenOverlayLayer } from '@/ui/base/layout/overlayLayer'
 import type { GlobalToken } from 'antd/es/theme/interface'
-import { Terminal, CircleStop, Eye, Zap, CircleDashed, Check } from 'lucide-react'
+import { Terminal, CircleStop, Eye, Zap, CircleDashed } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { PixelAvatar } from '@/ui/pixel-avatar/PixelAvatar'
 import { agentCardBg } from '@/ui/base/display/agentPalette'
@@ -126,16 +127,17 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
             <div style={{ padding: '12px 20px', fontSize: 14, color: token.colorTextSecondary }}>
                 {t('chat.backgroundTask.stopConfirm')}
             </div>
+            {/* 原 text+danger：ghost 底 + colorError 前景（WorkspaceFormModal 移除钮同款先例）；block → width:100% */}
             <Button
-                type="text" block danger loading={stopping}
-                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                variant="ghost" loading={stopping}
+                style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20, color: token.colorError }}
                 onClick={doStop}
             >
                 {t('chat.backgroundTask.stop')}
             </Button>
             <Button
-                type="text" block disabled={stopping}
-                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                variant="ghost" disabled={stopping}
+                style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                 onClick={() => setDrawerOpen(false)}
             >
                 {t('chat.clearState.cancel')}
@@ -143,7 +145,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
         </Drawer>
     ) : null
 
-    // stop 按钮区域：桌面端行内两击确认（TwoStepConfirmButton，ZCode 调研落地项，
+    // stop 按钮区域：桌面端行内两击确认（ConfirmMorph 自管件，替代 TwoStepConfirmButton；ZCode 调研落地项，
     // 替代 Popconfirm 浮层——触屏/鼠标都「再点一下原按钮」），移动端保留 Drawer sheet
     const stopElement = !showStop ? null : isMobile ? (
         <div
@@ -161,16 +163,17 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
             onClick={(e) => e.stopPropagation()}
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}
         >
-            <TwoStepConfirmButton
+            <ConfirmMorph
+                label=""
+                ariaLabel={t('chat.backgroundTask.stop')}
                 icon={<CircleStop size={14} />}
-                confirmedIcon={
-                    stopping
-                        ? <LoadingOutlined style={{ fontSize: 12 }} />
-                        : <Check size={14} />
-                }
-                ariaActionLabel={t('chat.backgroundTask.stop')}
-                timeoutMs={3000}
+                prompt={t('chat.backgroundTask.stopConfirm')}
+                tone="danger"
+                confirmMode="press"
+                confirmTimeout={3000}
                 disabled={stopping}
+                pendingLabel={t('chat.backgroundTask.stopping')}
+                doneLabel={t('chat.backgroundTask.stopped')}
                 onConfirm={doStop}
             />
         </div>

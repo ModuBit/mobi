@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Button } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
 import { AppImage } from '@/ui/base/display/AppImage'
@@ -47,7 +47,7 @@ export default function ImageContentView({ sessionId, filePath, etag }: ImageCon
         return (
             <div className="image-content-view image-content-view--error">
                 <img src={FALLBACK_IMAGE} alt={filePath} className="image-content-view__fallback" />
-                <Button size="small" type="primary" onClick={retry}>
+                <Button variant="primary" size="sm" onClick={retry}>
                     {t('files.retry')}
                 </Button>
             </div>

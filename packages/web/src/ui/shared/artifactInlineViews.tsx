@@ -25,7 +25,8 @@
  */
 
 import { useState } from 'react'
-import { Button, Segmented, theme } from 'antd'
+import { Segmented, theme } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
 import { FileSearch } from 'lucide-react'
 import { buildActionUri } from '@mobi/shared'
@@ -86,7 +87,7 @@ function InlineMediaError({ onRetry }: { onRetry: () => void }) {
             <span style={{ flex: 1, fontSize: token.fontSizeSM, color: token.colorTextTertiary }}>
                 {t('files.loadFailed')}
             </span>
-            <Button size="small" onClick={onRetry}>{t('files.retry')}</Button>
+            <Button variant="secondary" size="sm" onClick={onRetry}>{t('files.retry')}</Button>
         </div>
     )
 }

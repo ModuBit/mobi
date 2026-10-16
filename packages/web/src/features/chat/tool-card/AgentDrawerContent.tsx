@@ -15,7 +15,8 @@
  */
 
 import { useMemo, useRef, useState, useCallback, useEffect } from 'react'
-import { theme as antTheme, Button, Skeleton } from 'antd'
+import { theme as antTheme, Skeleton } from 'antd'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 import { DownOutlined } from '@ant-design/icons'
 import { Bubble } from '@ant-design/x'
 import { Global, css } from '@emotion/react'
@@ -190,11 +191,11 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
                 )}
             </div>
             {showScrollBottom && (
-                <Button
-                    type="default"
-                    shape="circle"
-                    size="middle"
+                <IconButton
                     icon={<DownOutlined />}
+                    size={36}
+                    circle
+                    variant="default"
                     aria-label={t('common.scrollBottom')}
                     onClick={handleScrollToBottom}
                     style={{
@@ -204,8 +205,6 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
                         transform: 'translateX(-50%)',
                         zIndex: 10,
                         boxShadow: token.boxShadowSecondary,
-                        minWidth: 36,
-                        minHeight: 36,
                     }}
                 />
             )}

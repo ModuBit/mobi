@@ -15,7 +15,8 @@
  */
 
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
-import { Alert, App, AutoComplete, Button, Form, Input, Modal, Radio, Spin, theme } from 'antd'
+import { Alert, App, AutoComplete, Form, Input, Modal, Radio, Spin, theme } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
 import { FolderOutlined, HomeOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
 import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
@@ -102,15 +103,16 @@ function FolderRow({
                     {t('workspace.primary')}
                 </Radio>
                 <Button
-                    type="text"
-                    size="small"
-                    icon={<MinusOutlined />}
+                    variant="ghost"
+                    size="sm"
                     disabled={disabled || !canRemove}
                     onClick={onRemove}
                     title={t('workspace.removeFolder')}
                     aria-label={t('workspace.removeFolder')}
                     style={{ color: canRemove ? token.colorError : undefined }}
-                />
+                >
+                    <MinusOutlined />
+                </Button>
             </div>
         </div>
     )
@@ -266,14 +268,13 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
                         />
                     ))}
                     <Button
-                        type="dashed"
-                        size="small"
-                        icon={<PlusOutlined />}
+                        variant="ghost"
+                        size="sm"
                         onClick={handleAddFolder}
                         disabled={isPending}
                         style={{ alignSelf: 'flex-start' }}
                     >
-                        {t('workspace.addFolder')}
+                        <PlusOutlined /> {t('workspace.addFolder')}
                     </Button>
                 </div>
             </Form.Item>
@@ -313,10 +314,10 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
                         display: 'flex', gap: 8, marginTop: 16,
                         paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
                     }}>
-                        <Button block disabled={isPending} onClick={onClose}>
+                        <Button variant="secondary" style={{ flex: 1 }} disabled={isPending} onClick={onClose}>
                             {t('common.cancel')}
                         </Button>
-                        <Button block type="primary" disabled={!isValid} loading={isPending} onClick={handleOk}>
+                        <Button variant="primary" style={{ flex: 1 }} disabled={!isValid} loading={isPending} onClick={handleOk}>
                             {okText}
                         </Button>
                     </div>
@@ -329,12 +330,15 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
         <Modal
             title={title}
             open={open}
-            onOk={handleOk}
             onCancel={onClose}
-            confirmLoading={isPending}
-            okButtonProps={{ disabled: !isValid }}
-            okText={okText}
-            cancelText={t('common.cancel')}
+            footer={[
+                <Button key="cancel" variant="secondary" disabled={isPending} onClick={onClose}>
+                    {t('common.cancel')}
+                </Button>,
+                <Button key="ok" variant="primary" disabled={!isValid} loading={isPending} onClick={handleOk}>
+                    {okText}
+                </Button>,
+            ]}
             destroyOnHidden
         >
             {formBody}

@@ -27,7 +27,8 @@
 
 import { useMemo, useState, type CSSProperties } from 'react'
 import { MultiFileDiff, PatchDiff } from '@pierre/diffs/react'
-import { Button, Flex, Radio, Typography } from 'antd'
+import { Flex, Radio, Typography } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { PIERRE_BRIDGE_VARS } from '@/ui/base/theme/pierreTheme'
 
@@ -154,7 +155,7 @@ export default function PocPierreDiff() {
                     ]}
                     optionType="button"
                 />
-                <Button size="small" onClick={() => setWrap((v) => !v)}>{wrap ? 'Wrap: on' : 'Wrap: off'}</Button>
+                <Button variant="secondary" size="sm" onClick={() => setWrap((v) => !v)}>{wrap ? 'Wrap: on' : 'Wrap: off'}</Button>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     ① 双主题 ② 大 patch 滚动 ③ hydration 成功/失败 ④ 空态
                 </Typography.Text>

@@ -28,7 +28,8 @@
 
 import { useMemo } from 'react'
 import { PatchDiff } from '@pierre/diffs/react'
-import { Button, Flex } from 'antd'
+import { Flex } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { REVIEW_RENDER_MAX_LINES, type DiffTarget } from '@mobi/shared'
@@ -116,7 +117,7 @@ export function DiffViewer({ sessionId, target, path, version, wrap, layout }: {
                             style={{ flexShrink: 0, padding: '8px 12px', fontSize: 12, color: 'var(--ant-color-text-tertiary)', borderTop: '1px solid var(--ant-color-border-secondary)' }}
                         >
                             {t('review.diffTruncated', { shown: REVIEW_RENDER_MAX_LINES, total: patchPayload.data.truncatedLines })}
-                            <Button size="small" onClick={() => openFileTab(sessionId, path, basename(path))}>
+                            <Button variant="secondary" size="sm" onClick={() => openFileTab(sessionId, path, basename(path))}>
                                 {t('review.openInViewer')}
                             </Button>
                         </Flex>

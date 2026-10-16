@@ -16,7 +16,8 @@
 
 import type { ToolInfo } from '@/domain/tool/types'
 import { memo, useEffect, useMemo, useState } from 'react'
-import { Button, theme as antTheme, Tag, Input } from 'antd'
+import { theme as antTheme, Tag, Input } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import { CheckOutlined, LeftOutlined, RightOutlined, LoadingOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import {
@@ -235,19 +236,19 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
             <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                 <div>
                     {questions.length > 1 && (
-                        <Button size="small" disabled={props.disabled || loading || clampedStep === 0} onClick={prev} icon={<LeftOutlined />}>
-                            {t('chat.tool.prev')}
+                        <Button variant="secondary" size="sm" disabled={props.disabled || loading || clampedStep === 0} onClick={prev}>
+                            <LeftOutlined /> {t('chat.tool.prev')}
                         </Button>
                     )}
                 </div>
                 <div>
                     {questions.length > 1 && clampedStep < questions.length - 1 ? (
-                        <Button type="primary" size="small" disabled={props.disabled || loading} onClick={next} icon={<RightOutlined />}>
-                            {t('chat.tool.next')}
+                        <Button variant="primary" size="sm" disabled={props.disabled || loading} onClick={next}>
+                            <RightOutlined /> {t('chat.tool.next')}
                         </Button>
                     ) : (
-                        <Button type="primary" size="small" disabled={props.disabled || loading} onClick={submit} icon={loading ? <LoadingOutlined /> : <CheckOutlined />}>
-                            {loading ? t('chat.tool.submitting') : t('chat.tool.submit')}
+                        <Button variant="primary" size="sm" disabled={props.disabled || loading} onClick={submit}>
+                            {loading ? <LoadingOutlined /> : <CheckOutlined />} {loading ? t('chat.tool.submitting') : t('chat.tool.submit')}
                         </Button>
                     )}
                 </div>

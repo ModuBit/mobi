@@ -15,7 +15,9 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Alert, App, Button, Input, InputNumber, Radio, Tag, theme as antTheme, Tooltip } from 'antd'
+import { Alert, App, Input, InputNumber, Radio, Tag, theme as antTheme, Tooltip } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 // uiarc 自管件：单选/可搜索选择（antd Select 已全站清零；tags 模式归 MultiSelect mode="tags"）
 import { Select as UiSelect } from '@/ui/base/interactive/select/Select'
 import { MultiSelect } from '@/ui/base/interactive/multi-select/MultiSelect'
@@ -280,7 +282,7 @@ export function MemorySection() {
                                 aria-label={t('settings.memory.tokenLabel')}
                             />
                             {settings?.apiTokenSet && (
-                                <Button size="small" type="text" style={{ marginTop: 4, padding: 0 }}
+                                <Button variant="ghost" size="sm" style={{ marginTop: 4, padding: 0 }}
                                     onClick={() => { void handleClearToken() }}>
                                     {t('settings.memory.tokenClear')}
                                 </Button>
@@ -336,9 +338,9 @@ export function MemorySection() {
                                     />
                                 </Tooltip>
                             )}
-                            <Button
-                                type="text" size="small" aria-label={t('settings.memory.ruleRemove')}
-                                icon={<Trash2 size={14} />}
+                            <IconButton
+                                icon={<Trash2 size={14} />} size={22}
+                                aria-label={t('settings.memory.ruleRemove')}
                                 onClick={() => setRules(rules.filter((_, j) => j !== i))}
                             />
                         </RuleRow>
@@ -365,7 +367,7 @@ export function MemorySection() {
                             placeholder={t('settings.memory.rulePathPlaceholder')}
                             aria-label={t('settings.memory.ruleAddPath')}
                         />
-                        <Button size="small" type="dashed" icon={<Plus size={13} />}
+                        <Button variant="ghost" size="sm"
                             onClick={() => {
                                 const p = pathDraft.trim()
                                 if (p) {
@@ -373,7 +375,7 @@ export function MemorySection() {
                                     setPathDraft('')
                                 }
                             }}>
-                            {t('settings.memory.ruleAddPath')}
+                            <Plus size={13} /> {t('settings.memory.ruleAddPath')}
                         </Button>
                     </RowActions>
                     <RowActions>
@@ -445,7 +447,7 @@ export function MemorySection() {
             <Card $token={token}>
                 <Title $token={token}>{t('settings.memory.statusTitle')}</Title>
                 <RowActions>
-                    <Button size="small" onClick={() => { void handleCheck() }} disabled={!endpoint.trim()}>
+                    <Button variant="secondary" size="sm" onClick={() => { void handleCheck() }} disabled={!endpoint.trim()}>
                         {t('settings.memory.checkButton')}
                     </Button>
                     {checkResult && <CheckResultView result={checkResult} t={t} />}
@@ -458,7 +460,7 @@ export function MemorySection() {
             </Card>
 
             <Footer>
-                <Button type="primary" loading={saving} onClick={() => { void handleSave() }}>
+                <Button variant="primary" loading={saving} onClick={() => { void handleSave() }}>
                     {t('settings.memory.saveButton')}
                 </Button>
             </Footer>

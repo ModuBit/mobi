@@ -15,7 +15,8 @@
  */
 
 import { useState, useCallback, useEffect } from 'react'
-import { App as AntdApp, Button, Input, Modal, theme as antTheme } from 'antd'
+import { App as AntdApp, Input, Modal, theme as antTheme } from 'antd'
+import { Button } from '@/ui/base/interactive/button/Button'
 import {
     EditOutlined,
     MoonOutlined,
@@ -366,24 +367,21 @@ export function MobileWorkspaceList() {
                         </div>
 
                         <Button
-                            danger
-                            type="primary"
-                            block
+                            variant="danger"
                             loading={actionLoading === 'delete'}
-                            style={{ height: 44 }}
+                            style={{ width: '100%', height: 44 }}
                             onClick={handleDeleteConfirm}
                         >
                             {t('common.confirm')}
                         </Button>
 
                         <Button
-                            type="text"
-                            block
+                            variant="ghost"
                             disabled={!!actionLoading}
                             style={{
+                                width: '100%',
                                 height: 48,
                                 marginTop: 4,
-                                justifyContent: 'center',
                                 color: token.colorTextSecondary,
                             }}
                             onClick={() => setActionView('menu')}
@@ -395,91 +393,77 @@ export function MobileWorkspaceList() {
                     <>
                         {/* 重命名 */}
                         <Button
-                            type="text"
-                            block
-                            icon={<EditOutlined />}
+                            variant="ghost"
                             disabled={!!actionLoading}
-                            style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                            style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                             onClick={handleRenameStart}
                         >
-                            {t('session.actions.rename')}
+                            <EditOutlined /> {t('session.actions.rename')}
                         </Button>
 
                         {/* 置顶 / 取消置顶 */}
                         <Button
-                            type="text"
-                            block
-                            icon={<PushpinOutlined />}
+                            variant="ghost"
                             disabled={!!actionLoading || pinLoadingId === actionSession.id}
                             loading={pinLoadingId === actionSession.id}
-                            style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                            style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                             onClick={() => handleTogglePin(actionSession)}
                         >
-                            {actionSession.pinned ? t('session.actions.unpin') : t('session.actions.pin')}
+                            <PushpinOutlined /> {actionSession.pinned ? t('session.actions.unpin') : t('session.actions.pin')}
                         </Button>
 
                         {/* 归属操作：按归属动态显示（游离=归入工作区；工作区内=换工作区+移至最近） */}
                         {actionSession.workspaceId ? (
                             <>
                                 <Button
-                                    type="text"
-                                    block
-                                    icon={<SwapOutlined />}
+                                    variant="ghost"
                                     disabled={!!actionLoading}
-                                    style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                    style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                                     onClick={handleOpenAssign}
                                 >
-                                    {t('workspace.changeWorkspace')}
+                                    <SwapOutlined /> {t('workspace.changeWorkspace')}
                                 </Button>
                                 <Button
-                                    type="text"
-                                    block
-                                    icon={<ImportOutlined />}
+                                    variant="ghost"
                                     disabled={!!actionLoading}
                                     loading={actionLoading === 'moveToRecent'}
-                                    style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                    style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                                     onClick={handleMoveToRecent}
                                 >
-                                    {t('workspace.toRecent')}
+                                    <ImportOutlined /> {t('workspace.toRecent')}
                                 </Button>
                             </>
                         ) : (
                             <Button
-                                type="text"
-                                block
-                                icon={<SwapOutlined />}
+                                variant="ghost"
                                 disabled={!!actionLoading}
-                                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                                 onClick={handleOpenAssign}
                             >
-                                {t('workspace.assignTo')}
+                                <SwapOutlined /> {t('workspace.assignTo')}
                             </Button>
                         )}
 
                         {/* 休眠 / 归档 / 恢复 */}
                         {actionSession.active ? (
                             <Button
-                                type="text"
-                                block
-                                icon={<MoonOutlined />}
+                                variant="ghost"
                                 disabled={!!actionLoading}
                                 loading={actionLoading === 'dormant'}
-                                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                                 onClick={handleDormant}
                             >
-                                {t('session.actions.dormant')}
+                                <MoonOutlined /> {t('session.actions.dormant')}
                             </Button>
                         ) : (
                             <Button
-                                type="text"
-                                block
-                                icon={<PlayCircleOutlined />}
+                                variant="ghost"
                                 disabled={!!actionLoading}
                                 loading={actionLoading === 'resume'}
-                                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                                 onClick={handleResume}
                             >
-                                {t('session.actions.resume')}
+                                <PlayCircleOutlined /> {t('session.actions.resume')}
                             </Button>
                         )}
 
@@ -487,15 +471,12 @@ export function MobileWorkspaceList() {
 
                         {/* 删除 */}
                         <Button
-                            type="text"
-                            block
-                            danger
-                            icon={<DeleteOutlined />}
+                            variant="danger"
                             disabled={actionSession.active || !!actionLoading}
-                            style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                            style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                             onClick={handleDelete}
                         >
-                            {t('session.actions.delete')}
+                            <DeleteOutlined /> {t('session.actions.delete')}
                         </Button>
                     </>
                 ) : null}

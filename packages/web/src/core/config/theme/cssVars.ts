@@ -164,7 +164,15 @@ const UIARC_ALIAS_VARS: ReadonlyArray<readonly [string, string]> = [
     ['--text-sm', '14px'],
     ['--space-2', '8px'],
     ['--space-3', '12px'],
+    ['--space-4', '16px'],
+    ['--space-5', '20px'],
+    ['--leading-body', 'normal'],
+    // 控件高三档贴本站现状：sm 沿 copy-button 既有 28px、md 沿 select/multi-select 验收过的 36px
+    ['--control-height-sm', '28px'],
     ['--control-height-md', '36px'],
+    ['--control-height-lg', '44px'],
+    // 语义色别名（dropdown/button 等组件专有声明收敛前的公共取法，同 dropdown 先例）
+    ['--danger', 'var(--destructive)'],
     ['--duration-instant', 'var(--mobi-duration-fast)'],
     ['--duration-fast', 'var(--mobi-duration-fast)'],
     ['--duration-standard', 'var(--mobi-duration-mid)'],

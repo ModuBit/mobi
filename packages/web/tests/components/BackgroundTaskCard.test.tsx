@@ -15,14 +15,14 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, cleanup, fireEvent } from '@testing-library/react'
+import { render, cleanup, fireEvent, act } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import type { BackgroundTask } from '@/domain/chat/types'
 
 const { BackgroundTaskCard } = await import('@/features/composer/BackgroundTaskCard')
 
 // jsdom 的 matchMedia stub恒 matches:false → useIsMobile 恒 true（移动端分支）。
-// 桌面端两击确认按钮（TwoStepConfirmButton）只在桌面分支渲染，这里固定 mock 桌面端
+// 桌面端两击确认按钮（ConfirmMorph）只在桌面分支渲染，这里固定 mock 桌面端
 vi.mock('@/core/data/hooks/useMediaQuery', () => ({
     useIsMobile: () => false,
 }))
@@ -117,16 +117,25 @@ describe('BackgroundTaskCard 点击守卫内聚（review fix2 C2）', () => {
         expect(onClick).not.toHaveBeenCalled()
     })
 
-    it('两击确认停止：展开面板点 ✓ 后调用 onStop', () => {
-        const onStop = vi.fn()
-        const { container, getByRole } = render(
-            <BackgroundTaskCard task={makeTask({ toolUseId: 'tu-1' })} onClick={() => {}} onStop={onStop} />,
-        )
-        const trigger = container.querySelector('button[aria-label]') as HTMLElement
-        fireEvent.click(trigger)
-        const confirmButton = container.querySelector('.lucide-check')?.closest('button') as HTMLElement
-        expect(confirmButton).toBeTruthy()
-        fireEvent.click(confirmButton)
-        expect(onStop).toHaveBeenCalledTimes(1)
+    it('两击确认停止：一击进确认态，再点确认钮（隔开 280ms 尾击挡板）后调用 onStop', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true })
+        try {
+            const onStop = vi.fn()
+            const { container } = render(
+                <BackgroundTaskCard task={makeTask({ toolUseId: 'tu-1' })} onClick={() => {}} onStop={onStop} />,
+            )
+            // 一击：trigger 进 confirming（prompt 区 = 确认问题）
+            const trigger = container.querySelector('button[aria-label]') as HTMLElement
+            fireEvent.click(trigger)
+            // ConfirmMorph 尾击挡板：展开后 280ms 内的确认点击一律吞掉
+            await act(async () => { await vi.advanceTimersByTimeAsync(320) })
+            // 二击：点确认钮（本文件走真实 i18n，确认钮文案为「删除」默认值）
+            const confirmButton = container.querySelector('button[data-autofocus]') as HTMLElement
+            expect(confirmButton).toBeTruthy()
+            fireEvent.click(confirmButton)
+            expect(onStop).toHaveBeenCalledTimes(1)
+        } finally {
+            vi.useRealTimers()
+        }
     })
 })
