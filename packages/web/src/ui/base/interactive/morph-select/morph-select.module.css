@@ -35,7 +35,12 @@
 .root[data-open] { z-index: 30; }
 .label { color: var(--text-secondary); font-size: var(--text-sm); font-weight: 500; }
 
+/* 收起 pill 的布局占位宽（宽度弹簧的目标）。测量落地（data-ready）后交给
+   --ms-trigger-w 单源——与 .listFace 的宽度上限同一个变量；落地前退回 .measure 的
+   内在宽度（它在流内，宽即 max-content），首帧不会闪一下 0 宽。
+   与 .shape 的形变互不相干：shape 绝对定位，宽高由 motion value 驱动，越过 anchor 生长 */
 .anchor { position: relative; height: var(--ms-h); max-width: 100%; }
+.root[data-ready] .anchor { width: var(--ms-trigger-w); transition: width var(--duration-spring) var(--ease-spring); }
 
 /* One material for both states. The border is an overlay so it never changes a measurement.
    收起态不带投影（mobi：参数条里 pill 会被滚动渐隐带截断阴影，平面化由描边兜底分隔；
@@ -125,7 +130,7 @@
 .srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 
 @media (prefers-reduced-motion: reduce) {
-  .shape, .check, .slot { transition-duration: 0ms; }
+  .shape, .check, .slot, .anchor { transition-duration: 0ms; }
 }
 @media (prefers-contrast: more) {
   .shape::after { border-color: var(--border-strong); }

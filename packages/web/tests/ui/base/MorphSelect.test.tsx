@@ -152,3 +152,19 @@ describe('iconOnly 收起态（mobi 本地槽位）', () => {
         expect(screen.getByRole('option', { name: /默认/ })).toHaveTextContent('跟随 CC 设置')
     })
 })
+
+describe('收起 pill 的占位宽（单源）', () => {
+    afterEach(cleanup)
+
+    it('测量落地后宽度由 --ms-trigger-w 供给，anchor 不挂内联 width', () => {
+        // 此前 anchor 的宽走一个 motion value（内联 style），CSS 的 .listFace 又拿
+        // --ms-trigger-w 当宽度下限——同一条 pill 宽有两个来源。现在只剩变量一条路径。
+        const { container } = render(<Harness />)
+        const root = container.firstElementChild as HTMLElement
+        // 子序：label(span) → anchor(div) → [hidden input] → status(span)
+        const anchor = root.children[1] as HTMLElement
+        expect(root).toHaveAttribute('data-ready')
+        expect(root.style.getPropertyValue('--ms-trigger-w')).toMatch(/px$/)
+        expect(anchor.style.width).toBe('')
+    })
+})

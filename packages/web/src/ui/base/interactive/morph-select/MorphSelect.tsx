@@ -26,10 +26,11 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion } from "motion/react";
-import type { Transition, Variants } from "motion/react";
+import type { Variants } from "motion/react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 import { motionTokens } from "../../motion/motionTokens";
+import { GLIDE, GROW, NARROW, SHRINK, WIDTH } from "./morphTiming";
 import styles from "./morph-select.module.css";
 
 export interface MorphSelectOption {
@@ -107,16 +108,10 @@ const { blur } = motionTokens;
 type Bezier = [number, number, number, number];
 const enter = [...motionTokens.ease.enter] as Bezier;
 const standard = [...motionTokens.ease.standard] as Bezier;
-/** Duration springs restated as stiffness and damping, so a retarget mid flight keeps the velocity it already has. */
-const physical = (visualDuration: number, bounce: number): Transition => {
-  const root = 2 * Math.PI / (visualDuration * 1.2);
-  return { type: "spring", stiffness: root * root, damping: 2 * (1 - bounce) * root, mass: 1 };
-};
-/* mobi 调速：上游观感偏缓（GROW .4 / WIDTH .42），整体提速约 30%——pill 长成列表干脆利落 */
-const GROW = physical(.28, .12), SHRINK = physical(.24, 0), GLIDE = physical(.2, .08), WIDTH = physical(.3, .16);
-/** Width that narrows never overshoots: dipping even half a pixel under the closed width ellipsizes the label and nudges the chevron. */
-const NARROW = physical(.3, 0);
 const OPEN_RADIUS = 22;
+/** 面板/列表与视窗边缘的最小留白（展开定位的回拉边界）。**宽度上限不在这里**——
+ *  那是 CSS `.listFace` 的 `max(trigger-w, min(panel-w, 100vw - 2rem))`，单源在那边 */
+const EDGE_MARGIN = 12;
 const TYPEAHEAD_RESET = 600, PAGE = 8;
 
 const subscribe = () => () => {};
@@ -210,8 +205,9 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
   const current = active !== null && enabled.some(option => option.value === active) ? active : enabled[0]?.value ?? null;
   const resultCount = visibleSections.reduce((sum, section) => sum + section.options.length, 0);
 
-  /* The shape: one surface whose width, height, and corners spring between the trigger and the open list. */
-  const anchorW = useMotionValue<number | string>("auto");
+  /* The shape: one surface whose width, height, and corners spring between the trigger and the open list.
+     收起 pill 的占位宽不在这里——它开合两端恒等于 trigger 宽（只随 label 长度变），
+     由 --ms-trigger-w 单源供给、CSS transition 承载（见 .root[data-ready] .anchor）。 */
   const shapeW = useMotionValue<number | string>("100%"), shapeH = useMotionValue<number | string>("100%"), radius = useMotionValue(22);
   const sizes = useRef({ trigger: 0, lid: 0, listW: 0, listH: 0 });
   const live = useRef({ open: false, reduced: false, measured: false });
@@ -223,28 +219,40 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
     const isOpen = live.current.open;
     const next = isOpen ? { w: Math.max(trigger, listW), h: lid + listH, r: OPEN_RADIUS } : { w: trigger, h: lid, r: lid / 2 };
     if (!animated || live.current.reduced || !live.current.measured) {
-      anchorW.jump(trigger); shapeW.jump(next.w); shapeH.jump(next.h); radius.jump(next.r);
+      shapeW.jump(next.w); shapeH.jump(next.h); radius.jump(next.r);
       live.current.measured = true;
       return;
     }
     const lastW = typeof shapeW.get() === "number" ? shapeW.get() as number : next.w;
     const lastH = typeof shapeH.get() === "number" ? shapeH.get() as number : next.h;
-    const lastAnchor = typeof anchorW.get() === "number" ? anchorW.get() as number : trigger;
     const transition = next.w * next.h >= lastW * lastH ? GROW : SHRINK;
-    animate(anchorW, trigger, trigger < lastAnchor ? NARROW : WIDTH);
     animate(shapeW, next.w, isOpen ? transition : next.w < lastW ? NARROW : WIDTH);
     animate(shapeH, next.h, transition);
     animate(radius, next.r, transition);
-  }, [anchorW, radius, shapeH, shapeW]);
+  }, [radius, shapeH, shapeW]);
+
+  /**
+   * 读一次几何：trigger 宽（顺手写回 CSS 变量，pill 占位宽与列表宽上限都挂在它上面）、
+   * lid 高、列表面尺寸。收口在这里的原因有二：① `triggerWidth` 内含一次
+   * getBoundingClientRect + 一次 offsetWidth，同帧连算两次就是两次强制布局；
+   * ② 读齐 + 写变量的顺序在两个调用点（ResizeObserver / 开合）必须一模一样。
+   */
+  const readSizes = useCallback(() => {
+    const measure = measureRef.current, face = listFaceRef.current;
+    if (!measure || !face) return null;
+    const trigger = triggerWidth(measure);
+    rootRef.current?.style.setProperty("--ms-trigger-w", `${trigger}px`);
+    return { trigger, lid: measure.offsetHeight, listW: face.offsetWidth, listH: face.offsetHeight };
+  }, []);
 
   useLayoutEffect(() => {
     const measure = measureRef.current, face = listFaceRef.current, root = rootRef.current;
     if (!measure || !face || !root) return;
     const read = () => {
       const previous = sizes.current;
-      // The open list is never narrower than the trigger; the width goes to CSS directly so a new label never waits on a render.
-      root.style.setProperty("--ms-trigger-w", `${triggerWidth(measure)}px`);
-      const next = { trigger: triggerWidth(measure), lid: measure.offsetHeight, listW: face.offsetWidth, listH: face.offsetHeight };
+      const next = readSizes();
+      if (!next) return;
+      // 列表尺寸只在展开时才值得触发一次形变；收起态列表不可见，宽度抖动不该被看见
       const changed = next.trigger !== previous.trigger || next.lid !== previous.lid || (live.current.open && (next.listW !== previous.listW || next.listH !== previous.listH));
       sizes.current = next;
       if (changed) place(live.current.measured);
@@ -256,21 +264,18 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
     observer.observe(measure);
     observer.observe(face);
     return () => observer.disconnect();
-  }, [place]);
+  }, [place, readSizes]);
 
   useLayoutEffect(() => {
     if (live.current.open === open) return;
     live.current.open = open;
     // A pick changes the label and closes in the same commit, so both faces are read fresh before the shape moves.
-    const face = listFaceRef.current, measure = measureRef.current;
-    if (face && measure) {
-      rootRef.current?.style.setProperty("--ms-trigger-w", `${triggerWidth(measure)}px`);
-      sizes.current = { trigger: triggerWidth(measure), lid: measure.offsetHeight, listW: face.offsetWidth, listH: face.offsetHeight };
-    }
+    const next = readSizes();
+    if (next) sizes.current = next;
     // 水平钳制随开合往返：open 位移到决策位（openList 已算好），closed 归零
     animate(shapeX, open ? pendingShift.current : 0, open ? WIDTH : NARROW);
     place(true);
-  }, [open, place, shapeX]);
+  }, [open, place, shapeX, readSizes]);
 
   /* The highlight glides between options on its own spring and fades when nothing is active. */
   const hy = useMotionValue(0), hh = useMotionValue(0), ho = useMotionValue(0);
@@ -313,7 +318,7 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
     const root = rootRef.current;
     if (!root || typeof window === "undefined") return;
     const rect = root.getBoundingClientRect();
-    const vh = window.innerHeight, vw = window.innerWidth, margin = 12;
+    const vh = window.innerHeight, vw = window.innerWidth;
     const { lid, listH } = sizes.current;
     const panelH = lid + Math.min(listH, maxListHeight);
     // 垂直：down 放得下 → down；否则 up 放得下 → up；都放不下取空间大的一侧（列表内部滚动）
@@ -321,19 +326,20 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
     if (direction !== "auto") {
       dir = direction;
     } else {
-      const upSpace = rect.top - margin, downSpace = vh - rect.bottom - margin;
+      const upSpace = rect.top - EDGE_MARGIN, downSpace = vh - rect.bottom - EDGE_MARGIN;
       dir = downSpace >= panelH ? "down" : upSpace >= panelH ? "up" : upSpace >= downSpace ? "up" : "down";
     }
     setAutoDirection(dir);
     // 列表高度收缩：所选方向放不下完整列表时压 --ms-list-max，面板整体仍不出视窗
-    const sideSpace = dir === "up" ? rect.top - margin : vh - rect.bottom - margin;
-    const listMax = Math.max(160, Math.min(maxListHeight, sideSpace - lid - 12));
+    const sideSpace = dir === "up" ? rect.top - EDGE_MARGIN : vh - rect.bottom - EDGE_MARGIN;
+    const listMax = Math.max(160, Math.min(maxListHeight, sideSpace - lid - EDGE_MARGIN));
     root.style.setProperty("--ms-list-max", `${Math.floor(listMax)}px`);
-    // 水平：align 决定理想锚位，出视窗则平移回 [margin, vw - margin - w]；
-    // fullWidth 直接取满宽（与 CSS 端 --ms-panel-w 的 100vw - 2rem 同式）
-    const w = fullWidth ? vw - 2 * margin : Math.max(sizes.current.trigger, Math.min(panelWidth, vw - 2 * margin));
+    // 水平：面板宽取 listFace 的**实测宽**——CSS 已算过 max(trigger-w, min(panel-w, 100vw - 2rem))，
+    // 与 place() 的展开宽同式；在这里重算一遍就是第二个事实源（曾漂移：JS 的 12px 对不上
+    // CSS 的 2rem，移动端 fullWidth 档少让 8px）。align 决定理想锚位，出视窗则平移回视口内。
+    const w = Math.max(sizes.current.trigger, sizes.current.listW);
     const idealLeft = align === "end" ? rect.right - w : rect.left;
-    const clampedLeft = Math.max(margin, Math.min(idealLeft, vw - margin - w));
+    const clampedLeft = Math.max(EDGE_MARGIN, Math.min(idealLeft, vw - EDGE_MARGIN - w));
     pendingShift.current = clampedLeft - rect.left;
   };
 
@@ -459,7 +465,7 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
   return <div ref={rootRef} className={[styles.root, className].filter(Boolean).join(" ")} style={rootStyle} data-open={open || undefined} data-align={align} data-direction={directionValue} data-disabled={disabled || undefined} onBlur={onBlur}>
     <span id={labelId} className={hideLabel || iconOnly ? styles.srOnly : styles.label}>{label}</span>
 
-    <motion.div className={styles.anchor} style={{ width: anchorW }}>
+    <div className={styles.anchor}>
       {/* Sizes the closed trigger. It holds the chosen label with the trigger's own padding, so the width spring has a target before anything moves. */}
       <span ref={measureRef} className={`${styles.trigger} ${styles.measure}`} aria-hidden="true">{prefix && <span className={styles.triggerPrefix} aria-hidden="true">{prefix}</span>}{renderValue(selectedOption, !iconOnly)}</span>
 
@@ -544,7 +550,7 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
           </div>
         </motion.div>
       </motion.div>
-    </motion.div>
+    </div>
 
     {name && <input type="hidden" name={name} value={selected ?? ""} />}
     <span className={styles.srOnly} role="status" aria-live="polite">{announcement}</span>
