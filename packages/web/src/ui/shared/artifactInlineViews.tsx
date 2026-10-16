@@ -159,7 +159,7 @@ const widthModeValue = (mode: WidthMode): string => (mode === 'auto' ? '100%' : 
  * （origin='app'）。无 provider（Drawer 预览等会话页外渲染）时不开 bridge——
  * 与 useUiSendMessage 的静默 no-op 语义一致。
  */
-export function HtmlInline({ sessionId, path, wide, app }: ArtifactInlineProps & { wide?: boolean; app?: boolean }) {
+export function HtmlInline({ sessionId, path, wide, app, viz }: ArtifactInlineProps & { wide?: boolean; app?: boolean; viz?: boolean }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
     const sendMessage = useUiSendMessage()
@@ -193,6 +193,7 @@ export function HtmlInline({ sessionId, path, wide, app }: ArtifactInlineProps &
                         sessionId={sessionId}
                         path={path}
                         title={t('chat.artifact.htmlTitle', { defaultValue: basename(path) })}
+                        viz={viz}
                         app={app ? {
                             // 无 provider（Drawer 预览）时回调缺省：主题照注，只是不开 bridge。
                             // app 档无档③ phase 回滚诉求，失败吞掉（onError 已统一记日志+拉平）

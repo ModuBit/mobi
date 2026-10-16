@@ -33,6 +33,8 @@ describe('parseArtifactParams', () => {
     it('path + 合法 mode', () => {
         expect(parseArtifactParams({ path: '/a/b.png', mode: 'card' })).toEqual({ path: '/a/b.png', mode: 'card' })
         expect(parseArtifactParams({ path: '/a/b.html', mode: 'wide' })).toEqual({ path: '/a/b.html', mode: 'wide' })
+        expect(parseArtifactParams({ path: '/a/b.html', mode: 'viz' })).toEqual({ path: '/a/b.html', mode: 'viz' })
+        expect(parseArtifactParams({ path: '/a/b.html', mode: 'viz-wide' })).toEqual({ path: '/a/b.html', mode: 'viz-wide' })
     })
 
     it('mode 缺省/非法 → undefined（auto，容错不降级）', () => {
@@ -114,10 +116,19 @@ describe('classifyArtifact（渲染裁决纯函数，裁决顺序收口）', () 
         expect(classifyArtifact('/a.png', READY, 'card')).toEqual({ action: 'card' })
     })
 
-    it('校验全过 → inline verdict：kind/etag/wide/app 齐备（wide 仅 html 语义成立，统一带出）', () => {
-        expect(classifyArtifact('/a.png', READY)).toEqual({ action: 'inline', kind: 'image', etag: 'e1', wide: false, app: false })
-        expect(classifyArtifact('/a.mp4', READY)).toEqual({ action: 'inline', kind: 'video', etag: 'e1', wide: false, app: false })
-        expect(classifyArtifact('/a.html', READY, 'wide')).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: true, app: false })
-        expect(classifyArtifact('/a.html', READY)).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: false, app: false })
+    it('校验全过 → inline verdict：kind/etag/wide/app/viz 齐备（wide 仅 html 语义成立，统一带出）', () => {
+        expect(classifyArtifact('/a.png', READY)).toEqual({ action: 'inline', kind: 'image', etag: 'e1', wide: false, app: false, viz: false })
+        expect(classifyArtifact('/a.mp4', READY)).toEqual({ action: 'inline', kind: 'video', etag: 'e1', wide: false, app: false, viz: false })
+        expect(classifyArtifact('/a.html', READY, 'wide')).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: true, app: false, viz: false })
+        expect(classifyArtifact('/a.html', READY)).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: false, app: false, viz: false })
+    })
+
+    it('viz 档：蕴含 app（主题+桥），viz 标记驱动 serve-file viz=1 组装档；viz-wide 叠加高档', () => {
+        expect(classifyArtifact('/a.html', READY, 'viz')).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: true, app: true, viz: true })
+        expect(classifyArtifact('/a.html', READY, 'viz-wide')).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: true, app: true, viz: true })
+    })
+
+    it('viz 档对非 HTML 按无标记处理（与 app 同规——对图片注入运行时没有意义）', () => {
+        expect(classifyArtifact('/a.png', READY, 'viz')).toEqual({ action: 'inline', kind: 'image', etag: 'e1', wide: false, app: false, viz: false })
     })
 })

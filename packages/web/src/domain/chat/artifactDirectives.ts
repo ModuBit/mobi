@@ -33,8 +33,11 @@ import type { DirectiveDefinition } from './directives'
 export const ARTIFACT_DIRECTIVE_NAME = ARTIFACT_DIRECTIVE.slice(DIRECTIVE_PREFIX.length)
 
 /** 展示意愿 mode：`card` 强制产物卡；`wide` 仅 HTML 放宽容器；`app` = 沙箱交互 app
- *  （generative-ui 票 05：HTML inline 附加主题变量注入，与 wide 同高档）；缺省 = auto */
-export type ArtifactMode = 'card' | 'wide' | 'app'
+ *  （generative-ui 票 05：HTML inline 附加主题变量注入，与 wide 同高档）；
+ *  `viz` / `viz-wide` = 可视化 fragment 档（visualize-runtime 票 02：fragment 契约 +
+ *  宿主注入 --viz-* token/工具类/交互运行时，蕴含 app 的主题注入与回灌桥；
+ *  `viz-wide` 再叠加 wide 高档）；缺省 = auto */
+export type ArtifactMode = 'card' | 'wide' | 'app' | 'viz' | 'viz-wide'
 
 /** 声明的类型化参数。mode 非法值按缺省 auto 处理（模型输出容错优先，不因拼写降级整条声明） */
 export interface ArtifactParams {
@@ -43,16 +46,18 @@ export interface ArtifactParams {
 }
 
 /**
- * artifact 指令语义：path 必填（非空字符串），mode 仅接受 card/wide/app。
+ * artifact 指令语义：path 必填（非空字符串），mode 仅接受 card/wide/app/viz/viz-wide。
  * 非法（缺 path / 空 path）返回 null，消费方按原文诚实降级。
  * 去重键 = path：同一路径一条消息只保留首次声明（同一产物不重复渲染）。
  */
+const ARTIFACT_MODES: readonly string[] = ['card', 'wide', 'app', 'viz', 'viz-wide']
+
 const ARTIFACT_DEFINITION: DirectiveDefinition<ArtifactParams> = {
     directive: ARTIFACT_DIRECTIVE,
     parse: (attrs) => {
         const { path, mode } = attrs
         if (path === undefined || path.trim() === '') return null
-        return { path, mode: mode === 'card' || mode === 'wide' || mode === 'app' ? mode : undefined }
+        return { path, mode: mode !== undefined && ARTIFACT_MODES.includes(mode) ? mode as ArtifactMode : undefined }
     },
     dedupeKey: (params) => params.path,
 }
@@ -113,7 +118,7 @@ export type ArtifactMetaState =
 /** 渲染裁决：产物卡（可带降级原因）或 inline（分型所需字段已齐备，视图层零再判定） */
 export type ArtifactVerdict =
     | { action: 'card'; reason?: ArtifactCardReason }
-    | { action: 'inline'; kind: Exclude<ArtifactKind, 'pdf' | 'unknown'>; etag: string; wide: boolean; app: boolean }
+    | { action: 'inline'; kind: Exclude<ArtifactKind, 'pdf' | 'unknown'>; etag: string; wide: boolean; app: boolean; viz: boolean }
 
 /**
  * 渲染裁决纯函数：「给定 (path, meta, mode) → 渲染形态」的唯一出处。
@@ -123,6 +128,9 @@ export type ArtifactVerdict =
  * mode='app'（generative-ui 票 05）：仅对 HTML 生效——inline 时附带 app 标记
  * （SandboxHtmlFrame 据此注入 --mobi-* 主题变量），并蕴含 wide 的高档；非 HTML
  * 文件上的 app 声明按无此标记处理（对图片/音视频注入主题没有意义）。
+ * mode='viz'/'viz-wide'（visualize-runtime 票 02）：同样仅对 HTML 生效；viz 蕴含
+ * app（主题注入 + 回灌桥同开），SandboxHtmlFrame 另按 viz 标记切 serve-file 的
+ * viz=1 组装档；'viz-wide' 再蕴含 wide。
  */
 export function classifyArtifact(path: string, meta: ArtifactMetaState, mode?: string): ArtifactVerdict {
     const kind = resolveArtifactKind(path)
@@ -131,6 +139,7 @@ export function classifyArtifact(path: string, meta: ArtifactMetaState, mode?: s
     if (!isInlineCapableKind(kind)) return { action: 'card', reason: 'unsupported' }
     if (meta.size > ARTIFACT_INLINE_LIMIT_BYTES[kind]) return { action: 'card', reason: 'too-large' }
     if (mode === 'card') return { action: 'card' }
-    const app = mode === 'app' && kind === 'html'
-    return { action: 'inline', kind, etag: meta.etag, wide: mode === 'wide' || app, app }
+    const viz = (mode === 'viz' || mode === 'viz-wide') && kind === 'html'
+    const app = (mode === 'app' || viz) && kind === 'html'
+    return { action: 'inline', kind, etag: meta.etag, wide: mode === 'wide' || mode === 'viz-wide' || app, app, viz }
 }

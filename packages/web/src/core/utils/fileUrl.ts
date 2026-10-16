@@ -81,9 +81,14 @@ export function buildHostReadFileUrl(
  * 不带内容版本参数：内容新鲜度由「meta refetch → dataUpdatedAt 变化 → 重建 iframe」保证
  * （改引用的 CSS/JS 不变 HTML etag，v 参数本就不够用），且 serve-file 已设 no-cache，
  * 重建时连带引用资源回源验证。
+ *
+ * viz=1（visualize-runtime 票 02）：切 serve-file 的 viz 组装档——daemon 校验
+ * fragment 并内联注入 --viz-* token/工具类/交互运行时后返回完整沙箱文档；
+ * 仅 HTML inline 的 viz/viz-wide 档使用。
  */
-export function buildServeFileUrl(sessionId: string, relPath: string): string {
-    return `/api/sessions/${sessionId}/serve-file/${encodePathSegments(relPath)}`
+export function buildServeFileUrl(sessionId: string, relPath: string, opts: { viz?: boolean } = {}): string {
+    const query = opts.viz ? '?viz=1' : ''
+    return `/api/sessions/${sessionId}/serve-file/${encodePathSegments(relPath)}${query}`
 }
 
 /**

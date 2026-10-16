@@ -31,6 +31,7 @@ import type { WebAppEnv } from '../middleware/auth'
 import { toSummaryWithLiveState } from '../utils/sessionSummary'
 import { requireSessionFromParam, requireSyncEngine } from './guards'
 import { fileMetaHttpStatus, serveFileContent } from './serveFileContent'
+import { serveVizDocument } from './serveVizDocument'
 
 /** PATCH /sessions/:id 通用 body：重命名 / 归入工作区 / 置顶共用一个端点，至少携带一项 */
 const patchSessionSchema = z.object({
@@ -1029,6 +1030,15 @@ export function createSessionsRoutes(
 
         // download=1：top-level 打开会脱离 sandbox（同源执行），强制 attachment 触发下载而非渲染
         const download = c.req.query('download') === '1'
+        // viz=1：viz 档（visualize-runtime 票 02）——文件是 HTML fragment，经
+        // serveVizDocument 校验 + 组装（token/工具类/交互运行时内联）后返回完整沙箱文档。
+        // 主题与回灌桥由 web SandboxHtmlFrame 注入（复用 app 档机制），daemon 不感知。
+        if (c.req.query('viz') === '1') {
+            return serveVizDocument(c, {
+                readFileMeta: (p) => engine.executionAccess.readFileMeta(sessionResult.sessionId, p),
+                readFileRange: (p, o, l) => engine.executionAccess.readFileRange(sessionResult.sessionId, p, o, l),
+            }, absPath)
+        }
         return serveFileContent(c, {
             readFileMeta: (p) => engine.executionAccess.readFileMeta(sessionResult.sessionId, p),
             readFileRange: (p, o, l) => engine.executionAccess.readFileRange(sessionResult.sessionId, p, o, l),

@@ -95,7 +95,7 @@ describe('classifyArtifact mode=app（generative-ui 票 05）', () => {
 
     it('HTML + mode=app → inline 且 app 标记 + 蕴含 wide 高档', () => {
         const v = classifyArtifact('/tmp/a.html', ready, 'app')
-        expect(v).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: true, app: true })
+        expect(v).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: true, app: true, viz: false })
     })
 
     it('mode=app 解析进 ArtifactParams（parse 收口）', () => {
