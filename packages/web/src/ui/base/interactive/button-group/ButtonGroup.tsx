@@ -21,13 +21,14 @@
 // 其余与上游一致；label/menu 文案全走 props，无硬编码文案，无 i18n 接入。
 "use client";
 
-import { isValidElement, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { CSSProperties, FocusEvent, KeyboardEvent, PointerEvent, ReactNode, RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties, FocusEvent, KeyboardEvent, PointerEvent, ReactNode } from "react";
 import * as DropdownPrimitive from "@radix-ui/react-dropdown-menu";
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion } from "motion/react";
-import type { TargetAndTransition } from "motion/react";
 import { ChevronDown } from "lucide-react";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
+// morph 基建（宽度 spring / key 命名 / 进出场常量）与 Button/ActionButton/SplitButton 共享单源
+import { fadeIn, fadeOut, iconKey, rest, textIn, textOut, useMorphWidth } from "../morphShared";
 import styles from "./button-group.module.css";
 
 export type ButtonGroupVariant = "outline" | "solid";
@@ -88,45 +89,6 @@ export interface ButtonGroupProps {
 
 /** Key of the chevron segment. Plain text, because the HTML parser rewrites control characters in server-rendered attributes. */
 const MENU = "button-group-menu";
-
-const rest: TargetAndTransition = { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" };
-const textIn: TargetAndTransition = { opacity: 0, y: 4, filter: `blur(${motionTokens.blur.soft}px)` };
-const textOut: TargetAndTransition = { opacity: 0, y: -3, filter: `blur(${motionTokens.blur.soft}px)`, transition: { duration: motionTokens.duration.fast, ease: [...motionTokens.ease.standard] } };
-const fadeIn: TargetAndTransition = { ...rest, opacity: 0 };
-const fadeOut: TargetAndTransition = { opacity: 0, transition: { duration: motionTokens.duration.instant } };
-
-/** Names the icon element, so swapping Link for Check morphs while a re-render of the same icon stays still. */
-function iconKey(node: ReactNode): string {
-  if (!isValidElement(node)) return node == null || typeof node === "boolean" ? "" : String(node);
-  const type = node.type as string | { displayName?: string; name?: string };
-  return typeof type === "string" ? type : type?.displayName ?? type?.name ?? "icon";
-}
-
-/** Springs the slot to the natural width of its content when the label changes; other resizes (a late web font, collapsing labels) jump. */
-function useMorphWidth(content: RefObject<HTMLElement | null>, key: string, reduced: boolean) {
-  const width = useMotionValue<number | "auto">("auto");
-  const lastKey = useRef(key), armedUntil = useRef(0);
-  useLayoutEffect(() => {
-    if (lastKey.current === key) return;
-    lastKey.current = key;
-    armedUntil.current = performance.now() + 700;
-  }, [key]);
-  useEffect(() => {
-    const node = content.current, slot = node?.parentElement;
-    if (!node || !slot || typeof ResizeObserver === "undefined") return;
-    let measured = false;
-    const observer = new ResizeObserver(([entry]) => {
-      if (!entry) return;
-      const next = entry.contentRect.width;
-      if (!next || !measured || reduced || performance.now() > armedUntil.current) { measured = next > 0; width.jump(next || "auto"); delete slot.dataset.morphing; return; }
-      slot.dataset.morphing = "";
-      animate(width, next, { ...motionTokens.spring.morph, onComplete: () => { delete slot.dataset.morphing; } });
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [content, reduced, width]);
-  return width;
-}
 
 /**
  * Icon and label of one segment. Every reserved label sits invisibly in the same grid cell, so the segment is as wide as its widest

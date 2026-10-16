@@ -432,7 +432,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                     disabled={disabledAll}
                                     loading={pendingAction === 'allow'}
                                     onClick={() => approveWithMode('auto')}
-                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', width: isMobile ? '100%' : undefined }}
+                                    block={isMobile}
+                                    style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
                                 >
                                     <CheckOutlined /> {t('chat.tool.approveAuto')}
                                 </Button>
@@ -441,7 +442,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                     disabled={disabledAll}
                                     loading={pendingAction === 'allow'}
                                     onClick={() => approveWithMode('acceptEdits')}
-                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', width: isMobile ? '100%' : undefined }}
+                                    block={isMobile}
+                                    style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
                                 >
                                     <CheckOutlined /> {t('chat.tool.approveAutoAccept')}
                                 </Button>
@@ -450,7 +452,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                     disabled={disabledAll}
                                     loading={pendingAction === 'allow'}
                                     onClick={() => approveWithMode('default')}
-                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', width: isMobile ? '100%' : undefined }}
+                                    block={isMobile}
+                                    style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
                                 >
                                     <CheckOutlined /> {t('chat.tool.approveManual')}
                                 </Button>
@@ -461,7 +464,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                     onClick={() => {
                                         if (!showFeedback) setShowFeedback(true)
                                     }}
-                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', width: isMobile ? '100%' : undefined, color: isMobile ? token.colorTextSecondary : undefined }}
+                                    block={isMobile}
+                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', color: isMobile ? token.colorTextSecondary : undefined }}
                                 >
                                     <CloseOutlined /> {t('chat.tool.keepPlanning')}
                                 </Button>
@@ -475,7 +479,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                     disabled={mainAction.disabled}
                                     loading={mainAction.loading}
                                     onClick={mainAction.onClick}
-                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', width: isMobile ? '100%' : undefined }}
+                                    block={isMobile}
+                                    style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
                                 >
                                     {denyFirst ? <CloseOutlined /> : <CheckOutlined />} {mainAction.label}
                                 </Button>
@@ -502,10 +507,11 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                     {!denyFirst && (
                                         <Button
                                             variant="ghost"
+                                            danger
                                             disabled={denyConfig.disabled}
                                             loading={denyConfig.loading}
                                             onClick={denyConfig.onClick}
-                                            style={{ minHeight: actionMinHeight, flex: isMobile ? 1 : undefined, justifyContent: 'center', color: token.colorError }}
+                                            style={{ minHeight: actionMinHeight, flex: isMobile ? 1 : undefined, justifyContent: 'center' }}
                                         >
                                             <CloseOutlined /> {denyConfig.label}
                                         </Button>

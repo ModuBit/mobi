@@ -106,7 +106,8 @@ export function ClearStateButton({ sessionId, clearFields, confirmKey, onClear }
                     <Button
                         variant="danger"
                         loading={loading}
-                        style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                        block
+                        style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                         onClick={doClear}
                     >
                         {t('chat.clearState.confirm')}
@@ -114,7 +115,8 @@ export function ClearStateButton({ sessionId, clearFields, confirmKey, onClear }
                     <Button
                         variant="ghost"
                         disabled={loading}
-                        style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                        block
+                        style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                         onClick={() => setDrawerOpen(false)}
                     >
                         {t('chat.clearState.cancel')}

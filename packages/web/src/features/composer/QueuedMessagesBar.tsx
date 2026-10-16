@@ -17,6 +17,7 @@
 import { useMemo } from 'react'
 import { theme, message } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { ClockCircleOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
@@ -217,41 +218,38 @@ function QueuedItem(props: {
                 {text || '...'}
             </span>
 
-            {/* 操作按钮（icon-only；steer/cancel 带 loading 态——IconButton 无 loading，统一走 ghost Button） */}
+            {/* 操作按钮（icon-only；steer/edit 收编 IconButton——已支持 loading；
+                cancel 的 danger 语义色钮另案迁移，暂留 ghost Button） */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
                 <AppTooltip title={steerLabel}>
-                    <Button
-                        variant="ghost"
-                        size="sm"
+                    <IconButton
+                        size={28}
+                        icon={<ThunderboltOutlined />}
                         aria-label={steerLabel}
                         onClick={onSteer}
                         loading={steerPending}
                         disabled={cancelPending}
-                    >
-                        <ThunderboltOutlined />
-                    </Button>
+                    />
                 </AppTooltip>
                 <AppTooltip title={editLabel}>
-                    <Button
-                        variant="ghost"
-                        size="sm"
+                    <IconButton
+                        size={28}
+                        icon={<EditOutlined />}
                         aria-label={editLabel}
                         onClick={onEdit}
                         disabled={cancelPending || steerPending}
-                    >
-                        <EditOutlined />
-                    </Button>
+                    />
                 </AppTooltip>
-                {/* 原 text+danger：ghost 底 + colorError 前景（WorkspaceFormModal 移除钮同款先例） */}
+                {/* 原 text+danger → ghost+danger */}
                 <AppTooltip title={cancelLabel}>
                     <Button
                         variant="ghost"
+                        danger
                         size="sm"
                         aria-label={cancelLabel}
                         onClick={onCancel}
                         loading={cancelPending}
                         disabled={steerPending}
-                        style={{ color: token.colorError }}
                     >
                         <DeleteOutlined />
                     </Button>

@@ -16,7 +16,7 @@
 
 import { Fragment, useLayoutEffect, useRef, useState } from 'react'
 import { Popover, theme as antTheme } from 'antd'
-import { Button } from '@/ui/base/interactive/button/Button'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 import { DropdownMenu, type DropdownItem } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
 import { Ellipsis, Folders } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -127,15 +127,14 @@ export default function FileContentViewHeader({ sessionId, filePath, extraMenuIt
     // 树开关按钮单源：移动包 Popover（触屏无 hover）、桌面直切分栏；
     // 按钮本体（icon 着色/aria）只写一遍，onClick 仅桌面需要（移动由 Popover 受控）
     const treeToggleButton = (
-        // Popover 触发器需 ref 转发（IconButton 不转发），icon-only 走 ghost 档 Button
-        <Button
-            variant="ghost" size="sm"
+        // Popover 触发器需 ref 转发——IconButton 已 forwardRef，可直接作触发器
+        <IconButton
+            size={28}
+            icon={<Folders size={14} style={{ color: treeOpen ? token.colorText : token.colorTextTertiary }} />}
             aria-label={t('files.openFromTree')}
             aria-expanded={treeOpen}
             onClick={isMobile ? undefined : () => onTreeOpenChange(!treeOpen)}
-        >
-            <Folders size={14} style={{ color: treeOpen ? token.colorText : token.colorTextTertiary }} />
-        </Button>
+        />
     )
 
     return (
@@ -163,7 +162,7 @@ export default function FileContentViewHeader({ sessionId, filePath, extraMenuIt
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
                 <DropdownMenu
-                    trigger={<Button variant="ghost" size="sm" aria-label={t('files.more')}><Ellipsis size={14} /></Button>}
+                    trigger={<IconButton size={28} icon={<Ellipsis size={14} />} aria-label={t('files.more')} />}
                     items={extraMenuItems}
                 />
                 {/* 树开关按钮单源：移动包 Popover（触屏无 hover）、桌面直切分栏；

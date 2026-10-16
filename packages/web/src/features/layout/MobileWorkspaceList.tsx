@@ -369,7 +369,8 @@ export function MobileWorkspaceList() {
                         <Button
                             variant="danger"
                             loading={actionLoading === 'delete'}
-                            style={{ width: '100%', height: 44 }}
+                            block
+                            style={{ height: 44 }}
                             onClick={handleDeleteConfirm}
                         >
                             {t('common.confirm')}
@@ -378,8 +379,8 @@ export function MobileWorkspaceList() {
                         <Button
                             variant="ghost"
                             disabled={!!actionLoading}
+                            block
                             style={{
-                                width: '100%',
                                 height: 48,
                                 marginTop: 4,
                                 color: token.colorTextSecondary,
@@ -395,7 +396,8 @@ export function MobileWorkspaceList() {
                         <Button
                             variant="ghost"
                             disabled={!!actionLoading}
-                            style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                            block
+                            style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                             onClick={handleRenameStart}
                         >
                             <EditOutlined /> {t('session.actions.rename')}
@@ -406,7 +408,8 @@ export function MobileWorkspaceList() {
                             variant="ghost"
                             disabled={!!actionLoading || pinLoadingId === actionSession.id}
                             loading={pinLoadingId === actionSession.id}
-                            style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                            block
+                            style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                             onClick={() => handleTogglePin(actionSession)}
                         >
                             <PushpinOutlined /> {actionSession.pinned ? t('session.actions.unpin') : t('session.actions.pin')}
@@ -418,7 +421,8 @@ export function MobileWorkspaceList() {
                                 <Button
                                     variant="ghost"
                                     disabled={!!actionLoading}
-                                    style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                    block
+                                    style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                                     onClick={handleOpenAssign}
                                 >
                                     <SwapOutlined /> {t('workspace.changeWorkspace')}
@@ -427,7 +431,8 @@ export function MobileWorkspaceList() {
                                     variant="ghost"
                                     disabled={!!actionLoading}
                                     loading={actionLoading === 'moveToRecent'}
-                                    style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                    block
+                                    style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                                     onClick={handleMoveToRecent}
                                 >
                                     <ImportOutlined /> {t('workspace.toRecent')}
@@ -437,7 +442,8 @@ export function MobileWorkspaceList() {
                             <Button
                                 variant="ghost"
                                 disabled={!!actionLoading}
-                                style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                block
+                                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                                 onClick={handleOpenAssign}
                             >
                                 <SwapOutlined /> {t('workspace.assignTo')}
@@ -450,7 +456,8 @@ export function MobileWorkspaceList() {
                                 variant="ghost"
                                 disabled={!!actionLoading}
                                 loading={actionLoading === 'dormant'}
-                                style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                block
+                                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                                 onClick={handleDormant}
                             >
                                 <MoonOutlined /> {t('session.actions.dormant')}
@@ -460,7 +467,8 @@ export function MobileWorkspaceList() {
                                 variant="ghost"
                                 disabled={!!actionLoading}
                                 loading={actionLoading === 'resume'}
-                                style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                block
+                                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                                 onClick={handleResume}
                             >
                                 <PlayCircleOutlined /> {t('session.actions.resume')}
@@ -473,7 +481,8 @@ export function MobileWorkspaceList() {
                         <Button
                             variant="danger"
                             disabled={actionSession.active || !!actionLoading}
-                            style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                            block
+                            style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                             onClick={handleDelete}
                         >
                             <DeleteOutlined /> {t('session.actions.delete')}

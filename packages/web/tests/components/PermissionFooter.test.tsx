@@ -232,12 +232,12 @@ describe('PermissionFooter', () => {
     it('拒绝按钮为警示样式（ghost 弱化 + danger 红字，非 primary 满宽）', () => {
         renderFooter(makeTool())
         const denyBtn = screen.getByText('拒绝').closest('button')!
-        // ghost 弱化（无填充）+ danger 警示红字（inline colorError）——语义层红字提示「拒绝」，
+        // ghost 弱化（无填充）+ dangerTone 警示红字（block 语义 prop）——语义层红字提示「拒绝」，
         // 但非 primary 不抢视觉锚点
         expect(denyBtn.className).toContain('ghost')
-        expect(denyBtn.style.color).toBeTruthy()
+        expect(denyBtn.className).toContain('dangerTone')
         expect(denyBtn.className).not.toContain('primary')
-        expect(denyBtn.style.width).not.toBe('100%')
+        expect(denyBtn.className).not.toContain('block')
     })
 
     it('0 suggestion：构造 session fallback 档，渲染「允许此命令」+「允许」+「拒绝」', () => {
@@ -313,12 +313,12 @@ describe('PermissionFooter', () => {
         const projectBtn = screen.getByText('当前项目允许').closest('button')!
         const allowBtn = screen.getByText('允许').closest('button')!
         const denyBtn = screen.getByText('拒绝').closest('button')!
-        // 主操作满宽独占
-        expect(sessionBtn.style.width).toBe('100%')
+        // 主操作满宽独占（block prop → block class）
+        expect(sessionBtn.className).toContain('block')
         // 次操作、拒绝均非满宽（在并排行 flex:1）
-        expect(projectBtn.style.width).not.toBe('100%')
-        expect(allowBtn.style.width).not.toBe('100%')
-        expect(denyBtn.style.width).not.toBe('100%')
+        expect(projectBtn.className).not.toContain('block')
+        expect(allowBtn.className).not.toContain('block')
+        expect(denyBtn.className).not.toContain('block')
         // 其余档+允许+拒绝同处次要行，主操作不在次要行
         const subRow = projectBtn.closest('[data-sub-row="secondary"]')
         expect(subRow).not.toBeNull()

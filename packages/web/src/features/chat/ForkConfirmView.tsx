@@ -199,7 +199,7 @@ export function ForkConfirmView({ targetText, loading, onConfirm, onCancel }: Fo
                 </OptionText>
             </OptionCardButton>
 
-            <Button variant="ghost" disabled={loading} onClick={onCancel} style={{ width: '100%' }}>
+            <Button variant="ghost" block disabled={loading} onClick={onCancel}>
                 {t('common.cancel')}
             </Button>
         </Root>

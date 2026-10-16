@@ -19,7 +19,7 @@ import type { ToolInfo } from '@/domain/tool/types'
 import { memo, useEffect, useMemo, useState } from 'react'
 import { Alert, theme as antTheme, Input } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
-import { CheckOutlined, LoadingOutlined } from '@ant-design/icons'
+import { CheckOutlined } from '@ant-design/icons'
 import { TabStrip, TabStripList, TabStripPanel, TabStripTab } from '@/ui/base/interactive/tabStrip'
 import { useTranslation } from 'react-i18next'
 import { isAskUserQuestionToolName, parseAskUserQuestionInput, buildChatAboutThisReason, type AskUserQuestionQuestion } from '@/domain/tool/askUserQuestion'
@@ -151,11 +151,12 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'stretch' }}>
             <Button
                 variant="primary"
+                loading={pendingAction === 'submit'}
                 disabled={props.disabled || pendingAction != null || !canSubmit}
                 onClick={submit}
                 style={{ flex: 1, minHeight: actionMinHeight, justifyContent: 'center' }}
             >
-                {pendingAction === 'submit' ? <LoadingOutlined /> : <CheckOutlined />} {pendingAction === 'submit' ? t('chat.tool.submitting') : t('chat.tool.submit')}
+                <CheckOutlined /> {pendingAction === 'submit' ? t('chat.tool.submitting') : t('chat.tool.submit')}
             </Button>
             <Button
                 variant="secondary"

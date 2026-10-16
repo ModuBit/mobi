@@ -15,7 +15,7 @@
  */
 
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
-import { Alert, App, AutoComplete, Form, Input, Modal, Radio, Spin, theme } from 'antd'
+import { Alert, App, AutoComplete, Form, Input, Modal, Radio, Spin } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
 import { FolderOutlined, HomeOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
@@ -61,7 +61,6 @@ function FolderRow({
     onPathChange, onPrimaryChange, onRemove,
 }: FolderRowProps) {
     const { t } = useTranslation()
-    const { token } = theme.useToken()
     const isMobile = useIsMobile()
     const { options, isLoading } = useDirectoryListing(folder.path, homeDir)
 
@@ -104,12 +103,12 @@ function FolderRow({
                 </Radio>
                 <Button
                     variant="ghost"
+                    danger
                     size="sm"
                     disabled={disabled || !canRemove}
                     onClick={onRemove}
                     title={t('workspace.removeFolder')}
                     aria-label={t('workspace.removeFolder')}
-                    style={{ color: canRemove ? token.colorError : undefined }}
                 >
                     <MinusOutlined />
                 </Button>

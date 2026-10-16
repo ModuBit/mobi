@@ -353,7 +353,7 @@ export function LoginPage() {
                             <Button
                                 variant="primary"
                                 type="submit"
-                                style={{ width: '100%' }}
+                                block
                                 size="lg"
                                 loading={loading}
                             >

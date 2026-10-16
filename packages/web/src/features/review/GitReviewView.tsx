@@ -29,6 +29,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { App, Collapse, Empty, Flex, Popover, Spin, Tooltip } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 import { useTranslation } from 'react-i18next'
 import { CheckCheck, ChevronsDownUp, ChevronDown, Columns2, Copy, ExternalLink, FileQuestion, FolderTree, MoreHorizontal, RefreshCw, WrapText } from 'lucide-react'
 import { type DiffTarget, type ReviewFileEntry } from '@mobi/shared'
@@ -164,23 +165,20 @@ const FileRowHeader = memo(function FileRowHeader({ sessionId, file, expanded, p
                 复制点击反馈与气泡 CopyButton 同款：图标切绿勾 2s 后还原 */}
             <Flex component="span" align="center" className="review-row-actions" style={{ flexShrink: 0 }}>
                 <Tooltip title={copied ? t('chat.copied') : t('files.copyPath')}>
-                    {/* antd Tooltip 需子转发 ref（IconButton 不转发）：icon-only 走 ghost 档 Button */}
-                    <Button
-                        variant="ghost" size="sm"
+                    <IconButton
+                        size={28}
+                        icon={copied ? <CheckCheck size={13} color="var(--ant-color-success)" /> : <Copy size={13} />}
                         aria-label={t('files.copyPath')}
                         onClick={(e) => { e.stopPropagation(); handleCopy() }}
-                    >
-                        {copied ? <CheckCheck size={13} color="var(--ant-color-success)" /> : <Copy size={13} />}
-                    </Button>
+                    />
                 </Tooltip>
                 <Tooltip title={t('review.openInTab')}>
-                    <Button
-                        variant="ghost" size="sm"
+                    <IconButton
+                        size={28}
+                        icon={<ExternalLink size={13} />}
                         aria-label={t('review.openInTab')}
                         onClick={(e) => { e.stopPropagation(); openFileTab(sessionId, file.path, basename(file.path)) }}
-                    >
-                        <ExternalLink size={13} />
-                    </Button>
+                    />
                 </Tooltip>
             </Flex>
             {/* 展开/收起箭头放行尾：hover 显现（Collapse 自带图标已关），随开合旋转。
@@ -324,16 +322,15 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
     // 树开关按钮单源：移动包 Popover（触屏无 hover，不叠 Tooltip）、桌面包 Tooltip，
     // 按钮本体（icon 着色/aria/testid）只写一遍——onClick 仅桌面需要（移动由 Popover 受控）
     const treeToggleButton = (
-        // Popover（移动触发器）与 antd Tooltip（桌面）都需 ref 转发：icon-only 走 ghost 档 Button
-        <Button
-            variant="ghost" size="sm"
+        // Popover（移动触发器）与 antd Tooltip（桌面）都需 ref 转发——IconButton 已 forwardRef，可直接作触发器
+        <IconButton
+            size={28}
+            icon={<FolderTree size={15} style={{ color: treeOpen ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
             aria-label={t('review.fileTree')}
             aria-expanded={treeOpen}
             data-testid="review-tree-toggle"
             onClick={isMobile ? undefined : () => openTree(!treeOpen)}
-        >
-            <FolderTree size={15} style={{ color: treeOpen ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />
-        </Button>
+        />
     )
 
     if (overview.isLoading) {
@@ -558,64 +555,59 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                                 { key: 'layout', label: layout === 'split' ? t('review.layoutUnified') : t('review.layoutSplit'), icon: <Columns2 size={14} />, onSelect: () => changeLayout(layout === 'split' ? 'unified' : 'split') },
                             ]}
                             trigger={
-                                <Button
-                                    variant="ghost" size="sm"
+                                <IconButton
+                                    size={28}
+                                    icon={<MoreHorizontal size={15} style={{ color: 'var(--ant-color-text-tertiary)' }} />}
                                     aria-label={t('common.more')}
                                     aria-haspopup="menu"
                                     data-testid="review-more"
-                                >
-                                    <MoreHorizontal size={15} style={{ color: 'var(--ant-color-text-tertiary)' }} />
-                                </Button>
+                                />
                             }
                         />
                     ) : (
                         <>
                             <Tooltip title={t('review.refresh')}>
-                        <Button
-                            variant="ghost" size="sm"
+                        <IconButton
+                            size={28}
                             aria-label={t('review.refresh')}
                             data-testid="review-refresh"
                             onClick={() => overview.refetch()}
-                        >
-                            <RefreshCw
+                            icon={<RefreshCw
                                 size={15}
                                 style={{
                                     color: 'var(--ant-color-text-tertiary)',
                                     // 取数中转圈（CSS animation，同 TeamAgentPanel/TasksPanel 先例）
                                     animation: overview.isFetching ? 'review-refresh-spin 1s linear infinite' : undefined,
                                 }}
-                            />
-                        </Button>
+                            />}
+                        />
                     </Tooltip>
                     <Tooltip title={t('review.collapseAll')}>
-                        <Button
-                            variant="ghost" size="sm"
+                        <IconButton
+                            size={28}
+                            icon={<ChevronsDownUp size={15} style={{ color: 'var(--ant-color-text-tertiary)' }} />}
                             aria-label={t('review.collapseAll')}
                             data-testid="review-collapse-all"
                             onClick={() => setExpandedPaths([])}
-                        >
-                            <ChevronsDownUp size={15} style={{ color: 'var(--ant-color-text-tertiary)' }} />
-                        </Button>
+                        />
                     </Tooltip>
                     <Tooltip title={t('review.wrap')}>
-                        <Button
-                            variant="ghost" size="sm"
+                        <IconButton
+                            size={28}
+                            icon={<WrapText size={15} style={{ color: wrap ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
                             aria-label={t('review.wrap')}
                             data-testid="review-wrap-toggle"
                             onClick={() => setWrap((v) => !v)}
-                        >
-                            <WrapText size={15} style={{ color: wrap ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />
-                        </Button>
+                        />
                     </Tooltip>
                     <Tooltip title={layout === 'split' ? t('review.layoutUnified') : t('review.layoutSplit')}>
-                        <Button
-                            variant="ghost" size="sm"
+                        <IconButton
+                            size={28}
+                            icon={<Columns2 size={15} style={{ color: layout === 'split' ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
                             aria-label={layout === 'split' ? t('review.layoutUnified') : t('review.layoutSplit')}
                             data-testid="review-layout-toggle"
                             onClick={() => changeLayout(layout === 'split' ? 'unified' : 'split')}
-                        >
-                            <Columns2 size={15} style={{ color: layout === 'split' ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />
-                        </Button>
+                        />
                     </Tooltip>
                         </>
                     )}

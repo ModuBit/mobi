@@ -102,7 +102,7 @@ export function VirtualKeyEditor({ open, onClose }: VirtualKeyEditorProps) {
                         </Space>
                     </Space>
                 ))}
-                <Button variant="secondary" onClick={() => setPickerOpen(true)} style={{ width: '100%' }}>
+                <Button variant="secondary" block onClick={() => setPickerOpen(true)}>
                     <Plus size={14} /> {t('terminal.virtualKeys.editor.add')}
                 </Button>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>

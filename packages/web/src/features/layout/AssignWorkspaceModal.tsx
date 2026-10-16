@@ -80,7 +80,8 @@ export function AssignWorkspaceModal({ session, open, onClose }: AssignWorkspace
                                 key={workspace.id}
                                 variant="ghost"
                                 disabled={assignMutation.isPending}
-                                style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                block
+                                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                                 onClick={() => handlePick(workspace.id)}
                             >
                                 <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>

@@ -39,5 +39,9 @@
 /* Loading 与文案共存（antd 形态）：spinner 行内插在文案前，随内容宽一起被 slot 的宽度 spring 收纳 */
 .loader { display: inline-grid; flex: none; place-items: center; width: var(--space-4); height: var(--space-4); margin-right: var(--space-2); }
 .spinner { border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
+/* block：占满容器宽（antd block 等价）。dangerTone：语义红字（原 antd text danger 落位），
+   只覆盖前景色、底/描边仍随 variant——放在 variant 规则之后让 hover/active 时红色不被主色盖过。 */
+.block { width: 100%; }
+.dangerTone, .dangerTone:hover:not(:disabled), .dangerTone:active:not(:disabled) { color: var(--danger); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .button { transition: none; } .labelSlot { transition: opacity var(--duration-instant) linear; } .spinner { animation-duration: .01ms; animation-iteration-count: 1; } }

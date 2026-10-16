@@ -18,7 +18,7 @@ import type { ToolInfo } from '@/domain/tool/types'
 import { memo, useEffect, useMemo, useState } from 'react'
 import { theme as antTheme, Tag, Input } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
-import { CheckOutlined, LeftOutlined, RightOutlined, LoadingOutlined } from '@ant-design/icons'
+import { CheckOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import {
     isRequestUserInputToolName,
@@ -247,8 +247,8 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
                             <RightOutlined /> {t('chat.tool.next')}
                         </Button>
                     ) : (
-                        <Button variant="primary" size="sm" disabled={props.disabled || loading} onClick={submit}>
-                            {loading ? <LoadingOutlined /> : <CheckOutlined />} {loading ? t('chat.tool.submitting') : t('chat.tool.submit')}
+                        <Button variant="primary" size="sm" loading={loading} disabled={props.disabled} onClick={submit}>
+                            <CheckOutlined /> {loading ? t('chat.tool.submitting') : t('chat.tool.submit')}
                         </Button>
                     )}
                 </div>

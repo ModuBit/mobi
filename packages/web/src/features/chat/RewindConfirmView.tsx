@@ -263,7 +263,7 @@ export function RewindConfirmView({ targetText, dryRun, loading, onConfirm, onCa
                 )}
             </Options>
 
-            <Button variant="ghost" disabled={loading} onClick={onCancel} style={{ width: '100%' }}>
+            <Button variant="ghost" block disabled={loading} onClick={onCancel}>
                 {t('common.cancel')}
             </Button>
         </Root>
