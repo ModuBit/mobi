@@ -28,7 +28,12 @@
  */
 
 import { VIZ_TOKENS_CSS, VIZ_KIT_CSS } from './vizStyles'
-import { VIZ_RUNTIME_JS, VIZ_FLOATING_UI_SCRIPTS, VIZ_LUCIDE_SCRIPT } from './vizRuntimeScript'
+import {
+    VIZ_RUNTIME_JS,
+    VIZ_FLOATING_UI_SCRIPTS,
+    VIZ_LUCIDE_SCRIPT,
+    VIZ_STATE_BRIDGE_JS,
+} from './vizRuntimeScript'
 
 /** viz fragment 上限（与 codex 同值；HTML 产物 inline 上限 2MB 之内再收一档） */
 export const VIZ_FRAGMENT_MAX_BYTES = 1_000_000
@@ -71,6 +76,7 @@ ${VIZ_KIT_CSS}</style>
 ${VIZ_FLOATING_UI_SCRIPTS}
 </head>
 <body>
+<script>${VIZ_STATE_BRIDGE_JS}</script>
 ${fragment}
 ${calendarScript}
 ${VIZ_LUCIDE_SCRIPT}

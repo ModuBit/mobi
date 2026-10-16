@@ -55,7 +55,7 @@ describe('validateVizFragment', () => {
 })
 
 describe('assembleVizDocument', () => {
-    test('组装产物：doctype 文档、样式在 head、fragment 原文进 body、运行时在其后', () => {
+    test('组装产物：doctype 文档、样式在 head、状态桥先于 fragment、运行时其后', () => {
         const fragment = '<div id="chart">data</div><script>window.__t = 1</script>'
         const doc = assembleVizDocument(fragment, 'sales chart')
         expect(doc.startsWith('<!doctype html>')).toBe(true)
@@ -67,7 +67,10 @@ describe('assembleVizDocument', () => {
         expect(doc).toContain('--viz-bg')
         expect(doc).toContain('.viz-grid')
         expect(doc).toContain('data-tooltip')
-        // 顺序：fragment 早于运行时脚本（运行时事件委托在其后仍接管）
+        // 状态桥（票 03）在 fragment 之前：fragment 首渲染即可 getWidgetState 恢复
+        expect(doc).toContain('setWidgetState')
+        expect(doc.indexOf('setWidgetState')).toBeLessThan(doc.indexOf(fragment))
+        // 顺序：fragment 早于交互运行时（运行时事件委托在其后仍接管）
         expect(doc.indexOf(fragment)).toBeLessThan(doc.lastIndexOf('viz-carousel-controls'))
     })
 

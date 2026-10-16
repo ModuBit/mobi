@@ -44,6 +44,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [agent 侧 MCP 工具验证](agent-tool-verify.md) — 探针 prompt 不点名 / tool_use+tool_result DB 断言 / deferred 工具名 init 里可见（描述不参与检索）/ Auto 模式自动放行致预授权断言失效
 - [引用特性验证](quote-verify.md) — 划选 popover / 评论浮层 / chip 列表卡 / 气泡引用组 / 点击定位全链路 recipe / Range 选区后 popover 异步挂载 / Tooltip 须 CDP hover / thinking 复述=模型收到引用的硬证据
 - [产物声明验证](inline-artifact-verify.md) — :mobi-artifact 全链路（inline 图片/iframe/悬空降级/窄屏）断言 testid 集 / rm 文件造悬空比 DB 造消息简单 / 挂载验证看内层 claude 的 --plugin-dir / **孤儿进程误判挂载失效的坑**
+- [viz 档验证](viz-verify.md) — mode="viz" fragment 组装全链路：探针 prompt / iframe contentDocument 断言集（token 派生/tabs/carousel/tooltip）/ 双档翻转 / 422 契约 / **模型漏 aria-controls 坑（运行时已兜底）**
 - [跨会话投递验证](send-message-verify.md) — 造会话（curl 直调 spawn）/ 探针**必须点名工具**（否则收件方去用 CC 原生 SendMessage）/ meta+lifecycle+「恰好一行」断言 / 往返·扇出·建完即用·无幽灵的验法 / 富内容与**跨机器靠改 DB machineId**（改完必还原）/ Auto 也会卡审批的坑 / **落库那份 vs 推给 CC 那份的差别（信封+中和+回信提示只在 CC 那份）** / create_session 的 title 只落 mobi 侧（CC 侧必失败）/ **杀会话 CLI 必须验证归属**（按「最新那个」或空模式匹配会误杀生产会话，2026-09-12 事故）
 - [会话切换性能量测](switch-perf-probe.md) — pushState+popstate SPA 切换探针 / rAF paint 计时 / 基线：热切 ~30ms、方向首切 ~260ms longtask
 - [记忆 E2E 验证](memory-verify.md) — fake 服务桩四场景一键脚本 e2e-memory.sh；断言面=mobi 侧行为；bash3.2 全角字符/bash -c 函数不可见/排队消息不触发 hook 三坑

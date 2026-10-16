@@ -24,6 +24,7 @@ import { describe, it, expect, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render } from '@testing-library/react'
 import { SandboxHtmlFrame } from '@/ui/base/sandbox/SandboxHtmlFrame'
+import { injectAppBridgeScript } from '@/ui/base/sandbox/sandboxAppHost'
 
 vi.mock('@/core/data/hooks/queries/useFileTree', () => ({
     useFileMeta: () => ({ data: { etag: 'e1' }, dataUpdatedAt: 1 }),
@@ -93,5 +94,72 @@ describe('SandboxHtmlFrame bridge（票 06）', () => {
         postFrom(iframe.contentWindow, { type: 'mobi-app', action: 'issueNewTurn', text: 'x' })
         expect(second).toHaveBeenCalled()
         expect(first).not.toHaveBeenCalled()
+    })
+})
+
+describe('SandboxHtmlFrame viz 档高度自适应（visualize-runtime 票 03）', () => {
+    it('viz 档：本 frame 的合法高度消息 → iframe 高度取 ceil 后平滑应用', () => {
+        const { container } = render(
+            <SandboxHtmlFrame sessionId="s1" path="a.html" title="t" viz style={{ height: 480 }} />,
+        )
+        const iframe = container.querySelector('iframe')!
+        postFrom(iframe.contentWindow, { type: 'mobi-viz-height', height: 731.4 })
+        expect(iframe.style.height).toBe('732px')
+        expect(iframe.style.transition).toContain('height')
+    })
+
+    it('viz 档：越界高度（0/负/超 10000）与非本 frame 来源 → 不动高度', () => {
+        const { container } = render(
+            <SandboxHtmlFrame sessionId="s1" path="a.html" title="t" viz style={{ height: 480 }} />,
+        )
+        const iframe = container.querySelector('iframe')!
+        postFrom(iframe.contentWindow, { type: 'mobi-viz-height', height: 0 })
+        postFrom(iframe.contentWindow, { type: 'mobi-viz-height', height: 20000 })
+        postFrom(iframe.contentWindow, { type: 'mobi-viz-height', height: 'tall' })
+        postFrom(window, { type: 'mobi-viz-height', height: 900 })
+        expect(iframe.style.height).toBe('480px')
+    })
+
+    it('非 viz 档（app/普通预览）收到高度消息 → 高度不变（自适应仅 viz 生效）', () => {
+        const { container } = render(
+            <SandboxHtmlFrame sessionId="s1" path="a.html" title="t" style={{ height: 480 }} />,
+        )
+        const iframe = container.querySelector('iframe')!
+        postFrom(iframe.contentWindow, { type: 'mobi-viz-height', height: 900 })
+        expect(iframe.style.height).toBe('480px')
+    })
+})
+
+describe('injectAppBridgeScript 合并语义（票 03：viz 档 daemon 桥先建 MobiApp 不丢回灌）', () => {
+    /** 注入脚本不自动执行（jsdom），直接以受控 window/parent 求值脚本文本 */
+    const runInjected = (doc: Document, fakeWindow: Record<string, unknown>) => {
+        const text = doc.getElementById('mobi-app-bridge')?.textContent ?? ''
+        expect(text).not.toBe('')
+        // eslint-disable-next-line no-new-func -- 被测物本身是生成的 IIFE 文本
+        new Function('window', 'parent', 'location', text)(
+            fakeWindow,
+            { postMessage: vi.fn() },
+            { origin: 'http://localhost' },
+        )
+        return fakeWindow.MobiApp as Record<string, unknown>
+    }
+
+    it('已有 MobiApp（viz 组装桥）→ 只补 issueNewTurn，保留既有成员', () => {
+        const doc = document.createElement('div').ownerDocument!
+        doc.head.querySelectorAll('#mobi-app-bridge').forEach((n) => n.remove())
+        injectAppBridgeScript(doc)
+        const api = runInjected(doc, { MobiApp: { setWidgetState: () => {} } })
+        expect(typeof api.issueNewTurn).toBe('function')
+        expect(typeof api.setWidgetState).toBe('function')
+    })
+
+    it('无 MobiApp → 建立并挂 issueNewTurn；重复注入只落一个 script 节点', () => {
+        const doc = document.createElement('div').ownerDocument!
+        doc.head.querySelectorAll('#mobi-app-bridge').forEach((n) => n.remove())
+        injectAppBridgeScript(doc)
+        injectAppBridgeScript(doc)
+        expect(doc.querySelectorAll('#mobi-app-bridge').length).toBe(1)
+        const api = runInjected(doc, {})
+        expect(typeof api.issueNewTurn).toBe('function')
     })
 })

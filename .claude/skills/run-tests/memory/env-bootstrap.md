@@ -111,6 +111,12 @@ daemon 子进程 → `wait` 返回 → 脚本退出路径触发 trap 清理，**
 连同消失，重启后现起 daemon 会因日志重定向目录不存在直接退出 1）。bootstrap 还活着时没有
 「只重启 daemon」——要么等/杀 bootstrap 后自管 daemon，要么接受清空走完整 bootstrap 重建素材。
 
+**例外（2026-10-16 实证）：`kill -9` bootstrap 全家可保数据目录**——SIGKILL 不执行 trap，
+数据目录原样保留；daemon/web 由各自的 PPID 看门狗自杀（ppid 消失即退出）。随后手动拉起
+daemon **和 web dev**（bootstrap 死则看门狗带走全家，web 不重启浏览器 5175 就空转），
+logs 目录尚在无需 mkdir，即可带着既有 workspace/会话/消息继续验证。适用于
+「改 daemon 代码要重启但舍不得重建模型对话素材」的场景（viz 档 E2E 实战）。
+
 1. 找 PID：`ps -eo pid,ppid,command | grep -E "profile e2e|2224" | grep -v grep`
    （e2e 两件套：daemon / `bun run dev`；生产 daemon 是 `~/.local/bin/mobi`，**禁碰**）
 2. `kill -TERM <daemon pid>` → 轮询 `lsof -nP -iTCP:2224 -sTCP:LISTEN` 直到端口释放（实测 1s）

@@ -46,6 +46,7 @@ import {
     injectAppBridgeScript,
     injectMobiThemeStyle,
     parseAppBridgeMessage,
+    parseVizHeightMessage,
 } from '@/ui/base/sandbox/sandboxAppHost'
 
 /** 产物 iframe 的滚动条主题（主题中性：透明轨道 + 半透明灰 thumb，深浅色页面通用）。
@@ -138,6 +139,26 @@ export function SandboxHtmlFrame({ sessionId, path, title, style, app, viz }: Sa
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
     }, [bridgeEnabled])
+
+    // viz 档高度自适应（visualize-runtime 票 03）：daemon 组装桥 ResizeObserver 上报
+    // 内容高度 → 平滑撑高/收缩。仅 viz 档生效；app/card 档维持调用方固定高度。
+    // iframe 因 key 重建后高度回落到初始 chrome，桥在 DOMContentLoaded 即上报恢复。
+    const heightAuto = viz === true
+    useEffect(() => {
+        if (!heightAuto) return
+        const handleMessage = (ev: MessageEvent) => {
+            if (ev.source !== frameRef.current?.contentWindow) return
+            const parsed = parseVizHeightMessage(ev.data)
+            if (!parsed) return
+            const frame = frameRef.current
+            if (frame) {
+                frame.style.transition = 'height 0.2s ease'
+                frame.style.height = `${parsed.height}px`
+            }
+        }
+        window.addEventListener('message', handleMessage)
+        return () => window.removeEventListener('message', handleMessage)
+    }, [heightAuto])
 
     return (
         <iframe

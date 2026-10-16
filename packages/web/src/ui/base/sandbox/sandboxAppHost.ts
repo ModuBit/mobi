@@ -43,6 +43,8 @@ import { MOBI_THEME_VAR_LIST, type MobiThemeVar } from '@mobi/shared'
 export const APP_BRIDGE_MSG_TYPE = 'mobi-app'
 /** bridge 消息的 action 白名单值（唯一；openLink 等第二通道需求出现再加，见票 06 记录） */
 export const APP_BRIDGE_ACTION = 'issueNewTurn'
+/** viz 档高度消息的 type（visualize-runtime 票 03：daemon 组装桥 → 宿主撑高） */
+export const VIZ_HEIGHT_MSG_TYPE = 'mobi-viz-height'
 /** text 上限：app 状态摘要不该长过一条人写的消息 */
 export const APP_BRIDGE_TEXT_MAX = 4000
 /** 限流最小间隔（ms）：同一 frame 两次 issueNewTurn 之间至少隔这么久 */
@@ -66,29 +68,44 @@ export function parseAppBridgeMessage(data: unknown): { text: string } | null {
 const APP_BRIDGE_SCRIPT_ID = 'mobi-app-bridge'
 
 /**
- * 注入 app 侧 API 脚本（幂等）：`window.MobiApp.issueNewTurn(text)` → postMessage
- * 宿主。targetOrigin 用 iframe 自身的 origin（allow-same-origin 下即 mobi origin，
+ * 注入 app 侧 API 脚本（幂等、**合并式**）：`window.MobiApp.issueNewTurn(text)` → postMessage
+ * 宿主。合并语义：viz 档的 daemon 组装桥（setWidgetState/getWidgetState）可能先建了
+ * `window.MobiApp`——只补缺的 `issueNewTurn`，不整体跳过（早退会让 viz 档丢回灌）。
+ * targetOrigin 用 iframe 自身的 origin（allow-same-origin 下即 mobi origin，
  * 不放宽到 '*'——即便消息被第三方 frame 截到也只是发给宿主的请求，宿主侧来源校验
  * 才是权威防线，但收紧无成本）。跨域/未就绪静默跳过。
  */
 export function injectAppBridgeScript(doc: Document | null | undefined): void {
     try {
-        if (!doc?.head || doc.getElementById(APP_BRIDGE_SCRIPT_ID)) return
+        if (!doc?.head) return
+        if (doc.getElementById(APP_BRIDGE_SCRIPT_ID)) return
         const script = doc.createElement('script')
         script.id = APP_BRIDGE_SCRIPT_ID
         script.textContent = `(function () {
-  if (window.MobiApp) return;
-  window.MobiApp = {
-    issueNewTurn: function (text) {
-      if (typeof text !== 'string') return;
-      parent.postMessage({ type: ${JSON.stringify(APP_BRIDGE_MSG_TYPE)}, action: ${JSON.stringify(APP_BRIDGE_ACTION)}, text: text }, location.origin);
-    }
+  var api = window.MobiApp || (window.MobiApp = {});
+  if (api.issueNewTurn) return;
+  api.issueNewTurn = function (text) {
+    if (typeof text !== 'string') return;
+    parent.postMessage({ type: ${JSON.stringify(APP_BRIDGE_MSG_TYPE)}, action: ${JSON.stringify(APP_BRIDGE_ACTION)}, text: text }, location.origin);
   };
 })();`
         doc.head.appendChild(script)
     } catch {
         // contentDocument 不可达（理论不可达：同源沙箱）——不注入
     }
+}
+
+/**
+ * 校验 viz 档高度消息（票 03：daemon 组装桥 ResizeObserver → postMessage）。
+ * 非白名单 type、非有限数、越界（≤0 或 >10,000px 上限）→ null（静默丢弃）。
+ */
+export function parseVizHeightMessage(data: unknown): { height: number } | null {
+    if (typeof data !== 'object' || data === null) return null
+    const obj = data as Record<string, unknown>
+    if (obj.type !== VIZ_HEIGHT_MSG_TYPE) return null
+    const height = obj.height
+    if (typeof height !== 'number' || !Number.isFinite(height) || height <= 0 || height > 10000) return null
+    return { height: Math.ceil(height) }
 }
 
 /**

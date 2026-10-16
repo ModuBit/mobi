@@ -37,6 +37,120 @@ export const VIZ_FLOATING_UI_SCRIPTS = [
 /** lucide UMD（async：首渲染不等图标库；版本与 web 生态实测可用的 UMD 产物对齐） */
 export const VIZ_LUCIDE_SCRIPT = '<script async src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js"></script>'
 
+/**
+ * viz 档状态/高度桥（票 03）——置于 fragment **之前**执行。
+ *
+ * 为什么放 daemon 组装侧而不是 web 注入：serve-file 的 iframe 是同源沙箱
+ * （allow-same-origin），localStorage 即 mobi web 同一份——桥可以直接同步读写，
+ * fragment 脚本首渲染就能拿到恢复的状态（无闪默认态），也无需 postMessage 往返。
+ * `issueNewTurn` 仍由 web 注入（回灌监听与限流在宿主侧）；本桥只建
+ * setWidgetState/getWidgetState，且写成「缺啥补啥」的合并式，两来源不互斥。
+ *
+ * 契约（对标 codex openai widgetState 语义，命名换 mobi）：
+ * - `MobiApp.getWidgetState()` → 已存快照对象或 null（同步）
+ * - `MobiApp.setWidgetState({modelContent, privateContent})` → Promise；
+ *   整体替换快照，≤16KiB（UTF-8 字节数），非对象/数组/超限 reject 且不动旧值
+ * - 写成功后派发 `mobi:set-globals`（detail.globals.widgetState）
+ * - `MobiApp.statePersistence`：'local'（可写）/ 'none'（localStorage 不可用降级）
+ * - 高度自适应：ResizeObserver(body) → postMessage {type:'mobi-viz-height'}，
+ *   变化 ≥1px 才发、上限 10,000px（超限停发，转 iframe 内滚动）
+ */
+export const VIZ_STATE_BRIDGE_JS = `
+(() => {
+  const MAX_STATE_BYTES = 16 * 1024;
+  const MAX_HEIGHT = 10000;
+  const isPlainObject = (value) => value != null && typeof value === 'object' && !Array.isArray(value);
+  let storage = null;
+  let state = null;
+  try {
+    const probe = 'mobi:viz-probe';
+    window.localStorage.setItem(probe, '1');
+    window.localStorage.removeItem(probe);
+    storage = window.localStorage;
+  } catch (e) {
+    storage = null;
+  }
+  const stateKey = 'mobi:viz-state:v1:' + location.pathname;
+  if (storage) {
+    try {
+      const saved = storage.getItem(stateKey);
+      if (saved != null) {
+        const parsed = JSON.parse(saved);
+        if (isPlainObject(parsed)) state = parsed;
+      }
+    } catch (e) {
+      // 损坏的存量不挡后续写入
+    }
+  }
+  const emit = () => {
+    window.dispatchEvent(new CustomEvent('mobi:set-globals', { detail: { globals: { widgetState: state } } }));
+  };
+  const persistenceError = () => {
+    const error = new Error('The host could not persist the widget state');
+    error.retryable = false;
+    return error;
+  };
+  const api = window.MobiApp || (window.MobiApp = {});
+  api.statePersistence = storage ? 'local' : 'none';
+  api.getWidgetState = () => state;
+  api.setWidgetState = (next) => {
+    if (!isPlainObject(next)) return Promise.reject(new TypeError('Widget state must be a JSON object'));
+    let serialized;
+    try {
+      serialized = JSON.stringify(next);
+    } catch (e) {
+      return Promise.reject(new TypeError('Widget state must be a JSON object'));
+    }
+    if (new TextEncoder().encode(serialized).length > MAX_STATE_BYTES) {
+      return Promise.reject(new TypeError('Widget state must be at most 16 KiB'));
+    }
+    state = next;
+    if (!storage) {
+      emit();
+      return Promise.resolve(); // 降级：状态只活本帧，不拒绝写入
+    }
+    try {
+      storage.setItem(stateKey, serialized);
+    } catch (e) {
+      return Promise.reject(persistenceError());
+    }
+    emit();
+    return Promise.resolve();
+  };
+  if (state) emit();
+
+  let lastHeight = -1;
+  const reportHeight = () => {
+    // documentElement.scrollHeight 语义是 max(内容, 视口)——iframe 比内容高时它返回
+    // 视口高度（初始 chrome），直接取会把高度粘死在初始值只涨不缩（真机实锤：内容 219、
+    // 视口 638，恒报 638）。只在 documentElement 真溢出（内容高于视口）时才信它；
+    // 否则量 body 内容高（组装文档对 body 有 margin:0 reset，scrollHeight 即纯内容高）
+    const body = document.body;
+    const de = document.documentElement;
+    if (!body || !de) return;
+    const content = de.scrollHeight > de.clientHeight + 1
+      ? Math.max(de.scrollHeight, body.scrollHeight)
+      : body.scrollHeight;
+    const height = Math.ceil(content);
+    if (!Number.isFinite(height) || height <= 0 || height > MAX_HEIGHT) return;
+    if (Math.abs(height - lastHeight) < 1) return;
+    lastHeight = height;
+    parent.postMessage({ type: 'mobi-viz-height', height }, location.origin);
+  };
+  const startReporting = () => {
+    reportHeight();
+    if (document.body) {
+      new ResizeObserver(reportHeight).observe(document.body);
+    }
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startReporting, { once: true });
+  } else {
+    startReporting();
+  }
+})();
+`
+
 export const VIZ_RUNTIME_JS = `
 (() => {
   const TOOLTIP_DELAY_MS = 500;
