@@ -164,7 +164,7 @@ export function SandboxHtmlFrame({ sessionId, path, title, style, app, viz }: Sa
         <iframe
             key={dataUpdatedAt}
             ref={frameRef}
-            src={buildServeFileUrl(sessionId, path, viz ? { viz: true } : undefined)}
+            src={buildServeFileUrl(sessionId, path, viz)}
             data-etag={meta?.etag ?? ''}
             sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
             referrerPolicy="no-referrer"

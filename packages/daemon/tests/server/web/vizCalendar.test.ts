@@ -21,10 +21,29 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { vizTimeToMinutes, assignVizLanes, type VizLaneEvent } from '../../../src/web/vizRuntime/vizCalendar'
+import { runInNewContext } from 'node:vm'
+import { vizTimeToMinutes, assignVizLanes, VIZ_CALENDAR_SCRIPT, type VizLaneEvent } from '../../../src/web/vizRuntime/vizCalendar'
 
 /** 便捷构造（from/to 单位分钟） */
 const ev = (from: number, to: number): VizLaneEvent => ({ from, to, lane: -1, lanes: -1 })
+
+describe('VIZ_CALENDAR_SCRIPT', () => {
+    // 脚本内联纯函数用的是 Function.prototype.toString()——函数名一旦被构建/压缩改写，
+    // 内联出的声明名就与调用点对不上（运行时 ReferenceError，且只在浏览器里才炸）。
+    // 这里在最小浏览器语义下真执行一遍，把这条机制钉住。
+    test('内联产物可执行：toString 内联的函数名与调用点一致', () => {
+        const sandbox = {
+            customElements: { get: () => undefined, define: () => {} },
+            HTMLElement: class {},
+        }
+        expect(() => runInNewContext(VIZ_CALENDAR_SCRIPT, sandbox)).not.toThrow()
+    })
+
+    test('转义复用 node-core 的 escapeXmlText，不自抄一份', () => {
+        expect(VIZ_CALENDAR_SCRIPT).toContain('function escapeXmlText')
+        expect(VIZ_CALENDAR_SCRIPT).toContain('const escape = escapeXmlText')
+    })
+})
 
 describe('vizTimeToMinutes', () => {
     test('合法 HH:MM（含 24:00 作窗口 end）', () => {

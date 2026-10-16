@@ -86,8 +86,8 @@ export function buildHostReadFileUrl(
  * fragment 并内联注入 --viz-* token/工具类/交互运行时后返回完整沙箱文档；
  * 仅 HTML inline 的 viz/viz-wide 档使用。
  */
-export function buildServeFileUrl(sessionId: string, relPath: string, opts: { viz?: boolean } = {}): string {
-    const query = opts.viz ? '?viz=1' : ''
+export function buildServeFileUrl(sessionId: string, relPath: string, viz = false): string {
+    const query = viz ? '?viz=1' : ''
     return `/api/sessions/${sessionId}/serve-file/${encodePathSegments(relPath)}${query}`
 }
 

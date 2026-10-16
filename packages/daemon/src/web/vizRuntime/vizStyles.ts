@@ -31,8 +31,8 @@
 
 /** token + base 层：命名空间隔离的调色板/字体/圆角，fragment 不该重定义它们 */
 export const VIZ_TOKENS_CSS = `
-:root { color-scheme: light dark; }
 :root {
+  color-scheme: light dark;
   --viz-bg: var(--mobi-bg, light-dark(#ffffff, #141418));
   --viz-bg-elevated: var(--mobi-bg-elevated, light-dark(#f5f6f8, #1f2228));
   --viz-fg: var(--mobi-fg, light-dark(#1f2329, #eceef2));
@@ -420,8 +420,8 @@ hr {
 
 /* ── 触控档：粗指针目标 ≥44px（可见尺寸可小，命中面积达标） ── */
 @media (pointer: coarse) {
-  .btn, .nav-link, .form-control, .form-select { min-height: 44px; min-width: 44px; }
-  .form-control, .form-select { font-size: 16px; }
+  .btn, .nav-link { min-height: 44px; min-width: 44px; }
+  .form-control, .form-select { min-height: 44px; min-width: 44px; font-size: 16px; }
   .form-check { min-height: 44px; }
   .form-range { height: 44px; }
   .viz-carousel:has(> .viz-carousel-controls) { padding-bottom: 72px; }

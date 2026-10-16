@@ -33,9 +33,12 @@
  *   detail.index 输入序）
  * - 非法数据 → shadow 内 role="alert" 内联错误（可恢复），不静默丢弃
  *
- * 纯逻辑（时间解析 / lane 分配）以真实 TS 函数导出，脚本经 toString() 内联同一份
- * 实现——单源，单测直接测函数本体（vizCalendar.test.ts）。
+ * 纯逻辑（时间解析 / lane 分配 / 转义）以真实 TS 函数导出，脚本经 toString() 内联同一份
+ * 实现——单源，单测直接测函数本体（vizTimeToMinutes / assignVizLanes 见 vizCalendar.test.ts；
+ * 转义复用 @mobi/node-core 的 escapeXmlText，不自抄一份）。
  */
+
+import { escapeXmlText } from '@mobi/node-core/utils/xmlEscape'
 
 /** HH:MM → 当日分钟数；`24:00` 允许（作窗口 end）。非法值抛错（错误文案面向用户） */
 export function vizTimeToMinutes(value: unknown): number {
@@ -100,6 +103,7 @@ export const VIZ_CALENDAR_SCRIPT = `
   if (customElements.get('viz-calendar')) return;
   ${vizTimeToMinutes.toString()}
   ${assignVizLanes.toString()}
+  ${escapeXmlText.toString()}
   const TONE_VARS = ${JSON.stringify(TONE_VARS)};
   const style = \`
     :host{display:block;min-width:0;padding:12px;font:400 14px/1.5 var(--viz-font-body);color:var(--viz-fg);container-type:inline-size;border:1px solid var(--viz-border);border-radius:var(--viz-radius)}
@@ -133,7 +137,7 @@ export const VIZ_CALENDAR_SCRIPT = `
     @media(pointer:coarse){:host .axis{--hour:max(48px,var(--minimum-hour),var(--minimum-target-hour))}}
     @container(max-width:520px){.layout{grid-template-columns:minmax(0,1fr)}.date{flex-direction:row;align-items:baseline;border:0;padding:0}.event-body{padding-inline:8px}}
   \`;
-  const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+  const escape = escapeXmlText;
 
   class MobiVizCalendar extends HTMLElement {
     #initialized = false;
@@ -225,8 +229,9 @@ export const VIZ_CALENDAR_SCRIPT = `
         const labelTime = (time) => String(Math.floor(time / 60)).padStart(2, '0') + ':' + String(time % 60).padStart(2, '0');
         const compact = end - start > 240;
         // 高度下限按完整事件时长算：窗口裁掉超界事件不放大轴高（1 分钟残条不撑整轴）
-        const minimumHour = Math.max(0, ...events.map((event) => (28 * 60) / (event.to - event.from)));
-        const minimumTargetHour = Math.max(0, ...events.map((event) => (48 * 60) / (event.to - event.from)));
+        const minHourFor = (px) => Math.max(0, ...events.map((event) => (px * 60) / (event.to - event.from)));
+        const minimumHour = minHourFor(28);
+        const minimumTargetHour = minHourFor(48);
         const hourMarkup = ticks
           .map((tick) => '<div class="hour" style="--at:' + (tick - start) / 60 + '">' + (now != null && now >= start && now <= end && Math.abs(tick - now) < 15 ? '' : '<span>' + (tick % 60 ? labelTime(tick) : tick / 60) + '</span>') + '</div>')
           .join('');

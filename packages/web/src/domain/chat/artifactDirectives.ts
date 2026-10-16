@@ -140,6 +140,7 @@ export function classifyArtifact(path: string, meta: ArtifactMetaState, mode?: s
     if (meta.size > ARTIFACT_INLINE_LIMIT_BYTES[kind]) return { action: 'card', reason: 'too-large' }
     if (mode === 'card') return { action: 'card' }
     const viz = (mode === 'viz' || mode === 'viz-wide') && kind === 'html'
-    const app = (mode === 'app' || viz) && kind === 'html'
+    // viz 已蕴含 kind==='html'（上一行），故 app 的「或」写在这里而不重复判 kind
+    const app = viz || (mode === 'app' && kind === 'html')
     return { action: 'inline', kind, etag: meta.etag, wide: mode === 'wide' || mode === 'viz-wide' || app, app, viz }
 }

@@ -26,7 +26,7 @@
 import type { Transition } from "motion/react";
 
 /** Duration springs restated as stiffness and damping, so a retarget mid flight keeps the velocity it already has. */
-export const physical = (visualDuration: number, bounce: number): Transition => {
+const physical = (visualDuration: number, bounce: number): Transition => {
   const root = 2 * Math.PI / (visualDuration * 1.2);
   return { type: "spring", stiffness: root * root, damping: 2 * (1 - bounce) * root, mass: 1 };
 };

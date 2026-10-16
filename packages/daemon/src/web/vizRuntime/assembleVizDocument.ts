@@ -27,6 +27,7 @@
  * 双重 body 的怪物，不如拒绝得清楚。
  */
 
+import { escapeXmlText } from '@mobi/node-core/utils/xmlEscape'
 import { VIZ_TOKENS_CSS, VIZ_KIT_CSS } from './vizStyles'
 import { VIZ_CALENDAR_SCRIPT } from './vizCalendar'
 import {
@@ -48,9 +49,14 @@ const VIZ_CALENDAR_PATTERN = /viz-calendar/i
 /** fragment 校验结果：ok=false 时 error 面向用户（错误页直显） */
 export type FragmentValidation = { ok: true } | { ok: false; error: string }
 
+/** 超限错误文案单源：serve 侧预检（读全文之前拒绝）与 validateVizFragment 共用，改文案/改上限只动一处 */
+export function vizOversizeError(byteLength: number): string {
+    return `Fragment exceeds the 1 MB limit (${byteLength} bytes). Aggregate or downsample the data.`
+}
+
 export function validateVizFragment(content: string, byteLength: number): FragmentValidation {
     if (byteLength > VIZ_FRAGMENT_MAX_BYTES) {
-        return { ok: false, error: `Fragment exceeds the 1 MB limit (${byteLength} bytes). Aggregate or downsample the data.` }
+        return { ok: false, error: vizOversizeError(byteLength) }
     }
     if (content.trim() === '') {
         return { ok: false, error: 'Fragment is empty.' }
@@ -70,7 +76,7 @@ export function assembleVizDocument(fragment: string, title = 'Visualization'): 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>${escapeHtml(title)}</title>
+<title>${escapeXmlText(title)}</title>
 <style>${VIZ_TOKENS_CSS}
 ${VIZ_KIT_CSS}</style>
 ${VIZ_FLOATING_UI_SCRIPTS}
@@ -97,11 +103,7 @@ export function vizFragmentErrorDocument(message: string): string {
 </style>
 </head>
 <body>
-<div role="alert" style="border:1px dashed #d48806;border-radius:8px;padding:12px 14px;color:#d48806">${escapeHtml(message)}</div>
+<div role="alert" style="border:1px dashed #d48806;border-radius:8px;padding:12px 14px;color:#d48806">${escapeXmlText(message)}</div>
 </body>
 </html>`
-}
-
-function escapeHtml(value: string): string {
-    return value.replace(/[&<>"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char] ?? char)
 }

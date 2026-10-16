@@ -265,8 +265,7 @@ export const VIZ_RUNTIME_JS = `
   // 模型不写 tabs JS。
   (() => {
     const TAB = '.nav[role="tablist"] [role="tab"]';
-    const panelsFor = (list) => {
-      const tabsInList = Array.from(list.querySelectorAll('[role="tab"]'));
+    const panelsFor = (tabsInList) => {
       if (tabsInList.some((t) => t.getAttribute('aria-controls'))) {
         return tabsInList.map((t) => document.getElementById(t.getAttribute('aria-controls') || '') || null);
       }
@@ -276,7 +275,7 @@ export const VIZ_RUNTIME_JS = `
     const select = (selected) => {
       const list = selected.closest('[role="tablist"]');
       const tabs = Array.from(list.querySelectorAll('[role="tab"]'));
-      const panels = panelsFor(list);
+      const panels = panelsFor(tabs);
       const active = tabs.indexOf(selected);
       tabs.forEach((tab, i) => {
         const isActive = i === active;
@@ -353,7 +352,6 @@ export const VIZ_RUNTIME_JS = `
         active = index;
         panels.forEach((panel, position) => { panel.hidden = position !== index; });
         choices.forEach((choice, position) => choice.setAttribute('aria-current', String(position === index)));
-        root.dataset.activeVariant = panels[index].dataset.variant;
         count.textContent = (index + 1) + ' / ' + panels.length;
         name.textContent = panels[index].dataset.variant;
         status.textContent = count.textContent + ': ' + name.textContent;

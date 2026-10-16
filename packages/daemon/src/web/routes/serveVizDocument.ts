@@ -30,6 +30,7 @@ import {
     assembleVizDocument,
     validateVizFragment,
     vizFragmentErrorDocument,
+    vizOversizeError,
 } from '../vizRuntime/assembleVizDocument'
 import { basename } from 'node:path'
 
@@ -56,9 +57,7 @@ export async function serveVizDocument(c: Context, reader: FileContentReader, ab
     // 超限在读全文之前拒绝（1MB 以外不进内存）；其余校验（空/完整文档标记）
     // 必须等真内容到手才能判——预校验传空串会把一切请求误判成空 fragment
     if (size > VIZ_FRAGMENT_MAX_BYTES) {
-        return vizResponse(vizFragmentErrorDocument(
-            `Fragment exceeds the 1 MB limit (${size} bytes). Aggregate or downsample the data.`,
-        ), 422)
+        return vizResponse(vizFragmentErrorDocument(vizOversizeError(size)), 422)
     }
 
     const range = await reader.readFileRange(absPath, 0, size)
