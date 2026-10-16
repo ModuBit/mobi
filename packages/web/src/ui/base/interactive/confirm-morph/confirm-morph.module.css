@@ -64,6 +64,10 @@
 .surface::after { content: ""; position: absolute; inset: 0; border: 1px solid var(--border); border-radius: inherit; pointer-events: none; transition: border-color var(--duration-standard) var(--ease-standard); }
 .root[data-disabled][data-state="idle"] .surface { box-shadow: none; }
 .root[data-disabled][data-state="idle"] .surface::after { border-color: var(--border-subtle); }
+/* ghost：嵌在有色卡片/工具条内不另起一层白底，全透明无描边无阴影，hover 才淡底（.trigger:hover 既有规则接管） */
+.root[data-variant="ghost"] .surface { background: transparent; box-shadow: none; }
+.root[data-variant="ghost"] .surface::after { border-color: transparent; }
+.root[data-variant="ghost"] .secondary { color: var(--text-secondary); }
 
 .face { display: flex; flex: none; height: 100%; align-items: center; gap: 2px; padding: 0 4px; white-space: nowrap; }
 .face[data-face="idle"] { padding: 0; }

@@ -127,17 +127,17 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
             <div style={{ padding: '12px 20px', fontSize: 14, color: token.colorTextSecondary }}>
                 {t('chat.backgroundTask.stopConfirm')}
             </div>
-            {/* 原 text+danger：ghost 底 + colorError 前景（WorkspaceFormModal 移除钮同款先例）；block → width:100% */}
+            {/* 原 text+danger → ghost+danger；block → width:100% */}
             <Button
-                variant="ghost" loading={stopping}
-                style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20, color: token.colorError }}
+                variant="ghost" danger block loading={stopping}
+                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                 onClick={doStop}
             >
                 {t('chat.backgroundTask.stop')}
             </Button>
             <Button
-                variant="ghost" disabled={stopping}
-                style={{ width: '100%', height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                variant="ghost" disabled={stopping} block
+                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                 onClick={() => setDrawerOpen(false)}
             >
                 {t('chat.clearState.cancel')}
@@ -165,6 +165,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
         >
             <ConfirmMorph
                 label=""
+                variant="ghost"
                 ariaLabel={t('chat.backgroundTask.stop')}
                 icon={<CircleStop size={14} />}
                 prompt={t('chat.backgroundTask.stopConfirm')}

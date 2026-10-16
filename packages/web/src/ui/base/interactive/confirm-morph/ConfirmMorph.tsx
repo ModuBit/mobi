@@ -104,6 +104,8 @@ export interface ConfirmMorphProps {
   className?: string;
   /** 触发钮的可访问名（icon-only label 场景；select 自管件 ariaLabel 透传先例） */
   ariaLabel?: string;
+  /** raised（默认）= 白底药丸+描边+阴影（页面底上的独立控件）；ghost = 全透明（嵌在有色卡片/工具条内，hover 才淡底） */
+  variant?: "raised" | "ghost";
   /** Receives the root element, which also takes focus while the action is pending. */
   ref?: Ref<HTMLDivElement>;
 }
@@ -204,7 +206,7 @@ export function ConfirmMorph({
   label, icon, prompt, confirmLabel, cancelLabel, pendingLabel, doneLabel, errorLabel,
   retryLabel, undoLabel, undoingLabel, tone = "danger", confirmMode = "press", holdDuration = 1000, countdown = 3, countdownLabel,
   onConfirm, onUndo, onCancel, state: stateProp, defaultState = "idle", onStateChange, confirmTimeout = 6000, resultTimeout = 5000, cancelOnOutsidePress = true,
-  disabled = false, className, ariaLabel, ref,
+  disabled = false, className, ariaLabel, variant = "raised", ref,
 }: ConfirmMorphProps) {
   const { t } = useTranslation();
   // 上游硬编码英文文案改走 i18n（uiarc.confirmMorph.*）；收敛成 const 供回调闭包使用（参数窄化不进闭包）
@@ -483,7 +485,7 @@ export function ConfirmMorph({
     }
   })();
 
-  return <div ref={rootRef} className={[styles.root, className].filter(Boolean).join(" ")} data-state={state} data-face={faceKey} data-tone={tone} data-mode={confirmMode}
+  return <div ref={rootRef} className={[styles.root, className].filter(Boolean).join(" ")} data-state={state} data-face={faceKey} data-tone={tone} data-mode={confirmMode} data-variant={variant}
     data-disabled={disabled || undefined} tabIndex={-1} onKeyDown={onKeyDown} aria-busy={state === "pending" || undefined}
     onPointerEnter={() => { holds.current.hover = true; sync(); }} onPointerLeave={() => { holds.current.hover = false; sync(); }}
     onPointerCancel={() => { holds.current.hover = false; sync(); }}>
