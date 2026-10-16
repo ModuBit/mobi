@@ -261,11 +261,19 @@ export function ConfirmMorph({
   if (seenState !== state) {
     setSeenState(state);
     if (state !== "confirming") setCounting(false);
+    // 受控直入 confirming 不经过 go()：刷新 ARM_MS 基准，否则「挡掉展开那一下」的尾击
+    // 守卫按旧时间戳判定，展开后立刻的点击会被误放行为确认
+    else askedAt.current = performance.now();
   }
 
   const toIdle = useCallback(() => { run.current++; go("idle"); }, [go]);
 
-  const perform = useCallback(async (kind: "confirm" | "undo") => {
+  const perform = useCallback(async (kind: "confirm" | "undo", entry?: ConfirmMorphState) => {
+    // 重入门闩：prompt 区点击与 confirm 钮 onClick 是两条通路且在 confirming 面并存，快速连击
+    // 会两次同步进入 perform（token 只作废状态展示、不撤销已跑的副作用）——非入口态直接吞。
+    // confirm 只认 confirming（countdown 计数中仍是 confirming），undo 只认 done；Retry 从
+    // error 面重入是合法重试，经 entry 参数显式放行
+    if (live.current.state !== (entry ?? (kind === "undo" ? "done" : "confirming"))) return;
     const handler = kind === "confirm" ? onConfirm : onUndo;
     const token = ++run.current;
     setWorking(kind);
@@ -475,7 +483,7 @@ export function ConfirmMorph({
       </>;
       case "error": return <>
         <Part reduced={reduced} className={styles.status}><CircleAlert className={styles.alert} size={16} strokeWidth={1.75} aria-hidden="true" /><span className={styles.statusText}>{texts.error}</span></Part>
-        <Part reduced={reduced}><button type="button" className={styles.secondary} data-autofocus onClick={() => void perform(working)}>{texts.retry}</button></Part>
+        <Part reduced={reduced}><button type="button" className={styles.secondary} data-autofocus onClick={() => void perform(working, "error")}>{texts.retry}</button></Part>
       </>;
       default: return <Part reduced={reduced}><button type="button" className={styles.trigger} data-autofocus disabled={disabled} aria-label={ariaLabel}
         onClick={() => { setAnnouncement(typeof shownPrompt === "string" ? shownPrompt : ""); go("confirming"); }}>

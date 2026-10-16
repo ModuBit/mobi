@@ -367,7 +367,8 @@ export function MobileWorkspaceList() {
                         </div>
 
                         <Button
-                            variant="danger"
+                            variant="primary"
+                            danger
                             loading={actionLoading === 'delete'}
                             block
                             style={{ height: 44 }}

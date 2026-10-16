@@ -40,8 +40,12 @@
 .loader { display: inline-grid; flex: none; place-items: center; width: var(--space-4); height: var(--space-4); margin-right: var(--space-2); }
 .spinner { border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
 /* block：占满容器宽（antd block 等价）。dangerTone：语义红字（原 antd text danger 落位），
-   只覆盖前景色、底/描边仍随 variant——放在 variant 规则之后让 hover/active 时红色不被主色盖过。 */
+   只覆盖前景色、底/描边仍随 variant——放在 variant 规则之后让 hover/active 时红色不被主色盖过。
+   primary + dangerTone = 红实心（antd type="primary" danger 的等价档）：主位破坏性 CTA，
+   需压过上面 dangerTone 的红字规则（同特异性但靠后）与 .primary 的底色。 */
 .block { width: 100%; }
 .dangerTone, .dangerTone:hover:not(:disabled), .dangerTone:active:not(:disabled) { color: var(--danger); }
+.primary.dangerTone { color: var(--background); background: var(--danger); border-color: var(--danger); }
+.primary.dangerTone:hover:not(:disabled), .primary.dangerTone:active:not(:disabled) { color: var(--background); background: var(--danger); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .button { transition: none; } .labelSlot { transition: opacity var(--duration-instant) linear; } .spinner { animation-duration: .01ms; animation-iteration-count: 1; } }

@@ -290,7 +290,9 @@ export function ButtonGroup({ items, menu, label, variant = "outline", size = "m
     };
     const body = <span className={styles.content}><SegmentContent item={item} reduced={reduced} /></span>;
     if (item.href && !off && !disabled) return <a key={item.id} {...common} href={item.href} onClick={() => select(item)}>{body}{named ? null : <span className={styles.srOnly}>{item.label}</span>}</a>;
-    return <button key={item.id} {...common} type="button" disabled={disabled} aria-disabled={off || undefined} onClick={off ? undefined : () => select(item)}>{body}{named ? null : <span className={styles.srOnly}>{item.label}</span>}</button>;
+    // 组级/段级禁用都用 aria-disabled 而非真实 disabled：保持可聚焦，键盘能到达并听到禁用原因
+    // （高亮的 inert() 判据两种都认）；点击拦截交给 onClick 与高亮，不靠浏览器默认
+    return <button key={item.id} {...common} type="button" aria-disabled={off || disabled || undefined} onClick={off || disabled ? undefined : () => select(item)}>{body}{named ? null : <span className={styles.srOnly}>{item.label}</span>}</button>;
   });
 
   const classes = [styles.group, styles[variant], styles[size], vertical ? styles.vertical : "", compact ? styles.compact : "", className].filter(Boolean).join(" ");

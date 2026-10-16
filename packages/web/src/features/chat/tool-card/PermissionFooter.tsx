@@ -475,7 +475,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                 {/* 主操作行：移动端满宽独占；PC 序列首位。
                                     defaultToNo 时主位是拒绝（danger 实心），approve 降级进次要行 */}
                                 <Button
-                                    variant={denyFirst ? 'danger' : 'primary'}
+                                    variant="primary"
+                                    danger={denyFirst}
                                     disabled={mainAction.disabled}
                                     loading={mainAction.loading}
                                     onClick={mainAction.onClick}

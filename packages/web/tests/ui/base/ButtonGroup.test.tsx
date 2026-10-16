@@ -81,7 +81,7 @@ describe('uiarc ButtonGroup 行为契约', () => {
         expect(screen.getByRole('group', { name: '文档操作' }).className).toContain('vertical')
     })
 
-    it('item 级 disabled：aria-disabled 且点击不回调；group 级 disabled：按钮原生禁用', () => {
+    it('item 级 disabled：aria-disabled 且点击不回调；group 级 disabled：同样 aria-disabled 保键盘可达', () => {
         const onShare = vi.fn()
         const onExport = vi.fn()
         const { rerender } = render(
@@ -98,15 +98,19 @@ describe('uiarc ButtonGroup 行为契约', () => {
         fireEvent.click(share)
         expect(onShare).not.toHaveBeenCalled()
 
-        // group 级：整组原生禁用
+        // group 级：与 item 级同语义（aria-disabled 保聚焦，键盘能到达并听到禁用原因）
         rerender(
             <ButtonGroup label="文档操作" disabled items={[
                 { id: 'share', label: '分享', onSelect: onShare },
                 { id: 'export', label: '导出', onSelect: onExport },
             ]} />,
         )
-        expect(screen.getByRole('button', { name: '分享' })).toBeDisabled()
-        expect(screen.getByRole('button', { name: '导出' })).toBeDisabled()
+        const disabledShare = screen.getByRole('button', { name: '分享' })
+        expect(disabledShare).toHaveAttribute('aria-disabled', 'true')
+        expect(disabledShare).not.toBeDisabled()
+        expect(screen.getByRole('button', { name: '导出' })).toHaveAttribute('aria-disabled', 'true')
+        fireEvent.click(disabledShare)
+        expect(onShare).not.toHaveBeenCalled()
         fireEvent.click(screen.getByRole('button', { name: '导出' }))
         expect(onExport).not.toHaveBeenCalled()
     })

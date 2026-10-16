@@ -113,6 +113,19 @@ describe('uiarc ConfirmMorph 两态确认主路径', () => {
         expect(onConfirm).toHaveBeenCalledTimes(1)
         await waitFor(() => expect(screen.getAllByText('uiarc.confirmMorph.done').length).toBeGreaterThan(0))
     })
+
+    it('重入门闩：confirming 展开后快速双击（两条确认通路各一击）只触发一次 onConfirm', async () => {
+        const onConfirm = vi.fn()
+        renderMorph({ onConfirm })
+
+        fireEvent.click(screen.getByRole('button', { name: '删除项目' }))
+        await pastArm()
+        // 第一击走 confirm 钮（handler 挂起进 pending），第二击走 prompt 区
+        fireEvent.click(screen.getByRole('button', { name: 'uiarc.confirmMorph.confirm' }))
+        fireEvent.click(screen.getByText('删除项目?'))
+
+        expect(onConfirm).toHaveBeenCalledTimes(1)
+    })
 })
 
 describe('uiarc ConfirmMorph 退出通路', () => {
@@ -201,6 +214,21 @@ describe('uiarc ConfirmMorph 结果通路', () => {
 })
 
 describe('uiarc ConfirmMorph hold / countdown 变体', () => {
+    it('受控模式：外部直入 confirming 时刷新 ARM_MS 基准，展开尾击不被误放行为确认', async () => {
+        const onConfirm = vi.fn()
+        // 受控直入 confirming（不经过 go()）：askedAt 应在受控翻转那一刻刷新
+        const { rerender } = render(<ConfirmMorph label="删除项目" confirmTimeout={0} resultTimeout={0} state="idle" onConfirm={onConfirm} />)
+        rerender(<ConfirmMorph label="删除项目" confirmTimeout={0} resultTimeout={0} state="confirming" onConfirm={onConfirm} />)
+
+        // 展开瞬间立即点击（< ARM_MS）：受控 askedAt 已刷新，尾击被挡
+        fireEvent.click(screen.getByText('删除项目?'))
+        expect(onConfirm).not.toHaveBeenCalled()
+
+        await pastArm()
+        fireEvent.click(screen.getByText('删除项目?'))
+        expect(onConfirm).toHaveBeenCalledTimes(1)
+    })
+
     it('hold 变体：按住至充满即确认（motion 桩即满即达）', async () => {
         const onConfirm = vi.fn()
         renderMorph({ confirmMode: 'hold', onConfirm })

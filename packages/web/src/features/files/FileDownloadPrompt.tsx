@@ -39,13 +39,20 @@ export default function FileDownloadPrompt({ sessionId, filePath, reason }: File
     return (
         <div style={{ textAlign: 'center', marginTop: 40 }}>
             <Empty description={reason} />
-            {/* uiarc Button 是 button 元素不支持 href：导航改走 onClick，下载语义由
-                端点的 Content-Disposition: attachment 承载（见组件头注释），浏览器
-                收到该响应头即触发下载、当前页不离开 */}
+            {/* uiarc Button 是 button 元素不支持 href：程序化触发 `<a download>` 点击。下载语义
+                双保险——端点 Content-Disposition: attachment + download 属性的「任何响应都不
+                离开当前页」兜底（location.assign 在 404/500 或响应头被剥时会导航走丢页面状态） */}
             <Button
                 variant="primary"
                 style={{ marginTop: 12 }}
-                onClick={() => { window.location.assign(downloadUrl) }}
+                onClick={() => {
+                    const anchor = document.createElement('a')
+                    anchor.href = downloadUrl
+                    anchor.download = ''
+                    document.body.appendChild(anchor)
+                    anchor.click()
+                    anchor.remove()
+                }}
             >
                 <Download size={14} /> {t('files.download')}
             </Button>

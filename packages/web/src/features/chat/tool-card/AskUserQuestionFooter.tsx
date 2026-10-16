@@ -160,6 +160,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
             </Button>
             <Button
                 variant="secondary"
+                loading={pendingAction === 'chatAbout'}
                 disabled={props.disabled || pendingAction != null}
                 onClick={chatAbout}
                 style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
