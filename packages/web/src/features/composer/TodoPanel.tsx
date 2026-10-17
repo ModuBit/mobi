@@ -15,8 +15,8 @@
  */
 
 /**
- * 清单面板（todo + task 合并展示）
- * CLI 的 TodoWrite 清单（todos）与任务清单（tasks）是同一类呈现，合并进一个折叠面板：
+ * 清单面板（todo + task 合并展示）——气泡 Popover 详情的平铺形态
+ * CLI 的 TodoWrite 清单（todos）与任务清单（tasks）是同一类呈现，合并进一个列表：
  * 一个头行（图标 + 进行中文案 + 合并完成统计 + 清理）+ 一条按状态排序的勾选列表。
  * - todo 行显示 content
  * - task 行显示 `id: subject`，副行 description，过滤 deleted 状态
@@ -24,8 +24,8 @@
  * 合并前是 TodoPanel / TaskPanel 两个逐行重复的组件。
  */
 
-import { useMemo, useState, type ReactNode } from 'react'
-import { Collapse, Checkbox, Typography } from 'antd'
+import { useMemo, type ReactNode } from 'react'
+import { Checkbox, Typography } from 'antd'
 import { Lightbulb } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
@@ -60,20 +60,21 @@ export type TodoPanelProps = {
     tasks: TaskItem[] | undefined
     sessionId: string
     onClear: (sessionId: string, clearFields: ClearRuntimeStateField[]) => Promise<void>
-    /**
-     * 呈现形态：panel = 折叠面板（默认，composer 内联用）；
-     * flat = 不要 Collapse 壳、头行 + 列表直接平铺（气泡 Popover 详情用）
-     */
-    variant?: 'panel' | 'flat'
 }
 
-export function TodoPanel({ todos, tasks, sessionId, onClear, variant = 'panel' }: TodoPanelProps) {
+export function TodoPanel({ todos, tasks, sessionId, onClear }: TodoPanelProps) {
     const { t } = useTranslation()
-    const [activeKeys, setActiveKeys] = useState<string[]>([])
     const checklist = useMemo(() => buildChecklist(todos, tasks), [todos, tasks])
 
     if (checklist.items.length === 0) return null
     const { items, completed, inProgress, total, activeText } = checklist
+
+    // 确认文案必须与真实清理范围一致：清理固定同时作用于 todos 与 tasks
+    const hasTodos = (todos?.length ?? 0) > 0
+    const hasTaskEntries = items.some(entry => entry.kind === 'task')
+    const clearConfirmKey = hasTodos && hasTaskEntries
+        ? 'chat.clearState.checklist'
+        : hasTodos ? 'chat.clearState.todos' : 'chat.clearState.tasks'
 
     const header = (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
@@ -101,6 +102,7 @@ export function TodoPanel({ todos, tasks, sessionId, onClear, variant = 'panel' 
             <ClearStateButton
                 sessionId={sessionId}
                 clearFields={["todos", "tasks"]}
+                confirmKey={clearConfirmKey}
                 onClear={onClear}
             />
         </div>
@@ -141,24 +143,12 @@ export function TodoPanel({ todos, tasks, sessionId, onClear, variant = 'panel' 
         </div>
     )
 
-    // flat：气泡 Popover 详情——不要折叠壳，头行与列表直接平铺（外衬由气泡详情容器提供）
-    if (variant === 'flat') {
-        return (
-            <>
-                {header}
-                {list}
-            </>
-        )
-    }
-
+    // 外衬（纵向 flex / 间距 / 最小宽）与限高内滚由气泡详情容器提供
     return (
-        <Collapse
-            activeKey={activeKeys}
-            onChange={(keys) => setActiveKeys(Array.isArray(keys) ? keys : [keys])}
-            bordered={false}
-            size="small"
-            items={[{ key: 'checklist', label: header, children: list }]}
-        />
+        <>
+            {header}
+            {list}
+        </>
     )
 }
 

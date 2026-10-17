@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { TodoPanel } from '@/features/composer/TodoPanel'
@@ -36,6 +36,12 @@ vi.mock('react-i18next', () => ({
                 'chat.task.completed': '已完成',
                 'chat.task.inProgress': '进行中',
                 'chat.task.pendingCount': '{{count}} 个待执行',
+                'chat.clearState.todos': '清理待办列表？',
+                'chat.clearState.tasks': '清理任务列表？',
+                'chat.clearState.checklist': '清理待办与任务列表？',
+                'chat.clearState.label': '清理',
+                'chat.clearState.confirm': '确认清理',
+                'chat.clearState.cancel': '取消',
             }
             return map[key] ?? key
         },
@@ -75,7 +81,7 @@ describe('TodoPanel（todo 分区）', () => {
         expect(container.innerHTML).toBe('')
     })
 
-    it('渲染 Collapse 并显示统计信息', () => {
+    it('渲染头行统计信息', () => {
         const todos = [
             makeTodo('任务A', 'completed'),
             makeTodo('任务B', 'in_progress'),
@@ -110,12 +116,12 @@ describe('TodoPanel（todo 分区）', () => {
         expect(screen.getByText(/全部完成/)).toBeInTheDocument()
     })
 
-    it('默认收起', () => {
+    it('清单直接平铺（Popover 详情形态，无折叠壳）', () => {
         const todos = [makeTodo('任务A', 'pending')]
-        render(<TodoPanel todos={todos} />, { wrapper })
+        const { container } = render(<TodoPanel todos={todos} />, { wrapper })
 
-        // Collapse 收起时，列表内容不在 DOM 中
-        expect(screen.queryByText('任务A')).not.toBeInTheDocument()
+        expect(container.querySelector('.ant-collapse')).toBeNull()
+        expect(screen.getByText('任务A')).toBeInTheDocument()
     })
 })
 
@@ -130,7 +136,7 @@ describe('TodoPanel（task 分区，原 TaskPanel）', () => {
         expect(container.innerHTML).toBe('')
     })
 
-    it('渲染 Collapse 并显示统计信息', () => {
+    it('渲染头行统计信息', () => {
         const tasks = [
             makeTask('1', '任务A', 'completed'),
             makeTask('2', '任务B', 'in_progress'),
@@ -179,23 +185,24 @@ describe('TodoPanel（task 分区，原 TaskPanel）', () => {
         expect(screen.getByText('进行中无activeForm')).toBeInTheDocument()
     })
 
-    it('默认收起', () => {
+    it('清单直接平铺（task 行可见）', () => {
         const tasks = [makeTask('1', '任务A', 'pending')]
         render(<TodoPanel tasks={tasks} />, { wrapper })
 
-        // Collapse 收起时，列表内容不在 DOM 中
-        expect(screen.queryByText('任务A')).not.toBeInTheDocument()
+        expect(screen.getByText('1: 任务A')).toBeInTheDocument()
     })
 })
 
 describe('TodoPanel（todo + task 合并面板）', () => {
-    it('两类数据合并进同一个 Collapse，统计合并计数', () => {
+    it('两类数据合并进同一个列表，统计合并计数', () => {
         const todos = [makeTodo('待办A', 'pending')]
         const tasks = [makeTask('1', '任务A', 'completed')]
         const { container } = render(<TodoPanel todos={todos} tasks={tasks} />, { wrapper })
 
-        expect(container.querySelectorAll('.ant-collapse').length).toBe(1)
+        expect(container.querySelector('.ant-collapse')).toBeNull()
         expect(screen.getByText('1/2')).toBeInTheDocument()
+        expect(screen.getByText('待办A')).toBeInTheDocument()
+        expect(screen.getByText('1: 任务A')).toBeInTheDocument()
     })
 
     it('进行中文案取 todo 的 activeForm（同列表顺序）', () => {
@@ -206,13 +213,20 @@ describe('TodoPanel（todo + task 合并面板）', () => {
         expect(screen.getByText('正在待办A')).toBeInTheDocument()
     })
 
-    it('flat 模式不渲染 Collapse，头行与列表直接平铺（Popover 详情用）', () => {
-        const { container } = render(
-            <TodoPanel todos={[makeTodo('待办A', 'pending')]} variant="flat" />,
+    it('清理确认文案与真实范围一致：只有 task 时不说「清理待办」', async () => {
+        render(<TodoPanel tasks={[makeTask('1', '任务A', 'pending')]} />, { wrapper })
+
+        fireEvent.click(screen.getByLabelText('清理'))
+        expect(await screen.findByText('清理任务列表？')).toBeInTheDocument()
+    })
+
+    it('清理确认文案与真实范围一致：todo + task 用组合文案', async () => {
+        render(
+            <TodoPanel todos={[makeTodo('待办A', 'pending')]} tasks={[makeTask('1', '任务A', 'pending')]} />,
             { wrapper },
         )
 
-        expect(container.querySelector('.ant-collapse')).toBeNull()
-        expect(screen.getByText('待办A')).toBeInTheDocument()
+        fireEvent.click(screen.getByLabelText('清理'))
+        expect(await screen.findByText('清理待办与任务列表？')).toBeInTheDocument()
     })
 })

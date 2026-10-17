@@ -46,6 +46,12 @@ vi.mock('react-i18next', () => ({
             const map: Record<string, string> = {
                 'chat.runningTasks.panelTitle': 'Running Tasks',
                 'chat.team.panelTitle': 'Team',
+                'chat.clearState.runningTasks': '清理运行中任务？',
+                'chat.clearState.runningTasksAndTeam': '清理运行中任务与团队状态？',
+                'chat.clearState.teamState': '清理团队状态？',
+                'chat.clearState.label': '清理',
+                'chat.clearState.confirm': '确认清理',
+                'chat.clearState.cancel': '取消',
             }
             return map[key] ?? key
         },
@@ -360,17 +366,40 @@ describe('TasksPanel flat 模式（气泡 Popover 详情）', () => {
                 api={mockApi}
                 onOpenToolUseId={() => {}}
                 onClear={async () => {}}
-                variant="flat"
             />,
             { wrapper },
         )
 
         expect(container.textContent).toContain('前台研究')
         expect(container.textContent).toContain('后台研究')
-        // 不限高：没有 96px 的裁切容器
-        expect(container.querySelector('[style*="max-height: 96px"]')).toBeNull()
 
         useForegroundTasksStore.getState().set('test-session', [])
         useBackgroundTasksStore.getState().setTasks('test-session', [])
+    })
+
+    it('任务与团队并存时清理确认文案说明组合范围', async () => {
+        const { useForegroundTasksStore, useTeamAgentsStore } = await loadStores()
+        useForegroundTasksStore.getState().set('test-session', [makeFgTask('fg-1')])
+        useTeamAgentsStore.getState().setTeamState(
+            'test-session',
+            [{ name: 'Alice', status: 'running' }],
+            '发布核对',
+        )
+
+        render(
+            <TasksPanel
+                sessionId="test-session"
+                api={mockApi}
+                onOpenToolUseId={() => {}}
+                onClear={async () => {}}
+            />,
+            { wrapper },
+        )
+
+        fireEvent.click(screen.getByLabelText('清理'))
+        expect(await screen.findByText('清理运行中任务与团队状态？')).toBeInTheDocument()
+
+        useForegroundTasksStore.getState().set('test-session', [])
+        useTeamAgentsStore.getState().clearSession('test-session')
     })
 })

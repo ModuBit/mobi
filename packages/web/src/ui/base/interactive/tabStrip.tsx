@@ -239,7 +239,9 @@ const TabDiv = styled.div<{ $selected: boolean; $disabled: boolean }>`
         border: none;
         border-radius: var(--radius-square);
         background: transparent;
-        color: var(--mobi-ink-secondary);
+        /* 未选中页签文字是 ink-secondary，× 再淡一档（tertiary）才拉得开层级；
+           选中页签文字是 ink，× 自然比它淡，无需另设 */
+        color: var(--mobi-ink-tertiary);
         cursor: pointer;
         transition: color var(--mobi-duration-fast) ease;
 

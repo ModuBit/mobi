@@ -18,7 +18,7 @@
  * composer 状态气泡行（浮层）
  * 把 TodoPanel（todo + task 清单）与 TasksPanel（前台/后台任务 + 团队成员）收成
  * 一行状态气泡：气泡只放「一眼判断状态」的摘要，点击用 Popover 展示平铺详情
- * （面板的 variant="flat"）。清理等动作只在详情里，避免气泡内点击冲突。
+ * （面板的平铺形态）。清理等动作只在详情里，避免气泡内点击冲突。
  *
  * 定位：浮在聊天区底部、composer 上方——上滚时消息从气泡后面穿过（毛玻璃背景），
  * 滚到底时列表尾部预留 STATUS_PILLS_SPACER_HEIGHT 的空间，最后一条消息落在气泡上方
@@ -234,7 +234,11 @@ export function ComposerStatusPills({
         setEdges(prev => (prev.left === left && prev.right === right ? prev : { left, right }))
     }, [])
 
+    // 首帧可能因无数据返回 null（Row 未挂载、rowRef 为 null）；数据到达后 Row 才挂上，
+    // 因此 effect 必须随可见性重跑，否则 observer 永不挂载、渐隐恒不出现。
+    const visible = summary.showTodo || summary.showTasks
     useEffect(() => {
+        if (!visible) return
         const el = rowRef.current
         if (!el) return
         // 同时观察外框（容器宽度）与内容（文案/气泡数量导致的宽度变化），
@@ -243,11 +247,22 @@ export function ComposerStatusPills({
         observer.observe(el)
         if (innerRef.current) observer.observe(innerRef.current)
         el.addEventListener('scroll', updateEdges, { passive: true })
+        updateEdges()
         return () => {
             observer.disconnect()
             el.removeEventListener('scroll', updateEdges)
         }
-    }, [updateEdges])
+    }, [updateEdges, visible])
+
+    // 气泡消失（清单/任务被清空）时丢弃打开态：受控 Popover 卸载不会回调 onOpenChange，
+    // 若不清空，气泡下次出现会以 open=true 直接弹出或残留到另一类气泡上。
+    useEffect(() => {
+        setOpenPill(prev => {
+            if (prev === 'todo' && !summary.showTodo) return null
+            if (prev === 'tasks' && !summary.showTasks) return null
+            return prev
+        })
+    }, [summary.showTodo, summary.showTasks])
 
     /** 同一时刻最多一个详情打开：open 由单一 key 推导，关闭只响应自己 */
     const bindPopover = (key: PillKey) => ({
@@ -256,7 +271,7 @@ export function ComposerStatusPills({
             setOpenPill(prev => (open ? key : prev === key ? null : prev)),
     })
 
-    if (!summary.showTodo && !summary.showTasks) return null
+    if (!visible) return null
 
     return (
         <Wrap>
@@ -280,7 +295,6 @@ export function ComposerStatusPills({
                                             api={api}
                                             onOpenToolUseId={onOpenToolUseId}
                                             onClear={onClear}
-                                            variant="flat"
                                         />
                                     </DetailScroll>
                                 )}
@@ -311,7 +325,6 @@ export function ComposerStatusPills({
                                             tasks={tasks}
                                             sessionId={sessionId}
                                             onClear={onClear}
-                                            variant="flat"
                                         />
                                     </DetailScroll>
                                 )}

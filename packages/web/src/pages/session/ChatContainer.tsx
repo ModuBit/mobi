@@ -1410,7 +1410,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 style={{ flex: 1, overflow: 'hidden', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}
                 onMouseUp={isMobile ? undefined : handleSelectionMouseUp}
             >
-                {chatBlocks.length === 0 ? (
+                {/* 空会话但有尾行（运行指示 / 缓存过期 / 气泡让位）时也要挂列表：
+                    这些行属于聊天流，只挂 ChatWelcome 会让它们在首条消息落库前整段不可见 */}
+                {chatBlocks.length === 0 && bubbleItems.length === 0 ? (
                     <ChatWelcome sessionId={sessionId} />
                 ) : (
                     <BubbleListChat

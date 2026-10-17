@@ -174,6 +174,25 @@ describe('ComposerStatusPills', () => {
         })
         useForegroundTasksStore.getState().set('test-session', [])
     })
+
+    it('气泡消失后重新出现时不残留打开态（不会自动弹开详情）', async () => {
+        const { rerender } = render(<PillsHarness api={mockApi} todos={[makeTodo('待办A', 'pending')]} />, { wrapper })
+
+        fireEvent.click(screen.getByTestId('status-pill-todo'))
+        expect(await screen.findByText('待办A')).toBeInTheDocument()
+
+        // 清单被清空 → 气泡卸载（受控 Popover 卸载不会回调 onOpenChange）
+        rerender(<PillsHarness api={mockApi} />)
+        expect(screen.queryByTestId('composer-status-pills')).toBeNull()
+
+        // 数据重新出现 → 气泡重现，详情必须保持关闭
+        rerender(<PillsHarness api={mockApi} todos={[makeTodo('待办A', 'pending')]} />)
+        await waitFor(() => {
+            const visible = [...document.querySelectorAll('.ant-popover')]
+                .filter((el) => !el.classList.contains('ant-popover-hidden') && el.offsetParent !== null)
+            expect(visible).toHaveLength(0)
+        })
+    })
 })
 
 describe('useComposerStatusSummary（ChatContainer 用同一份 summary 决定 spacer 与气泡内容）', () => {

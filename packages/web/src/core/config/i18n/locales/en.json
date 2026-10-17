@@ -462,6 +462,8 @@
       "teamState": "Clear team state?",
       "goalStatus": "Clear stale goal?",
       "runningTasks": "Clear running tasks?",
+      "runningTasksAndTeam": "Clear running tasks and team state?",
+      "checklist": "Clear stale todos and tasks?",
       "confirm": "Clear",
       "cancel": "Cancel"
     },

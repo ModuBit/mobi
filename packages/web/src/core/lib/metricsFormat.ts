@@ -15,6 +15,7 @@
  */
 
 import type { AgentMetrics } from '@/domain/chat/types'
+import { M_THRESHOLD } from '@/core/lib/formatTokens'
 
 /** 格式化毫秒时长 */
 export function formatDuration(ms: number): string {
@@ -30,11 +31,11 @@ export function formatDuration(ms: number): string {
 /**
  * 格式化 token 数量（k / m 两档，各保留一位小数）。
  *
- * ≥999.5k 提前切 m 档：`(999_500/1000).toFixed(1)` 会显示 1000.0k，与 m 档语义矛盾。
- * 与 `@/core/lib/formatTokens`（整数 k 档，上下文仪表盘用）是两套展示约定，勿混用。
+ * ≥999.5k 提前切 m 档（阈值与 `@/core/lib/formatTokens` 同源）：`(999_500/1000).toFixed(1)`
+ * 会显示 1000.0k，与 m 档语义矛盾。两者小数位约定不同（此处一位、仪表盘整数），勿混用。
  */
 export function formatTokens(tokens: number): string {
-    if (tokens >= 999_500) return `${(tokens / 1_000_000).toFixed(1)}m`
+    if (tokens >= M_THRESHOLD) return `${(tokens / 1_000_000).toFixed(1)}m`
     if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`
     return `${tokens}`
 }

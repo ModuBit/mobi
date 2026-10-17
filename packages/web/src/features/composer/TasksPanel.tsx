@@ -15,9 +15,9 @@
  */
 
 /**
- * 卡片网格面板（前台任务 + 后台任务 + 团队成员合并展示）
- * 三者是同一类呈现：头部（运行指示 + 标题 + 计数 + 清理）→ 96px 限高的卡片行
- * → 溢出渐变。合并前是 TasksPanel（前台/后台任务）+ TeamAgentPanel 两个逐行重复的
+ * 卡片面板（前台任务 + 后台任务 + 团队成员合并展示）——气泡 Popover 详情的平铺形态
+ * 三者是同一类呈现：头部（运行指示 + 标题 + 计数 + 清理）→ 纵向卡片流。
+ * 合并前是 TasksPanel（前台/后台任务）+ TeamAgentPanel 两个逐行重复的
  * 组件，现在合并进同一块面板、同一条卡片流。
  *
  * - 前台任务读 runtime_state.foregroundTasks（daemon 消息投影落库，纯 DB 单源，
@@ -28,7 +28,7 @@
  * 排序：运行中在前；同状态按来源（前台 → 后台 → 团队）、再按启动时间倒序。
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import { theme } from 'antd'
 import { Global, css } from '@emotion/react'
 import { Loader } from 'lucide-react'
@@ -75,9 +75,9 @@ const GROUP_ORDER: Record<TaskListItem['kind'], number> = {
     team: 2,
 }
 
-/** 条目启动时间；团队成员没有 startedAt，同组内保持原顺序 */
+/** 条目启动时间；团队成员用其 startedAt（可能缺省，缺省时同组内保持原顺序） */
 function startedAtOf(item: TaskListItem): number {
-    return item.kind === 'team' ? 0 : item.task.startedAt
+    return item.kind === 'team' ? (item.member.startedAt ?? 0) : item.task.startedAt
 }
 
 function sortItems(items: TaskListItem[]): TaskListItem[] {
@@ -126,11 +126,6 @@ export type TasksPanelProps = {
     /** 卡片点击统一入口：按 toolUseId 打开详情抽屉（解析与「查不到就不开」的守卫由调用方内聚） */
     onOpenToolUseId: (toolUseId: string | null | undefined) => void
     onClear: (sessionId: string, clearFields: ClearRuntimeStateField[]) => Promise<void>
-    /**
-     * 呈现形态：panel = 限高卡片行 + 溢出渐变（默认，composer 内联用）；
-     * flat = 不限高、全部卡片纵向平铺（气泡 Popover 详情用）
-     */
-    variant?: 'panel' | 'flat'
 }
 
 export function TasksPanel({
@@ -138,37 +133,10 @@ export function TasksPanel({
     api,
     onOpenToolUseId,
     onClear,
-    variant = 'panel',
 }: TasksPanelProps) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
     const { items, teamName, hasTasks, hasTeam, activeCount } = useTasksPanelItems(sessionId)
-    const wrapperRef = useRef<HTMLDivElement>(null)
-    const scrollRef = useRef<HTMLDivElement>(null)
-    const [showFade, setShowFade] = useState(false)
-    const [narrow, setNarrow] = useState(false)
-
-    // 监听容器宽度，窄于阈值时卡片撑满纵向排列
-    useEffect(() => {
-        const el = wrapperRef.current
-        if (!el) return
-        const observer = new ResizeObserver(() => {
-            setNarrow(el.clientWidth < 460)
-        })
-        observer.observe(el)
-        return () => observer.disconnect()
-    }, [])
-
-    // 监听容器尺寸变化和条目数量变化，判断是否需要渐变遮罩
-    useEffect(() => {
-        const el = scrollRef.current
-        if (!el) return
-        const checkOverflow = () => setShowFade(el.scrollHeight > el.clientHeight)
-        checkOverflow()
-        const observer = new ResizeObserver(checkOverflow)
-        observer.observe(el)
-        return () => observer.disconnect()
-    }, [items.length])
 
     const handleStop = async (task: BackgroundTask) => {
         try {
@@ -185,6 +153,10 @@ export function TasksPanel({
         : hasTasks
             ? ['foregroundTasks', 'backgroundTasks']
             : ['teamState']
+    // 确认文案与真实清理范围一致（组合清理不能由 clearFields[0] 推断）
+    const clearConfirmKey = hasTasks && hasTeam
+        ? 'chat.clearState.runningTasksAndTeam'
+        : hasTasks ? 'chat.clearState.runningTasks' : 'chat.clearState.teamState'
 
     const header = (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
@@ -209,7 +181,7 @@ export function TasksPanel({
             <ClearStateButton
                 sessionId={sessionId}
                 clearFields={clearFields}
-                confirmKey={hasTasks ? 'chat.clearState.runningTasks' : undefined}
+                confirmKey={clearConfirmKey}
                 onClear={onClear}
             />
         </div>
@@ -247,49 +219,19 @@ export function TasksPanel({
         }
     }
 
-    // flat：气泡 Popover 详情——不限高、全部卡片纵向平铺，清理由头行承担
+    // 气泡 Popover 详情的平铺形态：全部卡片纵向平铺，清理由头行承担；
     // 外衬（纵向 flex / 间距 / 最小宽）由气泡详情容器提供
-    if (variant === 'flat') {
-        return (
-            <>
-                {/* 头行 Loader 的动画在两种形态下都要生效 */}
-                <Global styles={spinKeyframes} />
-                {header}
-                <div style={{
-                    display: 'flex', flexDirection: 'column', gap: 6,
-                    '--agent-card-width': '100%',
-                } as React.CSSProperties}>
-                    {items.map(renderCard)}
-                </div>
-            </>
-        )
-    }
-
     return (
-        <div ref={wrapperRef} style={{ position: 'relative' }}>
+        <>
+            {/* 头行 Loader 的旋转 keyframes */}
             <Global styles={spinKeyframes} />
             {header}
-            <div
-                ref={scrollRef}
-                className={hasTasks ? 'hide-scrollbar' : undefined}
-                style={{ maxHeight: 96, overflow: hasTasks ? 'auto' : 'hidden', position: 'relative' }}
-            >
-                <div style={{
-                    display: 'flex', gap: 6, flexWrap: 'wrap',
-                    flexDirection: narrow ? 'column' : 'row',
-                    '--agent-card-width': narrow ? '100%' : '200px',
-                } as React.CSSProperties}>
-                    {items.map(renderCard)}
-                </div>
-                {showFade && (
-                    <div style={{
-                        position: 'absolute', bottom: hasTasks ? 4 : 0, left: 0, right: 0,
-                        height: 24,
-                        background: `linear-gradient(transparent, ${hasTasks ? token.colorBgLayout : token.colorBgContainer})`,
-                        pointerEvents: 'none',
-                    }} />
-                )}
+            <div style={{
+                display: 'flex', flexDirection: 'column', gap: 6,
+                '--agent-card-width': '100%',
+            } as React.CSSProperties}>
+                {items.map(renderCard)}
             </div>
-        </div>
+        </>
     )
 }

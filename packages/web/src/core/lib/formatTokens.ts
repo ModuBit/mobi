@@ -17,8 +17,9 @@
 /**
  * k 档 round 进位边界：≥999.5k 时 Math.round 会跳到 1000k，与 ≥1m 档的 "1.0m" 显示矛盾
  * （如 "1000k / 1.0m"——已用看似超过窗口上限），故提前切 m 档归一。
+ * metricsFormat 的一位小数版 formatTokens 复用同一阈值（进位口径不同，边界必须同源）。
  */
-const M_THRESHOLD = 999_500
+export const M_THRESHOLD = 999_500
 
 /**
  * token 数转可读短字符串：≥999.5k → 1.0m / ≥1,000,000 → 1.3m / ≥1,000 → 124k / 否则原值。
