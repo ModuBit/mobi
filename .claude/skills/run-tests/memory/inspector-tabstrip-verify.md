@@ -3,7 +3,7 @@ name: inspector-tabstrip-verify
 description: 检查器页签条（TabStrip，uiarc 观感）验证 recipe——堆页签造溢出 / 量不收缩与滑动选中块 / 两端渐隐 / reveal 落点 / 关终端页签验 PTY 真被杀
 metadata:
   type: recipe
-  last_verified: 2026-10-13
+  last_verified: 2026-10-17
 ---
 
 # 检查器页签条（TabStrip）验证
@@ -138,8 +138,8 @@ ps -o pid,ppid,command -p <ptyPid>                       # 关闭后只应剩表
 
 - **只读！** 严禁 `pkill`/`pgrep -f`（本机曾误杀生产 hub，见 feedback_pkill-scope-isolation）
 - 顺带确认会话自身的 CLI 进程（`bun ... claude --mobi-startin…` + SDK 子进程）仍在 = 没误伤会话
-- 关闭 × 用**真实 CDP click**（uid 来自 snapshot）；非活动 tab 的 × 是 `opacity: 0`，
-  但透明元素照常命中，不必先 hover
+- 关闭 × 用**真实 CDP click**（uid 来自 snapshot）；2026-10-17 起 × **常驻**（不再 hover 才现形，
+  也不再只对触屏常驻），量 `getComputedStyle(c).opacity === '1'` 即可断言常驻；量宽为 16×16
 
 ## 5. 关活动 tab 后的焦点
 

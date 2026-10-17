@@ -224,7 +224,9 @@ const TabDiv = styled.div<{ $selected: boolean; $disabled: boolean }>`
         opacity: 0.5;
     `}
 
-    /* 关闭 ×：指针设备 hover 才现形（触屏没有 hover，故常驻）；始终占位，避免 hover 时布局抖动 */
+    /* 关闭 ×：**常驻**，不藏到 hover 里（触屏没有 hover；指针用户也得先把每条页签划一遍
+       才知道能关）。淡一档的墨色跟标签拉开层级，指针/键盘落到它身上才提回最重的墨。
+       始终占位，切换可见性不会让布局抖 */
     & [data-tab-close] {
         display: inline-flex;
         align-items: center;
@@ -237,33 +239,23 @@ const TabDiv = styled.div<{ $selected: boolean; $disabled: boolean }>`
         border: none;
         border-radius: var(--radius-square);
         background: transparent;
-        color: inherit;
+        color: var(--mobi-ink-secondary);
         cursor: pointer;
-        opacity: 0;
-        transition: opacity var(--mobi-duration-fast) ease;
+        transition: color var(--mobi-duration-fast) ease;
 
         &:hover {
             background: var(--mobi-pressed);
+            color: var(--mobi-ink);
         }
 
         &:focus-visible {
-            opacity: 1;
+            color: var(--mobi-ink);
             outline: 2px solid var(--mobi-primary);
             outline-offset: 1px;
         }
 
         @media (prefers-reduced-motion: reduce) {
             transition: none;
-        }
-    }
-
-    &:hover [data-tab-close] {
-        opacity: 1;
-    }
-
-    @media (hover: none) {
-        & [data-tab-close] {
-            opacity: 1;
         }
     }
 `
