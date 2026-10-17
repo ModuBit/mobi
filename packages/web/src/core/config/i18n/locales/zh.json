@@ -184,6 +184,10 @@
       "cost": "约 ${{usd}}",
       "lastResponse": "距上次响应约 {{duration}}"
     },
+    "goal": {
+      "label": "进行中的目标",
+      "details": "目标详情"
+    },
     "fork": {
       "pendingBadge": "待激活",
       "errorBadge": "激活失败",

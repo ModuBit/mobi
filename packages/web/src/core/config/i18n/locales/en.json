@@ -184,6 +184,10 @@
       "cost": "≈ ${{usd}}",
       "lastResponse": "Last response ~{{duration}} ago"
     },
+    "goal": {
+      "label": "Active goal",
+      "details": "Goal details"
+    },
     "fork": {
       "pendingBadge": "Pending",
       "errorBadge": "Activation failed",

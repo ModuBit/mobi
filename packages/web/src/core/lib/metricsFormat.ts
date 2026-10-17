@@ -27,9 +27,16 @@ export function formatDuration(ms: number): string {
     return `${ms}ms`
 }
 
-/** 格式化 token 数量 */
+/**
+ * 格式化 token 数量（k / m 两档，各保留一位小数）。
+ *
+ * ≥999.5k 提前切 m 档：`(999_500/1000).toFixed(1)` 会显示 1000.0k，与 m 档语义矛盾。
+ * 与 `@/core/lib/formatTokens`（整数 k 档，上下文仪表盘用）是两套展示约定，勿混用。
+ */
 export function formatTokens(tokens: number): string {
-    return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : `${tokens}`
+    if (tokens >= 999_500) return `${(tokens / 1_000_000).toFixed(1)}m`
+    if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`
+    return `${tokens}`
 }
 
 /** 将 AgentMetrics 格式化为显示字符串 */

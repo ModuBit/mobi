@@ -43,6 +43,9 @@ import { ChatComposer, type ChatComposerHandle } from '@/pages/session/ChatCompo
 import { UiSendProvider } from '@/ui/openui/actionContext'
 import { useOpenUIActionLifecycle } from '@/ui/openui/useOpenUIActionLifecycle'
 import { CommandProgressBubble } from '@/features/chat/CommandProgressBubble'
+import { CacheExpiredRow } from '@/features/chat/CacheExpiredRow'
+import { AgentLoadingBubble } from '@/ui/shared/AgentLoadingBubble'
+import { getAgentStatus } from '@/ui/pixel-avatar/types'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, isCompactStart, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom } from '@/domain/chat/presentation'
 import { collectUserText } from '@/domain/chat/userContent'
 import { isTerminalUserLifecycle, terminalLifecycleLabelKey, terminalReasonLabelKey } from '@/domain/chat/terminalReason'
@@ -1209,8 +1212,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }, [chatBlocks, session?.running, session?.active, session?.mode, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind, openForkPopover, forkPending, confirmFork, cancelFork, forkDraft, isMobile, handleEditSketchFromBubble, rewindCompletion])
 
     const bubbleItems = useMemo(() => {
-        // 无进行中命令时直接复用 decoratedItems 引用，不做无意义的数组拷贝
-        if (!isCompressing && !isClearing && !isRewinding) return decoratedItems
+        // 列表尾部的「系统动作行」：命令进行中（compact/clear/rewind）、缓存过期提示、
+        // 运行指示（AgentLoadingBubble——running 且未在 compact；compact 期间已由
+        // CommandProgressBubble 表达同一件事，两者不并排）
+        const cacheStatus = session?.runtimeState?.cacheStatus
+        const showCacheRow = cacheStatus != null && cacheStatus.expired
+        const showLoading = Boolean(session?.running) && !isCompressing
+        // 无尾行时直接复用 decoratedItems 引用，不做无意义的数组拷贝
+        if (!isCompressing && !isClearing && !isRewinding && !showCacheRow && !showLoading) return decoratedItems
 
         const items: ChatBubbleItem[] = [...decoratedItems]
 
@@ -1241,8 +1250,42 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             })
         }
 
+        // 缓存过期提示在运行指示之前：它描述「这一轮将要发生什么」的前提
+        if (showCacheRow) {
+            items.push({
+                key: '__cache_expired__',
+                role: 'assistant',
+                content: <CacheExpiredRow cacheStatus={cacheStatus} />,
+                variant: 'borderless',
+            })
+        }
+
+        if (showLoading) {
+            items.push({
+                key: '__loading__',
+                role: 'assistant',
+                content: (
+                    <AgentLoadingBubble
+                        agentId={sessionId}
+                        status={getAgentStatus({
+                            active: session?.active ?? false,
+                            running: true,
+                            agentState: session?.agentState,
+                        })}
+                        lastActivityAt={lastActivityAt}
+                        startedAt={runStartedAt}
+                    />
+                ),
+                variant: 'borderless',
+            })
+        }
+
         return items
-    }, [decoratedItems, isCompressing, isClearing, isRewinding])
+    }, [
+        decoratedItems, isCompressing, isClearing, isRewinding,
+        session?.running, session?.active, session?.agentState, session?.runtimeState?.cacheStatus,
+        sessionId, lastActivityAt, runStartedAt,
+    ])
 
     // 入参为 composer 完整分段；wire blocks（serializeSegments）由 useSendMessage 内部统一序列化。
     // 空分段防御性拦截（正常路径由 composer canSend 保证）
@@ -1449,7 +1492,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 draftRequest={draftRequest}
                 disabled={sendMutation.isPending || isCompressing || isRewinding || (isClearing && !clearStuck)}
                 sending={sendMutation.isPending}
-                compressing={isCompressing}
                 clearInProgress={isClearing}
                 // 当前值以 runtimeState 为权威（keep-alive 实时上报，切换后 ≤2s 刷新）；
                 // sdkMetadata.outputStyle 是 init 时快照，而 init 先于 applyFlagSettings，
@@ -1463,8 +1505,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 // 服务端触发 spawn，web 无需先做「恢复」动作）；唤醒首响应慢几秒是唯一感知
                 allowSendWhenInactive
                 running={session?.running ?? false}
-                lastActivityAt={lastActivityAt}
-                runStartedAt={runStartedAt}
                 agentState={session?.agentState}
                 metadata={metadata}
                 agentFlavor={agentFlavor}
@@ -1475,7 +1515,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 tasks={session?.runtimeState?.tasks}
                 contextUsage={session?.runtimeState?.contextUsage ?? null}
                 goal={session?.runtimeState?.goalStatus ?? null}
-                cacheStatus={session?.runtimeState?.cacheStatus ?? null}
                 onEffortChange={handleEffortChange}
                 onPermissionModeChange={handlePermissionModeChange}
                 onModelChange={handleModelChange}

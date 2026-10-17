@@ -21,7 +21,7 @@ import { SwapOutlined, InboxOutlined } from '@ant-design/icons'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
-import type { AgentState, CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, StopKind, TodoItem, TaskItem } from '@mobi/shared'
+import type { AgentState, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, StopKind, TodoItem, TaskItem } from '@mobi/shared'
 import { getPermissionModeOptionsForFlavor } from '@mobi/shared'
 import {
     isSegmentEmpty,
@@ -44,7 +44,6 @@ import { ComposerInfoPanel } from '@/pages/session/ComposerInfoPanel'
 import { resolveCopyShortcut } from '@/features/composer/copyShortcut'
 import { EffortDot, useModelOptionsWithEffort } from '@/features/composer/modelEffortMenu'
 import { StatusBar } from '@/ui/shared/StatusBar'
-import { getAgentStatus } from '@/ui/pixel-avatar/types'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { useMobiApi } from '@/core/data/api/client'
 import { consumeDraftText } from '@/core/lib/draftText'
@@ -108,12 +107,6 @@ interface ChatComposerProps {
     active?: boolean
     allowSendWhenInactive?: boolean
     running?: boolean
-    /** 最近一次消息活动时间戳（毫秒），透传 StatusBar 静默告警（agent 挂死可观测） */
-    lastActivityAt?: number
-    /** 本轮运行起点时间戳（毫秒，最后一条 user 消息），透传 StatusBar 计时——刷新不归零 */
-    runStartedAt?: number
-    /** 是否正在压缩历史（compact）：压缩期间不显示 loading 状态栏，避免与列表内的 CommandProgressBubble 重复 */
-    compressing?: boolean
     /** /clear 进行中：output style 切换器禁用（切换同为 /clear 语义，避免并发清空） */
     clearInProgress?: boolean
     /** 当前 output style（runtimeState.outputStyle keep-alive 为权威，sdkMetadata 仅老会话兜底；undefined → default） */
@@ -146,10 +139,8 @@ interface ChatComposerProps {
     tasks?: TaskItem[]
     /** 上下文用量（来自 session.runtimeState.contextUsage）；无值时不渲染水位圆环 */
     contextUsage?: ContextUsage | null
-    /** goal 状态（来自 session.runtimeState.goalStatus；无值时不渲染徽标） */
+    /** goal 状态（来自 session.runtimeState.goalStatus；无值时状态行不渲染） */
     goal?: GoalStatus | null
-    /** 会话恢复时的 prompt cache 状态（来自 session.runtimeState.cacheStatus；expired 时渲染提示 chip） */
-    cacheStatus?: CacheStatus | null
     /**
      * 外部结构化回填请求（rewind 收尾把锚点批分段灌回 sender 并聚焦；
      * 排队消息编辑经 composerBackfillStore 信箱由 ChatContainer 消费后也走此通道）：
@@ -241,9 +232,6 @@ export function ChatComposer(props: ChatComposerProps) {
         active = true,
         allowSendWhenInactive = false,
         running = false,
-        lastActivityAt,
-        runStartedAt,
-        compressing = false,
         clearInProgress = false,
         outputStyle = null,
         availableOutputStyles,
@@ -270,7 +258,6 @@ export function ChatComposer(props: ChatComposerProps) {
         tasks,
         contextUsage,
         goal,
-        cacheStatus,
         draftRequest,
         ref,
         sketchLayerEl = null,
@@ -732,11 +719,6 @@ export function ChatComposer(props: ChatComposerProps) {
     const showLocalModeCover = active && mode === 'local'
     const isBashMode = text.startsWith('! ')
 
-    // running 时的 loading 状态，驱动 ComposerInfoPanel 下方的 StatusBar
-    const loadingStatus = running
-        ? getAgentStatus({ active, running, agentState })
-        : null
-
     // 下一轮建议(SDK prompt_suggestion, 瞬时): 有值则渲染 chip, 无则省略
     const suggestion = usePromptSuggestion(sessionId)
 
@@ -809,13 +791,7 @@ export function ChatComposer(props: ChatComposerProps) {
             />
 
             <StatusBar
-                agentId={sessionId}
-                status={loadingStatus ?? undefined}
-                running={running && !compressing}
-                lastActivityAt={lastActivityAt}
-                startedAt={runStartedAt}
                 goal={goal}
-                cacheStatus={cacheStatus}
                 sessionId={sessionId}
                 onClearGoal={handleClearGoal}
             />

@@ -14,104 +14,29 @@
  * limitations under the License.
  */
 
-import type { AgentStatus } from '@/ui/pixel-avatar/types'
-import type { CacheStatus, GoalStatus } from '@mobi/shared'
+import type { GoalStatus } from '@mobi/shared'
 import type { ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
-import { Tooltip, theme } from 'antd'
-import { useTranslation } from 'react-i18next'
-import { formatDuration, formatTokens } from '@/core/lib/metricsFormat'
-import { AgentLoadingBubble } from '@/ui/shared/AgentLoadingBubble'
-import { GoalBadge } from '@/ui/shared/GoalBadge'
+import { GoalRow } from '@/ui/shared/GoalRow'
 
 interface StatusBarProps {
-    /** Agent 标识（AgentLoadingBubble aria-label 用） */
-    agentId: string
-    /** Agent 运行状态（驱动 StatusDot 颜色/节奏）；running 时缺省则不渲染 loading */
-    status?: AgentStatus
-    /** 是否正在运行 */
-    running: boolean
-    /** 最近一次消息活动时间戳（毫秒），透传 AgentLoadingBubble 静默告警（agent 挂死可观测） */
-    lastActivityAt?: number
-    /** 本轮运行起点时间戳（毫秒，最后一条 user 消息），透传 AgentLoadingBubble 计时——刷新不归零 */
-    startedAt?: number
-    /** goal 状态（有值时渲染徽标） */
+    /** goal 状态（有值时渲染整行目标状态；无值返回 null 不占布局高度） */
     goal?: GoalStatus | null
-    /** 会话恢复时的 prompt cache 状态（expired 时渲染提示 chip；首 turn result 后 CLI 清空） */
-    cacheStatus?: CacheStatus | null
     /** sessionId（goal 清理用，与 onClearGoal 同时传入） */
     sessionId?: string
-    /** goal 清理回调（与 sessionId 同时传入时徽标带清理按钮） */
+    /** goal 清理回调（与 sessionId 同时传入时行尾带清理动作） */
     onClearGoal?: (sid: string, fields: ClearRuntimeStateField[]) => Promise<void>
 }
 
 /**
- * 状态栏：composer 输入框上方一行，承载 goal 徽标、缓存过期提示与 loading 指示。
+ * 状态栏：composer 输入框上方的独立状态行，当前只承载 goal。
  *
- * 渲染规则：有 goal、cacheStatus（expired）或 running（含 status）时才渲染，否则返回 null 不占布局高度。
- * 布局：整行撑满 composer 内容宽——loading 气泡靠左，goal 徽标 / 缓存 chip 靠右（marginLeft:auto）。
- * 右侧多元素并存时依次排列；只 loading 时该元素落在左边。
+ * running 指示已回归聊天流末尾（AgentLoadingBubble 作为列表尾行的系统动作行），
+ * 缓存过期提示改为聊天流里的 CacheExpiredRow——状态栏因此只剩 goal，
+ * 且 goal 独占整行（ChatGPT desktop 形态），不再与其它 chip 挤在右侧。
+ *
+ * 空态返回 null：ComposerDock 依赖「直接子元素只剩 wrapper 一个」判定退场（见 ChatComposer）。
  */
-export function StatusBar({ agentId, status, running, lastActivityAt, startedAt, goal, cacheStatus, sessionId, onClearGoal }: StatusBarProps) {
-    const { t } = useTranslation()
-    const { token } = theme.useToken()
-    const showGoal = goal != null
-    const showCache = cacheStatus != null && cacheStatus.expired
-    const showLoading = running && Boolean(status)
-    if (!showGoal && !showCache && !showLoading) return null
-
-    // 概要行：badge 短语 + 重缓存规模 + 成本（可选字段缺省省略）；Tooltip 补归因（距上次响应时长）
-    const cacheDetailParts = [
-        cacheStatus?.contextTokens !== undefined && t('session.cacheStatus.recache', { tokens: formatTokens(cacheStatus.contextTokens) }),
-        cacheStatus?.estimatedCacheWriteUsd !== undefined && t('session.cacheStatus.cost', { usd: cacheStatus.estimatedCacheWriteUsd.toFixed(2) }),
-    ].filter(Boolean) as string[]
-    const cacheTooltip = cacheStatus?.secondsSinceLastResponse !== undefined
-        ? t('session.cacheStatus.lastResponse', { duration: formatDuration(cacheStatus.secondsSinceLastResponse * 1000) })
-        : undefined
-
-    return (
-        <div
-            style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '4px 8px',
-                width: '100%',
-            }}
-        >
-            {showLoading ? <AgentLoadingBubble agentId={agentId} status={status!} lastActivityAt={lastActivityAt} startedAt={startedAt} /> : null}
-            {showGoal || showCache ? (
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {showGoal ? (
-                        <GoalBadge
-                            goal={goal!}
-                            sessionId={sessionId}
-                            onClear={onClearGoal}
-                        />
-                    ) : null}
-                    {showCache ? (
-                        <Tooltip title={cacheTooltip}>
-                            <span
-                                data-testid="cache-status-chip"
-                                style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 5,
-                                    padding: '2px 8px',
-                                    borderRadius: 10,
-                                    fontSize: 11,
-                                    lineHeight: 1.6,
-                                    color: token.colorWarning,
-                                    background: token.colorWarningBg,
-                                    cursor: 'default',
-                                }}
-                            >
-                                ⚠ {t('session.cacheStatus.badge')}
-                                {cacheDetailParts.length > 0 && <span>· {cacheDetailParts.join(' · ')}</span>}
-                            </span>
-                        </Tooltip>
-                    ) : null}
-                </div>
-            ) : null}
-        </div>
-    )
+export function StatusBar({ goal, sessionId, onClearGoal }: StatusBarProps) {
+    if (goal == null) return null
+    return <GoalRow goal={goal} sessionId={sessionId} onClear={onClearGoal} />
 }
