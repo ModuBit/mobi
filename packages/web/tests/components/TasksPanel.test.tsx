@@ -133,7 +133,7 @@ describe('TasksPanel', () => {
 
     it('无前台任务和后台任务时返回 null', async () => {
         const { container } = render(
-            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onClear={async () => {}} />,
+            <TasksPanel sessionId="test-session" api={mockApi} onOpenToolUseId={() => {}} onClear={async () => {}} />,
             { wrapper }
         )
         expect(container.innerHTML).toBe('')
@@ -144,7 +144,7 @@ describe('TasksPanel', () => {
         useForegroundTasksStore.getState().set('test-session', [makeFgTask('fg-1')])
 
         const { container } = render(
-            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onClear={async () => {}} />,
+            <TasksPanel sessionId="test-session" api={mockApi} onOpenToolUseId={() => {}} onClear={async () => {}} />,
             { wrapper }
         )
         expect(container.innerHTML).not.toBe('')
@@ -158,7 +158,7 @@ describe('TasksPanel', () => {
         useForegroundTasksStore.getState().set('test-session', [makeFgTask('fg-missing')])
 
         const { container } = render(
-            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onClear={async () => {}} />,
+            <TasksPanel sessionId="test-session" api={mockApi} onOpenToolUseId={() => {}} onClear={async () => {}} />,
             { wrapper }
         )
         expect(container.textContent).toContain('前台研究')
@@ -169,7 +169,7 @@ describe('TasksPanel', () => {
         useBackgroundTasksStore.getState().setTasks('test-session', [makeBgTask('bt-1')])
 
         const { container } = render(
-            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onClear={async () => {}} />,
+            <TasksPanel sessionId="test-session" api={mockApi} onOpenToolUseId={() => {}} onClear={async () => {}} />,
             { wrapper }
         )
         expect(container.innerHTML).not.toBe('')
@@ -181,7 +181,7 @@ describe('TasksPanel', () => {
         useBackgroundTasksStore.getState().setTasks('test-session', [makeBgTask('bt-empty', { description: '' })])
 
         const { container } = render(
-            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onClear={async () => {}} />,
+            <TasksPanel sessionId="test-session" api={mockApi} onOpenToolUseId={() => {}} onClear={async () => {}} />,
             { wrapper }
         )
         expect(container.textContent).toContain('Background task')
@@ -193,7 +193,7 @@ describe('TasksPanel', () => {
         useBackgroundTasksStore.getState().setTasks('test-session', [makeBgTask('bt-1', { description: '后台研究' })])
 
         const { container } = render(
-            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onClear={async () => {}} />,
+            <TasksPanel sessionId="test-session" api={mockApi} onOpenToolUseId={() => {}} onClear={async () => {}} />,
             { wrapper }
         )
         expect(container.textContent).toContain('前台研究')
@@ -202,36 +202,19 @@ describe('TasksPanel', () => {
         expect(container.textContent).toContain('2')
     })
 
-    it('详情 block 已加载时点击前台任务触发 onAgentClick', async () => {
-        const { useForegroundTasksStore, useChatBlocksByIdStore } = await loadStores()
-        const block = makeAgentBlock('agent-1')
+    it('点击前台任务把 toolUseId 交给调用方（解析与守卫由 useToolDetailDrawer 承担）', async () => {
+        const { useForegroundTasksStore } = await loadStores()
         useForegroundTasksStore.getState().set('test-session', [makeFgTask('agent-1')])
-        useChatBlocksByIdStore.getState().set('test-session', new Map([['agent-1', block]]))
 
-        const onAgentClick = vi.fn()
+        const onOpenToolUseId = vi.fn()
         render(
-            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={onAgentClick} onClear={async () => {}} />,
+            <TasksPanel sessionId="test-session" api={mockApi} onOpenToolUseId={onOpenToolUseId} onClear={async () => {}} />,
             { wrapper }
         )
         const card = document.querySelector('[data-testid="agent-card-agent-1"]') as HTMLElement
         expect(card).toBeTruthy()
         card.click()
-        expect(onAgentClick).toHaveBeenCalledWith(block)
-    })
-
-    it('详情 block 未加载时点击静默降级：不回调（守卫在点击时查询 byId 索引，卡片恒可点）', async () => {
-        const { useForegroundTasksStore } = await loadStores()
-        useForegroundTasksStore.getState().set('test-session', [makeFgTask('fg-missing')])
-
-        const onAgentClick = vi.fn()
-        render(
-            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={onAgentClick} onClear={async () => {}} />,
-            { wrapper }
-        )
-        const card = document.querySelector('[data-testid="agent-card-fg-missing"]') as HTMLElement
-        expect(card).toBeTruthy()
-        card.click()
-        expect(onAgentClick).not.toHaveBeenCalled()
+        expect(onOpenToolUseId).toHaveBeenCalledWith('agent-1')
     })
 })
 
@@ -244,13 +227,13 @@ describe('TasksPanel 后台任务点击（批次 B，spec D5）', () => {
             makeBgTask('bt-1', { toolUseId: 'tu-1' }),
         ])
 
-        const onTaskClick = vi.fn()
+        const onOpenToolUseId = vi.fn()
         render(
-            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onTaskClick={onTaskClick} onClear={async () => {}} />,
+            <TasksPanel sessionId="test-session" api={mockApi} onOpenToolUseId={onOpenToolUseId} onClear={async () => {}} />,
             { wrapper }
         )
         fireEvent.click(screen.getByText('后台研究'))
-        expect(onTaskClick).toHaveBeenCalledWith(expect.objectContaining({ taskId: 'bt-1', toolUseId: 'tu-1' }))
+        expect(onOpenToolUseId).toHaveBeenCalledWith('tu-1')
     })
 
     it('toolUseId 为 null 时点击不回调，且卡片不可点（cursor 非 pointer）', async () => {
@@ -259,14 +242,14 @@ describe('TasksPanel 后台任务点击（批次 B，spec D5）', () => {
             makeBgTask('bt-2', { toolUseId: null }),
         ])
 
-        const onTaskClick = vi.fn()
+        const onOpenToolUseId = vi.fn()
         render(
-            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onTaskClick={onTaskClick} onClear={async () => {}} />,
+            <TasksPanel sessionId="test-session" api={mockApi} onOpenToolUseId={onOpenToolUseId} onClear={async () => {}} />,
             { wrapper }
         )
         fireEvent.click(screen.getByText('后台研究'))
         // 行为层断言：不设任何禁用 prop 也要成立——守卫由 BackgroundTaskCard 内聚
-        expect(onTaskClick).not.toHaveBeenCalled()
+        expect(onOpenToolUseId).not.toHaveBeenCalled()
         // 不可点卡与可点卡 cursor 行为不同（非 pointer）
         const disabledCard = document.querySelector('[data-testid="bg-task-card-bt-2"]') as HTMLElement
         expect(disabledCard).toBeTruthy()
@@ -280,7 +263,7 @@ describe('TasksPanel 后台任务点击（批次 B，spec D5）', () => {
         ])
 
         render(
-            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onTaskClick={() => {}} onClear={async () => {}} />,
+            <TasksPanel sessionId="test-session" api={mockApi} onOpenToolUseId={() => {}} onClear={async () => {}} />,
             { wrapper }
         )
         const card = document.querySelector('[data-testid="bg-task-card-bt-ok"]') as HTMLElement
@@ -311,7 +294,7 @@ describe('TasksPanel 团队成员合并（原 TeamAgentPanel）', () => {
         )
 
         const { container } = render(
-            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onTaskClick={() => {}} onClear={async () => {}} />,
+            <TasksPanel sessionId="test-session" api={mockApi} onOpenToolUseId={() => {}} onClear={async () => {}} />,
             { wrapper }
         )
         expect(container.textContent).toContain('Team: Alpha')
@@ -332,7 +315,7 @@ describe('TasksPanel 团队成员合并（原 TeamAgentPanel）', () => {
         )
 
         const { container } = render(
-            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onTaskClick={() => {}} onClear={async () => {}} />,
+            <TasksPanel sessionId="test-session" api={mockApi} onOpenToolUseId={() => {}} onClear={async () => {}} />,
             { wrapper }
         )
         expect(container.textContent).toContain('Running Tasks')
@@ -353,7 +336,7 @@ describe('TasksPanel 团队成员合并（原 TeamAgentPanel）', () => {
         )
 
         const { container } = render(
-            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onTaskClick={() => {}} onClear={async () => {}} />,
+            <TasksPanel sessionId="test-session" api={mockApi} onOpenToolUseId={() => {}} onClear={async () => {}} />,
             { wrapper }
         )
         expect(container.innerHTML).toBe('')
@@ -375,8 +358,7 @@ describe('TasksPanel flat 模式（气泡 Popover 详情）', () => {
             <TasksPanel
                 sessionId="test-session"
                 api={mockApi}
-                onAgentClick={() => {}}
-                onTaskClick={() => {}}
+                onOpenToolUseId={() => {}}
                 onClear={async () => {}}
                 variant="flat"
             />,

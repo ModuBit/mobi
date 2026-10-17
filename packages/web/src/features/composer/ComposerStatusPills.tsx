@@ -28,29 +28,32 @@
  * 行内没有数据（两个面板都为空）时返回 null。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Popover } from 'antd'
 import styled from '@emotion/styled'
 import { ListChecks, ListTodo } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { TaskItem, TodoItem } from '@mobi/shared'
 import type { MobiApi } from '@/core/data/api/client'
-import type { BackgroundTask, ToolCallBlock } from '@/domain/chat/types'
 import type { ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
+import { buildChecklist, type ChecklistSummary } from './checklist'
 import { TodoPanel } from './TodoPanel'
-import { TasksPanel, useTasksPanelItems } from './TasksPanel'
+import { TasksPanel, useTasksPanelItems, type TaskListItem } from './TasksPanel'
 
-/**
- * 列表尾部为气泡让出的高度：气泡行高 24 + 距底 8 + 与最后一条消息的间距 12。
- * 与气泡行样式同源维护（改高度时两边一起改）。
- */
-export const STATUS_PILLS_SPACER_HEIGHT = 44
+/** 气泡固定高度；气泡行距底边距（Wrap 的 bottom） */
+const PILL_HEIGHT = 24
+const PILLS_BOTTOM_GAP = 8
+/** 气泡行与最后一条消息之间的视觉间距 */
+const PILLS_TO_MESSAGE_GAP = 12
+
+/** 列表尾部为气泡让出的高度（由上面三个几何值派生，避免多处魔法数失配） */
+export const STATUS_PILLS_SPACER_HEIGHT = PILL_HEIGHT + PILLS_BOTTOM_GAP + PILLS_TO_MESSAGE_GAP
 
 const Wrap = styled.div`
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 8px;
+    bottom: ${PILLS_BOTTOM_GAP}px;
     z-index: 9;
     display: flex;
     justify-content: center;
@@ -63,14 +66,11 @@ const Box = styled.div`
     pointer-events: none;
 `
 
+/** 滚动条隐藏走全局 .hide-scrollbar 工具类（与 TasksPanel 等一致） */
 const Row = styled.div`
     display: flex;
     overflow-x: auto;
     overflow-y: hidden;
-    scrollbar-width: none;
-    &::-webkit-scrollbar {
-        display: none;
-    }
 `
 
 /** 内容居中；溢出时 width:max-content + auto margin 仍可完整横向滚动（不会裁掉左侧） */
@@ -105,10 +105,10 @@ const Pill = styled.button`
     align-items: center;
     gap: 6px;
     flex: none;
-    height: 24px;
+    height: ${PILL_HEIGHT}px;
     padding: 0 10px;
     border: 1px solid color-mix(in srgb, var(--ant-color-border-secondary) 80%, transparent);
-    border-radius: 12px;
+    border-radius: calc(${PILL_HEIGHT}px / 2);
     background: color-mix(in srgb, var(--ant-color-bg-container) 70%, transparent);
     backdrop-filter: blur(12px) saturate(1.4);
     -webkit-backdrop-filter: blur(12px) saturate(1.4);
@@ -153,94 +153,79 @@ const Separator = styled.span`
     color: var(--ant-color-text-quaternary);
 `
 
-/** Popover 详情容器：限高内滚，滚到边界不带动背后的页面 */
+/** Popover 详情容器：平铺面板的外衬 + 限高内滚（滚到边界不带动背后的页面） */
 const DetailScroll = styled.div`
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 260px;
     max-height: 60vh;
     overflow-y: auto;
     overscroll-behavior: contain;
 `
 
-type PillSummary = {
+export type ComposerStatusSummary = {
     showTodo: boolean
     showTasks: boolean
-    taskItems: ReturnType<typeof useTasksPanelItems>['items']
+    taskItems: TaskListItem[]
     activeCount: number
-    checklistTotal: number
-    checklistPending: number
-    checklistInProgress: number
-    checklistAllDone: boolean
+    checklist: ChecklistSummary
 }
 
 /**
- * 气泡摘要口径（与两个面板同源）：
- * - 清单 = todos + 未删除 tasks（TodoPanel 的合并口径）
+ * 气泡摘要口径（单次计算，ChatContainer 与气泡本体共用）：
+ * - 清单 = buildChecklist（todo + 未删除 task 的合并口径，与 TodoPanel 详情同源）
  * - 任务 = useTasksPanelItems 的合并排序结果（任务 + 团队成员）
  */
-function usePillSummary(
+export function useComposerStatusSummary(
     sessionId: string,
     todos: TodoItem[] | undefined,
     tasks: TaskItem[] | undefined,
-): PillSummary {
+): ComposerStatusSummary {
+    const checklist = useMemo(() => buildChecklist(todos, tasks), [todos, tasks])
     const { items: taskItems, activeCount } = useTasksPanelItems(sessionId)
 
-    const visibleTasks = tasks?.filter(task => task.status !== 'deleted') ?? []
-    const checklist = [...(todos ?? []), ...visibleTasks]
-    const checklistTotal = checklist.length
-    const checklistPending = checklist.filter(item => item.status === 'pending').length
-    const checklistInProgress = checklist.filter(item => item.status === 'in_progress').length
-    const checklistDone = checklist.filter(item => item.status === 'completed').length
-
-    return {
-        showTodo: checklistTotal > 0,
-        showTasks: taskItems.length > 0,
+    return useMemo(() => ({
+        checklist,
         taskItems,
         activeCount,
-        checklistTotal,
-        checklistPending,
-        checklistInProgress,
-        checklistAllDone: checklistTotal > 0 && checklistDone === checklistTotal,
-    }
-}
-
-/** 气泡行是否有内容（ChatContainer 用它决定是否在列表尾部追加让位 spacer） */
-export function useStatusPillsVisibility(
-    sessionId: string,
-    todos: TodoItem[] | undefined,
-    tasks: TaskItem[] | undefined,
-): boolean {
-    const { showTodo, showTasks } = usePillSummary(sessionId, todos, tasks)
-    return showTodo || showTasks
+        showTodo: checklist.total > 0,
+        showTasks: taskItems.length > 0,
+    }), [checklist, taskItems, activeCount])
 }
 
 export type ComposerStatusPillsProps = {
+    summary: ComposerStatusSummary
     todos: TodoItem[] | undefined
     tasks: TaskItem[] | undefined
     sessionId: string
     api: MobiApi
-    onAgentClick: (block: ToolCallBlock) => void
-    onTaskClick: (task: BackgroundTask) => void
+    /** 任务卡片点击：按 toolUseId 打开工具详情（解析与守卫由 useToolDetailDrawer 承担） */
+    onOpenToolUseId: (toolUseId: string | null | undefined) => void
     onClear: (sessionId: string, clearFields: ClearRuntimeStateField[]) => Promise<void>
 }
 
+type PillKey = 'tasks' | 'todo'
+
 export function ComposerStatusPills({
+    summary,
     todos,
     tasks,
     sessionId,
     api,
-    onAgentClick,
-    onTaskClick,
+    onOpenToolUseId,
     onClear,
 }: ComposerStatusPillsProps) {
     const { t } = useTranslation()
-    const summary = usePillSummary(sessionId, todos, tasks)
     const rowRef = useRef<HTMLDivElement>(null)
+    const innerRef = useRef<HTMLDivElement>(null)
     const [edges, setEdges] = useState({ left: false, right: false })
     // 两个气泡的详情互斥：同时打开会叠在一起（2026-10-17 验收实拍）。
     // 收尾时只有「当前打开的那一个」能关自己——点另一个气泡会先触发本气泡的
     // 点外关闭、再触发对方的打开，若盲目 null 化会把刚到手的打开态冲掉。
-    const [openPill, setOpenPill] = useState<'tasks' | 'todo' | null>(null)
+    const [openPill, setOpenPill] = useState<PillKey | null>(null)
 
-    // 每次渲染后量一次边沿（气泡文案/数量变化都会改变宽度），只在状态变化时 setState
+    // 边沿测量：滚动与尺寸变化都会改可达范围，只在状态变化时 setState
     const updateEdges = useCallback(() => {
         const el = rowRef.current
         if (!el) return
@@ -250,14 +235,13 @@ export function ComposerStatusPills({
     }, [])
 
     useEffect(() => {
-        updateEdges()
-    })
-
-    useEffect(() => {
         const el = rowRef.current
         if (!el) return
+        // 同时观察外框（容器宽度）与内容（文案/气泡数量导致的宽度变化），
+        // 不再依赖「每次渲染后量一次」的强制布局读取
         const observer = new ResizeObserver(updateEdges)
         observer.observe(el)
+        if (innerRef.current) observer.observe(innerRef.current)
         el.addEventListener('scroll', updateEdges, { passive: true })
         return () => {
             observer.disconnect()
@@ -265,26 +249,36 @@ export function ComposerStatusPills({
         }
     }, [updateEdges])
 
+    /** 同一时刻最多一个详情打开：open 由单一 key 推导，关闭只响应自己 */
+    const bindPopover = (key: PillKey) => ({
+        open: openPill === key,
+        onOpenChange: (open: boolean) =>
+            setOpenPill(prev => (open ? key : prev === key ? null : prev)),
+    })
+
     if (!summary.showTodo && !summary.showTasks) return null
 
     return (
         <Wrap>
             <Box>
-                <Row ref={rowRef} data-testid="composer-status-pills" aria-label={t('chat.statusPills.label', 'Status')}>
-                    <RowInner>
+                <Row
+                    ref={rowRef}
+                    className="hide-scrollbar"
+                    data-testid="composer-status-pills"
+                    aria-label={t('chat.statusPills.label', 'Status')}
+                >
+                    <RowInner ref={innerRef}>
                         {summary.showTasks && (
                             <Popover
                                 trigger="click"
                                 placement="top"
-                                open={openPill === 'tasks'}
-                                onOpenChange={(open) => setOpenPill(prev => open ? 'tasks' : prev === 'tasks' ? null : prev)}
+                                {...bindPopover('tasks')}
                                 content={(
                                     <DetailScroll>
                                         <TasksPanel
                                             sessionId={sessionId}
                                             api={api}
-                                            onAgentClick={onAgentClick}
-                                            onTaskClick={onTaskClick}
+                                            onOpenToolUseId={onOpenToolUseId}
                                             onClear={onClear}
                                             variant="flat"
                                         />
@@ -309,8 +303,7 @@ export function ComposerStatusPills({
                             <Popover
                                 trigger="click"
                                 placement="top"
-                                open={openPill === 'todo'}
-                                onOpenChange={(open) => setOpenPill(prev => open ? 'todo' : prev === 'todo' ? null : prev)}
+                                {...bindPopover('todo')}
                                 content={(
                                     <DetailScroll>
                                         <TodoPanel
@@ -326,18 +319,18 @@ export function ComposerStatusPills({
                                 <Pill type="button" data-testid="status-pill-todo">
                                     <PillIcon aria-hidden="true"><ListTodo size={14} /></PillIcon>
                                     <PillLabel>
-                                        {summary.checklistAllDone
+                                        {summary.checklist.allDone
                                             ? t('chat.statusPills.allDone')
                                             : t('chat.statusPills.todoPending', {
-                                                pending: summary.checklistPending,
-                                                total: summary.checklistTotal,
+                                                pending: summary.checklist.pending,
+                                                total: summary.checklist.total,
                                             })}
                                     </PillLabel>
-                                    {!summary.checklistAllDone && summary.checklistInProgress > 0 && (
+                                    {!summary.checklist.allDone && summary.checklist.inProgress > 0 && (
                                         <>
                                             <Separator aria-hidden="true">·</Separator>
                                             <PillExtra>
-                                                {t('chat.statusPills.executing', { count: summary.checklistInProgress })}
+                                                {t('chat.statusPills.executing', { count: summary.checklist.inProgress })}
                                             </PillExtra>
                                         </>
                                     )}

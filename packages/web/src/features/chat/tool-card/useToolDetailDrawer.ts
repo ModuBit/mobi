@@ -25,8 +25,6 @@
 
 import { useCallback, useState } from 'react'
 import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
-import type { ToolCallBlock } from '@/domain/chat/types'
-import type { BackgroundTask } from '@/domain/chat/types'
 
 export function useToolDetailDrawer(sessionId: string) {
     const [drawerBlockId, setDrawerBlockId] = useState<string | null>(null)
@@ -37,21 +35,17 @@ export function useToolDetailDrawer(sessionId: string) {
         return fromById?.kind === 'tool-call' ? fromById : null
     })
 
-    /** 前台任务卡片：直接携带已解析的 tool-call block */
-    const openToolBlock = useCallback((block: ToolCallBlock) => {
-        setDrawerBlockId(block.id)
-    }, [])
-
-    /** 后台任务卡片：点击时才在 byId 索引里解析 toolUseId 对应的 tool-call block */
-    const openTask = useCallback((task: BackgroundTask) => {
-        const blockId = task.toolUseId
-        const found = blockId != null
-            ? useChatBlocksByIdStore.getState().bySession.get(sessionId)?.get(blockId)
-            : undefined
+    /**
+     * 唯一打开入口：按 toolUseId 在 byId 索引里解析 tool-call block（查询即守卫）。
+     * 前台任务卡片与后台任务卡片都走这里，避免两处各写一遍解析与 kind 判定。
+     */
+    const openToolUseId = useCallback((toolUseId: string | null | undefined) => {
+        if (toolUseId == null) return
+        const found = useChatBlocksByIdStore.getState().bySession.get(sessionId)?.get(toolUseId)
         if (found?.kind === 'tool-call') setDrawerBlockId(found.id)
     }, [sessionId])
 
     const close = useCallback(() => setDrawerBlockId(null), [])
 
-    return { drawerBlock, openToolBlock, openTask, close }
+    return { drawerBlock, openToolUseId, close }
 }

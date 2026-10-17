@@ -35,12 +35,11 @@ import { Loader } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useForegroundTasks } from '@/core/data/stores/foregroundTasksStore'
 import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
-import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
 import { useTeamMembers, useTeamName } from '@/core/data/stores/teamAgentsStore'
 import { AgentCard } from './AgentCard'
 import { BackgroundTaskCard } from './BackgroundTaskCard'
 import { TeamAgentCard } from './TeamAgentCard'
-import type { BackgroundTask, ToolCallBlock } from '@/domain/chat/types'
+import type { BackgroundTask } from '@/domain/chat/types'
 import type { ForegroundTaskItem, TeamMember } from '@mobi/shared/types'
 import type { MobiApi } from '@/core/data/api/client'
 import { ClearStateButton, type ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
@@ -50,7 +49,7 @@ const spinKeyframes = css`
 `
 
 /** 统一面板条目：前台任务 / 后台任务 / 团队成员 */
-type TaskListItem =
+export type TaskListItem =
     | { kind: 'agent'; task: ForegroundTaskItem }
     | { kind: 'bg-task'; task: BackgroundTask }
     | { kind: 'team'; member: TeamMember }
@@ -101,14 +100,15 @@ export function useTasksPanelItems(sessionId: string) {
     const members = useTeamMembers(sessionId)
     const teamName = useTeamName(sessionId)
 
-    const items = useMemo<TaskListItem[]>(() => {
+    const { items, activeCount } = useMemo(() => {
         const list: TaskListItem[] = [
             ...fgTasks.map(task => ({ kind: 'agent' as const, task })),
             ...bgTasks.map(task => ({ kind: 'bg-task' as const, task })),
             // 无 teamName 时团队卡片无处可挂（与合并前 TeamAgentPanel 的守卫一致）
             ...(teamName ? members.map(member => ({ kind: 'team' as const, member })) : []),
         ]
-        return sortItems(list)
+        const sorted = sortItems(list)
+        return { items: sorted, activeCount: sorted.filter(isActive).length }
     }, [fgTasks, bgTasks, members, teamName])
 
     return {
@@ -116,16 +116,15 @@ export function useTasksPanelItems(sessionId: string) {
         teamName,
         hasTasks: fgTasks.length > 0 || bgTasks.length > 0,
         hasTeam: Boolean(teamName) && members.length > 0,
-        activeCount: items.filter(isActive).length,
+        activeCount,
     }
 }
 
 export type TasksPanelProps = {
     sessionId: string
     api: MobiApi
-    onAgentClick: (block: ToolCallBlock) => void
-    /** 后台任务卡片点击：携带完整 task，由调用方用 task.toolUseId 打开 drawer */
-    onTaskClick: (task: BackgroundTask) => void
+    /** 卡片点击统一入口：按 toolUseId 打开详情抽屉（解析与「查不到就不开」的守卫由调用方内聚） */
+    onOpenToolUseId: (toolUseId: string | null | undefined) => void
     onClear: (sessionId: string, clearFields: ClearRuntimeStateField[]) => Promise<void>
     /**
      * 呈现形态：panel = 限高卡片行 + 溢出渐变（默认，composer 内联用）；
@@ -137,8 +136,7 @@ export type TasksPanelProps = {
 export function TasksPanel({
     sessionId,
     api,
-    onAgentClick,
-    onTaskClick,
+    onOpenToolUseId,
     onClear,
     variant = 'panel',
 }: TasksPanelProps) {
@@ -225,12 +223,7 @@ export function TasksPanel({
                         key={`agent:${item.task.toolUseId}`}
                         name={item.task.description ?? item.task.subagentType ?? 'Agent'}
                         seed={item.task.toolUseId}
-                        onClick={() => {
-                            // 点击时才解析 block：面板不订阅消息索引，避免随消息流重渲染
-                            const block = useChatBlocksByIdStore.getState()
-                                .bySession.get(sessionId)?.get(item.task.toolUseId)
-                            if (block?.kind === 'tool-call') onAgentClick(block)
-                        }}
+                        onClick={() => onOpenToolUseId(item.task.toolUseId)}
                     />
                 )
             case 'bg-task':
@@ -239,7 +232,7 @@ export function TasksPanel({
                         key={`bg:${item.task.taskId}`}
                         task={item.task}
                         // 不可点（toolUseId=null）的守卫由 BackgroundTaskCard 内聚，此处无条件透传
-                        onClick={() => onTaskClick(item.task)}
+                        onClick={() => onOpenToolUseId(item.task.toolUseId)}
                         onStop={item.task.status === 'running' ? () => handleStop(item.task) : undefined}
                     />
                 )
@@ -255,9 +248,12 @@ export function TasksPanel({
     }
 
     // flat：气泡 Popover 详情——不限高、全部卡片纵向平铺，清理由头行承担
+    // 外衬（纵向 flex / 间距 / 最小宽）由气泡详情容器提供
     if (variant === 'flat') {
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 260 }}>
+            <>
+                {/* 头行 Loader 的动画在两种形态下都要生效 */}
+                <Global styles={spinKeyframes} />
                 {header}
                 <div style={{
                     display: 'flex', flexDirection: 'column', gap: 6,
@@ -265,7 +261,7 @@ export function TasksPanel({
                 } as React.CSSProperties}>
                     {items.map(renderCard)}
                 </div>
-            </div>
+            </>
         )
     }
 

@@ -20,39 +20,23 @@
  * 一个头行（图标 + 进行中文案 + 合并完成统计 + 清理）+ 一条按状态排序的勾选列表。
  * - todo 行显示 content
  * - task 行显示 `id: subject`，副行 description，过滤 deleted 状态
- * 同一状态内先 todo 后 task，保持合并前「todo 在上、task 在下」的阅读顺序。
+ * 合并/排序/统计口径见 checklist.ts（气泡摘要共用同一份）。
  * 合并前是 TodoPanel / TaskPanel 两个逐行重复的组件。
  */
 
-import { useState, type ReactNode } from 'react'
-import { Collapse, Checkbox, Typography, theme } from 'antd'
+import { useMemo, useState, type ReactNode } from 'react'
+import { Collapse, Checkbox, Typography } from 'antd'
 import { Lightbulb } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { TodoItem, TaskItem } from '@mobi/shared'
 import { ClearStateButton, type ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
 import { ShinyText } from '@/ui/base/motion/ShinyText'
+import { buildChecklist, type ChecklistEntry, type ChecklistStatus } from './checklist'
 
 /** 任务橙色，参考 Claude Code */
 const CHECKLIST_ORANGE = '#e8825c'
 const CHECKLIST_GREEN = '#52c41a'
-
-type ChecklistStatus = 'in_progress' | 'pending' | 'completed'
-
-interface ChecklistItem {
-    key: string
-    status: ChecklistStatus
-    /** 行主文案（已按状态着色的渲染结果） */
-    content: ReactNode
-    /** 副文案（可选，有值时行改为顶部对齐的两行布局） */
-    description?: ReactNode
-}
-
-const STATUS_ORDER: Record<ChecklistStatus, number> = {
-    in_progress: 0,
-    pending: 1,
-    completed: 2,
-}
 
 const StyledCheckbox = styled(Checkbox)`
     .ant-checkbox-inner {
@@ -84,49 +68,12 @@ export type TodoPanelProps = {
 }
 
 export function TodoPanel({ todos, tasks, sessionId, onClear, variant = 'panel' }: TodoPanelProps) {
-    const { token } = theme.useToken()
     const { t } = useTranslation()
     const [activeKeys, setActiveKeys] = useState<string[]>([])
+    const checklist = useMemo(() => buildChecklist(todos, tasks), [todos, tasks])
 
-    // 过滤掉 deleted 状态
-    const visibleTasks = tasks?.filter(task => task.status !== 'deleted') ?? []
-
-    const items: ChecklistItem[] = [
-        ...(todos ?? []).map(todo => ({
-            key: `todo:${todo.content}`,
-            status: todo.status,
-            content: <TodoText todo={todo} />,
-        })),
-        ...visibleTasks.map(task => ({
-            key: `task:${task.id}`,
-            status: task.status as ChecklistStatus,
-            content: <TaskText task={task} />,
-            description: task.description ? <TaskDescription task={task} /> : undefined,
-        })),
-    ]
-
-    if (items.length === 0) return null
-
-    const sortedItems = items
-        .map((item, idx) => ({ item, idx }))
-        .sort((a, b) => STATUS_ORDER[a.item.status] - STATUS_ORDER[b.item.status] || a.idx - b.idx)
-        .map(({ item }) => item)
-
-    let completed = 0, inProgress = 0
-    for (const item of items) {
-        if (item.status === 'completed') completed++
-        else if (item.status === 'in_progress') inProgress++
-    }
-    const total = items.length
-
-    // 进行中文案：todo 用 activeForm，task 用 activeForm ?? subject；两者都有时取 todo（同列表顺序）
-    const activeTodo = todos?.find(todo => todo.status === 'in_progress')
-    const activeTask = visibleTasks.find(task => task.status === 'in_progress')
-    const activeText = activeTodo
-        ? activeTodo.activeForm
-        : activeTask
-            ? (activeTask.activeForm ?? activeTask.subject)
-            : undefined
+    if (checklist.items.length === 0) return null
+    const { items, completed, inProgress, total, activeText } = checklist
 
     const header = (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
@@ -138,12 +85,12 @@ export function TodoPanel({ todos, tasks, sessionId, onClear, variant = 'panel' 
             ) : completed === total ? (
                 <span style={{ color: CHECKLIST_GREEN, fontWeight: 500 }}>✓ {t('chat.todo.allCompleted')}</span>
             ) : (
-                <span style={{ color: token.colorTextTertiary }}>
+                <span style={{ color: 'var(--ant-color-text-tertiary)' }}>
                     {t('chat.task.pendingCount', { count: total - completed })}
                 </span>
             )}
-            <span style={{ fontSize: 12, color: token.colorTextTertiary, marginLeft: 4 }}>
-                <span style={{ color: token.colorTextSecondary, fontWeight: 500 }}>{completed}/{total}</span> {t('chat.todo.completed')}
+            <span style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)', marginLeft: 4 }}>
+                <span style={{ color: 'var(--ant-color-text-secondary)', fontWeight: 500 }}>{completed}/{total}</span> {t('chat.todo.completed')}
                 {inProgress > 0 && (
                     <>
                         {' · '}
@@ -161,40 +108,46 @@ export function TodoPanel({ todos, tasks, sessionId, onClear, variant = 'panel' 
 
     const list = (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {sortedItems.map((item) => (
-                <div
-                    key={item.key}
-                    style={{
-                        display: 'flex',
-                        alignItems: item.description ? 'flex-start' : 'center',
-                        gap: 8,
-                        fontSize: 13,
-                    }}
-                >
-                    <StyledCheckbox
-                        checked={item.status === 'completed'}
-                        indeterminate={item.status === 'in_progress'}
-                        disabled
-                        style={item.description ? { lineHeight: '22px' } : undefined}
-                    />
-                    {item.description ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                            {item.content}
-                            {item.description}
-                        </div>
-                    ) : item.content}
-                </div>
-            ))}
+            {items.map((entry) => {
+                const description = entry.kind === 'task' && entry.task.description
+                    ? <TaskDescription task={entry.task} />
+                    : undefined
+                const text = <ChecklistText status={entry.status}>{entryLabel(entry)}</ChecklistText>
+                return (
+                    <div
+                        key={entry.key}
+                        style={{
+                            display: 'flex',
+                            alignItems: description ? 'flex-start' : 'center',
+                            gap: 8,
+                            fontSize: 13,
+                        }}
+                    >
+                        <StyledCheckbox
+                            checked={entry.status === 'completed'}
+                            indeterminate={entry.status === 'in_progress'}
+                            disabled
+                            style={description ? { lineHeight: '22px' } : undefined}
+                        />
+                        {description ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                                {text}
+                                {description}
+                            </div>
+                        ) : text}
+                    </div>
+                )
+            })}
         </div>
     )
 
-    // flat：气泡 Popover 详情——不要折叠壳，头行与列表直接平铺
+    // flat：气泡 Popover 详情——不要折叠壳，头行与列表直接平铺（外衬由气泡详情容器提供）
     if (variant === 'flat') {
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 260 }}>
+            <>
                 {header}
                 {list}
-            </div>
+            </>
         )
     }
 
@@ -209,71 +162,45 @@ export function TodoPanel({ todos, tasks, sessionId, onClear, variant = 'panel' 
     )
 }
 
-function TodoText({ todo }: { todo: TodoItem }) {
-    const { token } = theme.useToken()
+function entryLabel(entry: ChecklistEntry): string {
+    return entry.kind === 'todo' ? entry.todo.content : `${entry.task.id}: ${entry.task.subject}`
+}
 
-    if (todo.status === 'in_progress') {
+/** 三态文字样式：进行中橙色扫光 / 完成划线 / 待办弱化 */
+function ChecklistText({ status, children }: { status: ChecklistStatus; children: ReactNode }) {
+    if (status === 'in_progress') {
         return (
             <ShinyText solid style={{ color: CHECKLIST_ORANGE, fontWeight: 600 }}>
-                {todo.content}
+                {children}
             </ShinyText>
         )
     }
 
-    if (todo.status === 'completed') {
+    if (status === 'completed') {
         return (
-            <span style={{ textDecoration: 'line-through', color: token.colorTextQuaternary }}>
-                {todo.content}
+            <span style={{ textDecoration: 'line-through', color: 'var(--ant-color-text-quaternary)' }}>
+                {children}
             </span>
         )
     }
 
-    return <span style={{ color: token.colorTextTertiary }}>{todo.content}</span>
-}
-
-function taskLabel(task: TaskItem) {
-    return `${task.id}: ${task.subject}`
-}
-
-function TaskText({ task }: { task: TaskItem }) {
-    const { token } = theme.useToken()
-    const label = taskLabel(task)
-
-    if (task.status === 'in_progress') {
-        return (
-            <ShinyText solid style={{ color: CHECKLIST_ORANGE, fontWeight: 600 }}>
-                {label}
-            </ShinyText>
-        )
-    }
-
-    if (task.status === 'completed') {
-        return (
-            <span style={{ textDecoration: 'line-through', color: token.colorTextQuaternary }}>
-                {label}
-            </span>
-        )
-    }
-
-    return <span style={{ color: token.colorTextTertiary }}>{label}</span>
+    return <span style={{ color: 'var(--ant-color-text-tertiary)' }}>{children}</span>
 }
 
 const { Text } = Typography
 
-function TaskDescription({ task }: { task: TaskItem }) {
-    const { token } = theme.useToken()
-
+function TaskDescription({ task: { description, status } }: { task: TaskItem }) {
     return (
         <Text
             style={{
                 fontSize: 12,
-                color: token.colorTextQuaternary,
+                color: 'var(--ant-color-text-quaternary)',
                 lineHeight: '18px',
-                textDecoration: task.status === 'completed' ? 'line-through' : 'none',
+                textDecoration: status === 'completed' ? 'line-through' : 'none',
             }}
             ellipsis
         >
-            {task.description}
+            {description}
         </Text>
     )
 }

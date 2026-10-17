@@ -60,7 +60,7 @@ import { renderUserBubbleHeader, renderChatBlock, type ChatBlockContext } from '
 import { ToolCallGroupRenderer } from '@/features/chat/blocks/toolCallGroupBlock'
 import { ToolDetailDrawer } from '@/features/chat/tool-card/ToolDetailDrawer'
 import { useToolDetailDrawer } from '@/features/chat/tool-card/useToolDetailDrawer'
-import { ComposerStatusPills, useStatusPillsVisibility, STATUS_PILLS_SPACER_HEIGHT } from '@/features/composer/ComposerStatusPills'
+import { ComposerStatusPills, useComposerStatusSummary, STATUS_PILLS_SPACER_HEIGHT } from '@/features/composer/ComposerStatusPills'
 import type { ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
 import { type RewindDryRunResult } from '@/features/chat/RewindConfirmView'
 import { MessageActionsDrawer, MessageActionsTrigger, type MessageActionTarget } from '@/features/chat/MessageActionsDrawer'
@@ -91,8 +91,13 @@ export { BUBBLE_ROLES } from '@/ui/base/display/bubbleRoles'
 
 const { useToken } = antTheme
 
+/** 状态气泡让位 spacer：固定高度、无 props，模块级常量避免流式期每个 chunk 重建元素 */
+const STATUS_PILLS_SPACER = (
+    <div aria-hidden="true" style={{ height: STATUS_PILLS_SPACER_HEIGHT }} />
+)
+
 /**
- * 取最后一条消息的活动时间戳（供 StatusBar 静默告警，见 AgentLoadingBubble / docs/pending.md #34）：
+ * 取最后一条消息的活动时间戳（供聊天区尾部运行指示 AgentLoadingBubble 静默告警，见 AgentLoadingBubble / docs/pending.md #34）：
  * 优先 positionAt（落库排序锚点）；快照消息（未落库）没有 positionAt 但有 createdAt——
  * 快照/token 到达即活动，须一并计入，否则单条消息流式超阈值会被误报「长时间无响应」。
  * 排队消息 positionAt = 提交时刻，同样计入——用户刚发消息也是活动，不应误报等待。
@@ -104,7 +109,7 @@ export function lastMessageActivityAt(messages: Array<{ positionAt?: number; cre
 }
 
 /**
- * 取本轮运行的起点时间戳（最后一条有效 user 消息，供 StatusBar 计时）：
+ * 取本轮运行的起点时间戳（最后一条有效 user 消息，供聊天区尾部运行指示 AgentLoadingBubble 计时）：
  * 刷新页面后从消息列表重算而非组件 mount 时间，计时不会归零；
  * 用户新发一条消息即开启新一轮计时。取值与 lastMessageActivityAt 同源
  * （positionAt 优先，快照/排队消息退 createdAt——排队消息提交时刻即本轮起点，须计入）。
@@ -126,7 +131,7 @@ export function lastUserMessageAt(messages: DecryptedMessage[]): number | undefi
 }
 
 /**
- * StatusBar 计时起点的合成（docs/pending.md #55 方案 1）：
+ * 运行指示计时起点的合成（docs/pending.md #55 方案 1）：
  * - `fromRuntime`（runtimeState.runStartedAt）：CLI running 翻转 false→true 时上报、daemon 落库 +
  *   SSE 推——**权威来源**，长会话消息窗口滑出本轮 user 消息时仍可拿到正确起点
  * - `fromMessages`（lastUserMessageAt）：窗口内消息推导——SSE 事件丢失/尚未到达时比
@@ -289,9 +294,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // 状态气泡浮在聊天区底部（composer 上方）：todo/task 清单与执行中任务摘要。
     // 有内容时列表尾部要追加让位 spacer，最后一条消息才不会被气泡盖住。
+    // 气泡摘要只算一次：可见性（spacer）与气泡内容共用同一份合并/统计结果
     const statusTodos = session?.runtimeState?.todos
     const statusTasks = session?.runtimeState?.tasks
-    const showStatusPills = useStatusPillsVisibility(sessionId, statusTodos, statusTasks)
+    const statusSummary = useComposerStatusSummary(sessionId, statusTodos, statusTasks)
+    const showStatusPills = statusSummary.showTodo || statusSummary.showTasks
     const taskDrawer = useToolDetailDrawer(sessionId)
 
     // 最近一次消息活动时间：取最后一条消息（见 lastMessageActivityAt 的取舍说明）
@@ -1298,7 +1305,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             items.push({
                 key: '__status_pills_spacer__',
                 role: 'assistant',
-                content: <div aria-hidden="true" style={{ height: STATUS_PILLS_SPACER_HEIGHT }} />,
+                content: STATUS_PILLS_SPACER,
                 variant: 'borderless',
             })
         }
@@ -1430,8 +1437,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                                 position: 'absolute',
                                 left: '50%',
                                 x: '-50%',
-                                // 状态气泡在场时上移，避免与气泡行叠在一起
-                                bottom: showStatusPills ? 52 : 32,
+                                // 状态气泡在场时上移，避免与气泡行叠在一起（几何与让位 spacer 同源）
+                                bottom: showStatusPills ? STATUS_PILLS_SPACER_HEIGHT + 8 : 32,
                                 zIndex: 10,
                                 // 容器不挡点击，按钮自身恢复
                                 pointerEvents: 'none',
@@ -1458,12 +1465,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 {/* 状态气泡浮层：浮在聊天区底部（composer 上方、dock 之外）。
                     上滚时消息从毛玻璃后面穿过；贴底时列表尾部的 spacer 已让出气泡高度 */}
                 <ComposerStatusPills
+                    summary={statusSummary}
                     todos={statusTodos}
                     tasks={statusTasks}
                     sessionId={sessionId}
                     api={api}
-                    onAgentClick={taskDrawer.openToolBlock}
-                    onTaskClick={taskDrawer.openTask}
+                    onOpenToolUseId={taskDrawer.openToolUseId}
                     onClear={handleClearRuntimeState}
                 />
             </div>

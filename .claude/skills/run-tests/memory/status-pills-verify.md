@@ -68,3 +68,8 @@ assistant 的 `message` 需要 `{ id, type:'message', role:'assistant', model, c
 - `getOrCreateSession` 已存在同 tag 会话时**不会覆盖 runtimeState**：重跑 seed 需先 cleanup 或换 tag。
 - 团队成员无 `teamName` 时整个团队区块被过滤（与合并前 TeamAgentPanel 守卫一致）。
 - e2e cleanup 后 httpOnly cookie 失效，浏览器会回 /login，需重新登录（同 token）。
+- 种子可加 `goalStatus: { met: false, condition, durationMs, iterations, tokens, reason }` 顺带验收
+  composer 上方 goal 行（缺必填 `met` 会被 schema 整条 strip）。
+- 宿主会话 shell 自带 `MOBI_API_URL=127.0.0.1:12222`，会让 web proxy 指向错误 daemon（登录 404）：
+  启动 bootstrap 必须 `env -u MOBI_API_URL -u MOBI_LISTEN_PORT -u MOBI_LISTEN_HOST`，详见 pitfalls-general.md。
+- bootstrap 收到 SIGTERM 会**删除 `~/.mobi-e2e`**——种子必须在启动后重写、且不能靠重启 daemon 刷新缓存。

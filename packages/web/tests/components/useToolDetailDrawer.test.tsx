@@ -76,7 +76,7 @@ describe('useToolDetailDrawer', () => {
         expect(renders).toBe(afterMount)
     })
 
-    it('点击后台任务：byId 命中时打开对应 block，未命中时静默降级', async () => {
+    it('按 toolUseId 打开：byId 命中时打开对应 block，未命中时静默降级', async () => {
         const store = await loadStore()
         // byId 索引以 block.id 为键；任务行的 toolUseId 即对应 tool-call 的 id
         const block = makeAgentBlock('toolu-1')
@@ -84,39 +84,24 @@ describe('useToolDetailDrawer', () => {
 
         const { result } = renderHook(() => useToolDetailDrawer('perf-session'))
 
-        act(() => {
-            result.current.openTask({
-                taskId: 'bt-1',
-                toolUseId: 'missing',
-                toolName: 'Bash',
-                description: '后台研究',
-                status: 'running',
-                startedAt: Date.now(),
-            })
-        })
+        act(() => result.current.openToolUseId('missing'))
         expect(result.current.drawerBlock).toBeNull()
 
-        act(() => {
-            result.current.openTask({
-                taskId: 'bt-1',
-                toolUseId: 'toolu-1',
-                toolName: 'Bash',
-                description: '后台研究',
-                status: 'running',
-                startedAt: Date.now(),
-            })
-        })
+        act(() => result.current.openToolUseId(null))
+        expect(result.current.drawerBlock).toBeNull()
+
+        act(() => result.current.openToolUseId('toolu-1'))
         expect(result.current.drawerBlock).toBe(block)
     })
 
-    it('前台任务卡片直接打开 block；close 关闭', async () => {
+    it('close 关闭', async () => {
         const store = await loadStore()
         const block = makeAgentBlock('agent-1')
         store.getState().set('perf-session', new Map([['agent-1', block]]))
 
         const { result } = renderHook(() => useToolDetailDrawer('perf-session'))
 
-        act(() => result.current.openToolBlock(block))
+        act(() => result.current.openToolUseId('agent-1'))
         expect(result.current.drawerBlock).toBe(block)
 
         act(() => result.current.close())

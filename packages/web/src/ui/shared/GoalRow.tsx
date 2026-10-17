@@ -15,16 +15,18 @@
  */
 
 import styled from '@emotion/styled'
+import { useMemo } from 'react'
 import { Popover } from 'antd'
 import { Goal, Ellipsis } from 'lucide-react'
 import type { GoalStatus } from '@mobi/shared'
 import type { ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
 import { ClearStateButton } from '@/ui/base/interactive/ClearStateButton'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 import { formatDuration, formatTokens } from '@/core/lib/metricsFormat'
 import { useTranslation } from 'react-i18next'
 
 /**
- * goal 状态行（StatusBar 内渲染，独占整行）。
+ * goal 状态行（composer 上方独占整行）。
  *
  * 仅 active 态存在：达成(met:true)后 cli 立即 reportGoalStatus(null) → goalStatus=null →
  * 整行不渲染。图标用 lucide `Goal` 的默认墨色（tertiary），不再保留早期徽标时代的
@@ -106,33 +108,6 @@ const Actions = styled.div`
     margin-left: auto;
 `
 
-const ActionButton = styled.button`
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: none;
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    border: none;
-    border-radius: var(--radius-square);
-    background: transparent;
-    color: var(--ant-color-text-tertiary);
-    cursor: pointer;
-    transition: background var(--mobi-duration-fast) ease, color var(--mobi-duration-fast) ease;
-    &:hover {
-        background: var(--mobi-hover);
-        color: var(--ant-color-text);
-    }
-    &:focus-visible {
-        outline: 2px solid var(--mobi-primary);
-        outline-offset: 1px;
-    }
-    @media (prefers-reduced-motion: reduce) {
-        transition: none;
-    }
-`
-
 const Detail = styled.div`
     display: flex;
     flex-direction: column;
@@ -178,7 +153,8 @@ export function GoalRow({ goal, sessionId, onClear }: GoalRowProps) {
     const { t } = useTranslation()
     const canClear = Boolean(sessionId && onClear)
 
-    const detail = (
+    // 详情只在 goal 变化时重建：流式期 composer 每个 chunk 重渲染，不必重造弹出内容
+    const detail = useMemo(() => (
         <Detail>
             <DetailCondition>{goal.condition}</DetailCondition>
             {goal.reason ? (
@@ -191,7 +167,7 @@ export function GoalRow({ goal, sessionId, onClear }: GoalRowProps) {
                 </DetailStats>
             ) : null}
         </Detail>
-    )
+    ), [goal])
 
     return (
         <Row data-testid="goal-row">
@@ -208,9 +184,11 @@ export function GoalRow({ goal, sessionId, onClear }: GoalRowProps) {
             ) : null}
             <Actions data-goal-actions data-testid="goal-row-actions">
                 <Popover content={detail} trigger="click" overlayStyle={{ maxWidth: 280 }}>
-                    <ActionButton type="button" aria-label={t('session.goal.details')}>
-                        <Ellipsis size={16} />
-                    </ActionButton>
+                    <IconButton
+                        size={22}
+                        icon={<Ellipsis size={16} />}
+                        aria-label={t('session.goal.details')}
+                    />
                 </Popover>
                 {canClear ? (
                     <ClearStateButton

@@ -43,7 +43,7 @@ import { composerSenderCard, composerSubmitButton, COMPOSER_CARD_HEADER_INSET } 
 import { ComposerInfoPanel } from '@/pages/session/ComposerInfoPanel'
 import { resolveCopyShortcut } from '@/features/composer/copyShortcut'
 import { EffortDot, useModelOptionsWithEffort } from '@/features/composer/modelEffortMenu'
-import { StatusBar } from '@/ui/shared/StatusBar'
+import { GoalRow } from '@/ui/shared/GoalRow'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { useMobiApi } from '@/core/data/api/client'
 import { consumeDraftText } from '@/core/lib/draftText'
@@ -170,7 +170,7 @@ const ComposerDock = styled.div`
         margin: 0 -8px;
     }
 
-    /* 背后有内容层（InfoPanel / StatusBar 渲染了非 null，⟺ 直接子元素不止 wrapper
+    /* 背后有内容层（InfoPanel / GoalRow 渲染了非 null，⟺ 直接子元素不止 wrapper
        一个）才现身，且灰底只铺上方——内容层都在白卡上方（各管各的：上没内容上不铺，
        下方永远没有内容层，所以永不铺），白卡下缘直接落在页面底色上。对齐手绘稿：
        灰卡装着内容行、白卡悬挑在中间；空态时 Dock 若仍上灰底，只剩上下两条空圆角带
@@ -213,7 +213,7 @@ export function ChatComposer(props: ChatComposerProps) {
     const hasFinePointer = useHasFinePointer()
     const isMobile = useIsMobile()
 
-    // goal 清理回调：供 StatusBar 内 GoalBadge 的 ClearStateButton 使用
+    // goal 清理回调：供 GoalRow 行尾的 ClearStateButton 使用
     const handleClearGoal = useCallback(
         async (sid: string, fields: ClearRuntimeStateField[]) => {
             await api.sessions.clearRuntimeStateFields(sid, fields)
@@ -769,7 +769,7 @@ export function ChatComposer(props: ChatComposerProps) {
         // 归因时内层标注优先（composer 内位移源归 composer 不归 chat）
         <div style={{ padding: '0 16px max(12px, env(safe-area-inset-bottom))' }} data-perf-region="composer">
             {/* Dock 的进退场（ComposerDock 的 :has(> :only-child)）依赖此处的结构契约：
-                InfoPanel 与 StatusBar 空态必须渲染 null——直接子元素只剩 wrapper 一个时
+                InfoPanel 与 goal 行空态必须渲染 null——直接子元素只剩 wrapper 一个时
                 Dock 背后无内容层，整体退场；多出任何一个非 null 孩子即现身 */}
             <ComposerDock>
             {/* 信息面板：工具交互请求、任务列表等 */}
@@ -784,11 +784,13 @@ export function ChatComposer(props: ChatComposerProps) {
                 }}
             />
 
-            <StatusBar
-                goal={goal}
-                sessionId={sessionId}
-                onClearGoal={handleClearGoal}
-            />
+            {goal ? (
+                <GoalRow
+                    goal={goal}
+                    sessionId={sessionId}
+                    onClear={handleClearGoal}
+                />
+            ) : null}
 
             <div
                 ref={wrapperRef}

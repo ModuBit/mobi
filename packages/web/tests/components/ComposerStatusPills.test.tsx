@@ -20,7 +20,7 @@ import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import type { TaskItem, TodoItem } from '@mobi/shared'
 import type { MobiApi } from '@/core/data/api/client'
-import { ComposerStatusPills, useStatusPillsVisibility } from '@/features/composer/ComposerStatusPills'
+import { ComposerStatusPills, useComposerStatusSummary } from '@/features/composer/ComposerStatusPills'
 
 // 摘要文案断言按真实插值行为 mock（`{{count}}` 等占位替换）
 vi.mock('react-i18next', () => ({
@@ -81,19 +81,32 @@ function makeTask(id: string, subject: string, status: TaskItem['status']): Task
     return { id, subject, status }
 }
 
-function renderPills(todos?: TodoItem[], tasks?: TaskItem[]) {
-    return render(
+/** 测试宿主：summary 由页面对应的 hook 计算一次后传入（与被测组件同一条数据流） */
+function PillsHarness({
+    todos,
+    tasks,
+    api,
+}: {
+    todos?: TodoItem[]
+    tasks?: TaskItem[]
+    api: MobiApi
+}) {
+    const summary = useComposerStatusSummary('test-session', todos, tasks)
+    return (
         <ComposerStatusPills
+            summary={summary}
             todos={todos}
             tasks={tasks}
             sessionId="test-session"
-            api={mockApi}
-            onAgentClick={() => {}}
-            onTaskClick={() => {}}
+            api={api}
+            onOpenToolUseId={() => {}}
             onClear={async () => {}}
-        />,
-        { wrapper },
+        />
     )
+}
+
+function renderPills(todos?: TodoItem[], tasks?: TaskItem[]) {
+    return render(<PillsHarness todos={todos} tasks={tasks} api={mockApi} />, { wrapper })
 }
 
 describe('ComposerStatusPills', () => {
@@ -163,20 +176,34 @@ describe('ComposerStatusPills', () => {
     })
 })
 
-describe('useStatusPillsVisibility（ChatContainer 用它决定是否追加让位 spacer）', () => {
-    it('两类数据都为空时 false', () => {
-        const { result } = renderHook(() => useStatusPillsVisibility('test-session', undefined, undefined))
-        expect(result.current).toBe(false)
+describe('useComposerStatusSummary（ChatContainer 用同一份 summary 决定 spacer 与气泡内容）', () => {
+    it('两类数据都为空时两个 visible 标志均 false', () => {
+        const { result } = renderHook(() => useComposerStatusSummary('test-session', undefined, undefined))
+        expect(result.current.showTodo).toBe(false)
+        expect(result.current.showTasks).toBe(false)
     })
 
-    it('todo 或 task 有数据时 true（deleted task 不计入）', async () => {
-        const todo = renderHook(() => useStatusPillsVisibility('test-session', [makeTodo('A', 'pending')], undefined))
-        expect(todo.result.current).toBe(true)
+    it('todo 或 task 有数据时对应标志为 true（deleted task 不计入）', async () => {
+        const todo = renderHook(() => useComposerStatusSummary('test-session', [makeTodo('A', 'pending')], undefined))
+        expect(todo.result.current.showTodo).toBe(true)
 
-        const deletedOnly = renderHook(() => useStatusPillsVisibility('test-session', undefined, [makeTask('1', 'A', 'deleted')]))
-        expect(deletedOnly.result.current).toBe(false)
+        const deletedOnly = renderHook(() => useComposerStatusSummary('test-session', undefined, [makeTask('1', 'A', 'deleted')]))
+        expect(deletedOnly.result.current.showTodo).toBe(false)
 
-        const task = renderHook(() => useStatusPillsVisibility('test-session', undefined, [makeTask('1', 'A', 'pending')]))
-        expect(task.result.current).toBe(true)
+        const task = renderHook(() => useComposerStatusSummary('test-session', undefined, [makeTask('1', 'A', 'pending')]))
+        expect(task.result.current.showTodo).toBe(true)
+    })
+
+    it('清单摘要与 TodoPanel 同源：进行中/待执行/全部完成口径', () => {
+        const { result } = renderHook(() => useComposerStatusSummary(
+            'test-session',
+            [makeTodo('A', 'in_progress'), makeTodo('B', 'pending')],
+            [makeTask('1', 'C', 'completed')],
+        ))
+        expect(result.current.checklist.total).toBe(3)
+        expect(result.current.checklist.inProgress).toBe(1)
+        expect(result.current.checklist.pending).toBe(1)
+        expect(result.current.checklist.completed).toBe(1)
+        expect(result.current.checklist.allDone).toBe(false)
     })
 })

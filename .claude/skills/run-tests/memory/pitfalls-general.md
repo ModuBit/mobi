@@ -281,3 +281,22 @@ window.getComputedStyle = function (el, ps) {
 否则拿到空集合、测试会假绿。
 
 
+
+## 宿主会话继承的 MOBI_* 环境变量会污染 E2E profile（2026-10-17 实踩）
+
+Mobi 宿主里 spawn 的 Claude 会话 shell 自带 `MOBI_API_URL=http://127.0.0.1:12222`、
+`MOBI_LISTEN_PORT=2222`、`MOBI_LISTEN_HOST=127.0.0.1`。bootstrap 脚本只读取 profile 的端口，
+**不覆盖子进程环境**，于是 web dev server 的 vite proxy 指向 12222：
+
+- 现象：`curl -X POST localhost:5175/api/auth` 恒 404（proxy 打到别的服务）；登录页点「连接」无反应，
+  但 daemon 2224 与 web 5175 两个 `/health` 都正常。
+- 诊断：`ps eww -o command= -p $(lsof -nP -iTCP:5175 -sTCP:LISTEN -t | head -1) | tr ' ' '\n' | grep MOBI_`
+- 正确启动姿势：
+  ```bash
+  env -u MOBI_API_URL -u MOBI_LISTEN_PORT -u MOBI_LISTEN_HOST \
+    nohup bash .claude/skills/run-tests/scripts/e2e-bootstrap.sh > /tmp/e2e-bootstrap.log 2>&1 &
+  ```
+
+另：bootstrap 脚本 **SIGTERM 时会删掉 `~/.mobi-e2e` 数据目录**。想改库后重读（如直写 goalStatus）
+必须在 bootstrap 之前写种子，不能先起环境再改库再重启——重启即清库。
+（直写 runtimeState 的字段还须满足 schema：`goalStatus` 缺 `met` 会被 safeParse 整条丢弃。）
