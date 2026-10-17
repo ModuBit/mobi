@@ -301,6 +301,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
                     <TabStripList
                         ariaLabel={t('session.inspector.tabs')}
                         style={STRIP_ROW_STYLE}
+                        fill
                         extra={active ? chrome(addTabMenu) : null}
                     >
                         {tabs.map((tab) => (

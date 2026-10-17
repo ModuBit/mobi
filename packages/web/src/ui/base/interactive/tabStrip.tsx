@@ -23,7 +23,9 @@
  * 于是只把它那套**呈现**搬过来，能力仍由我们自己的契约承载（见下「契约」）。
  *
  * uiarc 的四条呈现特征，逐条对应到下面的实现：
- * 1. **分段控件外壳**（`.listShell`）：描边 + 轨道底色 + 内边距 + 圆角，页签是轨道里的块
+ * 1. **分段控件外壳**（`.listShell`）：描边 + 轨道底色 + 内边距 + 圆角，页签是轨道里的块。
+ *    外壳缺省按内容宽；`TabStripList fill` 时吃满行内余量（检查器页签条要的「轨道铺满整行」观感，
+ *    页签本身不变宽，见该 prop 注释）
  * 2. **选中项是一块滑移的独立块**（`.selection` + motion 共享布局）：块自己从旧页签滑到新页签，
  *    而不是「每个页签各自换个底色」；`z-index:-1` 让它垫在文字下方，`isolate` 圈住层级
  * 3. **不收缩**（`.trigger { flex: 0 0 auto; min-width: 5.5rem }`）：空间不够时横向滚动，
@@ -46,6 +48,7 @@
  * - a11y：`role=tablist` / `role=tab` + `aria-controls` / `role=tabpanel` + `aria-labelledby` 全程串联
  * - 关闭：关非活动 tab 不动焦点与选中（关闭按钮的 click 不外冒）；关活动 tab 后焦点落到顶上来的那一项；
  *   消费方拦下这次关闭（tab 还在，如未保存文件的确认框）则待办作废，绝不抢焦点
+ * - `fill`：外壳吃满行内余量（页签宽度不受影响；与右端槽位之间照常留出间距，不外扩到它身上）
  * - 拖拽滚动：鼠标 / 触屏笔按住横向拖；触摸走浏览器原生滚动（惯性 + 与页面纵向手势协商）；
  *   超过 4px 才算拖，算拖了就吞掉随后那一下 click（否则松手会顺手切页签）
  * - `extra` 槽在 tablist **之外**（同一 flex 行的兄弟）——绝不放任何 `role="tab"` 内部，
@@ -80,20 +83,26 @@ const EDGE_FADE_WIDTH = 35
 /** 起拖阈值（px）：没超过它就还是「点」，超过才算拖——否则手抖一下就把点击吃了 */
 const DRAG_THRESHOLD = 4
 
+/** 轨道与行右端槽位（extra）之间的呼吸间距。`fill` 时轨道吃满余量，但**不吃这道缝**——
+ *  贴住「+」会显得是同一个控件（检查器页签条上试过），留一点才好读成「轨道到头了，右边是动作」 */
+const TRACK_TO_EXTRA_GAP = 8
+
 const Row = styled.div`
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: ${TRACK_TO_EXTRA_GAP}px;
     /* 页签条是「头」，永远不参与压缩——空间不够时该让页签条内部滚，不该把它挤没 */
     flex: none;
     min-width: 0;
 `
 
 /* 分段控件外壳（uiarc .listShell）：描边 + 轨道底色 + 圆角，页签在轨道里滑动 */
-const Shell = styled.div`
+const Shell = styled.div<{ $fill: boolean }>`
     position: relative;
     display: inline-flex;
-    flex: 0 1 auto;
+    /* 缺省按内容宽（气泡等内联场景：控件多大就是多大）；$fill 时吃满所在行的余量，
+       页签仍按自然宽左对齐，右侧那段由轨道底色填着（检查器页签条要的观感） */
+    flex: ${(p) => (p.$fill ? '1 1 auto' : '0 1 auto')};
     max-width: 100%;
     min-width: 0;
     align-items: center;
@@ -338,12 +347,15 @@ export interface TabStripListProps {
     ariaLabel: string
     /** 行右端槽位（新建 / 收起一类操作）；**不是** tab 的一部分，不会被 tab 的键盘与焦点链路牵动 */
     extra?: ReactNode
+    /** 外壳吃满行内余量（页签仍自然宽、左对齐，右段由轨道底色填着），检查器页签条用；
+     *  缺省按内容宽（内联场景：控件多大就多大）。两种形态与右端槽位之间都留 `TRACK_TO_EXTRA_GAP` */
+    fill?: boolean
     children: ReactNode
     /** 外层行（页签条整条）的样式：内边距、安全区一类归这里 */
     style?: CSSProperties
 }
 
-export function TabStripList({ ariaLabel, extra, children, style }: TabStripListProps) {
+export function TabStripList({ ariaLabel, extra, fill = false, children, style }: TabStripListProps) {
     const { value: selectedValue, setValue } = useTabStripContext('TabStripList')
     const listRef = useRef<HTMLDivElement | null>(null)
     const viewportRef = useRef<HTMLDivElement | null>(null)
@@ -441,7 +453,7 @@ export function TabStripList({ ariaLabel, extra, children, style }: TabStripList
     return (
         <Row style={style} data-tab-strip-row="">
             <TabStripListContext.Provider value={listCtx}>
-                <Shell data-left={edges.left} data-right={edges.right}>
+                <Shell data-left={edges.left} data-right={edges.right} $fill={fill}>
                     <Viewport
                         ref={viewportRef}
                         data-dragging={dragging}

@@ -423,6 +423,35 @@ describe('TabStrip 结构契约', () => {
         expect(minWidth).toBeGreaterThan(0)
     })
 
+    it('fill：外壳吃满行内余量，页签本身不跟着变宽（缺省按内容宽）', () => {
+        // 外壳 = 行的第一个孩子（flex 值落在它身上）
+        const shellOf = (container: HTMLElement) => {
+            const shell = container.querySelector('[data-tab-strip-row] > div') as HTMLElement
+            expect(shell).not.toBeNull()
+            return shell
+        }
+        // 与右端槽位（「+」那一簇）的间距属布局事实，jsdom 不做布局也解释不了 gap 简写——
+        // 由 E2E 量外壳右缘与「+」左缘的差值为 8 来锁，这里只锁「撑满」这条
+        const { container } = render(
+            <TabStrip value="a" onValueChange={() => {}}>
+                <TabStripList ariaLabel="面板页签" fill>
+                    <TabStripTab value="a">A</TabStripTab>
+                </TabStripList>
+            </TabStrip>,
+        )
+        expect(getComputedStyle(shellOf(container)).flexGrow).toBe('1')
+        cleanup()
+
+        const { container: plain } = render(
+            <TabStrip value="a" onValueChange={() => {}}>
+                <TabStripList ariaLabel="面板页签">
+                    <TabStripTab value="a">A</TabStripTab>
+                </TabStripList>
+            </TabStrip>,
+        )
+        expect(getComputedStyle(shellOf(plain)).flexGrow).toBe('0')
+    })
+
     it('选中块是垫在文字下的一块浮起面，且全程只有一份（滑移动效的前提）', () => {
         function Harness() {
             const [value, setValue] = useState('a')
