@@ -449,7 +449,6 @@
       "cancel": "取消"
     },
     "queued": {
-      "title": "排队中（{{count}}）",
       "edit": "编辑",
       "cancel": "取消",
       "alreadySubmitted": "消息已提交给 Claude Code，无法编辑",

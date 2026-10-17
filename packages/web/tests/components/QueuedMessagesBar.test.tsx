@@ -149,17 +149,17 @@ describe('QueuedMessagesBar', () => {
         expect(container.textContent).toBe('')
     })
 
-    it('有排队消息时渲染标题与每条预览文本', () => {
-        const { getByText } = renderBar([
+    it('有排队消息时渲染每条预览文本，且每条行首带 Logs 图标（无分区标题）', () => {
+        const { getByText, container, queryByText } = renderBar([
             queuedMsg('q1', '第一条排队'),
             queuedMsg('q2', '第二条排队'),
         ])
 
-        // 标题（i18n key 透传）
-        expect(getByText('chat.queued.title')).toBeInTheDocument()
-        // 每条预览文本
         expect(getByText('第一条排队')).toBeInTheDocument()
         expect(getByText('第二条排队')).toBeInTheDocument()
+        // 标题已移除；行首 Logs 图标逐条渲染
+        expect(queryByText('chat.queued.title')).toBeNull()
+        expect(container.querySelectorAll('.lucide-logs').length).toBe(2)
     })
 
     it('带附件的排队消息预览显示占位标签（summarizeBlocks 单源；i18n mock 透传 key）', () => {
@@ -267,8 +267,7 @@ describe('QueuedMessagesBar', () => {
             lifecycleMsg('d1', '被显式丢弃', 'discarded'),
         ])
 
-        // 排队分区原样保留（含 3 个操作按钮）
-        expect(getByText('chat.queued.title')).toBeInTheDocument()
+        // 排队项原样保留（含 3 个操作按钮），无分区标题
         expect(getByText('还在排队')).toBeInTheDocument()
         expect(container.querySelectorAll('button').length).toBe(3)
         // 终态消息不出现：无文本、无丢弃分区标题

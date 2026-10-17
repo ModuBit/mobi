@@ -458,7 +458,6 @@
       "cancel": "Cancel"
     },
     "queued": {
-      "title": "Queued ({{count}})",
       "edit": "Edit",
       "cancel": "Cancel",
       "alreadySubmitted": "Message already submitted to Claude Code, cannot edit",

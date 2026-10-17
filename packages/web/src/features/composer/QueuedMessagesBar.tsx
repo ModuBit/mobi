@@ -19,7 +19,8 @@ import { theme, message } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { IconButton } from '@/ui/base/interactive/IconButton'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
-import { ClockCircleOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { EditOutlined, DeleteOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { Logs } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { normalizeUserContent, type UserContentBlock } from '@mobi/shared'
 import { isQueuedInMobi } from '@/core/lib/messages'
@@ -128,45 +129,27 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
                 flexDirection: 'column',
                 gap: 6,
             }}>
-                {/* 排队分区（有排队消息时才展示标题行与列表） */}
-                {queued.length > 0 && (
-                    <>
-                        {/* 标题行（补一点横向缩进，避免贴背景条圆角边缘） */}
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            padding: '0 6px',
-                            color: token.colorTextSecondary,
-                            fontSize: 12,
-                        }}>
-                            <ClockCircleOutlined style={{ fontSize: 13, color: token.colorInfo }} />
-                            <span>{t('chat.queued.title', { count: queued.length })}</span>
-                        </div>
-
-                        {/* 排队消息列表 */}
-                        {queued.map(msg => (
-                            <QueuedItem
-                                key={msg.localId ?? msg.id}
-                                text={previewOf(msg)}
-                                cancelPending={
-                                    cancelMutation.isPending &&
-                                    cancelMutation.variables?.localId === msg.localId
-                                }
-                                steerPending={
-                                    steerMutation.isPending &&
-                                    steerMutation.variables === msg.localId
-                                }
-                                onEdit={() => handleEdit(msg)}
-                                onCancel={() => handleCancel(msg)}
-                                onSteer={() => handleSteer(msg)}
-                                editLabel={t('chat.queued.edit')}
-                                cancelLabel={t('chat.queued.cancel')}
-                                steerLabel={t('chat.queued.steer')}
-                            />
-                        ))}
-                    </>
-                )}
+                {/* 排队消息列表（不设标题行——每条行首的 Logs 图标即语义标识，标题纯属重复） */}
+                {queued.map(msg => (
+                    <QueuedItem
+                        key={msg.localId ?? msg.id}
+                        text={previewOf(msg)}
+                        cancelPending={
+                            cancelMutation.isPending &&
+                            cancelMutation.variables?.localId === msg.localId
+                        }
+                        steerPending={
+                            steerMutation.isPending &&
+                            steerMutation.variables === msg.localId
+                        }
+                        onEdit={() => handleEdit(msg)}
+                        onCancel={() => handleCancel(msg)}
+                        onSteer={() => handleSteer(msg)}
+                        editLabel={t('chat.queued.edit')}
+                        cancelLabel={t('chat.queued.cancel')}
+                        steerLabel={t('chat.queued.steer')}
+                    />
+                ))}
             </div>
         </div>
     )
@@ -199,6 +182,11 @@ function QueuedItem(props: {
                 minHeight: 34,
             }}
         >
+            {/* 排队标识：每条行首的 Logs 图标（替代已移除的分区标题） */}
+            <span style={{ display: 'inline-flex', flexShrink: 0, color: token.colorTextTertiary }}>
+                <Logs size={14} aria-hidden="true" />
+            </span>
+
             {/* 文本预览：最多 3 行截断 */}
             <span
                 style={{
