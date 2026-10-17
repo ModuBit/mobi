@@ -576,7 +576,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                                 size={15}
                                 style={{
                                     color: 'var(--ant-color-text-tertiary)',
-                                    // 取数中转圈（CSS animation，同 TeamAgentPanel/TasksPanel 先例）
+                                    // 取数中转圈（CSS animation，同 TasksPanel 先例）
                                     animation: overview.isFetching ? 'review-refresh-spin 1s linear infinite' : undefined,
                                 }}
                             />}

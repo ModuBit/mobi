@@ -445,6 +445,14 @@
       "panelTitle": "Running Tasks",
       "agentRunning": "running"
     },
+    "statusPills": {
+      "label": "Status",
+      "todoPending": "Pending {{pending}}/{{total}}",
+      "executing": "{{count}} in progress",
+      "allDone": "All done",
+      "tasksExecuting": "Running {{active}} / {{total}}",
+      "tasksTotal": "{{total}} total"
+    },
     "clearState": {
       "label": "Clear",
       "todos": "Clear stale todos?",

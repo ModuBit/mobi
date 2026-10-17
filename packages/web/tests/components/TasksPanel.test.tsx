@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 
 // Bun jsdom 环境下 navigator.language 未定义，uiStore 初始化需要
 vi.hoisted(() => {
@@ -45,6 +45,7 @@ vi.mock('react-i18next', () => ({
         t: (key: string) => {
             const map: Record<string, string> = {
                 'chat.runningTasks.panelTitle': 'Running Tasks',
+                'chat.team.panelTitle': 'Team',
             }
             return map[key] ?? key
         },
@@ -84,7 +85,8 @@ async function loadStores() {
     const { useForegroundTasksStore } = await import('@/core/data/stores/foregroundTasksStore')
     const { useBackgroundTasksStore } = await import('@/core/data/stores/backgroundTasksStore')
     const { useChatBlocksByIdStore } = await import('@/core/data/stores/chatBlocksByIdStore')
-    return { useForegroundTasksStore, useBackgroundTasksStore, useChatBlocksByIdStore }
+    const { useTeamAgentsStore } = await import('@/core/data/stores/teamAgentsStore')
+    return { useForegroundTasksStore, useBackgroundTasksStore, useChatBlocksByIdStore, useTeamAgentsStore }
 }
 
 function makeFgTask(toolUseId: string, description = '前台研究') {
@@ -284,5 +286,109 @@ describe('TasksPanel 后台任务点击（批次 B，spec D5）', () => {
         const card = document.querySelector('[data-testid="bg-task-card-bt-ok"]') as HTMLElement
         expect(card).toBeTruthy()
         expect(card.style.cursor).toBe('pointer')
+    })
+})
+
+describe('TasksPanel 团队成员合并（原 TeamAgentPanel）', () => {
+    afterEach(cleanup)
+
+    // zustand store 是模块级单例：前置用例遗留的前台/后台任务会串染本组用例
+    async function resetStores() {
+        const { useForegroundTasksStore, useBackgroundTasksStore, useTeamAgentsStore } = await loadStores()
+        useForegroundTasksStore.getState().set('test-session', [])
+        useBackgroundTasksStore.getState().setTasks('test-session', [])
+        useTeamAgentsStore.getState().clearSession('test-session')
+    }
+
+    beforeEach(resetStores)
+
+    it('仅有团队成员时显示团队标题与成员卡片', async () => {
+        const { useTeamAgentsStore } = await loadStores()
+        useTeamAgentsStore.getState().setTeamState(
+            'test-session',
+            [{ name: 'Alice', status: 'active' }],
+            'Alpha',
+        )
+
+        const { container } = render(
+            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onTaskClick={() => {}} onClear={async () => {}} />,
+            { wrapper }
+        )
+        expect(container.textContent).toContain('Team: Alpha')
+        expect(container.textContent).toContain('Alice')
+        // 计数徽标显示 1
+        expect(container.textContent).toContain('1')
+
+        useTeamAgentsStore.getState().clearSession('test-session')
+    })
+
+    it('任务与团队成员合并进同一块面板：标题取任务标题、计数合并', async () => {
+        const { useForegroundTasksStore, useTeamAgentsStore } = await loadStores()
+        useForegroundTasksStore.getState().set('test-session', [makeFgTask('fg-1')])
+        useTeamAgentsStore.getState().setTeamState(
+            'test-session',
+            [{ name: 'Alice', status: 'active' }],
+            'Alpha',
+        )
+
+        const { container } = render(
+            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onTaskClick={() => {}} onClear={async () => {}} />,
+            { wrapper }
+        )
+        expect(container.textContent).toContain('Running Tasks')
+        expect(container.textContent).toContain('前台研究')
+        expect(container.textContent).toContain('Alice')
+        // 计数徽标显示 2
+        expect(container.textContent).toContain('2')
+
+        useTeamAgentsStore.getState().clearSession('test-session')
+    })
+
+    it('无 teamName 时不展示团队成员（守卫与合并前一致）', async () => {
+        const { useTeamAgentsStore } = await loadStores()
+        useTeamAgentsStore.getState().setTeamState(
+            'test-session',
+            [{ name: 'Alice', status: 'active' }],
+            null,
+        )
+
+        const { container } = render(
+            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onTaskClick={() => {}} onClear={async () => {}} />,
+            { wrapper }
+        )
+        expect(container.innerHTML).toBe('')
+
+        useTeamAgentsStore.getState().clearSession('test-session')
+    })
+})
+
+describe('TasksPanel flat 模式（气泡 Popover 详情）', () => {
+    afterEach(cleanup)
+
+    it('不限高、直接平铺全部卡片', async () => {
+        const { useForegroundTasksStore, useBackgroundTasksStore, useTeamAgentsStore } = await loadStores()
+        useForegroundTasksStore.getState().set('test-session', [makeFgTask('fg-1')])
+        useBackgroundTasksStore.getState().setTasks('test-session', [makeBgTask('bt-1')])
+        useTeamAgentsStore.getState().clearSession('test-session')
+
+        const { container } = render(
+            <TasksPanel
+                sessionId="test-session"
+                api={mockApi}
+                onAgentClick={() => {}}
+                onTaskClick={() => {}}
+                onClear={async () => {}}
+                variant="flat"
+            />,
+            { wrapper },
+        )
+
+        expect(container.textContent).toContain('前台研究')
+        expect(container.textContent).toContain('后台研究')
+        // 不限高：没有 96px 的裁切容器
+        expect(container.querySelector('[style*="max-height: 96px"]')).toBeNull()
+
+        useForegroundTasksStore.getState().set('test-session', [])
+        useBackgroundTasksStore.getState().setTasks('test-session', [])
     })
 })

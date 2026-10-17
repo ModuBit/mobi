@@ -28,7 +28,7 @@ import { ExclamationCircleOutlined } from '@ant-design/icons'
 import { ChevronDown } from 'lucide-react'
 import type { AgentState, SessionMetadataSummary, DecryptedMessage } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
-import type { SDKUIHints, TodoItem, TaskItem, PermissionUpdate, PermissionAnswers } from '@mobi/shared'
+import type { SDKUIHints, PermissionUpdate, PermissionAnswers } from '@mobi/shared'
 import { PermissionFooter, getPermissionDisplayText } from '@/features/chat/tool-card/PermissionFooter'
 import { AskUserQuestionFooter } from '@/features/chat/tool-card/AskUserQuestionFooter'
 import { RequestUserInputFooter } from '@/features/chat/tool-card/RequestUserInputFooter'
@@ -41,16 +41,6 @@ import { inferToolRow } from '@/core/lib/toolRow'
 import { FileChip } from '@/ui/base/display/FileChip'
 import { AwaitingConfirmBadge } from '@/ui/base/display/AwaitingConfirmBadge'
 import { queryKeys } from '@/core/lib/queryKeys'
-import { useForegroundTasks } from '@/core/data/stores/foregroundTasksStore'
-import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
-import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
-import { ToolDetailDrawer } from '@/features/chat/tool-card/ToolDetailDrawer'
-import { TodoPanel } from '@/features/composer/TodoPanel'
-import type { ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
-import { TaskPanel } from '@/features/composer/TaskPanel'
-import { TasksPanel } from '@/features/composer/TasksPanel'
-import { TeamAgentPanel } from '@/features/composer/TeamAgentPanel'
-import { useTeamMembers, useTeamName } from '@/core/data/stores/teamAgentsStore'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { isQueuedInMobi } from '@/core/lib/messages'
 import { getMessageWindowState, subscribeMessageWindow } from '@/core/data/stores/messageWindowStore'
@@ -352,8 +342,6 @@ export type ComposerInfoPanelProps = {
     api: MobiApi
     disabled: boolean
     onRequestDone: () => void
-    todos?: TodoItem[]
-    tasks?: TaskItem[]
 }
 
 /**
@@ -387,20 +375,8 @@ export function ComposerInfoPanel({
     api,
     disabled,
     onRequestDone,
-    todos,
-    tasks,
 }: ComposerInfoPanelProps) {
-    const [drawerBlockId, setDrawerBlockId] = useState<string | null>(null)
     const hasPendingRequests = agentState?.requests && Object.keys(agentState.requests).length > 0
-    const hasTodos = todos && todos.length > 0
-    const hasTasks = tasks && tasks.some(t => t.status !== 'deleted')
-    const agents = useForegroundTasks(sessionId)
-    const bgTasks = useBackgroundTasks(sessionId)
-    const hasBgTasks = bgTasks.length > 0
-    const teamAgents = useTeamMembers(sessionId)
-    const teamName = useTeamName(sessionId)
-    const hasTeamAgents = teamAgents.length > 0 && !!teamName
-    const hasAgents = agents.length > 0
 
     // 只订阅「是否存在排队消息」布尔（hasContent 门禁信号，无第二个消费者）。
     // 不走 useMessages：它的 getSnapshot 返回 state 对象，messageWindowStore 每次 SSE
@@ -412,15 +388,6 @@ export function ComposerInfoPanel({
         () => false,
     )
 
-    // 窄订阅派生最新 block（byId 索引覆盖全部消息块：前台任务详情在消息空窗时查不到
-    // → drawer 不弹，查询即守卫）。抽屉关闭时恒返回 null（稳定引用），流式期索引整表
-    // 重建不再触发本面板重渲染；打开时仅随目标 block 引用变化——reconcile 对未变化
-    // block 保引用（areToolCallsEqual → 返回 prev），故只有该 block 真变化才重渲染。
-    const drawerBlock = useChatBlocksByIdStore((state) => {
-        if (!drawerBlockId) return null
-        const fromById = state.bySession.get(sessionId)?.get(drawerBlockId)
-        return fromById?.kind === 'tool-call' ? fromById : null
-    })
     const { token } = useToken()
 
     const scrollRef = useRef<HTMLDivElement>(null)
@@ -430,7 +397,8 @@ export function ComposerInfoPanel({
     // ResizeObserver effect 依赖它而非 []：空挂载时组件 return null、scrollRef 为 null，
     // 若用 [] 依赖，effect 只在 mount 跑一次（此时 el=null 直接 return），之后内容出现也不重跑
     // → observer 永不挂载、showFade 恒 false。依赖 hasContent 后，内容后于挂载出现时 effect 重跑、observer 才挂上。
-    const hasContent = Boolean(hasPendingRequests || hasTodos || hasTasks || hasAgents || hasBgTasks || hasTeamAgents || hasQueued)
+    // 任务/团队/清单面板已移出（聊天区浮层气泡），这里只剩请求交互与排队消息。
+    const hasContent = Boolean(hasPendingRequests || hasQueued)
     useEffect(() => {
         if (!hasContent) return
         const el = scrollRef.current
@@ -441,11 +409,6 @@ export function ComposerInfoPanel({
         observer.observe(el)
         return () => observer.disconnect()
     }, [hasContent])
-
-    // 清理运行时状态字段的回调
-    const handleClearState = useCallback(async (clearSessionId: string, clearFields: ClearRuntimeStateField[]) => {
-        await api.sessions.clearRuntimeStateFields(clearSessionId, clearFields)
-    }, [api])
 
     if (!hasContent) return null
 
@@ -475,30 +438,6 @@ export function ComposerInfoPanel({
                         disabled={disabled}
                         onDone={onRequestDone}
                     />
-
-                    <TasksPanel
-                        sessionId={sessionId}
-                        api={api}
-                        onAgentClick={(block) => setDrawerBlockId(block.id)}
-                        onTaskClick={(task) => {
-                            // 先查后设（C1）：点击时在 byId 索引里解析 toolUseId 对应的
-                            // tool-call block，查到才设置 drawerBlockId——同时消灭「静默设置后不渲染」
-                            // 与「残留 id 之后无操作自动弹开」两个症状。命令式 getState 只在读点击
-                            // 现场这一刻查询，不建立订阅（订阅收窄见上方 drawerBlock）。
-                            // 窗口外 block 点击无反馈是已知限制（查询即守卫，不残留状态）
-                            const blockId = task.toolUseId
-                            const found = blockId != null
-                                ? useChatBlocksByIdStore.getState().bySession.get(sessionId)?.get(blockId)
-                                : undefined
-                            if (found?.kind === 'tool-call') setDrawerBlockId(found.id)
-                        }}
-                        onClear={handleClearState}
-                    />
-
-                    <TeamAgentPanel sessionId={sessionId} onClear={handleClearState} />
-
-                    <TodoPanel todos={todos} sessionId={sessionId} onClear={handleClearState} />
-                    <TaskPanel tasks={tasks} sessionId={sessionId} onClear={handleClearState} />
                 </Space>
             </div>
             {showFade && (
@@ -511,15 +450,6 @@ export function ComposerInfoPanel({
                     background: `linear-gradient(transparent, ${token.colorBgLayout})`,
                     pointerEvents: 'none',
                 }} />
-            )}
-            {drawerBlock && (
-                <ToolDetailDrawer
-                    block={drawerBlock}
-                    metadata={metadata}
-                    open={!!drawerBlock}
-                    onClose={() => setDrawerBlockId(null)}
-                    sessionId={sessionId}
-                />
             )}
         </div>
     )

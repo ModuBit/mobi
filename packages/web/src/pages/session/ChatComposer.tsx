@@ -21,7 +21,7 @@ import { SwapOutlined, InboxOutlined } from '@ant-design/icons'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
-import type { AgentState, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, StopKind, TodoItem, TaskItem } from '@mobi/shared'
+import type { AgentState, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, StopKind } from '@mobi/shared'
 import { getPermissionModeOptionsForFlavor } from '@mobi/shared'
 import {
     isSegmentEmpty,
@@ -135,8 +135,6 @@ interface ChatComposerProps {
     activatePending?: boolean
     onSwitchToRemote?: () => void
     switchPending?: boolean
-    todos?: TodoItem[]
-    tasks?: TaskItem[]
     /** 上下文用量（来自 session.runtimeState.contextUsage）；无值时不渲染水位圆环 */
     contextUsage?: ContextUsage | null
     /** goal 状态（来自 session.runtimeState.goalStatus；无值时状态行不渲染） */
@@ -254,8 +252,6 @@ export function ChatComposer(props: ChatComposerProps) {
         activatePending = false,
         onSwitchToRemote,
         switchPending = false,
-        todos,
-        tasks,
         contextUsage,
         goal,
         draftRequest,
@@ -786,8 +782,6 @@ export function ChatComposer(props: ChatComposerProps) {
                 onRequestDone={() => {
                     // 请求交互完成后，session 会通过 SSE 更新
                 }}
-                todos={todos}
-                tasks={tasks}
             />
 
             <StatusBar

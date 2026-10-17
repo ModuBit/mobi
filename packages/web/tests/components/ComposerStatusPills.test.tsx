@@ -1,0 +1,182 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
+import { cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
+import '@testing-library/jest-dom/vitest'
+import { ConfigProvider } from 'antd'
+import type { TaskItem, TodoItem } from '@mobi/shared'
+import type { MobiApi } from '@/core/data/api/client'
+import { ComposerStatusPills, useStatusPillsVisibility } from '@/features/composer/ComposerStatusPills'
+
+// 摘要文案断言按真实插值行为 mock（`{{count}}` 等占位替换）
+vi.mock('react-i18next', () => ({
+    initReactI18next: { type: '3rdParty', init: vi.fn() },
+    useTranslation: () => ({
+        t: (key: string, opts?: Record<string, unknown>) => {
+            const map: Record<string, string> = {
+                'chat.statusPills.todoPending': '待执行 {{pending}}/{{total}}',
+                'chat.statusPills.executing': '执行中 {{count}}',
+                'chat.statusPills.allDone': '全部完成',
+                'chat.statusPills.tasksExecuting': '执行中 {{active}} / {{total}}',
+                'chat.statusPills.tasksTotal': '共 {{total}}',
+            }
+            let text = map[key] ?? key
+            if (opts) {
+                for (const [name, value] of Object.entries(opts)) {
+                    text = text.replaceAll(`{{${name}}}`, String(value))
+                }
+            }
+            return text
+        },
+    }),
+}))
+
+// mock PixelAvatar，jsdom 不支持 canvas
+vi.mock('@/ui/pixel-avatar/PixelAvatar', () => ({
+    PixelAvatar: () => null,
+}))
+
+const mockApi = {
+    sessions: { stopTask: vi.fn() },
+} as unknown as MobiApi
+
+const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <ConfigProvider>{children}</ConfigProvider>
+)
+
+beforeAll(() => {
+    vi.stubGlobal('ResizeObserver', class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    })
+})
+
+afterEach(cleanup)
+
+async function loadForegroundStore() {
+    const { useForegroundTasksStore } = await import('@/core/data/stores/foregroundTasksStore')
+    return useForegroundTasksStore
+}
+
+function makeTodo(content: string, status: TodoItem['status']): TodoItem {
+    return { content, status, activeForm: `正在${content}` }
+}
+
+function makeTask(id: string, subject: string, status: TaskItem['status']): TaskItem {
+    return { id, subject, status }
+}
+
+function renderPills(todos?: TodoItem[], tasks?: TaskItem[]) {
+    return render(
+        <ComposerStatusPills
+            todos={todos}
+            tasks={tasks}
+            sessionId="test-session"
+            api={mockApi}
+            onAgentClick={() => {}}
+            onTaskClick={() => {}}
+            onClear={async () => {}}
+        />,
+        { wrapper },
+    )
+}
+
+describe('ComposerStatusPills', () => {
+    it('两类数据都为空时返回 null', () => {
+        const { container } = renderPills()
+        expect(container.innerHTML).toBe('')
+    })
+
+    it('todo 气泡显示「待执行/总数 · 执行中数」', () => {
+        renderPills([makeTodo('待办A', 'pending'), makeTodo('待办B', 'in_progress')])
+        const pill = screen.getByTestId('status-pill-todo')
+        expect(pill.textContent).toContain('待执行 1/2')
+        expect(pill.textContent).toContain('执行中 1')
+    })
+
+    it('全部完成时 todo 气泡显示「全部完成」', () => {
+        renderPills([makeTodo('待办A', 'completed'), makeTodo('待办B', 'completed')])
+        expect(screen.getByTestId('status-pill-todo').textContent).toContain('全部完成')
+    })
+
+    it('tasks 气泡按面板口径汇总：执行中 / 总数', async () => {
+        const useForegroundTasksStore = await loadForegroundStore()
+        useForegroundTasksStore.getState().set('test-session', [
+            { toolUseId: 'fg-1', description: '前台研究', subagentType: 'Explore', startedAt: Date.now() },
+        ])
+        renderPills()
+        expect(screen.getByTestId('status-pill-tasks').textContent).toContain('执行中 1 / 1')
+        useForegroundTasksStore.getState().set('test-session', [])
+    })
+
+    it('点击 tasks 气泡打开 Popover，平铺展示任务卡片', async () => {
+        const useForegroundTasksStore = await loadForegroundStore()
+        useForegroundTasksStore.getState().set('test-session', [
+            { toolUseId: 'fg-1', description: '前台研究', subagentType: 'Explore', startedAt: Date.now() },
+        ])
+        renderPills()
+        fireEvent.click(screen.getByTestId('status-pill-tasks'))
+        expect(await screen.findByText('前台研究')).toBeInTheDocument()
+        useForegroundTasksStore.getState().set('test-session', [])
+    })
+
+    it('点击 todo 气泡打开 Popover，平铺展示清单项', async () => {
+        renderPills([makeTodo('待办A', 'pending')])
+        fireEvent.click(screen.getByTestId('status-pill-todo'))
+        expect(await screen.findByText('待办A')).toBeInTheDocument()
+    })
+
+    it('两个气泡的详情互斥：打开另一个会收起当前详情', async () => {
+        const useForegroundTasksStore = await loadForegroundStore()
+        useForegroundTasksStore.getState().set('test-session', [
+            { toolUseId: 'fg-1', description: '前台研究', subagentType: 'Explore', startedAt: Date.now() },
+        ])
+        renderPills([makeTodo('待办A', 'pending')])
+
+        fireEvent.click(screen.getByTestId('status-pill-tasks'))
+        expect(await screen.findByText('前台研究')).toBeInTheDocument()
+
+        fireEvent.click(screen.getByTestId('status-pill-todo'))
+        expect(await screen.findByText('待办A')).toBeInTheDocument()
+
+        await waitFor(() => {
+            const visible = [...document.querySelectorAll('.ant-popover')]
+                .filter((el) => !el.classList.contains('ant-popover-hidden'))
+            expect(visible).toHaveLength(1)
+        })
+        useForegroundTasksStore.getState().set('test-session', [])
+    })
+})
+
+describe('useStatusPillsVisibility（ChatContainer 用它决定是否追加让位 spacer）', () => {
+    it('两类数据都为空时 false', () => {
+        const { result } = renderHook(() => useStatusPillsVisibility('test-session', undefined, undefined))
+        expect(result.current).toBe(false)
+    })
+
+    it('todo 或 task 有数据时 true（deleted task 不计入）', async () => {
+        const todo = renderHook(() => useStatusPillsVisibility('test-session', [makeTodo('A', 'pending')], undefined))
+        expect(todo.result.current).toBe(true)
+
+        const deletedOnly = renderHook(() => useStatusPillsVisibility('test-session', undefined, [makeTask('1', 'A', 'deleted')]))
+        expect(deletedOnly.result.current).toBe(false)
+
+        const task = renderHook(() => useStatusPillsVisibility('test-session', undefined, [makeTask('1', 'A', 'pending')]))
+        expect(task.result.current).toBe(true)
+    })
+})

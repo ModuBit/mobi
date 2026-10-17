@@ -436,6 +436,14 @@
       "panelTitle": "运行中任务",
       "agentRunning": "运行中"
     },
+    "statusPills": {
+      "label": "状态",
+      "todoPending": "待执行 {{pending}}/{{total}}",
+      "executing": "执行中 {{count}}",
+      "allDone": "全部完成",
+      "tasksExecuting": "执行中 {{active}} / {{total}}",
+      "tasksTotal": "共 {{total}}"
+    },
     "clearState": {
       "label": "清理",
       "todos": "清理待办列表？",

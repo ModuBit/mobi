@@ -58,6 +58,10 @@ import { CrossSessionTag } from '@/features/chat/blocks/CrossSessionTag'
 import { SentFromTag } from '@/features/chat/blocks/SentFromTag'
 import { renderUserBubbleHeader, renderChatBlock, type ChatBlockContext } from '@/features/chat/blocks'
 import { ToolCallGroupRenderer } from '@/features/chat/blocks/toolCallGroupBlock'
+import { ToolDetailDrawer } from '@/features/chat/tool-card/ToolDetailDrawer'
+import { useToolDetailDrawer } from '@/features/chat/tool-card/useToolDetailDrawer'
+import { ComposerStatusPills, useStatusPillsVisibility, STATUS_PILLS_SPACER_HEIGHT } from '@/features/composer/ComposerStatusPills'
+import type { ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
 import { type RewindDryRunResult } from '@/features/chat/RewindConfirmView'
 import { MessageActionsDrawer, MessageActionsTrigger, type MessageActionTarget } from '@/features/chat/MessageActionsDrawer'
 import { QuoteSelectionPopover, type QuoteSelectionPopoverState } from '@/features/chat/QuoteSelectionPopover'
@@ -283,6 +287,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     /** 待激活分叉会话（forkFrom 在场）：composer 放行 + 发送先触发 resume（spec §4.3） */
     const isPendingFork = !!metadata?.forkFrom
 
+    // 状态气泡浮在聊天区底部（composer 上方）：todo/task 清单与执行中任务摘要。
+    // 有内容时列表尾部要追加让位 spacer，最后一条消息才不会被气泡盖住。
+    const statusTodos = session?.runtimeState?.todos
+    const statusTasks = session?.runtimeState?.tasks
+    const showStatusPills = useStatusPillsVisibility(sessionId, statusTodos, statusTasks)
+    const taskDrawer = useToolDetailDrawer(sessionId)
+
     // 最近一次消息活动时间：取最后一条消息（见 lastMessageActivityAt 的取舍说明）
     const lastActivityAt = useMemo(() => lastMessageActivityAt(messages), [messages])
     // 本轮运行起点：runtimeState.runStartedAt（CLI 翻转上报，权威）与窗口内最后一条 user
@@ -343,7 +354,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
     }, [fgTasks, sessionId])
 
-    // 同步 teamState 从 session cache 到 Zustand store，供 TeamAgentPanel 订阅
+    // 同步 teamState 从 session cache 到 Zustand store，供 TasksPanel 团队卡片订阅
     const teamState = session?.runtimeState?.teamState
     useEffect(() => {
         if (teamState) {
@@ -1219,7 +1230,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const showCacheRow = cacheStatus != null && cacheStatus.expired
         const showLoading = Boolean(session?.running) && !isCompressing
         // 无尾行时直接复用 decoratedItems 引用，不做无意义的数组拷贝
-        if (!isCompressing && !isClearing && !isRewinding && !showCacheRow && !showLoading) return decoratedItems
+        if (!isCompressing && !isClearing && !isRewinding && !showCacheRow && !showLoading && !showStatusPills) {
+            return decoratedItems
+        }
 
         const items: ChatBubbleItem[] = [...decoratedItems]
 
@@ -1280,11 +1293,21 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             })
         }
 
+        // 状态气泡浮层让位：贴底时最后一条消息停在气泡上方，不被毛玻璃气泡盖住
+        if (showStatusPills) {
+            items.push({
+                key: '__status_pills_spacer__',
+                role: 'assistant',
+                content: <div aria-hidden="true" style={{ height: STATUS_PILLS_SPACER_HEIGHT }} />,
+                variant: 'borderless',
+            })
+        }
+
         return items
     }, [
         decoratedItems, isCompressing, isClearing, isRewinding,
         session?.running, session?.active, session?.agentState, session?.runtimeState?.cacheStatus,
-        sessionId, lastActivityAt, runStartedAt,
+        sessionId, lastActivityAt, runStartedAt, showStatusPills,
     ])
 
     // 入参为 composer 完整分段；wire blocks（serializeSegments）由 useSendMessage 内部统一序列化。
@@ -1324,6 +1347,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const handleAbort = async (stopKind: StopKind) => {
         await sessionActions.abortSession(stopKind)
     }
+
+    // 状态气泡详情里的清理动作（todo/task 清单、前台/后台任务、团队成员）
+    const handleClearRuntimeState = useCallback(
+        async (clearSessionId: string, clearFields: ClearRuntimeStateField[]) => {
+            await api.sessions.clearRuntimeStateFields(clearSessionId, clearFields)
+        },
+        [api],
+    )
 
     const handlePermissionModeChange = async (mode: string) => {
         await sessionActions.setPermissionMode(mode)
@@ -1399,7 +1430,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                                 position: 'absolute',
                                 left: '50%',
                                 x: '-50%',
-                                bottom: 32,
+                                // 状态气泡在场时上移，避免与气泡行叠在一起
+                                bottom: showStatusPills ? 52 : 32,
                                 zIndex: 10,
                                 // 容器不挡点击，按钮自身恢复
                                 pointerEvents: 'none',
@@ -1422,6 +1454,18 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                         </motion.div>
                     )}
                 </AnimatePresence>
+
+                {/* 状态气泡浮层：浮在聊天区底部（composer 上方、dock 之外）。
+                    上滚时消息从毛玻璃后面穿过；贴底时列表尾部的 spacer 已让出气泡高度 */}
+                <ComposerStatusPills
+                    todos={statusTodos}
+                    tasks={statusTasks}
+                    sessionId={sessionId}
+                    api={api}
+                    onAgentClick={taskDrawer.openToolBlock}
+                    onTaskClick={taskDrawer.openTask}
+                    onClear={handleClearRuntimeState}
+                />
             </div>
 
             {/* 选区引用浮层：fixed 定位锚定选区几何（放滚动容器外——它随滚动关闭而非跟随）；
@@ -1511,8 +1555,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 mode={session?.mode}
                 workingDir={session?.metadata?.path}
                 effort={session?.runtimeState?.effort}
-                todos={session?.runtimeState?.todos}
-                tasks={session?.runtimeState?.tasks}
                 contextUsage={session?.runtimeState?.contextUsage ?? null}
                 goal={session?.runtimeState?.goalStatus ?? null}
                 onEffortChange={handleEffortChange}
@@ -1528,6 +1570,17 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 extraLeftButtons={extraComposerButtons}
                 extraItems={extraComposerItems}
             />
+
+            {/* 状态气泡详情里的任务卡片 → 工具详情抽屉（前台 Agent / 后台任务共用） */}
+            {taskDrawer.drawerBlock && (
+                <ToolDetailDrawer
+                    block={taskDrawer.drawerBlock}
+                    metadata={metadata}
+                    open={!!taskDrawer.drawerBlock}
+                    onClose={taskDrawer.close}
+                    sessionId={sessionId}
+                />
+            )}
         </div>
             </div>
         </div>
