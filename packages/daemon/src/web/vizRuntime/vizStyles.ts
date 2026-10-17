@@ -32,7 +32,6 @@
 /** token + base 层：命名空间隔离的调色板/字体/圆角，fragment 不该重定义它们 */
 export const VIZ_TOKENS_CSS = `
 :root {
-  color-scheme: light dark;
   --viz-bg: var(--mobi-bg, light-dark(#ffffff, #141418));
   --viz-bg-elevated: var(--mobi-bg-elevated, light-dark(#f5f6f8, #1f2228));
   --viz-fg: var(--mobi-fg, light-dark(#1f2329, #eceef2));
@@ -94,6 +93,14 @@ export const VIZ_TOKENS_CSS = `
  * 不写死颜色/圆角；触控目标 ≥44px（media pointer:coarse）。
  */
 export const VIZ_KIT_CSS = `
+/* 独立打开（浏览器打开/复制链接，无宿主注入）时 light-dark() 要跟随系统偏好；
+   在 mobi 里则**必须让宿主的档位说了算**——宿主注入的是 :where(:root){color-scheme:<mode>}，
+   特异性 0，若这里用裸 :root（0-1-0）就会压过它，使只有 light-dark() 双值、没有 --mobi-*
+   来源的 token（--viz-series-2…6 及派生的 orange/purple/yellow）按操作系统偏好取值，
+   与其余跟随 mobi 档位的 token 分属两套色档。故同样声明在 :where() 里——同特异性下
+   由「宿主样式注入更晚」（appendChild 到 head 末尾）取胜。 */
+:where(:root) { color-scheme: light dark; }
+
 /* ── 表面 ── */
 .card {
   min-width: 0;

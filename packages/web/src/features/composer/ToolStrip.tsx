@@ -195,9 +195,16 @@ export function ToolStrip({ items, style }: ToolStripProps) {
    * 但它的 shape 还要播完 CLOSE_SETTLE_MS 的收缩动画；这期间给它挂逐项 mask 会把
    * 收缩中的面板裁掉——表现是「收起时没有动画」。最左侧的项必中：它落在左渐隐带里，
    * mask 恒非空；位置靠右又在可视窗口内的项 mask/clip 都是空串，所以看不出差别。
-   * 攒够一轮（unclipped 回落的那个定时器）才整体清空。
+   * 每个「退场窗口」（展开项一变就重排的那个定时器到期时）整体清空。
    */
   const exitingRef = useRef(new Set<Element>())
+  /**
+   * 上一轮 sync 认定的展开项。**收起与「切换展开项」都要靠它**：切换时 `data-open`
+   * 从一个项挪到另一个项，前一项同样在退场（它在 `exitingRef` 里），不能只处理
+   * 「全部收起」那一路——否则切换展开项后前一项永远留在豁免集里（它的定时器在
+   * 切换时被取消重排，只剩展开态那条路，而展开态下 open 恒 true、走不到清空分支）。
+   */
+  const openItemRef = useRef<Element | null>(null)
 
   /**
    * 展开期间逐项「窗口修饰」：裁到条的可视窗口（防止滚出条外的项漏出来）+
@@ -306,19 +313,22 @@ export function ToolStrip({ items, style }: ToolStripProps) {
     const sync = () => {
       const expanded = root.querySelector(OPEN_PANEL_SELECTOR)
       const open = expanded !== null
-      if (open) {
-        if (timer !== null) { window.clearTimeout(timer); timer = null }
-        // 记下这一轮的展开项：它下次收起时要豁免逐项修饰直到动画播完（见 exitingRef 注释）
-        const item = expanded?.closest('[data-strip-item]')
-        if (item) exitingRef.current.add(item)
-        setUnclipped(true)
-      } else if (timer === null) {
-        timer = window.setTimeout(() => {
-          timer = null
-          exitingRef.current.clear()
-          setUnclipped(false)
-        }, UNCLIP_HOLDOVER_MS)
+      const item = open ? expanded.closest('[data-strip-item]') : null
+      // 展开项换了（首次展开 / 切换 / 收起）：上一项自此刻起进入退场，豁免它到动画播完
+      if (item !== openItemRef.current) {
+        if (openItemRef.current) exitingRef.current.add(openItemRef.current)
+        openItemRef.current = item
       }
+      if (open) setUnclipped(true)
+      if (timer !== null) { window.clearTimeout(timer); timer = null }
+      // 展开态每轮都重排这个退场窗口：收起时它到期后放回裁剪，切换时则只清豁免集
+      // （被清掉的项回到普通项身份，按当前坐标该带修饰的要补挂上，故清完补算一次）
+      timer = window.setTimeout(() => {
+        timer = null
+        exitingRef.current.clear()
+        if (open) decorateItems(unclippedRef.current)
+        else setUnclipped(false)
+      }, UNCLIP_HOLDOVER_MS)
       // 展开项切换（如模型 → 权限）时 unclipped 仍是 true、项数也没变，下面那条按
       // [unclipped, itemKeys] 的重算不会跑；但「哪个项展开」变了，逐项修饰必须重算，
       // 否则新展开项身上残留的逐项 mask 会把它的面板裁掉（表现就是「面板展不开」）

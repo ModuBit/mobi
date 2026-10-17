@@ -20,6 +20,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { VIZ_FRAGMENT_MAX_BYTES } from '@mobi/shared'
 import {
     ARTIFACT_INLINE_LIMIT_BYTES,
     classifyArtifact,
@@ -130,5 +131,18 @@ describe('classifyArtifact（渲染裁决纯函数，裁决顺序收口）', () 
 
     it('viz 档对非 HTML 按无标记处理（与 app 同规——对图片注入运行时没有意义）', () => {
         expect(classifyArtifact('/a.png', READY, 'viz')).toEqual({ action: 'inline', kind: 'image', etag: 'e1', wide: false, app: false, viz: false })
+    })
+
+    it('viz 档超限走 daemon 的 1MB 门限（不是 html 的 2MB）：1–2MB 也必须降级为产物卡', () => {
+        // 1.5MB 在 html 的 2MB 之内，但 viz 组装档（daemon）会拒它——web 侧不按同一门限
+        // 降级就会 inline 出来、再由 daemon 变成 422 错误页，绕过 skill 承诺的
+        // 「超限降级为产物卡」（VIZ_FRAGMENT_MAX_BYTES 的 shared 单源注释）
+        const mid = { status: 'ready' as const, size: 1_500_000, etag: 'e1' }
+        expect(classifyArtifact('/a.html', mid)).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: false, app: false, viz: false })
+        expect(classifyArtifact('/a.html', mid, 'viz')).toEqual({ action: 'card', reason: 'too-large' })
+
+        // 门限边界：恰好等于上限放行（与 daemon 侧 `> VIZ_FRAGMENT_MAX_BYTES` 同侧开闭）
+        const edge = { status: 'ready' as const, size: VIZ_FRAGMENT_MAX_BYTES, etag: 'e1' }
+        expect(classifyArtifact('/a.html', edge, 'viz')).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: true, app: true, viz: true })
     })
 })

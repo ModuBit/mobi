@@ -27,6 +27,7 @@
  * 双重 body 的怪物，不如拒绝得清楚。
  */
 
+import { VIZ_FRAGMENT_MAX_BYTES } from '@mobi/shared'
 import { escapeXmlText } from '@mobi/node-core/utils/xmlEscape'
 import { VIZ_TOKENS_CSS, VIZ_KIT_CSS } from './vizStyles'
 import { VIZ_CALENDAR_SCRIPT } from './vizCalendar'
@@ -37,11 +38,11 @@ import {
     VIZ_STATE_BRIDGE_JS,
 } from './vizRuntimeScript'
 
-/** viz fragment 上限（与 codex 同值；HTML 产物 inline 上限 2MB 之内再收一档） */
-export const VIZ_FRAGMENT_MAX_BYTES = 1_000_000
-
 /** 完整文档标记：doctype 或 html/head/body 开标签（大小写不敏感） */
 const DOCUMENT_MARKUP = /<!doctype\s|<\s*(?:html|head|body)(?:\s|>)/i
+
+/** HTML 注释（`<!-- … -->`，跨行非贪婪） */
+const HTML_COMMENT = /<!--[\s\S]*?-->/g
 
 /** 日历组件按需注入挂钩（票 04）：fragment 提及 viz-calendar 才注入（无谓的 ~10KB 不进产物） */
 const VIZ_CALENDAR_PATTERN = /viz-calendar/i
@@ -61,7 +62,10 @@ export function validateVizFragment(content: string, byteLength: number): Fragme
     if (content.trim() === '') {
         return { ok: false, error: 'Fragment is empty.' }
     }
-    if (DOCUMENT_MARKUP.test(content)) {
+    // 标记判定前先摘掉注释：注释里写 `<body>`（模型给 fragment 留说明是常态）是合法
+    // fragment，按裸文本匹配会误拒。残留面：脚本文本里的 `<body>` 字面量仍会命中——
+    // 那需要真解析才能分辨，收益不抵复杂度（模型按提示改写的代价远小于此）
+    if (DOCUMENT_MARKUP.test(content.replace(HTML_COMMENT, ''))) {
         return { ok: false, error: 'This file looks like a complete HTML document. The viz mode expects a fragment: no <!doctype>, <html>, <head> or <body> tags.' }
     }
     return { ok: true }

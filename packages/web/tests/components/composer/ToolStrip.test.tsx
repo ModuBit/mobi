@@ -297,4 +297,34 @@ describe('展开期间撤视觉裁剪（交互契约）', () => {
         fireResize()
         expect(spans[0].style.maskImage).toContain('linear-gradient')
     })
+
+    it('切换展开项：上一项在退场窗口内仍豁免，窗口过后补回逐项修饰', async () => {
+        // 切换与「全部收起」是两条路：切换时 open 恒为 true，退场项只能靠豁免集保住收缩动画，
+        // 且必须有自己的到期清空（否则它永远留在豁免集里、再也不带修饰）
+        const { spans } = strip([
+            { key: 'a', content: <button>A</button> },
+            { key: 'b', content: <button>B</button> },
+        ])
+        const triggerA = screen.getByText('A')
+        const triggerB = screen.getByText('B')
+        await act(async () => {
+            triggerA.setAttribute('data-open', '')
+            await Promise.resolve()
+        })
+        expect(spans[0].style.maskImage).toBe('')
+
+        // A → B：A 进入退场，退场窗口内不得挂 mask（挂了就把它的收缩动画裁掉）
+        await act(async () => {
+            triggerA.removeAttribute('data-open')
+            triggerB.setAttribute('data-open', '')
+            await Promise.resolve()
+        })
+        fireResize()
+        expect(spans[0].style.maskImage).toBe('')
+        expect(spans[0].style.clipPath).toBe('')
+
+        // 窗口过后 A 回到普通项身份：它落在左渐隐带里，修饰该被补回来
+        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 460)) })
+        expect(spans[0].style.maskImage).toContain('linear-gradient')
+    })
 })

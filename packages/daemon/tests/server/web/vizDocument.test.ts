@@ -23,12 +23,15 @@
  */
 
 import { describe, test, expect } from 'bun:test'
+import type { Context } from 'hono'
+import { VIZ_FRAGMENT_MAX_BYTES } from '@mobi/shared'
 import {
-    VIZ_FRAGMENT_MAX_BYTES,
     assembleVizDocument,
     validateVizFragment,
     vizFragmentErrorDocument,
 } from '../../../src/web/vizRuntime/assembleVizDocument'
+import { serveVizDocument } from '../../../src/web/routes/serveVizDocument'
+import type { FileContentReader } from '../../../src/web/routes/serveFileContent'
 
 describe('validateVizFragment', () => {
     test('合法 fragment 通过', () => {
@@ -41,6 +44,13 @@ describe('validateVizFragment', () => {
             const result = validateVizFragment(doc, doc.length)
             expect(result.ok).toBe(false)
         }
+    })
+
+    test('注释里的文档标记不算（模型给 fragment 留说明是常态，不该误拒）', () => {
+        const commented = '<!-- 不要写 <body> / <html>，这里只要 fragment -->\n<div>ok</div>'
+        expect(validateVizFragment(commented, commented.length)).toEqual({ ok: true })
+        const multiline = '<!--\n  说明：<head> 由宿主组装\n-->\n<div>ok</div>'
+        expect(validateVizFragment(multiline, multiline.length)).toEqual({ ok: true })
     })
 
     test('空/纯空白拒绝', () => {
@@ -97,5 +107,23 @@ describe('vizFragmentErrorDocument', () => {
         const doc = vizFragmentErrorDocument('<script>alert(1)</script>')
         expect(doc).toContain('role="alert"')
         expect(doc).not.toContain('<script>alert')
+    })
+})
+
+describe('serveVizDocument', () => {
+    const c = { json: (body: object, status: number) => Response.json(body, { status }) } as unknown as Context
+
+    test('0 字节文件给 422 空 fragment 错误页，且不进 readFileRange', async () => {
+        // CLI 侧把 length 0 判为越界（readFileRangeAt）——0 字节若照常往下读，拿到的是
+        // 「Failed to read file」500 + 裸 JSON，而不是校验层那条「Fragment is empty.」错误页
+        let rangeCalls = 0
+        const reader: FileContentReader = {
+            readFileMeta: async () => ({ success: true, meta: { mime: 'text/html', size: 0, etag: 'e' }, writable: false }),
+            readFileRange: async () => { rangeCalls += 1; return { success: false, error: 'Range out of bounds' } },
+        }
+        const response = await serveVizDocument(c, reader, '/tmp/empty.html')
+        expect(response.status).toBe(422)
+        expect(await response.text()).toContain('Fragment is empty.')
+        expect(rangeCalls).toBe(0)
     })
 })

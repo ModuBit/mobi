@@ -51,6 +51,14 @@ export const ARTIFACT_DIRECTIVE = ':mobi-artifact'
 export const ARTIFACT_HTML_INLINE_LIMIT_MB = 2
 
 /**
+ * viz 档 fragment 字节上限（visualize-runtime 票 02；与 codex 同值，十进制 MB）。
+ * 两端必须同一门限：daemon 侧 serve-file 组装档按它拒绝（超限给 422 错误页），
+ * web 侧 inline 裁决也必须按它降级成产物卡——用 html 的 2MB 判会放 1–2MB 的
+ * viz 产物进 inline，再由 daemon 拒成错误页，绕过 skill 承诺的「降级为产物卡」。
+ */
+export const VIZ_FRAGMENT_MAX_BYTES = 1_000_000
+
+/**
  * 非项目交付物产物目录模板（相对 cwd）与月份段格式：CLI 常驻契约与 skill「Where files
  * go」两份文本都靠它拼出（`.mobi/artifacts/<YYYY-MM>/`），目录约定调整时改一处两份同帧。
  */

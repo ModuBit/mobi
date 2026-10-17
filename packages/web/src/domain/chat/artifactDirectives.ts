@@ -25,7 +25,7 @@
  * 全部纯函数、单 pass。
  */
 
-import { ARTIFACT_DIRECTIVE, ARTIFACT_HTML_INLINE_LIMIT_MB } from '@mobi/shared'
+import { ARTIFACT_DIRECTIVE, ARTIFACT_HTML_INLINE_LIMIT_MB, VIZ_FRAGMENT_MAX_BYTES } from '@mobi/shared'
 import { DIRECTIVE_PREFIX, registerDirective } from './directives'
 import type { DirectiveDefinition } from './directives'
 
@@ -137,10 +137,14 @@ export function classifyArtifact(path: string, meta: ArtifactMetaState, mode?: s
     if (meta.status === 'pending') return { action: 'card' }
     if (meta.status === 'missing') return { action: 'card', reason: 'missing' }
     if (!isInlineCapableKind(kind)) return { action: 'card', reason: 'unsupported' }
-    if (meta.size > ARTIFACT_INLINE_LIMIT_BYTES[kind]) return { action: 'card', reason: 'too-large' }
-    if (mode === 'card') return { action: 'card' }
     const viz = (mode === 'viz' || mode === 'viz-wide') && kind === 'html'
-    // viz 已蕴含 kind==='html'（上一行），故 app 的「或」写在这里而不重复判 kind
+    // viz 档由 daemon 侧组装，门限也是 daemon 那条（shared 单源）：用 html 的 2MB 判会
+    // 放 1–2MB 的 viz 产物进 inline，再由 daemon 拒成 422 错误页——绕过 skill 承诺的
+    // 「超限降级为产物卡」（SKILL §2）
+    const inlineLimit = viz ? VIZ_FRAGMENT_MAX_BYTES : ARTIFACT_INLINE_LIMIT_BYTES[kind]
+    if (meta.size > inlineLimit) return { action: 'card', reason: 'too-large' }
+    if (mode === 'card') return { action: 'card' }
+    // viz 已蕴含 kind==='html'（上面那行），故 app 的「或」写在这里而不重复判 kind
     const app = viz || (mode === 'app' && kind === 'html')
     return { action: 'inline', kind, etag: meta.etag, wide: mode === 'wide' || mode === 'viz-wide' || app, app, viz }
 }

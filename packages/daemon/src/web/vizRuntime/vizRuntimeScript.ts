@@ -237,7 +237,14 @@ export const VIZ_RUNTIME_JS = `
     document.addEventListener('pointerout', (event) => {
       if (pinned || event.pointerType === 'touch') return;
       const trigger = findTrigger(event);
-      if (trigger && (trigger === activeTrigger)) close();
+      if (!trigger || trigger !== activeTrigger) return;
+      // 指针在触发器「自己的子孙之间」移动同样派发 pointerout，composedPath 里也还是同一个
+      // 触发器——只看它会把 tooltip 关掉（viz-calendar 的事件按钮有 title/detail/video 三层
+      // 子元素，鼠标轻移就变成「关掉 → 空等 TOOLTIP_DELAY_MS → 再开」的闪烁）。
+      // 真离开的判据是 relatedTarget 已不在触发器子树内。
+      const next = event.relatedTarget;
+      if (next && typeof next.closest === 'function' && trigger.contains(next)) return;
+      close();
     });
     document.addEventListener('click', (event) => {
       const trigger = findTrigger(event);
@@ -250,7 +257,9 @@ export const VIZ_RUNTIME_JS = `
       }
     });
     document.addEventListener('focusin', (event) => {
-      const trigger = event.target?.closest?.('[data-tooltip]');
+      // 必须走 composedPath（findTrigger）：focusin 穿过 shadow 边界时 event.target 被重定向
+      // 到宿主元素，用 event.target.closest 永远找不到 viz-calendar 内部的 [data-tooltip]
+      const trigger = findTrigger(event);
       if (trigger?.matches(':focus-visible')) open(trigger);
     });
     document.addEventListener('focusout', () => { if (!pinned) close(); });
@@ -266,11 +275,15 @@ export const VIZ_RUNTIME_JS = `
   (() => {
     const TAB = '.nav[role="tablist"] [role="tab"]';
     const panelsFor = (tabsInList) => {
-      if (tabsInList.some((t) => t.getAttribute('aria-controls'))) {
-        return tabsInList.map((t) => document.getElementById(t.getAttribute('aria-controls') || '') || null);
-      }
       const global = Array.from(document.querySelectorAll('[role="tabpanel"]'));
-      return tabsInList.map((_, i) => global[i] ?? null);
+      // 逐 tab 解析：能解析到的 aria-controls 优先，否则按序回落到全局面板。
+      // 不做「整列只要有一个写了 aria-controls 就只认 id」的判定——模型半对（部分 tab
+      // 漏写）是最常见的形态，那时缺 id 的 tab 会变成点了不换面板也不报错的死按钮；
+      // 全列都没写时才整体走回落，就是这个策略的退化情形。
+      return tabsInList.map((t, i) => {
+        const id = t.getAttribute('aria-controls');
+        return (id && document.getElementById(id)) || global[i] || null;
+      });
     };
     const select = (selected) => {
       const list = selected.closest('[role="tablist"]');

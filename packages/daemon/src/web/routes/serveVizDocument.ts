@@ -24,9 +24,9 @@
  */
 
 import type { Context } from 'hono'
+import { VIZ_FRAGMENT_MAX_BYTES } from '@mobi/shared'
 import { PREVIEW_CSP, fileMetaHttpStatus, type FileContentReader } from './serveFileContent'
 import {
-    VIZ_FRAGMENT_MAX_BYTES,
     assembleVizDocument,
     validateVizFragment,
     vizFragmentErrorDocument,
@@ -58,6 +58,11 @@ export async function serveVizDocument(c: Context, reader: FileContentReader, ab
     // 必须等真内容到手才能判——预校验传空串会把一切请求误判成空 fragment
     if (size > VIZ_FRAGMENT_MAX_BYTES) {
         return vizResponse(vizFragmentErrorDocument(vizOversizeError(size)), 422)
+    }
+    // 0 字节文件不能走 readFileRange：CLI 侧把 length 0 判为越界（readFileRangeAt），
+    // 会变成 500 + 裸 JSON 而不是「Fragment is empty.」错误页。空 fragment 在此直接判定。
+    if (size === 0) {
+        return vizResponse(vizFragmentErrorDocument('Fragment is empty.'), 422)
     }
 
     const range = await reader.readFileRange(absPath, 0, size)
