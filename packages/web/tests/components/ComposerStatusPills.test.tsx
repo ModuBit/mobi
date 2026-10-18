@@ -242,7 +242,7 @@ describe('useComposerStatusSummary（ChatContainer 用同一份 summary 决定 s
         expect(task.result.current.showTodo).toBe(true)
     })
 
-    it('清单摘要与 TodoPanel 同源：进行中/待执行/全部完成口径', () => {
+    it('清单摘要与 TodoPanel 同源：进行中/完成/全部完成口径', () => {
         const { result } = renderHook(() => useComposerStatusSummary(
             'test-session',
             [makeTodo('A', 'in_progress'), makeTodo('B', 'pending')],
@@ -250,7 +250,6 @@ describe('useComposerStatusSummary（ChatContainer 用同一份 summary 决定 s
         ))
         expect(result.current.checklist.total).toBe(3)
         expect(result.current.checklist.inProgress).toBe(1)
-        expect(result.current.checklist.pending).toBe(1)
         expect(result.current.checklist.completed).toBe(1)
         expect(result.current.checklist.allDone).toBe(false)
     })

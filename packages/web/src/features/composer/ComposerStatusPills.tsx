@@ -116,6 +116,7 @@ const ambientBreathe = keyframes`
 /** 毛玻璃气泡：半透明底 + backdrop blur，消息从后面穿过时保持可读 */
 const Pill = styled.button`
     position: relative;
+    isolation: isolate;
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -135,27 +136,22 @@ const Pill = styled.button`
     cursor: pointer;
     pointer-events: auto;
     transition: background var(--mobi-duration-fast) ease, border-color var(--mobi-duration-fast) ease;
-    /* 运行态：底部一抹运行蓝缓慢开合，像内部有能量在流动 */
-    &::before {
+    /* 运行态：底部一抹运行蓝缓慢开合，像内部有能量在流动。
+       只在 running 时生成伪元素；z-index: -1 让它落在文案之下、气泡底色之上。 */
+    &[data-running]::before {
         content: "";
         position: absolute;
         inset: 0;
+        z-index: -1;
         border-radius: inherit;
         background: radial-gradient(
             120% 190% at 50% 120%,
             color-mix(in srgb, ${STATUS_DOT_COLORS.running} 60%, transparent),
             transparent 62%
         );
-        opacity: 0;
         pointer-events: none;
-    }
-    &[data-running]::before {
+        will-change: opacity;
         animation: ${ambientBreathe} 2.6s ease-in-out infinite;
-    }
-    /* 文案与图标压在光晕之上 */
-    & > * {
-        position: relative;
-        z-index: 1;
     }
     &:hover {
         background: color-mix(in srgb, var(--ant-color-bg-container) 94%, transparent);
@@ -350,7 +346,7 @@ export function ComposerStatusPills({
                                 <Pill type="button" data-testid="status-pill-tasks" data-running={tasksRunning || undefined}>
                                     <PillIcon aria-hidden="true"><ListChecks size={16} /></PillIcon>
                                     <PillLabel $strong={tasksRunning}>
-                                        {summary.activeCount > 0
+                                        {tasksRunning
                                             ? t('chat.statusPills.tasksExecuting', {
                                                 active: summary.activeCount,
                                                 total: summary.taskItems.length,
@@ -387,7 +383,7 @@ export function ComposerStatusPills({
                                                 total: summary.checklist.total,
                                             })}
                                     </PillLabel>
-                                    {!summary.checklist.allDone && summary.checklist.inProgress > 0 && (
+                                    {todoRunning && (
                                         <>
                                             <Separator aria-hidden="true">·</Separator>
                                             <PillExtra>

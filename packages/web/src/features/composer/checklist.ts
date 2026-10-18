@@ -33,7 +33,6 @@ export type ChecklistSummary = {
     /** 按状态排序后的条目（in_progress → pending → completed） */
     items: ChecklistEntry[]
     total: number
-    pending: number
     inProgress: number
     completed: number
     allDone: boolean
@@ -67,11 +66,10 @@ export function buildChecklist(todos?: TodoItem[], tasks?: TaskItem[]): Checklis
         })),
     ].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status])
 
-    let pending = 0, inProgress = 0, completed = 0
+    let inProgress = 0, completed = 0
     for (const item of items) {
         if (item.status === 'completed') completed++
         else if (item.status === 'in_progress') inProgress++
-        else pending++
     }
 
     const activeTodo = todos?.find(todo => todo.status === 'in_progress')
@@ -80,7 +78,6 @@ export function buildChecklist(todos?: TodoItem[], tasks?: TaskItem[]): Checklis
     return {
         items,
         total: items.length,
-        pending,
         inProgress,
         completed,
         allDone: items.length > 0 && completed === items.length,
