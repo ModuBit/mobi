@@ -53,7 +53,8 @@ export function MentionDropdown({
         icon: item.isDirectory
             ? <Folder size={16} strokeWidth={1.75} />
             : <File size={16} strokeWidth={1.75} />,
-        trailing: item.isDirectory ? '/' : undefined,
+        // 目录标记紧跟名字（如 src/features/chat/），不甩到行尾与滚动条挤在一起
+        suffix: item.isDirectory ? '/' : undefined,
     }))
 
     return (

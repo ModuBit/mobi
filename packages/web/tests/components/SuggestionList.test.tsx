@@ -23,7 +23,8 @@ afterEach(cleanup)
 
 const rows: SuggestionRow[] = [
     { key: 'a', label: 'src/components/Button.tsx', meta: '文件' },
-    { key: 'b', label: 'src/features/chat', trailing: '/' },
+    { key: 'b', label: 'src/features/chat', suffix: '/' },
+    { key: 'c', label: '/debug', suffix: '[issue description]' },
 ]
 
 function renderList(props: Partial<React.ComponentProps<typeof SuggestionList>> = {}) {
@@ -48,6 +49,15 @@ describe('SuggestionList', () => {
         expect(first.textContent).toContain('文件')
         const mark = document.querySelector('mark')
         expect(mark?.textContent).toBe('components')
+    })
+
+    it('参数提示以 suffix 紧跟主文案（同一行，不甩到行尾）', () => {
+        renderList()
+        const option = screen.getAllByRole('option')[2]
+        expect(option.textContent).toBe('/debug[issue description]')
+        // suffix 与 label 同处 optionText 内的同一行容器，不是行尾 trailing
+        const labelLine = option.querySelector('[class*="labelLine"]')
+        expect(labelLine?.textContent).toBe('/debug[issue description]')
     })
 
     it('激活行 aria-selected，指针移入其他行上报 index', () => {

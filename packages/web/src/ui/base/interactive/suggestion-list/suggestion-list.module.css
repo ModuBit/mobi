@@ -100,10 +100,26 @@
     flex: 1;
 }
 
+/* 主文案行：label 可省略号收缩，紧跟其后的短标记（参数提示）不被挤走 */
+.labelLine {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 6px;
+}
+
 .label {
+    min-width: 0;
     overflow: hidden;
     font-weight: 500;
     text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.suffix {
+    flex: none;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
     white-space: nowrap;
 }
 
@@ -118,13 +134,6 @@
     font-size: var(--text-xs);
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.trailing {
-    flex: none;
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-    font-variant-numeric: tabular-nums;
 }
 
 .status {

@@ -37,8 +37,8 @@ export interface SuggestionRow {
     meta?: string
     /** 行首图标 */
     icon?: ReactNode
-    /** 行尾短标记（目录 `/`、参数提示等） */
-    trailing?: string
+    /** 紧跟主文案的短标记（目录 `/`、命令参数提示等），与 label 同排 */
+    suffix?: string
     /** 主文案的额外样式（如内置命令色） */
     labelStyle?: CSSProperties
 }
@@ -184,12 +184,14 @@ export function SuggestionList({
                     >
                         {item.icon ? <span className={styles.icon}>{item.icon}</span> : null}
                         <span className={styles.optionText}>
-                            <span className={styles.label} style={item.labelStyle}>
-                                <Highlight text={item.label} query={query} />
+                            <span className={styles.labelLine}>
+                                <span className={styles.label} style={item.labelStyle}>
+                                    <Highlight text={item.label} query={query} />
+                                </span>
+                                {item.suffix ? <span className={styles.suffix}>{item.suffix}</span> : null}
                             </span>
                             {item.meta ? <span className={styles.meta}>{item.meta}</span> : null}
                         </span>
-                        {item.trailing ? <span className={styles.trailing}>{item.trailing}</span> : null}
                     </li>
                 ))}
             </ul>
