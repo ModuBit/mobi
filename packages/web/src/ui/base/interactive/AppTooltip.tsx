@@ -53,7 +53,6 @@ export interface AppTooltipProps {
     /** 受控打开态；传了则不接管 hover / long-press 分流 */
     open?: boolean
     onOpenChange?: (open: boolean) => void
-    className?: string
 }
 
 /**
@@ -95,7 +94,6 @@ export function AppTooltip(props: AppTooltipProps) {
         mouseEnterDelay,
         open: controlledOpen,
         onOpenChange,
-        className,
     } = props
 
     const [internalOpen, setInternalOpen] = useState(false)
@@ -211,15 +209,13 @@ export function AppTooltip(props: AppTooltipProps) {
     return (
         <Tooltip
             content={title}
-            trigger="manual"
             open={open}
             onOpenChange={(next) => {
-                if (isControlled) onOpenChange?.(next)
-                else setInternalOpen(next)
+                if (!isControlled) setInternalOpen(next)
+                onOpenChange?.(next)
             }}
             side={side}
             align={align}
-            className={className}
         >
             <span
                 ref={wrapperRef}

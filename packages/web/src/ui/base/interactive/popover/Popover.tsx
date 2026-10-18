@@ -44,13 +44,10 @@ export interface PopoverProps {
     /** 触发方式，默认 click */
     trigger?: PopoverTrigger
     open?: boolean
-    defaultOpen?: boolean
     onOpenChange?: (open: boolean) => void
     side?: 'top' | 'bottom' | 'left' | 'right'
     align?: 'start' | 'center' | 'end'
     sideOffset?: number
-    alignOffset?: number
-    collisionPadding?: number
     /** hover 意图：进入 trigger 后延迟打开（毫秒），默认 100 */
     openDelay?: number
     /** hover 意图：离开 trigger / 面板后延迟关闭（毫秒），默认 160 */
@@ -61,8 +58,6 @@ export interface PopoverProps {
     panelStyle?: CSSProperties
     /** 面板内衬，默认 12px（antd overlayInnerStyle 的替身） */
     panelPadding?: number | string
-    /** 面板最小宽度，默认 12rem */
-    minWidth?: number | string
     /** 面板最大宽度，默认 min(22rem, 100vw - 20px) */
     maxWidth?: number | string
     children: ReactElement
@@ -71,6 +66,12 @@ export interface PopoverProps {
 
 const DEFAULT_OPEN_DELAY = 100
 const DEFAULT_CLOSE_DELAY = 160
+const COLLISION_PADDING = 10
+
+/** 数值 → px，字符串原样（面板 CSS 变量入参） */
+function cssLen(value: number | string): string {
+    return typeof value === 'number' ? `${value}px` : value
+}
 
 function triggerModes(trigger: PopoverTrigger): Set<'click' | 'hover' | 'manual'> {
     return new Set(Array.isArray(trigger) ? trigger : [trigger])
@@ -79,20 +80,16 @@ function triggerModes(trigger: PopoverTrigger): Set<'click' | 'hover' | 'manual'
 export function Popover({
     trigger = 'click',
     open: controlledOpen,
-    defaultOpen = false,
     onOpenChange,
     side = 'bottom',
     align = 'start',
     sideOffset = 6,
-    alignOffset,
-    collisionPadding = 10,
     openDelay = DEFAULT_OPEN_DELAY,
     closeDelay = DEFAULT_CLOSE_DELAY,
     arrow = false,
     panelClassName,
     panelStyle,
     panelPadding,
-    minWidth,
     maxWidth,
     children,
     content,
@@ -102,7 +99,7 @@ export function Popover({
     const clickable = modes.has('click')
     const manual = modes.has('manual')
 
-    const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen)
+    const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
     const isControlled = controlledOpen !== undefined
     const isOpen = isControlled ? controlledOpen : uncontrolledOpen
 
@@ -130,10 +127,10 @@ export function Popover({
     useEffect(() => clearAllTimers, [clearAllTimers])
 
     const setOpen = useCallback((next: boolean) => {
-        if (!next) {
-            clearAllTimers()
-            pinnedRef.current = false
-        }
+        // 任何一次开合都作废在途的 hover 定时器；否则「悬停未到阈值就点击打开」后，
+        // 旧 openTimer 仍会再发一次 onOpenChange(true)
+        clearAllTimers()
+        if (!next) pinnedRef.current = false
         if (!isControlled) setUncontrolledOpen(next)
         onOpenChange?.(next)
     }, [clearAllTimers, isControlled, onOpenChange])
@@ -219,9 +216,8 @@ export function Popover({
     }
 
     const panelStyleVars: CSSProperties = {
-        ...(panelPadding !== undefined ? { '--popover-padding': typeof panelPadding === 'number' ? `${panelPadding}px` : panelPadding } : {}),
-        ...(minWidth !== undefined ? { '--popover-min-width': typeof minWidth === 'number' ? `${minWidth}px` : minWidth } : {}),
-        ...(maxWidth !== undefined ? { '--popover-max-width': typeof maxWidth === 'number' ? `${maxWidth}px` : maxWidth } : {}),
+        ...(panelPadding !== undefined ? { '--popover-padding': cssLen(panelPadding) } : {}),
+        ...(maxWidth !== undefined ? { '--popover-max-width': cssLen(maxWidth) } : {}),
         ...panelStyle,
     } as CSSProperties
 
@@ -233,8 +229,7 @@ export function Popover({
                 side={side}
                 align={align}
                 sideOffset={sideOffset}
-                alignOffset={alignOffset}
-                collisionPadding={collisionPadding}
+                collisionPadding={COLLISION_PADDING}
                 className={[styles.content, panelClassName].filter(Boolean).join(' ')}
                 style={panelStyleVars}
                 onPointerEnter={contentPointerHandlers.onPointerEnter}

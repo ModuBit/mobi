@@ -23,9 +23,6 @@
  * 其余进出场 / reduced-motion 与上游一致
  */
 
-/* Press feedback stays in color: Radix measures the trigger when the panel opens, so a scaled trigger would move the panel. */
-.anchor:active:not(:disabled) { transform: none; }
-
 .content {
   --popover-x: 0px;
   --popover-y: -5px;

@@ -14,20 +14,11 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { useState } from 'react'
 import { Popover } from '@/ui/base/interactive/popover/Popover'
-
-// jsdom 没有 ResizeObserver：floating-ui 的 autoUpdate 需要
-beforeAll(() => {
-    vi.stubGlobal('ResizeObserver', class {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-    })
-})
 
 afterEach(() => {
     cleanup()

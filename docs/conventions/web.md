@@ -105,7 +105,7 @@ src/
 | multi-select | arc（uiarc） | 2026-10-15 | chip 多选（motion 自足；chip 弹簧开合 + 溢出 +N 计数）。已装**待消费**——antd `mode="tags"` 是自由输入不归它，语义匹配的多选站点出现时迁 |
 | button 族 | arc（uiarc） | 2026-10-16 | 全站按钮的唯一实现（`Button`/`ActionButton`/`SplitButton`/`ButtonGroup`/`FloatingButtonGroup`/`ConfirmMorph` 落 `ui/base/interactive/<名>/`；icon-only 归既有 `IconButton`）。antd `Button` 全站清零，**eslint `no-restricted-imports` 禁新增**（唯一豁免 `composer/SubmitButton`，迁移映射见 `.scratch/button-migration/spec.md`）。消费状态：`Button`/`IconButton`/`ConfirmMorph` 已在用；`ActionButton`/`SplitButton`/`ButtonGroup`/`FloatingButtonGroup` 已装待消费（底座预铺，首个业务场景到达时启用，勿重复造轮子）。morph 基建（`useMorphWidth`/glyph diff/进出场常量）单源在 `interactive/morphShared.tsx` |
 | popover | arc（uiarc） | 2026-10-18 | 全站锚定浮层的唯一实现（`ui/base/interactive/popover/Popover`）：在 uiarc 快照上补 hover / hover+click / manual 三种触发（上游只有 click），收口 hover intent、焦点策略（仅键盘打开聚焦）、面板几何（min/max 宽与内衬走 CSS 变量）与 `--mobi-z-overlay` 层级；antd `Popover` 全站清零，**eslint `no-restricted-imports` 禁新增**（映射与逐站清单见 `.scratch/popover-migration/spec.md`）。hover 打开不抢焦点、指针移入面板不关闭 |
-| tooltip | arc（uiarc） | 2026-10-18 | 纯文字提示的唯一实现（`ui/base/interactive/tooltip/Tooltip`）：反色气泡 + 内容交叉淡入 + 跨实例「暖窗口」（相邻图标快速划过免延迟）。上游触发只有 hover，本地补 `open/onOpenChange` 受控与 `trigger="manual"`（Radix Anchor）；业务侧统一经 `AppTooltip` 消费（保留触屏长按 500ms、long-press 吞 click、`display:contents` 零布局与 rect 桥）。antd `Tooltip` 全站清零，**eslint `no-restricted-imports` 禁新增** |
+| tooltip | arc（uiarc） | 2026-10-18 | 纯文字提示的唯一实现（`ui/base/interactive/tooltip/Tooltip`）：反色气泡 + 内容交叉淡入；打开态完全受控（Radix Trigger 只负责锚定/aria，hover 打开请求忽略），触发策略统一由 `AppTooltip` 承担（mouse hover + touch 长按 500ms、long-press 吞 click、`display:contents` 零布局与 rect 桥）。antd `Tooltip` 全站清零，**eslint `no-restricted-imports` 禁新增** |
 
 ### 单组件迁移流程
 

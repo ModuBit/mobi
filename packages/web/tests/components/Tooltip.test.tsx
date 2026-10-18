@@ -14,43 +14,17 @@
  * limitations under the License.
  */
 
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { Tooltip } from '@/ui/base/interactive/tooltip/Tooltip'
-
-// Radix Popper 的 autoUpdate 与 TooltipText 的尺寸测量都依赖 ResizeObserver
-beforeAll(() => {
-    vi.stubGlobal('ResizeObserver', class {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-    })
-})
 
 afterEach(cleanup)
 
 describe('Tooltip', () => {
-    it('hover 模式：指针移入按延迟打开，移出关闭', async () => {
-        render(
-            <Tooltip content={<span>提示内容</span>} delayDuration={0}>
-                <button type="button">触发</button>
-            </Tooltip>,
-        )
-        const trigger = screen.getByRole('button', { name: '触发' })
-        expect(screen.queryByText('提示内容')).not.toBeInTheDocument()
-
-        fireEvent.pointerMove(trigger, { pointerType: 'mouse' })
-        await waitFor(() => expect(screen.getByText('提示内容')).toBeInTheDocument())
-
-        fireEvent.pointerOut(trigger, { pointerType: 'mouse', relatedTarget: document.body })
-        fireEvent.pointerLeave(trigger, { pointerType: 'mouse' })
-        await waitFor(() => expect(screen.queryByText('提示内容')).not.toBeInTheDocument())
-    })
-
-    it('manual 模式：hover 不打开，open 受控挂载', () => {
+    it('hover 不打开（打开态只由受控 open 决定）', () => {
         const { rerender } = render(
-            <Tooltip trigger="manual" open={false} content={<span>提示内容</span>}>
+            <Tooltip open={false} content={<span>提示内容</span>}>
                 <button type="button">触发</button>
             </Tooltip>,
         )
@@ -60,7 +34,7 @@ describe('Tooltip', () => {
         expect(screen.queryByText('提示内容')).not.toBeInTheDocument()
 
         rerender(
-            <Tooltip trigger="manual" open content={<span>提示内容</span>}>
+            <Tooltip open content={<span>提示内容</span>}>
                 <button type="button">触发</button>
             </Tooltip>,
         )
@@ -69,7 +43,7 @@ describe('Tooltip', () => {
 
     it('字符串内容走尺寸动画容器，data-state 与方位落到浮层', async () => {
         render(
-            <Tooltip trigger="manual" open side="right" align="start" content="纯文本">
+            <Tooltip open side="right" align="start" content="纯文本">
                 <button type="button">触发</button>
             </Tooltip>,
         )

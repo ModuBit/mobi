@@ -95,12 +95,11 @@ export function ContextRing({ usage, size = 20, placement = 'top' }: ContextRing
     const ticks = degradationTicks(usage.maxTokens)
     const usedSummary = `${formatTokens(usage.totalTokens)} / ${formatTokens(usage.maxTokens)} (${pct}%)`
     // 受控 Popover：打开期间隐藏 hover Tooltip（两者同屏重叠）；移动端无 hover，整体禁用。
-    // 关闭 Popover 后抑制 Tooltip 直至鼠标离开环——自管 AppTooltip 在 title 清空时同步清内部
-    // 打开态，title 恢复不会立即重弹（避免「关掉 Popover 又冒出 Tooltip」）
+    // 关闭 Popover 后 title 恢复但 AppTooltip 的内部打开态已被清空（title 清空时同步复位），
+    // 不会再冒出来，需重新悬停
     const isMobile = useIsMobile()
     const [popoverOpen, setPopoverOpen] = useState(false)
-    const [suppressTooltip, setSuppressTooltip] = useState(false)
-    const tooltipTitle = isMobile || popoverOpen || suppressTooltip ? undefined : usedSummary
+    const tooltipTitle = isMobile || popoverOpen ? undefined : usedSummary
 
     const ring = (
         <svg
@@ -109,7 +108,6 @@ export function ContextRing({ usage, size = 20, placement = 'top' }: ContextRing
             width={size}
             height={size}
             viewBox="0 0 24 24"
-            onMouseLeave={() => setSuppressTooltip(false)}
             style={{ display: 'block', cursor: 'pointer', animation: tone === 'danger' ? `${pulse} 1.3s ease-in-out infinite` : undefined }}
         >
             <circle cx="12" cy="12" r={R} fill="none" stroke={token.colorBorderSecondary} strokeWidth="2.5" />
@@ -138,7 +136,6 @@ export function ContextRing({ usage, size = 20, placement = 'top' }: ContextRing
             open={popoverOpen}
             onOpenChange={(open) => {
                 setPopoverOpen(open)
-                if (!open) setSuppressTooltip(true)
             }}
             /* 定宽（视口约束）：明细长路径 nowrap 会撑爆固有宽度致横向溢出屏幕，
                固定 width 让 ellipsis 生效（纵向限高滚动在内容层 hide-scrollbar） */

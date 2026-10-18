@@ -14,20 +14,10 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
-
-// 自管 Tooltip（Radix Popper）依赖 ResizeObserver，jsdom 未提供
-beforeAll(() => {
-    class FakeResizeObserver {
-        observe() { /* noop */ }
-        unobserve() { /* noop */ }
-        disconnect() { /* noop */ }
-    }
-    vi.stubGlobal('ResizeObserver', FakeResizeObserver)
-})
 
 afterEach(cleanup)
 
