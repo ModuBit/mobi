@@ -21,16 +21,18 @@
 // ⑥footer：弹层底部固定区（listbox 滚动区之后，如「+ 新建」入口，EnvironmentBar 先例）
 // ⑦variant="borderless"：无边框紧凑触发器（嵌入工具条/环境条场景）
 // ⑧allowClear 开关（默认 true）：环境条无清空语义（父组件没有「未选」态接口），关掉清除钮
+// ⑨freeText：自由输入模式——输入框文本本身就是值（不再回落到选中 label），选项作为
+//   建议由调用方按当前输入提供（如工作区路径的目录补全），不做内部过滤；配合 loading
+//   显示补全请求进行中。默认关闭，既有选择语义不受影响
 "use client";
 
 import { animate, AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { Check, ChevronDown, LoaderCircle, Search } from "lucide-react";
 import {
   forwardRef,
   useEffect,
   useId,
   useImperativeHandle,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -69,6 +71,15 @@ export interface ComboboxProps
   variant?: "default" | "borderless";
   /** 有值时显示清除钮（默认 true） */
   allowClear?: boolean;
+  /**
+   * 自由输入模式：输入文本即值，选项仅作建议（不做内部过滤、不显示选中勾）。
+   * 适合路径补全这类「可以输任意文本，也可以从建议里选」的场景。
+   */
+  freeText?: boolean;
+  /** 建议加载中（freeText 场景显示在输入框右侧） */
+  loading?: boolean;
+  /** 输入框左侧图标，默认放大镜；路径等场景可换成文件夹 */
+  icon?: ReactNode;
   /** 挂组件根（field）的类名与样式——布局尺寸从根上给，消费方无需包裹 div */
   className?: string;
   style?: CSSProperties;
@@ -103,11 +114,15 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     style,
     disabled,
     onFocus,
+    onBlur,
     open: openProp,
     onOpenChange,
     footer,
     variant = "default",
     allowClear = true,
+    freeText = false,
+    loading = false,
+    icon,
     ...inputProps
   },
   forwardedRef,
@@ -136,7 +151,8 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
   // 受控判定：value 在 props 上（!== undefined）即受控——`?? uncontrolled` 的写法会把
   // 受控清空（value 从有值改回 undefined）误读成未受控而回显旧值（Select 同款修复）
   const selectedValue = controlledValue !== undefined ? controlledValue : uncontrolledValue;
-  const selectedOption = options.find((option) => option.value === selectedValue);
+  // freeText 下输入文本本身就是值：没有「选中项」概念（不显示勾、清除钮也不作用于选项）
+  const selectedOption = freeText ? undefined : options.find((option) => option.value === selectedValue);
 
   useImperativeHandle(forwardedRef, () => inputRef.current as HTMLInputElement);
 
@@ -145,19 +161,23 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
   useEffect(() => {
     if (settledValue.current === selectedValue) return;
     settledValue.current = selectedValue;
+    // freeText：每次按键都在改值，不做「选中 label 升起」动画
+    if (freeText) return;
     const input = inputRef.current;
     if (!input || reduceMotion || (selectedValue && open)) return;
     const controls = selectedValue
       ? animate(input, { opacity: [0, 1], y: ["0.35em", "0em"], filter: [`blur(${motionTokens.blur.soft}px)`, "blur(0px)"] }, { duration: motionTokens.duration.standard, ease: [...motionTokens.ease.enter] })
       : animate(input, { opacity: [0, 1] }, { duration: motionTokens.duration.fast, ease: [...motionTokens.ease.enter] });
     return () => controls.complete();
-  }, [selectedValue, reduceMotion, open]);
+  }, [selectedValue, reduceMotion, open, freeText]);
 
   const filteredOptions = useMemo(() => {
+    // freeText：候选由调用方按当前输入提供（如目录补全），组件不再二次过滤
+    if (freeText) return options;
     const needle = normalizeNeedle(query);
     if (!needle) return options;
     return options.filter((option) => optionMatches(option, needle));
-  }, [options, query]);
+  }, [options, query, freeText]);
 
   const enabledIndices = filteredOptions.reduce<number[]>((indices, option, index) => {
     if (!option.disabled) indices.push(index);
@@ -192,17 +212,39 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, []);
 
-  // 弹层翻转：视口底缘放不下且上方空间更大时向上弹（open 时测一次，开合间不追踪）。
-  // close 时保留 dropUp——重开时 effect 会重测，中间态不可见
+  // 弹层翻转：视口底缘放不下且上方空间更大时向上弹。
+  // 两个竞态都要覆盖：①弹层经 AnimatePresence 挂载，移动端 BottomSheet 入场时首个
+  // effect 可能还取不到 popover（rAF 重试）②建议列表异步到达后弹层才长高，首测偏小
+  // 会判成向下弹而被视口裁掉（ResizeObserver 追踪高度变化重测）
   const [dropUp, setDropUp] = useState(false);
-  useLayoutEffect(() => {
+  const popoverRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
     if (!open) return;
-    const root = rootRef.current;
-    const popover = root?.querySelector<HTMLDivElement>("." + styles.popover);
-    if (!root || !popover) return;
-    const rect = root.getBoundingClientRect();
-    const below = window.innerHeight - rect.bottom;
-    setDropUp(below < popover.scrollHeight + 12 && rect.top > below);
+    let raf = 0;
+    let tries = 0;
+    let observer: ResizeObserver | undefined;
+    const measure = () => {
+      const root = rootRef.current;
+      const popover = popoverRef.current;
+      // 挂载竞态：最多等 20 帧（约 0.3s，覆盖 BottomSheet 入场动画）
+      if ((!root || !popover) && tries++ < 20) {
+        raf = requestAnimationFrame(measure);
+        return;
+      }
+      if (!root || !popover) return;
+      if (!observer) {
+        observer = new ResizeObserver(measure);
+        observer.observe(popover);
+      }
+      const rect = root.getBoundingClientRect();
+      const below = window.innerHeight - rect.bottom;
+      setDropUp(below < popover.scrollHeight + 12 && rect.top > below);
+    };
+    measure();
+    return () => {
+      cancelAnimationFrame(raf);
+      observer?.disconnect();
+    };
   }, [open]);
 
   const choose = (option: ComboboxOption) => {
@@ -251,6 +293,11 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
       // open 未导航（activeIndex=-1）时也要拦住：Enter 冒泡会误触外层表单提交
       const option = activeIndex >= 0 ? filteredOptions[activeIndex] : undefined;
       if (option) choose(option);
+      // freeText：回车确认已输入的文本（路径），只收起建议，不提交外层表单
+      else if (freeText) {
+        updateOpen(false);
+        setQuery("");
+      }
       return;
     }
     if (event.key === "Escape" && open) {
@@ -261,7 +308,7 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     }
   };
 
-  const inputValue = open ? query : selectedOption?.label ?? "";
+  const inputValue = freeText ? selectedValue : open ? query : selectedOption?.label ?? "";
   const activeOption = activeIndex >= 0 ? filteredOptions[activeIndex] : undefined;
   // gliding highlight 的当前项（键盘 activeIndex 与悬停 onMouseEnter 同源）
   const activeTarget = (open && activeOption ? optionRefs.current[activeOption.value] : null) ?? null;
@@ -270,7 +317,9 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     <div ref={rootRef} className={[styles.field, className].filter(Boolean).join(" ")} style={style}>
       {label && <label htmlFor={controlId}>{label}</label>}
       <div className={[styles.control, variant === "borderless" ? styles.borderless : "", open ? styles.open : "", disabled ? styles.disabled : ""].filter(Boolean).join(" ")}>
-        <Search className={styles.searchIcon} size={16} strokeWidth={1.75} aria-hidden="true" />
+        <span className={styles.searchIcon} aria-hidden="true">
+          {icon ?? <Search size={16} strokeWidth={1.75} />}
+        </span>
         <input
           {...inputProps}
           // 可访问名：消费方显式 aria-label 优先，其次可见 label prop 的文本（label htmlFor 场景）
@@ -281,7 +330,8 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
           role="combobox"
           value={inputValue}
           // 搜索时已选 label 以弱化占位文案留在原地，而非消失。
-          placeholder={selectedOption?.label ?? placeholderText}
+          // freeText 下输入框承载值本身，占位就是常规占位文案
+          placeholder={freeText ? placeholderText : selectedOption?.label ?? placeholderText}
           disabled={disabled}
           aria-describedby={hintId}
           aria-expanded={open}
@@ -292,9 +342,21 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
             onFocus?.(event);
             openMenu();
           }}
+          onBlur={(event) => {
+            onBlur?.(event);
+            // freeText：焦点离开即收起建议（点击建议在 list 上 preventDefault，不会触发失焦）
+            if (!freeText) return;
+            updateOpen(false);
+            setQuery("");
+          }}
           onClick={openMenu}
           onChange={(event) => {
-            setQuery(event.target.value);
+            if (freeText) {
+              setUncontrolledValue(event.target.value);
+              onValueChange?.(event.target.value);
+            } else {
+              setQuery(event.target.value);
+            }
             updateOpen(true);
             setActiveIndex(-1);
           }}
@@ -313,12 +375,15 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
             />
           )}
         </AnimatePresence>
-        <ChevronDown className={styles.chevron} size={16} strokeWidth={1.75} aria-hidden="true" />
+        {loading
+          ? <LoaderCircle className={styles.spinner} size={16} strokeWidth={1.75} aria-hidden="true" />
+          : <ChevronDown className={styles.chevron} size={16} strokeWidth={1.75} aria-hidden="true" />}
       </div>
       {description && <span id={hintId} className={styles.hint}>{description}</span>}
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
+            ref={popoverRef}
             className={[styles.popover, dropUp ? styles.dropUp : ""].filter(Boolean).join(" ")}
             initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: dropUp ? 6 : -6, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1, transition: reduceMotion ? { duration: motionTokens.duration.instant } : { ...motionTokens.spring.snappy, opacity: { duration: motionTokens.duration.fast, ease: [...motionTokens.ease.enter] } } }}

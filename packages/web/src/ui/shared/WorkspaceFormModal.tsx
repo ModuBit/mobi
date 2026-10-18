@@ -15,10 +15,12 @@
  */
 
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
-import { Alert, App, AutoComplete, Form, Input, Modal, Radio, Spin } from 'antd'
+import { Alert, App, Form, Input, Modal, Radio } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
+import { Combobox } from '@/ui/base/interactive/combobox/Combobox'
 import { useTranslation } from 'react-i18next'
 import { FolderOutlined, HomeOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
+import { Folder } from 'lucide-react'
 import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
 import { validateWorkspaceFolders, type WorkspaceFolder, type WorkspaceFoldersError } from '@mobi/shared'
 import { useDaemonStatus } from '@/core/data/hooks/queries/useDaemonStatus'
@@ -77,16 +79,20 @@ function FolderRow({
             ? { display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }
             : { display: 'flex', alignItems: 'center', gap: 8 }}
         >
-            <AutoComplete
+            <Combobox
+                // freeText：路径文本本身就是值，目录列表只作补全建议
+                freeText
+                aria-label={t('workspace.folders')}
+                icon={<Folder size={16} strokeWidth={1.75} aria-hidden="true" />}
                 value={folder.path}
                 options={autoCompleteOptions}
-                onChange={onPathChange}
+                onValueChange={onPathChange}
                 placeholder={t('workspace.folderPathPlaceholder')}
                 disabled={disabled}
+                loading={isLoading}
+                allowClear={false}
+                emptyMessage={t('common.noMatches')}
                 style={{ flex: 1, width: isMobile ? '100%' : undefined }}
-                popupMatchSelectWidth={false}
-                suffixIcon={isLoading ? <Spin size="small" /> : undefined}
-                onSelect={(value) => onPathChange(value)}
             />
             {/* 移动端窄屏一行放不下：Radio + 移除按钮单独一行，两端对齐 */}
             <div style={isMobile

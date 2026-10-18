@@ -120,3 +120,62 @@ describe('uiarc Combobox 过滤与选择', () => {
         expect(container.querySelector('form')).toBeInTheDocument()
     })
 })
+
+describe('uiarc Combobox freeText（自由输入 + 建议）', () => {
+    const PATH_OPTIONS = [
+        { value: '/Users/local', label: 'local' },
+        { value: '/Users/loft', label: 'loft' },
+    ]
+
+    it('输入文本即值：onValueChange 回传原文，选项不被内部过滤', () => {
+        const onValueChange = vi.fn<(v: string) => void>()
+        render(<Combobox freeText aria-label="路径" options={PATH_OPTIONS} onValueChange={onValueChange} />)
+        const input = screen.getByRole('combobox', { name: '路径' })
+
+        fireEvent.focus(input)
+        fireEvent.change(input, { target: { value: '/Users/lo' } })
+
+        expect(onValueChange).toHaveBeenCalledWith('/Users/lo')
+        expect(input).toHaveValue('/Users/lo')
+        // 候选由调用方提供，组件不再按输入二次过滤
+        expect(screen.getAllByRole('option')).toHaveLength(2)
+    })
+
+    it('选中建议把完整路径写回输入框', () => {
+        const onValueChange = vi.fn<(v: string) => void>()
+        render(<Combobox freeText aria-label="路径" options={PATH_OPTIONS} onValueChange={onValueChange} />)
+        const input = screen.getByRole('combobox', { name: '路径' })
+
+        fireEvent.focus(input)
+        fireEvent.click(screen.getByText('local'))
+
+        expect(onValueChange).toHaveBeenCalledWith('/Users/local')
+        expect(input).toHaveValue('/Users/local')
+    })
+
+    it('Enter 未导航时收起建议，但不提交外层表单', () => {
+        const onSubmit = vi.fn<(e: Event) => void>()
+        render(
+            <form onSubmit={onSubmit}>
+                <Combobox freeText aria-label="路径" options={PATH_OPTIONS} />
+            </form>,
+        )
+        const input = screen.getByRole('combobox', { name: '路径' })
+        fireEvent.focus(input)
+        expect(input).toHaveAttribute('aria-expanded', 'true')
+
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(input).toHaveAttribute('aria-expanded', 'false')
+        expect(onSubmit).not.toHaveBeenCalled()
+    })
+
+    it('失焦收起建议', () => {
+        render(<Combobox freeText aria-label="路径" options={PATH_OPTIONS} />)
+        const input = screen.getByRole('combobox', { name: '路径' })
+        fireEvent.focus(input)
+        expect(input).toHaveAttribute('aria-expanded', 'true')
+
+        fireEvent.blur(input)
+        expect(input).toHaveAttribute('aria-expanded', 'false')
+    })
+})
