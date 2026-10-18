@@ -27,7 +27,8 @@
  */
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
-import { App, Collapse, Empty, Flex, Spin, Tooltip } from 'antd'
+import { App, Collapse, Empty, Flex, Spin } from 'antd'
+import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { IconButton } from '@/ui/base/interactive/IconButton'
 import { useTranslation } from 'react-i18next'
@@ -165,22 +166,22 @@ const FileRowHeader = memo(function FileRowHeader({ sessionId, file, expanded, p
             {/* 行操作：桌面 hover/focus 显现，触屏常显（antd.css 规则）。
                 复制点击反馈与气泡 CopyButton 同款：图标切绿勾 2s 后还原 */}
             <Flex component="span" align="center" className="review-row-actions" style={{ flexShrink: 0 }}>
-                <Tooltip title={copied ? t('chat.copied') : t('files.copyPath')}>
+                <AppTooltip title={copied ? t('chat.copied') : t('files.copyPath')}>
                     <IconButton
                         size={28}
                         icon={copied ? <CheckCheck size={13} color="var(--ant-color-success)" /> : <Copy size={13} />}
                         aria-label={t('files.copyPath')}
                         onClick={(e) => { e.stopPropagation(); handleCopy() }}
                     />
-                </Tooltip>
-                <Tooltip title={t('review.openInTab')}>
+                </AppTooltip>
+                <AppTooltip title={t('review.openInTab')}>
                     <IconButton
                         size={28}
                         icon={<ExternalLink size={13} />}
                         aria-label={t('review.openInTab')}
                         onClick={(e) => { e.stopPropagation(); openFileTab(sessionId, file.path, basename(file.path)) }}
                     />
-                </Tooltip>
+                </AppTooltip>
             </Flex>
             {/* 展开/收起箭头放行尾：hover 显现（Collapse 自带图标已关），随开合旋转。
                 不可展开的条目（非文本）不给箭头——行本身不响应展开。
@@ -323,7 +324,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
     // 树开关按钮单源：移动包 Popover（触屏无 hover，不叠 Tooltip）、桌面包 Tooltip，
     // 按钮本体（icon 着色/aria/testid）只写一遍——onClick 仅桌面需要（移动由 Popover 受控）
     const treeToggleButton = (
-        // Popover（移动触发器）与 antd Tooltip（桌面）都需 ref 转发——IconButton 已 forwardRef，可直接作触发器
+        // Popover（移动触发器）与 AppTooltip（桌面）都需触发元素可锚定——IconButton 已 forwardRef
         <IconButton
             size={28}
             icon={<FolderTree size={15} style={{ color: treeOpen ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
@@ -537,9 +538,9 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                         <span style={{ color: 'var(--ant-color-text-secondary)' }}>{t('review.fileCount', { count: scopeData.stats.files })}</span>{' '}
                         <DiffStat additions={scopeData.stats.additions} deletions={scopeData.stats.deletions} fontSize={12} />
                         {scopeData.truncated && (
-                            <Tooltip title={t('review.truncated')}>
+                            <AppTooltip title={t('review.truncated')}>
                                 <span style={{ marginLeft: 6, color: 'var(--ant-color-text-tertiary)', cursor: 'help' }}>…</span>
-                            </Tooltip>
+                            </AppTooltip>
                         )}
                     </span>
                 )}
@@ -567,7 +568,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                         />
                     ) : (
                         <>
-                            <Tooltip title={t('review.refresh')}>
+                            <AppTooltip title={t('review.refresh')}>
                         <IconButton
                             size={28}
                             aria-label={t('review.refresh')}
@@ -582,8 +583,8 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                                 }}
                             />}
                         />
-                    </Tooltip>
-                    <Tooltip title={t('review.collapseAll')}>
+                    </AppTooltip>
+                    <AppTooltip title={t('review.collapseAll')}>
                         <IconButton
                             size={28}
                             icon={<ChevronsDownUp size={15} style={{ color: 'var(--ant-color-text-tertiary)' }} />}
@@ -591,8 +592,8 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                             data-testid="review-collapse-all"
                             onClick={() => setExpandedPaths([])}
                         />
-                    </Tooltip>
-                    <Tooltip title={t('review.wrap')}>
+                    </AppTooltip>
+                    <AppTooltip title={t('review.wrap')}>
                         <IconButton
                             size={28}
                             icon={<WrapText size={15} style={{ color: wrap ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
@@ -600,8 +601,8 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                             data-testid="review-wrap-toggle"
                             onClick={() => setWrap((v) => !v)}
                         />
-                    </Tooltip>
-                    <Tooltip title={layout === 'split' ? t('review.layoutUnified') : t('review.layoutSplit')}>
+                    </AppTooltip>
+                    <AppTooltip title={layout === 'split' ? t('review.layoutUnified') : t('review.layoutSplit')}>
                         <IconButton
                             size={28}
                             icon={<Columns2 size={15} style={{ color: layout === 'split' ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
@@ -609,7 +610,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                             data-testid="review-layout-toggle"
                             onClick={() => changeLayout(layout === 'split' ? 'unified' : 'split')}
                         />
-                    </Tooltip>
+                    </AppTooltip>
                         </>
                     )}
                     {isMobile ? (
@@ -639,9 +640,9 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                             {treeToggleButton}
                         </Popover>
                     ) : (
-                        <Tooltip title={t('review.fileTree')}>
+                        <AppTooltip title={t('review.fileTree')}>
                             {treeToggleButton}
-                        </Tooltip>
+                        </AppTooltip>
                     )}
                 </Flex>
             </Flex>

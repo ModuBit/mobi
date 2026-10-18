@@ -368,8 +368,9 @@ describe('引用组合并容器（票 06）', () => {
         expect(row.textContent).not.toContain('结尾标记')
 
         // PC hover（pointerType=mouse）→ AppTooltip 弹出全文（截断不阻碍阅读）
+        // 字符串提示同时渲染测量层与可视层，取首个匹配
         fireEvent.pointerOver(row, { pointerType: 'mouse', relatedTarget: document.body })
-        expect(await screen.findByText(full)).toBeInTheDocument()
+        expect((await screen.findAllByText(full)).length).toBeGreaterThan(0)
     })
 
     it('引用组落 forbidden 锚点 + user-select:none（「引用的引用」禁区双防御）', () => {

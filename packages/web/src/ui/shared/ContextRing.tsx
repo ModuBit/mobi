@@ -15,7 +15,7 @@
  */
 
 import { useState } from 'react'
-import { theme, Tooltip } from 'antd'
+import { theme } from 'antd'
 import { keyframes } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import type { ContextUsage } from '@mobi/shared'
@@ -23,6 +23,7 @@ import { formatTokens } from '@/core/lib/formatTokens'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { ContextBreakdown } from '@/ui/shared/ContextBreakdown'
 import { Popover } from '@/ui/base/interactive/popover/Popover'
+import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 
 /** ≥90% 透明度脉冲（「马上要压缩」） */
 const pulse = keyframes`0%,100%{opacity:1}50%{opacity:0.35}`
@@ -94,8 +95,8 @@ export function ContextRing({ usage, size = 20, placement = 'top' }: ContextRing
     const ticks = degradationTicks(usage.maxTokens)
     const usedSummary = `${formatTokens(usage.totalTokens)} / ${formatTokens(usage.maxTokens)} (${pct}%)`
     // 受控 Popover：打开期间隐藏 hover Tooltip（两者同屏重叠）；移动端无 hover，整体禁用。
-    // 关闭 Popover 后抑制 Tooltip 直至鼠标离开环——antd 在 hover 上下文未销毁时会因
-    // title 从 undefined 恢复立即重弹，造成「关掉 Popover 又冒出 Tooltip」
+    // 关闭 Popover 后抑制 Tooltip 直至鼠标离开环——自管 AppTooltip 在 title 清空时同步清内部
+    // 打开态，title 恢复不会立即重弹（避免「关掉 Popover 又冒出 Tooltip」）
     const isMobile = useIsMobile()
     const [popoverOpen, setPopoverOpen] = useState(false)
     const [suppressTooltip, setSuppressTooltip] = useState(false)
@@ -172,12 +173,12 @@ export function ContextRing({ usage, size = 20, placement = 'top' }: ContextRing
             )}
         >
             {/* hover=Tooltip 概要 / click=Popover 详情：触发分离；移动端与 Popover 打开期间不弹 Tooltip。
-                Popover 需要一个真实 DOM 节点作锚（antd Tooltip 不透传 ref，直接作 child 会让
-                Radix 锚点 ref 抖动成死循环），这里用 inline-flex span 包一层，布局尺寸随圆环 */}
+                Popover 需要一个真实 DOM 节点作锚，AppTooltip 的 wrapper 是 display:contents，
+                这里用 inline-flex span 包一层，布局尺寸随圆环 */}
             <span style={{ display: 'inline-flex' }}>
-                <Tooltip title={tooltipTitle} placement="top" mouseEnterDelay={0.15}>
+                <AppTooltip title={tooltipTitle} placement="top" mouseEnterDelay={0.15}>
                     {ring}
-                </Tooltip>
+                </AppTooltip>
             </span>
         </Popover>
     )

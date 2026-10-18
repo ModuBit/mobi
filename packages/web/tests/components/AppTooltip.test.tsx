@@ -19,19 +19,15 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 
-// mock antd Tooltip：open 时渲染 title（避开 portal/motion，聚焦 AppTooltip 的 open 控制逻辑）
-vi.mock('antd', async orig => {
-    const actual = await orig()
-    return {
-        ...actual,
-        Tooltip: ({ open, title, children }: { open?: boolean; title?: ReactNode; children?: ReactNode }) => (
-            <>
-                {children}
-                {open ? <div data-testid="tip">{title}</div> : null}
-            </>
-        ),
-    }
-})
+// mock 自管 Tooltip：open 时渲染 content（避开 portal/motion，聚焦 AppTooltip 的 open 控制逻辑）
+vi.mock('@/ui/base/interactive/tooltip/Tooltip', () => ({
+    Tooltip: ({ open, content, children }: { open?: boolean; content?: ReactNode; children?: ReactNode }) => (
+        <>
+            {children}
+            {open ? <div data-testid="tip">{content}</div> : null}
+        </>
+    ),
+}))
 
 beforeEach(() => {
     vi.useFakeTimers()

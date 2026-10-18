@@ -15,7 +15,7 @@
  */
 
 import { memo, useEffect, useRef, useState, type CSSProperties } from 'react'
-import { Tooltip } from 'antd'
+import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 
 /**
  * 文件路径左省略组件
@@ -83,7 +83,7 @@ function FilePathTextInner({ path, strong, style }: { path: string; strong?: boo
         </span>
     )
 
-    return overflow ? <Tooltip title={path}>{inner}</Tooltip> : inner
+    return overflow ? <AppTooltip title={path}>{inner}</AppTooltip> : inner
 }
 
 export const FilePathText = memo(FilePathTextInner)

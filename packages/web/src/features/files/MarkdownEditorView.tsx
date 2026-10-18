@@ -17,7 +17,8 @@
 import { useEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
-import { Tooltip, Input, theme as antTheme } from 'antd'
+import { Input, theme as antTheme } from 'antd'
+import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { Popover } from '@/ui/base/interactive/popover/Popover'
 import { Bold, Italic, Strikethrough, Code, Link as LinkIcon, Link2, Check, ExternalLink, Unlink, Trash2, Image as ImageIcon } from 'lucide-react'
@@ -217,7 +218,7 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
     const Btn = ({ icon: Icon, title, onClick, active }: {
         icon: ComponentType<IconProps>; title: string; onClick: () => void; active?: boolean
     }) => (
-        <Tooltip title={title}>
+        <AppTooltip title={title}>
             <Button
                 variant="ghost"
                 size="sm"
@@ -230,7 +231,7 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
             >
                 <Icon size={14} />
             </Button>
-        </Tooltip>
+        </AppTooltip>
     )
 
     return (
@@ -267,7 +268,7 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
                     </div>
                 }
             >
-                {/* Popover 直接包 Button，不经 Btn/Tooltip 中间层（Tooltip 吞 trigger ref 致 clickOutside 误关） */}
+                {/* Popover 直接包 Button，不经 Btn/AppTooltip 中间层（AppTooltip 的 contents wrapper 会截走 trigger ref，致 clickOutside 误关） */}
                 <Button
                     variant="ghost"
                     size="sm"
@@ -346,15 +347,15 @@ function LinkBubble({ editor }: { editor: Editor }) {
                 autoFocus
                 style={{ flex: 1, width: 220, fontSize: 12, fontFamily: 'var(--font-mono, JetBrains Mono, monospace)' }}
             />
-            <Tooltip title="应用链接" mouseEnterDelay={0.4}>
+            <AppTooltip title="应用链接" mouseEnterDelay={0.4}>
                 <Button variant="ghost" size="sm" onClick={apply}><Check size={15} style={{ color: token.colorPrimary }} /></Button>
-            </Tooltip>
-            <Tooltip title="新窗口打开" mouseEnterDelay={0.4}>
+            </AppTooltip>
+            <AppTooltip title="新窗口打开" mouseEnterDelay={0.4}>
                 <Button variant="ghost" size="sm" onClick={visit}><ExternalLink size={15} /></Button>
-            </Tooltip>
-            <Tooltip title="移除链接" mouseEnterDelay={0.4}>
+            </AppTooltip>
+            <AppTooltip title="移除链接" mouseEnterDelay={0.4}>
                 <Button variant="danger" size="sm" onClick={remove}><Unlink size={15} /></Button>
-            </Tooltip>
+            </AppTooltip>
         </div>
     )
 }
@@ -420,12 +421,12 @@ function ImageBubble({ editor }: { editor: Editor }) {
                 autoFocus
                 style={{ flex: 1, width: 260, fontSize: 12, fontFamily: 'var(--font-mono, JetBrains Mono, monospace)' }}
             />
-            <Tooltip title="应用" mouseEnterDelay={0.4}>
+            <AppTooltip title="应用" mouseEnterDelay={0.4}>
                 <Button variant="ghost" size="sm" onClick={apply}><Check size={15} style={{ color: token.colorPrimary }} /></Button>
-            </Tooltip>
-            <Tooltip title="删除图片" mouseEnterDelay={0.4}>
+            </AppTooltip>
+            <AppTooltip title="删除图片" mouseEnterDelay={0.4}>
                 <Button variant="danger" size="sm" onClick={remove}><Trash2 size={15} /></Button>
-            </Tooltip>
+            </AppTooltip>
         </div>
     )
 }

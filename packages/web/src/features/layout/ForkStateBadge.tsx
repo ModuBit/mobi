@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { Tooltip, theme as antTheme } from 'antd'
+import { theme as antTheme } from 'antd'
+import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { useTranslation } from 'react-i18next'
 
 /**
@@ -50,5 +51,5 @@ export function ForkStateBadge({ variant, errorText }: { variant: 'pending' | 'e
     )
 
     if (!isError || !errorText) return badge
-    return <Tooltip title={errorText}>{badge}</Tooltip>
+    return <AppTooltip title={errorText}>{badge}</AppTooltip>
 }

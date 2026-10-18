@@ -17,10 +17,10 @@
 // uiarc floating-button-group（registry 快照，自管件：深度本地化后脱离 registry，不登记 registry.json）。
 // 六组件中唯一结构性本地改写项（button-migration 票 01）。本地修改：
 // ①tooltip 换栈：上游 @radix-ui/react-tooltip（Provider/SideTip）+ 库内 Tooltip（../tooltip/tooltip）
-//   全量替换为 AppTooltip（antd Tooltip 封装，零新依赖）。top/bottom 与 left/right 两条 tooltip
-//   路径合一为 <AppTooltip title={...} placement={side}>；side→placement 同名直映，上游 Provider
-//   delayDuration 250 → mouseEnterDelay 0.25；sideOffset/collisionPadding/skipDelayDuration/
-//   disableHoverableContent 等 Radix 定位与共享延迟参数由 antd 接管，不逐一映射。
+//   全量替换为 AppTooltip（自管 ui/base/interactive/tooltip + 触屏长按分流）。top/bottom 与
+//   left/right 两条 tooltip 路径合一为 <AppTooltip title={...} placement={side}>；side→placement
+//   同名直映，上游 delayDuration 250 → mouseEnterDelay 0.25；sideOffset/collisionPadding/
+//   skipDelayDuration/disableHoverableContent 等定位与共享延迟参数由自管 Tooltip 接管，不逐一映射。
 //   AppTooltip 外层 span 为 display:contents，按钮的布局参与与 tray 度量不受影响。
 // ②motionTokens 改引 @/ui/base/motion/motionTokens（上游 ../lib/motion-tokens 不存在）
 // ③arc foundation 变量消费 cssVars.ts :root 单源（UIARC_ALIAS_VARS），css 模块不写公共映射块；

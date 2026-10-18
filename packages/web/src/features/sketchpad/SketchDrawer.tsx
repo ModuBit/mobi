@@ -44,7 +44,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { Tooltip } from 'antd'
+import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { Check, Maximize, Minimize } from 'lucide-react'
 import { css, keyframes } from '@emotion/react'
@@ -428,7 +428,7 @@ export function SketchDrawer({
                     {...(isMobile ? pullHandlers : null)}
                     grabber={isMobile ? <SheetGrabber /> : undefined}
                     leading={(
-                        <Tooltip title={t('common.cancel')}>
+                        <AppTooltip title={t('common.cancel')}>
                             <Button
                                 variant="ghost"
                                 size="sm"
@@ -438,13 +438,13 @@ export function SketchDrawer({
                             >
                                 {t('common.cancel')}
                             </Button>
-                        </Tooltip>
+                        </AppTooltip>
                     )}
                     trailing={(
                         <>
                             {/* 仅 PC 且挂层可切全屏：移动端已全屏；与完成同侧但非破坏动作，误触无害 */}
                             {canFullscreen && (
-                                <Tooltip title={fullscreenLabel}>
+                                <AppTooltip title={fullscreenLabel}>
                                     <SheetIconButton
                                         label={fullscreenLabel}
                                         bordered={false}
@@ -453,7 +453,7 @@ export function SketchDrawer({
                                             : <Maximize size={16} strokeWidth={1.75} aria-hidden="true" />}
                                         onClick={() => setFullscreen((v) => !v)}
                                     />
-                                </Tooltip>
+                                </AppTooltip>
                             )}
                             <Button
                                 variant="primary"

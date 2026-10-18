@@ -130,6 +130,11 @@ module.exports = tseslint.config(
             importNames: ['Popover'],
             message: 'antd Popover 已迁自管件（@/ui/base/interactive/popover/Popover），禁止新增（映射表见 .scratch/popover-migration/spec.md）',
           },
+          {
+            name: 'antd',
+            importNames: ['Tooltip'],
+            message: 'antd Tooltip 已迁自管件（@/ui/base/interactive/AppTooltip，触屏长按语义统一），禁止新增',
+          },
         ],
       }],
     },

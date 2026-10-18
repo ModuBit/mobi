@@ -1,0 +1,102 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * uiarc tooltip 上游快照的样式本地化：
+ * ① z-index 90 → --mobi-z-overlay（与 shadcn 浮层同基线，高于 antd 的 1000 起）
+ * ② 阴影由 --shadow-raised 改 --shadow-floating（本项目 UIARC_ALIAS_VARS 既有别名）
+ * ③ 补 left / right 方位的入场位移（上游只给了 top / bottom 的 --tooltip-y）
+ * 其余配色 / 内容交叉淡入 / 暖窗口即时态 / reduced-motion 与上游一致：
+ * 气泡反色（foreground 底 + background 字），明暗双档自动翻转。
+ */
+
+.tooltip {
+  --tooltip-x: 3px;
+  --tooltip-y: 0px;
+  z-index: var(--mobi-z-overlay, 1000);
+  max-width: 15rem;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in oklab, var(--background) 14%, var(--foreground));
+  border-radius: var(--radius-control);
+  background: var(--foreground);
+  color: var(--background);
+  box-shadow: var(--shadow-floating);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  line-height: var(--leading-body);
+  transform-origin: var(--radix-tooltip-content-transform-origin);
+  transition: opacity var(--duration-fast) var(--ease-enter), transform var(--duration-fast) var(--ease-enter);
+}
+
+.tooltip[data-side="top"] { --tooltip-x: 0px; --tooltip-y: 3px; }
+.tooltip[data-side="bottom"] { --tooltip-x: 0px; --tooltip-y: -3px; }
+.tooltip[data-side="left"] { --tooltip-x: 3px; --tooltip-y: 0px; }
+.tooltip[data-side="right"] { --tooltip-x: -3px; --tooltip-y: 0px; }
+
+/* 首个提示等待后从触发元素方向浮起几像素；暖窗口内的下一个只淡入。
+   用 transition 而非 keyframes，关闭途中回到触发元素可反向淡入，不会重播。 */
+@starting-style {
+  .tooltip[data-state$="-open"] { opacity: 0; transform: translate(var(--tooltip-x), var(--tooltip-y)) scale(.97); }
+  .tooltip[data-instant][data-state$="-open"] { transform: none; }
+}
+
+.tooltip[data-instant][data-state$="-open"] {
+  transition: opacity var(--duration-instant) var(--ease-standard), transform var(--duration-instant) var(--ease-standard);
+}
+
+/* Radix 在退场动画结束后卸载，用无副作用 keyframe 计时，视觉交给 transition */
+.tooltip[data-state="closed"] {
+  opacity: 0;
+  transform: scale(.98);
+  transition: opacity var(--duration-instant) var(--ease-standard), transform var(--duration-instant) var(--ease-standard);
+  animation: tooltip-exit var(--duration-instant) linear both;
+}
+
+.text {
+  position: relative;
+  display: block;
+  overflow: clip;
+  overflow-clip-margin: var(--space-2);
+}
+
+.measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: calc(15rem - 2 * var(--space-4) - 2px);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.line {
+  display: block;
+  width: max-content;
+  max-width: calc(15rem - 2 * var(--space-4) - 2px);
+}
+
+@keyframes tooltip-exit {
+  to { --tooltip-exit: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tooltip,
+  .tooltip[data-state="closed"],
+  .tooltip[data-instant][data-state^="-open"] {
+    transform: none;
+    transition: opacity var(--duration-instant) var(--ease-standard);
+  }
+}

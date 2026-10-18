@@ -19,7 +19,7 @@ import { render, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 
-// antd Tooltip（rc-trigger）依赖 ResizeObserver，jsdom 未提供
+// 自管 Tooltip（Radix Popper）依赖 ResizeObserver，jsdom 未提供
 beforeAll(() => {
     class FakeResizeObserver {
         observe() { /* noop */ }
@@ -33,12 +33,12 @@ afterEach(cleanup)
 
 /**
  * AppTooltip 的 wrapper span 用 display:contents（零布局影响），Chrome 对无盒元素
- * getBoundingClientRect() 恒返回零矩形，antd Tooltip（rc-align）以该元素为定位目标
+ * getBoundingClientRect() 恒返回零矩形，自管 Tooltip（Radix Popper）以该元素为定位目标
  * 时对齐失效——悬停期间 tooltip 停在屏外，关闭动画阶段被 overflow 钳制到视口左下角
  * 播放（用户可见的「移开瞬间左下角闪一下」）。
  *
  * 修复契约：wrapper 的 getBoundingClientRect 在零矩形时必须委托给其内容的联合矩形
- * （Range 跨 display:contents 生效），rc-align 拿到真实矩形后定位恢复正常。
+ * （Range 跨 display:contents 生效），Popper 拿到真实矩形后定位恢复正常。
  * jsdom 无真实布局，这里通过 mock Range 来锁定委托行为本身。
  */
 describe('AppTooltip', () => {

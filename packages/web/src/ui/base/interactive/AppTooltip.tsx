@@ -14,23 +14,57 @@
  * limitations under the License.
  */
 
-import { Tooltip } from 'antd'
-import type { TooltipProps } from 'antd'
 import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties, MouseEvent, PointerEvent } from 'react'
+import type { CSSProperties, MouseEvent, PointerEvent, ReactElement, ReactNode } from 'react'
+import { Tooltip } from '@/ui/base/interactive/tooltip/Tooltip'
 
 /** 触屏长按阈值（ms）—— pointerdown 持续超过此时长判定为 long-press，显示 tooltip */
 const LONG_PRESS_MS = 500
 
+/** antd placement → 自管 Tooltip 的 side/align（与 popover 迁移同一套映射） */
+type Placement =
+    | 'top' | 'bottom' | 'left' | 'right'
+    | 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight'
+    | 'leftTop' | 'leftBottom' | 'rightTop' | 'rightBottom'
+
+const PLACEMENTS: Record<Placement, { side: 'top' | 'bottom' | 'left' | 'right'; align: 'start' | 'center' | 'end' }> = {
+    top: { side: 'top', align: 'center' },
+    bottom: { side: 'bottom', align: 'center' },
+    left: { side: 'left', align: 'center' },
+    right: { side: 'right', align: 'center' },
+    topLeft: { side: 'top', align: 'start' },
+    topRight: { side: 'top', align: 'end' },
+    bottomLeft: { side: 'bottom', align: 'start' },
+    bottomRight: { side: 'bottom', align: 'end' },
+    leftTop: { side: 'left', align: 'start' },
+    leftBottom: { side: 'left', align: 'end' },
+    rightTop: { side: 'right', align: 'start' },
+    rightBottom: { side: 'right', align: 'end' },
+}
+
+export interface AppTooltipProps {
+    /** 提示内容；null / undefined / '' 表示不展示（ContextRing 用它抑制重弹） */
+    title?: ReactNode
+    children: ReactElement
+    /** 方位，默认 top */
+    placement?: Placement
+    /** 首次悬停延迟（秒，沿用 antd 语义），默认 0 */
+    mouseEnterDelay?: number
+    /** 受控打开态；传了则不接管 hover / long-press 分流 */
+    open?: boolean
+    onOpenChange?: (open: boolean) => void
+    className?: string
+}
+
 /**
  * 移动端友好的 Tooltip：按 PointerEvent.pointerType 实时分流触发方式。
  *
- * 背景：antd Tooltip 默认 hover 触发，触屏 tap 会被浏览器模拟成 mouseenter，
- * 导致 tooltip 弹出且没有 mouseleave 可关闭，卡住并遮挡界面。
+ * 背景：浏览器 hover 触发在触屏上会被 tap 模拟成 mouseenter，tooltip 弹出且没有
+ * mouseleave 可关闭，卡住并遮挡界面。
  *
- * 解法：antd Tooltip 用 open 受控（禁默认 trigger），外层 span 挂 pointer 事件，
- * 按 pointerType 分流：
- * - mouse / pen → hover：pointerenter 显示（保留 mouseEnterDelay 延迟），pointerleave 消失
+ * 底座是自管 uiarc Tooltip（src/ui/base/interactive/tooltip/，`trigger="manual"`：
+ * Radix Anchor 只锚定、不绑 hover/focus），所有打开态由本组件驱动：
+ * - mouse / pen → hover：pointerenter 延迟打开（mouseEnterDelay），pointerleave 关闭
  * - touch → long-press：pointerdown 启动 LONG_PRESS_MS 定时器，到期才显示
  *   · 短按（未到期 pointerup）→ 不显示，click 正常触发元素 action
  *   · long-press 命中 → 显示 tooltip，并在捕获阶段吞掉紧随的 click（阻止 action 被误触发）
@@ -44,27 +78,43 @@ const LONG_PRESS_MS = 500
  * pointer 事件由 React 合成（基于 DOM 层级，contents 元素照常接收）。
  *
  * display:contents 的代价与补偿：无盒元素在 Chrome 下 getBoundingClientRect() 恒返回
- * 零矩形，而 antd Tooltip（rc-align）正是以 wrapper span 的该矩形为定位目标——零矩形
- * 使对齐失效：悬停期间 tooltip 停在屏外测量位（不可见），关闭动画阶段 overflow 钳制
+ * 零矩形，而 Radix Popper 以 wrapper span 的该矩形为定位目标——零矩形使对齐失效：
+ * 悬停期间 tooltip 停在屏外测量位（不可见），关闭动画阶段 overflow 钳制
  * 把它推到视口左下角播放，形成「光标移开瞬间左下角闪一下」。补偿见 installRectBridge：
  * 零矩形时委托给 Range 的内容联合矩形（Range 跨 display:contents 子树生效），
  * 布局仍零影响，定位恢复以真实悬停内容为锚。
  *
- * 受控用法：传 open 则透传给 antd Tooltip，hover/long-press 自动禁用
+ * 受控用法：传 open 则透传，hover/long-press 自动禁用
  * （如 InstallButton 的 iosTipOpen 由按钮 click 控制，无需 pointer 分流）。
  */
-export function AppTooltip({ children, mouseEnterDelay, open: controlledOpen, ...rest }: TooltipProps) {
+export function AppTooltip(props: AppTooltipProps) {
+    const {
+        children,
+        title,
+        placement = 'top',
+        mouseEnterDelay,
+        open: controlledOpen,
+        onOpenChange,
+        className,
+    } = props
+
     const [internalOpen, setInternalOpen] = useState(false)
     const isControlled = controlledOpen !== undefined
-    const open = isControlled ? controlledOpen : internalOpen
+    const hasContent = title !== undefined && title !== null && title !== ''
+    const open = (isControlled ? controlledOpen : internalOpen) && hasContent
 
-    // wrapper span 的 ref：rc-trigger（@rc-component/trigger）克隆 child 时用
-    // useComposeRef 合并已有 ref，这里与它共存不冲突；rect 补丁挂载期安装
+    // title 被清空（如 ContextRing 打开 Popover 时）→ 同步清内部打开态，
+    // 否则 title 恢复后会出现「没重新悬停也立刻重弹」
+    useEffect(() => {
+        if (!hasContent && !isControlled) setInternalOpen(false)
+    }, [hasContent, isControlled])
+
+    // wrapper span 的 ref：Radix asChild 会 compose 已有 ref，这里与它共存不冲突；
+    // rect 补丁挂载期安装
     const wrapperRef = useRef<HTMLSpanElement>(null)
 
-    // display:contents 无盒 → Chrome 恒返回零矩形 → rc-align 以零矩形对齐失效
-    // （详见组件头注释）。零矩形时把 rect 委托给内容联合矩形（Range 跨 contents 子树），
-    // rc-align 拿到真实悬停内容矩形，定位与关闭动画都回到正确位置。
+    // display:contents 无盒 → Chrome 恒返回零矩形 → Popper 以零矩形对齐失效
+    // （详见组件头注释）。零矩形时把 rect 委托给内容联合矩形（Range 跨 contents 子树）。
     useEffect(() => {
         const el = wrapperRef.current
         if (!el) return
@@ -156,8 +206,21 @@ export function AppTooltip({ children, mouseEnterDelay, open: controlledOpen, ..
         }
     }
 
+    const { side, align } = PLACEMENTS[placement]
+
     return (
-        <Tooltip {...rest} mouseEnterDelay={mouseEnterDelay} open={open}>
+        <Tooltip
+            content={title}
+            trigger="manual"
+            open={open}
+            onOpenChange={(next) => {
+                if (isControlled) onOpenChange?.(next)
+                else setInternalOpen(next)
+            }}
+            side={side}
+            align={align}
+            className={className}
+        >
             <span
                 ref={wrapperRef}
                 onPointerEnter={handlePointerEnter}

@@ -15,7 +15,8 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Alert, App, Input, InputNumber, Radio, Tag, theme as antTheme, Tooltip } from 'antd'
+import { Alert, App, Input, InputNumber, Radio, Tag, theme as antTheme } from 'antd'
+import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { IconButton } from '@/ui/base/interactive/IconButton'
 // uiarc 自管件：单选/可搜索选择（antd Select 已全站清零；tags 模式归 MultiSelect mode="tags"）
@@ -111,9 +112,9 @@ function CheckResultView({ result, t }: { result: MemoryEndpointCheckResult; t: 
         return <Tag color="error">{t('settings.memory.checkUnauthorized')}</Tag>
     }
     if (result.status === 'error') {
-        return <Tooltip title={result.reason}><Tag color="error">{t('settings.memory.checkServerError')}</Tag></Tooltip>
+        return <AppTooltip title={result.reason}><Tag color="error">{t('settings.memory.checkServerError')}</Tag></AppTooltip>
     }
-    return <Tooltip title={result.reason || undefined}><Tag color="warning">{t('settings.memory.checkUnreachable')}</Tag></Tooltip>
+    return <AppTooltip title={result.reason || undefined}><Tag color="warning">{t('settings.memory.checkUnreachable')}</Tag></AppTooltip>
 }
 
 /**
@@ -315,7 +316,7 @@ export function MemorySection() {
                                 ]}
                             />
                             {rule.mode === 'normal' && (
-                                <Tooltip title={t('settings.memory.tagPlaceholder')}>
+                                <AppTooltip title={t('settings.memory.tagPlaceholder')}>
                                     <Input
                                         size="small"
                                         style={{ width: 150 }}
@@ -324,10 +325,10 @@ export function MemorySection() {
                                         placeholder={t('settings.memory.tagLabel')}
                                         aria-label={t('settings.memory.tagLabel')}
                                     />
-                                </Tooltip>
+                                </AppTooltip>
                             )}
                             {rule.mode === 'isolated' && (
-                                <Tooltip title={t('settings.memory.bankPlaceholder')}>
+                                <AppTooltip title={t('settings.memory.bankPlaceholder')}>
                                     <Input
                                         size="small"
                                         style={{ width: 150 }}
@@ -336,7 +337,7 @@ export function MemorySection() {
                                         placeholder={t('settings.memory.bankLabel')}
                                         aria-label={t('settings.memory.bankLabel')}
                                     />
-                                </Tooltip>
+                                </AppTooltip>
                             )}
                             <IconButton
                                 icon={<Trash2 size={14} />} size={22}
@@ -379,9 +380,9 @@ export function MemorySection() {
                         </Button>
                     </RowActions>
                     <RowActions>
-                        <Tooltip title={t('settings.memory.bankNameHint')}>
+                        <AppTooltip title={t('settings.memory.bankNameHint')}>
                             <span style={{ fontSize: 12.5 }}>{t('settings.memory.bankNameLabel')}</span>
-                        </Tooltip>
+                        </AppTooltip>
                         <Input
                             size="small"
                             style={{ width: 200 }}

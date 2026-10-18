@@ -177,10 +177,10 @@ describe('ContextRing', () => {
 
     it('hover 圆环 Tooltip 展示已用概要（143k / 1.0m (14%) 形态），点击行为不变', async () => {
         render(<ContextRing usage={makeUsage()} />)
-        fireEvent.mouseEnter(screen.getByRole('button', { name: '13%' }))
+        fireEvent.pointerOver(screen.getByRole('button', { name: '13%' }), { pointerType: 'mouse', relatedTarget: document.body })
         // Tooltip 同样 portal 到 body，但 hover 不打开 Popover（触发分离：hover=tooltip / click=popover）
         await waitFor(() => {
-            expect(document.querySelectorAll('.ant-tooltip:not(.ant-tooltip-hidden)').length).toBe(1)
+            expect(document.querySelectorAll('[role="tooltip"][data-state$="open"]').length).toBe(1)
         })
         expect(document.body.textContent).toContain('13k / 100k (13%)')
     })
@@ -188,28 +188,25 @@ describe('ContextRing', () => {
     it('Popover 打开后 Tooltip 隐藏（两者同屏重叠）', async () => {
         render(<ContextRing usage={makeUsage()} />)
         const ring = screen.getByRole('button', { name: '13%' })
-        fireEvent.mouseEnter(ring)
+        fireEvent.pointerOver(ring, { pointerType: 'mouse', relatedTarget: document.body })
         await waitFor(() => {
-            expect(document.querySelectorAll('.ant-tooltip:not(.ant-tooltip-hidden)').length).toBe(1)
+            expect(document.querySelectorAll('[role="tooltip"][data-state$="open"]').length).toBe(1)
         })
         fireEvent.click(ring)
         await waitFor(() => {
             expect(document.body.textContent).toContain('累计成本') // Popover 已开
         })
-        // jsdom 不触发 CSS transition，rc-motion 退场不完成——模拟浏览器动画结束事件
-        const tip = document.querySelector('.ant-tooltip')
-        if (tip) fireEvent.transitionEnd(tip)
         await waitFor(() => {
-            expect(document.querySelectorAll('.ant-tooltip:not(.ant-tooltip-hidden)').length).toBe(0)
+            expect(document.querySelectorAll('[role="tooltip"][data-state$="open"]').length).toBe(0)
         })
     })
 
     it('移动端不渲染 Tooltip（无 hover，tap 直开 Popover）', async () => {
         mockedIsMobile.mockReturnValue(true)
         render(<ContextRing usage={makeUsage()} />)
-        fireEvent.mouseEnter(screen.getByRole('button', { name: '13%' }))
+        fireEvent.pointerOver(screen.getByRole('button', { name: '13%' }), { pointerType: 'mouse', relatedTarget: document.body })
         await new Promise((r) => setTimeout(r, 300)) // 越过 mouseEnterDelay，确认永不弹出
-        expect(document.querySelectorAll('.ant-tooltip').length).toBe(0)
+        expect(document.querySelectorAll('[role="tooltip"]').length).toBe(0)
     })
 
     it('usage 全 0 时正常渲染不抛错（灰环，aria-label 0%）', () => {
