@@ -133,8 +133,8 @@ export const SessionListInner = styled.div`
     overflow: hidden;
 `
 
-// 单个会话项（激活底色由列表滑移层绘制，行只保留按压反馈）
-export const SessionItem = styled.div<{ $active: boolean; $token: SidebarToken }>`
+// 单个会话项（激活底色由列表滑移层绘制，行只保留未激活行的按压反馈）
+export const SessionItem = styled.div<{ $token: SidebarToken }>`
     position: relative;
     display: flex;
     align-items: center;
@@ -148,8 +148,9 @@ export const SessionItem = styled.div<{ $active: boolean; $token: SidebarToken }
     -webkit-user-select: none;
     -webkit-touch-callout: none;
 
-    &:active {
-        background: ${props => props.$active ? 'transparent' : props.$token.colorBgTextHover};
+    /* 激活行有滑移底色，按压不再叠色（激活事实由 data 标记承载，无需再传 prop） */
+    &:active:not([data-glide-active='true']) {
+        background: ${props => props.$token.colorBgTextHover};
     }
 `
 

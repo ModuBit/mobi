@@ -32,29 +32,22 @@ import { basename } from '@/core/utils/path'
 import { buildPathTree, collectDirKeys, commonDirectoryPrefix, type NestedFileNode } from '@/core/utils/pathTree'
 import { KindBadge } from '@/ui/shared/present'
 import { FileTypeBadge } from '@/ui/base/display/FileTypeBadge'
-import { GlideLayer } from '@/ui/base/motion/GlideLayer'
+import { GlideLayer, HoverGlideLayer } from '@/ui/base/motion/GlideLayer'
 import { useGlideHighlight } from '@/ui/base/motion/useGlideHighlight'
-
-/**
- * 树行滑移底色：与文件目录树同一观感（悬停 / 选中两块底色在行间滑移）。
- * z-index:-1 + TreeArea 的 isolation：落在树内容之下、容器背景之上。
- */
-const TreeGlideLayer = styled(GlideLayer)`
-    z-index: -1;
-    border-radius: var(--radius-control-sm);
-`
 
 /**
  * 树区容器。与文件树 TreeWrap 同款行对齐修正：inline svg 图标默认 baseline 对齐
  * 会低半格，icon 槽转 inline-flex + line-height 0 垂直居中于行（2026-09-30 反馈）。
+ * 行转定位元素：滑移底色层落在常规流内容之下，不需要 z-index / isolation。
  */
 const TreeArea = styled.div`
     position: relative;
-    /* 自建层叠上下文：滑移底色的 z-index:-1 落在树内容之下又不掉到宿主后面 */
-    isolation: isolate;
     flex: 1;
     min-height: 0;
     overflow: auto;
+    && .ant-tree-treenode {
+        position: relative;
+    }
     && .ant-tree-iconEle {
         display: inline-flex;
         align-items: center;
@@ -151,12 +144,10 @@ export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
     }
 
     // 悬停 / 选中两档滑移底色：antd 行自带的静态底色已在 TreeArea 里让位
-    const { containerRef, hoverEl, activeEl, onPointerOver, onPointerLeave } =
-        useGlideHighlight<HTMLDivElement>({
-            rowSelector: '.ant-tree-treenode',
-            activeSelector: '.ant-tree-node-selected',
-            activeKey: [selectedPath, treeData],
-        })
+    const { containerRef, activeEl } = useGlideHighlight<HTMLDivElement>({
+        rowSelector: '.ant-tree-treenode',
+        activeSelector: '.ant-tree-node-selected',
+    })
 
     return (
         <Flex
@@ -174,9 +165,14 @@ export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
                 placeholder={t('review.filterPlaceholder')}
                 data-testid="review-tree-filter"
             />
-            <TreeArea ref={containerRef} onPointerOver={onPointerOver} onPointerLeave={onPointerLeave}>
-                <TreeGlideLayer target={hoverEl} $background="var(--mobi-hover)" />
-                <TreeGlideLayer target={activeEl} $background="var(--mobi-selected)" />
+            <TreeArea ref={containerRef}>
+                <HoverGlideLayer
+                    containerRef={containerRef}
+                    rowSelector=".ant-tree-treenode"
+                    $background="var(--mobi-hover)"
+                    $radius="var(--radius-control-sm)"
+                />
+                <GlideLayer target={activeEl} $background="var(--mobi-selected)" $radius="var(--radius-control-sm)" />
                 {filtered.length > 0 ? (
                     <Tree
                         blockNode

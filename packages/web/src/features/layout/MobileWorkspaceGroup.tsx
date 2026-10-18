@@ -86,7 +86,7 @@ export function MobileWorkspaceGroup({
                 </NewSessionBtn>
             </GroupHeader>
             <SessionListWrapper $expanded={wrapperExpanded}>
-                <MobileSessionList activeSessionId={activeSessionId}>
+                <MobileSessionList>
                     {showSkeleton ? (
                         <SessionSkeletonRows variant="mobile" rows={3} />
                     ) : showEmpty ? (

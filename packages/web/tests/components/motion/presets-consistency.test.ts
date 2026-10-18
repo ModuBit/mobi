@@ -34,10 +34,11 @@ function extractPreset(name: string): { bounce: number; duration: number } {
 }
 
 describe('spring 预设与 DESIGN.md 一致性（文档与代码同源守卫）', () => {
-    it.each(['ui', 'momentum', 'gentle'])('spring.%s 与文档数值一致', (name) => {
+    it.each(['ui', 'momentum', 'gentle', 'glide'])('spring.%s 与文档数值一致', (name) => {
         const doc = extractPreset(name)
-        const code = spring[name as keyof typeof spring] as { bounce: number; duration: number }
+        const code = spring[name as keyof typeof spring] as { bounce: number; duration?: number; visualDuration?: number }
+        // glide 用 visualDuration 表达时长（motion 的视觉时长参数）
         expect(code.bounce).toBe(doc.bounce)
-        expect(code.duration).toBe(doc.duration)
+        expect(code.duration ?? code.visualDuration).toBe(doc.duration)
     })
 })

@@ -11,11 +11,15 @@ metadata:
 列表行不再各自画 hover/激活底色，改由 `GlidingHighlight`（`ui/base/motion`）在列表容器里
 按目标行的 `offsetTop/offsetHeight` 弹簧跟随。行需 `position: relative`、容器 `position: relative`。
 
-复用件：`ui/base/motion/GlideLayer.tsx`（styled GlidingHighlight，$background/$radius）+ `useGlideHighlight`（行选择器 / 激活选择器 / activeKey）。覆盖：侧栏会话列表、侧栏导航（NavItem）、
-移动端三个会话分组（MobileSessionList，仅选中档）、审查 diff 树（DiffTreePanel，antd Tree 的
-`.ant-tree-treenode` / `.ant-tree-node-selected`）、RequestUserInput 选项列表（按钮自带
-`data-glide-row` / `data-glide-active`）。antd Tree 的行不是定位元素，层需 `z-index: -1` +
-容器 `isolation: isolate`，否则层会盖住文字。
+复用件：`ui/base/motion/GlideLayer.tsx`（styled GlidingHighlight，$background/$radius）+ `HoverGlideLayer`（自己监听容器指针、持有悬停 state，列表零重渲染）+ `useGlideHighlight`（每次 commit 重解析激活行，不要依赖信号）。
+行标记统一 `data-glide-row` / `data-glide-active="true"`（hook 默认选择器，调用点通常不传）。
+覆盖：侧栏会话列表、侧栏导航（NavItem）、移动端三个会话分组（MobileSessionList，仅选中档）、
+审查 diff 树（DiffTreePanel，antd Tree 的 `.ant-tree-treenode` / `.ant-tree-node-selected`，
+行转定位元素后滑移层不需要 z-index/isolation）、RequestUserInput 选项列表。
+文件树（FileTreeView）用矩形版悬停层 `RectHoverGlideLayer`（`ui/base/motion`，几何取
+`.tree-title-inner` 的 rect、跟随文字宽度、滚动淡出）；选中块用 layoutId 留在行内；
+节点标题 memo 化，避免选中重建全树 Tooltip。首次悬停/隐藏后再悬停直接就位（placedRef），
+只有连续换行才滑移。
 
 ## 造多行（E2E）
 
@@ -56,3 +60,5 @@ store.close()
   测不出来，须用真实鼠标（MCP `hover` 到列表外元素）。hover 进入可以用合成 `pointerover`。
 - 点会话会导航，采样期间 rAF 可能被长任务抽帧；别把「中间帧少」误判成没动画。
 - 行内 `:hover` 规则（显隐操作钮、隐藏时间）仍由 CSS 负责，与滑移层无关，别一起删。
+- 改完 hook / 层的模块后先整页 reload 再断言：HMR 可能保留旧模块实例，表现为激活层
+  top=0/height=0 一直不亮（2026-10-18 实踩，reload 后即恢复）。

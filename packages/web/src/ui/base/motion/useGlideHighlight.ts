@@ -16,33 +16,32 @@
 
 import { useLayoutEffect, useRef, useState } from 'react'
 
+/** 行的默认标记（与 HoverGlideLayer / GlideLayer 约定一致） */
+const ROW_SELECTOR = '[data-glide-row]'
+/** 激活行的默认标记 */
+const ACTIVE_SELECTOR = '[data-glide-active="true"]'
+
 interface GlideHighlightOptions {
-    /** 行元素选择器：hover 追踪与选中回落都以它为准 */
-    rowSelector: string
-    /** 激活行标记选择器（命中元素会向上找最近的 rowSelector） */
-    activeSelector: string
-    /** 激活项的信号（activeId / pathname 等），变化时重新解析激活行 */
-    activeKey: unknown
-    /** 触屏表面（移动端）没有 hover，传 false 关闭悬停追踪 */
-    hover?: boolean
+    /** 行元素选择器：激活元素在行内部时，向上找最近的行 */
+    rowSelector?: string
+    /** 激活行标记选择器 */
+    activeSelector?: string
 }
 
 /**
- * 列表滑移高亮的元素追踪（不含渲染）：把「鼠标停在哪个行」「当前哪一行是激活态」
- * 解析成 DOM 元素，交给 GlideLayer 做弹簧挪动。
+ * 选中滑移高亮的元素追踪（不含渲染）：解析出「当前哪一行是激活态」，
+ * 交给 GlideLayer 做弹簧挪动。悬停追踪由 HoverGlideLayer 自己承担（不重渲染列表）。
  *
- * 约定：行上加 `data-*` 标记（rowSelector 命中），激活行加 activeSelector 标记；
+ * 每次 commit 后重新解析（故意不给依赖数组）：行会随数据到达、筛选、虚拟滚动
+ * 重新挂载，调用方无法可靠地声明「什么时候该重找」；一次 querySelector 的成本
+ * 远小于让调用方猜依赖。行/激活标记走 data-glide-* 约定，调用点通常无需传参。
  * 容器需 `position: relative`，GlideLayer 与行平级渲染。
- * 用 useLayoutEffect 同步激活行，避免首帧从旧位置滑过来。
  */
 export function useGlideHighlight<T extends HTMLElement = HTMLDivElement>({
-    rowSelector,
-    activeSelector,
-    activeKey,
-    hover = true,
-}: GlideHighlightOptions) {
+    rowSelector = ROW_SELECTOR,
+    activeSelector = ACTIVE_SELECTOR,
+}: GlideHighlightOptions = {}) {
     const containerRef = useRef<T>(null)
-    const [hoverEl, setHoverEl] = useState<HTMLElement | null>(null)
     const [activeEl, setActiveEl] = useState<HTMLElement | null>(null)
 
     useLayoutEffect(() => {
@@ -53,22 +52,7 @@ export function useGlideHighlight<T extends HTMLElement = HTMLDivElement>({
         }
         const hit = container.querySelector<HTMLElement>(activeSelector)
         setActiveEl(hit ? (hit.closest<HTMLElement>(rowSelector) ?? hit) : null)
-    }, [activeKey, activeSelector, rowSelector])
+    })
 
-    const onPointerOver = hover
-        ? (event: React.PointerEvent<HTMLElement>) => {
-              const container = containerRef.current
-              const hit = (event.target as Element).closest<HTMLElement>(rowSelector)
-              const row = hit && container?.contains(hit) ? hit : null
-              if (row !== hoverEl) setHoverEl(row)
-          }
-        : undefined
-
-    const onPointerLeave = hover
-        ? () => {
-              if (hoverEl) setHoverEl(null)
-          }
-        : undefined
-
-    return { containerRef, hoverEl, activeEl, onPointerOver, onPointerLeave }
+    return { containerRef, activeEl }
 }

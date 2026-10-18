@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { useEffect, useState, type RefObject } from 'react'
 import styled from '@emotion/styled'
 import { GlidingHighlight } from './GlidingHighlight'
 
@@ -22,7 +23,7 @@ import { GlidingHighlight } from './GlidingHighlight'
  *
  * 由 GlidingHighlight 弹簧跟随目标行的 top/height；放在列表容器里、行之前，
  * 容器需 `position: relative`，行需处于定位层（或用 z-index 保证盖在层上）。
- * 与行的两种目标（hoverEl / activeEl）配合使用，见 useGlideHighlight。
+ * 与行的两种目标配合使用：悬停见 HoverGlideLayer（自管指针），选中见 useGlideHighlight。
  */
 export const GlideLayer = styled(GlidingHighlight)<{ $background: string; $radius?: string }>`
     position: absolute;
@@ -40,3 +41,45 @@ export const GlideLayer = styled(GlidingHighlight)<{ $background: string; $radiu
         transition: none;
     }
 `
+
+interface HoverGlideLayerProps {
+    /** 列表容器：既是行标记的搜索范围，也是滑移层的定位容器 */
+    containerRef: RefObject<HTMLElement | null>
+    /** 行选择器，默认 data-glide-row 约定 */
+    rowSelector?: string
+    $background: string
+    $radius?: string
+}
+
+/**
+ * 悬停滑移层：自己监听容器的 pointerover / pointerleave 并持有悬停行 state。
+ *
+ * 悬停状态不放进列表组件：列表组件持有它会导致每次换行都重渲染整个列表
+ * （会话行 / 树节点都未 memo）。状态收在这一层里，列表本身零重渲染。
+ */
+export function HoverGlideLayer({
+    containerRef,
+    rowSelector = '[data-glide-row]',
+    $background,
+    $radius,
+}: HoverGlideLayerProps) {
+    const [hoverEl, setHoverEl] = useState<HTMLElement | null>(null)
+
+    useEffect(() => {
+        const container = containerRef.current
+        if (!container) return
+        const handleOver = (event: PointerEvent) => {
+            const hit = (event.target as Element).closest<HTMLElement>(rowSelector)
+            setHoverEl(hit && container.contains(hit) ? hit : null)
+        }
+        const handleLeave = () => setHoverEl(null)
+        container.addEventListener('pointerover', handleOver)
+        container.addEventListener('pointerleave', handleLeave)
+        return () => {
+            container.removeEventListener('pointerover', handleOver)
+            container.removeEventListener('pointerleave', handleLeave)
+        }
+    }, [containerRef, rowSelector])
+
+    return <GlideLayer target={hoverEl} $background={$background} $radius={$radius} />
+}

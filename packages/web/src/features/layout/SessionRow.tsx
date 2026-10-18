@@ -115,8 +115,8 @@ export function SessionRow({
     return (
         <SessionItem
             $token={token}
-            data-session-row
-            data-session-active={active || undefined}
+            data-glide-row
+            data-glide-active={active || undefined}
             onClick={onClick}
         >
             <SessionStatusDot session={session} />

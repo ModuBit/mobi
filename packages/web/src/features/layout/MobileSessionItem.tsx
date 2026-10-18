@@ -55,10 +55,9 @@ export function MobileSessionItem({ session, active, onClick, onLongPress }: Mob
 
     return (
         <SessionItem
-            $active={active}
             $token={token}
-            data-session-row
-            data-session-active={active || undefined}
+            data-glide-row
+            data-glide-active={active || undefined}
             onClick={longPress.withClickGuard(onClick)}
             onTouchStart={longPress.onTouchStart}
             onTouchEnd={longPress.onTouchEnd}

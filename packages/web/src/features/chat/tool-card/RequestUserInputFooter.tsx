@@ -29,7 +29,7 @@ import {
 import { useMobiApi } from '@/core/data/api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/core/lib/queryKeys'
-import { GlideLayer } from '@/ui/base/motion/GlideLayer'
+import { GlideLayer, HoverGlideLayer } from '@/ui/base/motion/GlideLayer'
 import { useGlideHighlight } from '@/ui/base/motion/useGlideHighlight'
 
 const { useToken } = antTheme
@@ -63,12 +63,7 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
     const [error, setError] = useState<string | null>(null)
 
     // 选项列表的悬停 / 选中滑移底色（与侧栏列表同一手感）；纯文本题不挂容器，层自然隐藏
-    const { containerRef, hoverEl, activeEl, onPointerOver, onPointerLeave } =
-        useGlideHighlight<HTMLDivElement>({
-            rowSelector: '[data-glide-row]',
-            activeSelector: '[data-glide-active="true"]',
-            activeKey: [step, stateByQuestion],
-        })
+    const { containerRef, activeEl } = useGlideHighlight<HTMLDivElement>()
 
     useEffect(() => {
         setStep(0)
@@ -191,13 +186,11 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
                         <>
                             <div
                                 ref={containerRef}
-                                onPointerOver={onPointerOver}
-                                onPointerLeave={onPointerLeave}
                                 style={{ marginTop: 12, position: 'relative', display: 'flex', flexDirection: 'column', gap: 4 }}
                             >
-                                {/* 悬停 / 选中底色：两块滑移块，替代逐行静态底色 */}
-                                <GlideLayer target={hoverEl} $background={token.colorBgTextHover} $radius="6px" />
-                                <GlideLayer target={activeEl} $background={token.colorBgTextHover} $radius="6px" />
+                                {/* 悬停 / 选中底色：两块滑移块，替代逐行静态底色；选中比悬停深一档（DESIGN.md 三档阶梯） */}
+                                <HoverGlideLayer containerRef={containerRef} $background={token.colorBgTextHover} $radius="6px" />
+                                <GlideLayer target={activeEl} $background={token.colorPrimaryBg} $radius="6px" />
                                 {currentQuestion.options.map((opt, optIdx) => {
                                     const isSelected = currentState?.selected === opt.label
                                     return (

@@ -80,7 +80,7 @@ export function MobilePinnedGroup({ activeSessionId, onSessionAction }: MobilePi
                 <Pin size={14} style={{ color: token.colorTextQuaternary, flexShrink: 0 }} />
             </SectionHeader>
             <SessionListWrapper $expanded={wrapperExpanded}>
-                <MobileSessionList activeSessionId={activeSessionId}>
+                <MobileSessionList>
                     {showSkeleton ? (
                         <SessionSkeletonRows variant="mobile" rows={2} />
                     ) : showEmpty ? (

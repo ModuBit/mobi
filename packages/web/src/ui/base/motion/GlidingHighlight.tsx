@@ -21,7 +21,7 @@
 "use client";
 
 import { motion, useReducedMotion, useSpring } from "motion/react";
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { spring } from "./presets";
 
 export function GlidingHighlight({ className, target }: { className?: string; target: HTMLElement | null }) {
@@ -30,7 +30,9 @@ export function GlidingHighlight({ className, target }: { className?: string; ta
   const top = useSpring(0, spring.glide);
   const height = useSpring(0, spring.glide);
   const placedRef = useRef(false);
-  useEffect(() => {
+  // 每次 commit 后重新测量：行可能因列表重排 / 筛选 / 数据刷新而移动，
+  // 而目标仍是同一个 DOM 元素（引用不变）——只依赖 target 会停在旧几何上。
+  useLayoutEffect(() => {
     // 卸挂节点（菜单关闭后的残留 target）视同复位：重开时首个有效目标直接落位
     if (!target || !target.isConnected) {
       placedRef.current = false;
@@ -38,13 +40,15 @@ export function GlidingHighlight({ className, target }: { className?: string; ta
     }
     const jump = !placedRef.current || !!reduceMotion;
     placedRef.current = true;
+    const nextTop = target.offsetTop;
+    const nextHeight = target.offsetHeight;
     if (jump) {
-      top.jump(target.offsetTop);
-      height.jump(target.offsetHeight);
+      top.jump(nextTop);
+      height.jump(nextHeight);
       return;
     }
-    top.set(target.offsetTop);
-    height.set(target.offsetHeight);
-  }, [target, reduceMotion, top, height]);
+    top.set(nextTop);
+    height.set(nextHeight);
+  });
   return <motion.div className={className} data-on={target?.isConnected ? "" : undefined} style={{ top, height }} aria-hidden="true" />;
 }

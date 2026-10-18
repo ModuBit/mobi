@@ -23,22 +23,16 @@ import { SessionListInner } from './mobileWorkspaceList.styles'
 const { useToken } = antTheme
 
 interface MobileSessionListProps {
-    activeSessionId: string | undefined
     children: ReactNode
 }
 
 /**
  * 移动端会话列表容器：激活行底色由滑移层统一绘制（触屏无 hover，只做选中滑移）。
- * 置顶 / 工作区 / 最近三个分区共用，行自行标记 data-session-row / data-session-active。
+ * 置顶 / 工作区 / 最近三个分区共用，行自行标记 data-glide-row / data-glide-active。
  */
-export function MobileSessionList({ activeSessionId, children }: MobileSessionListProps) {
+export function MobileSessionList({ children }: MobileSessionListProps) {
     const { token } = useToken()
-    const { containerRef, activeEl } = useGlideHighlight<HTMLDivElement>({
-        rowSelector: '[data-session-row]',
-        activeSelector: '[data-session-active="true"]',
-        activeKey: activeSessionId,
-        hover: false,
-    })
+    const { containerRef, activeEl } = useGlideHighlight<HTMLDivElement>()
 
     return (
         <SessionListInner ref={containerRef}>

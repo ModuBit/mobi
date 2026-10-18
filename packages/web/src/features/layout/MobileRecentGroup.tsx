@@ -79,7 +79,7 @@ export function MobileRecentGroup({ activeSessionId, onSessionAction }: MobileRe
                 <SectionTitleText>{t('nav.recent')}</SectionTitleText>
             </SectionHeader>
             <SessionListWrapper $expanded={wrapperExpanded}>
-                <MobileSessionList activeSessionId={activeSessionId}>
+                <MobileSessionList>
                     {showSkeleton ? (
                         <SessionSkeletonRows variant="mobile" rows={2} />
                     ) : showEmpty ? (
