@@ -28,10 +28,10 @@ vi.mock('react-i18next', () => ({
     useTranslation: () => ({
         t: (key: string, opts?: Record<string, unknown>) => {
             const map: Record<string, string> = {
-                'chat.statusPills.todoPending': '待执行 {{pending}}/{{total}}',
+                'chat.statusPills.todoCompleted': '{{completed}}/{{total}} 已完成',
                 'chat.statusPills.executing': '执行中 {{count}}',
                 'chat.statusPills.allDone': '全部完成',
-                'chat.statusPills.tasksExecuting': '执行中 {{active}} / {{total}}',
+                'chat.statusPills.tasksExecuting': '执行中 {{active}}/{{total}}',
                 'chat.statusPills.tasksTotal': '共 {{total}}',
             }
             let text = map[key] ?? key
@@ -115,16 +115,19 @@ describe('ComposerStatusPills', () => {
         expect(container.innerHTML).toBe('')
     })
 
-    it('todo 气泡显示「待执行/总数 · 执行中数」', () => {
-        renderPills([makeTodo('待办A', 'pending'), makeTodo('待办B', 'in_progress')])
+    it('todo 气泡显示「完成数/总数 · 执行中数」', () => {
+        renderPills([makeTodo('待办A', 'completed'), makeTodo('待办B', 'in_progress')])
         const pill = screen.getByTestId('status-pill-todo')
-        expect(pill.textContent).toContain('待执行 1/2')
+        expect(pill.textContent).toContain('1/2 已完成')
         expect(pill.textContent).toContain('执行中 1')
+        expect(pill).toHaveAttribute('data-running', 'true')
     })
 
-    it('全部完成时 todo 气泡显示「全部完成」', () => {
+    it('全部完成时 todo 气泡显示「全部完成」且不带运行态标记', () => {
         renderPills([makeTodo('待办A', 'completed'), makeTodo('待办B', 'completed')])
-        expect(screen.getByTestId('status-pill-todo').textContent).toContain('全部完成')
+        const pill = screen.getByTestId('status-pill-todo')
+        expect(pill.textContent).toContain('全部完成')
+        expect(pill).not.toHaveAttribute('data-running')
     })
 
     it('tasks 气泡按面板口径汇总：执行中 / 总数', async () => {
@@ -133,8 +136,36 @@ describe('ComposerStatusPills', () => {
             { toolUseId: 'fg-1', description: '前台研究', subagentType: 'Explore', startedAt: Date.now() },
         ])
         renderPills()
-        expect(screen.getByTestId('status-pill-tasks').textContent).toContain('执行中 1 / 1')
+        expect(screen.getByTestId('status-pill-tasks').textContent).toContain('执行中 1/1')
         useForegroundTasksStore.getState().set('test-session', [])
+    })
+
+    it('tasks 气泡只在有活跃任务时带运行态标记', async () => {
+        const useForegroundTasksStore = await loadForegroundStore()
+        const { useBackgroundTasksStore } = await import('@/core/data/stores/backgroundTasksStore')
+        useForegroundTasksStore.getState().set('test-session', [
+            { toolUseId: 'fg-1', description: '前台研究', subagentType: 'Explore', startedAt: Date.now() },
+        ])
+        renderPills()
+        expect(screen.getByTestId('status-pill-tasks')).toHaveAttribute('data-running', 'true')
+
+        // 换成已完成的后台任务：气泡仍在（共 1），但标记随活跃态摘除
+        useForegroundTasksStore.getState().set('test-session', [])
+        useBackgroundTasksStore.getState().setTasks('test-session', [
+            {
+                taskId: 'bt-1',
+                toolUseId: 'tu-1',
+                toolName: 'Bash',
+                description: '扫描发布记录',
+                status: 'completed',
+                isBackground: true,
+                startedAt: Date.now(),
+            },
+        ])
+        await waitFor(() => {
+            expect(screen.getByTestId('status-pill-tasks')).not.toHaveAttribute('data-running')
+        })
+        useBackgroundTasksStore.getState().clearSession('test-session')
     })
 
     it('点击 tasks 气泡打开 Popover，平铺展示任务卡片', async () => {

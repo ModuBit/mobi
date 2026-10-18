@@ -447,10 +447,10 @@
     },
     "statusPills": {
       "label": "Status",
-      "todoPending": "Pending {{pending}}/{{total}}",
+      "todoCompleted": "{{completed}}/{{total}} done",
       "executing": "{{count}} in progress",
       "allDone": "All done",
-      "tasksExecuting": "Running {{active}} / {{total}}",
+      "tasksExecuting": "Running {{active}}/{{total}}",
       "tasksTotal": "{{total}} total"
     },
     "clearState": {

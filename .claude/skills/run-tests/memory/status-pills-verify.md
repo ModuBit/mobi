@@ -3,7 +3,7 @@ name: status-pills-verify
 description: composer 状态气泡（浮层，Todo/Tasks 摘要 + Popover 详情）验证 — Store 直接 seed runtimeState + 消息，免真实对话
 metadata:
   type: recipe
-  last_verified: 2026-10-17
+  last_verified: 2026-10-18
 ---
 
 # composer 状态气泡验证
@@ -50,16 +50,27 @@ assistant 的 `message` 需要 `{ id, type:'message', role:'assistant', model, c
 ## 断言口径
 
 - 气泡文案：
-  - todo：`待执行 {pending}/{total} · 执行中 {inProgress}`；total = todos + 非 deleted tasks；
-    全部完成 → `全部完成`。`data-testid="status-pill-todo"`
-  - tasks：`执行中 {active} / {total}`；active = 前台任务 + running 后台 + running/active/无状态团队成员；
-    `data-testid="status-pill-tasks"`
+  - todo：`{completed}/{total} 已完成 · {inProgress} 执行中`（`/` 两侧不加空格）；total = todos +
+    非 deleted tasks；全部完成 → `全部完成`。`data-testid="status-pill-todo"`
+  - tasks：`执行中 {active}/{total}`（无空格）；active = 前台任务 + running 后台 + running/active/无状态
+    团队成员；`data-testid="status-pill-tasks"`
+- 运行态底部光晕：有进行中项时气泡带 `data-running="true"`，`::before` 是底部径向运行蓝光晕
+  （`radial-gradient(120% 190% at 50% 120%, color-mix(in srgb, #4dabf7 60%, transparent), transparent 62%)`），
+  2.6s ease-in-out 在 opacity 0.12 ↔ 0.52 间呼吸，只动 opacity、不重绘文字/阴影。
+  断言口径：`getComputedStyle(pill, '::before')` 的 `content !== 'none'`、
+  `backgroundImage` 含 `radial-gradient`、`animationName` 非 none 且 `animationDuration` 为 `2.6s`。
+  空闲 / 全部完成时无 `data-running`（::before opacity 0）。reduced-motion 停转、保留 opacity 0.3
+  的静态微光。
 - 定位：`pillsRect.bottom + 8 == composerTop`（`.ant-sender` 的 top）；水平居中：pills center ==
   `.chat-scroll-container` center（2026-10-17 实测 526.5 == 526.5）。
 - 贴底：`scrollTop + clientHeight == scrollHeight` 时，最后一条**真实**气泡的 bottom ≤ pills top
   （尾部还有一个空文本 spacer 带 `.ant-bubble`，取倒数第二个才是最后一条消息）。
 - 上滚穿层：`scrollTop=0` 时中间消息会落在气泡后面，胶囊背后可透过模糊看到文字。
 - 毛玻璃：`getComputedStyle(pill).backdropFilter === 'blur(12px) saturate(1.4)'`。
+- 阴影裁切：横向滚动容器（`overflow-x: auto` 会让另一轴也变裁剪轴）的 padding box 是裁剪边界，
+  气泡 8px 模糊阴影需由 `RowInner` 内衬提供绘制空间（当前 12px）。验收断言：row 与 pill 四向
+  headroom ≥ 10px，且改动内衬后 `pill.bottom + 8 == composerTop` 仍成立（Wrap 底距随内衬回退）。
+  2026-10-18 实踩：内衬 2px 时阴影上下被齐平切断。
 - 主题：`localStorage.mobi-ui` 的 `state.theme` + reload。
 - 横向渐隐：把 row 宽度临时压到 120px，`scrollLeft=0` 只有右侧渐变，滚到末尾只有左侧。
 

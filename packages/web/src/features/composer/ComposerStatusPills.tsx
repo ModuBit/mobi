@@ -30,10 +30,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styled from '@emotion/styled'
+import { keyframes } from '@emotion/react'
 import { ListChecks, ListTodo } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { TaskItem, TodoItem } from '@mobi/shared'
 import type { MobiApi } from '@/core/data/api/client'
+import { STATUS_DOT_COLORS } from '@/core/utils/statusColor'
 import { Popover } from '@/ui/base/interactive/popover/Popover'
 import type { ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
 import { buildChecklist, type ChecklistSummary } from './checklist'
@@ -41,10 +43,14 @@ import { TodoPanel } from './TodoPanel'
 import { TasksPanel, useTasksPanelItems, type TaskListItem } from './TasksPanel'
 
 /** 气泡固定高度；气泡行距底边距（Wrap 的 bottom） */
-const PILL_HEIGHT = 24
+const PILL_HEIGHT = 28
 const PILLS_BOTTOM_GAP = 8
 /** 气泡行与最后一条消息之间的视觉间距 */
 const PILLS_TO_MESSAGE_GAP = 12
+/** 气泡行内衬：给胶囊阴影留出绘制空间。
+ *  横向滚动容器（overflow-x: auto 会让另一轴的 visible 一并成为裁剪轴）只裁到自身盒边界，
+ *  内衬小于阴影外扩范围时阴影会被齐平切断。内衬把气泡整体抬高，Wrap 的底距同步回退抵消。 */
+const PILLS_SHADOW_ROOM = 12
 
 /** 列表尾部为气泡让出的高度（由上面三个几何值派生，避免多处魔法数失配） */
 export const STATUS_PILLS_SPACER_HEIGHT = PILL_HEIGHT + PILLS_BOTTOM_GAP + PILLS_TO_MESSAGE_GAP
@@ -53,7 +59,8 @@ const Wrap = styled.div`
     position: absolute;
     left: 0;
     right: 0;
-    bottom: ${PILLS_BOTTOM_GAP}px;
+    /* 内衬把气泡抬高 PILLS_SHADOW_ROOM，底距同步回退，气泡视觉位置不变 */
+    bottom: ${PILLS_BOTTOM_GAP - PILLS_SHADOW_ROOM}px;
     z-index: 9;
     display: flex;
     justify-content: center;
@@ -73,14 +80,15 @@ const Row = styled.div`
     overflow-y: hidden;
 `
 
-/** 内容居中；溢出时 width:max-content + auto margin 仍可完整横向滚动（不会裁掉左侧） */
+/** 内容居中；溢出时 width:max-content + auto margin 仍可完整横向滚动（不会裁掉左侧）。
+ *  padding 是阴影绘制空间——裁剪边界在滚动容器的 padding box，必须由内容侧内衬提供。 */
 const RowInner = styled.div`
     display: flex;
     align-items: center;
     gap: 8px;
     width: max-content;
     margin-inline: auto;
-    padding: 2px;
+    padding: ${PILLS_SHADOW_ROOM}px;
     pointer-events: none;
 `
 
@@ -99,29 +107,58 @@ const Edge = styled.div<{ $side: 'left' | 'right' }>`
     );
 `
 
+/** 运行态底部光晕：2.6s 缓慢开合。只动 opacity，不重绘文字与阴影。 */
+const ambientBreathe = keyframes`
+    0%, 100% { opacity: 0.12; }
+    50% { opacity: 0.52; }
+`
+
 /** 毛玻璃气泡：半透明底 + backdrop blur，消息从后面穿过时保持可读 */
 const Pill = styled.button`
+    position: relative;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     flex: none;
     height: ${PILL_HEIGHT}px;
-    padding: 0 10px;
-    border: 1px solid color-mix(in srgb, var(--ant-color-border-secondary) 80%, transparent);
+    padding: 0 12px;
+    border: 1px solid var(--ant-color-border-secondary);
     border-radius: calc(${PILL_HEIGHT}px / 2);
-    background: color-mix(in srgb, var(--ant-color-bg-container) 70%, transparent);
+    background: color-mix(in srgb, var(--ant-color-bg-container) 86%, transparent);
     backdrop-filter: blur(12px) saturate(1.4);
     -webkit-backdrop-filter: blur(12px) saturate(1.4);
-    box-shadow: 0 1px 4px rgb(0 0 0 / 8%);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 10%);
     color: var(--ant-color-text-secondary);
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1;
     white-space: nowrap;
     cursor: pointer;
     pointer-events: auto;
     transition: background var(--mobi-duration-fast) ease, border-color var(--mobi-duration-fast) ease;
+    /* 运行态：底部一抹运行蓝缓慢开合，像内部有能量在流动 */
+    &::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: radial-gradient(
+            120% 190% at 50% 120%,
+            color-mix(in srgb, ${STATUS_DOT_COLORS.running} 60%, transparent),
+            transparent 62%
+        );
+        opacity: 0;
+        pointer-events: none;
+    }
+    &[data-running]::before {
+        animation: ${ambientBreathe} 2.6s ease-in-out infinite;
+    }
+    /* 文案与图标压在光晕之上 */
+    & > * {
+        position: relative;
+        z-index: 1;
+    }
     &:hover {
-        background: color-mix(in srgb, var(--ant-color-bg-container) 88%, transparent);
+        background: color-mix(in srgb, var(--ant-color-bg-container) 94%, transparent);
     }
     &:focus-visible {
         outline: 2px solid var(--mobi-primary);
@@ -129,6 +166,11 @@ const Pill = styled.button`
     }
     @media (prefers-reduced-motion: reduce) {
         transition: none;
+        /* 停转时保留一层常亮微光作为静态线索 */
+        &[data-running]::before {
+            animation: none;
+            opacity: 0.3;
+        }
     }
 `
 
@@ -138,14 +180,16 @@ const PillIcon = styled.span`
     color: var(--ant-color-text-tertiary);
 `
 
-const PillLabel = styled.span`
-    font-weight: 500;
+/** 运行中气泡的主文案加粗一档，作为“在动”之外的静态线索 */
+const PillLabel = styled.span<{ $strong?: boolean }>`
+    font-weight: ${({ $strong }) => ($strong ? 600 : 500)};
     color: var(--ant-color-text);
     font-variant-numeric: tabular-nums;
 `
 
 const PillExtra = styled.span`
     color: var(--ant-color-text-tertiary);
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
 `
 
@@ -273,6 +317,10 @@ export function ComposerStatusPills({
 
     if (!visible) return null
 
+    // 运行态：任务气泡看活跃任务数；清单气泡看进行中项数（全部完成时恒为 0）
+    const tasksRunning = summary.activeCount > 0
+    const todoRunning = summary.checklist.inProgress > 0
+
     return (
         <Wrap>
             <Box>
@@ -299,9 +347,9 @@ export function ComposerStatusPills({
                                     </DetailScroll>
                                 )}
                             >
-                                <Pill type="button" data-testid="status-pill-tasks">
-                                    <PillIcon aria-hidden="true"><ListChecks size={14} /></PillIcon>
-                                    <PillLabel>
+                                <Pill type="button" data-testid="status-pill-tasks" data-running={tasksRunning || undefined}>
+                                    <PillIcon aria-hidden="true"><ListChecks size={16} /></PillIcon>
+                                    <PillLabel $strong={tasksRunning}>
                                         {summary.activeCount > 0
                                             ? t('chat.statusPills.tasksExecuting', {
                                                 active: summary.activeCount,
@@ -329,13 +377,13 @@ export function ComposerStatusPills({
                                     </DetailScroll>
                                 )}
                             >
-                                <Pill type="button" data-testid="status-pill-todo">
-                                    <PillIcon aria-hidden="true"><ListTodo size={14} /></PillIcon>
+                                <Pill type="button" data-testid="status-pill-todo" data-running={todoRunning || undefined}>
+                                    <PillIcon aria-hidden="true"><ListTodo size={16} /></PillIcon>
                                     <PillLabel>
                                         {summary.checklist.allDone
                                             ? t('chat.statusPills.allDone')
-                                            : t('chat.statusPills.todoPending', {
-                                                pending: summary.checklist.pending,
+                                            : t('chat.statusPills.todoCompleted', {
+                                                completed: summary.checklist.completed,
                                                 total: summary.checklist.total,
                                             })}
                                     </PillLabel>
