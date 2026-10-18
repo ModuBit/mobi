@@ -27,7 +27,7 @@
  */
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
-import { App, Collapse, Empty, Flex, Popover, Spin, Tooltip } from 'antd'
+import { App, Collapse, Empty, Flex, Spin, Tooltip } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { IconButton } from '@/ui/base/interactive/IconButton'
 import { useTranslation } from 'react-i18next'
@@ -36,6 +36,7 @@ import { type DiffTarget, type ReviewFileEntry } from '@mobi/shared'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import { Popover } from '@/ui/base/interactive/popover/Popover'
 import { basename } from '@/core/utils/path'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { copyTextToClipboard } from '@/core/utils/clipboard'
@@ -618,11 +619,11 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                             open={treeOpen}
                             onOpenChange={openTree}
                             trigger="click"
-                            placement="bottomLeft"
-                            /* 窄屏撑满横向 + 高度上限（antd.css 锁几何，quote-list-popover 同款坑：
-                                anchor 对齐在窄屏算不死，必须锁死）；
-                                树内容超宽交给面板内部溢出滚动 */
-                            overlayClassName="review-tree-popover"
+                            side="bottom"
+                            align="start"
+                            /* 面板上限由组件几何接管（碰撞翻转 + 视口上限）；
+                               树内容超宽交给面板内部溢出滚动 */
+                            maxWidth={560}
                             content={
                                 <div style={{ width: '100%', height: 'min(70dvh, 560px)', overflow: 'auto' }}>
                                     <DiffTreePanel

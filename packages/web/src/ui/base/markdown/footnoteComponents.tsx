@@ -16,11 +16,12 @@
 
 import { createContext, useContext, useMemo, type FC } from 'react'
 import { Sources } from '@ant-design/x'
-import { Popover, Tag } from 'antd'
+import { Tag } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { type ComponentProps } from '@ant-design/x-markdown'
 import { getSourceIcon } from '@/ui/base/display/sourceIcon'
 import { type FootnoteItem } from '@/ui/base/markdown/footnotePlugin'
+import { Popover } from '@/ui/base/interactive/popover/Popover'
 
 /** 脚注数据 Context，Markdown 组件注入，FootnoteRef 消费 */
 export const FootnoteContext = createContext<Map<number, FootnoteItem>>(new Map())

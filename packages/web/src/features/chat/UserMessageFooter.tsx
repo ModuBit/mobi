@@ -15,10 +15,10 @@
  */
 
 import { Undo2 } from 'lucide-react'
-import { Popover } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { CopyButton } from '@/ui/shared/CopyButton'
 import { IconButton } from '@/ui/base/interactive/IconButton'
+import { Popover } from '@/ui/base/interactive/popover/Popover'
 import { RewindConfirmView, type RewindDryRunResult } from './RewindConfirmView'
 import { formatMessageTime } from '@/core/utils/timeFormat'
 
@@ -81,7 +81,8 @@ export function UserMessageFooter({
                     <Popover
                         open={rewindActive}
                         trigger="click"
-                        placement="bottomRight"
+                        side="bottom"
+                        align="end"
                         onOpenChange={(next) => {
                             // 受控 Popover：open 由 rewindOpen（dry-run 完成）驱动；
                             // 点击展开交给 child onClick（触发 dry-run），这里只处理关闭。

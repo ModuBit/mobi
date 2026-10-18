@@ -15,10 +15,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { Slider, Popover } from 'antd'
+import { Slider } from 'antd'
 import { motion, useMotionValue, useReducedMotion, useTransform, animate, type Transition } from 'motion/react'
 import { Music, Volume2, VolumeX } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { Popover } from '@/ui/base/interactive/popover/Popover'
 import { basename } from '@/core/utils/path'
 import { formatPlayTime } from '@/core/utils/timeFormat'
 
@@ -142,7 +143,7 @@ const buildWaveform = (count: number, seed: number) => {
  * 音频播放器（voice-note 风格胶囊）：
  * - 波形 seek 条（伪随机振幅、已播 clip 揭示、pointer 拖拽 + 键盘）
  * - 播放/暂停 SVG path morph 动画；播放时 accent 流光沿胶囊边缘流动（reduced-motion 降级）
- * - 时间标签点击循环倍速（1×/1.5×/2×）；音量走 antd Popover（保留原有交互）
+ * - 时间标签点击循环倍速（1×/1.5×/2×）；音量点击打开面板（面板内静音开关 + 滑杆，触屏可达）
  * - 文件名在胶囊上方 caption 行（与 rareui 的差异点：mobi 需要可见文件名与音量控制）
  * - 播放锁与 src 换血契约不变：onPlayingChange 上报 + onError 唯一捕获点（useFileMediaSrc）
  */
@@ -349,11 +350,21 @@ export default function AudioPlayer({ src, filePath, onError, onPlayingChange }:
                 </button>
 
                 <Popover
-                    trigger={['hover']}
-                    placement="bottom"
-                    overlayClassName="audio-vol-popover"
+                    trigger="click"
+                    side="bottom"
+                    align="center"
+                    panelPadding="4px 10px"
                     content={
                         <div className="audio-vol-pop mobi-audio-slider">
+                            {/* 静音开关从 trigger 移入面板：trigger 点击改为打开音量面板（触屏可达） */}
+                            <button
+                                type="button"
+                                onClick={() => setMuted((m) => !m)}
+                                aria-label={t('files.mute')}
+                                style={{ display: 'inline-flex', alignItems: 'center', padding: 0, border: 0, background: 'none', color: 'inherit', cursor: 'pointer' }}
+                            >
+                                {muted || volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
+                            </button>
                             <Slider
                                 min={0}
                                 max={1}
@@ -370,8 +381,7 @@ export default function AudioPlayer({ src, filePath, onError, onPlayingChange }:
                     <button
                         type="button"
                         className="voice-note-vol"
-                        onClick={() => setMuted((m) => !m)}
-                        aria-label={t('files.mute')}
+                        aria-label={t('files.volume')}
                     >
                         {muted || volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
                     </button>

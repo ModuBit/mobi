@@ -15,10 +15,10 @@
  */
 
 import { Split } from 'lucide-react'
-import { Popover } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { CopyButton } from '@/ui/shared/CopyButton'
 import { IconButton } from '@/ui/base/interactive/IconButton'
+import { Popover } from '@/ui/base/interactive/popover/Popover'
 import { ForkConfirmView } from './ForkConfirmView'
 
 export interface AgentTurnActionsProps {
@@ -67,7 +67,8 @@ export function AgentTurnActions({
                     <Popover
                         open={forkActive}
                         trigger="click"
-                        placement="bottomRight"
+                        side="bottom"
+                        align="end"
                         onOpenChange={(next) => {
                             // 受控 Popover：open 由 forkOpen（forkDraft 命中）驱动；
                             // 点击展开交给 child onClick（记 forkDraft），这里只处理关闭。

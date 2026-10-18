@@ -15,13 +15,14 @@
  */
 
 import { useState } from 'react'
-import { theme, Popover, Tooltip } from 'antd'
+import { theme, Tooltip } from 'antd'
 import { keyframes } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import type { ContextUsage } from '@mobi/shared'
 import { formatTokens } from '@/core/lib/formatTokens'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { ContextBreakdown } from '@/ui/shared/ContextBreakdown'
+import { Popover } from '@/ui/base/interactive/popover/Popover'
 
 /** ≥90% 透明度脉冲（「马上要压缩」） */
 const pulse = keyframes`0%,100%{opacity:1}50%{opacity:0.35}`
@@ -129,9 +130,10 @@ export function ContextRing({ usage, size = 20, placement = 'top' }: ContextRing
     return (
         <Popover
             trigger="click"
-            // top + 箭头指向触发中心：topRight 的箭头锚在弹出层角上，与圆环错位
-            placement={placement}
-            arrow={{ pointAtCenter: true }}
+            // 箭头指向触发中心：align="center" 让面板与箭头锚在圆环中心（antd placement 的等价映射）
+            side={placement === 'top' ? 'top' : 'bottom'}
+            align={placement === 'bottomRight' ? 'end' : 'center'}
+            arrow
             open={popoverOpen}
             onOpenChange={(open) => {
                 setPopoverOpen(open)
@@ -139,11 +141,7 @@ export function ContextRing({ usage, size = 20, placement = 'top' }: ContextRing
             }}
             /* 定宽（视口约束）：明细长路径 nowrap 会撑爆固有宽度致横向溢出屏幕，
                固定 width 让 ellipsis 生效（纵向限高滚动在内容层 hide-scrollbar） */
-            styles={{
-                content: {
-                    width: 'min(300px, calc(100vw - 32px))',
-                },
-            }}
+            panelStyle={{ width: 'min(300px, calc(100vw - 32px))' }}
             content={(
                 <div
                     className="hide-scrollbar"
@@ -173,10 +171,14 @@ export function ContextRing({ usage, size = 20, placement = 'top' }: ContextRing
                 </div>
             )}
         >
-            {/* hover=Tooltip 概要 / click=Popover 详情：触发分离；移动端与 Popover 打开期间不弹 Tooltip */}
-            <Tooltip title={tooltipTitle} placement="top" mouseEnterDelay={0.15}>
-                {ring}
-            </Tooltip>
+            {/* hover=Tooltip 概要 / click=Popover 详情：触发分离；移动端与 Popover 打开期间不弹 Tooltip。
+                Popover 需要一个真实 DOM 节点作锚（antd Tooltip 不透传 ref，直接作 child 会让
+                Radix 锚点 ref 抖动成死循环），这里用 inline-flex span 包一层，布局尺寸随圆环 */}
+            <span style={{ display: 'inline-flex' }}>
+                <Tooltip title={tooltipTitle} placement="top" mouseEnterDelay={0.15}>
+                    {ring}
+                </Tooltip>
+            </span>
         </Popover>
     )
 }

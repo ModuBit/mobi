@@ -15,7 +15,7 @@
  */
 
 import { useState } from 'react'
-import { Popover, Space, theme } from 'antd'
+import { Space, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { Bot, Quote, User } from 'lucide-react'
 import styled from '@emotion/styled'
@@ -24,6 +24,7 @@ import { groupUserBlocks, splitUserBodyAndAttachments } from '@/domain/chat/user
 import { quoteAnchorProps } from '@/domain/chat/quoteSelection'
 import { truncatePreview } from '@/core/lib/truncatePreview'
 import { QuoteLocateFn, quoteOffsetsOf } from '@/core/lib/quoteLocate'
+import { Popover } from '@/ui/base/interactive/popover/Popover'
 import {
     QuoteChip,
     QuoteItemComment,
@@ -118,7 +119,7 @@ function UserQuoteChip({ blocks, onLocate }: { blocks: UserQuoteBlock[]; onLocat
     )
 
     return (
-        <Popover content={list} trigger="click" placement="topLeft" overlayClassName="quote-list-popover" open={open} onOpenChange={setOpen}>
+        <Popover content={list} trigger="click" side="top" align="start" maxWidth={452} open={open} onOpenChange={setOpen}>
             <QuoteChip type="button" data-testid="user-quote-chip">
                 <Quote size={12} />
                 {t('composer.quoteCount', { count: blocks.length })}

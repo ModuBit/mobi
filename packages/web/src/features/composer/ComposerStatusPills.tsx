@@ -29,12 +29,12 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Popover } from 'antd'
 import styled from '@emotion/styled'
 import { ListChecks, ListTodo } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { TaskItem, TodoItem } from '@mobi/shared'
 import type { MobiApi } from '@/core/data/api/client'
+import { Popover } from '@/ui/base/interactive/popover/Popover'
 import type { ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
 import { buildChecklist, type ChecklistSummary } from './checklist'
 import { TodoPanel } from './TodoPanel'
@@ -286,7 +286,7 @@ export function ComposerStatusPills({
                         {summary.showTasks && (
                             <Popover
                                 trigger="click"
-                                placement="top"
+                                side="top"
                                 {...bindPopover('tasks')}
                                 content={(
                                     <DetailScroll>
@@ -316,7 +316,7 @@ export function ComposerStatusPills({
                         {summary.showTodo && (
                             <Popover
                                 trigger="click"
-                                placement="top"
+                                side="top"
                                 {...bindPopover('todo')}
                                 content={(
                                     <DetailScroll>

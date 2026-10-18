@@ -16,12 +16,12 @@
 
 import styled from '@emotion/styled'
 import { useMemo } from 'react'
-import { Popover } from 'antd'
 import { Goal, Ellipsis } from 'lucide-react'
 import type { GoalStatus } from '@mobi/shared'
 import type { ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
 import { ClearStateButton } from '@/ui/base/interactive/ClearStateButton'
 import { IconButton } from '@/ui/base/interactive/IconButton'
+import { Popover } from '@/ui/base/interactive/popover/Popover'
 import { formatDuration, formatTokens } from '@/core/lib/metricsFormat'
 import { useTranslation } from 'react-i18next'
 
@@ -183,7 +183,7 @@ export function GoalRow({ goal, sessionId, onClear }: GoalRowProps) {
                 </>
             ) : null}
             <Actions data-goal-actions data-testid="goal-row-actions">
-                <Popover content={detail} trigger="click" overlayStyle={{ maxWidth: 280 }}>
+                <Popover content={detail} trigger="click" maxWidth={280}>
                     <IconButton
                         size={22}
                         icon={<Ellipsis size={16} />}

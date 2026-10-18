@@ -168,8 +168,7 @@ describe('ComposerStatusPills', () => {
         expect(await screen.findByText('待办A')).toBeInTheDocument()
 
         await waitFor(() => {
-            const visible = [...document.querySelectorAll('.ant-popover')]
-                .filter((el) => !el.classList.contains('ant-popover-hidden'))
+            const visible = [...document.querySelectorAll('[data-mobi-popover]')]
             expect(visible).toHaveLength(1)
         })
         useForegroundTasksStore.getState().set('test-session', [])
@@ -188,8 +187,7 @@ describe('ComposerStatusPills', () => {
         // 数据重新出现 → 气泡重现，详情必须保持关闭
         rerender(<PillsHarness api={mockApi} todos={[makeTodo('待办A', 'pending')]} />)
         await waitFor(() => {
-            const visible = [...document.querySelectorAll('.ant-popover')]
-                .filter((el) => !el.classList.contains('ant-popover-hidden') && el.offsetParent !== null)
+            const visible = [...document.querySelectorAll('[data-mobi-popover]')]
             expect(visible).toHaveLength(0)
         })
     })

@@ -15,12 +15,13 @@
  */
 
 import { Fragment, useLayoutEffect, useRef, useState } from 'react'
-import { Popover, theme as antTheme } from 'antd'
+import { theme as antTheme } from 'antd'
 import { IconButton } from '@/ui/base/interactive/IconButton'
 import { DropdownMenu, type DropdownItem } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
 import { Ellipsis, Folders } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import { Popover } from '@/ui/base/interactive/popover/Popover'
 import FileTreeView from '@/features/files/FileTreeView'
 
 export interface FileContentViewHeaderProps {
@@ -175,7 +176,8 @@ export default function FileContentViewHeader({ sessionId, filePath, extraMenuIt
                         open={treeOpen}
                         onOpenChange={onTreeOpenChange}
                         trigger="click"
-                        placement="bottomLeft"
+                        side="bottom"
+                        align="start"
                         content={
                             <div style={{ width: 300, height: 400, overflow: 'auto' }}>
                                 <FileTreeView

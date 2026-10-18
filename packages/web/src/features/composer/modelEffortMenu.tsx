@@ -20,15 +20,16 @@
  * - EffortPopoverContent：Popover 面板内容（级别行，点击回调）；
  * - useModelOptionsWithEffort：把 effort 子菜单入口装配进模型选项的 morph trailing 槽
  *   （morph 对 trailing 已收口 stopPropagation，点入口不会误选模型）；
- *   antd Popover 形态与 effort-popover 样式注入归 CompactHoverSelect 单点。
+ *   自管 Popover 形态与 effort-popover 样式注入归 CompactHoverSelect 单点。
  */
 
 import { useMemo, useState } from 'react'
-import { Popover, theme } from 'antd'
+import { theme } from 'antd'
 import { RightOutlined } from '@ant-design/icons'
 import { EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
 import type { EffortLevel } from '@mobi/shared'
 import type { CompactHoverSelectOption } from '@/features/composer/CompactHoverSelect'
+import { Popover } from '@/ui/base/interactive/popover/Popover'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
 
 const EFFORT_COLORS: Record<EffortLevel, string> = {
@@ -107,12 +108,13 @@ export function useModelOptionsWithEffort(
                 <Popover
                     open={popoverModel === option.value}
                     onOpenChange={(open) => setPopoverModel(open ? option.value : null)}
-                    placement="leftTop"
+                    side="left"
+                    align="start"
                     trigger={hasFinePointer ? 'hover' : 'click'}
-                    mouseEnterDelay={0.1}
-                    mouseLeaveDelay={0.3}
-                    zIndex={1051}
-                    rootClassName="effort-popover"
+                    openDelay={100}
+                    closeDelay={300}
+                    panelClassName="effort-popover"
+                    panelPadding="4px 0"
                     content={
                         <EffortPopoverContent
                             modelValue={option.value}

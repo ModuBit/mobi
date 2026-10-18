@@ -15,11 +15,12 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Button, Menu, Popover } from 'antd'
+import { Button, Menu } from 'antd'
 import { ArrowUpOutlined } from '@ant-design/icons'
 import styled from '@emotion/styled'
 import { keyframes } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
+import { Popover } from '@/ui/base/interactive/popover/Popover'
 import type { StopKind } from '@mobi/shared'
 import { resolveStopPress, LONG_PRESS_MS, type SubmitButtonState } from './submitButtonState'
 
@@ -117,7 +118,7 @@ export interface SubmitButtonProps {
  * 由 state.kind 决定形态：
  * - send → 主色圆形 ↑（禁用态由 state.disabled 控制）
  * - stop → 主色圆形 + 方块 ■（变大）；点按只停本轮（'turn'），长按 500ms 弹三档菜单
- *   （Popover 全编程控制：pointerdown 起 timer，到阈值开菜单；触发长按后抑制释放 click）。
+ *   （Popover manual：pointerdown 起 timer，到阈值开菜单；触发长按后抑制释放 click）。
  *   方块态额外叠加外圈旋转光环传递"运行中"，abortPending 时光环隐藏（Button 自身 loading 转圈）
  *   + 禁用以防重复中止
  *
@@ -160,7 +161,7 @@ function StopButtonState(props: { state: Extract<SubmitButtonState, { kind: 'sto
      *  避免标志常驻吞掉长按释放后的第一次键盘 Enter（触屏长按浏览器可能根本不派发合成 click） */
     const POINTER_CLICK_SWALLOW_WINDOW_MS = 500
 
-    // 三档菜单开合：全编程控制（trigger=[]），pointer 时序自管
+    // 三档菜单开合：全编程控制（manual），pointer 时序自管；点外关闭由 Popover 组件接管
     const [menuOpen, setMenuOpen] = useState(false)
     const wrapRef = useRef<HTMLSpanElement>(null)
     // pointerdown 时刻（null=无按 press 在途）；长按 timer；长按已触发标记（抑制释放 click）
@@ -176,21 +177,6 @@ function StopButtonState(props: { state: Extract<SubmitButtonState, { kind: 'sto
             timerRef.current = null
         }
     }
-
-    // 菜单开着时点外部关闭（trigger=[] 下 antd 不接管，外部点击需自监听；
-    // Popover 内容挂在 portal 不在 wrapRef 内，靠 .ant-popover 祖先识别豁免——
-    // 否则 mousedown 先关菜单，菜单项的 click 就再也收不到）
-    useEffect(() => {
-        if (!menuOpen) return
-        const onDocMouseDown = (e: MouseEvent) => {
-            const target = e.target as HTMLElement
-            if (wrapRef.current?.contains(target)) return
-            if (typeof target.closest === 'function' && target.closest('.ant-popover')) return
-            setMenuOpen(false)
-        }
-        document.addEventListener('mousedown', onDocMouseDown)
-        return () => document.removeEventListener('mousedown', onDocMouseDown)
-    }, [menuOpen])
 
     // 卸载清 timer（防泄漏）
     useEffect(() => clearTimer, [])
@@ -253,9 +239,9 @@ function StopButtonState(props: { state: Extract<SubmitButtonState, { kind: 'sto
             <Popover
                 open={menuOpen}
                 onOpenChange={setMenuOpen}
-                trigger={[]}
-                // spec D8：PC/移动统一 Popover，placement top（antd 自动翻转兜底底部溢出）
-                placement="top"
+                trigger="manual"
+                // spec D8：PC/移动统一 Popover，side top（碰撞翻转兜底底部溢出）
+                side="top"
                 content={<StopKindMenu onPick={pickStopKind} />}
             >
                 <StopWrap $ring={!state.loading} style={{ userSelect: 'none', WebkitUserSelect: 'none' }}>

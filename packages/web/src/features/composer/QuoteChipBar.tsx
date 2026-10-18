@@ -15,13 +15,13 @@
  */
 
 import { memo, useState } from 'react'
-import { Popover } from 'antd'
 import { Quote } from 'lucide-react'
 import { CloseOutlined, EditOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ComposerQuoteRef } from '@/domain/chat/composerSegments'
 import { QUOTE_COMMENT_MAX } from '@mobi/shared'
 import { CommentField } from '@/ui/shared/CommentField'
+import { Popover } from '@/ui/base/interactive/popover/Popover'
 import {
     QuoteChip,
     QuoteItemAction,
@@ -154,7 +154,7 @@ export const QuoteChipBar = memo(function QuoteChipBar({
 
     return (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Popover content={list} trigger="click" placement="topLeft" overlayClassName="quote-list-popover">
+            <Popover content={list} trigger="click" side="top" align="start" maxWidth={452}>
                 <QuoteChip type="button" data-testid="quote-chip">
                     <Quote size={12} />
                     {t('composer.quoteCount', { count: quotes.length })}

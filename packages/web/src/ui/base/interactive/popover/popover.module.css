@@ -1,0 +1,76 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * uiarc popover 上游快照的样式本地化：
+ * ① z-index 由上游写死的 80 改为 --mobi-z-overlay（与 shadcn 弹层同基线，高于 antd 1000 起）
+ * ② 内衬 / 最小宽 / 最大宽改为 CSS 变量，消费方按场景覆盖（antd overlayInnerStyle 的替身）；
+ *    默认值沿用上游 1rem / 12rem / min(22rem, 100vw - 20px)
+ * ③ 箭头颜色对齐面板底色
+ * 其余进出场 / reduced-motion 与上游一致
+ */
+
+/* Press feedback stays in color: Radix measures the trigger when the panel opens, so a scaled trigger would move the panel. */
+.anchor:active:not(:disabled) { transform: none; }
+
+.content {
+  --popover-x: 0px;
+  --popover-y: -5px;
+  box-sizing: border-box;
+  z-index: var(--mobi-z-overlay, 1000);
+  min-width: var(--popover-min-width, 12rem);
+  max-width: min(var(--popover-max-width, 22rem), calc(100vw - 20px));
+  padding: var(--popover-padding, 12px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface-raised);
+  color: var(--foreground);
+  box-shadow: var(--shadow-floating);
+  transform-origin: var(--radix-popover-content-transform-origin);
+  transition: opacity var(--duration-fast) var(--ease-enter), transform var(--duration-spring) var(--ease-spring);
+}
+
+/* The panel starts a few pixels toward its trigger and settles on a spring; it leaves faster than it arrives.
+ Transitions instead of keyframes, so a close that interrupts the open, or a reopen during the close, reverses from where the panel is. */
+.content[data-side="top"] { --popover-y: 5px; }
+.content[data-side="left"] { --popover-x: 5px; --popover-y: 0px; }
+.content[data-side="right"] { --popover-x: -5px; --popover-y: 0px; }
+
+@starting-style {
+  .content[data-state="open"] { opacity: 0; transform: translate(var(--popover-x), var(--popover-y)) scale(.97); }
+}
+
+/* Radix unmounts when the exit animation ends, so a no-op keyframe times the exit while the transition does the visual work. */
+.content[data-state="closed"] {
+  opacity: 0;
+  transform: translate(calc(var(--popover-x) * .5), calc(var(--popover-y) * .5)) scale(.98);
+  transition: opacity var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
+  animation: popover-exit var(--duration-fast) linear both;
+  pointer-events: none;
+}
+
+.content:focus { outline: none; }
+
+.arrow {
+  fill: var(--surface-raised);
+  filter: drop-shadow(0 1px 0 var(--border));
+}
+
+@keyframes popover-exit { to { --popover-exit: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .content, .content[data-state="closed"] { transform: none; transition: opacity var(--duration-instant) var(--ease-standard); }
+}

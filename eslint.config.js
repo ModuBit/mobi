@@ -119,11 +119,18 @@ module.exports = tseslint.config(
     ignores: ['packages/web/src/features/composer/SubmitButton.tsx'],
     rules: {
       'no-restricted-imports': ['error', {
-        paths: [{
-          name: 'antd',
-          importNames: ['Button'],
-          message: 'antd Button 已整体迁 uiarc（@/ui/base/interactive/button/Button 等），禁止新增（映射表见 .scratch/button-migration/spec.md）',
-        }],
+        paths: [
+          {
+            name: 'antd',
+            importNames: ['Button'],
+            message: 'antd Button 已整体迁 uiarc（@/ui/base/interactive/button/Button 等），禁止新增（映射表见 .scratch/button-migration/spec.md）',
+          },
+          {
+            name: 'antd',
+            importNames: ['Popover'],
+            message: 'antd Popover 已迁自管件（@/ui/base/interactive/popover/Popover），禁止新增（映射表见 .scratch/popover-migration/spec.md）',
+          },
+        ],
       }],
     },
   },

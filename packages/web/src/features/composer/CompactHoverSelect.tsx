@@ -22,7 +22,7 @@
  *    交 morph auto 决策（展开内容恒在视窗内）、关闭 >8 项自动搜索；
  * ③ 满宽变体（NewSessionPage 698493a5）——仅移动端生效：panelWidth 顶到上限
  *    即满宽减 2rem 边距（PC 传了也无效果，防面板撑出屏幕）；
- * ④ effort-popover 全局样式注入（antd Popover 形态归此单点，不随调用方复制）。
+ * ④ effort-popover 全局样式注入（浮层面板形态归此单点，不随调用方复制）。
  */
 
 import { useEffect } from 'react'
@@ -61,15 +61,13 @@ export interface CompactHoverSelectProps {
     mobileFullWidth?: boolean
 }
 
-// effort 子菜单的 antd Popover 样式注入（单点）：收窄内衬、去箭头、行 hover 高亮
+// effort 子菜单的面板样式注入（单点）：行 hover 高亮（内衬/箭头由 Popover 组件 props 承担）
 let effortStyleInjected = false
 function useEffortPopoverStyle() {
     useEffect(() => {
         if (effortStyleInjected || typeof document === 'undefined') return
         const style = document.createElement('style')
         style.textContent = `
-.effort-popover .ant-popover-container { padding: 4px 0 !important; }
-.effort-popover .ant-popover-arrow { display: none !important; }
 .effort-popover .effort-item:hover { background: var(--ant-color-bg-text-hover) !important; }
 .effort-popover .effort-arrow { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; border-radius: var(--radius-square); }
 .effort-popover .effort-arrow:hover { background: var(--ant-color-bg-text-hover); }

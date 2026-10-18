@@ -17,8 +17,9 @@
 import { useEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
-import { Popover, Tooltip, Input, theme as antTheme } from 'antd'
+import { Tooltip, Input, theme as antTheme } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
+import { Popover } from '@/ui/base/interactive/popover/Popover'
 import { Bold, Italic, Strikethrough, Code, Link as LinkIcon, Link2, Check, ExternalLink, Unlink, Trash2, Image as ImageIcon } from 'lucide-react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
@@ -250,7 +251,7 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
                     if (o) setLinkUrl((editor.getAttributes('link').href as string | undefined) ?? '')
                 }}
                 trigger="click"
-                placement="bottom"
+                side="bottom"
                 content={
                     <div style={{ display: 'flex', gap: 4 }}>
                         <Input

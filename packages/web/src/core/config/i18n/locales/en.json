@@ -555,6 +555,7 @@
     "wordWrap": "Word wrap",
     "noWrap": "No wrap",
     "mute": "Mute",
+    "volume": "Volume",
     "fitWidth": "Fit width",
     "actualSize": "100%",
     "size": "Size",

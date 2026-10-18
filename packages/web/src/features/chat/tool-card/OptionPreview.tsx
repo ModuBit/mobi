@@ -16,11 +16,12 @@
 
 import type { ReactNode } from 'react'
 import { memo, useMemo } from 'react'
-import { Popover, theme as antTheme } from 'antd'
+import { theme as antTheme } from 'antd'
 import { Eye } from 'lucide-react'
 import styled from '@emotion/styled'
 import DOMPurify from 'dompurify'
 import { Markdown } from '@/ui/base/markdown/Markdown'
+import { Popover } from '@/ui/base/interactive/popover/Popover'
 
 /** markdown 块级语法特征（标题/列表/引用/代码围栏）；命中则即便被 HTML 元素包裹也按 markdown 处理 */
 const MARKDOWN_BLOCK_SYNTAX = /(^|\n)\s*(#{1,6}\s|[-*+]\s|>\s|```)/
@@ -107,13 +108,6 @@ export const OptionPreview = memo(function OptionPreview({ preview, children }: 
     const { token } = antTheme.useToken()
     const content = <PreviewContent content={preview} />
 
-    const overlayInnerStyle = useMemo<React.CSSProperties>(() => ({
-        background: token.colorBgElevated,
-        borderRadius: token.borderRadiusLG,
-        border: `1px solid ${token.colorBorderSecondary}`,
-        boxShadow: token.boxShadow,
-    }), [token.colorBgElevated, token.borderRadiusLG, token.colorBorderSecondary, token.boxShadow])
-
     return (
         <div style={{ display: 'flex', width: '100%', alignItems: 'flex-start' }}>
             <div style={{ minWidth: 0, flex: 1 }}>{children}</div>
@@ -124,14 +118,12 @@ export const OptionPreview = memo(function OptionPreview({ preview, children }: 
             >
                 <Popover
                     trigger={['hover', 'click']}
-                    placement="left"
-                    mouseEnterDelay={0.15}
-                    mouseLeaveDelay={0.1}
-                    overlayStyle={{ maxWidth: 360 }}
-                    overlayInnerStyle={overlayInnerStyle}
-                    styles={{ container: { padding: 0 } }}
+                    side="left"
+                    openDelay={150}
+                    closeDelay={100}
+                    maxWidth={360}
+                    panelPadding={0}
                     content={content}
-                    arrow={false}
                 >
                     <Eye size={14} />
                 </Popover>
