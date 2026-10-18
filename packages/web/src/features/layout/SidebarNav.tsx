@@ -18,20 +18,24 @@ import { useLocation, useNavigate } from '@tanstack/react-router'
 import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
+import { GlideLayer } from '@/ui/base/motion/GlideLayer'
+import { useGlideHighlight } from '@/ui/base/motion/useGlideHighlight'
 import { mainNavItems, navPathMap, getNavActiveKey } from './navConfig'
 
 const { useToken } = antTheme
 
-// 导航列表容器
+// 导航列表容器（相对定位供滑移底色层定位）
 const NavList = styled.div`
+    position: relative;
     display: flex;
     flex-direction: column;
     padding: 8px;
     gap: 2px;
 `
 
-// 单个导航项
+// 单个导航项（底色由滑移层绘制，行只负责定位与文字色）
 const NavItem = styled.button<{ $active: boolean; $disabled?: boolean; $token: ReturnType<typeof useToken>['token'] }>`
+    position: relative;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -39,7 +43,7 @@ const NavItem = styled.button<{ $active: boolean; $disabled?: boolean; $token: R
     height: 36px;
     padding: 0 12px;
     border: none;
-    background: ${props => props.$active ? props.$token.colorPrimaryBg : 'transparent'};
+    background: transparent;
     color: ${props => {
         if (props.$disabled) return props.$token.colorTextQuaternary
         return props.$active ? props.$token.colorPrimary : props.$token.colorTextSecondary
@@ -48,14 +52,10 @@ const NavItem = styled.button<{ $active: boolean; $disabled?: boolean; $token: R
     cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
     font-size: 13px;
     line-height: 1;
-    transition: all 0.2s;
+    transition: color 0.2s;
 
     &:hover {
-        ${props => !props.$disabled && `
-            // hover 淡档；$active 选中态在下方另有 colorPrimaryBg，不与 hover 撞色
-            background: ${props.$token.colorBgTextHover};
-            color: ${props.$token.colorPrimary};
-        `}
+        ${props => !props.$disabled && `color: ${props.$token.colorPrimary};`}
     }
 `
 
@@ -78,20 +78,35 @@ export function SidebarNav() {
         }
     }
 
+    // 悬停 / 激活两档滑移底色（与会话列表同一套弹簧手感）
+    const { containerRef, hoverEl, activeEl, onPointerOver, onPointerLeave } =
+        useGlideHighlight<HTMLDivElement>({
+            rowSelector: '[data-glide-row]',
+            activeSelector: '[data-glide-active="true"]',
+            activeKey: location.pathname,
+        })
+
     return (
-        <NavList>
-            {mainNavItems.map((item) => (
-                <NavItem
-                    key={item.key}
-                    $active={getNavActiveKey(location.pathname, item.key)}
-                    $disabled={item.disabled}
-                    $token={token}
-                    onClick={() => handleClick(item.key, item.disabled)}
-                >
-                    <item.icon size={18} />
-                    <span>{t(item.labelKey)}</span>
-                </NavItem>
-            ))}
+        <NavList ref={containerRef} onPointerOver={onPointerOver} onPointerLeave={onPointerLeave}>
+            <GlideLayer target={hoverEl} $background={token.colorBgTextHover} />
+            <GlideLayer target={activeEl} $background={token.colorPrimaryBg} />
+            {mainNavItems.map((item) => {
+                const active = getNavActiveKey(location.pathname, item.key)
+                return (
+                    <NavItem
+                        key={item.key}
+                        $active={active}
+                        $disabled={item.disabled}
+                        $token={token}
+                        data-glide-row={item.disabled ? undefined : ''}
+                        data-glide-active={active && !item.disabled ? 'true' : undefined}
+                        onClick={() => handleClick(item.key, item.disabled)}
+                    >
+                        <item.icon size={18} />
+                        <span>{t(item.labelKey)}</span>
+                    </NavItem>
+                )
+            })}
         </NavList>
     )
 }

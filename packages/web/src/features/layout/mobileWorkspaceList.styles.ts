@@ -129,26 +129,27 @@ export const SessionListWrapper = styled.div<{ $expanded: boolean }>`
 `
 
 export const SessionListInner = styled.div`
+    position: relative;
     overflow: hidden;
 `
 
-// 单个会话项
+// 单个会话项（激活底色由列表滑移层绘制，行只保留按压反馈）
 export const SessionItem = styled.div<{ $active: boolean; $token: SidebarToken }>`
+    position: relative;
     display: flex;
     align-items: center;
     gap: 10px;
     min-height: 44px;
     padding: 0 12px 0 50px;
     cursor: pointer;
-    background: ${props => props.$active ? props.$token.colorPrimaryBg : 'transparent'};
-    transition: background 0.15s;
+    background: transparent;
     /* 长按交互：禁止选中文本与系统长按菜单 */
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
 
     &:active {
-        background: ${props => props.$active ? props.$token.colorPrimaryBg : props.$token.colorBgTextHover};
+        background: ${props => props.$active ? 'transparent' : props.$token.colorBgTextHover};
     }
 `
 

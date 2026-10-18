@@ -25,9 +25,10 @@ import type { Workspace } from '@/core/data/api/types'
 import { useMenuNavigate } from './useMenuNavigate'
 import {
     GroupHeader, FolderIcon, GroupName, NewSessionBtn,
-    SessionListWrapper, SessionListInner, EmptyRow,
+    SessionListWrapper, EmptyRow,
 } from './mobileWorkspaceList.styles'
 import { MobileSessionItem } from './MobileSessionItem'
+import { MobileSessionList } from './MobileSessionList'
 import { SessionSkeletonRows } from './SessionSkeletonRows'
 import { SessionListFooter, getSessionListDisplayState } from './SessionListFooter'
 
@@ -85,7 +86,7 @@ export function MobileWorkspaceGroup({
                 </NewSessionBtn>
             </GroupHeader>
             <SessionListWrapper $expanded={wrapperExpanded}>
-                <SessionListInner>
+                <MobileSessionList activeSessionId={activeSessionId}>
                     {showSkeleton ? (
                         <SessionSkeletonRows variant="mobile" rows={3} />
                     ) : showEmpty ? (
@@ -110,7 +111,7 @@ export function MobileWorkspaceGroup({
                             onCollapse={collapse}
                         />
                     )}
-                </SessionListInner>
+                </MobileSessionList>
             </SessionListWrapper>
         </div>
     )

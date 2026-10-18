@@ -15,6 +15,7 @@
  */
 
 import type { Transition } from 'motion/react'
+import { motionTokens } from './motionTokens'
 
 /**
  * 全局 spring 动效预设——唯一来源，数值与 packages/web/DESIGN.md frontmatter 一一对应。
@@ -37,4 +38,10 @@ export const spring = {
     momentum: { type: 'spring', duration: 0.3, bounce: 0 } satisfies Transition,
     /** 大面积元素（Modal 级）位移 */
     gentle: { type: 'spring', duration: 0.5, bounce: 0 } satisfies Transition,
+    /**
+     * 滑移高亮（列表 / 树 / 菜单的统一手感）：悬停与选中的底色在行间滑动。
+     * 取 uiarc 基础件 motionTokens.spring.snappy——这是 select / dropdown-menu
+     * 真机调过的一档，直接用同一值，不在本文件重抄一份数字。
+     */
+    glide: motionTokens.spring.snappy,
 } as const

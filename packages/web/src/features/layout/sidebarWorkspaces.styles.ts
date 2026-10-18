@@ -177,6 +177,7 @@ export const SessionListInner = styled.div`
 
 // 会话列表
 export const SessionListContainer = styled.div`
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 1px;
@@ -185,9 +186,9 @@ export const SessionListContainer = styled.div`
 
 // 单个会话项
 export const SessionItem = styled.div<{
-    $active: boolean
     $token: SidebarToken
 }>`
+    position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -195,18 +196,13 @@ export const SessionItem = styled.div<{
     height: 30px;
     padding: 0 8px 0 26px;
     border: none;
-    background: ${props => props.$active ? props.$token.colorPrimaryBg : 'transparent'};
+    background: transparent;
     color: ${props => props.$token.colorText};
     border-radius: var(--radius-icon);
     cursor: pointer;
     font-size: 12px;
     line-height: 1;
     text-align: left;
-    transition: background 0.15s;
-
-    &:hover {
-        background: ${props => props.$active ? props.$token.colorPrimaryBg : props.$token.colorBgTextHover};
-    }
 
     /* 操作按钮组常驻：菜单锚点必须一直待在布局里。popper 每帧按触发器的矩形定位，锚点一旦
        塌成 display:none（rect 归零到视口原点），退场中的菜单会被甩到左上角闪一下。antd 侧的

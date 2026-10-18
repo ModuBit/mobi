@@ -23,9 +23,10 @@ import { useRecentSessions } from '@/core/data/hooks/queries/useRecentSessions'
 import { useMenuNavigate } from './useMenuNavigate'
 import {
     SectionHeader, SectionTitleText, SectionChevron,
-    SessionListWrapper, SessionListInner, EmptyRow,
+    SessionListWrapper, EmptyRow,
 } from './mobileWorkspaceList.styles'
 import { MobileSessionItem } from './MobileSessionItem'
+import { MobileSessionList } from './MobileSessionList'
 import { SessionSkeletonRows } from './SessionSkeletonRows'
 import { SessionListFooter, getSessionListDisplayState } from './SessionListFooter'
 
@@ -78,7 +79,7 @@ export function MobileRecentGroup({ activeSessionId, onSessionAction }: MobileRe
                 <SectionTitleText>{t('nav.recent')}</SectionTitleText>
             </SectionHeader>
             <SessionListWrapper $expanded={wrapperExpanded}>
-                <SessionListInner>
+                <MobileSessionList activeSessionId={activeSessionId}>
                     {showSkeleton ? (
                         <SessionSkeletonRows variant="mobile" rows={2} />
                     ) : showEmpty ? (
@@ -103,7 +104,7 @@ export function MobileRecentGroup({ activeSessionId, onSessionAction }: MobileRe
                             onCollapse={collapse}
                         />
                     )}
-                </SessionListInner>
+                </MobileSessionList>
             </SessionListWrapper>
         </div>
     )

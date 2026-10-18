@@ -29,6 +29,8 @@ import {
 import { useMobiApi } from '@/core/data/api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/core/lib/queryKeys'
+import { GlideLayer } from '@/ui/base/motion/GlideLayer'
+import { useGlideHighlight } from '@/ui/base/motion/useGlideHighlight'
 
 const { useToken } = antTheme
 const { TextArea } = Input
@@ -59,6 +61,14 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
     const [stateByQuestion, setStateByQuestion] = useState<Record<string, QuestionState>>({})
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+
+    // 选项列表的悬停 / 选中滑移底色（与侧栏列表同一手感）；纯文本题不挂容器，层自然隐藏
+    const { containerRef, hoverEl, activeEl, onPointerOver, onPointerLeave } =
+        useGlideHighlight<HTMLDivElement>({
+            rowSelector: '[data-glide-row]',
+            activeSelector: '[data-glide-active="true"]',
+            activeKey: [step, stateByQuestion],
+        })
 
     useEffect(() => {
         setStep(0)
@@ -179,7 +189,15 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
                         />
                     ) : (
                         <>
-                            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <div
+                                ref={containerRef}
+                                onPointerOver={onPointerOver}
+                                onPointerLeave={onPointerLeave}
+                                style={{ marginTop: 12, position: 'relative', display: 'flex', flexDirection: 'column', gap: 4 }}
+                            >
+                                {/* 悬停 / 选中底色：两块滑移块，替代逐行静态底色 */}
+                                <GlideLayer target={hoverEl} $background={token.colorBgTextHover} $radius="6px" />
+                                <GlideLayer target={activeEl} $background={token.colorBgTextHover} $radius="6px" />
                                 {currentQuestion.options.map((opt, optIdx) => {
                                     const isSelected = currentState?.selected === opt.label
                                     return (
@@ -188,8 +206,11 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
                                             type="button"
                                             onClick={() => selectOption(currentQuestion.id, opt.label)}
                                             disabled={props.disabled || loading}
+                                            data-glide-row={props.disabled || loading ? undefined : ''}
+                                            data-glide-active={isSelected ? 'true' : undefined}
                                             style={{
                                                 display: 'flex',
+                                                position: 'relative',
                                                 width: '100%',
                                                 alignItems: 'flex-start',
                                                 gap: 8,
@@ -198,7 +219,7 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
                                                 textAlign: 'left',
                                                 fontSize: 14,
                                                 border: 'none',
-                                                background: isSelected ? token.colorBgTextHover : 'transparent',
+                                                background: 'transparent',
                                                 cursor: props.disabled || loading ? 'not-allowed' : 'pointer',
                                                 opacity: props.disabled || loading ? 0.5 : 1
                                             }}

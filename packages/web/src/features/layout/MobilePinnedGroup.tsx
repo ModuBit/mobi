@@ -23,9 +23,10 @@ import { usePinnedSessions } from '@/core/data/hooks/queries/usePinnedSessions'
 import { useMenuNavigate } from './useMenuNavigate'
 import {
     SectionHeader, SectionTitleText, SectionChevron,
-    SessionListWrapper, SessionListInner, EmptyRow,
+    SessionListWrapper, EmptyRow,
 } from './mobileWorkspaceList.styles'
 import { MobileSessionItem } from './MobileSessionItem'
+import { MobileSessionList } from './MobileSessionList'
 import { SessionSkeletonRows } from './SessionSkeletonRows'
 import { SessionListFooter, getSessionListDisplayState } from './SessionListFooter'
 
@@ -79,7 +80,7 @@ export function MobilePinnedGroup({ activeSessionId, onSessionAction }: MobilePi
                 <Pin size={14} style={{ color: token.colorTextQuaternary, flexShrink: 0 }} />
             </SectionHeader>
             <SessionListWrapper $expanded={wrapperExpanded}>
-                <SessionListInner>
+                <MobileSessionList activeSessionId={activeSessionId}>
                     {showSkeleton ? (
                         <SessionSkeletonRows variant="mobile" rows={2} />
                     ) : showEmpty ? (
@@ -104,7 +105,7 @@ export function MobilePinnedGroup({ activeSessionId, onSessionAction }: MobilePi
                             onCollapse={collapse}
                         />
                     )}
-                </SessionListInner>
+                </MobileSessionList>
             </SessionListWrapper>
         </div>
     )

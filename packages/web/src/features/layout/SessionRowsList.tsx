@@ -18,6 +18,8 @@ import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 import type { DropdownItem } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
+import { GlideLayer } from '@/ui/base/motion/GlideLayer'
+import { useGlideHighlight } from '@/ui/base/motion/useGlideHighlight'
 import { SessionListContainer, EmptyRow } from './sidebarWorkspaces.styles'
 import { SessionRow } from './SessionRow'
 import { SessionSkeletonRows } from './SessionSkeletonRows'
@@ -87,8 +89,22 @@ export function SessionRowsList({
         isLoadingInitial, sessionCount: sessions.length, showCollapse, canShowMore, isLoadingMore,
     })
 
+    /** 滑移底色的两个跟随目标：悬停行（指针追踪）与激活行（每次渲染后从 DOM 取） */
+    const { containerRef, hoverEl, activeEl, onPointerOver, onPointerLeave } =
+        useGlideHighlight<HTMLDivElement>({
+            rowSelector: '[data-session-row]',
+            activeSelector: '[data-session-active="true"]',
+            activeKey: [activeSessionId, visibleSessions],
+        })
+
     return (
-        <SessionListContainer>
+        <SessionListContainer
+            ref={containerRef}
+            onPointerOver={onPointerOver}
+            onPointerLeave={onPointerLeave}
+        >
+            <GlideLayer target={hoverEl} $background={token.colorBgTextHover} />
+            <GlideLayer target={activeEl} $background={token.colorPrimaryBg} />
             {showSkeleton ? (
                 <SessionSkeletonRows variant="desktop" rows={3} />
             ) : showEmpty ? (

@@ -14,13 +14,15 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import styled from '@emotion/styled'
+import { motion, useReducedMotion, type Transition } from 'motion/react'
 import { Tree, Empty, Skeleton, Input, type TreeProps } from 'antd'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { IconButton } from '@/ui/base/interactive/IconButton'
+import { spring } from '@/ui/base/motion/presets'
 import type { DataNode } from 'antd/es/tree'
-import { FolderOpen, FolderClosed, Search, Eye, EyeOff, RotateCw, TriangleAlert } from 'lucide-react'
+import { ChevronRight, FolderOpen, FolderClosed, Search, Eye, EyeOff, RotateCw, TriangleAlert } from 'lucide-react'
 import { FileTypeBadge } from '@/ui/base/display/FileTypeBadge'
 import { LoadingOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
@@ -48,6 +50,105 @@ function findDataNode(nodes: DataNode[], key: string): DataNode | null {
     return null
 }
 
+/** 展开 chevron：弹簧旋转 */
+const SwitcherChevron = styled(motion.span)`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+`
+
+function TreeSwitcher({ expanded, className }: { expanded?: boolean; className?: string }) {
+    const reduced = useReducedMotion()
+    return (
+        <SwitcherChevron
+            className={className}
+            initial={false}
+            animate={{ rotate: expanded ? 90 : 0 }}
+            transition={reduced ? { duration: 0 } : (spring.ui as Transition)}
+        >
+            <ChevronRight size={12} strokeWidth={2} />
+        </SwitcherChevron>
+    )
+}
+
+/** 选中滑移块：同一个 layoutId 在行间滑动（共享布局动画），不是各行的静态底色 */
+const SelectionFill = styled(motion.span)`
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: var(--radius-control-sm);
+    background: var(--mobi-selected);
+    pointer-events: none;
+`
+
+function TreeSelectionFill({ layoutId }: { layoutId: string }) {
+    const reduced = useReducedMotion()
+    return (
+        <SelectionFill
+            aria-hidden="true"
+            layoutId={layoutId}
+            transition={reduced ? { duration: 0 } : (spring.glide as Transition)}
+        />
+    )
+}
+
+/** 悬停滑移块的几何：相对 TreeWrap 的 padding box，w/h 取标题内层尺寸 */
+interface HoverRect {
+    x: number
+    y: number
+    w: number
+    h: number
+    /** false 时保留末次几何只淡出——避免淡出途中往左上角飞 */
+    visible: boolean
+}
+
+/**
+ * 悬停滑移块：一块底色在行间滑移（与选中块同一套观感），不是每行各自闪一下。
+ *
+ * 为什么放在 TreeWrap 顶层而不是塞进每行标题：行内渲染需要一个 hoverKey state，
+ * 每次划过新行都要重建整棵 treeData（含全部 Tooltip JSX）；大目录下划过的代价
+ * 与展开规模成正比。独立覆盖层只读一次几何，树本身零重渲染。
+ */
+const HoverFill = styled(motion.span)`
+    position: absolute;
+    top: 0;
+    left: 0;
+    /* -1 + TreeWrap 的 isolation：落在树内容之下、TreeWrap 背景之上 */
+    z-index: -1;
+    border-radius: var(--radius-control-sm);
+    background: var(--mobi-hover);
+    pointer-events: none;
+`
+
+function TreeHoverFill({ rect }: { rect: HoverRect }) {
+    const reduced = useReducedMotion()
+    return (
+        <HoverFill
+            aria-hidden="true"
+            className="tree-hover-fill"
+            initial={false}
+            animate={{
+                x: rect.x,
+                y: rect.y,
+                width: rect.w,
+                height: rect.h,
+                opacity: rect.visible ? 1 : 0,
+            }}
+            transition={
+                reduced
+                    ? { duration: 0 }
+                    : {
+                          x: spring.glide as Transition,
+                          y: spring.glide as Transition,
+                          width: spring.glide as Transition,
+                          height: spring.glide as Transition,
+                          opacity: { duration: 0.12 },
+                      }
+            }
+        />
+    )
+}
+
 /**
  * 包裹层。antd v6 的 Tree 不会把 style/className 透传到 .ant-tree 根元素，
  * 故 inline style 无效；这里用 && 提优先级直接覆盖 .ant-tree 默认的
@@ -55,6 +156,9 @@ function findDataNode(nodes: DataNode[], key: string): DataNode | null {
  */
 const TreeWrap = styled.div`
     height: 100%;
+    position: relative;
+    /* 自建层叠上下文：悬停滑移块的 z-index:-1 落在树内容之下，又不至于掉到宿主后面 */
+    isolation: isolate;
     display: flex;
     flex-direction: column;
     padding: 8px;
@@ -84,10 +188,45 @@ const TreeWrap = styled.div`
         align-items: center;
         min-width: 0;
     }
+    /* 选中底色由自绘滑移块承担（见 TreeSelectionFill），antd 的静态底色让位 */
+    && .ant-tree-node-content-wrapper.ant-tree-node-selected {
+        background: transparent;
+    }
+    /* 悬停底色同理由 TreeHoverFill 覆盖层承担：逐行自带的悬停底色会和滑移块叠成双底色 */
+    && .ant-tree-node-content-wrapper:hover {
+        background: transparent;
+    }
     && .ant-tree-title {
+        position: relative;
         flex: 1 1 auto;
         min-width: 0;
         white-space: nowrap;
+    }
+    /* 标题内的滑移块定位上下文：块随标签文字宽度（树本身按内容撑宽走横向滚动，
+       title 的盒子可能被 flex 压窄而文字溢出，inset:0 会只剩一条窄条） */
+    .tree-title-inner {
+        position: relative;
+        display: flex;
+        align-items: center;
+        width: max-content;
+        padding: 0 4px;
+    }
+    .tree-title-label {
+        position: relative;
+        z-index: 1;
+        min-width: 0;
+    }
+    /* 展开图标旋转由自绘 motion 承担，压掉 antd 对 svg 的静态 -90° 旋转与过渡 */
+    && .ant-tree-switcher-icon svg {
+        transform: none !important;
+        transition: none !important;
+    }
+    /* switcher 的悬停圆点是绝对定位的 ::before，按绘制顺序会盖住处于常规流的图标；
+       antd 的 colorBgTextHover 在这里是**不透明**的 --mobi-hover 档，图标会被整个盖掉。
+       把图标提到定位层（z-index 1）压在圆点之上。 */
+    && .ant-tree-switcher-icon {
+        position: relative;
+        z-index: 1;
     }
     /* 横向滚动：宽度取「数据全量估算」与「已渲染行 max-content」的较大者——
        虚拟滚动下 max-content 只反映可视行（宽度随滚动跳变、未渲染长名滚不到），
@@ -237,6 +376,42 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
     const queryClient = useQueryClient()
     /** 受控选中键：仅 file 选中（folder 点击只展开，不选中不高亮） */
     const [selectedKeys, setSelectedKeys] = useState<string[]>([])
+    /** 选中滑移块的 layoutId（按实例隔离，避免多棵树互相串位） */
+    const selectionLayoutId = `file-tree-selection-${useId()}`
+
+    /** 悬停滑移块：几何取自当前悬停行的标题内层（与选中块同宽同高） */
+    const [hoverRect, setHoverRect] = useState<HoverRect>({ x: 0, y: 0, w: 0, h: 0, visible: false })
+    const wrapRef = useRef<HTMLDivElement>(null)
+    const hoverTitleRef = useRef<HTMLElement | null>(null)
+    const hideHover = useCallback(() => {
+        hoverTitleRef.current = null
+        setHoverRect((prev) => (prev.visible ? { ...prev, visible: false } : prev))
+    }, [])
+    const handlePointerOver = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+        const el = e.target as HTMLElement
+        const node = el.closest('.ant-tree-treenode')
+        // 划过行内任意位置（图标 / switcher / 文字）都高亮该行，几何统一取标题内层
+        const title = node?.querySelector<HTMLElement>('.tree-title-inner') ?? null
+        if (!title) {
+            hideHover()
+            return
+        }
+        if (title === hoverTitleRef.current) return
+        const wrap = wrapRef.current
+        if (!wrap) return
+        hoverTitleRef.current = title
+        const r = title.getBoundingClientRect()
+        const w = wrap.getBoundingClientRect()
+        setHoverRect({ x: r.left - w.left, y: r.top - w.top, w: r.width, h: r.height, visible: true })
+    }, [hideHover])
+    // 滚动时行位置整体移动，覆盖层几何随之失效：先淡出，下一次指针移动会重新定位
+    // （scroll 不冒泡，必须捕获阶段监听才能收到虚拟列表内部滚动容器的滚动）
+    useEffect(() => {
+        const el = wrapRef.current
+        if (!el) return
+        el.addEventListener('scroll', hideHover, true)
+        return () => el.removeEventListener('scroll', hideHover, true)
+    }, [hideHover])
     /**
      * 受控展开键（树模式）：revealPath 定位与用户点按共用一份状态。
      * 树模式必须受控——程序化展开（reveal）只能经由此通道，antd 无非受控的外部展开入口。
@@ -401,23 +576,28 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
                 const node: DataNode = {
                     key: f.path,
                     title: (
-                        <AppTooltip
-                            // 稍长延迟：避免在树里快速划过时频繁弹出
-                            mouseEnterDelay={0.5}
-                            title={
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                    <span style={{ wordBreak: 'break-all' }}>{f.name}</span>
-                                    {f.type === 'file' && f.size !== undefined && (
-                                        <span>{t('files.size')}: {formatFileSize(f.size)}</span>
-                                    )}
-                                    {f.modified !== undefined && (
-                                        <span>{t('files.modified')}: {formatRelativeTime(f.modified, t)}</span>
-                                    )}
-                                </div>
-                            }
-                        >
-                            <span>{f.name}</span>
-                        </AppTooltip>
+                        <span className="tree-title-inner">
+                            {selectedKeys.includes(f.path) && <TreeSelectionFill layoutId={selectionLayoutId} />}
+                            <span className="tree-title-label">
+                                <AppTooltip
+                                    // 稍长延迟：避免在树里快速划过时频繁弹出
+                                    mouseEnterDelay={0.5}
+                                    title={
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                            <span style={{ wordBreak: 'break-all' }}>{f.name}</span>
+                                            {f.type === 'file' && f.size !== undefined && (
+                                                <span>{t('files.size')}: {formatFileSize(f.size)}</span>
+                                            )}
+                                            {f.modified !== undefined && (
+                                                <span>{t('files.modified')}: {formatRelativeTime(f.modified, t)}</span>
+                                            )}
+                                        </div>
+                                    }
+                                >
+                                    <span>{f.name}</span>
+                                </AppTooltip>
+                            </span>
+                        </span>
                     ),
                     icon: () => {
                         // folder：两个图标 + CSS 按 aria-expanded 显隐；loading 指示交给 antd 内置 switcher
@@ -453,7 +633,7 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
                     }
                 }
                 return node
-            }), [dirData, showHidden, truncationNode])
+            }), [dirData, showHidden, truncationNode, selectedKeys, selectionLayoutId])
 
     const treeData = useMemo(() => {
         const listing = rootListing
@@ -589,6 +769,7 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
             onSelect={onSelect}
             virtual={treeHeight > 0}
             height={treeHeight > 0 ? treeHeight : undefined}
+            switcherIcon={(props) => <TreeSwitcher expanded={props.expanded} />}
             // 树模式与搜索模式都传受控 expandedKeys：树模式为 reveal 定位通道，
             // 搜索模式保持原全展开语义
             {...(opts.expandedKeys ? { expandedKeys: opts.expandedKeys } : {})}
@@ -603,7 +784,8 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
         : (rootError && rootListing ? t('files.refreshFailedStale') : null)
 
     return (
-        <TreeWrap>
+        <TreeWrap ref={wrapRef} onPointerOver={handlePointerOver} onPointerLeave={hideHover}>
+            <TreeHoverFill rect={hoverRect} />
             <div style={{ display: 'flex', gap: 4, marginBottom: 8, alignItems: 'center' }}>
                 <Input
                     prefix={isSearching && isSearchLoading ? <LoadingOutlined style={{ fontSize: 14 }} /> : <Search size={14} />}

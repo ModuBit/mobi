@@ -53,3 +53,5 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [antd cssVar 作用域陷阱](antd-cssvar-portal-scope.md) — --ant-* 只在 antd 子树内可解析，portal 弹层 token 全空（无底色/无动画）；诊断三层探针法 + 组件映射块禁同名自引用
 - [移动端 sheet 验证](bottom-sheet-verify.md) — CDP 移动视口 + 合成拖拽采样（跟手/遮罩连续/嵌套层号/内容自滚）；**遮罩关闭要发满 down→up→click**、dev 的哨兵累积是 StrictMode 产物、HMR 会重置层号发号器、**验哨兵/多级返回必须用 production 构建（build:web + 2224）**、孤儿哨兵致整栈收起已修、**会话操作菜单已改二级 BottomSheet + 删除确认就地展开**、**peek 锁滚档死区（内容区横竖都滚不动）已修 + 合成 TouchEvent 即可验 JS 仲裁侧**（2026-10-13 三轮）
 - [状态气泡验证](status-pills-verify.md) — composer 状态气泡（Todo/Tasks 摘要 + Popover flat 详情）/ **Store 直接 seed runtimeState 免真实对话、刷新即见** / 渐隐两侧判据（临时压宽 row + scrollLeft）
+- [文件树动效验证](file-tree-motion-verify.md) — 停靠树开关 / switcher 弹簧（含 hover 圆点盖图标的坑）/ 选中与悬停滑移 rect 采样；持引用与 inset 宽度两坑
+- [列表滑移底色验证](list-glide-verify.md) — 侧栏会话列表造多行（Store 种会话）/ hover 与选中两层 GlidingHighlight 的 top 弹簧采样 / 复用件 GlideLayer+useGlideHighlight 的覆盖范围（导航/移动端/antd 树/选项列表）/ pointerleave 合成事件测不出

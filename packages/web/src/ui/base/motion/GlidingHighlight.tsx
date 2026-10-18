@@ -22,14 +22,13 @@
 
 import { motion, useReducedMotion, useSpring } from "motion/react";
 import { useEffect, useRef } from "react";
-import { motionTokens } from "./motionTokens";
+import { spring } from "./presets";
 
 export function GlidingHighlight({ className, target }: { className?: string; target: HTMLElement | null }) {
   const reduceMotion = useReducedMotion();
-  // 高亮跟随用 snappy 档（dropdown-menu 的 highlight 同款）：smooth（0.4s 临界阻尼）对
-  // 逐项滑动来说偏肉，真机手感对比后收敛到 snappy（0.26s 带一点弹性）
-  const top = useSpring(0, motionTokens.spring.snappy);
-  const height = useSpring(0, motionTokens.spring.snappy);
+  // 滑移统一手感：presets.spring.glide（与 select / dropdown-menu 同一档）
+  const top = useSpring(0, spring.glide);
+  const height = useSpring(0, spring.glide);
   const placedRef = useRef(false);
   useEffect(() => {
     // 卸挂节点（菜单关闭后的残留 target）视同复位：重开时首个有效目标直接落位

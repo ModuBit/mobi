@@ -113,7 +113,12 @@ export function SessionRow({
     const inactive = !session.active
 
     return (
-        <SessionItem $active={active} $token={token} onClick={onClick}>
+        <SessionItem
+            $token={token}
+            data-session-row
+            data-session-active={active || undefined}
+            onClick={onClick}
+        >
             <SessionStatusDot session={session} />
             <AppTooltip title={displayName} mouseEnterDelay={0.5} placement="right">
                 <SessionName $inactive={inactive}>{displayName}</SessionName>
