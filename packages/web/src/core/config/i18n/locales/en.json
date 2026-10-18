@@ -622,7 +622,8 @@
     },
     "webTools": {
       "providers": {
-        "tavily": "Tavily"
+        "tavily": "Tavily",
+        "deepseek": "DeepSeek"
       },
       "apiKey": "API Key",
       "credentialSet": "Set",
@@ -637,10 +638,12 @@
       "routeHint": "Config lives on the target machine · effective on new sessions",
       "providersTitle": "PROVIDERS",
       "providerDesc": {
-        "tavily": "AI search & web extraction · tavily.com"
+        "tavily": "AI search & web extraction · tavily.com",
+        "deepseek": "Web search & fetch · api.deepseek.com"
       },
       "providerLogo": {
-        "tavily": "Tv"
+        "tavily": "Tv",
+        "deepseek": "DS"
       },
       "disableReferenced": "This provider is serving {{tools}}; adjust usage routes first",
       "storageHint": "Only enabled providers appear in the usage route dropdowns",

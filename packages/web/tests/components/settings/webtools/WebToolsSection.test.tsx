@@ -41,6 +41,9 @@ const i18nMap = vi.hoisted(() => ({
     'settings.webTools.providers.tavily': 'Tavily',
     'settings.webTools.providerDesc.tavily': 'AI 搜索与网页抓取 · tavily.com',
     'settings.webTools.providerLogo.tavily': 'Tv',
+    'settings.webTools.providers.deepseek': 'DeepSeek',
+    'settings.webTools.providerDesc.deepseek': '网页搜索与抓取 · api.deepseek.com',
+    'settings.webTools.providerLogo.deepseek': 'DS',
     'settings.webTools.apiKey': 'API Key',
     'settings.webTools.credentialSet': '已设置',
     'settings.webTools.credentialUnset': '未设置',
@@ -65,7 +68,7 @@ vi.mock('react-i18next', () => ({
 }))
 
 // RouteCard 真实渲染（保留渲染断言），另捕获 onChange 供路由变更用例稳定触发：
-// 当前 provider 清单仅 tavily 一项，真实 Select 恒锁定（无可选项），走 UI 交互断言不了 onChange 路径
+// mock 配置里只有 tavily 启用，真实 Select 恒锁定（无可选项），走 UI 交互断言不了 onChange 路径
 const routeState = vi.hoisted(() => ({ onChange: null as null | ((next: { searchProviderId?: 'tavily' | null; fetchProviderId?: 'tavily' | null }) => Promise<boolean>) }))
 vi.mock('@/features/settings/webtools/RouteCard', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/features/settings/webtools/RouteCard')>()
@@ -78,13 +81,18 @@ vi.mock('@/features/settings/webtools/RouteCard', async (importOriginal) => {
 })
 
 // CredentialEditor（S9 占位）真实渲染（仍为 null），另捕获 onSave 供凭据保存用例稳定触发——
-// 编辑器内容 S9 才实装，UI 路径尚不可达
-const editorState = vi.hoisted(() => ({ onSave: null as null | ((credentials: Record<string, string>) => Promise<boolean>) }))
+// 编辑器内容 S9 才实装，UI 路径尚不可达。
+// 多个 provider 会各渲染一个编辑器，捕获必须按 provider 归档（只取 tavily，避免被后渲染者覆盖）
+const editorState = vi.hoisted(() => ({
+    onSave: null as null | ((credentials: Record<string, string>) => Promise<boolean>),
+    onSaveByProvider: {} as Record<string, (credentials: Record<string, string>) => Promise<boolean>>,
+}))
 vi.mock('@/features/settings/webtools/CredentialEditor', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/features/settings/webtools/CredentialEditor')>()
     return {
         CredentialEditor: (props: import('@/features/settings/webtools/CredentialEditor').CredentialEditorProps) => {
-            editorState.onSave = props.onSave
+            editorState.onSaveByProvider[props.provider.id] = props.onSave
+            if (props.provider.id === 'tavily') editorState.onSave = props.onSave
             return <actual.CredentialEditor {...props} />
         },
     }
@@ -131,6 +139,7 @@ describe('WebToolsSection', () => {
         stableApi.webTools.verify.mockReset()
         routeState.onChange = null
         editorState.onSave = null
+        editorState.onSaveByProvider = {}
     })
     afterEach(() => cleanup())
 
@@ -156,6 +165,15 @@ describe('WebToolsSection', () => {
         expect(screen.getByText('AI 搜索与网页抓取 · tavily.com')).toBeTruthy()
         // Switch 选中
         expect(screen.getByRole('switch', { name: 'tavily-enabled' })).toHaveClass('ant-switch-checked')
+    })
+
+    it('未配置的 provider 也渲染默认卡（DeepSeek 名称 + 未启用）', async () => {
+        mockLoadConfig()
+        renderSection()
+
+        await waitFor(() => expect(screen.getByText('DeepSeek')).toBeTruthy())
+        expect(screen.getByText('网页搜索与抓取 · api.deepseek.com')).toBeTruthy()
+        expect(screen.getByRole('switch', { name: 'deepseek-enabled' })).not.toHaveClass('ant-switch-checked')
     })
 
     it('点击卡头展开编辑器：aria-expanded 翻 true（S9 实装编辑器内容）', async () => {
@@ -211,7 +229,11 @@ describe('WebToolsSection', () => {
         const [config] = stableApi.webTools.set.mock.calls[0] as [
             { providers: Array<{ id: string; enabled: boolean; timeoutMs: number; credentials: Record<string, unknown> }> },
         ]
-        expect(config.providers).toEqual([{ id: 'tavily', enabled: true, timeoutMs: 8000, credentials: {} }])
+        expect(config.providers).toEqual([
+            { id: 'tavily', enabled: true, timeoutMs: 8000, credentials: {} },
+            // 未配置的 provider 以默认条目（禁用/默认超时）随全量提交
+            { id: 'deepseek', enabled: false, timeoutMs: 15000, credentials: {} },
+        ])
         // 成功后 reload：请求重跑（get 至少第二次）
         await waitFor(() => expect(stableApi.webTools.get.mock.calls.length).toBeGreaterThanOrEqual(2))
     })
@@ -258,6 +280,7 @@ describe('WebToolsSection', () => {
         // 目标 provider 带编辑中的凭据键 + 现值 enabled/timeoutMs
         expect(config.providers).toEqual([
             { id: 'tavily', enabled: true, timeoutMs: 8000, credentials: { apiKey: 'tvly-new-key' } },
+            { id: 'deepseek', enabled: false, timeoutMs: 15000, credentials: {} },
         ])
     })
 

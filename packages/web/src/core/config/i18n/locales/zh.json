@@ -613,7 +613,8 @@
     },
     "webTools": {
       "providers": {
-        "tavily": "Tavily"
+        "tavily": "Tavily",
+        "deepseek": "DeepSeek"
       },
       "apiKey": "API Key",
       "credentialSet": "已设置",
@@ -628,10 +629,12 @@
       "routeHint": "配置保存于目标机器 · 新会话即时生效",
       "providersTitle": "PROVIDERS",
       "providerDesc": {
-        "tavily": "AI 搜索与网页抓取 · tavily.com"
+        "tavily": "AI 搜索与网页抓取 · tavily.com",
+        "deepseek": "网页搜索与抓取 · api.deepseek.com"
       },
       "providerLogo": {
-        "tavily": "Tv"
+        "tavily": "Tv",
+        "deepseek": "DS"
       },
       "disableReferenced": "该 provider 正承担 {{tools}}，请先调整用途路由",
       "storageHint": "启用的 provider 才出现在用途路由下拉中",

@@ -60,6 +60,7 @@ describe('resolveSearchProvider / resolveFetchProvider', () => {
     })
     it('createProviderFor：已知 id 构造对应实例', () => {
         expect(createProviderFor('tavily', { apiKey: 'k', timeoutMs: 1000 }).id).toBe('tavily')
+        expect(createProviderFor('deepseek', { apiKey: 'k', timeoutMs: 1000 }).id).toBe('deepseek')
     })
 })
 

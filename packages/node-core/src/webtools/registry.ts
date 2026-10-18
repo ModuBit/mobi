@@ -23,14 +23,16 @@ import type { WebToolsConfig, WebToolProviderId } from '@mobi/shared'
 import { credentialKeysFor } from '@mobi/shared'
 import type { WebToolProvider, WebSearchInput, WebSearchResult } from './provider'
 import { createTavilyProvider } from './providers/tavily'
+import { createDeepSeekProvider } from './providers/deepseek'
 
 /** 无可用 provider 时的兜底错误文案（agent loop 不中断，模型可告知用户） */
-export const NO_PROVIDER_MESSAGE = 'mobi web 工具未配置可用的 provider。请到 mobi Web 设置页「Web 工具」中配置并启用至少一个搜索/抓取 provider（如 Tavily）。'
+export const NO_PROVIDER_MESSAGE = 'mobi web 工具未配置可用的 provider。请到 mobi Web 设置页「Web 工具」中配置并启用至少一个搜索/抓取 provider（如 Tavily / DeepSeek）。'
 
 /** 按 provider id 构造实例（resolve 路由与 verify RPC 共用）；未知 id 抛错 */
 export function createProviderFor(id: string, credentials: { apiKey: string; timeoutMs: number }): WebToolProvider {
     switch (id) {
         case 'tavily': return createTavilyProvider(credentials)
+        case 'deepseek': return createDeepSeekProvider(credentials)
         default: throw new Error(`未知 web 工具 provider：${id}`)
     }
 }
@@ -66,7 +68,7 @@ export function resolveFetchProvider(config: WebToolsConfig): WebToolProvider | 
     return resolve(config, config.fetchProviderId ?? config.searchProviderId)
 }
 
-/** 内置 WebSearch 的 allowed_domains/blocked_domains 过滤（统一在此做，provider 不感知；Tavily 侧另有服务端透传双保险） */
+/** 内置 WebSearch 的 allowed_domains/blocked_domains 过滤（统一在此做，provider 不感知；Tavily/DeepSeek 侧另有服务端过滤语法双保险） */
 export function domainFilter(
     results: WebSearchResult[],
     input: Pick<WebSearchInput, 'allowed_domains' | 'blocked_domains'>,
