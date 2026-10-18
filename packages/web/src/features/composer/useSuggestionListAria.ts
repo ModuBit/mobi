@@ -39,23 +39,26 @@ export function useSuggestionListAria(
     const listId = suggestion?.listId ?? null
     const activeIndex = suggestion?.activeIndex ?? -1
     const count = suggestion?.count ?? 0
+    // listbox 只在有候选项时真正挂载（空态/加载态只渲染占位）：expanded 与 controls
+    // 必须跟着实际挂载走，否则 aria-controls 指向不存在的 id
+    const expanded = listId !== null && count > 0
 
     useEffect(() => {
         const textarea = wrapperRef.current?.querySelector('textarea')
         if (!textarea) return
         textarea.setAttribute('role', 'combobox')
         textarea.setAttribute('aria-autocomplete', 'list')
-        textarea.setAttribute('aria-expanded', listId ? 'true' : 'false')
-        if (!listId) {
+        textarea.setAttribute('aria-expanded', expanded ? 'true' : 'false')
+        if (!expanded || !listId) {
             textarea.removeAttribute('aria-controls')
             textarea.removeAttribute('aria-activedescendant')
             return
         }
         textarea.setAttribute('aria-controls', listId)
-        if (count > 0 && activeIndex >= 0) {
+        if (activeIndex >= 0) {
             textarea.setAttribute('aria-activedescendant', `${listId}-option-${activeIndex}`)
         } else {
             textarea.removeAttribute('aria-activedescendant')
         }
-    }, [wrapperRef, listId, activeIndex, count])
+    }, [wrapperRef, expanded, listId, activeIndex, count])
 }

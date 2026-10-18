@@ -732,6 +732,8 @@
       "聊聊你的想法吧"
     ],
     "bashPlaceholder": "输入 Shell 命令...",
+    "mentionSuggestions": "文件建议",
+    "slashCommandSuggestions": "斜杠命令",
     "attach": "添加附件",
     "abort": "中断",
     "send": "发送",

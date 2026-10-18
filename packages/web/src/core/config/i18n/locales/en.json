@@ -741,6 +741,8 @@
       "Ready when you are!"
     ],
     "bashPlaceholder": "Enter shell command...",
+    "mentionSuggestions": "File suggestions",
+    "slashCommandSuggestions": "Slash commands",
     "attach": "Add attachment",
     "abort": "Abort",
     "send": "Send",

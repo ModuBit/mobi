@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { detectSlashAtCursor, type SlashCommandSuggestionItem } from '@/domain/command/slashCommandHelper'
 import { useSlashCommandSuggestion } from './useSlashCommandSuggestion'
 import { recordCommandUsage } from '@/core/lib/commandUsage'
@@ -54,6 +54,11 @@ export function useSlashCommandInteraction({
         filter,
         workingDir,
     )
+
+    // 命令集收缩时夹取下标：否则 Enter/Tab 取到 items[越界] === undefined
+    useEffect(() => {
+        setActiveIndex(prev => (items.length ? Math.min(prev, items.length - 1) : 0))
+    }, [items])
 
     const processChange = useCallback((text: string, cursorPos: number): boolean => {
         const slash = detectSlashAtCursor(text, cursorPos)

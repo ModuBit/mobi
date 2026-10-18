@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { useMemo } from 'react'
 import { Sparkles, SquareSlash } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SuggestionList, type SuggestionRow } from '@/ui/base/interactive/suggestion-list/SuggestionList'
@@ -50,13 +51,10 @@ export function SlashCommandDropdown({
 }: SlashCommandDropdownProps) {
     const { t } = useTranslation()
 
-    // 无命令且无过滤词时没有可展示的内容，直接不渲染面板
-    if (items.length === 0 && !loading && !query) return null
-
     // 图标区分命令来源：CC 内置命令（builtin）用斜杠方框，其余（skill / plugin / MCP
     // 定义的命令）用星芒。SDK 的 SlashCommand 只有 builtin 这一个来源标记，没有更细的
     // plugin/user/project 之分，所以非内置统一归为「skill 类」
-    const rows: SuggestionRow[] = items.map(item => ({
+    const rows: SuggestionRow[] = useMemo(() => items.map(item => ({
         key: item.value,
         label: item.label,
         meta: item.description || undefined,
@@ -66,7 +64,10 @@ export function SlashCommandDropdown({
         // 参数提示紧跟命令名（行内短标记），不再甩到行尾
         suffix: item.argumentHint || undefined,
         labelStyle: item.builtin ? { color: BUILTIN_COMMAND_COLOR } : undefined,
-    }))
+    })), [items])
+
+    // 无命令且无过滤词时没有可展示的内容，直接不渲染面板（hooks 必须在其之前调用）
+    if (items.length === 0 && !loading && !query) return null
 
     return (
         <DropdownContainer>
@@ -78,6 +79,7 @@ export function SlashCommandDropdown({
                 onSelect={(index) => onSelect(items[index])}
                 query={query}
                 loading={loading}
+                ariaLabel={t('composer.slashCommandSuggestions')}
                 // 走到空态必是有过滤词（无词无结果时上方已提前 return；loading 走加载态）
                 emptyText={t('common.noMatchesFor', { query })}
             />

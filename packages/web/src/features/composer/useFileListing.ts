@@ -199,6 +199,8 @@ export function useFileListing(
         if (isSearchInput(mentionInput)) {
             currentPrefixRef.current = ''
 
+            // 防抖窗口也算加载中：空态文案不能先于搜索请求闪出来
+            setIsLoading(true)
             timerRef.current = setTimeout(() => {
                 doSearch(searchFiles, mentionInput)
             }, 300)
@@ -223,10 +225,12 @@ export function useFileListing(
             const filtered = filterEntries(cached, prefix, filterContainsRef.current)
             if (!prefix || filtered.length > 0) {
                 setItems(toSuggestionItems(filtered))
+                setIsLoading(false)
                 return
             }
         }
 
+        setIsLoading(true)
         timerRef.current = setTimeout(() => {
             doListDirectory(listDirectory, listPath, prefix)
         }, 300)

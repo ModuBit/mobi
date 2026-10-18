@@ -92,6 +92,18 @@ describe('SuggestionList', () => {
         expect(screen.getByRole('listbox').id).toBe('test-listbox')
     })
 
+    it('等长结果换批后高亮跟随新激活行（不滞留已卸载节点）', () => {
+        const first: SuggestionRow[] = [{ key: 'a1', label: 'a1' }, { key: 'a2', label: 'a2' }]
+        const second: SuggestionRow[] = [{ key: 'b1', label: 'b1' }, { key: 'b2', label: 'b2' }]
+        const props = { listId: 'test-listbox', activeIndex: 0, onActiveIndexChange: vi.fn(), onSelect: vi.fn() }
+        const { rerender } = render(<SuggestionList items={first} {...props} />)
+        expect(document.querySelector('[data-on]')).not.toBeNull()
+
+        rerender(<SuggestionList items={second} {...props} />)
+        expect(document.querySelector('[data-on]')).not.toBeNull()
+        expect(document.querySelector('[data-on]')).toBe(document.querySelector('[class*="highlight"]'))
+    })
+
     it('加载中且无结果时显示加载态', () => {
         renderList({ items: [], loading: true })
         expect(screen.getByRole('status')).toBeInTheDocument()

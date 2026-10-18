@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { useMemo } from 'react'
 import { File, Folder } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SuggestionList, type SuggestionRow } from '@/ui/base/interactive/suggestion-list/SuggestionList'
@@ -44,10 +45,7 @@ export function MentionDropdown({
 }: MentionDropdownProps) {
     const { t } = useTranslation()
 
-    // 空目录且无查询词时没有可展示的内容，直接不渲染面板
-    if (items.length === 0 && !loading && !query) return null
-
-    const rows: SuggestionRow[] = items.map(item => ({
+    const rows: SuggestionRow[] = useMemo(() => items.map(item => ({
         key: item.value,
         label: item.label,
         icon: item.isDirectory
@@ -55,7 +53,10 @@ export function MentionDropdown({
             : <File size={16} strokeWidth={1.75} />,
         // 目录标记紧跟名字（如 src/features/chat/），不甩到行尾与滚动条挤在一起
         suffix: item.isDirectory ? '/' : undefined,
-    }))
+    })), [items])
+
+    // 空目录且无查询词时没有可展示的内容，直接不渲染面板（hooks 必须在其之前调用）
+    if (items.length === 0 && !loading && !query) return null
 
     return (
         <DropdownContainer>
@@ -67,6 +68,7 @@ export function MentionDropdown({
                 onSelect={(index) => onSelect(items[index])}
                 query={query}
                 loading={loading}
+                ariaLabel={t('composer.mentionSuggestions')}
                 // 走到空态必是有过滤词（无词无结果时上方已提前 return；loading 走加载态）
                 emptyText={t('common.noMatchesFor', { query })}
             />

@@ -145,9 +145,12 @@ export function useDirectoryListing(
             const cached = cacheRef.current.get(parentPath)
             if (cached) {
                 setOptions(cached.filter((e) => !isHiddenDir(e.label)))
+                setIsLoading(false)
                 return
             }
 
+            // 防抖窗口也算加载中：空态文案不能先于目录请求闪出来
+            setIsLoading(true)
             timerRef.current = setTimeout(() => {
                 fetchDirectories(parentPath)
             }, 300)
@@ -155,6 +158,7 @@ export function useDirectoryListing(
             const parsed = parsePrefixInput(directory)
             if (!parsed) {
                 setOptions([])
+                setIsLoading(false)
                 return
             }
 
@@ -162,6 +166,7 @@ export function useDirectoryListing(
             const cached = cacheRef.current.get(parentPath)
             if (!cached) {
                 setOptions([])
+                setIsLoading(false)
                 return
             }
 
@@ -173,6 +178,7 @@ export function useDirectoryListing(
                 return true
             })
             setOptions(filtered)
+            setIsLoading(false)
         }
 
         return () => {

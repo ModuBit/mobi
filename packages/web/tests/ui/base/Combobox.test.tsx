@@ -169,6 +169,15 @@ describe('uiarc Combobox freeText（自由输入 + 建议）', () => {
         expect(onSubmit).not.toHaveBeenCalled()
     })
 
+    it('输入文本等于某个建议值也不算已选中：无勾选标记、aria-selected=false', () => {
+        render(<Combobox freeText aria-label="路径" options={PATH_OPTIONS} value="/Users/local" />)
+        fireEvent.focus(screen.getByRole('combobox', { name: '路径' }))
+
+        const option = screen.getByRole('option', { name: 'local' })
+        expect(option).toHaveAttribute('aria-selected', 'false')
+        expect(option.querySelector('svg')).toBeNull()
+    })
+
     it('失焦收起建议', () => {
         render(<Combobox freeText aria-label="路径" options={PATH_OPTIONS} />)
         const input = screen.getByRole('combobox', { name: '路径' })

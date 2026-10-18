@@ -27,6 +27,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { AutoHeight } from '@/ui/base/motion/AutoHeight'
 import { GlidingHighlight } from '@/ui/base/motion/GlidingHighlight'
 import { normalizeNeedle } from '@/ui/base/interactive/optionSearch'
+import { scrollOptionIntoView } from '@/ui/base/interactive/scrollOptionIntoView'
 import styles from './suggestion-list.module.css'
 
 export interface SuggestionRow {
@@ -53,6 +54,8 @@ export interface SuggestionListProps {
     query?: string
     loading?: boolean
     emptyText?: string
+    /** listbox 的可访问名（读屏区分文件建议 / 斜杠命令） */
+    ariaLabel?: string
     /** listbox 的 DOM id：同时派生 `-option-<index>` 供 ARIA 关联 */
     listId?: string
 }
@@ -82,6 +85,7 @@ export function SuggestionList({
     query,
     loading = false,
     emptyText,
+    ariaLabel,
     listId,
 }: SuggestionListProps) {
     const listRef = useRef<HTMLDivElement>(null)
@@ -89,7 +93,8 @@ export function SuggestionList({
 
     const safeIndex = items.length ? Math.min(Math.max(activeIndex, 0), items.length - 1) : -1
 
-    // 激活行只解析一次：高亮跟随和滚动保持用同一个节点（避免两次 querySelector）
+    // 激活行只解析一次：高亮跟随和滚动保持用同一个节点（避免两次 querySelector）。
+    // 依赖 items 整体而非仅有条数：换了一批等长结果时旧节点已卸载，高亮要跟着换新行
     useLayoutEffect(() => {
         const list = listRef.current
         const row = !list || safeIndex < 0
@@ -97,12 +102,8 @@ export function SuggestionList({
             : list.querySelector<HTMLElement>(`[data-index="${safeIndex}"]`)
         setActiveTarget(prev => (prev === row ? prev : row))
         if (!list || !row) return
-        // 用 scrollTop 计算，避免 scrollIntoView 连带滚动页面
-        const top = row.offsetTop
-        const bottom = top + row.offsetHeight
-        if (top < list.scrollTop) list.scrollTop = top
-        else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight
-    }, [safeIndex, items.length])
+        scrollOptionIntoView(list, row)
+    }, [safeIndex, items])
 
     if (loading && items.length === 0) {
         return <div className={styles.status} role="status">…</div>
@@ -117,6 +118,7 @@ export function SuggestionList({
                 ref={listRef}
                 id={listId}
                 role="listbox"
+                aria-label={ariaLabel}
                 className={styles.list}
                 style={{ maxHeight: DEFAULT_MAX_HEIGHT }}
                 onMouseDown={(event) => event.preventDefault()}

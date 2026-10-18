@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { detectMentionAtCursor, buildMentionPath } from '@/domain/command/mentionParser'
 import type { CapabilityTarget, SearchFilesFn, ListDirectoryFn } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useFileListing } from './useFileListing'
@@ -53,6 +53,12 @@ export function useMentionInteraction({
         target,
         mentionInput,
     )
+
+    // 异步结果收缩时夹取下标：否则 Enter/Tab 取到 items[越界] === undefined，
+    // SuggestionList 的高亮与 aria-activedescendant 也会指向不存在的行
+    useEffect(() => {
+        setActiveIndex(prev => (items.length ? Math.min(prev, items.length - 1) : 0))
+    }, [items])
 
     const processChange = useCallback((text: string, cursorPos: number): boolean => {
         const mention = detectMentionAtCursor(text, cursorPos)
