@@ -18,6 +18,7 @@ import { Undo2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { CopyButton } from '@/ui/shared/CopyButton'
 import { IconButton } from '@/ui/base/interactive/IconButton'
+import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { Popover } from '@/ui/base/interactive/popover/Popover'
 import { RewindConfirmView, type RewindDryRunResult } from './RewindConfirmView'
 import { formatMessageTime } from '@/core/utils/timeFormat'
@@ -100,15 +101,19 @@ export function UserMessageFooter({
                             </div>
                         }
                     >
-                        <IconButton
-                            icon={<Undo2 size={14} />}
-                            size={14}
-                            aria-label={t('chat.rewind.title')}
-                            tooltip={rewindActive ? undefined : t('chat.rewind.title')}
-                            tooltipPlacement="top"
-                            active={rewindActive}
-                            onClick={rewindActive ? undefined : onRewind}
-                        />
+                        {/* Popover 锚点固定为外层 span：AppTooltip 不转发 ref，直接作 Radix child
+                            会让打开瞬间触发子树替换、点击焦点掉到 body */}
+                        <span style={{ display: 'inline-flex' }}>
+                            <AppTooltip title={rewindActive ? undefined : t('chat.rewind.title')}>
+                                <IconButton
+                                    icon={<Undo2 size={14} />}
+                                    size={14}
+                                    aria-label={t('chat.rewind.title')}
+                                    active={rewindActive}
+                                    onClick={rewindActive ? undefined : onRewind}
+                                />
+                            </AppTooltip>
+                        </span>
                     </Popover>
                 </span>
             )}

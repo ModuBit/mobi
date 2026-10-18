@@ -40,8 +40,8 @@
   transition: opacity var(--duration-fast) var(--ease-enter), transform var(--duration-spring) var(--ease-spring);
 }
 
-/* The panel starts a few pixels toward its trigger and settles on a spring; it leaves faster than it arrives.
- Transitions instead of keyframes, so a close that interrupts the open, or a reopen during the close, reverses from where the panel is. */
+/* 面板从触发元素方向浮起几像素后落到弹簧位；退场比入场更快。
+   用 transition 而非 keyframes：关闭途中重新打开、或打开途中被关闭，都从当前位置反向过渡。 */
 .content[data-side="top"] { --popover-y: 5px; }
 .content[data-side="left"] { --popover-x: 5px; --popover-y: 0px; }
 .content[data-side="right"] { --popover-x: -5px; --popover-y: 0px; }
@@ -50,7 +50,7 @@
   .content[data-state="open"] { opacity: 0; transform: translate(var(--popover-x), var(--popover-y)) scale(.97); }
 }
 
-/* Radix unmounts when the exit animation ends, so a no-op keyframe times the exit while the transition does the visual work. */
+/* Radix 在退场动画结束后卸载，用无副作用 keyframe 计时，视觉交给 transition */
 .content[data-state="closed"] {
   opacity: 0;
   transform: translate(calc(var(--popover-x) * .5), calc(var(--popover-y) * .5)) scale(.98);

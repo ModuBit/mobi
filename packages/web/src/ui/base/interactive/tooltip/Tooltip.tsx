@@ -124,20 +124,33 @@ export function Tooltip({
     sideOffset = 8,
     collisionPadding = 12,
 }: TooltipProps) {
+    // Radix Trigger 在自身 pointerdown / click 时会发 onClose（用于它的原生 hover 语义）。
+    // 本组件打开态完全受控，这类「点自身」的关闭必须忽略——旧 AppTooltip 的契约是
+    // 桌面端点 trigger 不关 hover tooltip；Escape / 点外仍要转发。
+    const triggerPressRef = useRef(false)
+    const markTriggerPress = () => {
+        triggerPressRef.current = true
+        // 同一次事件派发结束后复位；否则未触发关闭时会残留，吞掉后续 Escape
+        window.setTimeout(() => { triggerPressRef.current = false }, 0)
+    }
+
     return (
         <TooltipPrimitive.Provider>
             <TooltipPrimitive.Root
                 open={open}
                 onOpenChange={(next) => {
-                    // 打开只认外部 open；Radix 的 hover / focus 打开请求忽略，
-                    // 关闭（Escape / 点外 / trigger 自身手势）照常转交
-                    if (!next) onOpenChange?.(false)
+                    if (next) return
+                    if (triggerPressRef.current) {
+                        triggerPressRef.current = false
+                        return
+                    }
+                    onOpenChange?.(false)
                 }}
                 // 纯文字提示不可交互：指针离开 trigger 立即关闭（上游默认可悬停内容，
                 // 依赖 grace-area 判定，对文字气泡没有收益且会延迟关闭）
                 disableHoverableContent
             >
-                <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
+                <TooltipPrimitive.Trigger asChild onPointerDownCapture={markTriggerPress} onClickCapture={markTriggerPress}>{children}</TooltipPrimitive.Trigger>
                 <TooltipPrimitive.Portal>
                     <TooltipPrimitive.Content
                         className={styles.tooltip}

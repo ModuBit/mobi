@@ -18,6 +18,7 @@ import { Split } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { CopyButton } from '@/ui/shared/CopyButton'
 import { IconButton } from '@/ui/base/interactive/IconButton'
+import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { Popover } from '@/ui/base/interactive/popover/Popover'
 import { ForkConfirmView } from './ForkConfirmView'
 
@@ -85,15 +86,19 @@ export function AgentTurnActions({
                             </div>
                         }
                     >
-                        <IconButton
-                            icon={<Split size={14} />}
-                            size={14}
-                            aria-label={t('chat.fork.title')}
-                            tooltip={forkActive ? undefined : t('chat.fork.title')}
-                            tooltipPlacement="top"
-                            active={forkActive}
-                            onClick={forkActive ? undefined : onFork}
-                        />
+                        {/* Popover 锚点固定为外层 span：AppTooltip 不转发 ref，直接作 Radix child
+                            会让打开瞬间触发子树替换、点击焦点掉到 body */}
+                        <span style={{ display: 'inline-flex' }}>
+                            <AppTooltip title={forkActive ? undefined : t('chat.fork.title')}>
+                                <IconButton
+                                    icon={<Split size={14} />}
+                                    size={14}
+                                    aria-label={t('chat.fork.title')}
+                                    active={forkActive}
+                                    onClick={forkActive ? undefined : onFork}
+                                />
+                            </AppTooltip>
+                        </span>
                     </Popover>
                 </span>
             )}

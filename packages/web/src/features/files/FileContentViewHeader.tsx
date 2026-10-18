@@ -176,6 +176,9 @@ export default function FileContentViewHeader({ sessionId, filePath, extraMenuIt
                         open={treeOpen}
                         onOpenChange={onTreeOpenChange}
                         trigger="click"
+                        /* 树内容持有展开/过滤状态：关闭后保留挂载（antd 默认行为），
+                           重开不会回到初始态 */
+                        keepMounted
                         side="bottom"
                         align="start"
                         content={

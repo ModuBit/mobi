@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { useState } from 'react'
 import { Popover } from '@/ui/base/interactive/popover/Popover'
@@ -165,6 +165,19 @@ describe('Popover manual 触发', () => {
         expect(screen.queryByText('面板内容')).not.toBeInTheDocument()
     })
 
+    it('不劫持键盘激活：Enter 不 preventDefault，也不自行打开', () => {
+        const onOpenChange = vi.fn()
+        render(
+            <Popover trigger="manual" open={false} onOpenChange={onOpenChange} content={<div>面板内容</div>}>
+                <button type="button">触发</button>
+            </Popover>,
+        )
+        // fireEvent 返回 false 表示事件被 preventDefault
+        expect(fireEvent.keyDown(screen.getByRole('button', { name: '触发' }), { key: 'Enter' })).toBe(true)
+        expect(onOpenChange).not.toHaveBeenCalled()
+        expect(screen.queryByText('面板内容')).not.toBeInTheDocument()
+    })
+
     it('外部受控打开后点外关闭', async () => {
         let setter: ((value: boolean) => void) | null = null
         function Harness() {
@@ -230,5 +243,48 @@ describe('Popover 渲染与焦点', () => {
             </Popover>,
         )
         expect(screen.getByText('面板内容')).toBeInTheDocument()
+    })
+
+    it('默认方位 top / center（与 antd 默认 placement 一致）', () => {
+        renderPopover({ trigger: 'click' })
+        fireEvent.click(screen.getByRole('button', { name: '触发' }))
+        const content = panel() as HTMLElement
+        // jsdom 无布局，碰撞翻转不生效；断言 Radix 收到的默认值
+        expect(content.dataset.side).toBe('top')
+        expect(content.dataset.align).toBe('center')
+    })
+
+    it('keepMounted：关闭后保留内容状态，重开不重置', () => {
+        function StatefulContent() {
+            const [count, setCount] = useState(0)
+            return <button type="button" onClick={() => setCount((n) => n + 1)}>{`计数 ${count}`}</button>
+        }
+        render(
+            <Popover trigger="click" keepMounted content={<StatefulContent />}>
+                <button type="button">触发</button>
+            </Popover>,
+        )
+        const trigger = screen.getByRole('button', { name: '触发' })
+
+        fireEvent.click(trigger)
+        fireEvent.click(screen.getByRole('button', { name: '计数 0' }))
+        expect(screen.getByRole('button', { name: '计数 1' })).toBeInTheDocument()
+
+        fireEvent.keyDown(document, { key: 'Escape' })
+        fireEvent.click(trigger)
+        expect(screen.getByRole('button', { name: '计数 1' })).toBeInTheDocument()
+    })
+
+    it('键盘打开后 Escape 关闭，焦点归还 trigger', async () => {
+        renderPopover({ trigger: 'hover' })
+        const trigger = screen.getByRole('button', { name: '触发' })
+        trigger.focus()
+
+        fireEvent.keyDown(trigger, { key: 'Enter' })
+        expect(panel()?.contains(document.activeElement)).toBe(true)
+
+        fireEvent.keyDown(document, { key: 'Escape' })
+        // FocusScope 的卸载归还发生在 effect 清理阶段
+        await waitFor(() => expect(document.activeElement).toBe(trigger))
     })
 })

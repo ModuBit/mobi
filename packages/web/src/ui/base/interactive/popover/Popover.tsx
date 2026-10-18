@@ -45,7 +45,11 @@ export interface PopoverProps {
     trigger?: PopoverTrigger
     open?: boolean
     onOpenChange?: (open: boolean) => void
+    /** 关闭后保留面板内容（antd 默认行为）；需要保留内部滚动/展开/过滤等状态时开启 */
+    keepMounted?: boolean
+    /** 浮层方位，默认 top（与 antd 默认 placement 一致） */
     side?: 'top' | 'bottom' | 'left' | 'right'
+    /** 沿方位轴的对齐，默认 center（与 antd 默认居中语义一致） */
     align?: 'start' | 'center' | 'end'
     sideOffset?: number
     /** hover 意图：进入 trigger 后延迟打开（毫秒），默认 100 */
@@ -81,8 +85,9 @@ export function Popover({
     trigger = 'click',
     open: controlledOpen,
     onOpenChange,
-    side = 'bottom',
-    align = 'start',
+    keepMounted = false,
+    side = 'top',
+    align = 'center',
     sideOffset = 6,
     openDelay = DEFAULT_OPEN_DELAY,
     closeDelay = DEFAULT_CLOSE_DELAY,
@@ -97,11 +102,16 @@ export function Popover({
     const modes = triggerModes(trigger)
     const hoverable = modes.has('hover')
     const clickable = modes.has('click')
-    const manual = modes.has('manual')
 
     const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
+    // keepMounted：首次打开后内容常驻（Radix forceMount），关闭期间用 inert 挡住焦点/交互
+    const [everOpened, setEverOpened] = useState(false)
     const isControlled = controlledOpen !== undefined
     const isOpen = isControlled ? controlledOpen : uncontrolledOpen
+
+    useEffect(() => {
+        if (isOpen) setEverOpened(true)
+    }, [isOpen])
 
     const contentId = `mobi-popover-${useId()}`
 
@@ -112,6 +122,8 @@ export function Popover({
     // 键盘打开才移动焦点；鼠标 / 触屏打开保持 antd 的「不抢焦点」现状
     const openViaKeyboardRef = useRef(false)
     const restoreFocusOnCloseRef = useRef(false)
+    // Anchor 模式没有 Radix 的 triggerRef，键盘打开时记下锚点元素，关闭时手动归还焦点
+    const anchorElRef = useRef<HTMLElement | null>(null)
 
     const clearTimer = (ref: typeof openTimerRef) => {
         if (ref.current !== null) {
@@ -180,14 +192,15 @@ export function Popover({
         }
         : {}
 
-    // 键盘打开：hover / manual 自己开；click 由 Radix Trigger 的原生按钮激活打开，
-    // 这里只负责记下「本次是键盘意图」，让焦点策略放行
+    // 键盘打开：hover 自己开；manual 交给消费方（如 SubmitButton 的 Enter=中止），
+    // click 由 Radix Trigger 的原生按钮激活打开。这里只记下「本次是键盘意图」，让焦点策略放行
     const anchorKeyboardHandlers: Pick<HTMLAttributes<HTMLElement>, 'onKeyDown'> = {
         onKeyDown: (event) => {
             if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'ArrowDown') return
             openViaKeyboardRef.current = true
             restoreFocusOnCloseRef.current = true
-            if (hoverable || manual) {
+            anchorElRef.current = event.currentTarget as HTMLElement
+            if (hoverable) {
                 event.preventDefault()
                 if (clickable) pinnedRef.current = true
                 setOpen(true)
@@ -207,11 +220,7 @@ export function Popover({
         : {}
 
     const handleOpenChange = (next: boolean) => {
-        if (next) {
-            clearTimer(openTimerRef)
-        } else {
-            restoreFocusOnCloseRef.current = false
-        }
+        // 焦点归还由 onCloseAutoFocus 消费 restoreFocusOnCloseRef 决定，这里不能提前清零
         setOpen(next)
     }
 
@@ -222,10 +231,12 @@ export function Popover({
     } as CSSProperties
 
     const panel = (
-        <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Portal forceMount={keepMounted && everOpened ? true : undefined}>
             <PopoverPrimitive.Content
                 id={contentId}
                 data-mobi-popover=""
+                forceMount={keepMounted && everOpened ? true : undefined}
+                inert={keepMounted && !isOpen ? true : undefined}
                 side={side}
                 align={align}
                 sideOffset={sideOffset}
@@ -240,8 +251,10 @@ export function Popover({
                     openViaKeyboardRef.current = false
                 }}
                 onCloseAutoFocus={(event) => {
-                    // 焦点从未进入面板时不要把它拉回 trigger（hover 场景会打断用户当前焦点）
-                    if (!restoreFocusOnCloseRef.current) event.preventDefault()
+                    // 焦点从未进入面板时不要把它拉回 trigger（hover 场景会打断用户当前焦点）；
+                    // 键盘打开时手动归还（Anchor 模式没有 Radix 的 triggerRef）
+                    event.preventDefault()
+                    if (restoreFocusOnCloseRef.current) anchorElRef.current?.focus()
                     restoreFocusOnCloseRef.current = false
                 }}
             >

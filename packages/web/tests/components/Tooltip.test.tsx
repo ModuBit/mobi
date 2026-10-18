@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { Tooltip } from '@/ui/base/interactive/tooltip/Tooltip'
@@ -39,6 +39,29 @@ describe('Tooltip', () => {
             </Tooltip>,
         )
         expect(screen.getByText('提示内容')).toBeInTheDocument()
+    })
+
+    it('点击 trigger 不关闭 hover 打开的 tooltip；点外仍关闭', async () => {
+        const onOpenChange = vi.fn()
+        render(
+            <Tooltip open onOpenChange={onOpenChange} content={<span>提示内容</span>}>
+                <button type="button">触发</button>
+            </Tooltip>,
+        )
+        const trigger = screen.getByRole('button', { name: '触发' })
+
+        // Radix Trigger 自身会在 pointerdown / click 时发 onClose，必须忽略
+        fireEvent.pointerDown(trigger, { pointerType: 'mouse', button: 0 })
+        fireEvent.click(trigger)
+        expect(onOpenChange).not.toHaveBeenCalled()
+        expect(screen.getByText('提示内容')).toBeInTheDocument()
+
+        // 点外关闭要照常转发（DismissableLayer 在挂载后的 setTimeout(0) 才挂监听）
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        fireEvent.pointerDown(document.body, { button: 0 })
+        fireEvent.click(document.body)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        expect(onOpenChange).toHaveBeenCalledWith(false)
     })
 
     it('字符串内容走尺寸动画容器，data-state 与方位落到浮层', async () => {

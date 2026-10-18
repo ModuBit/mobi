@@ -620,6 +620,9 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                             open={treeOpen}
                             onOpenChange={openTree}
                             trigger="click"
+                            /* 树内容持有展开/过滤状态：关闭后保留挂载（antd 默认行为），
+                               重开不会回到初始态 */
+                            keepMounted
                             side="bottom"
                             align="start"
                             /* 面板上限由组件几何接管（碰撞翻转 + 视口上限）；
