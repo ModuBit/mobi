@@ -51,7 +51,7 @@
 .secondary .trigger { width: 32px; border-left-color: var(--border-subtle); border-radius: 0 var(--radius-pill) var(--radius-pill) 0; }
 .secondary .primary:active:not(:disabled), .secondary .trigger:active:not(:disabled), .secondary .trigger[data-state="open"] { background: color-mix(in oklab, var(--surface-muted), var(--border) 55%); }
 .icon { display: inline-flex; }
-.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.srOnly { composes: sr-only from global; }
 /* The menu grows from the trigger edge: offset toward the trigger, scale from the Radix origin, fade quickly; it leaves faster than it arrives.
    Transitions instead of keyframes, so a close that interrupts the open reverses from where the menu is instead of snapping to rest first. */
 .menu { --menu-x: 0px; --menu-y: -5px; z-index: var(--mobi-z-overlay, 50); min-width: min(12rem, var(--radix-dropdown-menu-content-available-width)); max-width: var(--radix-dropdown-menu-content-available-width); padding: 5px; border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--surface-raised); color: var(--foreground); box-shadow: var(--shadow-floating); transform-origin: var(--radix-dropdown-menu-content-transform-origin); transition: opacity var(--duration-fast) var(--ease-enter), transform var(--duration-spring) var(--ease-spring); }

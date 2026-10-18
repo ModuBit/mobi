@@ -61,16 +61,6 @@
 .iconOnly { width: var(--control-height-sm); padding: 0; }
 .plain { border-color: transparent; background: transparent; color: var(--text-secondary); }
 .srOnly {
-  /* fixed 而非 absolute：本 span 是按钮的兄弟节点，气泡 footer 链可能整条 static，
-      包含块逃逸到滚动器外层容器——absolute 无 top/left 锚定时落点与滚动器滚动偏移
-      纠缠（实测 = 静态位置 + scrollTop），span 漂到内容底边之外膨胀聊天列表可滚区，
-      表现为列表尾部大段空白且随代码块增多增长（2026-10-18 e2e 实锤）。fixed 视口
-      锚定，从构造上不参与任何滚动几何；祖先带 transform 时退化为就近钉住，同样局部无害 */
-  position: fixed;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
+  composes: sr-only from global;
 }
 @media (prefers-reduced-motion: reduce) { .button { transition: none; } .button:active:not(:disabled) { transform: none; } }

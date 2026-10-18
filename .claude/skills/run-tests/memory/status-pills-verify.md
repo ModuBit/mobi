@@ -50,7 +50,7 @@ assistant 的 `message` 需要 `{ id, type:'message', role:'assistant', model, c
 ## 断言口径
 
 - 气泡文案：
-  - todo：`{completed}/{total} 已完成 · {inProgress} 执行中`（`/` 两侧不加空格）；total = todos +
+  - todo：`{completed}/{total} 已完成 · 执行中 {count}`（`/` 两侧不加空格；en：`{completed}/{total} done · {count} in progress`）。total = todos +
     非 deleted tasks；全部完成 → `全部完成`。`data-testid="status-pill-todo"`
   - tasks：`执行中 {active}/{total}`（无空格）；active = 前台任务 + running 后台 + running/active/无状态
     团队成员；`data-testid="status-pill-tasks"`
@@ -59,18 +59,22 @@ assistant 的 `message` 需要 `{ id, type:'message', role:'assistant', model, c
   2.6s ease-in-out 在 opacity 0.12 ↔ 0.52 间呼吸，只动 opacity、不重绘文字/阴影。
   断言口径：`getComputedStyle(pill, '::before')` 的 `content !== 'none'`、
   `backgroundImage` 含 `radial-gradient`、`animationName` 非 none 且 `animationDuration` 为 `2.6s`。
-  空闲 / 全部完成时无 `data-running`（::before opacity 0）。reduced-motion 停转、保留 opacity 0.3
-  的静态微光。
-- 定位：`pillsRect.bottom + 8 == composerTop`（`.ant-sender` 的 top）；水平居中：pills center ==
-  `.chat-scroll-container` center（2026-10-17 实测 526.5 == 526.5）。
-- 贴底：`scrollTop + clientHeight == scrollHeight` 时，最后一条**真实**气泡的 bottom ≤ pills top
+  空闲 / 全部完成时无 `data-running`，且不生成 `::before`（`content === 'none'`）。reduced-motion 停转、
+  保留 opacity 0.3 的静态微光。
+- 定位：`pillsRect.bottom + 12 == composerTop`（`.ant-sender` 的 top）；水平居中：pills center ==
+  `.chat-scroll-container` center（2026-10-17 实测 526.5 == 526.5）。⚠️ 2026-10-18 几何改版
+  （底距 8→12、spacer 44）后的 +12 与间距 12 为常数推导，**待下次 E2E 复验**。
+- 贴底：`scrollTop + clientHeight == scrollHeight` 时，最后一条**真实**气泡的 bottom 距 pills top 12px
+  （`PILLS_TO_MESSAGE_GAP`；spacer 高度 44 已扣除容器 padding-bottom 8，且 spacer 的 antd
+  bubble 内衬已在 `chatScrollStyles` 中归零）。
   （尾部还有一个空文本 spacer 带 `.ant-bubble`，取倒数第二个才是最后一条消息）。
 - 上滚穿层：`scrollTop=0` 时中间消息会落在气泡后面，胶囊背后可透过模糊看到文字。
 - 毛玻璃：`getComputedStyle(pill).backdropFilter === 'blur(12px) saturate(1.4)'`。
 - 阴影裁切：横向滚动容器（`overflow-x: auto` 会让另一轴也变裁剪轴）的 padding box 是裁剪边界，
-  气泡 8px 模糊阴影需由 `RowInner` 内衬提供绘制空间（当前 12px）。验收断言：row 与 pill 四向
-  headroom ≥ 10px，且改动内衬后 `pill.bottom + 8 == composerTop` 仍成立（Wrap 底距随内衬回退）。
-  2026-10-18 实踩：内衬 2px 时阴影上下被齐平切断。
+  气泡 8px 模糊阴影需由 `RowInner` 内衬提供绘制空间（当前 12px）。底距与内衬同值（12），
+  行盒不越出外层滚动容器；阴影向下范围 2 + 8 = 10 < 12。验收断言：row 与 pill 四向
+  headroom ≥ 10px，且 `rowRect` 四边都在 `.chat-scroll-container` 内、`pill.bottom + 12 == composerTop`。
+  2026-10-18 实踩：内衬 2px 时阴影上下被齐平切断；Wrap 底距回退过少时下缘仍被容器裁 2px。
 - 主题：`localStorage.mobi-ui` 的 `state.theme` + reload。
 - 横向渐隐：把 row 宽度临时压到 120px，`scrollLeft=0` 只有右侧渐变，滚到末尾只有左侧。
 

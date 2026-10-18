@@ -127,7 +127,7 @@
 .check[data-on] { opacity: 1; transform: none; }
 .empty { margin: 0; padding: 12px 10px 14px; color: var(--text-muted); font-size: var(--text-sm); }
 
-.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.srOnly { composes: sr-only from global; }
 
 @media (prefers-reduced-motion: reduce) {
   .shape, .check, .slot, .anchor { transition-duration: 0ms; }

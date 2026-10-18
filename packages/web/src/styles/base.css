@@ -1,5 +1,23 @@
 /* ==================== 全局样式 ==================== */
 
+/* 视觉隐藏（仅辅助技术可读）：全站唯一实现，CSS Modules 以
+   `composes: sr-only from global;` 复用——不要再在模块里各写一份。
+   fixed 而非 absolute：absolute 无 top/left 锚定时落点 = 静态位置 + 最近滚动器
+   scrollTop，隐藏盒会被摊到滚动内容末尾之外、膨胀可滚区（2026-10-18 聊天列表
+   尾部虚空实锤）。fixed 锚定视口，从构造上不参与任何滚动几何；祖先带 transform
+   时就近钉住，同样 1px 裁切不可见 */
+.sr-only {
+    position: fixed;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
 * {
     box-sizing: border-box;
 }

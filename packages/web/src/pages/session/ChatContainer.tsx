@@ -60,7 +60,7 @@ import { renderUserBubbleHeader, renderChatBlock, type ChatBlockContext } from '
 import { ToolCallGroupRenderer } from '@/features/chat/blocks/toolCallGroupBlock'
 import { ToolDetailDrawer } from '@/features/chat/tool-card/ToolDetailDrawer'
 import { useToolDetailDrawer } from '@/features/chat/tool-card/useToolDetailDrawer'
-import { ComposerStatusPills, useComposerStatusSummary, STATUS_PILLS_SPACER_HEIGHT } from '@/features/composer/ComposerStatusPills'
+import { ComposerStatusPills, useComposerStatusSummary, STATUS_PILLS_SPACER_HEIGHT, CHAT_SCROLL_PADDING } from '@/features/composer/ComposerStatusPills'
 import type { ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
 import { type RewindDryRunResult } from '@/features/chat/RewindConfirmView'
 import { MessageActionsDrawer, MessageActionsTrigger, type MessageActionTarget } from '@/features/chat/MessageActionsDrawer'
@@ -93,7 +93,7 @@ const { useToken } = antTheme
 
 /** 状态气泡让位 spacer：固定高度、无 props，模块级常量避免流式期每个 chunk 重建元素 */
 const STATUS_PILLS_SPACER = (
-    <div aria-hidden="true" style={{ height: STATUS_PILLS_SPACER_HEIGHT }} />
+    <div aria-hidden="true" className="status-pills-spacer" style={{ height: STATUS_PILLS_SPACER_HEIGHT }} />
 )
 
 /**
@@ -191,6 +191,16 @@ const chatScrollStyles = css`
         max-width: 100%;
         overflow-x: auto;
         overflow-y: hidden;
+    }
+    /* 状态气泡让位 spacer 是纯高度占位：抹掉 antd bubble 的上下内衬（气泡 6px +
+       内容 12px）与内容最小高度，让预留高度恰为 STATUS_PILLS_SPACER_HEIGHT——
+       否则末尾会多出几十像素空白，STATUS_PILLS_SPACER_HEIGHT 也不再是可推导的几何量 */
+    .chat-scroll-container .ant-bubble:has(.status-pills-spacer) {
+        padding-block: 0 !important;
+    }
+    .chat-scroll-container .ant-bubble:has(.status-pills-spacer) .ant-bubble-content {
+        padding-block: 0 !important;
+        min-height: 0 !important;
     }
 `
 
@@ -1407,7 +1417,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             <div
                 ref={setChatScrollEl}
                 className="chat-scroll-container"
-                style={{ flex: 1, overflow: 'hidden', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}
+                style={{ flex: 1, overflow: 'hidden', padding: CHAT_SCROLL_PADDING, fontFamily: 'var(--font-chat)', position: 'relative' }}
                 onMouseUp={isMobile ? undefined : handleSelectionMouseUp}
             >
                 {/* 空会话但有尾行（运行指示 / 缓存过期 / 气泡让位）时也要挂列表：

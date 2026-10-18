@@ -42,24 +42,38 @@ import { buildChecklist, type ChecklistSummary } from './checklist'
 import { TodoPanel } from './TodoPanel'
 import { TasksPanel, useTasksPanelItems, type TaskListItem } from './TasksPanel'
 
-/** 气泡固定高度；气泡行距底边距（Wrap 的 bottom） */
+/** 聊天滚动容器四周内衬（ChatContainer 内联样式复用同一常量；气泡几何以它的 padding box 为基准） */
+export const CHAT_SCROLL_PADDING = 8
+
+/** 气泡固定高度 */
 const PILL_HEIGHT = 28
-const PILLS_BOTTOM_GAP = 8
-/** 气泡行与最后一条消息之间的视觉间距 */
-const PILLS_TO_MESSAGE_GAP = 12
-/** 气泡行内衬：给胶囊阴影留出绘制空间。
- *  横向滚动容器（overflow-x: auto 会让另一轴的 visible 一并成为裁剪轴）只裁到自身盒边界，
- *  内衬小于阴影外扩范围时阴影会被齐平切断。内衬把气泡整体抬高，Wrap 的底距同步回退抵消。 */
+/** 胶囊阴影：Y 偏移 + 模糊半径。四周绘制范围为模糊半径，向下再叠加偏移 */
+const PILL_SHADOW_OFFSET_Y = 2
+const PILL_SHADOW_BLUR = 8
+
+/** 内衬：给胶囊阴影留出绘制空间。
+ *  横向滚动容器（overflow-x: auto 会让另一轴的 visible 一并成为裁剪轴）只裁到自身 padding box，
+ *  内衬小于阴影外扩范围时阴影会被齐平切断。 */
 const PILLS_SHADOW_ROOM = 12
 
-/** 列表尾部为气泡让出的高度（由上面三个几何值派生，避免多处魔法数失配） */
-export const STATUS_PILLS_SPACER_HEIGHT = PILL_HEIGHT + PILLS_BOTTOM_GAP + PILLS_TO_MESSAGE_GAP
+/** 气泡底边到滚动容器 padding box 底边的距离（即与 composer 的视觉间距）。
+ *  必须 ≥ 阴影向下范围（offset + blur = 10）；取与内衬同值，行盒（含内衬）恰好落在滚动容器内
+ *  ——小于内衬时 Wrap 会顶出容器，底边阴影被容器裁掉。 */
+const PILLS_BOTTOM_GAP = PILLS_SHADOW_ROOM
+
+/** 气泡行与最后一条消息之间的视觉间距 */
+const PILLS_TO_MESSAGE_GAP = 12
+
+/** 列表尾部为气泡让出的高度：spacer 位于滚动容器内容盒内，容器 padding-bottom 已先贡献
+ *  CHAT_SCROLL_PADDING，扣除后才是 PILLS_TO_MESSAGE_GAP 的实际视觉间距。 */
+export const STATUS_PILLS_SPACER_HEIGHT =
+    PILL_HEIGHT + PILLS_BOTTOM_GAP + PILLS_TO_MESSAGE_GAP - CHAT_SCROLL_PADDING
 
 const Wrap = styled.div`
     position: absolute;
     left: 0;
     right: 0;
-    /* 内衬把气泡抬高 PILLS_SHADOW_ROOM，底距同步回退，气泡视觉位置不变 */
+    /* 内衬把气泡抬高 PILLS_SHADOW_ROOM，底距同步回退抵消；同值时恰为 0，行盒不越出容器 */
     bottom: ${PILLS_BOTTOM_GAP - PILLS_SHADOW_ROOM}px;
     z-index: 9;
     display: flex;
@@ -128,7 +142,7 @@ const Pill = styled.button`
     background: color-mix(in srgb, var(--ant-color-bg-container) 86%, transparent);
     backdrop-filter: blur(12px) saturate(1.4);
     -webkit-backdrop-filter: blur(12px) saturate(1.4);
-    box-shadow: 0 2px 8px rgb(0 0 0 / 10%);
+    box-shadow: 0 ${PILL_SHADOW_OFFSET_Y}px ${PILL_SHADOW_BLUR}px rgb(0 0 0 / 10%);
     color: var(--ant-color-text-secondary);
     font-size: 13px;
     line-height: 1;

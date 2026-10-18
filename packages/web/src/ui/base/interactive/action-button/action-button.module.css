@@ -17,6 +17,6 @@
 .arrow { flex: none; }
 .statusIcon { color: currentColor; }
 .spinner { display: inline-block; width: var(--space-4); height: var(--space-4); border: 1.5px solid currentColor; border-right-color: transparent; border-radius: var(--radius-pill); animation: spin .7s linear infinite; }
-.visuallyHidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.visuallyHidden { composes: sr-only from global; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .button { transition: none; } .spinner { animation: none; } }

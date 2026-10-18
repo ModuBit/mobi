@@ -83,7 +83,7 @@
 .icon svg { width: 16px; height: 16px; stroke-width: 1.75; }
 .value { display: inline-flex; align-items: center; font-variant-numeric: tabular-nums; }
 .label { display: inline-block; }
-.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.srOnly { composes: sr-only from global; }
 
 /* The menu grows from the group's edge: offset toward it, scale from the Radix origin, and leave faster than it arrives.
    Transitions instead of keyframes, so a close that interrupts the open reverses from where the menu is. */
