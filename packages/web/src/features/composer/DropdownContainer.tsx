@@ -15,39 +15,21 @@
  */
 
 import type React from 'react'
+import styles from './dropdownContainer.module.css'
 
 interface DropdownContainerProps {
-    loading: boolean
-    hasItems: boolean
     children: React.ReactNode
 }
 
-/** 下拉列表容器，统一样式与加载态 */
-export function DropdownContainer({ loading, hasItems, children }: DropdownContainerProps) {
-    if (!hasItems && !loading) return null
-
+/**
+ * composer 建议面板外壳（uiarc 视觉语言）：
+ * 贴 Sender 上方、占满输入区宽度；承载底色 / 描边 / 圆角 / 投影 / 进场。
+ * 列表本体（滑动高亮、滚动、ARIA）归 ui/base 的 SuggestionList，本组件不含业务语义。
+ */
+export function DropdownContainer({ children }: DropdownContainerProps) {
     return (
-        <div
-            role="listbox"
-            style={{
-                position: 'absolute',
-                bottom: '100%',
-                left: 0,
-                right: 0,
-                maxHeight: 240,
-                overflowY: 'auto',
-                backgroundColor: 'var(--ant-color-bg-elevated)',
-                borderRadius: 'var(--ant-border-radius)',
-                boxShadow: 'var(--ant-box-shadow-secondary)',
-                zIndex: 50,
-                marginBottom: 4,
-            }}
-        >
-            {loading && !hasItems ? (
-                <div style={{ padding: '8px 12px', color: 'var(--ant-color-text-tertiary)', fontSize: 14 }}>
-                    ...
-                </div>
-            ) : children}
+        <div className={styles.panel} data-mobi-suggestion-panel="">
+            {children}
         </div>
     )
 }

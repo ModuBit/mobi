@@ -55,10 +55,6 @@ export function useSlashCommandInteraction({
         workingDir,
     )
 
-    const scrollIntoActive = useCallback((node: HTMLDivElement | null) => {
-        node?.scrollIntoView({ block: 'nearest' })
-    }, [])
-
     const processChange = useCallback((text: string, cursorPos: number): boolean => {
         const slash = detectSlashAtCursor(text, cursorPos)
         if (slash) {
@@ -167,13 +163,14 @@ export function useSlashCommandInteraction({
         isLoading,
         activeIndex,
         activeCommand,
+        /** / 后的当前过滤词，供建议列表做匹配高亮 */
+        filter,
         setActiveIndex,
-        scrollIntoActive,
         processChange,
         selectItem,
         selectCurrent,
         handleKeyDown,
         close,
         reset,
-    }), [isOpen, items, isLoading, activeIndex, activeCommand, setActiveIndex, scrollIntoActive, processChange, selectItem, selectCurrent, handleKeyDown, close, reset])
+    }), [isOpen, items, isLoading, activeIndex, activeCommand, filter, setActiveIndex, processChange, selectItem, selectCurrent, handleKeyDown, close, reset])
 }

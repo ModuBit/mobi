@@ -54,10 +54,6 @@ export function useMentionInteraction({
         mentionInput,
     )
 
-    const scrollIntoActive = useCallback((node: HTMLDivElement | null) => {
-        node?.scrollIntoView({ block: 'nearest' })
-    }, [])
-
     const processChange = useCallback((text: string, cursorPos: number): boolean => {
         const mention = detectMentionAtCursor(text, cursorPos)
         if (mention) {
@@ -141,12 +137,13 @@ export function useMentionInteraction({
         items,
         isLoading,
         activeIndex,
+        /** @ 后的当前输入（目录下钻后会变成目录路径），供建议列表做匹配高亮 */
+        query: mentionInput?.mentionInput ?? '',
         setActiveIndex,
-        scrollIntoActive,
         processChange,
         selectItem,
         selectCurrent,
         handleKeyDown,
         close,
-    }), [isOpen, items, isLoading, activeIndex, setActiveIndex, scrollIntoActive, processChange, selectItem, selectCurrent, handleKeyDown, close])
+    }), [isOpen, items, isLoading, activeIndex, mentionInput, setActiveIndex, processChange, selectItem, selectCurrent, handleKeyDown, close])
 }

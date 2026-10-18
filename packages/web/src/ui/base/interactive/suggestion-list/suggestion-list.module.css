@@ -1,0 +1,134 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* uiarc mention-input 的 listbox 样式（self-managed）：
+ * 只消费 cssVars.ts 注入的 UIARC 别名（--surface-muted / --text-* / --duration-*），
+ * 面板底色与描边归外壳（features/composer/DropdownContainer），此处只管列表本体。 */
+
+.viewport {
+    overflow: hidden;
+}
+
+.list {
+    position: relative;
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 18%, transparent) transparent;
+}
+
+/* 深色主题下系统滚动条会画出一条亮轨道，盖过面板底色；只留一根细拇指 */
+.list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.list::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--foreground) 18%, transparent);
+    background-clip: padding-box;
+}
+
+/* 滑动高亮：绝对定位在列表内，随列表滚动；圆角 = 面板圆角 − 外壳内衬 6px（同心公式） */
+.highlight {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    border-radius: calc(var(--radius-panel) - 6px);
+    background: color-mix(in oklab, var(--foreground) 6.5%, transparent);
+    pointer-events: none;
+}
+
+.option {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px 7px 8px;
+    border-radius: calc(var(--radius-panel) - 6px);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.option[aria-selected='true'] {
+    color: var(--foreground);
+}
+
+.icon {
+    display: grid;
+    width: 28px;
+    height: 28px;
+    flex: none;
+    place-items: center;
+    color: var(--text-secondary);
+    transition: color var(--duration-instant) var(--ease-standard);
+}
+
+.option[aria-selected='true'] .icon {
+    color: var(--foreground);
+}
+
+.optionText {
+    display: grid;
+    min-width: 0;
+    flex: 1;
+}
+
+.label {
+    overflow: hidden;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.match {
+    background: none;
+    color: var(--foreground);
+}
+
+.meta {
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.trailing {
+    flex: none;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+}
+
+.status {
+    padding: 10px 12px;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}

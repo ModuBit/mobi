@@ -56,8 +56,8 @@ import { useAttachmentHandling } from '@/features/composer/useAttachmentHandling
 import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useDirectoryCommands } from '@/features/composer/useDirectoryCommands'
 import { useSDKMetadata, type ModelOption } from '@/core/data/hooks/queries/useSDKMetadata'
-import { MentionDropdown } from '@/features/composer/MentionDropdown'
-import { SlashCommandDropdown } from '@/features/composer/SlashCommandDropdown'
+import { MentionDropdown, MENTION_LISTBOX_ID } from '@/features/composer/MentionDropdown'
+import { SlashCommandDropdown, SLASH_LISTBOX_ID } from '@/features/composer/SlashCommandDropdown'
 import { CommandHintBar } from '@/features/composer/CommandHintBar'
 import { ResponsiveActionBar, type ActionItem } from '@/features/composer/ResponsiveActionBar'
 import { ToolStrip } from '@/features/composer/ToolStrip'
@@ -517,6 +517,31 @@ export function ChatComposer(props: ChatComposerProps) {
         return () => document.removeEventListener('mousedown', handler)
     }, [mention.isOpen, slash.isOpen, mention, slash])
 
+    // 建议列表 ARIA：textarea 由 antd X 管理，属性经 DOM 直写。
+    // 不在 Sender 上声明 role/aria——Sender 会把 restProps 同时铺到根容器，
+    // 会让整个输入卡被读成 combobox。
+    const suggestionListId = mention.isOpen ? MENTION_LISTBOX_ID : slash.isOpen ? SLASH_LISTBOX_ID : null
+    const suggestionActiveIndex = mention.isOpen ? mention.activeIndex : slash.isOpen ? slash.activeIndex : -1
+    const suggestionCount = mention.isOpen ? mention.items.length : slash.isOpen ? slash.items.length : 0
+    useEffect(() => {
+        const textarea = getTextarea(wrapperRef.current)
+        if (!textarea) return
+        textarea.setAttribute('role', 'combobox')
+        textarea.setAttribute('aria-autocomplete', 'list')
+        textarea.setAttribute('aria-expanded', suggestionListId ? 'true' : 'false')
+        if (!suggestionListId) {
+            textarea.removeAttribute('aria-controls')
+            textarea.removeAttribute('aria-activedescendant')
+            return
+        }
+        textarea.setAttribute('aria-controls', suggestionListId)
+        if (suggestionCount > 0 && suggestionActiveIndex >= 0) {
+            textarea.setAttribute('aria-activedescendant', `${suggestionListId}-option-${suggestionActiveIndex}`)
+        } else {
+            textarea.removeAttribute('aria-activedescendant')
+        }
+    }, [suggestionListId, suggestionActiveIndex, suggestionCount])
+
     // 光标位置恢复（无 deps：需要在每次 React commit 后检查 pending 状态）
     useEffect(() => {
         if (pendingCursorRef.current != null) {
@@ -928,7 +953,7 @@ export function ChatComposer(props: ChatComposerProps) {
                         items={mention.items}
                         loading={mention.isLoading}
                         activeIndex={mention.activeIndex}
-                        scrollIntoActive={mention.scrollIntoActive}
+                        query={mention.query}
                         onSelect={(item) => {
                             const result = mention.selectItem(item, text)
                             if (result) {
@@ -946,7 +971,7 @@ export function ChatComposer(props: ChatComposerProps) {
                         items={slash.items}
                         loading={slash.isLoading}
                         activeIndex={slash.activeIndex}
-                        scrollIntoActive={slash.scrollIntoActive}
+                        query={slash.filter}
                         onSelect={(item) => {
                             const result = slash.selectItem(item, text)
                             if (result) {

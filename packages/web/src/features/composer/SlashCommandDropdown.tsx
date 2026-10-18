@@ -14,17 +14,14 @@
  * limitations under the License.
  */
 
+import { SquareSlash } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { SuggestionList, type SuggestionRow } from '@/ui/base/interactive/suggestion-list/SuggestionList'
 import type { SlashCommandSuggestionItem } from '@/domain/command/slashCommandHelper'
 import { DropdownContainer } from './DropdownContainer'
 
-interface SlashCommandDropdownProps {
-    items: SlashCommandSuggestionItem[]
-    loading: boolean
-    activeIndex: number
-    scrollIntoActive: (node: HTMLDivElement | null) => void
-    onSelect: (item: SlashCommandSuggestionItem) => void
-    onHover: (index: number) => void
-}
+/** listbox id：Composer 用它把 textarea 的 aria-controls/activedescendant 关联到列表 */
+export const SLASH_LISTBOX_ID = 'mobi-slash-listbox'
 
 /**
  * CC 内置命令的名字色：light 陶土暖橙、dark antd gold，经 CSS 变量随主题切换
@@ -32,60 +29,53 @@ interface SlashCommandDropdownProps {
  */
 const BUILTIN_COMMAND_COLOR = 'var(--mobi-command-builtin)'
 
+interface SlashCommandDropdownProps {
+    items: SlashCommandSuggestionItem[]
+    loading: boolean
+    activeIndex: number
+    /** / 后的当前过滤词，仅用于匹配高亮 */
+    query: string
+    onSelect: (item: SlashCommandSuggestionItem) => void
+    onHover: (index: number) => void
+}
+
 /** 斜杠命令下拉列表 */
 export function SlashCommandDropdown({
     items,
     loading,
     activeIndex,
-    scrollIntoActive,
+    query,
     onSelect,
     onHover,
 }: SlashCommandDropdownProps) {
+    const { t } = useTranslation()
+
+    // 无命令且无过滤词时没有可展示的内容，直接不渲染面板
+    if (items.length === 0 && !loading && !query) return null
+
+    const rows: SuggestionRow[] = items.map(item => ({
+        key: item.value,
+        label: item.label,
+        meta: item.description || undefined,
+        icon: <SquareSlash size={16} strokeWidth={1.75} />,
+        trailing: item.argumentHint || undefined,
+        labelStyle: item.builtin ? { color: BUILTIN_COMMAND_COLOR } : undefined,
+    }))
+
     return (
-        <DropdownContainer loading={loading} hasItems={items.length > 0}>
-            {items.map((item, index) => (
-                <div
-                    key={item.value}
-                    ref={index === activeIndex ? scrollIntoActive : undefined}
-                    role="option"
-                    aria-selected={index === activeIndex}
-                    onClick={() => onSelect(item)}
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: '6px 12px',
-                        cursor: 'pointer',
-                        backgroundColor: index === activeIndex
-                            ? 'var(--ant-color-bg-text-hover)'
-                            : 'transparent',
-                        fontSize: 14,
-                    }}
-                    onMouseEnter={() => onHover(index)}
-                >
-                    <span
-                        style={{
-                            fontWeight: 500,
-                            whiteSpace: 'nowrap',
-                            flexShrink: 0,
-                            color: item.builtin ? BUILTIN_COMMAND_COLOR : undefined,
-                        }}
-                    >
-                        {item.label}
-                    </span>
-                    {item.description && (
-                        <span style={{
-                            color: 'var(--ant-color-text-tertiary)',
-                            fontSize: 12,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                        }}>
-                            {item.description}
-                        </span>
-                    )}
-                </div>
-            ))}
+        <DropdownContainer>
+            <SuggestionList
+                listId={SLASH_LISTBOX_ID}
+                items={rows}
+                activeIndex={activeIndex}
+                onActiveIndexChange={onHover}
+                onSelect={(index) => onSelect(items[index])}
+                query={query}
+                loading={loading}
+                emptyText={query
+                    ? t('common.noMatchesFor', { query })
+                    : t('common.noMatches')}
+            />
         </DropdownContainer>
     )
 }
