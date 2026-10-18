@@ -20,6 +20,8 @@
  * 高频弹层不做更重的动画，reduced-motion 下退化为纯透明度。 */
 
 .panel {
+    /* 面板内衬：列表 / 高亮的同心圆角按它反算（见 suggestion-list.module.css） */
+    --suggestion-inset: 6px;
     position: absolute;
     right: 0;
     bottom: 100%;

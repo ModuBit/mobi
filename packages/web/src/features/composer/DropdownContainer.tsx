@@ -28,7 +28,7 @@ interface DropdownContainerProps {
  */
 export function DropdownContainer({ children }: DropdownContainerProps) {
     return (
-        <div className={styles.panel} data-mobi-suggestion-panel="">
+        <div className={styles.panel}>
             {children}
         </div>
     )

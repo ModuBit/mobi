@@ -67,9 +67,8 @@ export function MentionDropdown({
                 onSelect={(index) => onSelect(items[index])}
                 query={query}
                 loading={loading}
-                emptyText={query
-                    ? t('common.noMatchesFor', { query })
-                    : t('common.noMatches')}
+                // 走到空态必是有过滤词（无词无结果时上方已提前 return；loading 走加载态）
+                emptyText={t('common.noMatchesFor', { query })}
             />
         </DropdownContainer>
     )

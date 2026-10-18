@@ -18,10 +18,6 @@
  * 只消费 cssVars.ts 注入的 UIARC 别名（--surface-muted / --text-* / --duration-*），
  * 面板底色与描边归外壳（features/composer/DropdownContainer），此处只管列表本体。 */
 
-.viewport {
-    overflow: hidden;
-}
-
 .list {
     position: relative;
     display: grid;
@@ -51,15 +47,22 @@
     background-clip: padding-box;
 }
 
-/* 滑动高亮：绝对定位在列表内，随列表滚动；圆角 = 面板圆角 − 外壳内衬 6px（同心公式） */
+/* 滑动高亮（GlidingHighlight）：绝对定位在列表内，随列表滚动；
+ * 圆角 = 面板圆角 − 外壳内衬（内衬由承载面板通过 --suggestion-inset 声明） */
 .highlight {
     position: absolute;
     top: 0;
     right: 0;
     left: 0;
-    border-radius: calc(var(--radius-panel) - 6px);
+    border-radius: calc(var(--radius-panel) - var(--suggestion-inset, 6px));
     background: color-mix(in oklab, var(--foreground) 6.5%, transparent);
+    opacity: 0;
     pointer-events: none;
+    transition: opacity var(--duration-instant) var(--ease-standard);
+}
+
+.highlight[data-on] {
+    opacity: 1;
 }
 
 .option {
@@ -69,7 +72,7 @@
     align-items: center;
     gap: 10px;
     padding: 7px 10px 7px 8px;
-    border-radius: calc(var(--radius-panel) - 6px);
+    border-radius: calc(var(--radius-panel) - var(--suggestion-inset, 6px));
     color: var(--text-secondary);
     font-size: var(--text-sm);
     cursor: pointer;

@@ -66,7 +66,7 @@ function FolderRow({
     const isMobile = useIsMobile()
     const { options, isLoading } = useDirectoryListing(folder.path, homeDir)
 
-    const autoCompleteOptions = useMemo(() => {
+    const suggestions = useMemo(() => {
         if (!folder.path.trim() && homeDir) {
             // 空输入时给 home 目录快捷项（工作区主目录通常从 home 开始输入）
             return [{ value: homeDir, label: homeDir }]
@@ -85,13 +85,12 @@ function FolderRow({
                 aria-label={t('workspace.folders')}
                 icon={<Folder size={16} strokeWidth={1.75} aria-hidden="true" />}
                 value={folder.path}
-                options={autoCompleteOptions}
+                options={suggestions}
                 onValueChange={onPathChange}
                 placeholder={t('workspace.folderPathPlaceholder')}
                 disabled={disabled}
                 loading={isLoading}
                 allowClear={false}
-                emptyMessage={t('common.noMatches')}
                 style={{ flex: 1, width: isMobile ? '100%' : undefined }}
             />
             {/* 移动端窄屏一行放不下：Radio + 移除按钮单独一行，两端对齐 */}

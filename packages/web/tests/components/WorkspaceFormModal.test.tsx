@@ -190,8 +190,7 @@ describe('WorkspaceFormModal（PC Modal 形态）', () => {
     it('folders 被改动时提交携带新 folders（剥掉行 key）', async () => {
         const workspace = makeWorkspace()
         renderModal(workspace)
-        const pathInput = await waitFor(() =>
-            document.querySelector('.ant-modal-body .ant-select input') as HTMLInputElement)
+        const pathInput = await screen.findByRole('combobox', { name: 'workspace.folders' })
         fireEvent.change(pathInput, { target: { value: '/home/u/demo2' } })
 
         fireEvent.click(okButton())
@@ -230,10 +229,8 @@ describe('WorkspaceFormModal（新建 + onCreated 回填）', () => {
         expect(await screen.findByText('workspace.folderPathRequired')).toBeInTheDocument()
         expect(okButton()).toBeDisabled()
 
-        // 补上合法路径（homeDir=/home/u）后即可提交
-        // （AutoComplete 内部 input 的 placeholder 不走标准属性渲染，按结构取输入框）
-        const pathInput = document.querySelector('.ant-modal-body .ant-select input') as HTMLInputElement
-        expect(pathInput).not.toBeNull()
+        // 补上合法路径（homeDir=/home/u）后即可提交（路径输入是自管 Combobox）
+        const pathInput = await screen.findByRole('combobox', { name: 'workspace.folders' })
         fireEvent.change(pathInput, { target: { value: '/home/u/fresh' } })
         await waitFor(() => {
             expect(okButton()).toBeEnabled()
@@ -258,8 +255,7 @@ describe('WorkspaceFormModal（新建 + onCreated 回填）', () => {
         renderModal(makeWorkspace())
 
         // 新建场景无初始快照：home 外路径整体拦截（hostHomeDir 来自 daemonStatus mock = /home/u）
-        const pathInput = document.querySelector('.ant-modal-body .ant-select input') as HTMLInputElement
-        expect(pathInput).not.toBeNull()
+        const pathInput = await screen.findByRole('combobox', { name: 'workspace.folders' })
         fireEvent.change(pathInput, { target: { value: '/etc/secret' } })
 
         expect(await screen.findByText('workspace.folderOutsideHome')).toBeInTheDocument()

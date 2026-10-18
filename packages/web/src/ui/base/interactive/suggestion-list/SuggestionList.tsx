@@ -15,17 +15,18 @@
  */
 
 // 建议列表（uiarc mention-input 的 listbox 抽取件，零业务语义）：
-// ① 滑动高亮：激活行之间用 motion 的 y/height 过渡（uiarc 同款），首次放置与
-//    reduced-motion 下瞬时落位；
-// ② 面板高度弹簧：ResizeObserver 跟随内容高度，在 maxHeight 处封顶后列表自身滚动；
-// ③ 匹配字高亮：标签内首次命中的 query 片段用全对比度呈现（过滤仍归调用方）；
-// ④ mousedown 不抢焦点：点击选项时 textarea 保持焦点，移动端不会收键盘；
-// ⑤ option id 由 listId 派生，供 textarea 的 aria-activedescendant 关联。
+// ① 滑动高亮与高度弹簧复用 ui/base/motion 的共享件（GlidingHighlight / AutoHeight），
+//    与 select / combobox / multi-select 同一套手感；
+// ② 匹配字高亮：标签内首次命中的 query 片段用全对比度呈现（过滤仍归调用方，
+//    needle 规整与选项匹配共用 optionSearch 的 normalizeNeedle）；
+// ③ mousedown 不抢焦点：点击选项时 textarea 保持焦点，移动端不会收键盘；
+// ④ option id 由 listId 派生，供 textarea 的 aria-activedescendant 关联。
 
-import { animate, motion, useMotionValue, useReducedMotion } from 'motion/react'
-import { useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { motionTokens } from '@/ui/base/motion/motionTokens'
+import { AutoHeight } from '@/ui/base/motion/AutoHeight'
+import { GlidingHighlight } from '@/ui/base/motion/GlidingHighlight'
+import { normalizeNeedle } from '@/ui/base/interactive/optionSearch'
 import styles from './suggestion-list.module.css'
 
 export interface SuggestionRow {
@@ -52,23 +53,17 @@ export interface SuggestionListProps {
     query?: string
     loading?: boolean
     emptyText?: string
-    ariaLabel?: string
     /** listbox 的 DOM id：同时派生 `-option-<index>` 供 ARIA 关联 */
     listId?: string
-    /** 列表滚动区上限，默认 240px */
-    maxHeight?: number
 }
 
 const DEFAULT_MAX_HEIGHT = 240
-const INSTANT = { duration: 0 }
-const GLIDE = motionTokens.spring.snappy
-const GROW = motionTokens.spring.smooth
 
-/** 标签内首次命中的 query 片段高亮（大小写不敏感） */
+/** 标签内首次命中的 query 片段高亮（大小写不敏感，规整规则与选项过滤一致） */
 function Highlight({ text, query }: { text: string; query?: string }) {
-    const needle = query?.trim()
+    const needle = normalizeNeedle(query ?? '')
     if (!needle) return <>{text}</>
-    const at = text.toLowerCase().indexOf(needle.toLowerCase())
+    const at = text.toLocaleLowerCase().indexOf(needle)
     if (at < 0) return <>{text}</>
     return (
         <>
@@ -87,68 +82,27 @@ export function SuggestionList({
     query,
     loading = false,
     emptyText,
-    ariaLabel,
     listId,
-    maxHeight = DEFAULT_MAX_HEIGHT,
 }: SuggestionListProps) {
-    const reduced = !!useReducedMotion()
-    const listRef = useRef<HTMLUListElement>(null)
-    const rowY = useMotionValue(0)
-    const rowHeight = useMotionValue(0)
-    const panelHeight = useMotionValue<number | 'auto'>('auto')
-    const highlightPlaced = useRef(false)
-    const panelMeasured = useRef(false)
+    const listRef = useRef<HTMLDivElement>(null)
+    const [activeTarget, setActiveTarget] = useState<HTMLElement | null>(null)
 
     const safeIndex = items.length ? Math.min(Math.max(activeIndex, 0), items.length - 1) : -1
 
-    // 高亮条跟随激活行：首次 / reduced-motion 瞬时，其余滑动
-    useLayoutEffect(() => {
-        const row = safeIndex < 0
-            ? null
-            : listRef.current?.querySelector<HTMLElement>(`[data-index="${safeIndex}"]`)
-        if (!row) return
-        if (reduced || !highlightPlaced.current) {
-            animate(rowY, row.offsetTop, INSTANT)
-            animate(rowHeight, row.offsetHeight, INSTANT)
-            highlightPlaced.current = true
-            return
-        }
-        animate(rowY, row.offsetTop, GLIDE)
-        animate(rowHeight, row.offsetHeight, GLIDE)
-    }, [safeIndex, items.length, reduced, rowY, rowHeight])
-
-    // 激活行保持在可视区内（用 scrollTop 计算，避免 scrollIntoView 连带滚动页面）
+    // 激活行只解析一次：高亮跟随和滚动保持用同一个节点（避免两次 querySelector）
     useLayoutEffect(() => {
         const list = listRef.current
-        if (!list || safeIndex < 0) return
-        const row = list.querySelector<HTMLElement>(`[data-index="${safeIndex}"]`)
-        if (!row) return
+        const row = !list || safeIndex < 0
+            ? null
+            : list.querySelector<HTMLElement>(`[data-index="${safeIndex}"]`)
+        setActiveTarget(prev => (prev === row ? prev : row))
+        if (!list || !row) return
+        // 用 scrollTop 计算，避免 scrollIntoView 连带滚动页面
         const top = row.offsetTop
         const bottom = top + row.offsetHeight
         if (top < list.scrollTop) list.scrollTop = top
         else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight
     }, [safeIndex, items.length])
-
-    // 面板高度：内容变化时弹簧到 clamp(maxHeight)；首次 / reduced-motion 瞬时
-    useLayoutEffect(() => {
-        const list = listRef.current
-        if (!list) return
-        const fit = () => {
-            const target = Math.min(maxHeight, list.scrollHeight)
-            const current = panelHeight.get()
-            if (!panelMeasured.current || reduced || typeof current !== 'number') {
-                animate(panelHeight, target, INSTANT)
-                panelMeasured.current = true
-                return
-            }
-            if (Math.abs(current - target) > 0.5) animate(panelHeight, target, GROW)
-        }
-        fit()
-        if (typeof ResizeObserver === 'undefined') return
-        const observer = new ResizeObserver(fit)
-        observer.observe(list)
-        return () => observer.disconnect()
-    }, [maxHeight, panelHeight, reduced, items.length])
 
     if (loading && items.length === 0) {
         return <div className={styles.status} role="status">…</div>
@@ -158,19 +112,18 @@ export function SuggestionList({
     }
 
     return (
-        <motion.div className={styles.viewport} style={{ height: panelHeight }}>
-            <ul
+        <AutoHeight>
+            <div
                 ref={listRef}
                 id={listId}
                 role="listbox"
-                aria-label={ariaLabel}
                 className={styles.list}
-                style={{ maxHeight }}
+                style={{ maxHeight: DEFAULT_MAX_HEIGHT }}
                 onMouseDown={(event) => event.preventDefault()}
             >
-                <motion.li aria-hidden="true" className={styles.highlight} style={{ y: rowY, height: rowHeight }} />
+                <GlidingHighlight className={styles.highlight} target={activeTarget} />
                 {items.map((item, index) => (
-                    <li
+                    <div
                         key={item.key}
                         id={listId ? `${listId}-option-${index}` : undefined}
                         role="option"
@@ -192,9 +145,9 @@ export function SuggestionList({
                             </span>
                             {item.meta ? <span className={styles.meta}>{item.meta}</span> : null}
                         </span>
-                    </li>
+                    </div>
                 ))}
-            </ul>
-        </motion.div>
+            </div>
+        </AutoHeight>
     )
 }

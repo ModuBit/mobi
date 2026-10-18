@@ -36,6 +36,7 @@ import { useDirectoryCommands } from '@/features/composer/useDirectoryCommands'
 import { useAttachmentHandling } from '@/features/composer/useAttachmentHandling'
 import { useMentionInteraction } from '@/features/composer/useMentionInteraction'
 import { useSlashCommandInteraction } from '@/features/composer/useSlashCommandInteraction'
+import { useSuggestionListAria } from '@/features/composer/useSuggestionListAria'
 import { MentionDropdown, MENTION_LISTBOX_ID } from '@/features/composer/MentionDropdown'
 import { SlashCommandDropdown, SLASH_LISTBOX_ID } from '@/features/composer/SlashCommandDropdown'
 import { CommandHintBar } from '@/features/composer/CommandHintBar'
@@ -389,28 +390,15 @@ export function NewSessionPage() {
         return () => document.removeEventListener('mousedown', handler)
     }, [mention.isOpen, slash.isOpen, mention, slash])
 
-    // 建议列表 ARIA：textarea 由 antd X 管理，属性经 DOM 直写（原因同 ChatComposer）
-    const suggestionListId = mention.isOpen ? MENTION_LISTBOX_ID : slash.isOpen ? SLASH_LISTBOX_ID : null
-    const suggestionActiveIndex = mention.isOpen ? mention.activeIndex : slash.isOpen ? slash.activeIndex : -1
-    const suggestionCount = mention.isOpen ? mention.items.length : slash.isOpen ? slash.items.length : 0
-    useEffect(() => {
-        const textarea = wrapperRef.current?.querySelector('textarea')
-        if (!textarea) return
-        textarea.setAttribute('role', 'combobox')
-        textarea.setAttribute('aria-autocomplete', 'list')
-        textarea.setAttribute('aria-expanded', suggestionListId ? 'true' : 'false')
-        if (!suggestionListId) {
-            textarea.removeAttribute('aria-controls')
-            textarea.removeAttribute('aria-activedescendant')
-            return
-        }
-        textarea.setAttribute('aria-controls', suggestionListId)
-        if (suggestionCount > 0 && suggestionActiveIndex >= 0) {
-            textarea.setAttribute('aria-activedescendant', `${suggestionListId}-option-${suggestionActiveIndex}`)
-        } else {
-            textarea.removeAttribute('aria-activedescendant')
-        }
-    }, [suggestionListId, suggestionActiveIndex, suggestionCount])
+    // 建议列表 ARIA（textarea 由 antd X 管理，属性经 DOM 直写，见 useSuggestionListAria）
+    useSuggestionListAria(
+        wrapperRef,
+        mention.isOpen
+            ? { listId: MENTION_LISTBOX_ID, activeIndex: mention.activeIndex, count: mention.items.length }
+            : slash.isOpen
+                ? { listId: SLASH_LISTBOX_ID, activeIndex: slash.activeIndex, count: slash.items.length }
+                : null,
+    )
 
     // 光标位置恢复
     useEffect(() => {

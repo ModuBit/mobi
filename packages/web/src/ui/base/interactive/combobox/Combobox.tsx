@@ -40,6 +40,7 @@ import {
 import type { CSSProperties, InputHTMLAttributes, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
+import { AutoHeight } from "@/ui/base/motion/AutoHeight";
 import { GlidingHighlight } from "@/ui/base/motion/GlidingHighlight";
 import { ClearButton } from "@/ui/base/motion/ClearButton";
 import { normalizeNeedle, optionMatches } from "@/ui/base/interactive/optionSearch";
@@ -83,20 +84,6 @@ export interface ComboboxProps
   /** 挂组件根（field）的类名与样式——布局尺寸从根上给，消费方无需包裹 div */
   className?: string;
   style?: CSSProperties;
-}
-
-/** 高度追随 listbox，走临界阻尼弹簧，过滤时菜单不跳变。 */
-function AutoHeight({ children, reduceMotion }: { children: ReactNode; reduceMotion: boolean | null }) {
-  const innerRef = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState<number | "auto">("auto");
-  useEffect(() => {
-    const inner = innerRef.current;
-    if (!inner) return;
-    const observer = new ResizeObserver(() => setHeight(inner.offsetHeight));
-    observer.observe(inner);
-    return () => observer.disconnect();
-  }, []);
-  return <motion.div className={styles.autoHeight} initial={false} animate={{ height }} transition={reduceMotion ? { duration: 0 } : motionTokens.spring.smooth}><div ref={innerRef}>{children}</div></motion.div>;
 }
 
 export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Combobox(
@@ -213,39 +200,24 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
   }, []);
 
   // 弹层翻转：视口底缘放不下且上方空间更大时向上弹。
-  // 两个竞态都要覆盖：①弹层经 AnimatePresence 挂载，移动端 BottomSheet 入场时首个
-  // effect 可能还取不到 popover（rAF 重试）②建议列表异步到达后弹层才长高，首测偏小
-  // 会判成向下弹而被视口裁掉（ResizeObserver 追踪高度变化重测）
+  // 弹层节点以状态承接（回调 ref）：挂载即测量，不靠轮询猜挂载时机；
+  // ResizeObserver 追踪异步建议到达后的高度变化（首测偏小会误判向下弹而被视口裁掉）。
   const [dropUp, setDropUp] = useState(false);
-  const popoverRef = useRef<HTMLDivElement>(null);
+  const [popoverNode, setPopoverNode] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (!open) return;
-    let raf = 0;
-    let tries = 0;
-    let observer: ResizeObserver | undefined;
+    if (!open || !popoverNode) return;
     const measure = () => {
       const root = rootRef.current;
-      const popover = popoverRef.current;
-      // 挂载竞态：最多等 20 帧（约 0.3s，覆盖 BottomSheet 入场动画）
-      if ((!root || !popover) && tries++ < 20) {
-        raf = requestAnimationFrame(measure);
-        return;
-      }
-      if (!root || !popover) return;
-      if (!observer) {
-        observer = new ResizeObserver(measure);
-        observer.observe(popover);
-      }
+      if (!root) return;
       const rect = root.getBoundingClientRect();
       const below = window.innerHeight - rect.bottom;
-      setDropUp(below < popover.scrollHeight + 12 && rect.top > below);
+      setDropUp(below < popoverNode.scrollHeight + 12 && rect.top > below);
     };
     measure();
-    return () => {
-      cancelAnimationFrame(raf);
-      observer?.disconnect();
-    };
-  }, [open]);
+    const observer = new ResizeObserver(measure);
+    observer.observe(popoverNode);
+    return () => observer.disconnect();
+  }, [open, popoverNode]);
 
   const choose = (option: ComboboxOption) => {
     if (option.disabled) return;
@@ -383,14 +355,14 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
-            ref={popoverRef}
+            ref={setPopoverNode}
             className={[styles.popover, dropUp ? styles.dropUp : ""].filter(Boolean).join(" ")}
             initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: dropUp ? 6 : -6, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1, transition: reduceMotion ? { duration: motionTokens.duration.instant } : { ...motionTokens.spring.snappy, opacity: { duration: motionTokens.duration.fast, ease: [...motionTokens.ease.enter] } } }}
             exit={{ opacity: 0, ...(reduceMotion ? {} : { y: dropUp ? 4 : -4, scale: 0.98 }), transition: { duration: motionTokens.duration.instant, ease: [...motionTokens.ease.standard] } }}
             role="presentation"
           >
-            <AutoHeight reduceMotion={reduceMotion}>
+            <AutoHeight>
             <div id={listboxId} className={styles.listbox} role="listbox" aria-label={label}>
               <GlidingHighlight className={styles.highlight} target={activeTarget} />
               {filteredOptions.length ? filteredOptions.map((option, index) => (
