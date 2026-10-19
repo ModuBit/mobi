@@ -27,7 +27,6 @@ export type ChatBubbleItem = BubbleItemBase & {
     header?: ReactNode
     footer?: ReactNode
     footerPlacement?: 'inner-start' | 'inner-end' | 'outer-start' | 'outer-end'
-    classNames?: { root?: string }
 }
 
 /** 对外暴露的命令式 handle（与 VirtuosoChatList 同接口，ChatContainer 无感切换） */

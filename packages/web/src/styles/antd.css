@@ -81,8 +81,11 @@ html:not([data-theme='dark']) .user-msg-bubble .x-markdown .slash-command-badge 
     padding-inline: 0 !important;
 }
 
-/* 包含工具卡片的 assistant 气泡，最小宽度 80% */
-.ant-bubble:has(.tool-call-think) > .ant-bubble-body {
+/* 包含工具卡片的 assistant 气泡，最小宽度 80%。
+   锚点用列表项显式声明的类（buildBubbleItems.bubbleLayoutClass），不用 :has()——
+   :has() 锚在 .ant-bubble 上会让流式每次插入都重算整个气泡子树（长表格实测单次
+   ~3400 元素、20–30ms） */
+.ant-bubble.bubble-has-tool > .ant-bubble-body {
     min-width: 80% !important;
 }
 
@@ -121,11 +124,11 @@ html:not([data-theme='dark']) .user-msg-bubble .x-markdown .slash-command-badge 
     padding-block: 2px !important;
 }
 
-/* 事件对齐控制（覆盖 system 角色默认的居中） */
-.ant-bubble:has(.event-align-left) {
+/* 事件对齐控制（覆盖 system 角色默认的居中）。锚点用列表项显式声明的类，不用 :has() */
+.ant-bubble.bubble-event-align-left {
     justify-content: flex-start !important;
 }
-.ant-bubble:has(.event-align-right) {
+.ant-bubble.bubble-event-align-right {
     justify-content: flex-end !important;
 }
 
@@ -527,19 +530,24 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
 
 /* 产物 iframe / turn-diff 卡需要真实容器宽：borderless 气泡内容默认 shrink-to-fit，
    会把子级 width:100% 解析成「内容历史宽度」（实测锁死 922px）。含两者的气泡内容链
-   强制撑满（:has 现代浏览器全支持；移动端 PWA 同为现代内核）。
-   选择器认 artifact-inline-fullwidth / turn-diff-fullwidth 语义布局钩子（各组件根节点
-   声明）——布局依赖不挂 data-testid（那是测试钩子，被布局依赖属隐式升格，改名即静默塌布局） */
-.chat-scroll-container .ant-bubble:has(.artifact-inline-fullwidth) .ant-bubble-body,
-.chat-scroll-container .ant-bubble:has(.artifact-inline-fullwidth) .ant-bubble-content,
-.chat-scroll-container .ant-bubble:has(.turn-diff-fullwidth) .ant-bubble-body,
-.chat-scroll-container .ant-bubble:has(.turn-diff-fullwidth) .ant-bubble-content {
+   强制撑满。
+   锚点用显式类而非 :has()：:has() 锚在 .ant-bubble 上会让流式每次插入都重算整个气泡
+   子树（长表格实测单次 ~3400 元素、20–30ms）。
+   - bubble-artifact-fullwidth：由 HtmlInline 挂到最近的气泡根（产物类型要等文件元数据
+     才能裁决，列表项构造时未知，见 artifactInlineViews）。
+   - bubble-turn-diff-fullwidth：由列表项声明（buildBubbleItems.bubbleLayoutClass）。
+   两个类名是布局钩子，布局依赖不挂 data-testid（那是测试钩子，被布局依赖属隐式升格，
+   改名即静默塌布局） */
+.chat-scroll-container .ant-bubble.bubble-artifact-fullwidth .ant-bubble-body,
+.chat-scroll-container .ant-bubble.bubble-artifact-fullwidth .ant-bubble-content,
+.chat-scroll-container .ant-bubble.bubble-turn-diff-fullwidth .ant-bubble-body,
+.chat-scroll-container .ant-bubble.bubble-turn-diff-fullwidth .ant-bubble-content {
     width: 100%;
 }
 
 /* turn-diff 卡的内容层链比产物 iframe 多一层（CustomBlockView wrapper 是 content 的
    flex item，flex item 默认 shrink-to-fit，会再次把 100% 收缩掉），子级一并撑满 */
-.chat-scroll-container .ant-bubble:has(.turn-diff-fullwidth) .ant-bubble-content > * {
+.chat-scroll-container .ant-bubble.bubble-turn-diff-fullwidth .ant-bubble-content > * {
     width: 100%;
 }
 

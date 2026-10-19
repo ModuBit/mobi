@@ -39,11 +39,16 @@ export function CrossfadeText({ text, style, shimmer, ellipsis }: { text: string
     // 收缩链（如 .tool-call-think）里永不收缩，截断落在祖先 overflow:hidden 上
     // 变成无省略号硬裁（移动端组头实测）。wrapper 也设 max-width 才能压住 min-content。
     const [leaving, setLeaving] = useState<string | null>(null)
+    // 首帧不播淡入：本组件的语义是「文案切换」crossfade，首次挂载直接呈现即可。
+    // 挂载也淡入会让任何祖先重 mount（如 snapshot→full 换行）看起来像「闪一下」——
+    // 文字先消失再从 0 淡回（2026-10-19 thinking 完成后的二次闪烁）。
+    const [hasChanged, setHasChanged] = useState(false)
     const prevTextRef = useRef(text)
 
     useLayoutEffect(() => {
         if (prevTextRef.current === text) return
         setLeaving(prevTextRef.current)
+        setHasChanged(true)
         prevTextRef.current = text
         const timer = setTimeout(() => setLeaving(null), FADE_MS)
         return () => clearTimeout(timer)
@@ -65,7 +70,7 @@ export function CrossfadeText({ text, style, shimmer, ellipsis }: { text: string
             <ShinyText
                 key={text}
                 active={Boolean(shimmer)}
-                className="crossfade-text"
+                className={hasChanged ? 'crossfade-text' : undefined}
                 style={{
                     '--fade-ms': `${FADE_MS}ms`,
                     // 省略四件套整体收在 ellipsis 分支：默认路径保持不受限的 crossfade 形状

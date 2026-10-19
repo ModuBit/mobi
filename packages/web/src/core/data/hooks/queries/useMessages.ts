@@ -66,6 +66,8 @@ export function useMessages<T = DecryptedMessage[]>(
     return {
         data: projected,
         messages,
+        /** 最近一次实时入库时刻（含 snapshot delta 帧）；null = 本次载入后尚无实时事件 */
+        lastActivityAt: state.lastActivityAt,
         hasNextPage: state.hasMore,
         isLoading: state.isLoading,
         isFetchingNextPage: state.isLoadingMore,

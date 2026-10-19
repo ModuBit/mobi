@@ -48,14 +48,21 @@ interface AgentLoadingBubbleProps {
     /** 外部指定的运行起始时间戳（毫秒），如 tool.startedAt；无值时使用组件 mount 时间 */
     startedAt?: number
     /**
-     * 最近一次消息活动时间戳（毫秒）。传入且静默超过 {@link STALL_WARN_MS} 时
-     * 切换为等待响应提示（挂死可观测）。不传则不启用检测——sidechain 卡片等
-     * 无活动时间来源的场景保持原行为。
+     * 最近一次**实时活动**时间戳（毫秒）：由 ChatContainer 合成——store 的实时入库时刻
+     * （含 snapshot delta 帧）与最后一条消息的锚点时间取最大。传入且静默超过
+     * {@link STALL_WARN_MS} 时切换为等待响应提示（挂死可观测）。不传则不启用检测——
+     * sidechain 卡片等无活动时间来源的场景保持原行为。
      */
     lastActivityAt?: number
+    /**
+     * 是否有工具正在执行。工具卡自身已表达「执行中/耗时」，此时上游不是「无响应」——
+     * 长工具（Bash/Agent 等）静默超阈值时不切换等待提示，避免误报（工具卡死属另一维度，
+     * 不复用这条模型响应判据）。
+     */
+    toolRunning?: boolean
 }
 
-export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt }: AgentLoadingBubbleProps) {
+export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt, toolRunning }: AgentLoadingBubbleProps) {
     const { token } = theme.useToken()
     const mountTimeRef = useRef(Date.now())
     // 首词随机偏移量，避免首个 vibingMsg 总是 "accomplishing"
@@ -97,8 +104,10 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
 
     // awaiting_auth：等待用户确认，文本/aria-label 切到「等待确认」，不轮换 vibing 动词
     const isAwaitingAuth = status === 'awaiting_auth'
-    // 静默告警：距最近消息活动超阈值（挂死可观测）。审批等待优先——那不是模型无响应
+    // 静默告警：距最近消息活动超阈值（挂死可观测）。审批等待优先——那不是模型无响应；
+    // 工具执行中也不告警——工具卡已表达执行中，长工具静默不等于上游挂死
     const stalled = !isAwaitingAuth
+        && !toolRunning
         && lastActivityAt !== undefined
         && (stallElapsed * 1000) >= STALL_WARN_MS
     // 网格波形按状态分流：正常输出 drive（波前推进）；停滞 orbit（彗星绕圈——有事在转

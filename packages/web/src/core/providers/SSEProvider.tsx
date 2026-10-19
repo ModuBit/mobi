@@ -48,6 +48,7 @@ import {
     clearMessageWindow,
     fetchLatestMessages,
     withdrawFrom,
+    markSessionActivity,
 } from '@/core/data/stores/messageWindowStore'
 import { ingestRewindSseEvent } from '@/core/data/stores/rewindStore'
 import { requestComposerBackfill } from '@/core/data/stores/composerBackfillStore'
@@ -406,12 +407,15 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // daemon Ready 通知的 60s 冷却（每轮转换都反馈）。首次见到只记基线不响。
                 const attentionKind = trackAttentionTransition(event.sessionId, event.data)
                 if (attentionKind) notifyAttention(attentionKind)
+                const delta = event.data as Record<string, unknown> | undefined
+                // runtimeState 变化（任务进度 / 上下文水位 / 运行状态翻转）是非消息的实时活动：
+                // 计入静默告警的活动时间，避免长工具/长任务期间模型不吐字时误报「长时间无响应」
+                if (delta?.runtimeState !== undefined) markSessionActivity(event.sessionId)
                 // 只有改变分组成员资格的载荷才失效工作区视图：
                 // - 完整 session 载荷（delta.id === sessionId，如 setSessionWorkspace 归属变更）
                 // - 无 data 载荷（workspaceCache 删除工作区后逐会话解绑广播）
                 // 心跳/指标/重命名等轻载荷只需上方 patchSessionCache——活跃会话流式期间
                 // 这类事件高频，若每次都失效 ['workspaces']+全部分组会造成 refetch 风暴（V2）
-                const delta = event.data as Record<string, unknown> | undefined
                 if (delta === undefined || ('id' in delta && delta.id === event.sessionId)) {
                     scheduleInvalidation('workspaceViews')
                 }

@@ -97,7 +97,8 @@ const STATUS_PILLS_SPACER = (
 )
 
 /**
- * 取最后一条消息的活动时间戳（供聊天区尾部运行指示 AgentLoadingBubble 静默告警，见 AgentLoadingBubble / docs/pending.md #34）：
+ * 取最后一条消息的锚点时间戳（静默告警活动时间的**兜底来源**；实时路径以
+ * messageWindowStore.lastActivityAt 为准，见 ChatContainer 内 lastActivityAt 的合成说明）：
  * 优先 positionAt（落库排序锚点）；快照消息（未落库）没有 positionAt 但有 createdAt——
  * 快照/token 到达即活动，须一并计入，否则单条消息流式超阈值会被误报「长时间无响应」。
  * 排队消息 positionAt = 提交时刻，同样计入——用户刚发消息也是活动，不应误报等待。
@@ -194,11 +195,13 @@ const chatScrollStyles = css`
     }
     /* 状态气泡让位 spacer 是纯高度占位：抹掉 antd bubble 的上下内衬（气泡 6px +
        内容 12px）与内容最小高度，让预留高度恰为 STATUS_PILLS_SPACER_HEIGHT——
-       否则末尾会多出几十像素空白，STATUS_PILLS_SPACER_HEIGHT 也不再是可推导的几何量 */
-    .chat-scroll-container .ant-bubble:has(.status-pills-spacer) {
+       否则末尾会多出几十像素空白，STATUS_PILLS_SPACER_HEIGHT 也不再是可推导的几何量。
+       锚点用列表项显式声明的类，不用 :has()——:has() 会让流式每次插入都重算气泡子树
+       （见 buildBubbleItems.bubbleLayoutClass） */
+    .chat-scroll-container .ant-bubble.bubble-status-spacer {
         padding-block: 0 !important;
     }
-    .chat-scroll-container .ant-bubble:has(.status-pills-spacer) .ant-bubble-content {
+    .chat-scroll-container .ant-bubble.bubble-status-spacer .ant-bubble-content {
         padding-block: 0 !important;
         min-height: 0 !important;
     }
@@ -234,6 +237,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const {
         data: messages = [],
         isLoading: messagesLoading,
+        lastActivityAt: streamActivityAt,
         fetchNextPage,
         hasNextPage,
         isFetchingNextPage,
@@ -311,8 +315,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const showStatusPills = statusSummary.showTodo || statusSummary.showTasks
     const taskDrawer = useToolDetailDrawer(sessionId)
 
-    // 最近一次消息活动时间：取最后一条消息（见 lastMessageActivityAt 的取舍说明）
-    const lastActivityAt = useMemo(() => lastMessageActivityAt(messages), [messages])
+    // 最近一次活动时间：实时入库时刻（store，含 snapshot delta 帧）与窗口内最后一条消息
+    // 取最大。不能只看消息行：delta 帧只改 content，行的 createdAt 停在流首帧时刻——
+    // 模型恢复输出后活跃时间不前进，「still waiting」一旦出现就不会重新计时（2026-10-19 实锤）
+    const messagesActivityAt = useMemo(() => lastMessageActivityAt(messages), [messages])
+    const lastActivityAt = useMemo(
+        () => (streamActivityAt == null ? messagesActivityAt : Math.max(streamActivityAt, messagesActivityAt ?? 0)),
+        [streamActivityAt, messagesActivityAt],
+    )
     // 本轮运行起点：runtimeState.runStartedAt（CLI 翻转上报，权威）与窗口内最后一条 user
     // 消息取最大（见 resolveRunStartedAt 的取舍说明）
     const runStartedAt = useMemo(
@@ -332,6 +342,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         prevByIdRef.current = byId
         return { ...raw, blocks, byId }
     }, [messages, session?.agentState])
+
+    // 有工具正在执行：运行指示静默超阈值时不切「等待响应」——工具卡自身已表达执行中，
+    // 长工具（Bash/Agent 等）无新消息属正常，不等于上游挂死（工具卡死另属一维度）
+    const hasRunningTool = useMemo(
+        () => rawBlocks.some(b => b.kind === 'tool-call' && b.tool.state === 'running'),
+        [rawBlocks],
+    )
 
     // 同步 chatBlocks byId 到 store，供 ComposerInfoPanel 查找 block
     useEffect(() => {
@@ -1180,11 +1197,17 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                         {sentFromTag}
                     </div>
                 ) : undefined,
-                classNames: isUserText
-                    ? { root: 'user-msg-bubble' }
-                    : block?.kind === 'agent-event' && turnResultActionsByKey.has(block.id)
-                        ? { root: 'turn-result-bubble' }
-                        : undefined,
+                classNames: (() => {
+                    // 与 buildBubbleItems 声明的布局类合并，不能覆盖（覆盖会丢 bubble-has-tool 等，
+                    // 见 buildBubbleItems.bubbleLayoutClass）
+                    const decorClass = isUserText
+                        ? 'user-msg-bubble'
+                        : block?.kind === 'agent-event' && turnResultActionsByKey.has(block.id)
+                            ? 'turn-result-bubble'
+                            : undefined
+                    const root = [item.classNames?.root, decorClass].filter(Boolean).join(' ')
+                    return root ? { root } : undefined
+                })(),
                 footer,
                 footerPlacement: 'outer-end' as const,
             }
@@ -1304,6 +1327,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                         })}
                         lastActivityAt={lastActivityAt}
                         startedAt={runStartedAt}
+                        toolRunning={hasRunningTool}
                     />
                 ),
                 variant: 'borderless',
@@ -1317,6 +1341,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 role: 'assistant',
                 content: STATUS_PILLS_SPACER,
                 variant: 'borderless',
+                classNames: { root: 'bubble-status-spacer' },
             })
         }
 
@@ -1324,7 +1349,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }, [
         decoratedItems, isCompressing, isClearing, isRewinding,
         session?.running, session?.active, session?.agentState, session?.runtimeState?.cacheStatus,
-        sessionId, lastActivityAt, runStartedAt, showStatusPills,
+        sessionId, lastActivityAt, runStartedAt, showStatusPills, hasRunningTool,
     ])
 
     // 入参为 composer 完整分段；wire blocks（serializeSegments）由 useSendMessage 内部统一序列化。

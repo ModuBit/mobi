@@ -39,7 +39,23 @@ export const FileChip = memo(function FileChip({ chip }: { chip: ToolRowChip }) 
  * 可点击变体：复用 ActionLink 的完整执行链（URI 解析分发 / preventDefault+stopPropagation /
  * Enter 键盘语义 / file/open 前置 FileTypeBadge——徽章判定单源在 ActionLink，一处接入双端生效），
  * 本组件只负责 chip 形态 class。
+ *
+ * 路径切成「目录 + 文件名」两段：目录段可收缩、从左侧省略（样式见 base.css .tool-chip-dir），
+ * 文件名不参与收缩——Write/Edit/Read 的长路径被右截断时，最能标识身份的文件名恰好先没
+ * （`…/features/chat/…`），切分后无论多窄都保住文件名。
  */
 const FileChipLink = memo(function FileChipLink({ chip }: { chip: ToolRowChip }) {
-    return <ActionLink uri={chip.uri!} className="tool-chip tool-chip-link">{chip.text}</ActionLink>
+    const { dir, name } = splitDisplayPath(chip.text)
+    return (
+        <ActionLink uri={chip.uri!} className="tool-chip tool-chip-link tool-chip-path">
+            {dir && <span className="tool-chip-dir">{dir}</span>}
+            <span className="tool-chip-name">{name}</span>
+        </ActionLink>
+    )
 })
+
+/** 路径切分：最后一个 / 归目录段（含分隔符），其余为文件名；无分隔符整体视作文件名 */
+function splitDisplayPath(text: string): { dir: string; name: string } {
+    const idx = text.lastIndexOf('/')
+    return idx < 0 ? { dir: '', name: text } : { dir: text.slice(0, idx + 1), name: text.slice(idx + 1) }
+}

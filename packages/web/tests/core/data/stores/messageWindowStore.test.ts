@@ -14,6 +14,7 @@ import {
     reconcileLatestMessages,
     withdrawFrom,
     removeQueuedMessages,
+    markSessionActivity,
     _resetForTest,
     _internal,
 } from '@/core/data/stores/messageWindowStore'
@@ -297,6 +298,17 @@ describe('ingestIncomingMessages backfill 语义（attach 重播旧行不出 gho
         ingestIncomingMessages('s1', [msg('a', 5)])
         ingestIncomingMessages('s1', [msg('new-1', 6)], { skipIfNotSnapshot: true })
         expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'new-1'])
+    })
+
+    it('实时入库刷新 lastActivityAt；backfill 重播不刷新（历史到达不是模型活动）', () => {
+        ingestIncomingMessages('s1', [msg('a', 5)])
+        const liveAt = getMessageWindowState('s1').lastActivityAt
+        expect(liveAt).not.toBeNull()
+
+        // 人为把活跃时刻压回过去，验证 backfill 分支不会把它推到现在
+        _internal.updateState('s1', prev => _internal.buildState(prev, { lastActivityAt: 42 }))
+        ingestIncomingMessages('s1', [backfillMsg('a', 5, 'ns-2')], { skipIfNotSnapshot: true, backfill: true })
+        expect(getMessageWindowState('s1').lastActivityAt).toBe(42)
     })
 
     it('窗口为空时 backfill 同样丢弃（reload 竞态下不注入乱序旧行，等 fetchLatest 建立窗口）', () => {
@@ -600,6 +612,44 @@ describe('messageWindowStore - snapshot delta apply（.scratch/snapshot-delta �
         expect(textOf(after)).toBe('hello')
         expect((after.messages.at(-1) as unknown as { snapshotRev?: number }).snapshotRev).toBe(2)
         expect(after.messages).not.toBe(before) // 引用更新驱动下游 memo
+    })
+
+    it('delta 帧刷新 lastActivityAt（行 createdAt 不变——still waiting 重新计时的唯一依据）', () => {
+        seed([snapshotMsg('u1', 'hel', 1)])
+        expect(getMessageWindowState('s1').lastActivityAt).toBeNull()
+
+        const before = Date.now()
+        ingestSnapshotDelta('s1', { localId: 'u1', rev: 2, baseRev: 1, deltas: [{ op: 'append', index: 0, text: 'lo' }] })
+
+        const state = getMessageWindowState('s1')
+        expect(state.lastActivityAt).toBeGreaterThanOrEqual(before)
+        // 行自身的 createdAt 保持流首帧时刻（不因 active 判据被改写）
+        expect((state.messages.at(-1) as unknown as { createdAt: number }).createdAt).toBe(1)
+    })
+
+    it('不衔接 / 无命中的 delta 不刷新 lastActivityAt（丢弃帧不算活动）', () => {
+        seed([snapshotMsg('u1', 'stale', 1)])
+        ingestSnapshotDelta('s1', { localId: 'u1', rev: 5, baseRev: 4, deltas: [{ op: 'append', index: 0, text: 'x' }] })
+        expect(getMessageWindowState('s1').lastActivityAt).toBeNull()
+
+        ingestSnapshotDelta('s1', { localId: 'nope', rev: 2, baseRev: 1, deltas: [{ op: 'append', index: 0, text: 'x' }] })
+        expect(getMessageWindowState('s1').lastActivityAt).toBeNull()
+    })
+
+    it('非消息活动（runtimeState 事件）刷新 lastActivityAt，且时间单调不回退', () => {
+        seed([msg('m1', 1)])
+        markSessionActivity('s1', 5000)
+        expect(getMessageWindowState('s1').lastActivityAt).toBe(5000)
+        // 旧事件乱序到达不覆盖新活动
+        markSessionActivity('s1', 4000)
+        expect(getMessageWindowState('s1').lastActivityAt).toBe(5000)
+        // 只刷活动时间，不动消息窗口
+        expect(getMessageWindowState('s1').messages).toHaveLength(1)
+    })
+
+    it('未进入过会话页的会话不建状态（markSessionActivity 不膨胀 states Map）', () => {
+        markSessionActivity('never-opened', 1234)
+        expect(getMessageWindowState('never-opened').lastActivityAt).toBeNull()
     })
 
     it('窗口无该消息（中途打开）→ 丢弃 delta（等 resync 全量或终态）', () => {

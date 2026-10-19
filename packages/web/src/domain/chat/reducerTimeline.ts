@@ -304,10 +304,12 @@ export function reduceTimeline(
             // 循环后统一打标；无 agent-text 块（仅 tool_use 被截断）不标——截断语义只接管
             // 「正文被当完整消息渲染」这一处
             let lastAgentTextBlock: { aborted?: boolean } | null = null
-            // agent block 的稳定 id：snapshot 与 full message 共享 localId（CLI 侧统一为 sdkUuid），
-            // 用 localId 作 key 前缀避免 snapshot→full 时 block.id 变化触发 TextBlock 重 mount。
-            // 用 `||` 而非 `??`：防空字符串 localId 退化成畸形 ':idx' 导致 duplicate key
-            const blockId = (idx: number) => `${msg.localId || msg.id}:${idx}`
+            // agent block 的稳定 id：snapshot 行与 full 行的 localId 并不相同（前者是
+            // message_start 的 stream uuid，后者是落库用的 .jsonl uuid），拿它作 key 会让
+            // snapshot→full 时 block.id 变化，整块重 mount（thinking 标题重新播淡入 = 思考
+            // 完成后「再闪一下」的根因）。两者真正共享的是 Anthropic message.id，优先用它；
+            // 缺 id 的历史/本地消息回退 localId/行 id。`||` 防空串退化成 ':idx' 的 duplicate key
+            const blockId = (idx: number) => `${msg.messageId || msg.localId || msg.id}:${idx}`
             for (let idx = 0; idx < msg.content.length; idx += 1) {
                 const c = msg.content[idx]
                 if (c.type === 'text') {

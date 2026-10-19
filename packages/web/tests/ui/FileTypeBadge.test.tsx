@@ -84,7 +84,11 @@ describe('FileChip 文件类型徽章', () => {
         const { container } = render(<FileChip chip={{ text: 'src/index.ts', uri: 'mobi://file/open?path=src%2Findex.ts' }} />)
         // ts 走 lucide 类型图标模式（svg），不再输出文本缩写
         expect(container.querySelector('svg')).toBeInTheDocument()
-        expect(screen.getByText('src/index.ts')).toBeInTheDocument()
+        // 路径按「目录段 + 文件名」切分成两个 span（左侧省略布局需要），文本契约按整体断言
+        expect(container.querySelector('a.tool-chip-link')).toHaveTextContent('src/index.ts')
+        // 文件名独立成段：收缩只作用于目录段（左侧省略），文件名不被截断
+        expect(container.querySelector('.tool-chip-dir')).toHaveTextContent('src/')
+        expect(container.querySelector('.tool-chip-name')).toHaveTextContent('index.ts')
     })
 
     it('纯展示 chip（无 URI，Bash 命令）：不画徽章', () => {

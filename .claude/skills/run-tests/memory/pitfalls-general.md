@@ -3,7 +3,7 @@ name: pitfalls-general
 description: 跨任务通用误判（token 用途、诊断命令、工具禁用、短生命周期 DOM 验证、懒加载验证、React 控制的 inline style、claude 进程数观测归因）
 metadata:
   type: pitfall
-  last_verified: 2026-10-12
+  last_verified: 2026-10-19
 ---
 
 # 通用误判
@@ -300,3 +300,24 @@ Mobi 宿主里 spawn 的 Claude 会话 shell 自带 `MOBI_API_URL=http://127.0.0
 另：bootstrap 脚本 **SIGTERM 时会删掉 `~/.mobi-e2e` 数据目录**。想改库后重读（如直写 goalStatus）
 必须在 bootstrap 之前写种子，不能先起环境再改库再重启——重启即清库。
 （直写 runtimeState 的字段还须满足 schema：`goalStatus` 缺 `met` 会被 safeParse 整条丢弃。）
+
+## Vite dev 里动态 import 到的可能是「另一个模块实例」（2026-10-19 实踩）
+
+想从 `evaluate_script` 读应用内部 store（如 `messageWindowStore` 的 `lastActivityAt`）时，
+`await import('/src/core/data/stores/xxx.ts')` **可能拿不到页面正在用的那个实例**：
+
+- 页面加载/HMR 后的真实模块 URL 带版本串 `?t=1792373789511`；裸 URL 的 import 会另建一份新实例，
+  `getMessageWindowState()` 读出空状态（`n=0`）或陈旧代码（新加字段不存在），写入也落不到 UI 上
+- 判据：模块自身状态的 `EMPTY_STATE` 键缺了新字段 / 写入后 `getState` 返回同一引用 → 实例不对或代码陈旧
+- 正确姿势：从资源表取真实 URL 再 import
+
+```js
+const url = performance.getEntriesByType('resource')
+  .map(e => e.name).find(n => n.includes('messageWindowStore'))
+const mod = await import(url)   // 与页面同一个实例
+```
+
+- 改完源码后先 `location.reload()` 再取 URL——浏览器按 URL 缓存 ES 模块，旧实例会一直复用陈旧代码
+- 即便如此，**权威证据仍来自真实流式采样**：验证「活动时间戳随 delta 帧前移」时，
+  每 500ms 采 `lastActivityAt` 与最后一行 `createdAt`，断言前者递增、后者不变，
+  而不是靠注入假时间戳（real-user 原则也要求如此）

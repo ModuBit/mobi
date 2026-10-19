@@ -252,6 +252,52 @@ describe('reduceTimeline', () => {
         })
     })
 
+    describe('snapshot → full 的 block id 稳定性', () => {
+        // 真实数据里 snapshot 行的 localId 是 message_start 的 stream uuid，full 行是
+        // .jsonl uuid（两者不同）；共享的是 Anthropic message.id。用 localId 作块 id 会让
+        // thinking/text 在 full 到达时换 key → 整块重 mount（思考完成后再闪一下的根因）。
+        const baseCtx = () => ({
+            permissionsById: new Map<string, PermissionEntry>(),
+            groups: new Map<string, TracedMessage[]>(),
+            consumedGroupIds: new Set<string>(),
+            titleChangesByToolUseId: new Map<string, string>(),
+            emittedTitleChangeToolUseIds: new Set<string>(),
+            hiddenToolUseIds: new Map<string, string>(),
+        })
+        const content = [
+            { type: 'reasoning' as const, text: '思考', uuid: 'u1', parentUUID: null },
+            { type: 'text' as const, text: '正文', uuid: 'u2', parentUUID: null },
+        ]
+
+        it('localId 不同、messageId 相同时 reasoning / text 块 id 不变', () => {
+            const snapMsg = {
+                id: 'stream-uuid', localId: 'stream-uuid', createdAt: 1000, isSidechain: false, role: 'agent',
+                content, snapshot: true, messageId: 'msg-1',
+            } as unknown as TracedMessage
+            const fullMsg = {
+                id: 'jsonl-uuid', localId: 'jsonl-uuid', createdAt: 1000, isSidechain: false, role: 'agent',
+                content, snapshot: false, messageId: 'msg-1',
+            } as unknown as TracedMessage
+
+            const snap = reduceTimeline([snapMsg], baseCtx()).blocks
+            const full = reduceTimeline([fullMsg], baseCtx()).blocks
+            const idsOf = (blocks: typeof snap) => blocks.filter(
+                b => b.kind === 'agent-reasoning' || b.kind === 'agent-text',
+            ).map(b => b.id)
+            expect(idsOf(snap)).toEqual(idsOf(full))
+        })
+
+        it('缺 messageId 的历史/本地消息回退 localId，行为不变', () => {
+            const msg = {
+                id: 'row-1', localId: 'row-1', createdAt: 1000, isSidechain: false, role: 'agent',
+                content, snapshot: false,
+            } as unknown as TracedMessage
+            const blocks = reduceTimeline([msg], baseCtx()).blocks
+            const reasoning = blocks.find(b => b.kind === 'agent-reasoning')
+            expect(reasoning?.id).toBe('row-1:0')
+        })
+    })
+
     describe('tool-result 更新正确的块', () => {
         it('应更新对应 tool_use_id 的块，而不是最后一个块', () => {
             const messages: TracedMessage[] = [

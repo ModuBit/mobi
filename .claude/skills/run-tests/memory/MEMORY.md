@@ -22,6 +22,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [贴底跟随验证](scroll-follow-verify.md) — virtuoso DOM 锚点、rAF 探针、触发真流式的 prompt、指标阈值
 - [流式丝滑度采样](streaming-smoothness.md) — 揭示节奏 rAF 探针（间隔/步长分布）、A/B 基线、长文压测 prompt、嵌套 .x-markdown 误判坑、长任务 A/B 归因（throttle 6x 下 fence 重高亮=移动端卡顿主因）
 - [流式闪烁回归探针](flicker-regression.md) — 单段架构不变式（inner 恒 0）、回退按比例判读（大比例辨源替换 vs 渲染抖动）、步间隔须算相邻增长事件差
+- [thinking 完成闪烁验证](thinking-flash-verify.md) — MutationObserver + dataset 标记判 remount / crossfade 次数（snapshot→full 换 key 的根因与判读）
 - [标题同步验证](title-sync-verify.md) — Web rename / change_title MCP 回写 CC customTitle，查 jsonl custom-title entry，rename 框 Ctrl+A 追加坑
 - [teammate 生命周期验证](teammate-verify.md) — 派带 name 的 Agent / 审批时序 / DB 轮询 teamState / envelope role 恒为 agent 的坑
 - [Web 工具验证](web-tools-verify.md) — 设置页 Web Tools 卡片操作 / webTools 落盘断言 / merge 语义 / toolAliases 401 链路证据 / alias 不隐藏原始 MCP 工具的坑
@@ -55,3 +56,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [状态气泡验证](status-pills-verify.md) — composer 状态气泡（Todo/Tasks 摘要 + Popover flat 详情）/ **Store 直接 seed runtimeState 免真实对话、刷新即见** / 渐隐两侧判据（临时压宽 row + scrollLeft）
 - [文件树动效验证](file-tree-motion-verify.md) — 停靠树开关 / switcher 弹簧（含 hover 圆点盖图标的坑）/ 选中与悬停滑移 rect 采样；持引用与 inset 宽度两坑
 - [列表滑移底色验证](list-glide-verify.md) — 侧栏会话列表造多行（Store 种会话）/ hover 与选中两层 GlidingHighlight 的 top 弹簧采样 / 复用件 GlideLayer+useGlideHighlight 的覆盖范围（导航/移动端/antd 树/选项列表）/ pointerleave 合成事件测不出
+- [Bubble 布局类验证](bubble-layout-classes-verify.md) — 去 `.ant-bubble :has()` 后的显式类回归：工具气泡 80% 最小宽 / 事件对齐 / spacer 44 / artifact 与 turn-diff 全宽；一次 prompt 造齐四场景

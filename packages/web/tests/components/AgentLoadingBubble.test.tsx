@@ -117,6 +117,48 @@ describe('AgentLoadingBubble', () => {
         vi.useRealTimers()
     })
 
+    it('内容恢复（lastActivityAt 前移）→ 静默计时从新活动重启，撤销等待提示', async () => {
+        // 用户实况：still waiting 出现后又有内容返回，随后再度静默——计时必须从新活动
+        // 时间重新起算，不能沿用旧锚点立刻再次告警
+        const { container, rerender } = render(
+            <AgentLoadingBubble
+                agentId="agent-1"
+                status="outputting"
+                lastActivityAt={Date.now() - 130_000}
+            />,
+        )
+        await waitFor(() => {
+            expect(container.textContent).toContain('still waiting for response')
+        }, { timeout: 3000 })
+
+        rerender(
+            <AgentLoadingBubble
+                agentId="agent-1"
+                status="outputting"
+                lastActivityAt={Date.now()}
+            />,
+        )
+        await waitFor(() => {
+            expect(container.textContent).not.toContain('still waiting for response')
+        }, { timeout: 3000 })
+        // 波形同步回到 drive（orbit 只在停滞时出现）
+        expect(container.querySelector('.pixel-loader-orbit')).toBeNull()
+    })
+
+    it('工具执行中静默超阈值不切等待提示（长工具 ≠ 上游无响应）', async () => {
+        const { container } = render(
+            <AgentLoadingBubble
+                agentId="agent-1"
+                status="outputting"
+                lastActivityAt={Date.now() - 200_000}
+                toolRunning
+            />,
+        )
+        expect(container.textContent).not.toContain('still waiting for response')
+        // 波形同理不切 orbit（orbit 只表达模型侧停滞）
+        expect(container.querySelector('.pixel-loader-orbit')).toBeNull()
+    })
+
     it('静默未超阈值 → 保持 vibing（不误报）', () => {
         const { container } = render(
             <AgentLoadingBubble

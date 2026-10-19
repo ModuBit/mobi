@@ -334,6 +334,41 @@ h1, h2, h3, h4 {
     border-color: var(--ant-color-border);
 }
 
+/* 跳转类路径 chip：目录段左侧省略、文件名保底全显。
+   Write/Edit/Read 的长路径右截断时先没的恰是文件名（`…/features/chat/…`），
+   按最后一个 / 切成两段（FileChip.splitDisplayPath）：目录段可收缩并被压在左侧，
+   文件名不参与收缩。dir=rtl 让 text-overflow 的省略号落在行首（浏览器把溢出侧视为
+   inline-end）；::before/::after 的 LRE/PDF 把路径包成强 LTR 段，避免 RTL 语境
+   把首尾 `/` 当边界中性符翻到错误一侧（纯展示 chip 不切分，维持右省略）。 */
+.tool-chip-path {
+    display: inline-flex;
+    align-items: baseline;
+    min-width: 0;
+}
+
+.tool-chip-dir {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    direction: rtl;
+    text-align: left;
+}
+
+.tool-chip-dir::before {
+    content: '\202A';
+}
+
+.tool-chip-dir::after {
+    content: '\202C';
+}
+
+.tool-chip-name {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
 /* 文件类型徽章前景双档（FileTypeBadge 文本色块形态）：EXT_BADGES 取 GitHub 语言色
    （按浅底设计），dark 档深灰底上暗色系（css 紫 #563D7C、C/H 灰 #666 等）对比不足
    看不清——混白 40% 提亮恢复可读性；light 档保持原色。目录琥珀 #E8A33D 两档通亮，

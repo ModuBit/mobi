@@ -54,6 +54,14 @@ describe('CrossfadeText', () => {
         expect(screen.getAllByText('相同文案')).toHaveLength(1)
     })
 
+    it('首帧不挂淡入动画类，文案切换后才挂（挂载重放淡入会被读成闪一下）', () => {
+        const { rerender } = render(<CrossfadeText text="思考中" />)
+        expect(screen.getByText('思考中')).not.toHaveClass('crossfade-text')
+
+        rerender(<CrossfadeText text="思考完成" />)
+        expect(screen.getByText('思考完成')).toHaveClass('crossfade-text')
+    })
+
     it('淡出时长后旧文案移除', () => {
         const { rerender } = render(<CrossfadeText text="旧文案" />)
         rerender(<CrossfadeText text="新文案" />)

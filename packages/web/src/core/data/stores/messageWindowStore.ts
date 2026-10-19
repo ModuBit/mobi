@@ -49,6 +49,15 @@ export interface MessageWindowState {
     messagesVersion: number
     /** 首页是否已成功拉取过一次（防多消费方 useMessages effect 重复触发 fetchLatest 致空会话循环） */
     hasFetchedLatest: boolean
+    /**
+     * 最近一次**实时**活动时刻（ms）：消息落地（full / delta 帧 / 实时新消息）与
+     * 非消息的会话事件（session-updated 携带 runtimeState：任务进度、上下文水位等）都刷新。
+     * 不用于渲染——供「运行指示静默告警」判活跃。不能用行的 createdAt 代替：
+     * snapshot delta 只改 content、行 createdAt 保持流首帧时刻，模型恢复输出后
+     * 活跃时间不会前进（still waiting 一旦出现就永不重置）。
+     * backfill 重播 / 历史分页不计入（历史到达不是模型活动）。
+     */
+    lastActivityAt: number | null
 }
 
 export const EMPTY_STATE: MessageWindowState = {
@@ -60,6 +69,7 @@ export const EMPTY_STATE: MessageWindowState = {
     isLoadingMore: false,
     messagesVersion: 0,
     hasFetchedLatest: false,
+    lastActivityAt: null,
 }
 
 interface InternalState extends MessageWindowState {
@@ -185,7 +195,8 @@ function buildState(prev: InternalState, updates: Partial<MessageWindowState>): 
         && next.isLoadingMore === prev.isLoadingMore
         && next.oldestSeq === prev.oldestSeq
         && next.messagesVersion === prev.messagesVersion
-        && next.hasFetchedLatest === prev.hasFetchedLatest) {
+        && next.hasFetchedLatest === prev.hasFetchedLatest
+        && next.lastActivityAt === prev.lastActivityAt) {
         return prev
     }
     return next
@@ -384,15 +395,17 @@ export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMes
         if (tail !== prevTail && prevTail !== undefined && compareMessages(prevTail, tail!) > 0) {
             messages = insertOutOfOrderTail(messages)
         }
+        // 实时入库时刻（活跃判据）：backfill 是历史重播，不代表模型在活动，沿用旧值
+        const lastActivityAt = options?.backfill ? prev.lastActivityAt : Date.now()
         // turn 边界裁剪（#40 C-1）：超阈值时裁头，游标随裁剪点前移（历史由 fetchOlder 回补）
         const { messages: trimmed, oldestSeq: trimmedOldest } = trimAfterMerge(prev, messages)
         if (trimmed !== messages) {
-            return _internal.buildState(prev, { messages: trimmed, oldestSeq: trimmedOldest })
+            return _internal.buildState(prev, { messages: trimmed, oldestSeq: trimmedOldest, lastActivityAt })
         }
         // oldestSeq：prev 无值（空 store 首次 SSE 早到）则算一次建立游标；
         // 流式期 prev.oldestSeq 已有，新消息 seq 递增不改变 min，沿用 prev.oldestSeq 避免每条 chunk O(n)
         const oldestSeq = prev.oldestSeq === null ? computeOldestSeq(messages) : prev.oldestSeq
-        return _internal.buildState(prev, { messages, oldestSeq })
+        return _internal.buildState(prev, { messages, oldestSeq, lastActivityAt })
     })
 }
 
@@ -433,8 +446,24 @@ export function ingestSnapshotDelta(
         }
         const nextMessages = prev.messages.slice()
         nextMessages[idx] = { ...target, snapshotRev: frame.rev, content: cloneSnapshotEnvelope(target.content, cloned) }
-        return _internal.buildState(prev, { messages: nextMessages })
+        // delta 帧是流式期最主要的活性信号（行 createdAt 不变）：刷新活跃时刻，
+        // 运行指示的静默告警据此重新计时（见 MessageWindowState.lastActivityAt）
+        return _internal.buildState(prev, { messages: nextMessages, lastActivityAt: Date.now() })
     })
+}
+
+/**
+ * 记录一次**非消息**的实时活动（session-updated 携带 runtimeState：任务进度、上下文水位、
+ * 运行状态翻转等）。静默告警的活动时间因此覆盖「模型没吐字、但 agent 仍在推进」的情形
+ * （单纯靠消息行会误报「长时间无响应」，见 MessageWindowState.lastActivityAt）。
+ *
+ * 只更新**已有**窗口状态：从未进入会话页的会话不建状态（states Map 有界，随
+ * clearMessageWindow 回收）；时间单调不回退（乱序到达的旧事件不覆盖新活动）。
+ */
+export function markSessionActivity(sessionId: string, at: number = Date.now()): void {
+    const prev = states.get(sessionId)
+    if (!prev || (prev.lastActivityAt !== null && prev.lastActivityAt >= at)) return
+    setState(sessionId, _internal.buildState(prev, { lastActivityAt: at }))
 }
 
 /** 沿 snapshot 信封固定形状（content.content.data.message.content）克隆并替换 blocks——

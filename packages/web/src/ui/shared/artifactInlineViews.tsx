@@ -24,7 +24,7 @@
  * 每个视图都自带「inspector 打开」逃生口——inline 是快看，不是替代品。
  */
 
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { Segmented, theme } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
@@ -167,10 +167,26 @@ export function HtmlInline({ sessionId, path, wide, app, viz }: ArtifactInlinePr
     const streaming = useDirectiveStreaming()
     const [widthMode, setWidthMode] = useState<WidthMode>('auto')
     const frameHeight = wide ? 640 : 480
+    const hostRef = useRef<HTMLDivElement | null>(null)
+    // 气泡内容链撑满：产物能不能内联、要不要全宽，要等文件元数据裁决（classifyArtifact），
+    // 列表项构造气泡时拿不到，所以由视图把布局类挂到最近的气泡根。
+    // 不用 :has()：它会让流式每次插入都重算整个气泡子树（长表格实测单次 ~3400 元素）。
+    // 类不参与 React props（气泡重渲染时 className 值不变 → React 不覆写）；
+    // 同气泡多个产物时只在最后一个卸载时移除。
+    useLayoutEffect(() => {
+        const bubble = hostRef.current?.closest('.ant-bubble')
+        if (!bubble) return
+        bubble.classList.add('bubble-artifact-fullwidth')
+        return () => {
+            if (!bubble.querySelector('.artifact-inline-fullwidth')) bubble.classList.remove('bubble-artifact-fullwidth')
+        }
+    }, [])
     return (
         <div
+            ref={hostRef}
             data-testid="artifact-inline-html"
-            // artifact-inline-fullwidth：布局钩子（antd.css 的气泡撑满规则以 :has 认它）——
+            // artifact-inline-fullwidth：产物视图的布局标记（HtmlInline 是唯一渲染全宽形态的视图；
+            // 气泡级规则见 antd.css「产物 iframe / turn-diff 卡」，由上面的 effect 挂类）——
             // 布局依赖挂语义类而非 data-testid（testid 是测试钩子，被布局依赖是隐式升格）
             className="artifact-inline artifact-inline-fullwidth"
             // 宽度档位切换走主题 motion 曲线平滑过渡（初挂载 width 不变不触发）

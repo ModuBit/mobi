@@ -106,8 +106,30 @@ export type BubbleItemBase = {
     content: React.ReactNode
     typing?: boolean
     variant?: 'borderless'
+    /** 气泡根类（布局语义显式声明，见 bubbleLayoutClass） */
+    classNames?: { root?: string }
     /** 关联的原始 ChatBlock（divider 项可能为 undefined） */
     block?: ChatBlock
+}
+
+/**
+ * 气泡根布局类：气泡内「有什么」由数据显式声明，不再让 CSS 用 `:has()` 反查。
+ *
+ * `:has()` 锚在 `.ant-bubble` 上时，流式每次 DOM 插入都会触发该锚点的 `:has()` 重判定，
+ * 浏览器随即重算整个气泡子树——150 行表格实测单次 ~3400 元素、20–30ms，约 30% 帧掉出
+ * 预算。类名不参与这种失效传播：插入只影响新增节点。规则见 styles/antd.css「气泡布局类」。
+ */
+function bubbleLayoutClass(block: ChatBlock | GroupedBlock): string | undefined {
+    // 工具卡 / 工具组：气泡最小宽度 80%
+    if (block.kind === 'tool-call-group' || block.kind === 'tool-call') return 'bubble-has-tool'
+    // 事件行：覆盖 system 角色默认居中
+    if (block.kind === 'agent-event') {
+        const align = block.display?.align
+        return align === 'left' || align === 'right' ? `bubble-event-align-${align}` : undefined
+    }
+    // turn-diff 卡：内容链撑满气泡（borderless 内容默认 shrink-to-fit）
+    if (isTurnDiffCard(block)) return 'bubble-turn-diff-fullwidth'
+    return undefined
 }
 
 /**
@@ -141,6 +163,8 @@ export function buildChatBubbleItems(
     const items: BubbleItemBase[] = []
 
     for (const block of grouped) {
+        const layoutClass = bubbleLayoutClass(block)
+
         // 折叠组
         if (block.kind === 'tool-call-group') {
             items.push({
@@ -148,6 +172,7 @@ export function buildChatBubbleItems(
                 role: 'assistant',
                 content: options.renderToolGroup({ blocks: block.blocks, isActiveReasoning, ...ctx }),
                 variant: 'borderless',
+                classNames: layoutClass ? { root: layoutClass } : undefined,
             })
             continue
         }
@@ -260,6 +285,7 @@ export function buildChatBubbleItems(
             content,
             typing: isTyping,
             variant: bubbleVariant(role, block),
+            classNames: layoutClass ? { root: layoutClass } : undefined,
             block,
         })
     }
