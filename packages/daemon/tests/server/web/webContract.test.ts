@@ -117,7 +117,6 @@ describe('Web Contract Snapshot', () => {
             'message-snapshot-delta',
             'heartbeat',
             'connection-changed',
-            'idle-timeout-warning',
             'messages-submitted',
             'sdk-metadata-refreshed',
             'workspace-added',

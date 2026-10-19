@@ -230,14 +230,6 @@ ApiSessionClient 集成 `IdleTimer` 实现 Session 自动超时关闭：
 - RPC 调用（通过 `setOnRpcCalled` 回调）
 - 状态更新（`updateMetadata` / `updateAgentState`）
 
-### 预警通知
-
-交互不活跃超时提前 5 分钟发送预警：
-
-```
-socket.emit('idle-timeout-warning', { sid, timeoutAt, remainingMs })
-```
-
 ## 生命周期
 
 ```

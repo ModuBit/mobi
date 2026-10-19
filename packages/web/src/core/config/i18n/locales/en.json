@@ -809,8 +809,6 @@
     "permissionRequestBtn": "Allow Notifications",
     "permissionGuide": "Notifications Blocked",
     "permissionGuideDesc": "Browser has blocked notifications. Please enable manually: Click the icon in address bar → Site settings → Notifications → Allow",
-    "idleTimeoutWarning": "Session Timeout Warning",
-    "idleTimeoutWarningDesc": "Session will close automatically in {{minutes}} minutes. Send a message to keep it active",
     "settings": {
       "title": "Notifications",
       "enabled": "Enabled",

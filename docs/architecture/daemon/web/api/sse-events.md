@@ -96,16 +96,6 @@ sequenceDiagram
     }
 }
 
-// 空闲超时预警
-{
-    type: 'idle-timeout-warning',
-    sessionId: 'xxx',
-    data: {
-        timeoutAt: 1700000060000,
-        remainingMs: 120000
-    }
-}
-
 // 业务事件
 {
     type: 'session-updated',

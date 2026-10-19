@@ -312,7 +312,6 @@ daemon 通过 SSE 向 Web 端推送 `SyncEvent`：
 - `toast`：通知消息
 - `heartbeat`：心跳
 - `connection-changed`：连接状态变化
-- `idle-timeout-warning`：空闲超时预警
 - `messages-submitted`：排队消息被 CLI 推送给 Claude Code（`lifecycle='pushed'` + `lifecycleAt` 落库；事件名与载荷 `{localIds, submittedAt}` 沿用旧名），Web 据此把悬浮消息翻为正式消息
 - `message-withdrawn`：撤回刚发消息（批次 A，载荷 `{sessionId, localId, blocks, originalText}`），Web 据此乐观移除气泡并回填 composer
 

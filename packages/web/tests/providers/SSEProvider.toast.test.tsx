@@ -183,30 +183,6 @@ describe('SSEProvider 系统通知分层', () => {
     })
     afterEach(() => cleanup())
 
-    it('后台 idle-timeout-warning → 额外发系统通知(带固定 tag 供 SW 去重 + 跳转 url)', async () => {
-        await renderProvider()
-        Object.defineProperty(document, 'hidden', { value: true, configurable: true })
-
-        sseListener.current!({ type: 'idle-timeout-warning', sessionId: 's9', data: { remainingMs: 120000 } })
-
-        expect(showSysSpy).toHaveBeenCalledWith(
-            expect.objectContaining({
-                tag: 'idle-timeout-s9',
-                renotify: true,
-                data: { url: '/sessions/s9' },
-            }),
-        )
-    })
-
-    it('前台 idle-timeout-warning → 不发系统通知(常驻页面 Toast 已可见)', async () => {
-        await renderProvider()
-        Object.defineProperty(document, 'hidden', { value: false, configurable: true })
-
-        sseListener.current!({ type: 'idle-timeout-warning', sessionId: 's9', data: { remainingMs: 120000 } })
-
-        expect(showSysSpy).not.toHaveBeenCalled()
-    })
-
     it('断线(connection-changed connected=false)→ 不弹系统通知(自愈事件,仅页面 Toast)', async () => {
         await renderProvider()
         sseListener.current!({ type: 'connection-changed', connected: false })

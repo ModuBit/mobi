@@ -416,7 +416,6 @@ export interface ClientToServerEvents {
     'terminal:exit': (data: TerminalExitPayload) => void
     'terminal:error': (data: TerminalErrorPayload) => void
     ping: (callback: () => void) => void
-    'idle-timeout-warning': (data: { sid: string; timeoutAt: number; remainingMs: number }) => void
     // ===== 消息事实协议 =====
     /** CLI→daemon 统一消息事实事件：批内合并多 kind fact 一次往返（MessageFact 联合见 messages.ts）。
      *  原 4 个独立事件（messages-submitted/bound/native-attached/acked）已下线，语义由各 fact kind 承载 */

@@ -78,7 +78,7 @@ export type CacheStatusPayload = {
 
 /**
  * 会话事实上报的落库入口（seam）：socket 层完成校验与鉴权后调用，实现方为 SyncEngine /
- * SessionCache。idle-timeout-warning 是纯通知（直转 webappEvent 不落库），不经此接口。
+ * SessionCache。
  */
 export type SessionFactsSink = {
     handleSessionAlive?: (payload: SessionAlivePayload) => void

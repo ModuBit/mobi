@@ -31,7 +31,6 @@ vi.mock('@mobi/node-core/configuration', () => ({
         apiUrl: 'http://127.0.0.1:2222',
         disconnectTimeoutMs: 600_000,
         idleTimeoutMs: 86_400_000,
-        timeoutWarningMs: 300_000,
     },
 }))
 

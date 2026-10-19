@@ -31,7 +31,6 @@ export interface Settings {
   // 超时配置
   disconnectTimeoutMs?: number   // 连接断开超时
   idleTimeoutMs?: number         // 交互不活跃超时
-  timeoutWarningMs?: number      // 预警提前时间
   // 升级 channel: 'stable' | 'rc'，默认 'stable'
   updateChannel?: 'stable' | 'rc'
   // 注入给 claude 子进程的额外环境变量（优先级高于 process.env 与内置开关）

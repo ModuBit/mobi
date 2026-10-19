@@ -961,13 +961,6 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
         reconnected: z.boolean().optional()
     }),
     SessionChangedSchema.extend({
-        type: z.literal('idle-timeout-warning'),
-        data: z.object({
-            timeoutAt: z.number(),
-            remainingMs: z.number()
-        })
-    }),
-    SessionChangedSchema.extend({
         type: z.literal('messages-submitted'),
         localIds: z.array(z.string()),
         submittedAt: z.number(),

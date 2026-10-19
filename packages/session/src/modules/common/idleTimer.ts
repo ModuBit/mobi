@@ -20,7 +20,6 @@
  * 支持：
  * - 连接断开超时：Socket.IO 断开后独立计时
  * - 交互不活跃超时：无活动事件时计时
- * - 预警通知：交互不活跃超时提前发送预警
  */
 
 import { logger } from '@mobi/node-core/logger';
@@ -33,10 +32,6 @@ export interface IdleTimerOptions {
     disconnectTimeoutMs: number;
     /** 交互不活跃超时（毫秒），默认 1 天 */
     idleTimeoutMs: number;
-    /** 预警提前时间（毫秒），默认 5 分钟 */
-    warningMs: number;
-    /** 预警回调 */
-    onWarning: () => void;
     /**
      * 空闲到点被休眠 gate 阻塞后的复查判定（dormancy spec）：true = 阻塞事务已清、
      * 触发 onIdleTimeout 退出；false = 继续阻塞。缺省（未提供）= 到点直接退出，行为同旧版。
@@ -50,13 +45,11 @@ export interface IdleTimerOptions {
     onIdleTimeout: () => void;
 }
 
-type TimerState = 'stopped' | 'running' | 'warning-sent' | 'blocked';
+type TimerState = 'stopped' | 'running' | 'blocked';
 
 export class IdleTimer {
     private readonly disconnectTimeoutMs: number;
     private readonly idleTimeoutMs: number;
-    private readonly warningMs: number;
-    private readonly onWarning: () => void;
     private readonly onDisconnectTimeout: () => void;
     private readonly onIdleTimeout: () => void;
 
@@ -73,17 +66,14 @@ export class IdleTimer {
     private blockedRecheckTimer: ReturnType<typeof setTimeout> | null = null;
     private readonly onIdleTimeoutBlockedRecheck?: () => boolean;
     private readonly recheckIntervalMs: number;
-    private warningTimer: ReturnType<typeof setTimeout> | null = null;
     private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
     private isDisconnected = false;
 
     constructor(options: IdleTimerOptions) {
         this.disconnectTimeoutMs = options.disconnectTimeoutMs;
         this.idleTimeoutMs = options.idleTimeoutMs;
-        this.warningMs = options.warningMs;
         this.onIdleTimeoutBlockedRecheck = options.onIdleTimeoutBlockedRecheck;
         this.recheckIntervalMs = options.recheckIntervalMs ?? DEFAULT_RECHECK_MS;
-        this.onWarning = options.onWarning;
         this.onDisconnectTimeout = options.onDisconnectTimeout;
         this.onIdleTimeout = options.onIdleTimeout;
     }
@@ -220,18 +210,6 @@ export class IdleTimer {
         // 已超期则 delay 折算为 0、立即到点（照常过休眠 gate）
         const remainingMs = Math.max(0, this.idleTimeoutMs - (Date.now() - this.lastActivityAt));
 
-        // 预警计时器
-        const warningDelay = remainingMs - this.warningMs;
-        if (warningDelay > 0) {
-            this.warningTimer = setTimeout(() => {
-                if (this.state === 'running' && !this.isDisconnected) {
-                    this.state = 'warning-sent';
-                    logger.debug('[IdleTimer] Sending idle timeout warning');
-                    this.onWarning();
-                }
-            }, warningDelay);
-        }
-
         // 超时计时器
         this.idleTimer = setTimeout(() => {
             if (this.isDisconnected) return;
@@ -247,10 +225,6 @@ export class IdleTimer {
     }
 
     private clearIdleTimers(): void {
-        if (this.warningTimer) {
-            clearTimeout(this.warningTimer);
-            this.warningTimer = null;
-        }
         if (this.idleTimer) {
             clearTimeout(this.idleTimer);
             this.idleTimer = null;

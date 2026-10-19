@@ -84,7 +84,6 @@ broadcast(event: SyncEvent): void
 | `message-snapshot` | all=true 或对应 session 的订阅者 |
 | `message-snapshot-delta` | 对应 session 的订阅者，经连接持有的 `SnapshotSubscription` 按订阅进度路由（衔接且协商 delta → 转发增量帧；否则由 `SnapshotSync` 构造完整追赶，见 [snapshot delta 协议](../sync/snapshot-delta.md)） |
 | `messages-submitted` | all=true 或对应 session 的订阅者 |
-| `idle-timeout-warning` | all=true 或对应 session 的订阅者 |
 | `session-updated` | all=true 或 session 匹配 |
 | `daemon-status` | all=true（executor 状态广播） |
 
@@ -103,7 +102,6 @@ flowchart TB
     check -->|connection-changed| always[始终发送]
     check -->|message-received| session{匹配 sessionId}
     check -->|message-snapshot| session
-    check -->|idle-timeout-warning| session
     check -->|all=true| all[发送所有事件]
     check -->|event.sessionId| match[匹配 sessionId]
     check -->|event.sessionId| match[匹配 sessionId]

@@ -422,25 +422,6 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         ack?.({ ok: true })
     })
 
-    socket.on('idle-timeout-warning', (data: { sid?: unknown; timeoutAt?: unknown; remainingMs?: unknown }) => {
-        if (!data || typeof data.sid !== 'string' || typeof data.timeoutAt !== 'number' || typeof data.remainingMs !== 'number') {
-            return
-        }
-        const sessionAccess = resolveSessionAccess(data.sid)
-        if (!sessionAccess.ok) {
-            emitAccessError('session', data.sid, sessionAccess.reason)
-            return
-        }
-        onWebappEvent?.({
-            type: 'idle-timeout-warning',
-            sessionId: data.sid,
-            data: {
-                timeoutAt: data.timeoutAt,
-                remainingMs: data.remainingMs
-            }
-        })
-    })
-
     // Socket adapter 只校验批次外层和会话访问权；每种 fact 的语义由 module 内部收窄。
     socket.on('messages-facts', (data: { sid?: unknown; facts?: unknown }) => {
         if (!data || typeof data.sid !== 'string' || !Array.isArray(data.facts)) return

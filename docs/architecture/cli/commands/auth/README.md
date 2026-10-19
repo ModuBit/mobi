@@ -209,7 +209,6 @@ interface Settings {
     updateChannel?: 'stable' | 'rc'        // 升级通道
     disconnectTimeoutMs?: number           // 连接断开超时
     idleTimeoutMs?: number                 // 交互不活跃超时
-    timeoutWarningMs?: number              // 预警提前时间
     claudeEnv?: Record<string, string>     // 注入 claude 子进程的额外环境变量
     bashInjectContext?: boolean            // !bash 输出是否注入 SDK context
     webTools?: WebToolsConfig              // Web 工具配置（daemon controlServer 读写）

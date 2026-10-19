@@ -93,7 +93,6 @@ flowchart LR
 | 事件类型 | 说明 |
 |----------|------|
 | `message-snapshot` | 消息快照更新（如消息内容编辑后重新推送） |
-| `idle-timeout-warning` | 会话空闲超时预警，携带 `timeoutAt` 和 `remainingMs` |
 
 ## 订阅模式
 

@@ -65,7 +65,7 @@ class Configuration {
     public readonly isAgentTeamsEnabled: boolean
 
     // 配置文件中的设置
-    private settings: Pick<Settings, 'disconnectTimeoutMs' | 'idleTimeoutMs' | 'timeoutWarningMs' | 'claudeEnv' | 'bashInjectContext'> = {}
+    private settings: Pick<Settings, 'disconnectTimeoutMs' | 'idleTimeoutMs' | 'claudeEnv' | 'bashInjectContext'> = {}
 
     constructor() {
         this._cliApiToken = process.env.CLI_API_TOKEN || ''
@@ -121,7 +121,6 @@ class Configuration {
                 this.settings = {
                     disconnectTimeoutMs: parsed.disconnectTimeoutMs,
                     idleTimeoutMs: parsed.idleTimeoutMs,
-                    timeoutWarningMs: parsed.timeoutWarningMs,
                     claudeEnv: typeof parsed.claudeEnv === 'object'
                             && parsed.claudeEnv !== null
                             && !Array.isArray(parsed.claudeEnv)
@@ -148,9 +147,6 @@ class Configuration {
                 }
                 if (this.settings.idleTimeoutMs === undefined && typeof legacy.idleTimeoutMs === 'number') {
                     this.settings.idleTimeoutMs = legacy.idleTimeoutMs
-                }
-                if (this.settings.timeoutWarningMs === undefined && typeof legacy.timeoutWarningMs === 'number') {
-                    this.settings.timeoutWarningMs = legacy.timeoutWarningMs
                 }
                 if (this.settings.claudeEnv === undefined
                     && typeof legacy.claudeEnv === 'object'
@@ -218,14 +214,6 @@ class Configuration {
             'MOBI_IDLE_TIMEOUT_MS',
             this.settings.idleTimeoutMs,
             86400000 // 默认 1 天
-        )
-    }
-
-    get timeoutWarningMs(): number {
-        return this.resolveTimeoutConfig(
-            'MOBI_TIMEOUT_WARNING_MS',
-            this.settings.timeoutWarningMs,
-            300000 // 默认 5 分钟
         )
     }
 

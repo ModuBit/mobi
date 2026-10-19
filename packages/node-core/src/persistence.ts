@@ -273,7 +273,6 @@ const LEGACY_CLI_FIELDS = [
   'updateChannel',
   'disconnectTimeoutMs',
   'idleTimeoutMs',
-  'timeoutWarningMs',
   'claudeEnv',
   'bashInjectContext',
   'webTools',

@@ -103,8 +103,6 @@ export class ApiSessionClient extends EventEmitter {
         this.idleTimer = new IdleTimer({
             disconnectTimeoutMs: configuration.disconnectTimeoutMs,
             idleTimeoutMs: configuration.idleTimeoutMs,
-            warningMs: configuration.timeoutWarningMs,
-            onWarning: () => this.handleIdleWarning(),
             onDisconnectTimeout: () => this.handleDisconnectTimeout(),
             onIdleTimeout: () => this.handleIdleTimeout(),
             onIdleTimeoutBlockedRecheck: () => this.dormancyDecide?.() ?? true
@@ -455,19 +453,6 @@ export class ApiSessionClient extends EventEmitter {
      */
     resetIdleTimer(): void {
         this.idleTimer?.reset()
-    }
-
-    private handleIdleWarning(): void {
-        if (!this.transport.connected) {
-            logger.debug('[API] Socket not connected, skipping idle warning')
-            return
-        }
-        this.transport.emit('idle-timeout-warning', {
-            sid: this.sessionId,
-            timeoutAt: Date.now() + configuration.timeoutWarningMs,
-            remainingMs: configuration.timeoutWarningMs
-        })
-        logger.debug('[API] Idle timeout warning sent')
     }
 
     private handleDisconnectTimeout(): void {

@@ -255,7 +255,6 @@ type SyncEvent =
     | { type: 'message-snapshot', sessionId: string, message: DecryptedMessage, namespace?: string }
     | { type: 'heartbeat', data?: { timestamp: number }, namespace?: string }
     | { type: 'connection-changed', data?: { status: string, subscriptionId?: string }, connected?: boolean, reconnected?: boolean, namespace?: string }
-    | { type: 'idle-timeout-warning', sessionId: string, data: { timeoutAt: number, remainingMs: number }, namespace?: string }
     | { type: 'messages-submitted', sessionId: string, localIds: string[], submittedAt: number, namespace?: string }
     | { type: 'workspace-added', workspaceId: string, namespace: string }
     | { type: 'workspace-updated', workspaceId: string, namespace: string }
@@ -273,7 +272,6 @@ type SyncEvent =
 | `message-snapshot` | 流式快照消息（未落库，daemon 直接透传给 Web） |
 | `heartbeat` | 心跳事件 |
 | `connection-changed` | 连接状态变化 |
-| `idle-timeout-warning` | 空闲超时预警，提示会话即将因空闲被关闭 |
 | `messages-submitted` | 排队消息被 CLI 推送给 Claude Code（`lifecycle='pushed'` + `lifecycleAt` 落库；载荷 `submittedAt` 即 push 时刻），Web 据此把悬浮消息翻为正式消息 |
 | `workspace-added` / `workspace-updated` / `workspace-removed` | 工作区 CRUD（namespace 必填——EventPublisher 不认 workspaceId，无缓存回查） |
 

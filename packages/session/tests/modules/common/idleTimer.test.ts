@@ -21,21 +21,18 @@ vi.mock('@mobi/node-core/logger', () => ({
     logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() }
 }))
 
-/** 默认配置与生产一致：断开 10 分钟 / 空闲 1 天 / 预警提前 5 分钟 */
+/** 默认配置与生产一致：断开 10 分钟 / 空闲 1 天 */
 const DISCONNECT_TIMEOUT_MS = 600_000
 const IDLE_TIMEOUT_MS = 86_400_000
-const WARNING_MS = 300_000
 
 function makeTimer(overrides?: Partial<ConstructorParameters<typeof IdleTimer>[0]>) {
     const callbacks = {
-        onWarning: vi.fn(),
         onDisconnectTimeout: vi.fn(),
         onIdleTimeout: vi.fn()
     }
     const timer = new IdleTimer({
         disconnectTimeoutMs: DISCONNECT_TIMEOUT_MS,
         idleTimeoutMs: IDLE_TIMEOUT_MS,
-        warningMs: WARNING_MS,
         ...callbacks,
         ...overrides
     })
@@ -46,15 +43,14 @@ describe('IdleTimer', () => {
     beforeEach(() => { vi.useFakeTimers() })
     afterEach(() => { vi.useRealTimers() })
 
-    it('空闲预警在 warningMs 前提前触发，空闲超时到点触发 onIdleTimeout', () => {
+    it('空闲到点触发 onIdleTimeout', () => {
         const { timer, callbacks } = makeTimer()
         timer.start()
 
-        vi.advanceTimersByTime(IDLE_TIMEOUT_MS - WARNING_MS)
-        expect(callbacks.onWarning).toHaveBeenCalledTimes(1)
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS - 1)
         expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
 
-        vi.advanceTimersByTime(WARNING_MS)
+        vi.advanceTimersByTime(1)
         expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1)
         expect(callbacks.onDisconnectTimeout).not.toHaveBeenCalled()
     })
@@ -157,7 +153,6 @@ describe('IdleTimer', () => {
         vi.advanceTimersByTime(IDLE_TIMEOUT_MS)
         expect(callbacks.onDisconnectTimeout).not.toHaveBeenCalled()
         expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
-        expect(callbacks.onWarning).not.toHaveBeenCalled()
     })
 
     it('stop 后 onDisconnect/onReconnect 均不排程', () => {

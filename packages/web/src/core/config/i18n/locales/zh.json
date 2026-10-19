@@ -800,8 +800,6 @@
     "permissionRequestBtn": "允许通知",
     "permissionGuide": "通知权限被阻止",
     "permissionGuideDesc": "浏览器已阻止通知权限，请在浏览器设置中手动开启：点击地址栏左侧图标 → 站点设置 → 通知 → 允许",
-    "idleTimeoutWarning": "会话即将超时",
-    "idleTimeoutWarningDesc": "会话将在 {{minutes}} 分钟后自动关闭，请发送消息保持活跃",
     "settings": {
       "title": "通知",
       "enabled": "已开启",

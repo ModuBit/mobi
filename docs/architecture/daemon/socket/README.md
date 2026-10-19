@@ -60,7 +60,6 @@ CLI 连接后，通过事件与 daemon 交互。事件按职责分为六组：
 | `receive-readiness` | CLI → daemon | 「本会话此刻能不能收消息」的翻转上报（sink 接通 `true` / **接通过之后**收尾断开 `false`；从未接通的一轮不上报，因为 `false` 在 daemon 侧读作「它曾经连上过、连接没了」）。**不落库、不广播**——只在 daemon 进程内喂 `SessionReceiveReadiness`（供「建完即可用」等待与投递失败成因解释），随会话进程生灭且会反复翻转 |
 | `update-metadata` | CLI ⇄ daemon | 更新会话元数据（名称等），带乐观锁 |
 | `update-state` | CLI ⇄ daemon | 更新 Agent 状态（requests 等），带乐观锁 |
-| `idle-timeout-warning` | CLI → daemon | 空闲超时预警，广播到 Web 端 |
 
 **RPC 事件**（`rpcHandlers.ts`）
 

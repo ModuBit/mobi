@@ -46,7 +46,6 @@ const CLI_ONLY_FIELDS = [
     'updateChannel',
     'disconnectTimeoutMs',
     'idleTimeoutMs',
-    'timeoutWarningMs',
     'claudeEnv',
     'bashInjectContext',
     'webTools',
@@ -54,13 +53,15 @@ const CLI_ONLY_FIELDS = [
 
 /** 死字段（零读写点）：不迁移，随旧文件 .bak 归档；machineId 随 machine 概念移除入列（503）；
  *  apiUrl/serverUrl 是 hub 时代「CLI 连远程 hub」的连接目标，ADR 0009（ticket-25）删除——
- *  CLI 连接目标现由 hostChannel.localDaemonHostChannelUrl 从 daemon 权威源派生 */
+ *  CLI 连接目标现由 hostChannel.localDaemonHostChannelUrl 从 daemon 权威源派生；
+ *  timeoutWarningMs 随空闲超时预警下线（只保留空闲超时本身） */
 const DEAD_FIELDS = [
     'machineIdConfirmedByServer',
     'runnerAutoStartWhenRunningMobi',
     'machineId',
     'apiUrl',
     'serverUrl',
+    'timeoutWarningMs',
 ] as const
 
 /** daemon 侧旧键 → 新键（501 hubName → daemonName 读旧写新） */

@@ -592,33 +592,6 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 markUnreadRef.current(sessionId, kind)
                 break
             }
-            case 'idle-timeout-warning':
-                if (event.data?.remainingMs) {
-                    const remainingMinutes = Math.ceil(event.data.remainingMs / 60000)
-                    const idleMsg = tRef.current('notification.idleTimeoutWarning')
-                    const idleDesc = tRef.current('notification.idleTimeoutWarningDesc', { minutes: remainingMinutes })
-                    // 页面 Toast 常驻(duration:0),前台用户已可见
-                    nt.warning({
-                        key: `idle-timeout-${event.sessionId}`,
-                        message: idleMsg,
-                        description: idleDesc,
-                        duration: 0,
-                    })
-                    // 仅后台时额外发系统通知拉回用户;前台有常驻页面 Toast,弹系统通知纯打扰。
-                    // tag 按 session 固定去重,避免堆积;renotify=true 替换时再次提醒,对齐 ready 路径。
-                    // 系统通知只用于"需用户介入"的高价值事件。
-                    if (document.hidden) {
-                        void showSystemNotification({
-                            title: idleMsg,
-                            body: idleDesc,
-                            icon: '/brand/favicon.ico',
-                            tag: `idle-timeout-${event.sessionId}`,
-                            renotify: true,
-                            data: { url: `/sessions/${event.sessionId}` },
-                        })
-                    }
-                }
-                break
         }
     }, [])
 

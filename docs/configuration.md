@@ -81,7 +81,6 @@
 | `updateChannel` | `'stable' \| 'rc'` | `stable` | 升级通道 |
 | `disconnectTimeoutMs` | number | `600000`（10 分钟） | 连接断开后超时退出时间 |
 | `idleTimeoutMs` | number | `86400000`（1 天） | 无活动后超时退出时间 |
-| `timeoutWarningMs` | number | `300000`（5 分钟） | 超时前预警时间 |
 | `claudeEnv` | Record\<string, string\> | - | 注入给 claude 子进程的额外环境变量（优先级高于内置开关） |
 | `bashInjectContext` | boolean | `true` | `!bash` 本地执行后是否把命令+输出注入 SDK context（`false` = 模型不参与，不耗 token） |
 | `webTools` | object | - | Web 工具配置（provider 启停/凭据/当前选择），由 Web 端经 RPC 读写 |
@@ -109,7 +108,6 @@
 | `MOBI_AGENT_TEAMS` | 启用 agent teams 多 teammate 协作（默认关闭） | 仅环境变量 |
 | `MOBI_DISCONNECT_TIMEOUT_MS` | 连接断开超时（毫秒） | 环境变量 > settings.cli.json |
 | `MOBI_IDLE_TIMEOUT_MS` | 交互不活跃超时（毫秒） | 环境变量 > settings.cli.json |
-| `MOBI_TIMEOUT_WARNING_MS` | 预警提前时间（毫秒） | 环境变量 > settings.cli.json |
 
 ### daemon 环境变量
 
