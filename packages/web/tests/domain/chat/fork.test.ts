@@ -21,7 +21,7 @@ import {
     forkRejectReasonKey,
     extractForkRejectCode,
 } from '@/domain/chat/fork'
-import { agentBlockMessageKey, messageBlockKeyPrefix } from '@/domain/chat/blockId'
+import { agentBlockMessageKey, decryptedMessageBlockKeyPrefix, messageBlockKeyPrefix } from '@/domain/chat/blockId'
 import { REWIND_COMMAND } from '@/domain/chat/presentation'
 import type { ChatBlock } from '@/domain/chat/types'
 
@@ -160,6 +160,20 @@ describe('messageBlockKeyPrefix / agentBlockMessageKey（block id 前缀唯一�
         expect(agentBlockMessageKey({ id: 'row-1' })).toBe('row-1')
         // 消息 id 本身可含 ':'，按最后一个切
         expect(agentBlockMessageKey({ id: 'a:b:0' })).toBe('a:b')
+    })
+
+    it('decrypted 行（协议层无 messageId 字段）从 content 信封提取 Anthropic id', () => {
+        const envelope = {
+            role: 'agent',
+            content: { type: 'output', data: { message: { id: 'msg_9', content: [] } } },
+        }
+        // 信封里有 id → 用它，而不是回退到 localId（否则与 reducer 前缀永久不一致）
+        expect(decryptedMessageBlockKeyPrefix({ content: envelope, localId: 'stream-uuid', id: 'row-1' }))
+            .toBe('msg_9')
+        // 无信封 id → 回退链与 messageBlockKeyPrefix 一致
+        expect(decryptedMessageBlockKeyPrefix({ content: {}, localId: 'stream-uuid', id: 'row-1' }))
+            .toBe('stream-uuid')
+        expect(decryptedMessageBlockKeyPrefix({ content: null, localId: null, id: 'row-1' })).toBe('row-1')
     })
 })
 

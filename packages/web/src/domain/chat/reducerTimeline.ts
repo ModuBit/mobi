@@ -306,8 +306,16 @@ export function reduceTimeline(
             // 「正文被当完整消息渲染」这一处
             let lastAgentTextBlock: { aborted?: boolean } | null = null
             // agent block 的稳定 id（口径见 blockId.ts）：snapshot 与 full 行共享
-            // Anthropic message.id，拿不稳定的行级 localId 作 key 会整块重 mount
-            const blockId = (idx: number) => `${messageBlockKeyPrefix(msg)}:${idx}`
+            // Anthropic message.id，拿不稳定的行级 localId 作 key 会整块重 mount。
+            // 后缀用「类型 + 同类型序号」而非数组下标：snapshot 去重会删掉被 full 覆盖的块，
+            // 保留下来的块下标前移，与 full 的块撞 id（thinking 与 text 都变成 `msg:0`）。
+            // 同类型序号在两条路径上按原顺序累计，去重只删整类，剩余类型的序号不受影响。
+            const blockOrdinals = new Map<string, number>()
+            const blockId = (c: { type: string }) => {
+                const ordinal = blockOrdinals.get(c.type) ?? 0
+                blockOrdinals.set(c.type, ordinal + 1)
+                return `${messageBlockKeyPrefix(msg)}:${c.type}#${ordinal}`
+            }
             for (let idx = 0; idx < msg.content.length; idx += 1) {
                 const c = msg.content[idx]
                 if (c.type === 'text') {
@@ -318,7 +326,7 @@ export function reduceTimeline(
 
                     if (isCliOutputText(c.text, msg.meta)) {
                         blocks.push(createCliOutputBlock({
-                            id: blockId(idx),
+                            id: blockId(c),
                             localId: msg.localId,
                             createdAt: msg.createdAt,
                             text: c.text,
@@ -329,7 +337,7 @@ export function reduceTimeline(
                     }
                     blocks.push({
                         kind: 'agent-text',
-                        id: blockId(idx),
+                        id: blockId(c),
                         localId: msg.localId,
                         createdAt: msg.createdAt,
                         text: c.text,
@@ -344,7 +352,7 @@ export function reduceTimeline(
                 if (c.type === 'reasoning') {
                     blocks.push({
                         kind: 'agent-reasoning',
-                        id: blockId(idx),
+                        id: blockId(c),
                         localId: msg.localId,
                         createdAt: msg.createdAt,
                         text: c.text,
@@ -360,7 +368,7 @@ export function reduceTimeline(
                 // summary 消息转换为事件显示
                 if (c.type === 'summary') {
                     blocks.push(createEventBlock({
-                        id: blockId(idx),
+                        id: blockId(c),
                         createdAt: msg.createdAt,
                         event: { type: 'summary', message: c.summary },
                         meta: msg.meta
@@ -375,7 +383,7 @@ export function reduceTimeline(
                             if (title && !context.emittedTitleChangeToolUseIds.has(c.id)) {
                                 context.emittedTitleChangeToolUseIds.add(c.id)
                                 blocks.push(createEventBlock({
-                                    id: blockId(idx),
+                                    id: blockId(c),
                                     createdAt: msg.createdAt,
                                     event: { type: 'title-changed', title },
                                     meta: msg.meta
@@ -424,7 +432,7 @@ export function reduceTimeline(
                         const hiddenToolName = context.hiddenToolUseIds.get(c.tool_use_id)
                         if (hiddenToolName && isPlanModeEnterTool(hiddenToolName)) {
                             blocks.push(createEventBlock({
-                                id: blockId(idx),
+                                id: blockId(c),
                                 createdAt: msg.createdAt,
                                 event: c.is_error
                                     ? { type: 'plan-mode-enter-failed' }
@@ -439,7 +447,7 @@ export function reduceTimeline(
                         if (permEntry && isHiddenTool(permEntry.toolName)) {
                             if (isPlanModeEnterTool(permEntry.toolName)) {
                                 blocks.push(createEventBlock({
-                                    id: blockId(idx),
+                                    id: blockId(c),
                                     createdAt: msg.createdAt,
                                     event: c.is_error
                                         ? { type: 'plan-mode-enter-failed' }
@@ -455,7 +463,7 @@ export function reduceTimeline(
                         if (!context.emittedTitleChangeToolUseIds.has(c.tool_use_id)) {
                             context.emittedTitleChangeToolUseIds.add(c.tool_use_id)
                             blocks.push(createEventBlock({
-                                id: blockId(idx),
+                                id: blockId(c),
                                 createdAt: msg.createdAt,
                                 event: { type: 'title-changed', title },
                                 meta: msg.meta
@@ -511,7 +519,7 @@ export function reduceTimeline(
                 if (c.type === 'sidechain') {
                     blocks.push({
                         kind: 'user-text',
-                        id: blockId(idx),
+                        id: blockId(c),
                         localId: null,
                         createdAt: msg.createdAt,
                         blocks: [{ type: 'text', text: c.prompt }]

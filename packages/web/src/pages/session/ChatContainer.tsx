@@ -52,7 +52,7 @@ import { hasActiveTool } from '@/domain/chat/groupToolCalls'
 import { isTerminalUserLifecycle, terminalLifecycleLabelKey, terminalReasonLabelKey } from '@/domain/chat/terminalReason'
 import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, extractRewindRejectReason, mergeSegmentRows, rewindFailureKind, rewindFailedReasonKey, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
 import { canForkMessage, collectForkTargetBlockIds, extractForkRejectCode, forkRejectReasonKey } from '@/domain/chat/fork'
-import { agentBlockMessageKey, messageBlockKeyPrefix } from '@/domain/chat/blockId'
+import { agentBlockMessageKey, decryptedMessageBlockKeyPrefix } from '@/domain/chat/blockId'
 import { ChatWelcome } from '@/features/chat/ChatWelcome'
 import { UserMessageFooter } from '@/features/chat/UserMessageFooter'
 import { AgentTurnActions } from '@/features/chat/AgentTurnActions'
@@ -62,7 +62,7 @@ import { renderUserBubbleHeader, renderChatBlock, type ChatBlockContext } from '
 import { ToolCallGroupRenderer } from '@/features/chat/blocks/toolCallGroupBlock'
 import { ToolDetailDrawer } from '@/features/chat/tool-card/ToolDetailDrawer'
 import { useToolDetailDrawer } from '@/features/chat/tool-card/useToolDetailDrawer'
-import { ComposerStatusPills, useComposerStatusSummary, STATUS_PILLS_SPACER_HEIGHT, CHAT_SCROLL_PADDING } from '@/features/composer/ComposerStatusPills'
+import { ComposerStatusPills, useComposerStatusSummary, useComposerStatusPresence, STATUS_PILLS_SPACER_HEIGHT, CHAT_SCROLL_PADDING } from '@/features/composer/ComposerStatusPills'
 import type { ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
 import { type RewindDryRunResult } from '@/features/chat/RewindConfirmView'
 import { MessageActionsDrawer, MessageActionsTrigger, type MessageActionTarget } from '@/features/chat/MessageActionsDrawer'
@@ -315,7 +315,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const statusTodos = session?.runtimeState?.todos
     const statusTasks = session?.runtimeState?.tasks
     const statusSummary = useComposerStatusSummary(sessionId, statusTodos, statusTasks)
-    const showStatusPills = statusSummary.showTodo || statusSummary.showTasks
+    // spacer / 滚到底按钮偏移跟随气泡的 mounted 窗口（含滑出动画），数据清空时不同步下沉
+    const statusPresence = useComposerStatusPresence(statusSummary)
+    const showStatusPills = statusPresence.todo.mounted || statusPresence.tasks.mounted
     const taskDrawer = useToolDetailDrawer(sessionId)
 
     // 最近一次活动时间：实时入库时刻（store，含 snapshot delta 帧）与窗口内最后一条消息
@@ -966,7 +968,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         // agent 文本块 → 消息行查表 key（与 reducerTimeline blockId 前缀同源，
         // 见 domain/chat/blockId.ts；按 key 建行索引供锚点/seq 查询）
         const forkRowByKey = new Map<string, { metadata: NativeMessageMetadata | null; seq: number | null }>(
-            messages.map(m => [messageBlockKeyPrefix(m), { metadata: m.metadata ?? null, seq: m.seq ?? null }]),
+            messages.map(m => [decryptedMessageBlockKeyPrefix(m), { metadata: m.metadata ?? null, seq: m.seq ?? null }]),
         )
         // canForkMessage 的会话状态入参一次构造（PC 概要行操作组与移动「⋯」菜单共用，
         // 判据字段增删只改这一处）；canForkMessage 调用同样收口为 forkableOfRow
@@ -1509,6 +1511,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     上滚时消息从毛玻璃后面穿过；贴底时列表尾部的 spacer 已让出气泡高度 */}
                 <ComposerStatusPills
                     summary={statusSummary}
+                    presence={statusPresence}
                     todos={statusTodos}
                     tasks={statusTasks}
                     sessionId={sessionId}

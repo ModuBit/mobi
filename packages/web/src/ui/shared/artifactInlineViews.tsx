@@ -178,7 +178,11 @@ export function HtmlInline({ sessionId, path, wide, app, viz }: ArtifactInlinePr
         if (!bubble) return
         bubble.classList.add('bubble-artifact-fullwidth')
         return () => {
-            if (!bubble.querySelector('.artifact-inline-fullwidth')) bubble.classList.remove('bubble-artifact-fullwidth')
+            // React 19 先跑 layout effect 清理、后移除被删子树：直接 querySelector 会命中
+            // 正在卸载的自己，类永远摘不掉。排除自身后，剩下的才是「仍挂载的其它产物」。
+            const stillMounted = Array.from(bubble.querySelectorAll('.artifact-inline-fullwidth'))
+                .some(el => el !== hostRef.current)
+            if (!stillMounted) bubble.classList.remove('bubble-artifact-fullwidth')
         }
     }, [])
     return (

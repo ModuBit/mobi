@@ -182,10 +182,45 @@ describe('reduceChatBlocks', () => {
             expect(blocks[0].kind).toBe('agent-text')
             const block = blocks[0] as Extract<typeof blocks[0], { kind: 'agent-text' }>
             expect(block.text).toBe('Hello! How can I help?')
-            // agent 内容块 ID 格式为 msgId:contentIndex
-            expect(block.id).toBe('msg-1:0')
+            // agent 内容块 ID 格式为 messageId:type#同类型序号（不能只用下标：
+            // snapshot 去重后下标前移会与 full 的块撞 id）
+            expect(block.id).toBe('msg-1:text#0')
 
-            expect(byId.has('msg-1:0')).toBe(true)
+            expect(byId.has('msg-1:text#0')).toBe(true)
+        })
+
+        it('snapshot 与 full 部分覆盖时块 id 不撞（后缀按类型序号，不按去重后的下标）', () => {
+            const base = {
+                localId: 'row-1',
+                createdAt: 1000,
+                isSidechain: false,
+                messageId: 'msg_1',
+            } as const
+            const snapshot: NormalizedMessage = {
+                ...base,
+                id: 'snap-row',
+                localId: 'stream-uuid',
+                snapshot: true,
+                role: 'agent',
+                content: [
+                    { type: 'reasoning', text: '思考', uuid: 'u1', parentUUID: null },
+                    { type: 'text', text: '你好', uuid: 'u2', parentUUID: null },
+                ],
+            } as NormalizedMessage
+            // full 只覆盖 text 块：去重后 snapshot 只剩 reasoning，旧下标口径两者都会变成 `msg_1:0`
+            const full: NormalizedMessage = {
+                ...base,
+                id: 'full-row',
+                localId: 'jsonl-uuid',
+                role: 'agent',
+                content: [{ type: 'text', text: '你好', uuid: 'u3', parentUUID: null }],
+            } as NormalizedMessage
+
+            const { blocks } = reduceChatBlocks([snapshot, full], null)
+            const ids = blocks.map(b => b.id)
+            expect(ids).toContain('msg_1:reasoning#0')
+            expect(ids).toContain('msg_1:text#0')
+            expect(new Set(ids).size).toBe(ids.length)
         })
 
         it('多条消息按正确顺序排列', () => {

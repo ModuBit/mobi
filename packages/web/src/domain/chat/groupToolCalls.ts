@@ -64,7 +64,26 @@ export function isActiveTool(block: ToolCallBlock): boolean {
 
 /** 块列表里是否存在活跃工具（含工具卡 children 的嵌套调用） */
 export function hasActiveTool(blocks: ChatBlock[]): boolean {
-  return blocks.some(b => b.kind === 'tool-call' && (isActiveTool(b) || hasActiveTool(b.children)))
+  // 只看最近一次 turn-result 之后：历史 turn 里缺 tool_result 的孤儿 tool_use
+  // 会被 reducer 永远标成 running，若一并统计，静默告警会被历史块永久抑制
+  let start = 0
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    const block = blocks[i]
+    if (block?.kind === 'agent-event' && block.event.type === 'turn-result') {
+      start = i + 1
+      break
+    }
+  }
+  for (let i = start; i < blocks.length; i += 1) {
+    const block = blocks[i]
+    if (block?.kind === 'tool-call' && (isActiveTool(block) || hasActiveToolDeep(block.children))) return true
+  }
+  return false
+}
+
+/** 嵌套工具卡（Task/Agent children）内部不做 turn 边界判定：它们属于当前 turn */
+function hasActiveToolDeep(blocks: ChatBlock[]): boolean {
+  return blocks.some(b => b.kind === 'tool-call' && (isActiveTool(b) || hasActiveToolDeep(b.children)))
 }
 
 /**

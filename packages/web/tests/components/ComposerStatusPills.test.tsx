@@ -20,7 +20,7 @@ import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import type { TaskItem, TodoItem } from '@mobi/shared'
 import type { MobiApi } from '@/core/data/api/client'
-import { ComposerStatusPills, useComposerStatusSummary } from '@/features/composer/ComposerStatusPills'
+import { ComposerStatusPills, useComposerStatusSummary, useComposerStatusPresence } from '@/features/composer/ComposerStatusPills'
 
 // 摘要文案断言按真实插值行为 mock（`{{count}}` 等占位替换）
 vi.mock('react-i18next', () => ({
@@ -92,9 +92,11 @@ function PillsHarness({
     api: MobiApi
 }) {
     const summary = useComposerStatusSummary('test-session', todos, tasks)
+    const presence = useComposerStatusPresence(summary)
     return (
         <ComposerStatusPills
             summary={summary}
+            presence={presence}
             todos={todos}
             tasks={tasks}
             sessionId="test-session"

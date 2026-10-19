@@ -54,8 +54,9 @@ const FileChipLink = memo(function FileChipLink({ chip }: { chip: ToolRowChip })
     )
 })
 
-/** 路径切分：最后一个 / 归目录段（含分隔符），其余为文件名；无分隔符整体视作文件名 */
+/** 路径切分：最后一个 / 或 \ 归目录段（含分隔符），其余为文件名；无分隔符整体视作文件名。
+ *  反斜杠必须支持：Windows 宿主的 file_path 原样透传（与項目 path 工具的归一化口径一致）。 */
 function splitDisplayPath(text: string): { dir: string; name: string } {
-    const idx = text.lastIndexOf('/')
+    const idx = Math.max(text.lastIndexOf('/'), text.lastIndexOf('\\'))
     return idx < 0 ? { dir: '', name: text } : { dir: text.slice(0, idx + 1), name: text.slice(idx + 1) }
 }

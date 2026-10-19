@@ -294,7 +294,7 @@ describe('reduceTimeline', () => {
             } as unknown as TracedMessage
             const blocks = reduceTimeline([msg], baseCtx()).blocks
             const reasoning = blocks.find(b => b.kind === 'agent-reasoning')
-            expect(reasoning?.id).toBe('row-1:0')
+            expect(reasoning?.id).toBe('row-1:reasoning#0')
         })
     })
 

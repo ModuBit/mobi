@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { groupCollapsibleToolCalls, formatGroupTitle, formatGroupActiveTitle, countFailedInGroup, activeGroupToolName } from '@/domain/chat/groupToolCalls'
+import { groupCollapsibleToolCalls, formatGroupTitle, formatGroupActiveTitle, countFailedInGroup, activeGroupToolName, hasActiveTool } from '@/domain/chat/groupToolCalls'
 import zhLocale from '@/core/config/i18n/locales/zh.json'
 import type { AgentReasoningBlock, ToolCallBlock } from '@/domain/chat'
 import type { ChatBlock } from '@/domain/chat'
@@ -927,5 +927,38 @@ describe('activeGroupToolName（组活跃时头图标用工具名，与动态标
   it('无活跃块 → null', () => {
     const done = makeToolCall({ id: 'b1', name: 'Read', state: 'completed' })
     expect(activeGroupToolName([done], { isActiveReasoning: notActive })).toBeNull()
+  })
+})
+
+describe('hasActiveTool（静默告警抑制口径）', () => {
+  function makeTurnResult(id: string): ChatBlock {
+    return {
+      kind: 'agent-event',
+      id,
+      createdAt: 1000,
+      event: { type: 'turn-result', durationMs: 1, tokens: 1 },
+    } as ChatBlock
+  }
+
+  it('当前 turn 有运行/待审批工具 → true', () => {
+    expect(hasActiveTool([makeToolCall({ state: 'running' })])).toBe(true)
+    expect(hasActiveTool([makeToolCall({ state: 'pending' })])).toBe(true)
+  })
+
+  it('嵌套工具卡里的活跃调用同样计入', () => {
+    const task = makeToolCall({ id: 'task-1', name: 'Task' })
+    task.children = [makeToolCall({ id: 'child-1', state: 'running' })]
+    expect(hasActiveTool([task])).toBe(true)
+  })
+
+  it('历史 turn 的孤儿 running 块不算活跃（防止永久抑制静默告警）', () => {
+    const stale = makeToolCall({ id: 'stale', state: 'running' })
+    expect(hasActiveTool([stale, makeTurnResult('tr-1')])).toBe(false)
+  })
+
+  it('只看最近一次 turn-result 之后：上一 turn 的活跃块不影响当前 turn', () => {
+    const stale = makeToolCall({ id: 'stale', state: 'running' })
+    const current = makeToolCall({ id: 'current', state: 'completed' })
+    expect(hasActiveTool([stale, makeTurnResult('tr-1'), current])).toBe(false)
   })
 })

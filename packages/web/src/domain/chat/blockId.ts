@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import { extractAnthropicMessageId } from '@mobi/shared'
+
 /**
  * 消息 → 块 id 前缀（block id 的唯一口径）。
  *
@@ -31,6 +33,19 @@ export function messageBlockKeyPrefix(msg: {
     id: string
 }): string {
     return msg.messageId || msg.localId || msg.id
+}
+
+/**
+ * 原始 DecryptedMessage 行 → 同口径前缀。
+ * 协议行本身没有 messageId 字段（那是 normalize 之后才有的），必须从 content 信封提取，
+ * 否则回退到 localId 会与 reducer 的 message.id 前缀永久不一致（fork 查表恒 miss）。
+ */
+export function decryptedMessageBlockKeyPrefix(msg: {
+    content: unknown
+    localId: string | null
+    id: string
+}): string {
+    return extractAnthropicMessageId(msg.content) || msg.localId || msg.id
 }
 
 /**

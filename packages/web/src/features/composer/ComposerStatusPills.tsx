@@ -267,6 +267,24 @@ function useLastWhileVisible<T>(value: T, visible: boolean): T {
     return visible ? value : snapshot.current
 }
 
+export type ComposerStatusPresence = {
+    todo: { mounted: boolean; exiting: boolean }
+    tasks: { mounted: boolean; exiting: boolean }
+}
+
+/**
+ * 出入场状态（ChatContainer 与气泡本体共用同一实例）：
+ * 让位 spacer / 滚到底按钮偏移必须跟随 mounted 窗口，否则数据清空的瞬间 spacer 先消失，
+ * 而气泡还要滑出 120ms——贴底消息会在气泡仍可见时下沉。
+ */
+export function useComposerStatusPresence(
+    summary: Pick<ComposerStatusSummary, 'showTodo' | 'showTasks'>,
+): ComposerStatusPresence {
+    const todo = useExitPresence(summary.showTodo, PILL_EXIT_MS)
+    const tasks = useExitPresence(summary.showTasks, PILL_EXIT_MS)
+    return useMemo(() => ({ todo, tasks }), [todo.mounted, todo.exiting, tasks.mounted, tasks.exiting])
+}
+
 export type ComposerStatusSummary = {
     showTodo: boolean
     showTasks: boolean
@@ -299,6 +317,8 @@ export function useComposerStatusSummary(
 
 export type ComposerStatusPillsProps = {
     summary: ComposerStatusSummary
+    /** 出入场状态由 ChatContainer 计算并传入（spacer 与气泡共用同一份 mounted 窗口） */
+    presence: ComposerStatusPresence
     todos: TodoItem[] | undefined
     tasks: TaskItem[] | undefined
     sessionId: string
@@ -312,6 +332,7 @@ type PillKey = 'tasks' | 'todo'
 
 export function ComposerStatusPills({
     summary,
+    presence,
     todos,
     tasks,
     sessionId,
@@ -327,9 +348,10 @@ export function ComposerStatusPills({
     // 收尾时只有「当前打开的那一个」能关自己——点另一个气泡会先触发本气泡的
     // 点外关闭、再触发对方的打开，若盲目 null 化会把刚到手的打开态冲掉。
     const [openPill, setOpenPill] = useState<PillKey | null>(null)
-    // 出入场：数据出现时滑入；数据清空后先播滑出再卸载（含最后一帧内容快照）
-    const todoPresence = useExitPresence(summary.showTodo, PILL_EXIT_MS)
-    const tasksPresence = useExitPresence(summary.showTasks, PILL_EXIT_MS)
+    // 出入场：数据出现时滑入；数据清空后先播滑出再卸载（含最后一帧内容快照）。
+    // mounted/exiting 由调用方经 presence 传入，与 spacer 同源
+    const todoPresence = presence.todo
+    const tasksPresence = presence.tasks
     const todoChecklist = useLastWhileVisible(summary.checklist, summary.showTodo)
     const taskItems = useLastWhileVisible(summary.taskItems, summary.showTasks)
     const activeCount = useLastWhileVisible(summary.activeCount, summary.showTasks)

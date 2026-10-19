@@ -365,8 +365,14 @@ h1, h2, h3, h4 {
 }
 
 .tool-chip-name {
+    /* 正常收缩优先让给目录段（flex-shrink: 0）；只有文件名自身都超过整个 chip 时
+       才由 max-width 收紧并出省略号——否则父级 overflow:hidden 会无提示硬裁。 */
     flex: 0 0 auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
     white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 /* 文件类型徽章前景双档（FileTypeBadge 文本色块形态）：EXT_BADGES 取 GitHub 语言色

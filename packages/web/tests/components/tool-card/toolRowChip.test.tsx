@@ -158,6 +158,18 @@ describe('工具行新形态：跳转类工具（Edit）', () => {
     })
 })
 
+describe('工具行新形态：Windows 路径', () => {
+    it('反斜杠路径同样切成目录 + 文件名（不把整串当文件名）', () => {
+        const { container } = renderCard(makeBlock('Edit', {
+            file_path: 'C:\\proj\\src\\a.ts',
+            old_string: 'a',
+            new_string: 'b',
+        }))
+        expect(container.querySelector('.tool-chip-dir')?.textContent).toBe('C:\\proj\\src\\')
+        expect(container.querySelector('.tool-chip-name')?.textContent).toBe('a.ts')
+    })
+})
+
 describe('工具行新形态：纯展示 chip（Glob）', () => {
     it('pattern 用 chip 形态但无链接语义', () => {
         renderCard(makeBlock('Glob', { pattern: '**/*.ts' }))
