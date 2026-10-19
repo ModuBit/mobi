@@ -70,6 +70,17 @@ describe('latexPlugin inline regex', () => {
             const match = input.match(INLINE_LATEX_RULE)
             expect(match).toBeNull()
         })
+
+        it('货币成对出现也不误判（闭合 $ 后紧跟数字）', () => {
+            // tokenizer 从首个 $ 起匹配：$15-25/段…$40-70 的闭合 $ 后是数字
+            const input = '$15-25/段），餐饮约 $40-70'
+            expect(input.match(INLINE_LATEX_RULE)).toBeNull()
+        })
+
+        it('闭合 $ 前是空白时不算公式', () => {
+            // 先出现货币、后出现真正的公式开头时，不能把「5 and 」当公式内容
+            expect('$5 and $x^2$'.match(INLINE_LATEX_RULE)).toBeNull()
+        })
     })
 
     describe('块级 $$...$$（双美元符号）', () => {
@@ -181,10 +192,10 @@ describe('containsLatex', () => {
         expect(containsLatex('价格是 $5.00 而已')).toBe(false)
     })
 
-    it('同行的两个 $ 视作一对（与 tokenizer 从 $ 起匹配的真实行为一致的超集）', () => {
-        // marked tokenizer 在 $ 位置收到 src 后 '$5 and $' 会命中 inline 规则——
-        // 探测须不窄于该行为（宁可误加载 chunk，不可漏判公式）
-        expect(containsLatex('Price: $5.00 and $10.00')).toBe(true)
+    it('货币写法不触发：闭合 $ 后紧跟数字（$15-25 … $40-70）', () => {
+        // 2026-10-19 实锤：行程正文里的两处美元金额被当成一对公式，$ 被 katex 吃掉
+        expect(containsLatex('交通（约 $15-25/段），餐饮约 $40-70。')).toBe(false)
+        expect(containsLatex('Price: $5.00 and $10.00')).toBe(false)
     })
 })
 
@@ -213,6 +224,15 @@ describe('Latex 扩展渲染（katex 懒加载）', () => {
         // 上一个用例已加载过 katex（模块级单例），此处只验证不抛错；
         // 未加载分支由 containsLatex + Markdown 层的加载门控保证不会走到
         expect(typeof html).toBe('string')
+    })
+
+    it('货币文本原样保留（不被 katex 吃掉 $）', async () => {
+        await ensureKatexLoaded()
+        const md = new Marked({ extensions: Latex() })
+        const html = md.parse('交通（约 $15-25/段），餐饮约 $40-70。') as string
+        expect(html).toContain('$15-25')
+        expect(html).toContain('$40-70')
+        expect(html).not.toContain('katex')
     })
 
     it('无公式文本不受扩展影响', async () => {

@@ -104,3 +104,32 @@
 }
 .openui-block .iui-html-view > iframe { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
 .openui-block .iui-html-view-wait { display: grid; place-items: center; height: 100%; color: var(--iui-muted); font-size: 13px; }
+
+/* Card 的 "card" 变体上游是无外观的布局容器（无内衬/底色/描边），模型按语义写
+   Card(..., "card") 时整块看起来就是纯文本。这里补成真正的卡片外观，与
+   CardBlock/卡片列表的视觉一致；"sunk"/"clear" 保持上游语义不动。 */
+.openui-block .openui-card-card {
+    padding: var(--openui-space-l);
+    border-radius: var(--openui-radius-3xl);
+    background: var(--openui-elevated);
+    border-color: var(--openui-border-default);
+}
+
+/* Map 标注胶囊：带 label 的 marker 覆盖高德默认图标，数字/短名直接可见 */
+.openui-block .mobi-map-pin {
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 11px;
+    background: rgba(20, 20, 22, 0.9);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+    transform: translate(-50%, -50%);
+}

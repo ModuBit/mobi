@@ -58,6 +58,7 @@ import { actionStateKey, type OpenUIActionPhase } from './actionState'
 import { resolveMergedSnapshotInjection } from './snapshotInjection'
 import { resolveActionBindings, EMPTY_BINDINGS } from './bindingParser'
 import { mobiLibrary, takeClickedActionStatementId } from './mobiLibrary'
+import { OpenUIStreamingContext } from './openuiStreamingContext'
 
 export interface OpenUIRendererProps {
     /** fence 内的 OpenUI Lang 源码 */
@@ -196,15 +197,17 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
     return (
         <div className="openui-block">
             <ThemeProvider mode={mode} lightTheme={OPENUI_LIGHT_THEME} darkTheme={OPENUI_DARK_THEME}>
-                <Renderer
-                    response={code}
-                    // react-ui 与 react-lang 双 d.ts 实例的类型身份不同（同 API），运行时同库
-                    library={mobiLibrary as never}
-                    isStreaming={streaming}
-                    onError={setErrors}
-                    onAction={handleAction}
-                    initialState={initialState}
-                />
+                <OpenUIStreamingContext.Provider value={streaming}>
+                    <Renderer
+                        response={code}
+                        // react-ui 与 react-lang 双 d.ts 实例的类型身份不同（同 API），运行时同库
+                        library={mobiLibrary as never}
+                        isStreaming={streaming}
+                        onError={setErrors}
+                        onAction={handleAction}
+                        initialState={initialState}
+                    />
+                </OpenUIStreamingContext.Provider>
             </ThemeProvider>
             {streaming || errors.length === 0 ? null : (
                 <Alert

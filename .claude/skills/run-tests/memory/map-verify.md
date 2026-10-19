@@ -28,6 +28,15 @@ metadata:
 4. **冷启动偶发空白**：首次加载若 AMap 样式/瓦片请求被网络掐断（console `ERR_CONNECTION_CLOSED`），画布会停在灰底网格且
    不自动重试；对实例调一次 `setMapStyle(...)` 可强制重拉恢复。真机验收看到空白先查 console，再刷新/换样式确认是否为瞬时网络问题
 
+## 海外坐标（2026-10-19）
+
+高德底图海外只覆盖到约 8 级：静态代理 `zoom>=9` 返回纯白 PNG（~3.2KB），交互地图 z12 画布空白。
+
+- **交互档**：海外视野改挂 Esri `AMap.TileLayer`（`server.arcgisonline.com/.../World_Street_Map/MapServer/tile/[z]/[y]/[x]`，暗档 `Canvas/World_Dark_Gray_Base`），保留调用方 zoom，右下角 `© Esri`
+- **静态档**：无法换瓦片，`buildStaticMapSrc` 把 zoom 钳到 8
+- 验收：交互地图内出现 `San Francisco` / `Oakland` 等地名标签；`document.querySelector('[data-mobi-map="interactive"]').amap.getZoom()` 应等于调用方 zoom（海外不再被钳）
+- **长截图坑**：CDP `fullPage` 会把 viewport 拉高，AMap 按新尺寸重算视野（实测 zoom 12 → 9.84）。要保留视野用「DOM 扩高 + 分段 viewport 截图 + PIL 拼接」，勿用 fullPage
+
 ## key 注入（不走聊天）
 
 用户终端执行：`umask 077` + `cat > ~/.mobi-e2e/map-keys.json` 写三个值 → 用 cookie 调

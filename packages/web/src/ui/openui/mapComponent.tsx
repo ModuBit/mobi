@@ -32,10 +32,39 @@ import { defineComponent, type ComponentRenderProps } from '@openuidev/react-lan
 import { mapComponentSpec, type MapProps, type MapSettingsView } from '@mobi/shared'
 import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { loadMapSettings } from '@/core/data/mapSettingsCache'
+import { useOpenUIStreaming } from './openuiStreamingContext'
 
 const DEFAULT_HEIGHT = 280
 const MIN_HEIGHT = 140
 const MAX_HEIGHT = 520
+
+/**
+ * 高德海外底图覆盖不足：9 级以上瓦片为空，画布整块空白（2026-10-19 实测旧金山
+ * z=10+ 全白、z=8 只有海岸线）。因此：
+ * - 交互地图的海外视野换用第三方栅格瓦片（Esri World Street Map，AMap.TileLayer
+ *   自定义 tileUrl 加载），城市级路线才能看清；
+ * - 静态图走的是高德 Web 服务代理，无法换瓦片，只能把 zoom 钳到 8。
+ */
+const OVERSEAS_MAX_STATIC_ZOOM = 8
+
+/** 海外交互地图栅格瓦片（Esri ArcGIS Online；亮/暗两套） */
+const OVERSEAS_TILE_URL = {
+    light: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/[z]/[y]/[x]',
+    dark: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/[z]/[y]/[x]',
+} as const
+
+const CHINA_BOUNDS = { minLng: 73, maxLng: 135, minLat: 18, maxLat: 54 }
+
+function isInChina([lng, lat]: Coordinate): boolean {
+    return lng >= CHINA_BOUNDS.minLng && lng <= CHINA_BOUNDS.maxLng
+        && lat >= CHINA_BOUNDS.minLat && lat <= CHINA_BOUNDS.maxLat
+}
+
+/** 地图视野是否在海外（取显式中心或首个覆盖物坐标） */
+function isOverseasView(props: MapProps): boolean {
+    const point = props.center ?? props.markers?.[0]?.position ?? props.paths?.[0]?.points[0]
+    return point !== undefined && !isInChina(parseCoordinate(point))
+}
 
 type Coordinate = [number, number]
 
@@ -53,8 +82,12 @@ interface AMapNamespace {
         center?: Coordinate
         viewMode?: '2D' | '3D'
         mapStyle?: string
+        /** 显式图层列表：海外视野只挂第三方栅格瓦片，不叠高德空底图 */
+        layers?: unknown[]
     }) => AMapMapInstance
-    Marker: new (options: { position: Coordinate; title?: string }) => unknown
+    /** 自定义栅格瓦片（tileUrl 支持 [x]/[y]/[z] 占位符） */
+    TileLayer: new (options: { tileUrl: string; zIndex?: number }) => unknown
+    Marker: new (options: { position: Coordinate; title?: string; content?: HTMLElement }) => unknown
     Polyline: new (options: {
         path: Coordinate[]
         strokeColor?: string
@@ -84,7 +117,10 @@ function clampHeight(value: number | undefined): number {
 export function buildStaticMapSrc(props: MapProps): string {
     const params = new URLSearchParams()
     if (props.center) params.set('center', props.center)
-    if (props.zoom !== undefined) params.set('zoom', String(props.zoom))
+    // 静态图只能走高德底图：海外覆盖只到 8 级，超出会得到空白图
+    if (props.zoom !== undefined) {
+        params.set('zoom', String(isOverseasView(props) ? Math.min(props.zoom, OVERSEAS_MAX_STATIC_ZOOM) : props.zoom))
+    }
     if (props.markers?.length) params.set('markers', JSON.stringify(props.markers))
     if (props.paths?.length) params.set('paths', JSON.stringify(props.paths))
     params.set('height', String(clampHeight(props.height)))
@@ -132,8 +168,21 @@ const boxStyle = (height: number): CSSProperties => ({
     border: '1px solid var(--iui-border, #e5e5e5)',
 })
 
-const fallbackStyle: CSSProperties = {
-    height: '100%',
+/** 海外底图使用 Esri 瓦片，需在角落保留来源标注 */
+const attributionStyle: CSSProperties = {
+    position: 'absolute',
+    right: 6,
+    bottom: 4,
+    padding: '1px 5px',
+    borderRadius: 3,
+    background: 'rgba(255, 255, 255, 0.72)',
+    color: '#4a4a4a',
+    fontSize: 10,
+    lineHeight: 1.4,
+    pointerEvents: 'none',
+}
+
+const fallbackStyle: CSSProperties = {    height: '100%',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -163,6 +212,14 @@ function MapFallback({ props, reason }: { props: MapProps; reason: string }) {
             )}
         </div>
     )
+}
+
+/** 有 label 的标注画成可见胶囊（数字/短名），否则高德只有 hover 才显示 title */
+function createMarkerContent(label: string): HTMLElement {
+    const el = document.createElement('div')
+    el.className = 'mobi-map-pin'
+    el.textContent = label
+    return el
 }
 
 const loadingStyle: CSSProperties = {
@@ -201,8 +258,16 @@ function InteractiveMap({ props, view }: { props: MapProps; view: MapSettingsVie
     const [failed, setFailed] = useState(false)
     const scheme = useColorScheme(container)
     const height = clampHeight(props.height)
-    // props 每次渲染是新对象：用签名做 effect 依赖，避免地图反复销毁重建
-    const signature = JSON.stringify([props, view.jsApiKey, view.securityJsCode])
+    const overseas = isOverseasView(props)
+    // props 每次渲染是新对象：用签名做 effect 依赖，避免地图反复销毁重建。
+    // 海外视图的底图颜色由图层 URL 决定（setMapStyle 管不到自定义图层），
+    // 主题切换需重建，故 scheme 一并入签名
+    const signature = JSON.stringify([props, view.jsApiKey, view.securityJsCode, overseas ? scheme : null])
+
+    // 签名变化 = 重新初始化：清掉上一次的失败态，允许重试
+    useEffect(() => {
+        setFailed(false)
+    }, [signature])
 
     useEffect(() => {
         let cancelled = false
@@ -223,7 +288,10 @@ function InteractiveMap({ props, view }: { props: MapProps; view: MapSettingsVie
                     zoom: props.zoom ?? 12,
                     ...(center ? { center } : {}),
                     viewMode: '2D',
-                    mapStyle: scheme === 'dark' ? 'amap://styles/dark' : 'amap://styles/normal',
+                    // 海外视野：只挂第三方栅格瓦片（不叠高德空底图）；国内照旧用官方底图
+                    ...(overseas
+                        ? { layers: [new AMap.TileLayer({ tileUrl: OVERSEAS_TILE_URL[scheme], zIndex: 2 })] }
+                        : { mapStyle: scheme === 'dark' ? 'amap://styles/dark' : 'amap://styles/normal' }),
                 })
                 mapRef.current = map
 
@@ -231,7 +299,9 @@ function InteractiveMap({ props, view }: { props: MapProps; view: MapSettingsVie
                 for (const marker of props.markers ?? []) {
                     overlays.push(new AMap.Marker({
                         position: parseCoordinate(marker.position),
-                        ...(marker.label ? { title: marker.label } : {}),
+                        ...(marker.label
+                            ? { title: marker.label, content: createMarkerContent(marker.label) }
+                            : {}),
                     }))
                 }
                 for (const path of props.paths ?? []) {
@@ -249,7 +319,8 @@ function InteractiveMap({ props, view }: { props: MapProps; view: MapSettingsVie
                     // （否则单个 marker 会被 fitView 顶到 17+ 级，zoom 参数形同虚设）
                     if (props.center === undefined && props.zoom === undefined) map.setFitView()
                 }
-            } catch {
+            } catch (error) {
+                console.error('[openui Map] interactive map failed', error)
                 if (!cancelled) setFailed(true)
             }
         }
@@ -262,17 +333,25 @@ function InteractiveMap({ props, view }: { props: MapProps; view: MapSettingsVie
         // signature 已覆盖 props/view 的全部内容
     }, [signature])
 
-    // 主题切换：JS API 地图需显式换样式（CSS 变量管不到 WebGL 画布）
+    // 主题切换：JS API 地图需显式换样式（CSS 变量管不到 WebGL 画布）。
+    // 海外自定义图层不吃 mapStyle，颜色随图层 URL 变化，已由 signature 触发重建
     useEffect(() => {
+        if (overseas) return
         mapRef.current?.setMapStyle(scheme === 'dark' ? 'amap://styles/dark' : 'amap://styles/normal')
-    }, [scheme])
+    }, [scheme, overseas])
 
     if (failed) return <MapFallback props={props} reason="交互地图加载失败" />
-    return <div ref={container} data-mobi-map="interactive" style={{ width: '100%', height }} />
+    return (
+        <div style={{ position: 'relative', width: '100%', height }}>
+            <div ref={container} data-mobi-map="interactive" style={{ width: '100%', height }} />
+            {overseas ? <div style={attributionStyle}>© Esri</div> : null}
+        </div>
+    )
 }
 
 function MapView({ props }: ComponentRenderProps<MapProps>) {
     const [view, setView] = useState<MapSettingsView | null | undefined>(undefined)
+    const streaming = useOpenUIStreaming()
 
     useEffect(() => {
         let live = true
@@ -289,6 +368,11 @@ function MapView({ props }: ComponentRenderProps<MapProps>) {
     if (view === null) return <div style={boxStyle(height)}><MapFallback props={props} reason="地图设置不可用" /></div>
     if (view.mode === 'none') {
         return <div style={boxStyle(height)}><MapFallback props={props} reason="未配置高德地图 key" /></div>
+    }
+    // 流式期间 props 每个 delta 都变：交互地图只在 fence 封口后初始化，避免反复
+    // 创建/销毁；静态图是纯 img，流式期间照常渲染
+    if (view.mode === 'interactive' && streaming) {
+        return <div style={boxStyle(height)}><div style={loadingStyle}>地图加载中…</div></div>
     }
     return (
         <div style={boxStyle(height)}>
