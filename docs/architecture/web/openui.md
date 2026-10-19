@@ -87,6 +87,15 @@ graph LR
 | HtmlView 的 CSP 比上游收紧 | 上游允许连 CDN 出站与 https 图片，mobi 安全底线是 `connect-src 'none'`（ADR 0007）；脚本/样式仍可引 https CDN（canvas 库需要），与 PREVIEW_CSP 同口径。iframe 只给 `allow-scripts`（opaque origin），比 Sandbox App 更严 |
 | Svg 用位置参数顺序教学 + 示例 | E2E 实锤：只列签名时模型按直觉写 `Svg(width,height,shapes)` / `SvgText(x,y,text)`，整条语句被 schema 丢弃；核心段给「shapes 在前、text 在前」的一句话示例，并限制 viewBox ~240 宽保证手机可读 |
 
+## prompt 分层复核（1.0 升级收口）
+
+- **官方组件表 diff**：0.17.0 与 0.18.1 的 react-ui 组件集合逐名一致（各 82 个），1.0 升级没有新增组件需要重新分层——核心白名单无需因版本调整。
+- **核心白名单（33 个）不变**：按既有判据复核——布局/文本/表单件（小签名、高频）常驻；CardBlock 系（每件 ~1.1K chars）与 Charts/Calendar/Carousel/Modal/Tabs/Accordion/DatePicker/Slider/EditableTable/EntityList 等重签名、低频件留在 skill 全量目录。简单场景自洽，复杂件的失败模式 = 多一次 skill 加载。
+- **体积与策略**：核心段 31,984 chars（预算门 32K，票 02 定），余量 16；skill 52,402 chars（82 官方 + 12 自定义 + 59 函数签名）。再扩核心段必须先收窄现有判据/示例，不静默抬高预算门（`tests/claude/utils/systemPrompt.test.ts` 锁 ≤32_000）。
+- **新增能力面进触发词**：`SKILL_DESCRIPTION` 明确列出 `SVG drawings (Svg shapes)` 与 `sandboxed HtmlView pages`，复杂件加载路径可被匹配到。
+- **三层能力面落位**：函数目录（59）常驻核心段；官方组件按白名单二分；自定义组件签名在 skill 全量，媒介判据（何时用 Chart/Svg/HtmlView）常驻核心段。
+- **教学修正（1.0 E2E 实锤，2026-10-19）**：① Form 第二参数必须是 `Buttons([...])` 包裹——直传单个 Button 被 schema 丢弃，整块无提交按钮；② 派生值（按钮/文案三元）必须写普通语句 `submitBtn = ...`，不能写 `$submitBtn = ...`——`$` 初始化在 lang-core 里存原始 AST、不求值，渲染为空（0.x/1.0 同行为）；③ Polyline/Polygon 首参是 `"x1,y1 x2,y2"` points 字符串，位置坐标写法被 schema 丢弃。
+
 ## 测试 seam
 
 纯函数直测（`tests/ui/openui/`）：actionState（配对/孤儿/queued 窗口）、actionStore（单调守卫/乐观口）、snapshotInjection（direct 单通道/合并）、bindingParser、fenceIndex（GFM 扫描/幂等）、actionMessage（组装）。集成面：`OpenUIAction.integration.test.tsx`（回路② 点击 → 发送）、`OpenUIInPlaceUpdate.integration.test.tsx`（档③ 原地更新）、`OpenUIDemoComponents.integration.test.tsx`（票 03：Chart/Svg/HtmlView 经同一条 Renderer 装配挂载）。真机验收 recipe 见 `.claude/skills/run-tests/memory/generative-ui-verify.md`；特性 spec 在 `.scratch/generative-ui/spec.md`。

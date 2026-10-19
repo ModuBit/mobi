@@ -22,8 +22,9 @@
  *    语法骨架 + 三层形态判据 + 高频核心组件（CORE_COMPONENTS 白名单）+ 官方示例
  *    + 「组件不在清单先加载 openui skill」引导。多数不出 UI 的会话只背这一段
  *    （生产实测 167 会话仅 1 个出过 openui，全量 38K 常驻不划算）。
- * 2. `packages/cli/plugins/mobi/skills/openui/SKILL.md`——**全量目录**（52 组件签名），
- *    随 mobi 内置插件分发，模型写复杂 UI（图表/日历/轮播/CardBlock 系）前主动加载。
+ * 2. `packages/cli/plugins/mobi/skills/openui/SKILL.md`——**全量目录**（82 官方组件 +
+ *    12 自定义组件 + 59 函数签名），随 mobi 内置插件分发，模型写复杂 UI（图表/日历/轮播/
+ *    CardBlock 系/Svg 绘图/沙箱 HTML）前主动加载。
  *
  * 触发重新生成：升级 @openuidev/react-ui（锁版本）或调整判据措辞后运行
  * `bun run packages/session/scripts/generate-openui-prompt.ts`。
@@ -94,21 +95,21 @@ const SHARED_RULES = [
     'Component names are case-sensitive PascalCase — lowercase names are silently dropped and will not render.',
     // 自定义组件（票 03）：Chart / Svg 图元 / HtmlView 不在核心清单，签名在 skill；
     // 这里只教「什么时候用哪个媒介」，防止模型用 Table 硬凑图或滥用 HtmlView
-    'Charts & drawings (custom components): Chart("bar"|"line"|"area"|"pie"|"donut"|"scatter", rows, x?, series?) — series are column names like ["revenue"], NOT Series(...); derive rows with @GroupBy/@Each. Svg(shapes, viewBox, width?, height?) — shapes list first, e.g. `Svg([Rect(10, 10, 80, 40, "surface", "ink", 2), SvgText("Step", 20, 80, 12, "muted")], "0 0 240 120")`; shapes: Circle/Rect/Line/Path/Polygon/Polyline/Ellipse/G/SvgText(text, x, y, size?, fill?, anchor?, weight?). Keep the viewBox about 240 wide and a dozen shapes at most so the drawing stays legible on phones. Colors: "ink"/"muted"/"faint"/"surface"/"info"/"success"/"warning"/"danger"/"purple"/"pink"/"chart1"…"chart6" or CSS colors; HtmlView only for a game or animation with a render loop.',
+    'Charts & drawings (custom components): Chart("bar"|"line"|"area"|"pie"|"donut"|"scatter", rows, x?, series?) — series are column names like ["revenue"], NOT Series(...); derive rows with @GroupBy/@Each. Svg(shapes, viewBox, width?, height?) — shapes list first, e.g. `Svg([Rect(10, 10, 80, 40, "surface", "ink", 2), SvgText("Step", 20, 80, 12, "muted")], "0 0 240 120")`; shapes: Circle/Rect/Line/Path/Ellipse/G/SvgText(text, x, y, size?, fill?, anchor?, weight?); Polyline/Polygon take a "x1,y1 x2,y2" points string first. Keep the viewBox ~240 wide and ≤12 shapes for phone legibility. Colors: "ink"/"muted"/"faint"/"surface"/"info"/"success"/"warning"/"danger"/"purple"/"pink"/"chart1"…"chart6" or CSS colors; HtmlView only for a game or animation with a render loop.',
     // 档③原地更新 + per-action 粒度（票 04/02/per-action 票 02-04）：每个操作一个
     // 专属状态变量（值域约定，名字自由），Set step 做本地即时反馈；host 按操作粒度
     // 回写（registry 身份 + 绑定表），多操作不共享变量——共享是串状态根因
-    'Action-state convention: each ACTION (a button that triggers the assistant to EXECUTE a task) gets its OWN reactive variable whose default value is exactly "idle" (the host recognizes state variables by this value vocabulary: idle / running / done / failed — any variable name works, `$actionState` is the conventional choice); never share one variable between actions. Advance it with a Set step for instant local feedback, e.g. `btn = Button(btnLabel, Action([Set($actionState, "running"), @ToAssistant("预订")]), "primary")`, and derive the label with a ternary, e.g. `btnLabel = $actionState == "done" ? "已完成 ✓" : ($actionState == "running" ? "执行中…" : "预订")`. The host flips the same variable in place per action as that action\'s turn progresses (idle → running → done/failed); failed means the turn was interrupted and the action may be retried — never use these state variables for anything other than execution-state UI.',
+    'Action-state convention: each ACTION (a button that triggers the assistant to EXECUTE a task) gets its OWN reactive variable whose default value is exactly "idle" (values: idle / running / done / failed; any variable name works, `$actionState` is conventional); never share one variable between actions. Advance it with a Set step for instant local feedback, e.g. `btn = Button(btnLabel, Action([Set($actionState, "running"), @ToAssistant("预订")]), "primary")`, and derive the label with a ternary, e.g. `btnLabel = $actionState == "done" ? "已完成 ✓" : ($actionState == "running" ? "执行中…" : "预订")`. The host flips the same variable in place per action as that action\'s turn progresses (idle → running → done/failed); failed means the turn was interrupted and the action may be retried — use them only for execution-state UI. Derived values (labels/buttons) are PLAIN statements like `btnLabel` — never `$name`: `$` initializers are stored unevaluated and render empty.',
     // 一次性操作（票 02/per-action 票 03-04）：条件渲染绑操作状态变量——idle 才渲染
     // 按钮、failed 保持可重试、其余终态替换为文字（按钮原地消失，非灰化——DSL 无
     // disabled）；快照容器空对象声明供提交后恢复勾选态。E2E 实锤（2026-10-11）：模型
     // 会自创 `$submitted` 布尔开关当一次性闸（宿主只写值域变量，永不写它 → 按钮永不
     // 锁定），故显式否定该形态
-    'One-shot action convention: for forms that should be submitted only once, bind the form state to a reactive object declared empty (e.g. `$answers = {}` — the host restores the submitted values on reload) and swap the button for plain text once submitted, driven by the action state variable: `$submitBtn = $actionState == "idle" ? Button("提交", Action([Set($actionState, "running"), @ToAssistant(summary)]), "primary") : ($actionState == "failed" ? Button("重试", Action([Set($actionState, "running"), @ToAssistant(summary)]), "primary") : TextContent("已提交 ✓", "small"))` — a submitted one-shot action never renders as a clickable button again (only a failed turn stays retryable). Gate ONLY on the action state variable — never introduce a separate boolean flag like `$submitted` or `$done`: the host never writes it, so the button would never lock. Repeatable interactions (menus, explorers) need none of this.',
+    'One-shot action convention: for forms submitted only once, bind form state to an empty reactive object (e.g. `$answers = {}` — the host restores submitted values on reload) and, driven by the action state variable, swap the button for text once submitted: `submitBtn = $actionState == "idle" ? Button("提交", Action([Set($actionState, "running"), @ToAssistant(summary)]), "primary") : ($actionState == "failed" ? Button("重试", Action([Set($actionState, "running"), @ToAssistant(summary)]), "primary") : TextContent("已提交 ✓", "small"))` — a submitted one-shot action never renders as a clickable button again (only a failed turn stays retryable). Gate ONLY on the action state variable — never introduce a separate boolean flag like `$submitted`: the host never writes it, so the button never locks. Inside a Form the second argument is a `Buttons([submitBtn])` wrapper, not a bare Button. Repeatable interactions (menus, explorers) need none of this.',
     // 多操作面板（per-action 票 02 E2E 实锤句）：各操作独立——E2E 曾实测共享变量的
     // 双卡面板点 A 连带翻 B（串状态），故独立变量是硬约定
-    'Multi-action panels: every action in one openui-lang block must have its own state variable (never share one between actions) — actions run independently, clicking one must not change another\'s label, and the host tracks each separately (two quick-stat cards each flip only its own 执行中… → 已完成 ✓).',
-    'When the user triggers an action from the UI, the follow-up message will carry the UI state values as plain text — treat it as the user\'s instruction to execute, use your normal tools (with the usual permission flow), and confirm the outcome briefly in prose; do NOT regenerate the same UI block unless asked.',
+    'Multi-action panels: every action in one openui-lang block must have its own state variable (never share one between actions) — actions run independently, clicking one must not change another\'s label, and the host tracks each separately.',
+    'When the user triggers an action from the UI, the follow-up message will carry the UI state values as plain text — treat it as the user\'s instruction to execute, use your tools normally, and confirm the outcome briefly in prose; do NOT regenerate the same UI block unless asked.',
 ]
 
 /**
@@ -165,7 +166,7 @@ export const OPENUI_CORE_PROMPT_OPTIONS = {
         'For mode="app" HTML apps, style with the `--mobi-*` theme variables the host injects, and use `window.MobiApp.issueNewTurn(text)` only from explicit user actions — read the `openui` skill for the full palette and API before writing the app.',
         // 分层引导（票 08）：核心清单只覆盖简单场景；复杂组件先加载 skill 取全量目录，
         // 失败模式是「多一次工具调用」而非「静默丢语句」
-        'The component reference in this prompt is a CORE SUBSET only. If the UI you are about to write needs any component NOT documented above — charts, tables with editing, calendars, date pickers, carousels, modals, tabs, accordions, sliders, entity lists, card blocks (Overview/Composite/Context/Visual/Snippet), or advanced image layouts — invoke the `openui` skill FIRST and read its full component catalog before writing the code. Never guess a signature that is not documented above.',
+        'The component reference in this prompt is a CORE SUBSET only. If the UI you are about to write needs any component NOT documented above — charts, SVG drawings (Svg shapes), tables with editing, calendars, date pickers, carousels, modals, tabs, accordions, sliders, entity lists, card blocks (Overview/Composite/Context/Visual/Snippet), or advanced image layouts — invoke the `openui` skill FIRST and read its full component catalog before writing the code. Never guess a signature that is not documented above.',
     ],
 }
 
@@ -196,7 +197,7 @@ export function buildCorePrompt(): string {
 
 /** openui skill 的 frontmatter description（触发词与引导规则同口径） */
 const SKILL_DESCRIPTION =
-    'Full openui-lang component catalog (52 components with exact signatures) for interactive UI blocks. Load this skill BEFORE writing any openui-lang code that needs components beyond the core subset documented in the system prompt — charts, editable tables, calendars, date pickers, carousels, modals, tabs, accordions, sliders, entity lists, card blocks (Overview/Composite/Context/Visual/Snippet), image layouts — or whenever you are unsure of a component signature.'
+    'Full openui-lang component catalog (82 components with exact signatures) for interactive UI blocks. Load this skill BEFORE writing any openui-lang code that needs components beyond the core subset documented in the system prompt — charts, SVG drawings (Svg shapes), sandboxed HtmlView pages, editable tables, calendars, date pickers, carousels, modals, tabs, accordions, sliders, entity lists, card blocks (Overview/Composite/Context/Visual/Snippet), image layouts — or whenever you are unsure of a component signature.'
 
 /** 生成 openui skill 全文（frontmatter + 全量 catalog） */
 export function buildSkillMarkdown(): string {

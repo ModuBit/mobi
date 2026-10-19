@@ -158,6 +158,12 @@ describe('openui 核心段契约（generative-ui 票 02 注入、票 08 分层�
     expect(OPENUI_CORE_PROMPT).toMatch(/TextContent\("已提交 ✓", "small"\)/);
     // 布尔开关否定式（E2E 实锤模型自创 $submitted 闸，宿主永不写它 → 按钮永不锁定）
     expect(OPENUI_CORE_PROMPT).toMatch(/never introduce a separate boolean flag like `\$submitted`/);
+    // Form 的 buttons 参数须 Buttons([...]) 包裹（2026-10-19 E2E 实锤：模型直传单个
+    // Button，表单渲染时按钮被 schema 丢弃，整块无提交按钮）
+    expect(OPENUI_CORE_PROMPT).toMatch(/Inside a Form the second argument is a `Buttons\(\[submitBtn\]\)` wrapper/);
+    // 派生值必须是非 $ 普通语句（E2E 实锤：`$submitBtn = 三元返回组件` 的 $ 初始化
+    // 不会被求值，渲染为空——$ 声明只存原始 AST）
+    expect(OPENUI_CORE_PROMPT).toMatch(/Derived values \(labels\/buttons\) are PLAIN statements like `btnLabel` — never `\$name`/);
   });
 
   it('@函数目录在核心段（票 02）：本地计算词汇常驻，模型写 UI 时无需先加载 skill', () => {
@@ -173,6 +179,9 @@ describe('openui 核心段契约（generative-ui 票 02 注入、票 08 分层�
     // 位置参数顺序示例（E2E 实锤：只给签名列表时模型按直觉写成 Svg(width,height,shapes)）
     expect(OPENUI_CORE_PROMPT).toMatch(/Svg\(\[Rect\(10, 10, 80, 40, "surface", "ink", 2\), SvgText\("Step", 20, 80, 12, "muted"\)\]/);
     expect(OPENUI_CORE_PROMPT).toMatch(/HtmlView only for a game or animation/);
+    // 折叠图元参数顺序（2026-10-19 E2E 实锤：模型把 Polygon 写成 Polygon(x1,y1,x2,y2,…)，
+    // 8 处语句被 schema 丢弃）
+    expect(OPENUI_CORE_PROMPT).toMatch(/Polyline\/Polygon take a "x1,y1 x2,y2" points string first/);
     // 图元颜色 token 词汇
     expect(OPENUI_CORE_PROMPT).toMatch(/"chart1"…"chart6"/);
   });
@@ -198,6 +207,9 @@ describe('openui skill（全量目录，票 08 随 mobi 插件分发）', () => 
     expect(skill).toMatch(/\n---\nname: openui\n/);
     expect(skill).toMatch(/description: Full openui-lang component catalog/);
     expect(skill).toMatch(/charts/);
+    // 票 04：新增能力面进触发词（Svg 图元 / 沙箱 HtmlView）
+    expect(skill).toMatch(/SVG drawings \(Svg shapes\)/);
+    expect(skill).toMatch(/sandboxed HtmlView pages/);
   });
 
   it('全量 @函数目录在（票 02）：六类函数的签名与语义随 skill 分发', () => {
