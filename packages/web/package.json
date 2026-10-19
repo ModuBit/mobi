@@ -12,6 +12,7 @@
     "gen:file-type-icons": "bun run scripts/generate-file-type-icons.mjs"
   },
   "dependencies": {
+    "@amap/amap-jsapi-loader": "^1.0.1",
     "@ant-design/icons": "^6.3.4",
     "@ant-design/x": "^2.9.0",
     "@ant-design/x-markdown": "^2.9.0",

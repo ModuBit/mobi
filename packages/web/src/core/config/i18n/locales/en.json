@@ -619,6 +619,10 @@
       "memory": {
         "title": "Long-term Memory",
         "desc": "Mobi remembers across sessions"
+      },
+      "map": {
+        "title": "Map",
+        "desc": "AMap keys and render mode"
       }
     },
     "webTools": {
@@ -719,6 +723,26 @@
       "injectNoneHint": "No automatic injection; memory tools remain for on-demand use",
       "pageRefreshLabel": "Knowledge-page refresh interval (turns)",
       "pageRefreshHint": "Refresh the index block every N turns; 0 = never (the block is injected every turn by default, ~2KB)"
+    },
+    "map": {
+      "title": "Map",
+      "modeInteractive": "Interactive map",
+      "modeStatic": "Static map",
+      "modeNone": "Not configured",
+      "modeHint": "With a JS API key and security code the block uses an interactive AMap; with only a Web Service key it uses a static image; with neither it shows an \"open in AMap\" link.",
+      "jsApiKeyLabel": "JS API key (Web)",
+      "jsApiKeyHint": "Create a \"Web (JS API)\" key in the AMap console; leave blank to keep the current value",
+      "securityJsCodeLabel": "Security code (securityJsCode)",
+      "securityJsCodeHint": "Pairs with the JS API key; sent to the browser (plaintext mode, fine for a personal local deployment)",
+      "webServiceKeyLabel": "Web Service key",
+      "webServiceKeyHint": "Used by the static map proxy; stays in the daemon and is never sent to the browser",
+      "setPlaceholder": "Configured (leave blank to keep)",
+      "emptyPlaceholder": "Not set",
+      "save": "Save",
+      "saved": "Saved",
+      "saveFailed": "Save failed",
+      "clear": "Clear all",
+      "offline": "Daemon unreachable — cannot load settings"
     }
   },
   "debug": {

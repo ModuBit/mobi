@@ -20,6 +20,7 @@ import { mkdir, readFile, rename, writeFile, chmod } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { withFileLock } from '@mobi/node-core/persistence'
 import type { MemorySettings } from './memorySettings'
+import type { MapSettings } from '@mobi/shared'
 
 /**
  * Daemon 专属设置（settings.daemon.json）。
@@ -47,6 +48,8 @@ export interface Settings {
     daemonName?: string
     /** 长期记忆设置块（agent-memory 票 02）：引擎三态 + endpoint + 例外映射 + workspace 排除 */
     memory?: MemorySettings
+    /** 地图设置块：高德 JS API（交互）与 Web 服务 key（静态图代理） */
+    map?: MapSettings
 }
 
 /** daemon 配置文件（本文件字段的唯一持久化位置） */

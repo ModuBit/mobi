@@ -17,7 +17,7 @@
 <!-- ⚠️ 生成文件——勿手改。重生成：bun run packages/session/scripts/generate-openui-prompt.ts -->
 ---
 name: openui
-description: Full openui-lang component catalog (82 components with exact signatures) for interactive UI blocks. Load this skill BEFORE writing any openui-lang code that needs components beyond the core subset documented in the system prompt — charts, SVG drawings (Svg shapes), sandboxed HtmlView pages, editable tables, calendars, date pickers, carousels, modals, tabs, accordions, sliders, entity lists, card blocks (Overview/Composite/Context/Visual/Snippet), image layouts — or whenever you are unsure of a component signature.
+description: Full openui-lang component catalog (82 official + 13 custom components with exact signatures) for interactive UI blocks. Load this skill BEFORE writing any openui-lang code that needs components beyond the core subset documented in the system prompt — charts, geographic maps (Map with AMap), SVG drawings (Svg shapes), sandboxed HtmlView pages, editable tables, calendars, date pickers, carousels, modals, tabs, accordions, sliders, entity lists, card blocks (Overview/Composite/Context/Visual/Snippet), image layouts — or whenever you are unsure of a component signature.
 ---
 
 # OpenUI Component Catalog (full)
@@ -194,6 +194,7 @@ MetricIndicatorWithStrikethrough(value: string, subtext?: string, previousValue?
 
 ### Other
 Chart(type: "bar" | "line" | "area" | "pie" | "donut" | "scatter", data: Record<string, string | number>[], x?: string, series?: string[], format?: "number" | "currency" | "percent", currency?: string, stacked?: boolean, height?: number) — Rows of data; x is the category key (a number key for scatter), series the value keys (default: every number key). percent values are like 45; currency is a code like "EUR".
+Map(center?: string, zoom?: number, markers?: {position: string, label?: string}[], paths?: {points: string[], color?: string, weight?: number}[], height?: number) — Geographic map (AMap) for locations and routes: center is "lng,lat" (GCJ-02), zoom 3-18; markers are {position: "lng,lat", label?}; paths are {points: ["lng,lat", ...], color?, weight?}. Keep 12 markers or fewer and 3 paths or fewer so the map stays readable on phones.
 Svg(children: Node[], viewBox: string, width?: Length, height?: Length) — A drawing for steps, parts, mechanisms, diagrams and layouts. Scales to its width; its shapes take expressions, so state can move them.
 Circle(cx: number, cy: number, r: number, fill?: Color, stroke?: Color, strokeWidth?: number, opacity?: number)
 Ellipse(cx: number, cy: number, rx: number, ry: number, fill?: Color, stroke?: Color, strokeWidth?: number, opacity?: number)

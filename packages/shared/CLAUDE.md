@@ -30,7 +30,8 @@
 | `src/inboundOrigin.ts` | 入站消息落在 meta 上的来源标注：跨会话来源 `CrossSessionOrigin` + turn 来源 `TurnOrigin` 的形状与读写单源 |
 | `src/exitLogger.ts` | 进程退出日志（hub/runner/cli 共用基础设施） |
 | `src/openuiFunctions/` | openui `@函数`目录（59 个，纯 JS + Zod）：web 渲染器与 session prompt 生成器单源（票 02） |
-| `src/openuiComponents/` | openui 自定义组件签名（12 个：Chart / Svg 图元 / HtmlView）：实现留 web，签名两面共用（票 03） |
+| `src/openuiComponents/` | openui 自定义组件签名（13 个：Chart / Map / Svg 图元 / HtmlView）：实现留 web，签名两面共用（票 03/04） |
+| `src/mapSettings.ts` | 地图设置（高德两种 key 分开存）+ 三档模式推导 `deriveMapMode`（interactive / static / none）与锁内合并写 |
 | `src/index.ts` | Barrel export |
 
 ## 测试

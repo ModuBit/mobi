@@ -119,6 +119,7 @@
       "name": "mobi-web",
       "version": "0.0.0",
       "dependencies": {
+        "@amap/amap-jsapi-loader": "^1.0.1",
         "@ant-design/icons": "^6.3.4",
         "@ant-design/x": "^2.9.0",
         "@ant-design/x-markdown": "^2.9.0",
@@ -220,6 +221,8 @@
     "@adobe/css-tools": ["@adobe/css-tools@4.4.4", "", {}, "sha512-Elp+iwUx5rN5+Y8xLt5/GRoG20WGoDCQ/1Fb+1LiGtvwbDavuSk0jhD/eZdckHAuzcDzccnkv+rEjyWfRx18gg=="],
 
     "@ag-ui/core": ["@ag-ui/core@0.0.53", "", { "dependencies": { "zod": "^3.22.4" } }, "sha512-11UocR7fFdMWw503bWCX2IOK15vbWfxT11Mn9xOiPBVO/UVcn57ywGrlLL4UaBlPgmUTvuzr2yYR2ElSqiN2wQ=="],
+
+    "@amap/amap-jsapi-loader": ["@amap/amap-jsapi-loader@1.0.1", "", {}, "sha512-nPyLKt7Ow/ThHLkSvn2etQlUzqxmTVgK7bIgwdBRTg2HK5668oN7xVxkaiRe3YZEzGzfV2XgH5Jmu2T73ljejw=="],
 
     "@ant-design/colors": ["@ant-design/colors@8.0.1", "", { "dependencies": { "@ant-design/fast-color": "^3.0.0" } }, "sha512-foPVl0+SWIslGUtD/xBr1p9U4AKzPhNYEseXYRRo5QSzGACYZrQbe11AYJbYfAWnWSpGBx6JjBmSeugUsD9vqQ=="],
 

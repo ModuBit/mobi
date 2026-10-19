@@ -1,6 +1,6 @@
 # OpenUI 渲染层（Intelligent UI Native 层）
 
-fenced `openui` / `openui-lang` 代码块渲染为可交互 UI（官方 @openuidev/react-ui 组件库 + react-lang 解释器），并向上接通两条回灌回路：操作发消息（档②）、操作状态随 agent turn 原地更新（档③）。渲染器挂载的 mobi 库在官方组件之上加 59 个本地 `@函数`（`@GroupBy`/`@Payment`/`@Format` 等，shared 单源）与 12 个自定义组件（`Chart` 图表、`Svg` 图元族、`HtmlView` 沙箱页）——模型写一行调用，求值/绘制在用户浏览器完成，零网络零 token。与 Sandbox App（`mode=app` 的 .html 文件 iframe，`ui/SandboxHtmlFrame.tsx`）是平行两层，按场景分工——本文只覆盖 Native 层。
+fenced `openui` / `openui-lang` 代码块渲染为可交互 UI（官方 @openuidev/react-ui 组件库 + react-lang 解释器），并向上接通两条回灌回路：操作发消息（档②）、操作状态随 agent turn 原地更新（档③）。渲染器挂载的 mobi 库在官方组件之上加 59 个本地 `@函数`（`@GroupBy`/`@Payment`/`@Format` 等，shared 单源）与 13 个自定义组件（`Chart` 图表、`Map` 高德地图、`Svg` 图元族、`HtmlView` 沙箱页）——模型写一行调用，求值/绘制在用户浏览器完成，零网络零 token。与 Sandbox App（`mode=app` 的 .html 文件 iframe，`ui/SandboxHtmlFrame.tsx`）是平行两层，按场景分工——本文只覆盖 Native 层。
 
 ## 渲染入口与懒加载链路
 
@@ -63,6 +63,8 @@ graph LR
 | `openui/fenceIndex.ts` | fence 身份 token 注解/反解（GFM 围栏扫描） |
 | `openui/mobiLibrary.tsx` | mobi 库派生（`openuiLibrary.extend`）：Button capture 同步帧写 statementId 到 globalThis registry（取后即清）+ @函数目录 + 自定义组件（票 03）挂载 |
 | `openui/chartComponent.tsx` | Chart 组件实现（bar/line/area/pie/donut/scatter）：行式数据 → 内联 SVG，分类色取 `--mobi-chart-N`（tokens.ts 双档单源） |
+| `openui/mapComponent.tsx` | Map 组件实现（高德三档）：JS API key → 交互地图（loader + 覆盖物）、仅 Web 服务 key → `<img>` 走 daemon `/api/map/static` 代理、都没配 → URI 链接降级；配置读模块级缓存 `mapSettingsCache` |
+| `core/data/mapSettingsCache.ts` | 地图设置模块级缓存（30s + in-flight 去重）：openui 渲染器裸渲染不保证有 QueryClient |
 | `openui/svgComponents.tsx` | Svg 容器 + 9 个图元（Circle/Ellipse/Rect/Line/Path/Polyline/Polygon/G/SvgText）：属性白名单校验 + 颜色 token 投影 |
 | `openui/htmlViewComponent.tsx` | HtmlView：`srcDoc` 沙箱 iframe（opaque origin、无表单/弹层），CSP 按 mobi 基线收紧（connect-src 'none'） |
 | `openui/theme.ts` | antd token → react-ui Theme 双档翻译（主题同源跟随） |
@@ -86,16 +88,19 @@ graph LR
 | 图表分类色单源（tokens.ts CHART_*）→ 两条投影 | 自绘 Chart/Svg 走 CSS 变量 `--mobi-chart-N`（双档随主题翻），react-ui 内置图表走 `defaultChartPalette`（JS 数组）；两套图表同屏必须同一配色语言，改色只改一处 |
 | HtmlView 的 CSP 比上游收紧 | 上游允许连 CDN 出站与 https 图片，mobi 安全底线是 `connect-src 'none'`（ADR 0007）；脚本/样式仍可引 https CDN（canvas 库需要），与 PREVIEW_CSP 同口径。iframe 只给 `allow-scripts`（opaque origin），比 Sandbox App 更严 |
 | Svg 用位置参数顺序教学 + 示例 | E2E 实锤：只列签名时模型按直觉写 `Svg(width,height,shapes)` / `SvgText(x,y,text)`，整条语句被 schema 丢弃；核心段给「shapes 在前、text 在前」的一句话示例，并限制 viewBox ~240 宽保证手机可读 |
+| Map 三档由 daemon 设置推导、组件签名不变 | 高德两种 key 类型不可互换：JS API key + `securityJsCode` 才能开交互地图（且受域名白名单约束），Web 服务 key 只能拉静态图。模型侧只写 `Map(center, zoom, markers, paths)`，渲染档位按配置自动降级——没有 key 也不报错，退成 URI 链接 |
+| 静态图走 daemon 代理而非浏览器直连 | Web 服务 key 永不下发：前端 `<img src="/api/map/static?...">` 同源请求，daemon 拼高德参数、带 key 拉图并缓存（60 条/5 分钟 + in-flight 去重）。同时规避 CORS 与沙箱 CSP 的 `img-src` 限制 |
+| 交互地图不经沙箱 | HtmlView / `mode=app` 的 CSP 是 `connect-src 'none'`（ADR 0007），瓦片请求发不出去；交互地图只能在 Native 层（Renderer 直出 DOM）实现。`securityJsCode` 明文下发仅适用于个人本地部署，公开部署须换官方服务端代理 |
 
 ## prompt 分层复核（1.0 升级收口）
 
 - **官方组件表 diff**：0.17.0 与 0.18.1 的 react-ui 组件集合逐名一致（各 82 个），1.0 升级没有新增组件需要重新分层——核心白名单无需因版本调整。
 - **核心白名单（33 个）不变**：按既有判据复核——布局/文本/表单件（小签名、高频）常驻；CardBlock 系（每件 ~1.1K chars）与 Charts/Calendar/Carousel/Modal/Tabs/Accordion/DatePicker/Slider/EditableTable/EntityList 等重签名、低频件留在 skill 全量目录。简单场景自洽，复杂件的失败模式 = 多一次 skill 加载。
-- **体积与策略**：核心段 31,984 chars（预算门 32K，票 02 定），余量 16；skill 52,402 chars（82 官方 + 12 自定义 + 59 函数签名）。再扩核心段必须先收窄现有判据/示例，不静默抬高预算门（`tests/claude/utils/systemPrompt.test.ts` 锁 ≤32_000）。
-- **新增能力面进触发词**：`SKILL_DESCRIPTION` 明确列出 `SVG drawings (Svg shapes)` 与 `sandboxed HtmlView pages`，复杂件加载路径可被匹配到。
-- **三层能力面落位**：函数目录（59）常驻核心段；官方组件按白名单二分；自定义组件签名在 skill 全量，媒介判据（何时用 Chart/Svg/HtmlView）常驻核心段。
+- **体积与策略**：核心段 31,996 chars（预算门 32K，票 02 定），余量 4；skill 53,570 chars（82 官方 + 13 自定义 + 59 函数签名）。再扩核心段必须先收窄现有判据/示例，不静默抬高预算门（`tests/claude/utils/systemPrompt.test.ts` 锁 ≤32_000）。
+- **新增能力面进触发词**：`SKILL_DESCRIPTION` 明确列出 `SVG drawings (Svg shapes)`、`sandboxed HtmlView pages` 与 `geographic maps (Map with AMap)`，复杂件加载路径可被匹配到。
+- **三层能力面落位**：函数目录（59）常驻核心段；官方组件按白名单二分；自定义组件签名在 skill 全量，媒介判据（何时用 Chart/Svg/HtmlView/Map）常驻核心段。
 - **教学修正（1.0 E2E 实锤，2026-10-19）**：① Form 第二参数必须是 `Buttons([...])` 包裹——直传单个 Button 被 schema 丢弃，整块无提交按钮；② 派生值（按钮/文案三元）必须写普通语句 `submitBtn = ...`，不能写 `$submitBtn = ...`——`$` 初始化在 lang-core 里存原始 AST、不求值，渲染为空（0.x/1.0 同行为）；③ Polyline/Polygon 首参是 `"x1,y1 x2,y2"` points 字符串，位置坐标写法被 schema 丢弃。
 
 ## 测试 seam
 
-纯函数直测（`tests/ui/openui/`）：actionState（配对/孤儿/queued 窗口）、actionStore（单调守卫/乐观口）、snapshotInjection（direct 单通道/合并）、bindingParser、fenceIndex（GFM 扫描/幂等）、actionMessage（组装）。集成面：`OpenUIAction.integration.test.tsx`（回路② 点击 → 发送）、`OpenUIInPlaceUpdate.integration.test.tsx`（档③ 原地更新）、`OpenUIDemoComponents.integration.test.tsx`（票 03：Chart/Svg/HtmlView 经同一条 Renderer 装配挂载）。真机验收 recipe 见 `.claude/skills/run-tests/memory/generative-ui-verify.md`；特性 spec 在 `.scratch/generative-ui/spec.md`。
+纯函数直测（`tests/ui/openui/`）：actionState（配对/孤儿/queued 窗口）、actionStore（单调守卫/乐观口）、snapshotInjection（direct 单通道/合并）、bindingParser、fenceIndex（GFM 扫描/幂等）、actionMessage（组装）。集成面：`OpenUIAction.integration.test.tsx`（回路② 点击 → 发送）、`OpenUIInPlaceUpdate.integration.test.tsx`（档③ 原地更新）、`OpenUIDemoComponents.integration.test.tsx`（票 03：Chart/Svg/HtmlView 经同一条 Renderer 装配挂载）、`OpenUIMapComponent.integration.test.tsx`（Map 三档：none 降级链接 / static 代理 URL / interactive loader 与覆盖物）。真机验收 recipe 见 `.claude/skills/run-tests/memory/generative-ui-verify.md`；特性 spec 在 `.scratch/generative-ui/spec.md`。

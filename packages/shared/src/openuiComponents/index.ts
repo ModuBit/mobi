@@ -50,12 +50,13 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  *
- * 未移植：demo 的 Map 组件（依赖外部瓦片服务与 API key，mobi 不引入第三方
- * 地图网络依赖）。差异：HtmlView 的 CSP 按 mobi 安全基线收紧（connect-src
- * 关闭，见 web 实现注释）。
+ * 未移植：demo 中的 MapView（依赖 demo 自有瓦片服务）；mobi 的 Map 组件另行
+ * 基于高德地图实现（`map.ts`，三档渲染），不复用 demo 实现。差异：HtmlView 的
+ * CSP 按 mobi 安全基线收紧（connect-src 关闭，见 web 实现注释）。
  */
 
 export { chartComponentSpec, chartProps } from './chart'
+export { mapComponentSpec, mapCoordinate, mapMarkerSchema, mapPathSchema, mapProps, type MapProps } from './map'
 export { htmlViewComponentSpec } from './htmlView'
 export {
     children,
@@ -76,7 +77,8 @@ export {
 
 import { chartComponentSpec } from './chart'
 import { htmlViewComponentSpec } from './htmlView'
+import { mapComponentSpec } from './map'
 import { svgComponentSpecs } from './svg'
 
-/** 全量自定义组件签名（12 个）——注册顺序与 prompt 排序无关，仅保证确定 */
-export const openuiComponentSpecs = [chartComponentSpec, ...svgComponentSpecs, htmlViewComponentSpec]
+/** 全量自定义组件签名（13 个）——注册顺序与 prompt 排序无关，仅保证确定 */
+export const openuiComponentSpecs = [chartComponentSpec, mapComponentSpec, ...svgComponentSpecs, htmlViewComponentSpec]

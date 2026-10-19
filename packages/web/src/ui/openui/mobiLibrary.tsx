@@ -31,6 +31,7 @@ import { openuiFunctions } from '@mobi/shared'
 import type { ReactNode } from 'react'
 import { chartComponent } from './chartComponent'
 import { htmlViewComponent } from './htmlViewComponent'
+import { mapComponent } from './mapComponent'
 import { svgComponents } from './svgComponents'
 
 /** 点击 registry 的 globalThis 槽位：Symbol.for 键跨模块实例共享。vite dev
@@ -92,7 +93,7 @@ const mobiButton: ButtonComponent = {
 export const mobiLibrary: Library = openuiLibrary.extend!({
     components: {
         override: [mobiButton],
-        add: [chartComponent, ...svgComponents, htmlViewComponent],
+        add: [chartComponent, mapComponent, ...svgComponents, htmlViewComponent],
     },
     functions: { add: openuiFunctions },
 })

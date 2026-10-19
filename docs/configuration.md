@@ -57,6 +57,11 @@
 | `memory.rules` | array | `[]` | 记忆隔离规则：`{target, mode, tag?, bank?}`；target 为 `{type:'workspace', id}` 或 `{type:'path', path}`。裁决序：路径规则（最长前缀）> workspace 规则（spawn 的工作区语境）> 默认 normal |
 | `memory.bankName` | string | `mobi-global` | 全局池 bank 名覆盖（高级） |
 | `memory.disabledWorkspaces` | string[] | `[]` | 按目录关闭记忆的排除名单（前缀匹配、支持 `~`） |
+| `map.jsApiKey` | string | - | 高德 Web 端（JS API）key；与 `map.securityJsCode` 齐备时启用交互地图 |
+| `map.securityJsCode` | string | - | JS API 安全密钥（2021-12-02 后申请的 key 强制）；明文模式会下发给已登录 Web 端 |
+| `map.webServiceKey` | string | - | 高德 Web 服务 API key，**只留 daemon**；静态地图代理用它拉图，永不下发浏览器 |
+
+**地图三档**（渲染档位由配置推导，`Map` 组件签名不变）：JS API key + 安全密钥 → 交互地图（平移缩放）；仅 Web 服务 key → 静态图（daemon `/api/map/static` 代理 + 缓存）；都未配置 → 降级为高德 URI 链接（无需 key）。设置入口：Web「设置 → 地图」。公开部署不要用明文安全密钥模式，应改用高德推荐的服务端代理方案。
 
 **记忆隔离三档**（`rules[].mode`，未命中路径/工作区 = 默认 `normal`）：
 

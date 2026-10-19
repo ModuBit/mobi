@@ -184,6 +184,8 @@ describe('openui 核心段契约（generative-ui 票 02 注入、票 08 分层�
     expect(OPENUI_CORE_PROMPT).toMatch(/Polyline\/Polygon take a "x1,y1 x2,y2" points string first/);
     // 图元颜色 token 词汇
     expect(OPENUI_CORE_PROMPT).toMatch(/"chart1"…"chart6"/);
+    // 票 04：地图只进「能力面指路」，签名留 skill（三档降级由 daemon 设置决定）
+    expect(OPENUI_CORE_PROMPT).toMatch(/maps \(Map\)/);
   });
 
   it('核心段体积受控（≤32K chars ≈ 8K tokens——膨胀预算门；票 02 由 26K 放宽：59 个 @函数目录 ≈8.5K chars 常驻，再扩须先收窄）', () => {
@@ -210,6 +212,8 @@ describe('openui skill（全量目录，票 08 随 mobi 插件分发）', () => 
     // 票 04：新增能力面进触发词（Svg 图元 / 沙箱 HtmlView）
     expect(skill).toMatch(/SVG drawings \(Svg shapes\)/);
     expect(skill).toMatch(/sandboxed HtmlView pages/);
+    // 票 04：Map 能力面进触发词（高德三档渲染）
+    expect(skill).toMatch(/geographic maps \(Map with AMap\)/);
   });
 
   it('全量 @函数目录在（票 02）：六类函数的签名与语义随 skill 分发', () => {
@@ -227,11 +231,11 @@ describe('openui skill（全量目录，票 08 随 mobi 插件分发）', () => 
     expect(skill.length).toBeGreaterThan(30_000);
   });
 
-  it('自定义组件签名在（票 03）：Chart / Svg 图元 / HtmlView 随 skill 分发', () => {
-    for (const c of ['Chart(type:', 'Svg(children:', 'Circle(', 'Rect(', 'Path(', 'G(children:', 'SvgText(', 'HtmlView(html:']) {
+  it('自定义组件签名在（票 03/04）：Chart / Svg 图元 / HtmlView / Map 随 skill 分发', () => {
+    for (const c of ['Chart(type:', 'Svg(children:', 'Circle(', 'Rect(', 'Path(', 'G(children:', 'SvgText(', 'HtmlView(html:', 'Map(center?:']) {
       expect(skill).toContain(c);
     }
-    // Map 不移植（外部瓦片服务/API key，见 shared 归属声明）
+    // demo 的 MapView 不移植（地图走 @mobi/shared 的 Map 签名 + 高德实现）
     expect(skill).not.toContain('MapView(');
   });
 

@@ -610,6 +610,10 @@
       "memory": {
         "title": "长期记忆",
         "desc": "让 mobi 越聊越了解你"
+      },
+      "map": {
+        "title": "地图",
+        "desc": "高德地图 key 与渲染档位"
       }
     },
     "webTools": {
@@ -710,6 +714,26 @@
       "injectNoneHint": "完全不自动注入，仅保留记忆工具供模型按需调用",
       "pageRefreshLabel": "知识页目录刷新间隔（轮）",
       "pageRefreshHint": "每 N 轮刷新一次目录块；0 = 从不刷新（该块默认每轮注入，约 2KB）"
+    },
+    "map": {
+      "title": "地图配置",
+      "modeInteractive": "交互地图",
+      "modeStatic": "静态地图",
+      "modeNone": "未配置",
+      "modeHint": "JS API key + 安全密钥齐备时用交互地图；只有 Web 服务 key 时用静态图；都没有时块内只显示「在高德地图中打开」链接。",
+      "jsApiKeyLabel": "JS API key（Web 端）",
+      "jsApiKeyHint": "高德控制台创建的「Web 端（JS API）」key；已设置时留空保持不变",
+      "securityJsCodeLabel": "安全密钥 securityJsCode",
+      "securityJsCodeHint": "与 JS API key 配套；会下发给浏览器（明文模式，适合个人本地部署）",
+      "webServiceKeyLabel": "Web 服务 key",
+      "webServiceKeyHint": "静态地图使用；只保存在 daemon，不会下发到浏览器",
+      "setPlaceholder": "已设置（留空保持不变）",
+      "emptyPlaceholder": "未设置",
+      "save": "保存",
+      "saved": "已保存",
+      "saveFailed": "保存失败",
+      "clear": "清除全部",
+      "offline": "daemon 不可达，无法读取设置"
     }
   },
   "debug": {

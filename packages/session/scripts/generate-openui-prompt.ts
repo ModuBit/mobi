@@ -23,8 +23,8 @@
  *    + 「组件不在清单先加载 openui skill」引导。多数不出 UI 的会话只背这一段
  *    （生产实测 167 会话仅 1 个出过 openui，全量 38K 常驻不划算）。
  * 2. `packages/cli/plugins/mobi/skills/openui/SKILL.md`——**全量目录**（82 官方组件 +
- *    12 自定义组件 + 59 函数签名），随 mobi 内置插件分发，模型写复杂 UI（图表/日历/轮播/
- *    CardBlock 系/Svg 绘图/沙箱 HTML）前主动加载。
+ *    13 自定义组件 + 59 函数签名），随 mobi 内置插件分发，模型写复杂 UI（图表/地图/
+ *    日历/轮播/CardBlock 系/Svg 绘图/沙箱 HTML）前主动加载。
  *
  * 触发重新生成：升级 @openuidev/react-ui（锁版本）或调整判据措辞后运行
  * `bun run packages/session/scripts/generate-openui-prompt.ts`。
@@ -166,7 +166,7 @@ export const OPENUI_CORE_PROMPT_OPTIONS = {
         'For mode="app" HTML apps, style with the `--mobi-*` theme variables the host injects, and use `window.MobiApp.issueNewTurn(text)` only from explicit user actions — read the `openui` skill for the full palette and API before writing the app.',
         // 分层引导（票 08）：核心清单只覆盖简单场景；复杂组件先加载 skill 取全量目录，
         // 失败模式是「多一次工具调用」而非「静默丢语句」
-        'The component reference in this prompt is a CORE SUBSET only. If the UI you are about to write needs any component NOT documented above — charts, SVG drawings (Svg shapes), tables with editing, calendars, date pickers, carousels, modals, tabs, accordions, sliders, entity lists, card blocks (Overview/Composite/Context/Visual/Snippet), or advanced image layouts — invoke the `openui` skill FIRST and read its full component catalog before writing the code. Never guess a signature that is not documented above.',
+        'The component reference in this prompt is a CORE SUBSET only. If the UI you are about to write needs any component NOT documented above — charts, SVG drawings (Svg shapes), maps (Map), tables with editing, calendars, date pickers, carousels, modals, tabs, accordions, sliders, entity lists, card blocks (Overview/Composite/Context/Visual/Snippet), or advanced image layouts — invoke the `openui` skill FIRST and read its full component catalog before writing the code. Never guess a signature that is not documented above.',
     ],
 }
 
@@ -197,7 +197,7 @@ export function buildCorePrompt(): string {
 
 /** openui skill 的 frontmatter description（触发词与引导规则同口径） */
 const SKILL_DESCRIPTION =
-    'Full openui-lang component catalog (82 components with exact signatures) for interactive UI blocks. Load this skill BEFORE writing any openui-lang code that needs components beyond the core subset documented in the system prompt — charts, SVG drawings (Svg shapes), sandboxed HtmlView pages, editable tables, calendars, date pickers, carousels, modals, tabs, accordions, sliders, entity lists, card blocks (Overview/Composite/Context/Visual/Snippet), image layouts — or whenever you are unsure of a component signature.'
+    'Full openui-lang component catalog (82 official + 13 custom components with exact signatures) for interactive UI blocks. Load this skill BEFORE writing any openui-lang code that needs components beyond the core subset documented in the system prompt — charts, geographic maps (Map with AMap), SVG drawings (Svg shapes), sandboxed HtmlView pages, editable tables, calendars, date pickers, carousels, modals, tabs, accordions, sliders, entity lists, card blocks (Overview/Composite/Context/Visual/Snippet), image layouts — or whenever you are unsure of a component signature.'
 
 /** 生成 openui skill 全文（frontmatter + 全量 catalog） */
 export function buildSkillMarkdown(): string {

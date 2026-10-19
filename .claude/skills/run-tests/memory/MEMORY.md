@@ -57,3 +57,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [文件树动效验证](file-tree-motion-verify.md) — 停靠树开关 / switcher 弹簧（含 hover 圆点盖图标的坑）/ 选中与悬停滑移 rect 采样；持引用与 inset 宽度两坑
 - [列表滑移底色验证](list-glide-verify.md) — 侧栏会话列表造多行（Store 种会话）/ hover 与选中两层 GlidingHighlight 的 top 弹簧采样 / 复用件 GlideLayer+useGlideHighlight 的覆盖范围（导航/移动端/antd 树/选项列表）/ pointerleave 合成事件测不出
 - [Bubble 布局类验证](bubble-layout-classes-verify.md) — 去 `.ant-bubble :has()` 后的显式类回归：工具气泡 80% 最小宽 / 事件对齐 / spacer 44 / artifact 与 turn-diff 全宽；一次 prompt 造齐四场景
+- [Map 组件验证](map-verify.md) — 高德三档：设置页 Tag/落盘、无 key 降级 URI 链接、静态图代理假 key 502→fallback 端到端、交互档需真 key 不伪造
