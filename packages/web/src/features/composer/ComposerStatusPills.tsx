@@ -30,7 +30,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styled from '@emotion/styled'
-import { keyframes } from '@emotion/react'
+import { css, keyframes } from '@emotion/react'
 import { ListChecks, ListTodo } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { TaskItem, TodoItem } from '@mobi/shared'
@@ -47,6 +47,8 @@ export const CHAT_SCROLL_PADDING = 8
 
 /** 气泡固定高度 */
 const PILL_HEIGHT = 28
+/** 退出动画时长：卸载前留出播放窗口（与 Pill 的 $exiting 动画同值） */
+const PILL_EXIT_MS = 120
 /** 胶囊阴影：Y 偏移 + 模糊半径。四周绘制范围为模糊半径，向下再叠加偏移 */
 const PILL_SHADOW_OFFSET_Y = 2
 const PILL_SHADOW_BLUR = 8
@@ -127,8 +129,19 @@ const ambientBreathe = keyframes`
     50% { opacity: 0.52; }
 `
 
+/** 气泡出入场：向上滑入（底部起）与向下滑出（回到底部） */
+const pillEnter = keyframes`
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+`
+
+const pillExit = keyframes`
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(8px); }
+`
+
 /** 毛玻璃气泡：半透明底 + backdrop blur，消息从后面穿过时保持可读 */
-const Pill = styled.button`
+const Pill = styled.button<{ $exiting?: boolean }>`
     position: relative;
     isolation: isolate;
     display: inline-flex;
@@ -150,6 +163,12 @@ const Pill = styled.button`
     cursor: pointer;
     pointer-events: auto;
     transition: background var(--mobi-duration-fast) ease, border-color var(--mobi-duration-fast) ease;
+    animation: ${pillEnter} var(--mobi-duration-mid) var(--mobi-ease-out);
+    /* 退出：数据已清空但气泡还在播滑出动画，期间不可点击 */
+    ${({ $exiting }) => $exiting && css`
+        pointer-events: none;
+        animation: ${pillExit} ${PILL_EXIT_MS}ms var(--mobi-ease-out) forwards;
+    `}
     /* 运行态：底部一抹运行蓝缓慢开合，像内部有能量在流动。
        只在 running 时生成伪元素；z-index: -1 让它落在文案之下、气泡底色之上。 */
     &[data-running]::before {
@@ -176,6 +195,7 @@ const Pill = styled.button`
     }
     @media (prefers-reduced-motion: reduce) {
         transition: none;
+        animation: none;
         /* 停转时保留一层常亮微光作为静态线索 */
         &[data-running]::before {
             animation: none;
@@ -217,6 +237,35 @@ const DetailScroll = styled.div`
     overflow-y: auto;
     overscroll-behavior: contain;
 `
+
+/**
+ * 退出动效：visible 翻假后组件还需保留 exitMs 播完滑出再卸载。
+ * mounted 覆盖「已请求卸载但仍在播放」的窗口；exiting 供样式切到退出动画。
+ */
+function useExitPresence(visible: boolean, exitMs: number): { mounted: boolean; exiting: boolean } {
+    const [mounted, setMounted] = useState(visible)
+    useEffect(() => {
+        if (visible) {
+            setMounted(true)
+            return
+        }
+        const timer = setTimeout(() => setMounted(false), exitMs)
+        return () => clearTimeout(timer)
+    }, [visible, exitMs])
+    return { mounted: mounted || visible, exiting: !visible }
+}
+
+/**
+ * 滑出期间数据已是空态（0/0、共 0），展示必须停在最后一次有效内容：
+ * 可见时持续记录快照，不可见（只剩余滑出窗口）时读回快照。
+ */
+function useLastWhileVisible<T>(value: T, visible: boolean): T {
+    const snapshot = useRef(value)
+    useEffect(() => {
+        if (visible) snapshot.current = value
+    }, [value, visible])
+    return visible ? value : snapshot.current
+}
 
 export type ComposerStatusSummary = {
     showTodo: boolean
@@ -278,6 +327,12 @@ export function ComposerStatusPills({
     // 收尾时只有「当前打开的那一个」能关自己——点另一个气泡会先触发本气泡的
     // 点外关闭、再触发对方的打开，若盲目 null 化会把刚到手的打开态冲掉。
     const [openPill, setOpenPill] = useState<PillKey | null>(null)
+    // 出入场：数据出现时滑入；数据清空后先播滑出再卸载（含最后一帧内容快照）
+    const todoPresence = useExitPresence(summary.showTodo, PILL_EXIT_MS)
+    const tasksPresence = useExitPresence(summary.showTasks, PILL_EXIT_MS)
+    const todoChecklist = useLastWhileVisible(summary.checklist, summary.showTodo)
+    const taskItems = useLastWhileVisible(summary.taskItems, summary.showTasks)
+    const activeCount = useLastWhileVisible(summary.activeCount, summary.showTasks)
 
     // 边沿测量：滚动与尺寸变化都会改可达范围，只在状态变化时 setState
     const updateEdges = useCallback(() => {
@@ -290,7 +345,7 @@ export function ComposerStatusPills({
 
     // 首帧可能因无数据返回 null（Row 未挂载、rowRef 为 null）；数据到达后 Row 才挂上，
     // 因此 effect 必须随可见性重跑，否则 observer 永不挂载、渐隐恒不出现。
-    const visible = summary.showTodo || summary.showTasks
+    const visible = todoPresence.mounted || tasksPresence.mounted
     useEffect(() => {
         if (!visible) return
         const el = rowRef.current
@@ -328,8 +383,8 @@ export function ComposerStatusPills({
     if (!visible) return null
 
     // 运行态：任务气泡看活跃任务数；清单气泡看进行中项数（全部完成时恒为 0）
-    const tasksRunning = summary.activeCount > 0
-    const todoRunning = summary.checklist.inProgress > 0
+    const tasksRunning = activeCount > 0
+    const todoRunning = todoChecklist.inProgress > 0
 
     return (
         <Wrap>
@@ -341,7 +396,7 @@ export function ComposerStatusPills({
                     aria-label={t('chat.statusPills.label', 'Status')}
                 >
                     <RowInner ref={innerRef}>
-                        {summary.showTasks && (
+                        {tasksPresence.mounted && (
                             <Popover
                                 trigger="click"
                                 side="top"
@@ -357,21 +412,26 @@ export function ComposerStatusPills({
                                     </DetailScroll>
                                 )}
                             >
-                                <Pill type="button" data-testid="status-pill-tasks" data-running={tasksRunning || undefined}>
+                                <Pill
+                                    type="button"
+                                    data-testid="status-pill-tasks"
+                                    data-running={tasksRunning || undefined}
+                                    $exiting={tasksPresence.exiting}
+                                >
                                     <PillIcon aria-hidden="true"><ListChecks size={16} /></PillIcon>
                                     <PillLabel $strong={tasksRunning}>
                                         {tasksRunning
                                             ? t('chat.statusPills.tasksExecuting', {
-                                                active: summary.activeCount,
-                                                total: summary.taskItems.length,
+                                                active: activeCount,
+                                                total: taskItems.length,
                                             })
-                                            : t('chat.statusPills.tasksTotal', { total: summary.taskItems.length })}
+                                            : t('chat.statusPills.tasksTotal', { total: taskItems.length })}
                                     </PillLabel>
                                 </Pill>
                             </Popover>
                         )}
 
-                        {summary.showTodo && (
+                        {todoPresence.mounted && (
                             <Popover
                                 trigger="click"
                                 side="top"
@@ -387,21 +447,26 @@ export function ComposerStatusPills({
                                     </DetailScroll>
                                 )}
                             >
-                                <Pill type="button" data-testid="status-pill-todo" data-running={todoRunning || undefined}>
+                                <Pill
+                                    type="button"
+                                    data-testid="status-pill-todo"
+                                    data-running={todoRunning || undefined}
+                                    $exiting={todoPresence.exiting}
+                                >
                                     <PillIcon aria-hidden="true"><ListTodo size={16} /></PillIcon>
                                     <PillLabel>
-                                        {summary.checklist.allDone
+                                        {todoChecklist.allDone
                                             ? t('chat.statusPills.allDone')
                                             : t('chat.statusPills.todoCompleted', {
-                                                completed: summary.checklist.completed,
-                                                total: summary.checklist.total,
+                                                completed: todoChecklist.completed,
+                                                total: todoChecklist.total,
                                             })}
                                     </PillLabel>
                                     {todoRunning && (
                                         <>
                                             <Separator aria-hidden="true">·</Separator>
                                             <PillExtra>
-                                                {t('chat.statusPills.executing', { count: summary.checklist.inProgress })}
+                                                {t('chat.statusPills.executing', { count: todoChecklist.inProgress })}
                                             </PillExtra>
                                         </>
                                     )}

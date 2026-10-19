@@ -211,9 +211,10 @@ describe('ComposerStatusPills', () => {
         fireEvent.click(screen.getByTestId('status-pill-todo'))
         expect(await screen.findByText('待办A')).toBeInTheDocument()
 
-        // 清单被清空 → 气泡卸载（受控 Popover 卸载不会回调 onOpenChange）
+        // 清单被清空 → 气泡先播向下滑出，窗口结束后才卸载
         rerender(<PillsHarness api={mockApi} />)
-        expect(screen.queryByTestId('composer-status-pills')).toBeNull()
+        expect(screen.getByTestId('status-pill-todo').textContent).toContain('0/1 已完成') // 滑出期间停在最后一帧
+        await waitFor(() => expect(screen.queryByTestId('composer-status-pills')).toBeNull())
 
         // 数据重新出现 → 气泡重现，详情必须保持关闭
         rerender(<PillsHarness api={mockApi} todos={[makeTodo('待办A', 'pending')]} />)
