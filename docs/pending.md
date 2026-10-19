@@ -1224,3 +1224,18 @@ HINDSIGHT_API_RERANKER_ALIBABA_API_KEY=sk-你的DashScope-key
 **改法（可选）**：daemon `snapshotSync` 在收到某 message 的 full 落库（message-received 发出）后，丢弃同 `sdkUuid` 的后续全量 snapshot 帧（增量帧已有 snapshotRev 链断保护，全量帧没有）。或 session 侧 `flush()` 增加 `fullDelivered` 守卫（`forceFullFlush` 已有同款注释防线，interval flush 路径没有）。
 
 **验证**：修后在 E2E 人为注入「full 先到 + 全量帧后到」时序，确认两端均无 ghost 行。
+
+
+## 120. openui 出口校验 + 自动修复（本地版 Autofix）（2026-10-19 提出）
+
+**背景**：模型直接输出的 openui-lang 出现「N 处无效语句已被忽略」内联错误的概率偏高（2026-10-19 用户观察）。官方有两条产品线：Gateway（推理代理，流中校验，全量上下文过第三方——与 mobi 本地优先冲突，否决）与 Autofix（事后修复 API，只交生成文本 + ≤8K 对话片段）。方向裁决：**自建**，大方向已确认。
+
+**方案骨架（已讨论，未定稿）**：
+
+- 机制候选：CC Stop hook 封口校验——turn 结束扫最后 assistant 消息的 openui fence，`createParser(openuiSchema).parse()` 校验 `meta.errors`，有错 `decision: block` + reason 带错误清单（`statementId` + code + message，lang-core OpenUIError 本就为 LLM 反馈设计）→ 模型同循环内重写；重试上限 1 次，二次有错放行 + 现有内联提示兜底
+- 校验器落位：session 侧 `createParser`（lang-core 纯 JS）；schema 走 generate-openui-prompt.ts 增产 `openuiSchema.generated.json`（`mobiLibrary.toJSONSchema()` dump，与 prompt/catalog 同一 library 单源，同步测试守门）
+- 触发口径（首版建议）：只算 `meta.errors`（与浏览器内联提示严格对齐）；unresolved/orphaned 不算
+
+**用户保留意见（未决，动工前必须解决）**：「又是自己扫 transcript，很不靠谱」——Stop hook 读 transcript 自行扫描这条路存疑，需要找不依赖自扫 transcript 的更可靠触发位（如 SDK 流式出口/落盘前的结构化消息管线），待用户再想。
+
+**前置**：动工前先跑错误分布审计（拉生产 DB 近几日 openui fence 逐条 parse、按错误码/组件分类）——错误集中的模式可能指向 prompt 教学缺失（修 prompt 比修输出便宜），脚本雏形在 /tmp/openui-error-audit.mjs（消息信封三层套解析当时未调通，fences 提取为 0）。
