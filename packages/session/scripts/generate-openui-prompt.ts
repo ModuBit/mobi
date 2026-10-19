@@ -75,17 +75,10 @@ const library = openuiLibrary.extend!({
 })
 
 /**
- * 核心组件白名单（常驻 system prompt 的高频子集）：简单交互场景（表单/选择卡/
- * 按钮/对比卡/表格）自洽所需。分界原则——**布局/文本/表单件常驻**（小签名、高频），
- * **重签名与低频件进 skill**（CardBlock 系每个 ~1.1K chars、Charts/Calendar/
- * Carousel/Modal/Tabs/Accordion/DatePicker/Slider/EditableTable 等）。
- * 官方示例含 card-block 正确用法，模仿示例写 CardBlock 仍合法——签名细节在 skill。
- */
-/**
- * 核心组件白名单（A 档=现状，常驻 system prompt 的高频子集）：简单交互场景（表单/选择卡/
- * 按钮/对比卡/表格）自洽所需。分界原则——**布局/文本/表单件常驻**（小签名、高频），
- * **重签名与低频件进 skill**（CardBlock 系每个 ~1.1K chars、Charts/Calendar/
- * Carousel/Modal/Tabs/Accordion/DatePicker/Slider/EditableTable 等）。
+ * 核心组件白名单（A 档=对照用全签名集，常驻 system prompt 的高频子集）：简单交互场景
+ * （表单/选择卡/按钮/对比卡/表格）自洽所需。分界原则——**布局/文本/表单件常驻**
+ * （小签名、高频），**重签名与低频件进 skill**（CardBlock 系每个 ~1.1K chars、
+ * Charts/Calendar/Carousel/Modal/Tabs/Accordion/DatePicker/Slider/EditableTable 等）。
  * 官方示例含 card-block 正确用法，模仿示例写 CardBlock 仍合法——签名细节在 skill。
  */
 const CORE_COMPONENTS = [
@@ -102,10 +95,11 @@ const CORE_COMPONENTS = [
 ] as const
 
 /**
- * 热集（B/C 档对比实验，2026-10-19）：一行小签名、最高频的布局/文本/表单件——
- * 这些是「简单小部件零往返」的路径，模型写它们不该先查一次工具。
- * 与 CORE_COMPONENTS 的差异：重签名选择件（OptionCards/Chips/Switch 族/CheckBox 族/
- * Radio 族/MetricIndicatorInline）也退成名录，靠 openui_components 工具取签名。
+ * 热集（c 档示例选集，源自 2026-10-19 三档对比实验）：一行小签名、最高频的布局/
+ * 文本/表单件——c 档核心段虽零常驻签名，官方示例仍按此集挑选（示例是最便宜的
+ * 「正确形态」教学，挑模型最常写的组件族）。与 CORE_COMPONENTS 的差异：重签名
+ * 选择件（OptionCards/Chips/Switch 族/CheckBox 族/Radio 族/MetricIndicatorInline）
+ * 不进示例，靠 openui_components 工具取签名。
  */
 const HOT_COMPONENTS = [
     // 布局骨架
@@ -259,10 +253,8 @@ function firstSentence(text: string, max = 120): string {
  */
 function componentNameCatalog(
     components: Record<string, { description?: string }>,
-    exclude: ReadonlySet<string>,
 ): string {
     return Object.entries(components)
-        .filter(([name]) => !exclude.has(name))
         .map(([name, comp]) => `${name} — ${firstSentence(comp.description ?? '', 80)}`)
         .join('\n')
 }
@@ -352,7 +344,7 @@ const OPENUI_FULL_PROMPT_OPTIONS = {
  *   函数 59 个暂保持全签名常驻（实验形态），目录膨胀到阈值再退名录（工具已支持）
  * 对比数据：c 29,530 chars（比 a 省 2.5K）、渲染率与冷组件正确性打平 a、抽样零告警。
  */
-export type OpenUiPromptProfile = 'a' | 'b' | 'c'
+export type OpenUiPromptProfile = 'a' | 'c'
 
 /**
  * 生成核心段（system prompt 常驻）：全量 spec 的 components 按档位取子集，
@@ -365,9 +357,6 @@ export function buildCorePrompt(profile: OpenUiPromptProfile = 'c'): string {
         const components = subsetComponents(spec, CORE_COMPONENTS)
         return generateSystemPrompt({ ...spec, components, ...OPENUI_CORE_PROMPT_OPTIONS })
     }
-    const hotSet = new Set<string>(profile === 'b' ? HOT_COMPONENTS : [])
-    const names = profile === 'b' ? HOT_COMPONENTS : []
-    const components = subsetComponents(spec, names)
     // c 档四项瘦身（2026-10-19 裁决 A+B+C+D）：
     // - functions: {} + 分组名录——59 行逐函数签名退成六类各一行
     // - componentGroups 过滤单组件深教 notes（组合模式 notes 保留）
@@ -375,7 +364,7 @@ export function buildCorePrompt(profile: OpenUiPromptProfile = 'c'): string {
     // - 组件名录描述截 80
     return generateSystemPrompt({
         ...spec,
-        components,
+        components: {},
         functions: {},
         componentGroups: conciseComponentGroups(spec.componentGroups ?? []),
         inlineMode: true,
@@ -386,7 +375,7 @@ export function buildCorePrompt(profile: OpenUiPromptProfile = 'c'): string {
             APP_ROUTING_RULE,
             TOOL_ROUTING_RULE,
             `Function catalog (@-prefixed, grouped by category, no signatures — fetch exact signatures via \`openui_components\`):\n${functionNameCatalog()}`,
-            `Component catalog (NAME — purpose only, no signatures):\n${componentNameCatalog(spec.components, hotSet)}`,
+            `Component catalog (NAME — purpose only, no signatures):\n${componentNameCatalog(spec.components)}`,
         ],
     })
 }
@@ -493,7 +482,12 @@ export function buildSkillSignatures(): string {
     const full = library.prompt(OPENUI_FULL_PROMPT_OPTIONS)
     const start = full.indexOf('## Component Signatures')
     const end = full.indexOf('## Action —')
-    const body = start >= 0 && end > start ? full.slice(start, end).trimEnd() : ''
+    // 切分标记是本脚本对上游 prompt 文本的唯一结构假设：标题漂移（升 react-ui 最易发生）
+    // 时宁可生成失败也不静默产出空兜底文件
+    if (start < 0 || end <= start) {
+        throw new Error('[generate-openui-prompt] signatures.md 切分标记未命中（## Component Signatures / ## Action —）——react-ui 升级可能改了段落标题，请核对切分标记')
+    }
+    const body = full.slice(start, end).trimEnd()
     return [
         SKILL_FILE_HEADER.trimEnd(),
         '',
@@ -564,11 +558,10 @@ export const SKILL_FILE_HEADER = `<!--
 // 仅直接执行时写盘（测试 import 本模块拿选项时不落盘）。
 // 跨包产物路径锚定：SKILL.md 属主是 cli 安装根（projectPath），不数上级目录层数——
 // 层数路径在文件挪位时静默写错地方（票 08 实踩两次）。
-// --profile=a|b 仅供对照实验改写核心段产物（skill 与 catalog 不变）；默认 c。
+// --profile=a 仅供对照实验改写核心段产物（skill 与 catalog 不变）；默认 c。
 if (import.meta.main) {
     const profileArg = process.argv.find((a) => a.startsWith('--profile='))?.slice('--profile='.length)
-    const profile: OpenUiPromptProfile =
-        profileArg === 'a' || profileArg === 'b' ? profileArg : 'c'
+    const profile: OpenUiPromptProfile = profileArg === 'a' ? 'a' : 'c'
 
     const scriptDir = dirname(fileURLToPath(import.meta.url))
     const coreOut = resolve(scriptDir, '../src/claude/utils/openuiCorePrompt.generated.ts')

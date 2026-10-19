@@ -161,4 +161,13 @@ describe('纯函数', () => {
         expect(url.searchParams.has('labels')).toBe(false)
         expect(url.searchParams.has('paths')).toBe(false)
     })
+
+    // 高德静态图海外 9 级起瓦片空白：钳制收口在代理层（与上游对话的唯一一层）
+    it('buildStaticMapUrl：海外视野 zoom 钳到 8，国内视野透传', () => {
+        const overseas = buildStaticMapUrl({ key: 'k', height: 200, zoom: 13, markers: [{ position: '-122.4187,37.8021' }] })
+        expect(new URL(overseas).searchParams.get('zoom')).toBe('8')
+
+        const domestic = buildStaticMapUrl({ key: 'k', height: 200, zoom: 13, center: '116.39,39.9' })
+        expect(new URL(domestic).searchParams.get('zoom')).toBe('13')
+    })
 })

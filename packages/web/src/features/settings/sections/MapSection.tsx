@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { MapMode } from '@mobi/shared'
 import { Button } from '@/ui/base/interactive/button/Button'
-import { SettingsCard } from '@/features/settings/blocks/shared'
+import { SettingsCard, Field, FieldLabel, Hint, enter } from '@/features/settings/blocks/shared'
 import { useMapSettings } from '@/core/data/hooks/queries/useMapSettings'
 
 const { useToken } = antTheme
@@ -30,7 +30,7 @@ const Wrap = styled.div`
     display: flex;
     flex-direction: column;
     gap: 14px;
-    animation: enter 0.25s ease;
+    animation: ${enter} 0.25s ease-out;
 `
 
 const Card = styled(SettingsCard)<{ $token: Token }>`
@@ -51,23 +51,6 @@ const Title = styled.span<{ $token: Token }>`
     font-size: 14px;
     letter-spacing: -0.01em;
     color: ${p => p.$token.colorText};
-`
-
-const Field = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-`
-
-const FieldLabel = styled.label<{ $token: Token }>`
-    font-size: 13px;
-    color: ${p => p.$token.colorText};
-`
-
-const Hint = styled.span<{ $token: Token }>`
-    font-size: 11.5px;
-    color: ${p => p.$token.colorTextTertiary};
-    line-height: 1.5;
 `
 
 const Footer = styled.div`

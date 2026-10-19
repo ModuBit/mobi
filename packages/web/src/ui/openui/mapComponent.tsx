@@ -28,11 +28,11 @@
  * chunk 不保证外层有 QueryClient（预览/测试裸渲染）。
  */
 
-import { defineComponent, type ComponentRenderProps } from '@openuidev/react-lang'
-import { mapComponentSpec, type MapProps, type MapSettingsView } from '@mobi/shared'
-import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
+import { defineComponent, useIsStreaming, type ComponentRenderProps } from '@openuidev/react-lang'
+import { isOverseasMapView, mapComponentSpec, type MapProps, type MapSettingsView } from '@mobi/shared'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { loadMapSettings } from '@/core/data/mapSettingsCache'
-import { useOpenUIStreaming } from './openuiStreamingContext'
+import { useColorScheme } from '@/ui/base/theme/useColorScheme'
 
 const DEFAULT_HEIGHT = 280
 const MIN_HEIGHT = 140
@@ -40,31 +40,16 @@ const MAX_HEIGHT = 520
 
 /**
  * 高德海外底图覆盖不足：9 级以上瓦片为空，画布整块空白（2026-10-19 实测旧金山
- * z=10+ 全白、z=8 只有海岸线）。因此：
- * - 交互地图的海外视野换用第三方栅格瓦片（Esri World Street Map，AMap.TileLayer
- *   自定义 tileUrl 加载），城市级路线才能看清；
- * - 静态图走的是高德 Web 服务代理，无法换瓦片，只能把 zoom 钳到 8。
+ * z=10+ 全白、z=8 只有海岸线）。因此交互地图的海外视野换用第三方栅格瓦片
+ * （Esri World Street Map，AMap.TileLayer 自定义 tileUrl 加载）；静态图的 zoom
+ * 钳制收口在 daemon 代理（`buildStaticMapUrl`，与该上游对话的唯一一层）。
  */
-const OVERSEAS_MAX_STATIC_ZOOM = 8
 
 /** 海外交互地图栅格瓦片（Esri ArcGIS Online；亮/暗两套） */
 const OVERSEAS_TILE_URL = {
     light: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/[z]/[y]/[x]',
     dark: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/[z]/[y]/[x]',
 } as const
-
-const CHINA_BOUNDS = { minLng: 73, maxLng: 135, minLat: 18, maxLat: 54 }
-
-function isInChina([lng, lat]: Coordinate): boolean {
-    return lng >= CHINA_BOUNDS.minLng && lng <= CHINA_BOUNDS.maxLng
-        && lat >= CHINA_BOUNDS.minLat && lat <= CHINA_BOUNDS.maxLat
-}
-
-/** 地图视野是否在海外（取显式中心或首个覆盖物坐标） */
-function isOverseasView(props: MapProps): boolean {
-    const point = props.center ?? props.markers?.[0]?.position ?? props.paths?.[0]?.points[0]
-    return point !== undefined && !isInChina(parseCoordinate(point))
-}
 
 type Coordinate = [number, number]
 
@@ -113,14 +98,11 @@ function clampHeight(value: number | undefined): number {
     return Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, Math.round(value)))
 }
 
-/** 静态图代理 URL（daemon 端拼高德参数并缓存；key 不在此出现） */
+/** 静态图代理 URL（daemon 拼高德参数并缓存、钳海外 zoom；key 不在此出现） */
 export function buildStaticMapSrc(props: MapProps): string {
     const params = new URLSearchParams()
     if (props.center) params.set('center', props.center)
-    // 静态图只能走高德底图：海外覆盖只到 8 级，超出会得到空白图
-    if (props.zoom !== undefined) {
-        params.set('zoom', String(isOverseasView(props) ? Math.min(props.zoom, OVERSEAS_MAX_STATIC_ZOOM) : props.zoom))
-    }
+    if (props.zoom !== undefined) params.set('zoom', String(props.zoom))
     if (props.markers?.length) params.set('markers', JSON.stringify(props.markers))
     if (props.paths?.length) params.set('paths', JSON.stringify(props.paths))
     params.set('height', String(clampHeight(props.height)))
@@ -134,21 +116,6 @@ export function buildMapLink(props: MapProps): string | null {
     if (!point) return null
     const name = first?.label?.trim() || '地图位置'
     return `https://uri.amap.com/marker?position=${encodeURIComponent(point)}&name=${encodeURIComponent(name)}`
-}
-
-function useColorScheme(ref: RefObject<HTMLElement | null>): 'light' | 'dark' {
-    const [scheme, setScheme] = useState<'light' | 'dark'>('light')
-    useEffect(() => {
-        const read = () => {
-            const value = ref.current ? getComputedStyle(ref.current).colorScheme : ''
-            setScheme(value.trim() === 'dark' ? 'dark' : 'light')
-        }
-        read()
-        const observer = new MutationObserver(read)
-        observer.observe(document.documentElement, { attributes: true, subtree: true, attributeFilter: ['data-theme'] })
-        return () => observer.disconnect()
-    }, [ref])
-    return scheme
 }
 
 const boxStyle = (height: number): CSSProperties => ({
@@ -252,13 +219,12 @@ function StaticMap({ props }: { props: MapProps }) {
     )
 }
 
-function InteractiveMap({ props, view }: { props: MapProps; view: MapSettingsView }) {
+function InteractiveMap({ props, view, height }: { props: MapProps; view: MapSettingsView; height: number }) {
     const container = useRef<HTMLDivElement>(null)
     const mapRef = useRef<AMapMapInstance | null>(null)
     const [failed, setFailed] = useState(false)
     const scheme = useColorScheme(container)
-    const height = clampHeight(props.height)
-    const overseas = isOverseasView(props)
+    const overseas = isOverseasMapView(props)
     // props 每次渲染是新对象：用签名做 effect 依赖，避免地图反复销毁重建。
     // 海外视图的底图颜色由图层 URL 决定（setMapStyle 管不到自定义图层），
     // 主题切换需重建，故 scheme 一并入签名
@@ -273,14 +239,13 @@ function InteractiveMap({ props, view }: { props: MapProps; view: MapSettingsVie
         let cancelled = false
         const run = async () => {
             try {
-                if (!view.jsApiKey || !view.securityJsCode) {
-                    setFailed(true)
-                    return
-                }
+                const { jsApiKey, securityJsCode } = view
+                // deriveMapMode 保证 interactive 档两者皆非空（类型收敛，非运行时分支）
+                if (!jsApiKey || !securityJsCode) return
                 // 安全密钥必须在 JS API 脚本加载前设置（高德明文模式）
-                window._AMapSecurityConfig = { securityJsCode: view.securityJsCode }
+                window._AMapSecurityConfig = { securityJsCode }
                 const { load } = await import('@amap/amap-jsapi-loader')
-                const AMap = (await load({ key: view.jsApiKey, version: '2.0' })) as unknown as AMapNamespace
+                const AMap = (await load({ key: jsApiKey, version: '2.0' })) as unknown as AMapNamespace
                 if (cancelled || !container.current) return
 
                 const center = props.center ? parseCoordinate(props.center) : undefined
@@ -351,7 +316,7 @@ function InteractiveMap({ props, view }: { props: MapProps; view: MapSettingsVie
 
 function MapView({ props }: ComponentRenderProps<MapProps>) {
     const [view, setView] = useState<MapSettingsView | null | undefined>(undefined)
-    const streaming = useOpenUIStreaming()
+    const streaming = useIsStreaming()
 
     useEffect(() => {
         let live = true
@@ -369,14 +334,15 @@ function MapView({ props }: ComponentRenderProps<MapProps>) {
     if (view.mode === 'none') {
         return <div style={boxStyle(height)}><MapFallback props={props} reason="未配置高德地图 key" /></div>
     }
-    // 流式期间 props 每个 delta 都变：交互地图只在 fence 封口后初始化，避免反复
-    // 创建/销毁；静态图是纯 img，流式期间照常渲染
-    if (view.mode === 'interactive' && streaming) {
+    // 流式期间 props 每个 delta 都变，两档都等 fence 封口再渲染：交互地图避免反复
+    // 创建/销毁；静态图 URL 随参数变化，跟着流打代理会每 delta 都 miss 上游缓存
+    // （高德静态图配额按请求计），烧几十次请求换不来可辨认的中间画面
+    if (streaming) {
         return <div style={boxStyle(height)}><div style={loadingStyle}>地图加载中…</div></div>
     }
     return (
         <div style={boxStyle(height)}>
-            {view.mode === 'interactive' ? <InteractiveMap props={props} view={view} /> : <StaticMap props={props} />}
+            {view.mode === 'interactive' ? <InteractiveMap props={props} view={view} height={height} /> : <StaticMap props={props} />}
         </div>
     )
 }

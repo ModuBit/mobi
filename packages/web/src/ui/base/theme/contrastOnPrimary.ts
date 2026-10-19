@@ -22,14 +22,14 @@
  * 是同一契约的多端。
  */
 
+import { normalizeHex } from '@mobi/shared'
+
 /** YIQ 亮度阈值：≥160 视为浅色 → 配深字，否则配白字 */
 const YIQ_LIGHT_THRESHOLD = 160
-
 export function contrastOnPrimary(primary: string): string {
-    const hex = primary.replace('#', '')
-    const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex
-    const int = Number.parseInt(full, 16)
-    if (Number.isNaN(int)) return '#fff'
+    const hex = normalizeHex(primary)
+    if (hex === null) return '#fff'
+    const int = Number.parseInt(hex, 16)
     const r = (int >> 16) & 0xff
     const g = (int >> 8) & 0xff
     const b = int & 0xff

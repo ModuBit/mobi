@@ -71,3 +71,15 @@ export function safeStringify(value: unknown): string {
         return String(value)
     }
 }
+
+/**
+ * "#RGB"/"#RRGGBB" → 6 位小写 hex（不带 #）；无法识别返回 null。
+ * hex 归一化是 web（on-primary 对比色派生）与 daemon（高德覆盖物颜色 0x 投影）
+ * 的同一契约，收口在此避免各写一份 3 位展开。
+ */
+export function normalizeHex(color: string): string | null {
+    const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim())
+    if (!match) return null
+    const hex = match[1]
+    return (hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex).toLowerCase()
+}

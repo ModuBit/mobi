@@ -34,7 +34,8 @@
 
 import { defineComponent, useIsStreaming, type ComponentRenderProps } from '@openuidev/react-lang'
 import { htmlViewComponentSpec } from '@mobi/shared'
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useColorScheme } from '@/ui/base/theme/useColorScheme'
 
 const CSP = [
     "default-src 'none'",
@@ -62,23 +63,6 @@ const REPORTER = `<script>(function(){var last=0;function send(){var h=Math.ceil
 function documentFor(html: string, scheme: 'light' | 'dark') {
     // CSP 放在最前，覆盖模型 markup 里的一切
     return `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{color-scheme:${scheme}}html,body{margin:0}body{font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}</style>${REPORTER}${html}`
-}
-
-/** 元素所在档位："dark" 当 data-theme="dark"（mobi 全站主题单源），否则 "light" */
-function useColorScheme(ref: RefObject<HTMLElement | null>): 'light' | 'dark' {
-    const [scheme, setScheme] = useState<'light' | 'dark'>('light')
-    useEffect(() => {
-        const read = () => {
-            const value = ref.current ? getComputedStyle(ref.current).colorScheme : ''
-            setScheme(value.trim() === 'dark' ? 'dark' : 'light')
-        }
-        read()
-        // 切档会翻转 documentElement 的 data-theme
-        const observer = new MutationObserver(read)
-        observer.observe(document.documentElement, { attributes: true, subtree: true, attributeFilter: ['data-theme'] })
-        return () => observer.disconnect()
-    }, [ref])
-    return scheme
 }
 
 function HtmlViewView({ props }: ComponentRenderProps) {

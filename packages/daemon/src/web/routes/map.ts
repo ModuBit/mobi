@@ -31,8 +31,11 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import {
     MapSettingsSubmissionSchema,
+    OVERSEAS_MAX_STATIC_ZOOM,
+    isOverseasMapView,
     mapCoordinate,
     mergeMapSettings,
+    normalizeHex,
     toMapSettingsView,
 } from '@mobi/shared'
 import type { WebAppEnv } from '../middleware/auth'
@@ -67,13 +70,8 @@ const staticPathsSchema = z.array(z.object({
 
 /** "#RGB"/"#RRGGBB" → "0xRRGGBB"；无法识别时返回默认色 */
 export function toAmapColor(color: string | undefined): string {
-    if (!color) return DEFAULT_MARKER_COLOR
-    const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim())
-    if (!match) return DEFAULT_MARKER_COLOR
-    const hex = match[1].length === 3
-        ? match[1].split('').map((c) => c + c).join('')
-        : match[1]
-    return `0x${hex.toUpperCase()}`
+    const hex = color === undefined ? null : normalizeHex(color)
+    return hex === null ? DEFAULT_MARKER_COLOR : `0x${hex.toUpperCase()}`
 }
 
 /**
@@ -93,7 +91,11 @@ export function buildStaticMapUrl(input: {
     params.set('key', input.key)
     params.set('size', `750*${input.height}`)
     if (input.center) params.set('location', input.center)
-    if (input.zoom !== undefined) params.set('zoom', String(input.zoom))
+    // 高德静态图海外只覆盖到 8 级（9+ 瓦片空白）：代理是与该上游对话的唯一一层，
+    // 钳制收口在此——任何消费方（不只 web 组件）都不会拿到空白图
+    if (input.zoom !== undefined) {
+        params.set('zoom', String(isOverseasMapView(input) ? Math.min(input.zoom, OVERSEAS_MAX_STATIC_ZOOM) : input.zoom))
+    }
 
     const markers = input.markers ?? []
     if (markers.length > 0) {

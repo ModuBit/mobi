@@ -50,3 +50,24 @@ export const SettingsCard = styled.section<{ $token: { colorBgContainer: string;
     border: 1px solid ${p => p.$token.colorBorderSecondary};
     animation: ${enter} 0.3s ease-out;
 `
+
+/**
+ * 设置分区表单行排版（label + 控件 + hint 纵列）：字号 13/11.5 的设置页规范收口
+ * 在此，各分区（Map / Memory / WebTools…）不再各抄一份——调视觉只改这里。
+ */
+export const Field = styled.div`
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+`
+
+export const FieldLabel = styled.label<{ $token: { colorText: string } }>`
+    font-size: 13px;
+    color: ${p => p.$token.colorText};
+`
+
+export const Hint = styled.span<{ $token: { colorTextTertiary: string } }>`
+    font-size: 11.5px;
+    color: ${p => p.$token.colorTextTertiary};
+    line-height: 1.5;
+`

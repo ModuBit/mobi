@@ -56,7 +56,18 @@
  */
 
 export { chartComponentSpec, chartProps } from './chart'
-export { mapComponentSpec, mapCoordinate, mapMarkerSchema, mapPathSchema, mapProps, type MapProps } from './map'
+export {
+    mapComponentSpec,
+    mapCoordinate,
+    mapMarkerSchema,
+    mapPathSchema,
+    mapProps,
+    CHINA_BOUNDS,
+    OVERSEAS_MAX_STATIC_ZOOM,
+    isInChina,
+    isOverseasMapView,
+    type MapProps,
+} from './map'
 export { htmlViewComponentSpec } from './htmlView'
 export {
     children,

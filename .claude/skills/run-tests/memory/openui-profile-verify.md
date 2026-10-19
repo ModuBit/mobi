@@ -12,7 +12,7 @@ metadata:
 
 ## 切档与跑批
 
-1. `bun run packages/session/scripts/generate-openui-prompt.ts [--profile=a|b|c]`（默认 c）改写核心段产物。
+1. `bun run packages/session/scripts/generate-openui-prompt.ts [--profile=a]`（默认 c；b 档已删）改写核心段产物。
    **不需要重启 daemon**——会话 CLI 是 daemon spawn 的独立进程，每次 spawn 重新加载 src；regenerate 后建新会话即生效。
    产物四件：核心段 .ts + catalog .ts + SKILL.md（索引）+ references/ 三文件（examples/signatures/app-details，2026-10-19 拆分）。
 2. 探针脚本（API 直连，不经浏览器）：spawn 新会话（POST `/api/sessions/spawn` body `{directory}`）→

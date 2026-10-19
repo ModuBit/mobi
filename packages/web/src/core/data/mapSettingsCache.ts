@@ -15,11 +15,13 @@
  */
 
 import type { MapSettingsView } from '@mobi/shared'
+import { createMobiApi } from '@/core/data/api/client'
 
 /**
  * 地图设置的非 React 读取通道：openui Map 组件在渲染器 chunk 里，
  * 不能假定外层有 QueryClient（预览/测试也可能是裸渲染），故用模块级
- * 短 TTL 缓存 + 同源 fetch。设置页保存后调 invalidateMapSettingsCache。
+ * 短 TTL 缓存 + 与设置页同一 api client 取数（createMobiApi 是纯工厂，
+ * 无 Provider 依赖）。设置页保存后调 invalidateMapSettingsCache。
  */
 
 const CACHE_TTL_MS = 30_000
@@ -32,10 +34,8 @@ export async function loadMapSettings(): Promise<MapSettingsView | null> {
     if (pending) return pending
     pending = (async (): Promise<MapSettingsView | null> => {
         try {
-            const res = await fetch('/api/map', { credentials: 'same-origin' })
-            if (!res.ok) return null
-            const data = (await res.json()) as { settings?: MapSettingsView }
-            if (!data.settings) return null
+            const data = (await createMobiApi().map.get()).data
+            if (!data || !('settings' in data) || !data.settings) return null
             cached = { at: Date.now(), value: data.settings }
             return data.settings
         } catch {

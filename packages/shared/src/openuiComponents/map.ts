@@ -65,3 +65,33 @@ export const mapComponentSpec = {
 } as const
 
 export type MapProps = z.infer<typeof mapProps>
+
+/**
+ * 高德海外覆盖不足（2026-10-19 实测）：国内框外 9 级以上瓦片为空、画布整块空白。
+ * 海外判定的基准收口在此——web（交互地图换 Esri 瓦片）与 daemon（静态图 zoom
+ * 钳制）是同一上游局限的两个消费面。
+ */
+
+/** 国内范围框（大致疆界，判定海外视野用） */
+export const CHINA_BOUNDS = { minLng: 73, maxLng: 135, minLat: 18, maxLat: 54 } as const
+
+/** 静态图（高德 Web 服务）海外视野的最大可用 zoom */
+export const OVERSEAS_MAX_STATIC_ZOOM = 8
+
+/** 坐标（"lng,lat"）是否落在国内框内；解析失败按国内处理（不触发海外策略） */
+export function isInChina(coordinate: string): boolean {
+    const [lng, lat] = coordinate.split(',').map(Number)
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return true
+    return lng >= CHINA_BOUNDS.minLng && lng <= CHINA_BOUNDS.maxLng
+        && lat >= CHINA_BOUNDS.minLat && lat <= CHINA_BOUNDS.maxLat
+}
+
+/** 地图视野是否在海外：取显式中心或首个覆盖物坐标判定 */
+export function isOverseasMapView(view: {
+    center?: string
+    markers?: Array<{ position: string }>
+    paths?: Array<{ points: string[] }>
+}): boolean {
+    const point = view.center ?? view.markers?.[0]?.position ?? view.paths?.[0]?.points[0]
+    return point !== undefined && !isInChina(point)
+}

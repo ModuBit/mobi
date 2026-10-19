@@ -73,13 +73,27 @@ const { invalidateMapSettingsCache } = await import('@/core/data/mapSettingsCach
 const CODE = `root = Stack([map])
 map = Map("116.39,39.9", 12, [{"position": "116.39,39.9", "label": "公司"}], [{"points": ["116.39,39.9", "116.40,39.91"], "color": "#ff6600", "weight": 5}])`
 
+// mapSettingsCache 走 createMobiApi().map.get()：mock 只覆写 map 命名空间，
+// 其余导出保持原实现（渲染树内还有其他 client 消费方）
+const settingsHolder = vi.hoisted(() => ({ view: null as MapSettingsView | null }))
+vi.mock('@/core/data/api/client', async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>()
+    return {
+        ...actual,
+        createMobiApi: () => ({
+            ...(actual['createMobiApi'] as () => Record<string, unknown>)(),
+            map: {
+                get: async () => ({
+                    // axios 响应信封：业务体在 data 字段
+                    data: settingsHolder.view === null ? { error: 'offline' } : { settings: settingsHolder.view },
+                }),
+            },
+        }),
+    }
+})
+
 function stubSettings(view: MapSettingsView | null) {
-    const fetchMock = vi.fn(async () => ({
-        ok: view !== null,
-        json: async () => (view === null ? {} : { settings: view }),
-    }))
-    vi.stubGlobal('fetch', fetchMock)
-    return fetchMock
+    settingsHolder.view = view
 }
 
 function renderMap() {
@@ -158,15 +172,16 @@ describe('Map 组件三档渲染', () => {
         expect(amap.load).toHaveBeenCalledWith({ key: 'js-key', version: '2.0' })
     })
 
-    // 高德海外底图 9 级起空白：静态图钳到 8 级；交互地图换 Esri 瓦片、保留调用方 zoom
-    it('海外视野：静态图 zoom 钳到 8，交互地图换第三方瓦片并保留 zoom', async () => {
+    // 高德海外底图 9 级起空白：静态图 zoom 钳制收口在 daemon 代理（此处透传）；
+    // 交互地图换 Esri 瓦片、保留调用方 zoom
+    it('海外视野：静态图 zoom 透传（钳制在 daemon 代理），交互地图换第三方瓦片并保留 zoom', async () => {
         const overseas = `root = Stack([map])
 map = Map("-122.4350,37.7900", 13, [{"position": "-122.4187,37.8021", "label": "1"}])`
         stubSettings({ mode: 'static', webServiceKeySet: true })
         const { container, unmount } = render(<OpenUIRenderer code={overseas} streaming={false} />)
         await waitFor(() => expect(container.querySelector('[data-mobi-map="static"]')).not.toBeNull())
         const src = container.querySelector('[data-mobi-map="static"]')!.getAttribute('src') ?? ''
-        expect(src).toContain('zoom=8')
+        expect(src).toContain('zoom=13')
         unmount()
 
         invalidateMapSettingsCache()
