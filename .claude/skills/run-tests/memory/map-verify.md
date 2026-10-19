@@ -19,10 +19,20 @@ metadata:
 
 1. **none**：清空三个字段 → 会话里渲染 `root = Stack([map]); map = Map("116.39,39.9", 12, [...])` → 块内出现「未配置高德地图 key」+ 链接
    `https://uri.amap.com/marker?position=116.39%2C39.9&name=%E5%85%AC%E5%8F%B8`（name 为 marker.label）
-2. **static**：只设 `webServiceKey=fake` → reload → 组件发 `<img src="/api/map/static?...">`，代理带假 key 拉高德得
-   `502 {"error":"map-upstream-failed"}`（curl 直接验）；img onError → 块内「地图图片加载失败」+ 同一 URI 链接。
-   这条**能证明静态分支端到端接线**，真图需真实 Web 服务 key
-3. **interactive**：真实 JS API key + securityJsCode 才可验（假 key 会让 loader 报错）。无真 key 时如实标注「未真机验证」，不要伪造 ✓
+2. **static**：只设 `webServiceKey` → reload → 组件发 `<img src="/api/map/static?...">`。真 key 下代理返回 750×280 PNG
+   （可直接 curl 断言 `content-type: image/png`）；假 key 走 502 → img onError → 「地图图片加载失败」+ URI 链接。
+   两条一起覆盖静态分支：代理产图 + 组件回退
+3. **interactive**：真 JS API key + securityJsCode 后 reload → `[data-mobi-map="interactive"]`、`box.amap.getZoom()===12`、
+   `getCenter()≈[116.39,39.9]`、`.amap-marker` title=标注名、canvas 382×280、无「交互地图加载失败」。
+   **canvas 像素不能用 `readPixels` 断言**（preserveDrawingBuffer=false，帧外恒 0）；用截图肉眼验收
+4. **冷启动偶发空白**：首次加载若 AMap 样式/瓦片请求被网络掐断（console `ERR_CONNECTION_CLOSED`），画布会停在灰底网格且
+   不自动重试；对实例调一次 `setMapStyle(...)` 可强制重拉恢复。真机验收看到空白先查 console，再刷新/换样式确认是否为瞬时网络问题
+
+## key 注入（不走聊天）
+
+用户终端执行：`umask 077` + `cat > ~/.mobi-e2e/map-keys.json` 写三个值 → 用 cookie 调
+`POST /api/auth` 再 `curl -d @文件 http://localhost:2224/api/map` → `rm` 文件。`-d @file` 不回显 key，
+但**不要**在页面里读回 settings（GET /api/map 会明文返回 jsApiKey/securityJsCode）。
 
 ## 坑
 
