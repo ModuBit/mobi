@@ -120,7 +120,11 @@ const boxStyle = (height: number): CSSProperties => ({
     height,
     borderRadius: 12,
     overflow: 'hidden',
+    // 底纹：图片/瓦片未就绪时不留纯色空白（rgba 双档通用，不依赖主题变量）
     background: 'var(--iui-surface, #f5f5f5)',
+    backgroundImage:
+        'linear-gradient(rgba(127, 127, 127, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(127, 127, 127, 0.08) 1px, transparent 1px)',
+    backgroundSize: '28px 28px, 28px 28px',
     border: '1px solid var(--iui-border, #e5e5e5)',
 })
 
@@ -157,17 +161,33 @@ function MapFallback({ props, reason }: { props: MapProps; reason: string }) {
     )
 }
 
+const loadingStyle: CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+    fontSize: 12,
+    color: 'var(--iui-muted, #666)',
+}
+
 function StaticMap({ props }: { props: MapProps }) {
     const [failed, setFailed] = useState(false)
+    const [loaded, setLoaded] = useState(false)
     if (failed) return <MapFallback props={props} reason="地图图片加载失败" />
     return (
-        <img
-            src={buildStaticMapSrc(props)}
-            alt={props.markers?.[0]?.label ?? '地图'}
-            data-mobi-map="static"
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-            onError={() => setFailed(true)}
-        />
+        <>
+            {!loaded ? <div style={loadingStyle}>地图加载中…</div> : null}
+            <img
+                src={buildStaticMapSrc(props)}
+                alt={props.markers?.[0]?.label ?? '地图'}
+                data-mobi-map="static"
+                style={{ position: 'relative', width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                onLoad={() => setLoaded(true)}
+                onError={() => setFailed(true)}
+            />
+        </>
     )
 }
 

@@ -115,6 +115,8 @@ describe('Map 组件三档渲染', () => {
         expect(img.getAttribute('src')).toContain('/api/map/static?')
         expect(img.getAttribute('src')).not.toContain('key=')
         expect(decodeURIComponent(img.getAttribute('src') ?? '')).toContain('"position":"116.39,39.9"')
+        // jsdom 不加载图片：加载中提示保留，证明底纹上不是空白
+        expect(screen.getByText('地图加载中…')).toBeInTheDocument()
     })
 
     it('interactive：loader 收到 key，安全密钥在加载前设置，覆盖物挂到地图', async () => {
