@@ -19,7 +19,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync, u
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { syncPluginAssets } from '@/runtime/assets';
-import { bundledPluginProbeRelPaths, MEMORY_HINDSIGHT_VENDORED_REL_PATHS, VISUALIZE_SKILL_REL_PATH } from '@mobi/node-core/runtime/bundledPlugins';
+import { bundledPluginProbeRelPaths, MEMORY_HINDSIGHT_VENDORED_REL_PATHS, MOBI_PLUGIN_ASSET_REL_PATHS, VISUALIZE_SKILL_REL_PATH } from '@mobi/node-core/runtime/bundledPlugins';
 import type { EmbeddedAsset } from '#embedded-assets';
 import { projectPath } from '@mobi/node-core/projectPath';
 
@@ -41,8 +41,15 @@ describe('syncPluginAssets（runtime 解包 · inline-artifacts ticket 05）', (
     sourcePath: join(projectPath(), 'plugins', 'mobi', 'skills', 'visualize', 'SKILL.md'),
   });
 
+  // 探针含 mobi 全部内置资产（SKILL.md + references）：测试驱动需给全套才能到「已解包」态
+  const fullMobiAssets = (): EmbeddedAsset[] =>
+    MOBI_PLUGIN_ASSET_REL_PATHS.map((rel) => ({
+      relativePath: `plugins/mobi/${rel}`,
+      sourcePath: join(projectPath(), 'plugins', 'mobi', rel),
+    }));
+
   it('首次释放：SKILL.md 落到 runtime root 的同名相对路径，内容一致', async () => {
-    await syncPluginAssets(runtimeRoot, [skillAsset()]);
+    await syncPluginAssets(runtimeRoot, fullMobiAssets());
 
     const target = join(runtimeRoot, VISUALIZE_SKILL_REL_PATH);
     expect(existsSync(target)).toBe(true);
@@ -56,13 +63,13 @@ describe('syncPluginAssets（runtime 解包 · inline-artifacts ticket 05）', (
     utimesSync(target, past, past);
     const before = statSync(target).mtimeMs;
 
-    await syncPluginAssets(runtimeRoot, [skillAsset()]);
+    await syncPluginAssets(runtimeRoot, fullMobiAssets());
 
     expect(statSync(target).mtimeMs).toBe(before);
   });
 
   it('释放时同步写盘全部插件的清单文件（.json 不走嵌入，从常量写盘）', async () => {
-    await syncPluginAssets(runtimeRoot, [skillAsset()]);
+    await syncPluginAssets(runtimeRoot, fullMobiAssets());
 
     for (const probe of bundledPluginProbeRelPaths()) {
       expect(existsSync(join(runtimeRoot, probe))).toBe(true);
@@ -72,17 +79,18 @@ describe('syncPluginAssets（runtime 解包 · inline-artifacts ticket 05）', (
     expect(readFileSync(mcpPath, 'utf-8')).toContain('HINDSIGHT_MCP_HARNESS');
   });
 
-  it('探针（任一清单文件）缺失时重新释放——skill 文件缺失不触发（探针与 skill 命名解耦）', async () => {
-    // 探针 = 各插件清单文件（释放末尾才写，全部存在即全量完成）；删 skill 不重释放，删清单才触发
-    rmSync(join(runtimeRoot, VISUALIZE_SKILL_REL_PATH));
-    await syncPluginAssets(runtimeRoot, [skillAsset()]);
-    expect(existsSync(join(runtimeRoot, VISUALIZE_SKILL_REL_PATH))).toBe(false);
+  it('探针（任一清单/资产文件）缺失时重新释放——资产集增删自愈（2026-10-19 openui references 实锤：新文件在存量 runtime 永不落地即部署即断）', async () => {
+    // 探针 = 清单文件 + mobi 内置资产集：references 缺失即触发重释放
+    const referencesRel = 'plugins/mobi/skills/openui/references/signatures.md';
+    rmSync(join(runtimeRoot, referencesRel));
+    await syncPluginAssets(runtimeRoot, fullMobiAssets());
+    expect(existsSync(join(runtimeRoot, referencesRel))).toBe(true);
 
+    // 清单缺失同样触发，并把被顺手删掉的资产补回
     rmSync(join(runtimeRoot, 'plugins/memory-hindsight/.mcp.json'));
-    const target = join(runtimeRoot, VISUALIZE_SKILL_REL_PATH);
-    await syncPluginAssets(runtimeRoot, [skillAsset()]);
-
-    expect(existsSync(target)).toBe(true);
+    rmSync(join(runtimeRoot, VISUALIZE_SKILL_REL_PATH));
+    await syncPluginAssets(runtimeRoot, fullMobiAssets());
+    expect(existsSync(join(runtimeRoot, VISUALIZE_SKILL_REL_PATH))).toBe(true);
   });
 
   it('忽略非 plugins/ 前缀的资源（工具段由 unpackTools 负责）', async () => {
@@ -98,13 +106,19 @@ describe('syncPluginAssets（runtime 解包 · inline-artifacts ticket 05）', (
   });
 });
 
-describe('vendored 资产清单对齐（embeddedAssets ↔ MEMORY_HINDSIGHT_VENDORED_REL_PATHS）', () => {
+describe('vendored 资产清单对齐（embeddedAssets ↔ 常量）', () => {
   it('embedded asset() 首参的 memory-hindsight 路径集合与常量一致（升级增删文件漏改即红）', () => {
     // vitest 非 compiled 走 stub 拿不到真实 COMMON_ASSETS，静态提取 bun 版源码的
     // asset('plugins/memory-hindsight/...') 调用首参——把「保持一致」从注释升为机器检查
     const src = readFileSync(join(projectPath(), 'src', 'runtime', 'embeddedAssets.bun.ts'), 'utf-8');
     const embedded = [...src.matchAll(/asset\('(plugins\/memory-hindsight\/[^']+)'/g)].map((m) => m[1]!);
     expect([...embedded].sort()).toEqual([...MEMORY_HINDSIGHT_VENDORED_REL_PATHS].sort());
+  });
+
+  it('embedded asset() 首参的 mobi 插件路径集合与 MOBI_PLUGIN_ASSET_REL_PATHS 一致（skill 增删文件漏改常量即红——探针据此自愈）', () => {
+    const src = readFileSync(join(projectPath(), 'src', 'runtime', 'embeddedAssets.bun.ts'), 'utf-8');
+    const embedded = [...src.matchAll(/asset\('(plugins\/mobi\/[^']+)'/g)].map((m) => m[1]!);
+    expect([...embedded].sort()).toEqual(MOBI_PLUGIN_ASSET_REL_PATHS.map((rel) => `plugins/mobi/${rel}`).sort());
   });
 });
 

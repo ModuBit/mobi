@@ -142,9 +142,8 @@ function isPluginAsset(asset: EmbeddedAsset): boolean {
 }
 
 /**
- * 插件段解包完整性探针：锚定各插件的全部清单文件——syncPluginAssets 把它们放在全部资源
- * 释放完之后写，全部存在即「上一轮全量释放完成」，与具体 skill/dist 命名解耦（改名/
- * 增删不再使探针失效而触发无谓全量重释放）。与 areToolsUnpacked 同款语义。
+ * 插件段解包完整性探针：清单文件 + mobi 内置资产集（见 bundledPluginProbeRelPaths
+ * 注释——资产增删必须触发重释放）。与 areToolsUnpacked 同款语义。
  */
 function arePluginsUnpacked(runtimeRoot: string): boolean {
     return bundledPluginProbeRelPaths().every((rel) => existsSync(join(runtimeRoot, rel)));

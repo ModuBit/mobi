@@ -104,13 +104,31 @@ export const BUNDLED_PLUGIN_MANIFEST_FILES: Record<BundledPluginName, Record<str
 };
 
 /**
- * 插件解包探针：各插件**全部**清单文件的 runtime 相对路径。清单文件在 syncPluginAssets
- * 的最后一步写盘，全部存在即「上一轮全量释放完成」——与具体 skill/dist 文件命名解耦
- * （skill 改名/增删不再使探针失效而触发无谓全量重释放）。
+ * mobi 插件全部内置资产的 runtime 相对路径（skill 文件集单源；升级增删 skill 文件
+ * 必须同步此清单——cli 的 embeddedAssets 路径集与测试据此对齐）。进探针：资产集
+ * 增删自动触发重释放，否则新文件在存量 runtime 永不落地（2026-10-19 openui
+ * skill v2 拆 references 实锤：版本未 bump、探针不含新文件 → 部署即断）。
+ */
+export const MOBI_PLUGIN_ASSET_REL_PATHS = [
+    'skills/visualize/SKILL.md',
+    'skills/openui/SKILL.md',
+    'skills/openui/references/examples.md',
+    'skills/openui/references/signatures.md',
+    'skills/openui/references/app-details.md',
+] as const;
+
+/**
+ * 插件解包探针：各插件全部清单文件 + mobi 内置资产集的 runtime 相对路径。清单在
+ * syncPluginAssets 的最后一步写盘、资产在循环中写盘——全部存在即「上一轮全量释放
+ * 完成」。资产集进探针是刻意的：**增删 skill 文件必须触发重释放**（新文件要落地、
+ * 改名文件要补齐），纯内容更新（同文件集）仍走版本 marker。
  */
 export function bundledPluginProbeRelPaths(): string[] {
-    return ALL_BUNDLED_PLUGIN_NAMES.flatMap((name) =>
-        Object.keys(BUNDLED_PLUGIN_MANIFEST_FILES[name]).map((rel) => `${PLUGIN_ASSET_PREFIX}${name}/${rel}`));
+    return [
+        ...ALL_BUNDLED_PLUGIN_NAMES.flatMap((name) =>
+            Object.keys(BUNDLED_PLUGIN_MANIFEST_FILES[name]).map((rel) => `${PLUGIN_ASSET_PREFIX}${name}/${rel}`)),
+        ...MOBI_PLUGIN_ASSET_REL_PATHS.map((rel) => `${PLUGIN_ASSET_PREFIX}mobi/${rel}`),
+    ];
 }
 
 /** memory-hindsight vendored 资产的 runtime 相对路径（embedded assets 清单与测试三方对齐用；升级增删文件时同步） */

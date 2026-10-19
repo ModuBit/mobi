@@ -30,6 +30,7 @@ import {
     MEMORY_HINDSIGHT_HOOKS,
     MEMORY_HINDSIGHT_MCP,
     MEMORY_HINDSIGHT_VENDORED_REL_PATHS,
+    MOBI_PLUGIN_ASSET_REL_PATHS,
     PLUGIN_ASSET_PREFIX,
     VISUALIZE_SKILL_REL_PATH,
     bundledPluginProbeRelPaths,
@@ -129,10 +130,14 @@ describe('bundledPlugins（恒挂载 mobi 聚合 + 按需 memory-hindsight）', 
         expect(probes).toContain(`${PLUGIN_ASSET_PREFIX}mobi/.claude-plugin/plugin.json`);
         expect(probes).toContain(`${PLUGIN_ASSET_PREFIX}memory-hindsight/.claude-plugin/plugin.json`);
         expect(probes).toContain(`${PLUGIN_ASSET_PREFIX}memory-hindsight/hooks/hooks.json`);
+        // mobi 内置资产集也进探针（增删自愈；2026-10-19 openui references 实锤）
+        expect(probes).toContain(`${PLUGIN_ASSET_PREFIX}mobi/skills/openui/SKILL.md`);
+        expect(probes).toContain(`${PLUGIN_ASSET_PREFIX}mobi/skills/openui/references/signatures.md`);
         expect(probes).toContain(`${PLUGIN_ASSET_PREFIX}memory-hindsight/.mcp.json`);
-        // 与清单文件表一一对应（每插件每文件一个探针）
+        // 探针 = 全部清单文件 + mobi 内置资产集（增删自愈）
         expect(probes).toHaveLength(
-            ALL_BUNDLED_PLUGIN_NAMES.reduce((n, name) => n + Object.keys(BUNDLED_PLUGIN_MANIFEST_FILES[name]).length, 0),
+            ALL_BUNDLED_PLUGIN_NAMES.reduce((n, name) => n + Object.keys(BUNDLED_PLUGIN_MANIFEST_FILES[name]).length, 0)
+                + MOBI_PLUGIN_ASSET_REL_PATHS.length,
         );
     });
 
