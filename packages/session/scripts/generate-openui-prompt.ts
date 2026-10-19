@@ -43,8 +43,15 @@ import { fileURLToPath } from 'node:url'
 import { openuiLibrary } from '@openuidev/react-ui/genui-lib'
 import { generateSystemPrompt } from '@openuidev/react-lang'
 import { openuiExamples } from '@openuidev/react-ui/genui-lib/prompt-options'
+import { MOBI_THEME_PALETTE_VARS, openuiFunctions } from '@mobi/shared'
 import { projectPath } from '@mobi/node-core/projectPath'
-import { MOBI_THEME_PALETTE_VARS } from '@mobi/shared'
+
+/**
+ * 带 @函数目录的库实例（票 02）：函数来自 shared 单源（与 web 渲染器同一批
+ * 定义），extend 派生新库、base 不变——prompt 生成器与运行时看到的函数目录
+ * 由同一份定义决定，不会漂移。
+ */
+const library = openuiLibrary.extend!({ functions: { add: openuiFunctions } })
 
 /**
  * 核心组件白名单（常驻 system prompt 的高频子集）：简单交互场景（表单/选择卡/
@@ -154,7 +161,7 @@ const OPENUI_FULL_PROMPT_OPTIONS = {
  * 经同一 generateSystemPrompt assembler 重建——不是对全量文本的切割。
  */
 export function buildCorePrompt(): string {
-    const spec = openuiLibrary.toSpec()
+    const spec = library.toSpec()
     const components = Object.fromEntries(
         CORE_COMPONENTS.filter((name) => name in spec.components)
             .map((name) => [name, spec.components[name as keyof typeof spec.components]]),
@@ -180,7 +187,7 @@ export function buildSkillMarkdown(): string {
         '',
         '# OpenUI Component Catalog (full)',
         '',
-        openuiLibrary.prompt(OPENUI_FULL_PROMPT_OPTIONS),
+        library.prompt(OPENUI_FULL_PROMPT_OPTIONS),
         '',
     ].join('\n')
 }

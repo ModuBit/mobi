@@ -38,5 +38,6 @@ mobi 的输入框（登录 token、聊天框）多为自定义组件，标准三
     return { disabled }
   }
   ```
-  提交按钮同理：登录页按文案找（`[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '连接')`）。设完值**先看 `disabled` 再点**，比事后去 DB 找消息快。
+  **new-session 页（/sessions/new）composer 无发送按钮**（2026-10-19 实踩）：有内容也不出现 arrow-up/发送钮（close-circle 是别的按钮），`fill` + Enter 事件、`press_key Enter` 都静默不发——唯一可靠路径 = `evaluate_script` 里 `textarea.focus()` 后 `type_text` 带 `submitKey: Enter`，发完用 DB `SELECT count(*) FROM sessions` 确认真发了。
+提交按钮同理：登录页按文案找（`[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '连接')`）。设完值**先看 `disabled` 再点**，比事后去 DB 找消息快。
 

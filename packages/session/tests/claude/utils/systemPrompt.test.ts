@@ -160,8 +160,15 @@ describe('openui 核心段契约（generative-ui 票 02 注入、票 08 分层�
     expect(OPENUI_CORE_PROMPT).toMatch(/never introduce a separate boolean flag like `\$submitted`/);
   });
 
-  it('核心段体积受控（≤26K chars ≈ 6.5K tokens——膨胀预算门，超限须先收窄再扩）', () => {
-    expect(OPENUI_CORE_PROMPT.length).toBeLessThanOrEqual(26_000);
+  it('@函数目录在核心段（票 02）：本地计算词汇常驻，模型写 UI 时无需先加载 skill', () => {
+    expect(OPENUI_CORE_PROMPT).toMatch(/## Built-in Functions/);
+    for (const fn of ['@GroupBy(', '@Payment(', '@Format(', '@MixColor(', '@StartOf(', '@SliceList(']) {
+      expect(OPENUI_CORE_PROMPT).toContain(fn);
+    }
+  });
+
+  it('核心段体积受控（≤32K chars ≈ 8K tokens——膨胀预算门；票 02 由 26K 放宽：59 个 @函数目录 ≈8.5K chars 常驻，再扩须先收窄）', () => {
+    expect(OPENUI_CORE_PROMPT.length).toBeLessThanOrEqual(32_000);
   });
 
   it('与生成脚本同源同步（升 react-ui 或改判据措辞后未重生成即红）', async () => {
@@ -181,6 +188,13 @@ describe('openui skill（全量目录，票 08 随 mobi 插件分发）', () => 
     expect(skill).toMatch(/\n---\nname: openui\n/);
     expect(skill).toMatch(/description: Full openui-lang component catalog/);
     expect(skill).toMatch(/charts/);
+  });
+
+  it('全量 @函数目录在（票 02）：六类函数的签名与语义随 skill 分发', () => {
+    expect(skill).toContain('## Built-in Functions');
+    for (const fn of ['@Append(', '@Range(', '@Allocate(', '@Split(', '@Histogram(', '@Stats(']) {
+      expect(skill).toContain(fn);
+    }
   });
 
   it('全量组件目录在（核心段下沉的低频件 + 语法 root = Stack）', () => {

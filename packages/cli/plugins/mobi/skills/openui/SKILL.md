@@ -192,6 +192,68 @@ MetricIndicatorWithStrikethrough(value: string, subtext?: string, previousValue?
 - VisualCardItem: image-first card with a BoldText body and optional Tag.
 - Text / BoldText / IconText / ImageText / ImageTextLarge / MetricIndicator* are the inline building blocks used INSIDE card items; do not place them directly in the root Card.
 
+## Built-in Functions
+
+@Append(list: any[], item: any) → any[] — Copy of the list with item added at the end
+@Prepend(list: any[], item: any) → any[] — Copy of the list with item added at the start
+@Concat(list: any[], more: any[]) → any[] — Joins two lists
+@Remove(list: any[], field: string, value: any) → any[] — Copy without the items whose field equals value; field "" compares the items themselves
+@RemoveAt(list: any[], index: number) → any[] — Copy without the item at index (0-based; negative counts from the end)
+@Update(list: any[], field: string, value: any, setField: string, setValue: any) → any[] — Copy where items whose field equals value get setField set to setValue
+@Toggle(list: any[], item: any) → any[] — Adds item if missing, removes it if present (a set of strings or numbers)
+@Includes(list: any[] | string, item: any) → boolean — True if the list has item, or the text contains it
+@Find(list: any[], field: string, value: any) → any — First item whose field equals value, or null
+@IndexOf(list: any[], item: any) → number — Index of item in the list, or -1
+@Take(list: any[], n: number) → any[] — The first n items; a negative n takes the last n
+@SliceList(list: any[] | string, start: number, end?: number) → any[] | string — Items, or characters of text, from start up to end (not included); negative counts from the end
+@Unique(list: any[]) → any[] — Distinct items in first-seen order
+@Reverse(list: any[]) → any[] — Copy in reverse order
+@Range(start: number, end: number, step?: number) → number[] — Numbers from start up to end (not included) by step (default 1), e.g. @Range(0, 3) is [0, 1, 2]
+@Pick(list: any[]) → any — A random item, or null for an empty list; draws anew each time, so call it inside @Set
+@Shuffle(list: any[]) → any[] — Copy in random order; call it inside @Set
+@Flatten(list: any[]) → any[] — One list from a list of lists, e.g. [[1, 2], [3]] is [1, 2, 3]
+@Chunk(list: any[], size: number) → any[][] — The list cut into lists of size items, e.g. for weeks of 7 days or pages
+@Pow(base: number, exponent: number) → number — base raised to exponent
+@Sqrt(number: number) → number — Square root; null for a negative number
+@Random(min: number, max: number, integer?: boolean) → number — Random number from min to max (integer true: a whole number, max included); draws anew each time, so call it inside @Set
+@Clamp(number: number, min: number, max: number) → number — number kept between min and max
+@Percent(part: number, total: number) → number — part / total * 100, e.g. @Percent(3, 4) is 75; 0 when total is 0
+@Lerp(a: number, b: number, t: number) → number — The value a fraction t of the way from a to b
+@Allocate(total: number, weights: number[], decimals?: number) → number[] — Splits total in proportion to weights, rounded to decimals (default 2), so the parts add up to exactly total, e.g. @Allocate(100, [1, 1, 1]) is [33.34, 33.33, 33.33]
+@Payment(principal: number, rate: number, periods: number) → number — Payment per period that repays principal over periods at rate percent per period, e.g. a 30-year loan at 6% a year: @Payment(300000, 6 / 12, 360)
+@Convert(value: number, from: string, to: string) → number — value from one unit to another: mm cm m km in ft yd mi; mg g kg oz lb st; ml l tsp tbsp floz cup pt qt gal (US); m/s km/h mph kn; m2 km2 ft2 ha acre; c f k
+@Format(value: number, kind?: "number" | "currency" | "percent" | "compact", decimals?: number, currency?: string) → string — Number as text: "number" 12,345.6, "currency" $12,345.68 (currency is a code like "EUR"), "percent" 45 -> 45%, "compact" 1.2M ($1.2M with a currency)
+@Join(list: any[], sep?: string, field?: string) → string — Joins the items (or their field) into text with sep (default ", "), skipping nulls
+@Plural(n: number, word: string, plural?: string) → string — Count and word: @Plural(1, "guest") is "1 guest", 3 gives "3 guests"; plural defaults to word + "s"
+@Pad(value: string | number, length: number, char?: string) → string — Pads the start of value to length with char (default "0"), e.g. 7 -> "07"
+@Upper(text: string) → string — Text in upper case
+@Lower(text: string) → string — Text in lower case
+@Trim(text: string) → string — Text without spaces at the start and end
+@Capitalize(text: string) → string — Each word with a capital first letter, e.g. "new york" is "New York"
+@Split(text: string, sep?: string) → string[] — List of the parts of text between sep (default ","), each trimmed, empty parts dropped, e.g. @Split("a, b,,c") is ["a", "b", "c"]
+@Replace(text: string, find: string, replacement: string) → string — Text with every find replaced by replacement
+@Duration(seconds: number, style?: "short" | "clock") → string — Seconds as text: "short" 1h 20m, 4m 05s, 45s (default); "clock" 1:20:00, 4:05
+@Default(value?: any, fallback: any) → any — value, or fallback when value is null, "" or not a number, e.g. an empty number input: @Default($weight, 0)
+@MixColor(from: string, to: string, t: number) → string — The hex color a fraction t of the way from one hex color to another, e.g. @MixColor("#ffffff", "#0285ff", 0.5) for a heatmap or a tint
+@Now() → string — The current date and time as an ISO string
+@Today() → string — Today's date in the viewer's time zone, as "YYYY-MM-DD"
+@FormatDate(date: string | number, style?: "date" | "short" | "long" | "weekday" | "month" | "time" | "datetime" | "iso") → string — A date as text: "date" Oct 9, 2026 (default), "short" Oct 9, "long" Friday, October 9, 2026, "weekday" Fri, "month" Oct 2026, "time" 9:30 PM, "datetime", "iso" 2026-10-09. Dates are "YYYY-MM-DD", ISO or a timestamp
+@AddDays(date: string | number, days: number) → string — The date days later (negative: earlier), as "YYYY-MM-DD"
+@AddMonths(date: string | number, months: number) → string — The date months later (negative: earlier), kept within the month (Jan 31 + 1 is Feb 28), as "YYYY-MM-DD"; 12 months is a year
+@DaysBetween(from: string | number, to: string | number) → number — Calendar days from one date to another (negative if to is earlier)
+@MonthsBetween(from: string | number, to: string | number) → number — Whole months from one date to another (negative if to is earlier); @Floor(@MonthsBetween(birthday, @Today()) / 12) is an age
+@StartOf(date: string | number, unit: "week" | "month" | "year") → string — First day of the date's "week" (Monday), "month" or "year", as "YYYY-MM-DD"
+@GroupBy(rows: any[], key: string, field?: string, agg?: "sum" | "avg" | "count" | "min" | "max") → {key: string | number, value: number}[] — One row per distinct key, in first-seen order; value is agg of field (default "sum"), or the row count without a field
+@Pivot(rows: any[], rowKey: string, colKey: string, field?: string, agg?: "sum" | "avg" | "count" | "min" | "max") → Record<string, string | number>[] — One row per rowKey value with a column per colKey value holding agg of field, for stacked or grouped charts
+@Top(rows: any[], field: string, n: number, direction?: "desc" | "asc") → any[] — The n rows with the largest field ("asc": the smallest)
+@Between(rows: any[], field: string, min?: any, max?: any) → any[] — Rows whose field is from min to max, both included; compares numbers, or text such as "YYYY-MM-DD" dates. Leave min or max null for an open end
+@Bucket(rows: any[], dateField: string, unit: "day" | "week" | "month", field?: string, agg?: "sum" | "avg" | "count" | "min" | "max") → {key: string | number, value: number}[] — Rows per day, week (from Monday) or month of dateField, in date order, empty periods 0 for sum and count; key is "YYYY-MM-DD", or "YYYY-MM" for months
+@Cumulative(rows: any[], field: string) → any[] — Copy of the rows with field replaced by its running total (field "" for a list of numbers)
+@MovingAvg(rows: any[], field: string, window: number) → any[] — Copy of the rows with field replaced by the average of its last window values (field "" for a list of numbers)
+@Change(current: number, previous: number) → number — Percent change from previous to current, e.g. @Change(120, 100) is 20; null when previous is 0
+@Histogram(values: number[], bins: number, min?: number, max?: number) → {key: string, value: number, start: number, end: number}[] — Counts numbers into equal-width bins (value is the count); min and max fix the range, default the data's
+@Stats(values: number[]) → {count: number, min: number, max: number, mean: number, median: number, stdev: number} — Summary of numbers, all zeros for an empty list
+
 ## Action — Button Behavior
 
 An action wires a button click to operations. Pass one @-prefixed step bare, e.g. Button("Ask", @ToAssistant("Tell me more")). Put several steps in Action([...]), e.g. Button("Read", Action([@OpenUrl("https://example.com"), @ToAssistant("Summarize this page")])). Steps execute in order.

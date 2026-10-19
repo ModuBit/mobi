@@ -56,7 +56,8 @@ default 与 e2e 端口隔离、互不冲突；冲突即环境异常。
 - `smoke.sh`：`MOBI_LISTEN_PORT=2222` 把 daemon 拉去撞生产实例（`Is port 2222 in use?` 启动超时）
 - `e2e-bootstrap.sh`：`MOBI_API_URL=http://127.0.0.1:12222`（宿主 web API）让 vite proxy 指向宿主
   daemon——web 一切 `/api/*` 404、登录卡死，**无端口报错，症状隐蔽**；看 `~/.mobi-e2e/logs/web.log`
-  的 `[PROFILE] MOBI_API_URL` 是否为 `http://localhost:2224` 即可确诊
+  的 `[PROFILE] MOBI_API_URL` 是否为 `http://localhost:2224` 即可确诊。**注意 `VAR=` 空串赋值也是 set 不是 unset**（2026-10-19 实踩：
+  `MOBI_API_URL= nohup ...` 让 profile 取到空串回退默认 2222）——清环境必须 `env -u VAR`
 
 解法（凡在 mobi 宿主会话内起 e2e 组件，一律剥离后再跑）：
 ```bash

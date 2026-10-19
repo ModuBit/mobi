@@ -27,6 +27,7 @@
 
 import type { ComponentRenderProps, Library } from '@openuidev/react-lang'
 import { openuiLibrary } from '@openuidev/react-ui'
+import { openuiFunctions } from '@mobi/shared'
 import type { ReactNode } from 'react'
 
 /** 点击 registry 的 globalThis 槽位：Symbol.for 键跨模块实例共享。vite dev
@@ -78,11 +79,13 @@ const mobiButton: ButtonComponent = {
     },
 }
 
-/** mobi 视角组件库：仅 Button 被覆盖，其余（含 Form/CheckBoxGroup 等）原样透传 */
-export const mobiLibrary: Library = {
-    ...openuiLibrary,
-    components: {
-        ...openuiLibrary.components,
-        Button: mobiButton,
-    },
-}
+/** mobi 视角组件库：Button 被覆盖，其余（含 Form/CheckBoxGroup 等）原样透传；
+ *  @函数目录（shared 单源，59 个）与组件同一挂载点——浏览器本地求值。
+ *
+ *  必须走 extend 派生：createLibrary 的 toJSONSchema/prompt 闭包捕获创建时的
+ *  records，`{...openuiLibrary, functions}` 这种浅拷贝改不到闭包，函数在运行时
+ *  仍报 Unknown function（票 02 E2E 实锤）。 */
+export const mobiLibrary: Library = openuiLibrary.extend!({
+    components: { override: [mobiButton] },
+    functions: { add: openuiFunctions },
+})

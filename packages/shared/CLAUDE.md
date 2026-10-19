@@ -29,6 +29,7 @@
 | `src/chromeTheme.ts` | 窗口 chrome 底色 `CHROME_BG`（daemon PWA manifest + web 标题栏/首屏共引；值与 web 调色板的等式由 palette-consistency 守卫锁定） |
 | `src/inboundOrigin.ts` | 入站消息落在 meta 上的来源标注：跨会话来源 `CrossSessionOrigin` + turn 来源 `TurnOrigin` 的形状与读写单源 |
 | `src/exitLogger.ts` | 进程退出日志（hub/runner/cli 共用基础设施） |
+| `src/openuiFunctions/` | openui `@函数`目录（59 个，纯 JS + Zod）：web 渲染器与 session prompt 生成器单源（票 02） |
 | `src/index.ts` | Barrel export |
 
 ## 测试

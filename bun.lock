@@ -105,6 +105,7 @@
       "name": "@mobi/shared",
       "version": "0.0.0",
       "dependencies": {
+        "@openuidev/lang-core": "1.0.1",
         "chalk": "^6.0.1",
         "zod": "^4.6.5",
       },

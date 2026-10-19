@@ -19,6 +19,12 @@ metadata:
 - **沙箱安全**：让 app 放「fetch 外网 + 读 file://」两按钮，iframe 内点 → 双双 `TypeError: Failed to fetch`（CSP connect-src 'none' 实证）；iframe 内网络请求 `contentWindow.performance.getEntriesByType('resource').length === 0`
 - **无 provider**：直接开 serve-file URL（聊天外独立打开）→ 点 bridge 按钮 → app 自己的 fallback 提示、不发消息不报错
 
+## react-lang 1.0 后的快照/回灌形状（2026-10-19 升级实测）
+
+- **getFormPayload 嵌套形状**：1.0 返回 `{ formName: { field: { value } } }`（0.x 是 `{ $var: value }` 平铺）——回灌消息 meta.openuiFormState 是嵌套形状；DB 断言快照形状别再用 $ 平铺口径
+- **档③排查链路**：锚点 meta 在消息 content JSON（`$.meta.openuiAnchor`）不在 metadata 列；turn 收尾证据按 `json_extract(content,'$.content.data.type')='result'` 数
+- **表单按钮 vs 动作按钮的 formState 不同源**：表单提交 = getFormPayload（嵌套）；动作按钮 = store 变量表快照（`$actionState` 平铺 + 声明碎片键），都合法
+
 ## 坑
 
 - **发消息探针必须单行**（[[input-box]] 通用坑），openui prompt 也不例外

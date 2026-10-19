@@ -92,6 +92,21 @@ describe('resolveActionBindings', () => {
         expect(resolveActionBindings(code).setTargets).toEqual(['$actionState'])
     })
 
+    it('含 @函数调用的源码照常解出操作绑定（票 02：schema 取 mobiLibrary，函数可识别）', () => {
+        const code = [
+            'root = Stack([summary, btn])',
+            'summary = Table([Col("region", rows.key), Col("amount", rows.value)])',
+            'rows = @GroupBy($sales, "region", "amount")',
+            'btn = Button("刷新", Action([Set($actionState, "running"), @ToAssistant("refresh")]), "primary")',
+            '$sales = []',
+            '$actionState = "idle"',
+        ].join('\n')
+        const b = resolveActionBindings(code)
+        expect(b.setTargets).toEqual(['$actionState'])
+        expect(b.stateVars).toContain('$actionState')
+        expect(b.actions.size).toBe(1)
+    })
+
     it('非法源码 → 空表不 throw', () => {
         const b = resolveActionBindings('this is not = === valid openui')
         expect(b.setTargets).toEqual([])

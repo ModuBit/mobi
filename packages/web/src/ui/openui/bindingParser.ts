@@ -18,7 +18,8 @@
  * 操作绑定解析（per-action 状态粒度票 01）：把 fence 源码解析成「操作绑定表」——
  * host 侧 per-action 状态识别与快照回注的唯一事实源。纯函数、无 React 依赖。
  *
- * 基于react-lang 公开 parse 管线（createParser(openuiLibrary.toJSONSchema())），
+ * 基于react-lang 公开 parse 管线（createParser(mobiLibrary.toJSONSchema())，
+ * 与渲染器同一份库——含 @函数目录，票 02），
  * 三个运行时实证事实是本模块的根基（先于实现实测，见票 01）：
  * 1. ElementNode 带 statementId，label 变量定义被 parser **内联**进 Button 节点
  *    （`Button(mdBtnLabel, …)` 的 props.label 直接是完整 Ternary 表达式）——
@@ -33,7 +34,7 @@
  */
 
 import { createParser, type ElementNode, type ParseResult } from '@openuidev/react-lang'
-import { openuiLibrary } from '@openuidev/react-ui'
+import { mobiLibrary } from './mobiLibrary'
 
 /** 档③ phase 值域（与 catalog prompt 教学、renderer 注入共享的词汇） */
 export const PHASE_VALUES = new Set(['idle', 'running', 'done', 'failed'])
@@ -55,11 +56,13 @@ export interface ActionBindings {
 /** 全空绑定（模块级单例）：流式期间的解析跳过闸门等消费方共用同一实例 */
 export const EMPTY_BINDINGS: ActionBindings = { setTargets: [], stateVars: [], actions: new Map(), forms: new Map() }
 
-/** parser 单例（schema 构建昂贵；parse 本身无状态） */
+/** parser 单例（schema 构建昂贵；parse 本身无状态）。schema 取 mobiLibrary——
+ *  与渲染器同一份库（含 Button 覆盖与 @函数目录），函数调用不会在绑定解析里
+ *  被当成未知调用丢掉 */
 let parser: ReturnType<typeof createParser> | null = null
 
 function getParser(): ReturnType<typeof createParser> {
-    parser ??= createParser(openuiLibrary.toJSONSchema())
+    parser ??= createParser(mobiLibrary.toJSONSchema())
     return parser
 }
 

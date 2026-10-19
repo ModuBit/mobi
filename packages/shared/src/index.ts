@@ -38,6 +38,7 @@ export * from './userContentSchema'
 export * from './memorySettings'
 export * from './turnDiff'
 export * from './actionUri'
+export * from './openuiFunctions'
 export * from './mention'
 export * from './fileMeta'
 // 注意：exitLogger 不走 barrel 导出——它 import node:os/node:fs，

@@ -1,6 +1,6 @@
 # OpenUI 渲染层（Intelligent UI Native 层）
 
-fenced `openui` / `openui-lang` 代码块渲染为可交互 UI（官方 @openuidev/react-ui 组件库 + react-lang 解释器），并向上接通两条回灌回路：操作发消息（档②）、操作状态随 agent turn 原地更新（档③）。与 Sandbox App（`mode=app` 的 .html 文件 iframe，`ui/SandboxHtmlFrame.tsx`）是平行两层，按场景分工——本文只覆盖 Native 层。
+fenced `openui` / `openui-lang` 代码块渲染为可交互 UI（官方 @openuidev/react-ui 组件库 + react-lang 解释器），并向上接通两条回灌回路：操作发消息（档②）、操作状态随 agent turn 原地更新（档③）。渲染器挂载的 mobi 库在官方组件之上加 59 个本地 `@函数`（`@GroupBy`/`@Payment`/`@Format` 等，shared 单源）——模型写一行调用，求值在用户浏览器完成，零网络零 token。与 Sandbox App（`mode=app` 的 .html 文件 iframe，`ui/SandboxHtmlFrame.tsx`）是平行两层，按场景分工——本文只覆盖 Native 层。
 
 ## 渲染入口与懒加载链路
 
@@ -58,10 +58,10 @@ graph LR
 | `openui/actionState.ts` | 档③终态扫描纯函数：锚点/result 配对、孤儿剥离、failed 判定；phase 值域词汇 |
 | `openui/actionStore.ts` | zustand 模块级单例：`anchor#var → phase` + 表单快照；setPhase 乐观口 / applyDerived（终态单调守卫）/ clearAll |
 | `openui/useOpenUIActionLifecycle.ts` | ChatContainer 喂数据的接线收口：签名门控重扫（length\|末条 id\|running），卸载清空 |
-| `openui/bindingParser.ts` | fence 源码 → 操作绑定表（AST 主 seam，parser 与 react-lang 同源）；产出 setTargets/stateVars/actions/forms |
+| `openui/bindingParser.ts` | fence 源码 → 操作绑定表（AST 主 seam，parser schema 取 mobiLibrary 与渲染同源）；产出 setTargets/stateVars/actions/forms |
 | `openui/snapshotInjection.ts` | 表单快照 → initialState 键映射（两代形状：0.x `$` 平铺走 bindingDefaults、1.0 formName 嵌套走 store.set）；多快照逐条解析后合并 |
 | `openui/fenceIndex.ts` | fence 身份 token 注解/反解（GFM 围栏扫描） |
-| `openui/mobiLibrary.tsx` | 组件库覆盖：Button capture 同步帧写 statementId 到 globalThis registry（取后即清） |
+| `openui/mobiLibrary.tsx` | mobi 库派生（`openuiLibrary.extend`）：Button capture 同步帧写 statementId 到 globalThis registry（取后即清）+ @函数目录挂载 |
 | `openui/theme.ts` | antd token → react-ui Theme 双档翻译（主题同源跟随） |
 
 ## 关键决策
@@ -78,6 +78,7 @@ graph LR
 | per-key 切片订阅（useShallow） | 整 phases Map 订阅下任意块写入换新引用，屏幕上全部 openui 块重渲染且 react-lang 随 initialState 重建 store；切片后只有本 fence 变化重渲染。事件内读最新值走 getState |
 | 流式期间跳过 AST 解析（EMPTY_BINDINGS 门控） | code 每 delta 变化，解析结果无处消费——点击被 streaming 闸门挡、快照回注只在封口后生效 |
 | `updateSessionMetadata` 永不顶起 updated_at | 档③ meta 回写若顶起 updated_at 会把会话顶到列表首位 |
+| @函数目录经 shared 单源 + `library.extend()` 挂载 | web 与 session prompt 生成器互不可依赖，shared 是唯一共同依赖；函数是模型可调用的生成端协议（59 个、纯 JS+Zod、浏览器求值）。必须 extend 派生：createLibrary 的 toJSONSchema/prompt 闭包捕获创建时的 records，`{...openuiLibrary, functions}` 浅拷贝改不到闭包，运行时仍报 Unknown function（2026-10-19 票 02 E2E 实锤） |
 
 ## 测试 seam
 

@@ -19,5 +19,8 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
     test: {
         include: ['tests/**/*.test.ts'],
+        // @函数日期用例固定查看者时区：ISO 时间戳按本地时区读取是函数契约，
+        // 断言必须与开发机时区解耦（上游用例按 UTC 编写）
+        env: { TZ: 'UTC' },
     },
 })
