@@ -121,20 +121,53 @@ describe('openui 核心段契约（generative-ui 票 02 注入、票 08 分层�
     expect(OPENUI_CORE_PROMPT).toContain('mode="app"');
   });
 
-  it('核心组件签名在（简单场景自洽），低频组件签名不在（分层生效）', () => {
-    // 签名文档形态是「Name(param: type, ...)」；惯例段提及（如 Charts 语法示例）不算
-    for (const c of ['Stack(', 'Button(label:', 'OptionCards(', 'FormControl(', 'Chips(', 'Table(']) {
-      expect(OPENUI_CORE_PROMPT).toContain(c);
-    }
-    for (const c of ['LineChart(labels:', 'Carousel(children:', 'DatePicker(', 'Modal(title:', 'EditableTable(', 'OverviewCardBlock(']) {
-      expect(OPENUI_CORE_PROMPT).not.toContain(c);
-    }
+  it('c 档形态（2026-10-19 裁决落定）：零常驻组件签名 + 全量名录 + 工具检索引导', () => {
+    // 名录在：95 组件 Name — 一句话（模型看得见能力面才能组合）
+    expect(OPENUI_CORE_PROMPT).toMatch(/Stack — /);
+    expect(OPENUI_CORE_PROMPT).toMatch(/Carousel — |DatePicker — /);
+    // 签名不在：签名形态（含参数列表）不进 prompt，经 openui_components 检索
+    expect(OPENUI_CORE_PROMPT).not.toContain('Button(label:');
+    expect(OPENUI_CORE_PROMPT).not.toContain('OptionCards(name:');
+    expect(OPENUI_CORE_PROMPT).not.toContain('LineChart(labels:');
+    // 检索引导在：查工具 + 禁瞎猜 + skill 全量兜底
+    expect(OPENUI_CORE_PROMPT).toMatch(/call the `openui_components` tool/);
+    expect(OPENUI_CORE_PROMPT).toMatch(/Never guess a signature/);
+    expect(OPENUI_CORE_PROMPT).toMatch(/`mobi:openui` skill also carries the full catalog/);
   });
 
-  it('分层引导在：组件不在清单先加载 openui skill（失败模式=多一次调用而非静默丢语句）', () => {
-    expect(OPENUI_CORE_PROMPT).toMatch(/CORE SUBSET/i);
-    expect(OPENUI_CORE_PROMPT).toMatch(/invoke the `openui` skill FIRST/i);
-    expect(OPENUI_CORE_PROMPT).toMatch(/Never guess a signature/i);
+  it('函数分组名录在（2026-10-19 函数名录化）：六类各一行，全签名目录不进', () => {
+    // 官方分类六组；函数名平铺进组行；逐函数签名行（@Name(params) 形态）不进
+    expect(OPENUI_CORE_PROMPT).toMatch(/Lists \(build \/ transform \/ query arrays\): @Append/);
+    expect(OPENUI_CORE_PROMPT).toMatch(/Data \(group \/ aggregate \/ reshape rows\): @/);
+    expect(OPENUI_CORE_PROMPT).not.toMatch(/@Append\(list: any\[\], item: any\)/);
+  });
+
+  it('官方 componentGroups 组合教学保留（单组件深教下沉）', () => {
+    // 组合模式 notes 是「怎么组合」的官方承载位——保留
+    expect(OPENUI_CORE_PROMPT).toContain('Modal: Modal("Title"');
+    expect(OPENUI_CORE_PROMPT).toContain('Table is COLUMN-oriented');
+    // EditableTable 深教（低频组件完整用法）下沉 skill
+    expect(OPENUI_CORE_PROMPT).not.toContain('EditableTable lets the user edit cells');
+  });
+
+  it('mobi 规则 concise 版（官方 notes 已覆盖的不重复）：低频深教下沉 skill', () => {
+    // one-shot 完整代码模式不在（指路 skill），闸门语义与反例仍在
+    expect(OPENUI_CORE_PROMPT).toMatch(/never a boolean flag like `\$submitted`/);
+    expect(OPENUI_CORE_PROMPT).not.toMatch(/never renders as a clickable button again/);
+    // charts 教学保留 mobi 特有（自定义 Chart/Svg 顺序/颜色 token），删官方重复
+    expect(OPENUI_CORE_PROMPT).toMatch(/Custom Chart component:/);
+    expect(OPENUI_CORE_PROMPT).not.toMatch(/shapes: Circle\/Rect\/Line\/Path/);
+  });
+
+  it('整页编排判据在核心段（2026-10-19）：按内容结构触发，不枚举场景', () => {
+    expect(OPENUI_CORE_PROMPT).toMatch(/Composed pages/);
+    expect(OPENUI_CORE_PROMPT).toMatch(/load the `mobi:openui` skill FIRST/);
+    // 判据是「内容天然分节」而不是固定场景清单——场景枚举不可扩展
+    expect(OPENUI_CORE_PROMPT).toMatch(/naturally splits into sections/);
+    expect(OPENUI_CORE_PROMPT).not.toMatch(/travel itinerary/);
+    // Map 已是原生组件：app 路由不得再把 maps 列为「必须走 .html」
+    expect(OPENUI_CORE_PROMPT).toMatch(/Form routing: interactions that need custom JavaScript logic, rich animation/);
+    expect(OPENUI_CORE_PROMPT).not.toMatch(/custom JavaScript logic, maps/);
   });
 
   it('档③ 状态变量值域约定在核心段（票 04 原地更新 + 票 02 值域识别修订）', () => {
@@ -152,29 +185,26 @@ describe('openui 核心段契约（generative-ui 票 02 注入、票 08 分层�
     expect(OPENUI_CORE_PROMPT).toMatch(/Multi-action panels/);
   });
 
-  it('一次性操作条件渲染句式在核心段（per-action 票 04）：idle 按钮 / failed 重试 / 其余文字', () => {
-    expect(OPENUI_CORE_PROMPT).toMatch(/never renders as a clickable button again/);
-    expect(OPENUI_CORE_PROMPT).toMatch(/only a failed turn stays retryable/);
-    expect(OPENUI_CORE_PROMPT).toMatch(/TextContent\("已提交 ✓", "small"\)/);
+  it('一次性操作条件渲染句式在核心段（concise 版）：闸门语义 + $submitted 反例 + Buttons 包裹', () => {
+    // concise 版只留闸门语义（idle/failed/其余三元替换）与反例，完整代码模式在 skill
+    expect(OPENUI_CORE_PROMPT).toMatch(/render idle → Button \/ failed → retry Button/);
+    expect(OPENUI_CORE_PROMPT).toMatch(/`Buttons\(\[\.\.\.\]\)` wrapper, never a bare Button/);
     // 布尔开关否定式（E2E 实锤模型自创 $submitted 闸，宿主永不写它 → 按钮永不锁定）
-    expect(OPENUI_CORE_PROMPT).toMatch(/never introduce a separate boolean flag like `\$submitted`/);
-    // Form 的 buttons 参数须 Buttons([...]) 包裹（2026-10-19 E2E 实锤：模型直传单个
-    // Button，表单渲染时按钮被 schema 丢弃，整块无提交按钮）
-    expect(OPENUI_CORE_PROMPT).toMatch(/Inside a Form the second argument is a `Buttons\(\[submitBtn\]\)` wrapper/);
+    expect(OPENUI_CORE_PROMPT).toMatch(/never a boolean flag like `\$submitted`/);
     // 派生值必须是非 $ 普通语句（E2E 实锤：`$submitBtn = 三元返回组件` 的 $ 初始化
     // 不会被求值，渲染为空——$ 声明只存原始 AST）
     expect(OPENUI_CORE_PROMPT).toMatch(/Derived values \(labels\/buttons\) are PLAIN statements like `btnLabel` — never `\$name`/);
   });
 
-  it('@函数目录在核心段（票 02）：本地计算词汇常驻，模型写 UI 时无需先加载 skill', () => {
-    expect(OPENUI_CORE_PROMPT).toMatch(/## Built-in Functions/);
-    for (const fn of ['@GroupBy(', '@Payment(', '@Format(', '@MixColor(', '@StartOf(', '@SliceList(']) {
+  it('函数词汇在（分组名录形态，2026-10-19 函数名录化）：模型无需加载 skill 即知有哪些函数', () => {
+    expect(OPENUI_CORE_PROMPT).toMatch(/Function catalog/);
+    for (const fn of ['@GroupBy', '@Payment', '@Format', '@MixColor', '@StartOf', '@SliceList']) {
       expect(OPENUI_CORE_PROMPT).toContain(fn);
     }
   });
 
-  it('自定义组件的媒介判据在核心段（票 03）：Chart/Svg/HtmlView 各归其位', () => {
-    expect(OPENUI_CORE_PROMPT).toMatch(/Charts & drawings \(custom components/);
+  it('自定义组件的媒介判据在核心段（票 03 concise）：Chart/Svg/HtmlView 各归其位', () => {
+    expect(OPENUI_CORE_PROMPT).toMatch(/Custom Chart component:/);
     expect(OPENUI_CORE_PROMPT).toMatch(/series are column names like \["revenue"\], NOT Series\(\.\.\.\)/);
     // 位置参数顺序示例（E2E 实锤：只给签名列表时模型按直觉写成 Svg(width,height,shapes)）
     expect(OPENUI_CORE_PROMPT).toMatch(/Svg\(\[Rect\(10, 10, 80, 40, "surface", "ink", 2\), SvgText\("Step", 20, 80, 12, "muted"\)\]/);
@@ -182,74 +212,103 @@ describe('openui 核心段契约（generative-ui 票 02 注入、票 08 分层�
     // 折叠图元参数顺序（2026-10-19 E2E 实锤：模型把 Polygon 写成 Polygon(x1,y1,x2,y2,…)，
     // 8 处语句被 schema 丢弃）
     expect(OPENUI_CORE_PROMPT).toMatch(/Polyline\/Polygon take a "x1,y1 x2,y2" points string first/);
-    // 图元颜色 token 词汇
-    expect(OPENUI_CORE_PROMPT).toMatch(/"chart1"…"chart6"/);
-    // 票 04：地图只进「能力面指路」，签名留 skill（三档降级由 daemon 设置决定）
-    expect(OPENUI_CORE_PROMPT).toMatch(/maps \(Map\)/);
+    // 图元颜色 token 词汇（concise：chart1-6 合并写法）
+    expect(OPENUI_CORE_PROMPT).toMatch(/chart1-6/);
+    // 名录含 Map 行（组件能力面；三档降级由 daemon 设置决定）
+    expect(OPENUI_CORE_PROMPT).toMatch(/^Map — /m);
   });
 
-  it('核心段体积受控（≤32K chars ≈ 8K tokens——膨胀预算门；票 02 由 26K 放宽：59 个 @函数目录 ≈8.5K chars 常驻，再扩须先收窄）', () => {
-    expect(OPENUI_CORE_PROMPT.length).toBeLessThanOrEqual(32_000);
+  it('核心段体积受控（≤22K chars——c 档 2026-10-19 裁决：基线 20.3K + 余量；膨胀须先收窄）', () => {
+    expect(OPENUI_CORE_PROMPT.length).toBeLessThanOrEqual(22_000);
   });
 
   it('与生成脚本同源同步（升 react-ui 或改判据措辞后未重生成即红）', async () => {
-    const { buildCorePrompt, buildSkillMarkdown, SKILL_FILE_HEADER } = await import('../../../scripts/generate-openui-prompt');
+    const { buildCorePrompt, buildSkillMarkdown, buildSkillExamples, buildSkillSignatures, buildSkillAppDetails } =
+      await import('../../../scripts/generate-openui-prompt');
     expect(buildCorePrompt()).toBe(OPENUI_CORE_PROMPT);
-    // SKILL.md 路径锚定 cli 安装根（与生成脚本同一锚点，不数目录层数）
-    const skillPath = join(projectPath(), 'plugins', 'mobi', 'skills', 'openui', 'SKILL.md');
-    expect(readFileSync(skillPath, 'utf8')).toBe(`${SKILL_FILE_HEADER}${buildSkillMarkdown()}`);
+    // SKILL.md 路径锚定 cli 安装根（与生成脚本同一锚点，不数目录层数）；
+    // 四文件（索引 + 三 references）逐一全等——重生成漏写任一文件即红
+    const skillPath = join(projectPath(), 'plugins', 'mobi', 'skills', 'openui');
+    // 文件必须以 frontmatter 开头（SKILL_FILE_HEADER 若在更前面，CC 解析不到 → Unknown skill）
+    expect(readFileSync(join(skillPath, 'SKILL.md'), 'utf8')).toBe(buildSkillMarkdown());
+    expect(readFileSync(join(skillPath, 'references', 'examples.md'), 'utf8')).toBe(buildSkillExamples());
+    expect(readFileSync(join(skillPath, 'references', 'signatures.md'), 'utf8')).toBe(buildSkillSignatures());
+    expect(readFileSync(join(skillPath, 'references', 'app-details.md'), 'utf8')).toBe(buildSkillAppDetails());
   });
 });
 
-describe('openui skill（全量目录，票 08 随 mobi 插件分发）', () => {
-  const skillPath = join(projectPath(), 'plugins', 'mobi', 'skills', 'openui', 'SKILL.md');
-  const skill = readFileSync(skillPath, 'utf8');
+describe('openui skill（索引 + references 渐进披露，2026-10-19 拆分）', () => {
+  const skillPath = join(projectPath(), 'plugins', 'mobi', 'skills', 'openui');
+  const skill = readFileSync(join(skillPath, 'SKILL.md'), 'utf8');
+  const examples = readFileSync(join(skillPath, 'references', 'examples.md'), 'utf8');
+  const signatures = readFileSync(join(skillPath, 'references', 'signatures.md'), 'utf8');
+  const appDetails = readFileSync(join(skillPath, 'references', 'app-details.md'), 'utf8');
 
   it('frontmatter：name=openui + description 覆盖复杂组件触发词', () => {
-    expect(skill).toMatch(/\n---\nname: openui\n/);
-    expect(skill).toMatch(/description: Full openui-lang component catalog/);
+    // frontmatter 必须在文件首行：前面有任何注释 CC 都不解析（2026-10-19 实锤 Unknown skill）
+    expect(skill.startsWith('---\nname: openui\n')).toBe(true);
+    expect(skill).toMatch(/description: openui-lang deep reference/);
     expect(skill).toMatch(/charts/);
     // 票 04：新增能力面进触发词（Svg 图元 / 沙箱 HtmlView）
     expect(skill).toMatch(/SVG drawings \(Svg shapes\)/);
     expect(skill).toMatch(/sandboxed HtmlView pages/);
     // 票 04：Map 能力面进触发词（高德三档渲染）
     expect(skill).toMatch(/geographic maps \(Map with AMap\)/);
+    // 富混排页面（行程/指南/报告）同样要求先加载 skill
+    expect(skill).toMatch(/rich composed pages \(travel itineraries, guides, multi-section reports\)/);
   });
 
-  it('全量 @函数目录在（票 02）：六类函数的签名与语义随 skill 分发', () => {
-    expect(skill).toContain('## Built-in Functions');
+  it('SKILL.md 是索引不是全量：体积 ≤8K + 三 references 各有指路行', () => {
+    // 渐进披露：加载成本从「一律 54K」降到「索引 + 按需 1 个 reference」
+    expect(skill.length).toBeLessThanOrEqual(8_000);
+    for (const ref of ['references/examples.md', 'references/signatures.md', 'references/app-details.md']) {
+      expect(skill).toContain(ref);
+    }
+    // 名录已在 system prompt 常驻——skill 里不再放组件名录（避免双源漂移）
+    expect(skill).not.toMatch(/^Carousel — /m);
+  });
+
+  it('规则全文在 SKILL.md（判据缺位防护：skill 单独被读时三层判据仍在）', () => {
+    expect((skill.match(/Form routing:/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(skill).toMatch(/Composed pages/);
+    expect(skill).toMatch(/Action-state convention/);
+  });
+
+  it('富混排页面示例在 references/examples.md：标题 + 编号 Map + 逐项 Card 的可照抄骨架', () => {
+    expect(examples).toContain('Composed page example (itinerary');
+    expect(examples).toMatch(/Map\("122\.4194,37\.7749", 12, \[\{"position": "122\.4194,37\.7749", "label": "1"\}/);
+    expect(examples).toMatch(/stop1 = Card\(\[TextContent\("\*\*9:00 · Ferry Building\*\*"\)/);
+  });
+
+  it('全量签名兜底在 references/signatures.md（六类函数 + 低频组件 + 自定义组件）', () => {
+    expect(signatures).toContain('## Built-in Functions');
     for (const fn of ['@Append(', '@Range(', '@Allocate(', '@Split(', '@Histogram(', '@Stats(']) {
-      expect(skill).toContain(fn);
+      expect(signatures).toContain(fn);
     }
-  });
-
-  it('全量组件目录在（核心段下沉的低频件 + 语法 root = Stack）', () => {
-    expect(skill).toMatch(/root = Stack\(/);
     for (const c of ['LineChart(labels:', 'Carousel(children:', 'DatePicker(', 'Modal(title:', 'EditableTable(', 'OverviewCardBlock(', 'Accordion(', 'Tabs(']) {
-      expect(skill).toContain(c);
+      expect(signatures).toContain(c);
     }
-    expect(skill.length).toBeGreaterThan(30_000);
-  });
-
-  it('自定义组件签名在（票 03/04）：Chart / Svg 图元 / HtmlView / Map 随 skill 分发', () => {
+    // 票 03/04：自定义组件（Chart / Svg 图元 / HtmlView / Map）随 references 分发
     for (const c of ['Chart(type:', 'Svg(children:', 'Circle(', 'Rect(', 'Path(', 'G(children:', 'SvgText(', 'HtmlView(html:', 'Map(center?:']) {
-      expect(skill).toContain(c);
+      expect(signatures).toContain(c);
     }
     // demo 的 MapView 不移植（地图走 @mobi/shared 的 Map 签名 + 高德实现）
-    expect(skill).not.toContain('MapView(');
+    expect(signatures).not.toContain('MapView(');
+    // 指路：少量签名优先走工具
+    expect(signatures).toMatch(/prefer the `openui_components` tool/);
   });
 
-  it('mode=app 细则全文在 skill（--mobi-* 调色板 + MobiApp.issueNewTurn——核心段只留指路）', () => {
-    expect(skill).toMatch(/--mobi-\*` CSS variable palette/);
-    expect(skill).toContain('var(--mobi-bg)');
-    expect(skill).toContain('window.MobiApp.issueNewTurn(text)');
-    expect(skill).toMatch(/ONLY from explicit user actions/i);
-    // 判据缺位防护：skill 单独被读时三层判据仍在
-    expect((skill.match(/Form routing:/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  it('mode=app 细则全文在 references/app-details.md（--mobi-* 调色板 + MobiApp.issueNewTurn）', () => {
+    expect(appDetails).toMatch(/--mobi-\*` CSS variable palette/);
+    expect(appDetails).toContain('var(--mobi-bg)');
+    expect(appDetails).toContain('window.MobiApp.issueNewTurn(text)');
+    expect(appDetails).toMatch(/ONLY from explicit user actions/i);
   });
 
-  it('skill 教学的 --mobi-* 变量 ⊆ shared 词表（教学虚构变量会让模型照抄产出坏 app）', () => {
-    const taught = new Set(skill.match(/--mobi-[a-z-]+/g) ?? []);
+  it('references 教学的 --mobi-* 变量 ⊆ shared 词表（教学虚构变量会让模型照抄产出坏 app）', () => {
+    const taught = new Set(
+      [...appDetails.matchAll(/--mobi-[a-z-]+/g), ...skill.matchAll(/--mobi-[a-z-]+/g)].map((m) => m[0]),
+    );
     const known = new Set(MOBI_THEME_VAR_LIST);
     const invented = [...taught].filter((v) => !known.has(v));
     expect(invented).toEqual([]);

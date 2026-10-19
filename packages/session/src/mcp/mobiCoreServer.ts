@@ -31,6 +31,7 @@ import { MOBI_CORE_SERVER_NAME } from '@mobi/shared'
 import type { AgentSessionLocator } from '../agent/agentCapabilities'
 import { CHANGE_TITLE_TOOL_NAME, createChangeTitleToolForSession } from './changeTitleTool'
 import { webSearchTool, webFetchTool } from '../webtools/server'
+import { OPENUI_COMPONENTS_TOOL_NAME, openuiComponentsTool } from './openuiComponentsTool'
 import { toSdkTool } from './sdkTool'
 
 /**
@@ -56,6 +57,12 @@ const MOBI_CORE_TOOLS = [
     {
         name: webFetchTool.name,
         build: (_client: ApiSessionClient, _getAgentLocator: () => AgentSessionLocator | null) => webFetchTool,
+    },
+    {
+        // openui 组件签名按需检索（prompt 分层配套，见 openuiComponentsTool.ts 说明）
+        name: OPENUI_COMPONENTS_TOOL_NAME,
+        build: (_client: ApiSessionClient, _getAgentLocator: () => AgentSessionLocator | null) =>
+            toSdkTool(openuiComponentsTool),
     },
 ]
 

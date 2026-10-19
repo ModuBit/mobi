@@ -91,16 +91,30 @@ graph LR
 | Map 三档由 daemon 设置推导、组件签名不变 | 高德两种 key 类型不可互换：JS API key + `securityJsCode` 才能开交互地图（且受域名白名单约束），Web 服务 key 只能拉静态图。模型侧只写 `Map(center, zoom, markers, paths)`，渲染档位按配置自动降级——没有 key 也不报错，退成 URI 链接 |
 | 静态图走 daemon 代理而非浏览器直连 | Web 服务 key 永不下发：前端 `<img src="/api/map/static?...">` 同源请求，daemon 拼高德参数、带 key 拉图并缓存（60 条/5 分钟 + in-flight 去重）。同时规避 CORS 与沙箱 CSP 的 `img-src` 限制 |
 | 交互地图不经沙箱 | HtmlView / `mode=app` 的 CSP 是 `connect-src 'none'`（ADR 0007），瓦片请求发不出去；交互地图只能在 Native 层（Renderer 直出 DOM）实现。`securityJsCode` 明文下发仅适用于个人本地部署，公开部署须换官方服务端代理 |
+| 海外视野换第三方栅格瓦片 | 高德底图海外只覆盖到约 8 级（9 级以上瓦片为空、画布全白）：交互地图对海外坐标用 `AMap.TileLayer({ tileUrl })` 加载 Esri World Street Map（亮/暗两套），只挂该图层不叠高德空底图；静态图走的是高德 Web 服务代理、无法换瓦片，因此把 zoom 钳到 8。判定按经纬度是否落在中国框内（73–135E / 18–54N） |
 
-## prompt 分层复核（1.0 升级收口）
+## prompt 分层复核（1.0 升级收口；分层形态已被下方「prompt 形态 v2」取代，本段保留作演进记录）
 
 - **官方组件表 diff**：0.17.0 与 0.18.1 的 react-ui 组件集合逐名一致（各 82 个），1.0 升级没有新增组件需要重新分层——核心白名单无需因版本调整。
 - **核心白名单（33 个）不变**：按既有判据复核——布局/文本/表单件（小签名、高频）常驻；CardBlock 系（每件 ~1.1K chars）与 Charts/Calendar/Carousel/Modal/Tabs/Accordion/DatePicker/Slider/EditableTable/EntityList 等重签名、低频件留在 skill 全量目录。简单场景自洽，复杂件的失败模式 = 多一次 skill 加载。
-- **体积与策略**：核心段 31,996 chars（预算门 32K，票 02 定），余量 4；skill 53,570 chars（82 官方 + 13 自定义 + 59 函数签名）。再扩核心段必须先收窄现有判据/示例，不静默抬高预算门（`tests/claude/utils/systemPrompt.test.ts` 锁 ≤32_000）。
-- **新增能力面进触发词**：`SKILL_DESCRIPTION` 明确列出 `SVG drawings (Svg shapes)`、`sandboxed HtmlView pages` 与 `geographic maps (Map with AMap)`，复杂件加载路径可被匹配到。
+- **体积与策略**：核心段 31,992 chars（预算门 32K，票 02 定），余量 8；skill 54,919 chars（82 官方 + 13 自定义 + 59 函数签名）。再扩核心段必须先收窄现有判据/示例，不静默抬高预算门（`tests/claude/utils/systemPrompt.test.ts` 锁 ≤32_000）。
+- **新增能力面进触发词**：`SKILL_DESCRIPTION` 明确列出 `SVG drawings (Svg shapes)`、`sandboxed HtmlView pages`、`geographic maps (Map with AMap)` 与 `rich composed pages (travel itineraries, guides, multi-section reports)`，复杂件加载路径可被匹配到。
+- **富混排页面先加载 skill**：行程/指南/dashboard/报告类请求必须走 `mobi:openui`（插件命名空间）→ 整块 openui-lang 编排；E2E 实测旧流程只出一个小卡 + 无效 Table、其余退回 Markdown。skill 内带可照抄的「标题 + 编号 Map + 逐项 Card + 提示卡」示例。
+- **skill frontmatter 必须在文件首行**：生成脚本把版权注释放在 frontmatter 之前会导致 CC 完全不解析该 skill（`Skill(mobi:openui)` 返回 `Unknown skill`，2026-10-19 E2E 实锤）。`SKILL_FILE_HEADER` 因此排在前言之后，同步测试用 `startsWith('---\nname: openui\n')` 锁定。
 - **三层能力面落位**：函数目录（59）常驻核心段；官方组件按白名单二分；自定义组件签名在 skill 全量，媒介判据（何时用 Chart/Svg/HtmlView/Map）常驻核心段。
 - **教学修正（1.0 E2E 实锤，2026-10-19）**：① Form 第二参数必须是 `Buttons([...])` 包裹——直传单个 Button 被 schema 丢弃，整块无提交按钮；② 派生值（按钮/文案三元）必须写普通语句 `submitBtn = ...`，不能写 `$submitBtn = ...`——`$` 初始化在 lang-core 里存原始 AST、不求值，渲染为空（0.x/1.0 同行为）；③ Polyline/Polygon 首参是 `"x1,y1 x2,y2"` points 字符串，位置坐标写法被 schema 丢弃。
 
+## prompt 形态 v2：名录常驻 + 签名按需检索（2026-10-19 裁决落定）
+
+三档 A/B 实验（现状 35 组件全签名 vs 热集+名录 vs 纯名录）+ 四项瘦身（A 官方 notes 去重 / B mobi 规则 concise / C 函数分组名录 / D 描述截 80）后，核心段落定 **c 档（默认）**：**零常驻组件签名 + 95 组件名录（`Name — 一句话`）+ 59 函数分组名录（六类各一行）+ `openui_components` MCP 工具按需检索**。体积 31,993 → **20,307 chars**（-36%，预算门 22K）。E2E 6 探针 × 3 档 + 瘦身回归实测：渲染率、冷组件正确性（RadarChart/Map/DatePicker/LineChart 全写对）、耗时与全签名档打平，浏览器抽样零「无效语句」告警。
+
+- **设计对齐 CC deferred tools**：能力面用「名字+一句话」常驻（模型看得见才能自由组合），细节（签名/schema）经工具按需拉取——模仿 CC 工具不全进 system prompt 的模式。system prompt 体积红线：绝不提议全量常驻。
+- **`openui_components` 工具（mobi-core，remote/local 双壳同核心）**：query 逗号分隔名（子串、大小写不敏感、函数词可带 `@`），组件+函数双目录检索；未命中返回全部名录提示（改名重试比报错便宜）。数据源 `openuiCatalog.generated.ts`（95 组件 + 59 函数）与 prompt 同一 library 单源，生成脚本一并产出。
+- **官方 componentGroups.notes 是「组合教学」的官方承载位**：组合模式 notes（Modal 放 Form / Tabs 共享 $binding / Table 列式）保留常驻；单组件深教（EditableTable 两条）下沉 skill。将来扩展「怎么组合」就长在 groups.notes 与 skill。
+- **skill 拆分为索引 + references（渐进披露，2026-10-19 同日落地）**：`Skill(mobi:openui)` 只注入 SKILL.md 索引（~6.4K：触发说明 + 全部规则 + references 清单），全量签名/示例/app 细则移入 `references/{signatures,examples,app-details}.md` 按需 Read。加载成本从「一律 54.9K」降到「6.4K + 按需 1 个 reference（2-37K）」。名录不进 skill（system prompt 已常驻，避免双源）；示例是模型写组合页前最有价值的输入；signatures.md 内部按官方八组排版（浏览场景），点名查签名优先走工具。扩展模式：新组件 → 名录一行（prompt）+ signatures 加签名；新组合教学 → 新增 `references/patterns-*.md` + SKILL.md 索引加一行。E2E 实证（模型时段不稳前完成的链路）：加载索引后模型立即用 `openui_components` 精确点名 Map/Steps/ContextCardBlock 等——未瞎写签名。
+- **mobi 规则 concise 化**：One-shot action（低频深教）与 Charts 教学句的核心段版本只留闸门语义/反例/媒介判据，完整代码模式在 skill（`SHARED_RULES` 结构 `{ text, concise? }`，skill 取 text、c 档取 concise ?? text）。
+- **函数名录分组**：`Lists (build/transform arrays): @Append, @Prepend, ...` 六类各一行，类别一句话承担语义；将来函数膨胀按类加行即可，签名检索已就绪。
+
 ## 测试 seam
 
-纯函数直测（`tests/ui/openui/`）：actionState（配对/孤儿/queued 窗口）、actionStore（单调守卫/乐观口）、snapshotInjection（direct 单通道/合并）、bindingParser、fenceIndex（GFM 扫描/幂等）、actionMessage（组装）。集成面：`OpenUIAction.integration.test.tsx`（回路② 点击 → 发送）、`OpenUIInPlaceUpdate.integration.test.tsx`（档③ 原地更新）、`OpenUIDemoComponents.integration.test.tsx`（票 03：Chart/Svg/HtmlView 经同一条 Renderer 装配挂载）、`OpenUIMapComponent.integration.test.tsx`（Map 三档：none 降级链接 / static 代理 URL / interactive loader 与覆盖物）。真机验收 recipe 见 `.claude/skills/run-tests/memory/generative-ui-verify.md`；特性 spec 在 `.scratch/generative-ui/spec.md`。
+纯函数直测（`tests/ui/openui/`）：actionState（配对/孤儿/queued 窗口）、actionStore（单调守卫/乐观口）、snapshotInjection（direct 单通道/合并）、bindingParser、fenceIndex（GFM 扫描/幂等）、actionMessage（组装）。集成面：`OpenUIAction.integration.test.tsx`（回路② 点击 → 发送）、`OpenUIInPlaceUpdate.integration.test.tsx`（档③ 原地更新）、`OpenUIDemoComponents.integration.test.tsx`（票 03：Chart/Svg/HtmlView 经同一条 Renderer 装配挂载）、`OpenUIMapComponent.integration.test.tsx`（Map 三档：none 降级链接 / static 代理 URL / interactive loader 与覆盖物；流式期间不初始化；海外静态 zoom 钳制与交互瓦片替换）。真机验收 recipe 见 `.claude/skills/run-tests/memory/generative-ui-verify.md`；特性 spec 在 `.scratch/generative-ui/spec.md`。

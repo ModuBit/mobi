@@ -28,6 +28,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createServer } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { AddressInfo } from "node:net";
+import { openuiComponentsTool } from "../../mcp/openuiComponentsTool";
 import { asMcpInputSchema } from "../../mcp/mcpSchemaCompat";
 import { logger } from "@mobi/node-core/logger";
 import { ApiSessionClient } from "../../api/apiSession";
@@ -56,6 +57,13 @@ export async function startMobiMcpServer(
         title: changeTitleTool.title,
         inputSchema: asMcpInputSchema(changeTitleTool.inputSchema),
     }, async (args: unknown) => changeTitleTool.execute(args));
+
+    // openui 组件签名按需检索（与 remote 进程内壳共用同一核心，见 openuiComponentsTool.ts）
+    mcp.registerTool(openuiComponentsTool.name, {
+        description: openuiComponentsTool.description,
+        title: openuiComponentsTool.title,
+        inputSchema: asMcpInputSchema(openuiComponentsTool.inputSchema),
+    }, async (args: unknown) => openuiComponentsTool.execute(args));
 
     //
     // Create the HTTP server
