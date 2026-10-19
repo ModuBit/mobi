@@ -94,6 +94,7 @@ afterEach(() => {
     amap.constructed.length = 0
     amap.load.mockClear()
     amap.mapInstance.add.mockClear()
+    amap.mapInstance.setFitView.mockClear()
     amap.mapInstance.destroy.mockClear()
 })
 
@@ -135,5 +136,7 @@ describe('Map 组件三档渲染', () => {
         expect(amap.constructed.filter((c) => c.kind === 'Marker')).toHaveLength(1)
         expect(amap.constructed.filter((c) => c.kind === 'Polyline')).toHaveLength(1)
         await waitFor(() => expect(amap.mapInstance.add).toHaveBeenCalled())
+        // 显式 zoom 时不得用 fitView 顶掉调用方视野（单 marker 会被顶到 17+ 级）
+        expect(amap.mapInstance.setFitView).not.toHaveBeenCalled()
     })
 })

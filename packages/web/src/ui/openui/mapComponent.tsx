@@ -241,7 +241,9 @@ function InteractiveMap({ props, view }: { props: MapProps; view: MapSettingsVie
                 }
                 if (overlays.length > 0) {
                     map.add(overlays)
-                    map.setFitView()
+                    // 显式给了 center/zoom 就尊重调用方的视野；都没给才自动框选覆盖物
+                    // （否则单个 marker 会被 fitView 顶到 17+ 级，zoom 参数形同虚设）
+                    if (props.center === undefined && props.zoom === undefined) map.setFitView()
                 }
             } catch {
                 if (!cancelled) setFailed(true)
