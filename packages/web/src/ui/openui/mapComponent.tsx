@@ -118,6 +118,10 @@ function useColorScheme(ref: RefObject<HTMLElement | null>): 'light' | 'dark' {
 const boxStyle = (height: number): CSSProperties => ({
     position: 'relative',
     height,
+    // 助手气泡是 shrink-to-fit：子元素 width:100% 对固有宽度贡献为 0，整块会塌成 2px。
+    // 给地图一个最小固有宽度，保证只输出 Map 的回复也能撑开气泡。
+    width: '100%',
+    minWidth: 280,
     borderRadius: 12,
     overflow: 'hidden',
     // 底纹：图片/瓦片未就绪时不留纯色空白（rgba 双档通用，不依赖主题变量）
