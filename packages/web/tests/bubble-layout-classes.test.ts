@@ -17,6 +17,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, it, expect } from 'vitest'
+import { WEB_ROOT, collectSourceFiles, stripComments } from './helpers/themeGuards'
 
 /**
  * 回归守卫：气泡布局类不得回退成 `.ant-bubble:has(...)`
@@ -29,22 +30,7 @@ import { describe, it, expect } from 'vitest'
  * 允许其他元素上的 :has()（split-button、select、composer 等），只约束气泡锚点。
  */
 
-const SRC = path.resolve(__dirname, '../src')
-
-function walk(dir: string): string[] {
-    return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-        const full = path.join(dir, entry.name)
-        if (entry.isDirectory()) return walk(full)
-        return /\.(css|ts|tsx)$/.test(entry.name) ? [full] : []
-    })
-}
-
-/** 去注释：命中规则以被注释掉的说明文字为误报来源最烦人（本次改动就有一堆「不用 :has()」注释） */
-function stripComments(src: string): string {
-    return src
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/^\s*\/\/.*$/gm, '')
-}
+const SRC = path.join(WEB_ROOT, 'src')
 
 type Violation = { file: string; selector: string }
 
@@ -92,7 +78,7 @@ function findBubbleHas(source: string): string[] {
 describe('气泡布局类守卫', () => {
     it('源码中不存在锚定在 .ant-bubble 上的 :has()', () => {
         const violations: Violation[] = []
-        for (const file of walk(SRC)) {
+        for (const file of collectSourceFiles(SRC)) {
             const source = stripComments(fs.readFileSync(file, 'utf8'))
             for (const selector of findBubbleHas(source)) {
                 violations.push({ file: path.relative(SRC, file), selector })

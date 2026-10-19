@@ -15,8 +15,9 @@
  */
 
 /**
- * 主题守卫测试的共享脚手架（配色 / 圆角两个守卫都用）：读 DESIGN.md 的 frontmatter 块、
- * 遍历 src 下的源文件。此前这两段在每个守卫里各抄一份，加一个守卫就再抄一遍。
+ * 源码扫描类守卫测试的共享脚手架（配色 / 圆角 / 气泡布局类）：读 DESIGN.md 的
+ * frontmatter 块、遍历 src 下的源文件、去注释。此前这几段在每个守卫里各抄一份，
+ * 加一个守卫就再抄一遍。
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -50,4 +51,9 @@ export function collectSourceFiles(dir: string): string[] {
         else if (/\.(ts|tsx|css)$/.test(entry)) out.push(full)
     }
     return out
+}
+
+/** 去注释：规则的字面量扫描若把说明文字也算进去，误报最烦人（如「不用 :has()」注释） */
+export function stripComments(source: string): string {
+    return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 }

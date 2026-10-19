@@ -21,6 +21,7 @@ import { createCliOutputBlock, isCliOutputText, mergeCliOutputBlocks, extractSta
 import { parseMessageAsEvent } from './reducerEvents'
 import { getUserPlainText } from './userContent'
 import { ensureToolBlock, extractTitleFromChangeTitleInput, isChangeTitleToolName, isHiddenTool, isPlanModeEnterTool, type PermissionEntry } from './reducerTools'
+import { messageBlockKeyPrefix } from './blockId'
 
 // 根据事件类型获取渲染提示
 function getEventDisplay(event: { type: string; [key: string]: unknown }): EventDisplay | undefined {
@@ -304,12 +305,9 @@ export function reduceTimeline(
             // 循环后统一打标；无 agent-text 块（仅 tool_use 被截断）不标——截断语义只接管
             // 「正文被当完整消息渲染」这一处
             let lastAgentTextBlock: { aborted?: boolean } | null = null
-            // agent block 的稳定 id：snapshot 行与 full 行的 localId 并不相同（前者是
-            // message_start 的 stream uuid，后者是落库用的 .jsonl uuid），拿它作 key 会让
-            // snapshot→full 时 block.id 变化，整块重 mount（thinking 标题重新播淡入 = 思考
-            // 完成后「再闪一下」的根因）。两者真正共享的是 Anthropic message.id，优先用它；
-            // 缺 id 的历史/本地消息回退 localId/行 id。`||` 防空串退化成 ':idx' 的 duplicate key
-            const blockId = (idx: number) => `${msg.messageId || msg.localId || msg.id}:${idx}`
+            // agent block 的稳定 id（口径见 blockId.ts）：snapshot 与 full 行共享
+            // Anthropic message.id，拿不稳定的行级 localId 作 key 会整块重 mount
+            const blockId = (idx: number) => `${messageBlockKeyPrefix(msg)}:${idx}`
             for (let idx = 0; idx < msg.content.length; idx += 1) {
                 const c = msg.content[idx]
                 if (c.type === 'text') {
@@ -320,7 +318,7 @@ export function reduceTimeline(
 
                     if (isCliOutputText(c.text, msg.meta)) {
                         blocks.push(createCliOutputBlock({
-                            id: `${msg.id}:${idx}`,
+                            id: blockId(idx),
                             localId: msg.localId,
                             createdAt: msg.createdAt,
                             text: c.text,
@@ -362,7 +360,7 @@ export function reduceTimeline(
                 // summary 消息转换为事件显示
                 if (c.type === 'summary') {
                     blocks.push(createEventBlock({
-                        id: `${msg.id}:${idx}`,
+                        id: blockId(idx),
                         createdAt: msg.createdAt,
                         event: { type: 'summary', message: c.summary },
                         meta: msg.meta
@@ -377,7 +375,7 @@ export function reduceTimeline(
                             if (title && !context.emittedTitleChangeToolUseIds.has(c.id)) {
                                 context.emittedTitleChangeToolUseIds.add(c.id)
                                 blocks.push(createEventBlock({
-                                    id: `${msg.id}:${idx}`,
+                                    id: blockId(idx),
                                     createdAt: msg.createdAt,
                                     event: { type: 'title-changed', title },
                                     meta: msg.meta
@@ -426,7 +424,7 @@ export function reduceTimeline(
                         const hiddenToolName = context.hiddenToolUseIds.get(c.tool_use_id)
                         if (hiddenToolName && isPlanModeEnterTool(hiddenToolName)) {
                             blocks.push(createEventBlock({
-                                id: `${msg.id}:${idx}`,
+                                id: blockId(idx),
                                 createdAt: msg.createdAt,
                                 event: c.is_error
                                     ? { type: 'plan-mode-enter-failed' }
@@ -441,7 +439,7 @@ export function reduceTimeline(
                         if (permEntry && isHiddenTool(permEntry.toolName)) {
                             if (isPlanModeEnterTool(permEntry.toolName)) {
                                 blocks.push(createEventBlock({
-                                    id: `${msg.id}:${idx}`,
+                                    id: blockId(idx),
                                     createdAt: msg.createdAt,
                                     event: c.is_error
                                         ? { type: 'plan-mode-enter-failed' }
@@ -457,7 +455,7 @@ export function reduceTimeline(
                         if (!context.emittedTitleChangeToolUseIds.has(c.tool_use_id)) {
                             context.emittedTitleChangeToolUseIds.add(c.tool_use_id)
                             blocks.push(createEventBlock({
-                                id: `${msg.id}:${idx}`,
+                                id: blockId(idx),
                                 createdAt: msg.createdAt,
                                 event: { type: 'title-changed', title },
                                 meta: msg.meta
@@ -513,7 +511,7 @@ export function reduceTimeline(
                 if (c.type === 'sidechain') {
                     blocks.push({
                         kind: 'user-text',
-                        id: `${msg.id}:${idx}`,
+                        id: blockId(idx),
                         localId: null,
                         createdAt: msg.createdAt,
                         blocks: [{ type: 'text', text: c.prompt }]

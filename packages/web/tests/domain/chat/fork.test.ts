@@ -20,8 +20,8 @@ import {
     collectForkTargetBlockIds,
     forkRejectReasonKey,
     extractForkRejectCode,
-    agentBlockMessageKey,
 } from '@/domain/chat/fork'
+import { agentBlockMessageKey, messageBlockKeyPrefix } from '@/domain/chat/blockId'
 import { REWIND_COMMAND } from '@/domain/chat/presentation'
 import type { ChatBlock } from '@/domain/chat/types'
 
@@ -147,15 +147,19 @@ describe('collectForkTargetBlockIds（每 turn 最后一条 agent 文本块 = re
     })
 })
 
-describe('agentBlockMessageKey（agent 文本块 → 消息行 key，与 reducer blockId 前缀同构）', () => {
-    it('localId 在场优先（snapshot 与 full 共享 localId，reducer blockId 同源）', () => {
-        expect(agentBlockMessageKey({ id: 'row-1:0', localId: 'sdk-uuid' })).toBe('sdk-uuid')
+describe('messageBlockKeyPrefix / agentBlockMessageKey（block id 前缀唯一口径）', () => {
+    it('messageId 优先（snapshot 与 full 行共享），其次 localId，最后行 id', () => {
+        expect(messageBlockKeyPrefix({ messageId: 'msg_1', localId: 'stream-uuid', id: 'row-1' })).toBe('msg_1')
+        expect(messageBlockKeyPrefix({ messageId: '', localId: 'stream-uuid', id: 'row-1' })).toBe('stream-uuid')
+        expect(messageBlockKeyPrefix({ localId: null, id: 'row-1' })).toBe('row-1')
     })
 
-    it('localId 缺失回退 block.id 去掉 :idx 后缀；无后缀原样', () => {
-        expect(agentBlockMessageKey({ id: 'row-1:2', localId: null })).toBe('row-1')
-        expect(agentBlockMessageKey({ id: 'row-1', localId: null })).toBe('row-1')
-        expect(agentBlockMessageKey({ id: 'a:b:0', localId: null })).toBe('a:b')
+    it('agentBlockMessageKey 取 block.id 去掉 :idx 后缀；无后缀原样', () => {
+        expect(agentBlockMessageKey({ id: 'msg_1:0' })).toBe('msg_1')
+        expect(agentBlockMessageKey({ id: 'row-1:2' })).toBe('row-1')
+        expect(agentBlockMessageKey({ id: 'row-1' })).toBe('row-1')
+        // 消息 id 本身可含 ':'，按最后一个切
+        expect(agentBlockMessageKey({ id: 'a:b:0' })).toBe('a:b')
     })
 })
 

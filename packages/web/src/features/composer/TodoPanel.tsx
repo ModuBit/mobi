@@ -26,7 +26,7 @@
  * - 合并/排序/统计口径见 checklist.ts（气泡摘要共用同一份）
  */
 
-import { useMemo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import styled from '@emotion/styled'
 import { css, keyframes } from '@emotion/react'
 import { Check, ChevronDown, Lightbulb } from 'lucide-react'
@@ -45,6 +45,8 @@ const ROW_HEIGHT = 44
 const ROW_RADIUS = 'var(--radius-panel)'
 const ROW_RADIUS_OPEN = 'var(--radius-control)'
 const ROW_GAP = 8
+/** 行内左右内衬（= 状态槽与文字间距）：DetailRow 必须与行布局同值，导轨竖线才正对状态槽 */
+const ROW_INSET = 10
 
 /**
  * 颜色只用 shadcn/UIARC 全局变量（--muted / --text-secondary / --muted-foreground /
@@ -84,11 +86,11 @@ const Row = styled.div<{ $open: boolean }>`
 const rowLayout = css`
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: ${ROW_INSET}px;
     box-sizing: border-box;
     width: 100%;
     height: ${ROW_HEIGHT}px;
-    padding: 0 10px;
+    padding: 0 ${ROW_INSET}px;
     border: 0;
     border-radius: inherit;
     background: transparent;
@@ -212,8 +214,8 @@ const DetailOverflow = styled.div`
 
 const DetailRow = styled.div`
     display: flex;
-    gap: 10px;
-    padding: 0 10px 10px;
+    gap: ${ROW_INSET}px;
+    padding: 0 ${ROW_INSET}px ${ROW_INSET}px;
 `
 
 /** 与行首状态槽同宽的导轨列，让竖线正对状态徽标中心 */
@@ -245,7 +247,7 @@ export type TodoPanelProps = {
     onClear: (sessionId: string, clearFields: ClearRuntimeStateField[]) => Promise<void>
 }
 
-export function TodoPanel({ todos, tasks, sessionId, onClear }: TodoPanelProps) {
+function TodoPanelInner({ todos, tasks, sessionId, onClear }: TodoPanelProps) {
     const { t } = useTranslation()
     const checklist = useMemo(() => buildChecklist(todos, tasks), [todos, tasks])
     const [openKeys, setOpenKeys] = useState<Record<string, boolean>>({})
@@ -358,6 +360,13 @@ export function TodoPanel({ todos, tasks, sessionId, onClear }: TodoPanelProps) 
         </>
     )
 }
+
+/**
+ * memo：面板挂在弹层里，而父级（ChatContainer → ComposerStatusPills）每个流式帧都会
+ * 重渲染；props（runtimeState 的 todos/tasks、稳定回调）在无清单变化时引用不变，
+ * memo 让整棵胶囊行树在流式期 bailout。
+ */
+export const TodoPanel = memo(TodoPanelInner)
 
 function entryLabel(entry: ChecklistEntry): string {
     return entry.kind === 'todo' ? entry.todo.content : entry.task.subject

@@ -72,7 +72,8 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block, actions }:
     if (formatted === null) return null
 
     const d = block.display
-    const alignClass = d?.align ? `event-align-${d.align}` : undefined
+    // 对齐由列表项声明（buildBubbleItems 的 bubble-event-align-*，消费方是 antd.css）；
+    // 行内不再重复声明 event-align-*（旧 :has() 锚点删除后已无消费方）
     // goal-progress met=true → success 绿；met=false → default 走 colorTextQuaternary（中性）
     const colorValue = d?.color === 'error'
         ? token.colorError
@@ -83,7 +84,6 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block, actions }:
                 : token.colorTextQuaternary
     return (
         <div
-            className={alignClass}
             style={{
                 padding: d?.padding === false ? 0 : '4px 0',
                 fontSize: 11,

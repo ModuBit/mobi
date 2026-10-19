@@ -68,7 +68,6 @@ export const TurnDiffCard = memo(function TurnDiffCard({ payload, onReview }: { 
     return (
         <div
             data-testid="turn-diff-card"
-            className="turn-diff-fullwidth"
             style={{
                 width: '100%',
                 border: `1px solid ${token.colorBorderSecondary}`,

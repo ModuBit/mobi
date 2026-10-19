@@ -54,9 +54,17 @@ export type GroupedBlock = ChatBlock | ToolCallGroup
 /** 判断 reasoning 是否活跃（正在思考）—— 由调用方（buildBubbleItems）构造，供组头动态标题与组内 thinking 展开态使用 */
 export type IsActiveReasoning = (block: AgentReasoningBlock) => boolean
 
-/** 工具是否活跃（运行中/待审批）—— 组头「正在 xxx」动态标题的判定来源（仅供本文件与组渲染器内部使用） */
-function isActiveTool(block: ToolCallBlock): boolean {
+/**
+ * 工具是否活跃（运行中/待审批）—— 组头「正在 xxx」动态标题与运行指示（静默告警抑制）
+ * 共用同一口径：口径只改这里一处。
+ */
+export function isActiveTool(block: ToolCallBlock): boolean {
   return block.tool.state === 'running' || block.tool.state === 'pending'
+}
+
+/** 块列表里是否存在活跃工具（含工具卡 children 的嵌套调用） */
+export function hasActiveTool(blocks: ChatBlock[]): boolean {
+  return blocks.some(b => b.kind === 'tool-call' && (isActiveTool(b) || hasActiveTool(b.children)))
 }
 
 /**

@@ -31,7 +31,7 @@ import { resolve, relative } from 'node:path'
 import { shadcnLightToken, shadcnDarkToken, RADIUS_TIERS, RADIUS_TIER_KEYS } from '@/core/config/theme/tokens'
 import { shadcnLightComponents, shadcnDarkComponents } from '@/core/config/theme/components'
 import { buildShadcnThemeCss } from '@/core/config/theme/cssVars'
-import { collectSourceFiles, readDesignBlock, WEB_ROOT } from '../../../helpers/themeGuards'
+import { collectSourceFiles, readDesignBlock, stripComments, WEB_ROOT } from '../../../helpers/themeGuards'
 
 /** 解析 frontmatter 的 rounded 块 */
 function readDesignTiers(): Record<string, number> {
@@ -74,11 +74,6 @@ function radiusOverrides(theme: unknown): Array<{ component: string; key: string
  *      `:root` 的取档变量在那个文档里不存在，只能写字面量（见 DESIGN.md「Shapes」）。
  */
 const RADIUS_LITERAL_EXCEPTIONS = ['src/features/files/editor.css', 'src/ui/base/sandbox/SandboxHtmlFrame.tsx']
-
-/** 去掉注释再扫：档位值常出现在解释性注释里（「面板档 22px」），那不是声明 */
-function stripComments(source: string): string {
-    return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-}
 
 describe('圆角档位与 DESIGN.md 一致性（文档与代码同源守卫）', () => {
     it.each(['light', 'dark'] as const)('%s 档的四条 antd 槽位与文档数值一致', mode => {

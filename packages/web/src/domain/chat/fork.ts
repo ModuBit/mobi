@@ -99,17 +99,6 @@ export function collectForkTargetBlockIds(blocks: ChatBlock[]): Set<string> {
 }
 
 /**
- * agent 文本块 → 消息行 key（供 metadata/seq 查表）：与 reducerTimeline 的 blockId
- * `${msg.localId || msg.id}:${idx}` 同构——localId 在场直接用（snapshot 与 full 共享），
- * 缺失时取 block.id 去掉 `:idx` 后缀（按最后一个 ':' 切，消息 id 本身可含 ':'）。
- */
-export function agentBlockMessageKey(block: { id: string; localId: string | null }): string {
-    if (block.localId) return block.localId
-    const idx = block.id.lastIndexOf(':')
-    return idx > 0 ? block.id.slice(0, idx) : block.id
-}
-
-/**
  * daemon forkSession 失败 reason code → i18n key 判别（镜像 rewindRejectReasonKey）：
  * 已知 code 各归专用文案，其余（session-not-found / access-denied / 未知）笼统
  * unavailable——daemon 的英文 error 串不直出给用户。
