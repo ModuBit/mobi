@@ -1,6 +1,6 @@
 # OpenUI 渲染层（Intelligent UI Native 层）
 
-fenced `openui` / `openui-lang` 代码块渲染为可交互 UI（官方 @openuidev/react-ui 组件库 + react-lang 解释器），并向上接通两条回灌回路：操作发消息（档②）、操作状态随 agent turn 原地更新（档③）。渲染器挂载的 mobi 库在官方组件之上加 59 个本地 `@函数`（`@GroupBy`/`@Payment`/`@Format` 等，shared 单源）——模型写一行调用，求值在用户浏览器完成，零网络零 token。与 Sandbox App（`mode=app` 的 .html 文件 iframe，`ui/SandboxHtmlFrame.tsx`）是平行两层，按场景分工——本文只覆盖 Native 层。
+fenced `openui` / `openui-lang` 代码块渲染为可交互 UI（官方 @openuidev/react-ui 组件库 + react-lang 解释器），并向上接通两条回灌回路：操作发消息（档②）、操作状态随 agent turn 原地更新（档③）。渲染器挂载的 mobi 库在官方组件之上加 59 个本地 `@函数`（`@GroupBy`/`@Payment`/`@Format` 等，shared 单源）与 12 个自定义组件（`Chart` 图表、`Svg` 图元族、`HtmlView` 沙箱页）——模型写一行调用，求值/绘制在用户浏览器完成，零网络零 token。与 Sandbox App（`mode=app` 的 .html 文件 iframe，`ui/SandboxHtmlFrame.tsx`）是平行两层，按场景分工——本文只覆盖 Native 层。
 
 ## 渲染入口与懒加载链路
 
@@ -61,7 +61,10 @@ graph LR
 | `openui/bindingParser.ts` | fence 源码 → 操作绑定表（AST 主 seam，parser schema 取 mobiLibrary 与渲染同源）；产出 setTargets/stateVars/actions/forms |
 | `openui/snapshotInjection.ts` | 表单快照 → initialState 键映射（两代形状：0.x `$` 平铺走 bindingDefaults、1.0 formName 嵌套走 store.set）；多快照逐条解析后合并 |
 | `openui/fenceIndex.ts` | fence 身份 token 注解/反解（GFM 围栏扫描） |
-| `openui/mobiLibrary.tsx` | mobi 库派生（`openuiLibrary.extend`）：Button capture 同步帧写 statementId 到 globalThis registry（取后即清）+ @函数目录挂载 |
+| `openui/mobiLibrary.tsx` | mobi 库派生（`openuiLibrary.extend`）：Button capture 同步帧写 statementId 到 globalThis registry（取后即清）+ @函数目录 + 自定义组件（票 03）挂载 |
+| `openui/chartComponent.tsx` | Chart 组件实现（bar/line/area/pie/donut/scatter）：行式数据 → 内联 SVG，分类色取 `--mobi-chart-N`（tokens.ts 双档单源） |
+| `openui/svgComponents.tsx` | Svg 容器 + 9 个图元（Circle/Ellipse/Rect/Line/Path/Polyline/Polygon/G/SvgText）：属性白名单校验 + 颜色 token 投影 |
+| `openui/htmlViewComponent.tsx` | HtmlView：`srcDoc` 沙箱 iframe（opaque origin、无表单/弹层），CSP 按 mobi 基线收紧（connect-src 'none'） |
 | `openui/theme.ts` | antd token → react-ui Theme 双档翻译（主题同源跟随） |
 
 ## 关键决策
@@ -79,7 +82,11 @@ graph LR
 | 流式期间跳过 AST 解析（EMPTY_BINDINGS 门控） | code 每 delta 变化，解析结果无处消费——点击被 streaming 闸门挡、快照回注只在封口后生效 |
 | `updateSessionMetadata` 永不顶起 updated_at | 档③ meta 回写若顶起 updated_at 会把会话顶到列表首位 |
 | @函数目录经 shared 单源 + `library.extend()` 挂载 | web 与 session prompt 生成器互不可依赖，shared 是唯一共同依赖；函数是模型可调用的生成端协议（59 个、纯 JS+Zod、浏览器求值）。必须 extend 派生：createLibrary 的 toJSONSchema/prompt 闭包捕获创建时的 records，`{...openuiLibrary, functions}` 浅拷贝改不到闭包，运行时仍报 Unknown function（2026-10-19 票 02 E2E 实锤） |
+| 自定义组件签名进 shared、实现留 web | 同一理由：session 生成 prompt 需要签名、web 渲染需要 React 实现，而两包互不可依赖。shared 只放 name/props/description，生成端用空桩注册（票 03） |
+| 图表分类色单源（tokens.ts CHART_*）→ 两条投影 | 自绘 Chart/Svg 走 CSS 变量 `--mobi-chart-N`（双档随主题翻），react-ui 内置图表走 `defaultChartPalette`（JS 数组）；两套图表同屏必须同一配色语言，改色只改一处 |
+| HtmlView 的 CSP 比上游收紧 | 上游允许连 CDN 出站与 https 图片，mobi 安全底线是 `connect-src 'none'`（ADR 0007）；脚本/样式仍可引 https CDN（canvas 库需要），与 PREVIEW_CSP 同口径。iframe 只给 `allow-scripts`（opaque origin），比 Sandbox App 更严 |
+| Svg 用位置参数顺序教学 + 示例 | E2E 实锤：只列签名时模型按直觉写 `Svg(width,height,shapes)` / `SvgText(x,y,text)`，整条语句被 schema 丢弃；核心段给「shapes 在前、text 在前」的一句话示例，并限制 viewBox ~240 宽保证手机可读 |
 
 ## 测试 seam
 
-纯函数直测（`tests/ui/openui/`）：actionState（配对/孤儿/queued 窗口）、actionStore（单调守卫/乐观口）、snapshotInjection（direct 单通道/合并）、bindingParser、fenceIndex（GFM 扫描/幂等）、actionMessage（组装）。集成面：`OpenUIAction.integration.test.tsx`（回路② 点击 → 发送）、`OpenUIInPlaceUpdate.integration.test.tsx`（档③ 原地更新）。真机验收 recipe 见 `.claude/skills/run-tests/memory/generative-ui-verify.md`；特性 spec 在 `.scratch/generative-ui/spec.md`。
+纯函数直测（`tests/ui/openui/`）：actionState（配对/孤儿/queued 窗口）、actionStore（单调守卫/乐观口）、snapshotInjection（direct 单通道/合并）、bindingParser、fenceIndex（GFM 扫描/幂等）、actionMessage（组装）。集成面：`OpenUIAction.integration.test.tsx`（回路② 点击 → 发送）、`OpenUIInPlaceUpdate.integration.test.tsx`（档③ 原地更新）、`OpenUIDemoComponents.integration.test.tsx`（票 03：Chart/Svg/HtmlView 经同一条 Renderer 装配挂载）。真机验收 recipe 见 `.claude/skills/run-tests/memory/generative-ui-verify.md`；特性 spec 在 `.scratch/generative-ui/spec.md`。

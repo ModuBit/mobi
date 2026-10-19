@@ -167,6 +167,16 @@ describe('openui 核心段契约（generative-ui 票 02 注入、票 08 分层�
     }
   });
 
+  it('自定义组件的媒介判据在核心段（票 03）：Chart/Svg/HtmlView 各归其位', () => {
+    expect(OPENUI_CORE_PROMPT).toMatch(/Charts & drawings \(custom components/);
+    expect(OPENUI_CORE_PROMPT).toMatch(/series are column names like \["revenue"\], NOT Series\(\.\.\.\)/);
+    // 位置参数顺序示例（E2E 实锤：只给签名列表时模型按直觉写成 Svg(width,height,shapes)）
+    expect(OPENUI_CORE_PROMPT).toMatch(/Svg\(\[Rect\(10, 10, 80, 40, "surface", "ink", 2\), SvgText\("Step", 20, 80, 12, "muted"\)\]/);
+    expect(OPENUI_CORE_PROMPT).toMatch(/HtmlView only for a game or animation/);
+    // 图元颜色 token 词汇
+    expect(OPENUI_CORE_PROMPT).toMatch(/"chart1"…"chart6"/);
+  });
+
   it('核心段体积受控（≤32K chars ≈ 8K tokens——膨胀预算门；票 02 由 26K 放宽：59 个 @函数目录 ≈8.5K chars 常驻，再扩须先收窄）', () => {
     expect(OPENUI_CORE_PROMPT.length).toBeLessThanOrEqual(32_000);
   });
@@ -203,6 +213,14 @@ describe('openui skill（全量目录，票 08 随 mobi 插件分发）', () => 
       expect(skill).toContain(c);
     }
     expect(skill.length).toBeGreaterThan(30_000);
+  });
+
+  it('自定义组件签名在（票 03）：Chart / Svg 图元 / HtmlView 随 skill 分发', () => {
+    for (const c of ['Chart(type:', 'Svg(children:', 'Circle(', 'Rect(', 'Path(', 'G(children:', 'SvgText(', 'HtmlView(html:']) {
+      expect(skill).toContain(c);
+    }
+    // Map 不移植（外部瓦片服务/API key，见 shared 归属声明）
+    expect(skill).not.toContain('MapView(');
   });
 
   it('mode=app 细则全文在 skill（--mobi-* 调色板 + MobiApp.issueNewTurn——核心段只留指路）', () => {

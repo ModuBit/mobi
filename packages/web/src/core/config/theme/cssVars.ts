@@ -22,6 +22,8 @@
  */
 
 import {
+    CHART_DARK,
+    CHART_LIGHT,
     NEUTRAL_DARK,
     NEUTRAL_LIGHT,
     RADIUS_TIERS,
@@ -126,6 +128,14 @@ const SEMANTIC_VARS: ReadonlyArray<readonly [string, 'success' | 'warning' | 'da
 ]
 
 /**
+ * 图表分类色的 CSS 投影（tokens.ts CHART_LIGHT/DARK）：Svg 图元与自定义 Chart
+ * 以 `--mobi-chart-N` 取色（见 styles/openui.css 的 --iui-* 别名）；react-ui 内置
+ * 图表走 theme.ts 的 defaultChartPalette，两者同源。
+ */
+const CHART_VARS = (palette: readonly string[]): ReadonlyArray<readonly [string, string]> =>
+    palette.map((color, i) => [`--mobi-chart-${i + 1}`, color] as const)
+
+/**
  * 固定深色舞台（反色气泡 / 登录页徽章等「浅色主题里的深色块」）的取色入口：
  * 一律取净墨档且**不随主题切换**——它们本来就是深底，跟着主题翻色会自相矛盾。
  * 因与主题无关，取值直接写进表里（对照 NEUTRAL_VARS 存的是档名，需运行时按档取）。
@@ -202,6 +212,7 @@ export function buildShadcnThemeCss(mode: Mode): string {
     const selector = mode === 'dark' ? '.dark' : ':root'
     const ramp = mode === 'dark' ? NEUTRAL_DARK : NEUTRAL_LIGHT
     const semantic = mode === 'dark' ? SEMANTIC_DARK : SEMANTIC_LIGHT
+    const chart = mode === 'dark' ? CHART_DARK : CHART_LIGHT
     return [
         `${selector} {`,
         ...renderVars(SHADCN_VAR_MAPPINGS, (tokenKey) => {
@@ -211,6 +222,7 @@ export function buildShadcnThemeCss(mode: Mode): string {
         }),
         ...renderVars(NEUTRAL_VARS, (key) => ramp[key]),
         ...renderVars(SEMANTIC_VARS, (key) => semantic[key]),
+        ...renderVars(CHART_VARS(chart), (value) => value),
         ...renderVars(STAGE_VARS, (value) => value),
         ...renderVars(RADIUS_VARS, (value) => `${value}px`),
         ...renderVars(MOTION_VARS, (value) => value),

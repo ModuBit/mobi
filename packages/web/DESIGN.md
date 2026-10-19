@@ -197,10 +197,11 @@ Mobi 是 Claude Code 的远程驾驶舱。它的视觉是**净白纸 + 净墨**�
 - **交互高亮三档** {colors.hover} / {colors.selected} / {colors.pressed}：hover 是指点未确认，selected 比它深半档，pressed 再深半档。三档与三层纸同属中性阶，**禁止自造 hover 色**（详见「Hover & Selected」）。
 - **Primary {colors.primary}** 是主色，但它是**墨灰** {colors.primary}，不是鲜艳品牌色。primary 按钮就是这块灰。这是整套设计最反直觉也最关键的决策：交互的「重要性」靠**深度的灰**表达，而非色相。
 - **语义色**全部低饱和、土地取色：success 是苔藓绿 {colors.success}，warning 是赤陶橙 {colors.warning}，danger 是砖红 {colors.danger}。绝不用饱和的原色红绿。**每族只有一颗种子**，其九件套（Bg / Border / Hover / Active / Text）由 `spreadSemantic` 从种子按固定比例混合生成——手写九个数必然漂（旧 dark 的 `colorSuccessBorder` 与 `colorSuccessBgHover` 就抄成了同一个值）。
-- **Bash glow {colors.bash-glow}** 是唯一允许「发光」的暖橙，仅用于 Sender 进入 Bash 模式时的发光边框——它是运行态信号，不是装饰。
-- **Hairline {colors.hairline}** 是描边：卡片与分隔线 `hairline`，实控件边界 `hairline-strong`，focus 边框 `hairline-active`。分隔靠留白与 1px 淡线，**永远不用粗实线**。
+- **Bash glow {colors.bash-glow}** 是唯一允许「发光」的暖橙，仅用于 Sender 进入 Bash 模式时的发光边框——它是运行态信号，不是装饰。- **Hairline {colors.hairline}** 是描边：卡片与分隔线 `hairline`，实控件边界 `hairline-strong`，focus 边框 `hairline-active`。分隔靠留白与 1px 淡线，**永远不用粗实线**。
 - **固定深色舞台**（反色气泡 / 登录页终端面板）：它们是「浅色主题里的深色块」，取净墨档且不随主题切换，经 `--mobi-stage-*` 变量取色。
 - **窗口 chrome 色**（浏览器标签栏/系统栏、桌面 WCO 标题栏、首屏兜底）必须等于页面最外层表面：light 取容器 {colors.paper}、dark 取画布 {colors.canvas}。这一个色 daemon 拼 PWA manifest 也要用，而 daemon 够不着本包，故值落在 `@mobi/shared` 的 `CHROME_BG`（守卫比对它与本表的等式，改配色漏改会红）。
+
+- **图表分类色**（`CHART_LIGHT` / `CHART_DARK`，6 色）：数据系列需要比 UI 语义色更多的分类维度，且语义色当系列色会误读（绿色系列 ≠ 成功）。前四色沿用墨/苔藓/赤陶/砖红种子，另补石青、灰紫两档冷色；双档同色相同样受守卫约束。CSS 投影 `--mobi-chart-N`（自绘 Chart/Svg）与 react-ui `defaultChartPalette`（内置图表组件）同源。
 
 ### Dark 模式
 

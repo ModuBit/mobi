@@ -41,17 +41,27 @@ import { writeFileSync } from 'node:fs'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openuiLibrary } from '@openuidev/react-ui/genui-lib'
-import { generateSystemPrompt } from '@openuidev/react-lang'
+import { defineComponent, generateSystemPrompt } from '@openuidev/react-lang'
 import { openuiExamples } from '@openuidev/react-ui/genui-lib/prompt-options'
-import { MOBI_THEME_PALETTE_VARS, openuiFunctions } from '@mobi/shared'
+import { MOBI_THEME_PALETTE_VARS, openuiComponentSpecs, openuiFunctions } from '@mobi/shared'
 import { projectPath } from '@mobi/node-core/projectPath'
 
 /**
- * 带 @函数目录的库实例（票 02）：函数来自 shared 单源（与 web 渲染器同一批
- * 定义），extend 派生新库、base 不变——prompt 生成器与运行时看到的函数目录
- * 由同一份定义决定，不会漂移。
+ * 自定义组件（票 03）在生成端的空实现：prompt 只用 name/props/description，
+ * 不会渲染。实现（含 React）在 web 包，session 不能依赖 web——签名经 shared
+ * 单源共享，这里用空桩把签名注册进同一 library，prompt 与运行时同源。
  */
-const library = openuiLibrary.extend!({ functions: { add: openuiFunctions } })
+const demoComponentStubs = openuiComponentSpecs.map((spec) => defineComponent({ ...spec, component: () => null }))
+
+/**
+ * 带 @函数目录与自定义组件签名的库实例（票 02/03）：定义来自 shared 单源
+ * （与 web 渲染器同一批），extend 派生新库、base 不变——prompt 生成器与运行时
+ * 看到的能力面由同一份定义决定，不会漂移。
+ */
+const library = openuiLibrary.extend!({
+    components: { add: demoComponentStubs },
+    functions: { add: openuiFunctions },
+})
 
 /**
  * 核心组件白名单（常驻 system prompt 的高频子集）：简单交互场景（表单/选择卡/
@@ -82,6 +92,9 @@ const SHARED_RULES = [
     'When the user asks a plain question, wants an explanation, or the answer is simple text, respond in plain markdown with NO openui-lang code.',
     'Keep the prose around the UI concise. Do not duplicate the UI\'s content as markdown tables or lists.',
     'Component names are case-sensitive PascalCase — lowercase names are silently dropped and will not render.',
+    // 自定义组件（票 03）：Chart / Svg 图元 / HtmlView 不在核心清单，签名在 skill；
+    // 这里只教「什么时候用哪个媒介」，防止模型用 Table 硬凑图或滥用 HtmlView
+    'Charts & drawings (custom components): Chart("bar"|"line"|"area"|"pie"|"donut"|"scatter", rows, x?, series?) — series are column names like ["revenue"], NOT Series(...); derive rows with @GroupBy/@Each. Svg(shapes, viewBox, width?, height?) — shapes list first, e.g. `Svg([Rect(10, 10, 80, 40, "surface", "ink", 2), SvgText("Step", 20, 80, 12, "muted")], "0 0 240 120")`; shapes: Circle/Rect/Line/Path/Polygon/Polyline/Ellipse/G/SvgText(text, x, y, size?, fill?, anchor?, weight?). Keep the viewBox about 240 wide and a dozen shapes at most so the drawing stays legible on phones. Colors: "ink"/"muted"/"faint"/"surface"/"info"/"success"/"warning"/"danger"/"purple"/"pink"/"chart1"…"chart6" or CSS colors; HtmlView only for a game or animation with a render loop.',
     // 档③原地更新 + per-action 粒度（票 04/02/per-action 票 02-04）：每个操作一个
     // 专属状态变量（值域约定，名字自由），Set step 做本地即时反馈；host 按操作粒度
     // 回写（registry 身份 + 绑定表），多操作不共享变量——共享是串状态根因
@@ -116,6 +129,14 @@ const APP_DETAIL_RULES = [
     // 档② app bridge（票 06）：app → 宿主回灌。宿主注入 window.MobiApp.issueNewTurn(text)
     'For mode="app" HTML apps: the host also injects `window.MobiApp.issueNewTurn(text)` — call it ONLY from explicit user actions (e.g. a "continue with these choices" button onclick) to send the app\'s current state back to the conversation; the message arrives as if the user typed it. Keep the text a concise plain-language summary of the chosen state (recommended under 200 chars), never call it automatically, and do NOT expose raw JSON dumps.',
 ]
+
+/**
+ * 自定义组件示例（票 03，只进 skill）：签名列表单独出现过一次仍被模型按直觉
+ * 写成 `Svg(width, height, shapes)` / `SvgText(x, y, text)`（2026-10-19 E2E 实锤
+ * 11 处语句被丢弃），故给一段可照抄的正确顺序示例——示例比签名行更能约束顺序。
+ */
+const CUSTOM_COMPONENT_EXAMPLE =
+    'Custom component example (argument order matters): `root = Stack([chart, flow])` / `chart = Chart("bar", rows, "k", ["v"])` / `rows = [{"k": "Q1", "v": 420}]` / `flow = Svg([box, arrow, caption], "0 0 240 120")` / `box = Rect(10, 10, 80, 40, "surface", "ink", 2)` / `arrow = Line(90, 30, 130, 30, "muted", 2)` / `caption = SvgText("Step 1", 20, 80, 12, "muted")` — Svg takes the shapes list first, then viewBox (width/height optional); SvgText takes the text first, then x and y; Chart series are column names, not Series(...) objects.'
 
 /**
  * 核心段示例：程序化挑选「只使用核心清单组件」的官方示例（Action/@ToAssistant 是
@@ -153,7 +174,7 @@ const OPENUI_FULL_PROMPT_OPTIONS = {
     inlineMode: true,
     examples: openuiExamples,
     preamble: OPENUI_CORE_PROMPT_OPTIONS.preamble,
-    additionalRules: [...SHARED_RULES, ...APP_DETAIL_RULES],
+    additionalRules: [...SHARED_RULES, ...APP_DETAIL_RULES, CUSTOM_COMPONENT_EXAMPLE],
 } as const
 
 /**

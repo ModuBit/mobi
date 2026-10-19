@@ -22,13 +22,13 @@
  */
 
 import { createTheme, type Theme } from '@openuidev/react-ui'
-import { shadcnLightToken, shadcnDarkToken } from '@/core/config/theme/tokens'
+import { CHART_DARK, CHART_LIGHT, shadcnLightToken, shadcnDarkToken } from '@/core/config/theme/tokens'
 import { contrastOnPrimary } from '@/ui/base/theme/contrastOnPrimary'
 
 type AntdToken = typeof shadcnLightToken
 
-/** antd token → react-ui Theme 覆写的字段名翻译（两档共用同一映射） */
-function toOpenUITheme(t: AntdToken): Theme {
+/** antd token → react-ui Theme 覆写的字段名翻译（两档共用同一映射；图表分类色随档给） */
+function toOpenUITheme(t: AntdToken, chartPalette: readonly string[]): Theme {
     return createTheme({
         background: t.colorBgContainer,
         foreground: t.colorText,
@@ -57,8 +57,11 @@ function toOpenUITheme(t: AntdToken): Theme {
         textAccentPrimary: contrastOnPrimary(t.colorPrimary),
         borderAccent: t.colorPrimary,
         borderDefault: t.colorBorder,
+        // 内置图表组件（BarChart/PieChart 等）的默认分类色：与自绘 Chart/Svg 的
+        // --mobi-chart-N 同一来源（tokens.ts），否则两套图表同屏两种配色语言
+        defaultChartPalette: [...chartPalette],
     })
 }
 
-export const OPENUI_LIGHT_THEME = toOpenUITheme(shadcnLightToken)
-export const OPENUI_DARK_THEME = toOpenUITheme(shadcnDarkToken)
+export const OPENUI_LIGHT_THEME = toOpenUITheme(shadcnLightToken, CHART_LIGHT)
+export const OPENUI_DARK_THEME = toOpenUITheme(shadcnDarkToken, CHART_DARK)

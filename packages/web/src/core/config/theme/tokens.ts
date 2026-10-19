@@ -105,6 +105,18 @@ export const NEUTRAL_DARK: Record<NeutralKey, string> = {
 export const SEMANTIC_LIGHT: Record<SemanticKey, string> = { success: '#3f7a3a', warning: '#c96442', danger: '#b53333' }
 export const SEMANTIC_DARK: Record<SemanticKey, string> = { success: '#6cc06f', warning: '#e5925f', danger: '#e26060' }
 
+/**
+ * 图表分类色（6 色，双档同色相）：图表需要比 UI 语义色更多的分类维度，且语义色
+ * 用于数据系列会误读（绿色系列 ≠ 成功）。故单独成系，仍取土地色谱的低饱和语言：
+ * 墨 / 苔藓 / 赤陶 / 砖红 沿用语义种子，另补石青、灰紫两档冷色拉开区分度。
+ * 它是 `--mobi-chart-N`（Svg/Chart 的 CSS 投影）与 react-ui `defaultChartPalette`
+ * （内置图表组件的 JS 调色板）的**同一数值来源**。
+ */
+export const CHART_LIGHT: readonly string[] = ['#3a3a41', '#3f7a3a', '#c96442', '#b53333', '#4a6d8c', '#7a5c8a']
+
+/** 图表分类色（dark）：同色相提亮，只动明度与彩度（与语义色同一双档约束） */
+export const CHART_DARK: readonly string[] = ['#f6f6f8', '#6cc06f', '#e5925f', '#e26060', '#7ea6c9', '#b090c4']
+
 type SemanticKey = 'success' | 'warning' | 'danger'
 
 /** #rrggbb → [r, g, b] */

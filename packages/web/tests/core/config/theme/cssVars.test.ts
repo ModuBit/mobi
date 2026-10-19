@@ -24,7 +24,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest'
 import { buildShadcnThemeCss, injectShadcnThemeCss, SHADCN_TOKENS_STYLE_ID } from '@/core/config/theme/cssVars'
-import { shadcnLightToken, shadcnDarkToken } from '@/core/config/theme/tokens'
+import { shadcnLightToken, shadcnDarkToken, CHART_LIGHT, CHART_DARK } from '@/core/config/theme/tokens'
 
 afterEach(() => {
     document.getElementById(SHADCN_TOKENS_STYLE_ID)?.remove()
@@ -86,6 +86,15 @@ describe('buildShadcnThemeCss（--background 系主题变量）', () => {
         expect(light).toMatch(/^:root \{/)
         expect(dark).toMatch(/^\.dark \{/)
         expect(light).toContain(`--radius: ${shadcnLightToken.borderRadius}px`)
+    })
+
+    it('图表分类色 --mobi-chart-N 双档各 6 档（Svg/Chart 的取色入口）', () => {
+        const light = buildShadcnThemeCss('light')
+        const dark = buildShadcnThemeCss('dark')
+        for (let i = 1; i <= 6; i++) {
+            expect(light).toContain(`--mobi-chart-${i}: ${CHART_LIGHT[i - 1]}`)
+            expect(dark).toContain(`--mobi-chart-${i}: ${CHART_DARK[i - 1]}`)
+        }
     })
 })
 

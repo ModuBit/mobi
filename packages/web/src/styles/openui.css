@@ -26,3 +26,81 @@
     --openui-text-numbers-default: 400 var(--openui-font-size-sm) / var(--openui-line-height-body) var(--openui-font-numbers);
     --openui-text-numbers-default-heavy: 500 var(--openui-font-size-sm) / var(--openui-line-height-body) var(--openui-font-numbers);
 }
+
+/* ==========================================================================
+ * 自定义组件（票 03：Chart / Svg 图元 / HtmlView，vendor 自 thesysdev/open-intelligent-ui）
+ *
+ * 上游组件用 `--iui-*` 取色/取尺寸；这里把它们别名到 mobi 主题变量，组件实现
+ * 零改动即跟随 light/dark。别名只在 `.openui-block` 作用域内生效，不污染全站。
+ * `--mobi-chart-N` 由 core/config/theme/cssVars.ts 从 tokens.ts 双档注入。
+ * ========================================================================== */
+.openui-block {
+    --iui-ink: var(--mobi-ink);
+    --iui-muted: var(--mobi-ink-secondary);
+    --iui-faint: var(--mobi-ink-tertiary);
+    --iui-canvas: var(--mobi-paper);
+    --iui-surface: var(--mobi-hover);
+    --iui-surface-strong: var(--mobi-selected);
+    --iui-border: var(--mobi-hairline);
+    --iui-border-strong: var(--mobi-hairline-strong);
+    /* info 在 mobi 是中性墨族，作图元强调色时没有可辨识色相——取石青档 */
+    --iui-info: var(--mobi-chart-5);
+    --iui-success: var(--mobi-success);
+    --iui-warning: var(--mobi-warning);
+    --iui-danger: var(--mobi-danger);
+    --iui-radius-lg: var(--radius-lg);
+    --iui-shadow: var(--shadow-resting);
+    --iui-font: var(--font-body);
+}
+
+.openui-block .iui-chart { position: relative; width: 100%; min-width: 0; margin: 0; }
+.openui-block .iui-chart-plot { position: relative; }
+.openui-block .iui-chart svg { display: block; overflow: visible; touch-action: pan-y; }
+.openui-block .iui-chart-grid { stroke: var(--iui-border); }
+.openui-block .iui-chart-tick { fill: var(--iui-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+.openui-block .iui-chart-category { fill: var(--iui-muted); font-size: 12px; }
+.openui-block .iui-chart-hover { fill: var(--iui-surface); }
+.openui-block .iui-chart-guide { stroke: var(--iui-border-strong); stroke-dasharray: 3 3; }
+.openui-block .iui-chart-tooltip {
+    position: absolute;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 110px;
+    padding: 10px 12px;
+    transform: translateX(-50%);
+    border: 1px solid var(--iui-border);
+    border-radius: var(--iui-radius-lg);
+    background: var(--iui-canvas);
+    box-shadow: var(--iui-shadow);
+    font-size: 12px;
+    pointer-events: none;
+}
+.openui-block .iui-chart-tooltip > strong { font-weight: 640; }
+.openui-block .iui-chart-tooltip > span { display: flex; align-items: center; gap: 6px; color: var(--iui-muted); }
+.openui-block .iui-chart-tooltip b { margin-left: auto; padding-left: 8px; color: var(--iui-ink); font-weight: 560; font-variant-numeric: tabular-nums; }
+.openui-block .iui-chart-tooltip i,
+.openui-block .iui-chart-legend i,
+.openui-block .iui-pie-legend i { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.openui-block .iui-chart-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; color: var(--iui-muted); font-size: 12px; }
+.openui-block .iui-chart-legend > span { display: inline-flex; align-items: center; gap: 7px; }
+.openui-block .iui-pie { display: flex; flex-wrap: wrap; align-items: center; gap: 24px; }
+.openui-block .iui-pie-legend { display: flex; flex-direction: column; gap: 9px; flex: 1 1 160px; min-width: 0; font-size: 13px; }
+.openui-block .iui-pie-legend > div { display: flex; align-items: center; gap: 8px; }
+.openui-block .iui-pie-legend span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.openui-block .iui-pie-legend b { font-weight: 560; font-variant-numeric: tabular-nums; }
+
+.openui-block .iui-svg { display: block; max-width: 100%; height: auto; margin-inline: auto; overflow: visible; color: var(--iui-ink); }
+
+.openui-block .iui-html-view {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--iui-border);
+    border-radius: var(--iui-radius-lg);
+    background: var(--iui-canvas);
+}
+.openui-block .iui-html-view > iframe { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
+.openui-block .iui-html-view-wait { display: grid; place-items: center; height: 100%; color: var(--iui-muted); font-size: 13px; }
