@@ -28,15 +28,19 @@ const CACHE_TTL_MS = 30_000
 
 let cached: { at: number; value: MapSettingsView } | null = null
 let pending: Promise<MapSettingsView | null> | null = null
+/** 失效代际：invalidate 递增，在途请求 resolve 时代际不匹配则不回填缓存 */
+let generation = 0
 
 export async function loadMapSettings(): Promise<MapSettingsView | null> {
     if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.value
     if (pending) return pending
+    const gen = generation
     pending = (async (): Promise<MapSettingsView | null> => {
         try {
             const data = (await createMobiApi().map.get()).data
             if (!data || !('settings' in data) || !data.settings) return null
-            cached = { at: Date.now(), value: data.settings }
+            // invalidate 发生在本请求在途期间：旧配置不得回填（TTL 内持续按旧档位渲染）
+            if (gen === generation) cached = { at: Date.now(), value: data.settings }
             return data.settings
         } catch {
             return null
@@ -47,7 +51,8 @@ export async function loadMapSettings(): Promise<MapSettingsView | null> {
     return pending
 }
 
-/** 设置页保存后调用：下一次 Map 渲染重新取配置 */
+/** 设置页保存后调用：下一次 Map 渲染重新取配置（含作废在途请求的回填资格） */
 export function invalidateMapSettingsCache(): void {
+    generation++
     cached = null
 }

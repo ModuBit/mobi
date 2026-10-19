@@ -21,7 +21,8 @@
  *
  * 快照形状两代（1.0 升级 breaking 面实录，E2E 双实锤）：
  * - 0.x：`{ "$todos": {...} }` 平铺 `$` 键——键即绑定变量名。对象值 = 命名表单
- *   容器（forms 提供时校验归属，伪造/无关键 → 整体 null 静默降级）；标量值 =
+ *   容器（forms 提供时校验归属，无关键只丢自己——快照常混着历史残留，整体降级
+ *   会连坐其余有效表单，2026-10-19 code-review 修正）；标量值 =
  *   直接绑定字段原样回注；值 ∈ phase 值域的标量键是状态机制变量瞬态，剔除——
  *   否则回注以 idle 覆盖派生的 done，一次性操作按钮解锁定复开
  * - 1.0：`{ deploy: { serviceName: { value } } }` 嵌套——顶层键 = formName（无
@@ -54,19 +55,20 @@ export function resolveFormSnapshotInjection(
     const out: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(formState)) {
         if (SNAPSHOT_KEY_RE.test(key)) {
-            // 0.x 平铺 $ 键（bindingDefaults 通道）
+            // 0.x 平铺 $ 键（bindingDefaults 通道）；归属不明的键只丢自己——
+            // 快照常混着已改名/删除表单的历史残留，整体降级会连坐其余有效表单
             if (isPlainObject(value)) {
-                if (knownFormVars !== null && !knownFormVars.has(key)) return null
+                if (knownFormVars !== null && !knownFormVars.has(key)) continue
                 out[key] = value
             } else if (!PHASE_VALUES.has(String(value))) {
                 out[key] = value
             }
         } else if (isPlainObject(value)) {
             // 1.0 嵌套形状（store.set 通道）：formName → field → { value } 包裹；
-            // 字段含标量的对象不是任一代产出，忽略
+            // 字段含标量的对象不是任一代产出，忽略；归属不明的 formName 同样只丢自己
             const fields: unknown[] = Object.values(value)
             if (fields.length === 0 || !fields.every(isPlainObject)) continue
-            if (knownFormNames !== null && !knownFormNames.has(key)) return null
+            if (knownFormNames !== null && !knownFormNames.has(key)) continue
             out[key] = value
         }
     }

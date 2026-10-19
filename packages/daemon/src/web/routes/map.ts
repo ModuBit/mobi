@@ -63,7 +63,8 @@ const staticMarkersSchema = z.array(z.object({
 })).max(12)
 
 const staticPathsSchema = z.array(z.object({
-    points: z.array(mapCoordinate).min(2).max(200),
+    // 截断到 200 点（query 串 ≤8KB）而非拒绝：交互档无点数上限，两档不得静默分叉
+    points: z.array(mapCoordinate).min(2).transform((pts) => pts.slice(0, 200)),
     color: z.string().max(32).optional(),
     weight: z.number().min(0.5).max(20).optional(),
 })).max(3)
@@ -92,9 +93,12 @@ export function buildStaticMapUrl(input: {
     params.set('size', `750*${input.height}`)
     if (input.center) params.set('location', input.center)
     // 高德静态图海外只覆盖到 8 级（9+ 瓦片空白）：代理是与该上游对话的唯一一层，
-    // 钳制收口在此——任何消费方（不只 web 组件）都不会拿到空白图
+    // 钳制收口在此——zoom 省略时高德按默认/自适应档出图（>8 级），同样必须钳住
+    const overseas = isOverseasMapView(input)
     if (input.zoom !== undefined) {
-        params.set('zoom', String(isOverseasMapView(input) ? Math.min(input.zoom, OVERSEAS_MAX_STATIC_ZOOM) : input.zoom))
+        params.set('zoom', String(overseas ? Math.min(input.zoom, OVERSEAS_MAX_STATIC_ZOOM) : input.zoom))
+    } else if (overseas) {
+        params.set('zoom', String(OVERSEAS_MAX_STATIC_ZOOM))
     }
 
     const markers = input.markers ?? []
@@ -149,6 +153,17 @@ export function createMapRoutes(deps: MapRoutesDeps = {}): Hono<WebAppEnv> {
     const imageCache = new Map<string, CachedImage>()
     const inFlight = new Map<string, Promise<CachedImage | null>>()
 
+    // webServiceKey 短 TTL 内存缓存（含缓存命中路径免一次文件 IO）；POST 保存即失效
+    let cachedKey: { at: number; key: string } | null = null
+    const KEY_TTL_MS = 30_000
+    const readWebServiceKey = async (): Promise<string> => {
+        if (cachedKey && Date.now() - cachedKey.at < KEY_TTL_MS) return cachedKey.key
+        const settings = await readSettings(settingsFileOf())
+        const key = settings?.map?.webServiceKey?.trim() ?? ''
+        cachedKey = { at: Date.now(), key }
+        return key
+    }
+
     // 脱敏读：webServiceKey 只回 set 标记
     app.get('/map', async (c) => {
         const settings = await readSettings(settingsFileOf())
@@ -166,6 +181,7 @@ export function createMapRoutes(deps: MapRoutesDeps = {}): Hono<WebAppEnv> {
             ...current,
             map: mergeMapSettings(current.map, parsed.data),
         }))
+        cachedKey = null
         return c.json({ settings: toMapSettingsView(saved.map) })
     })
 
@@ -174,8 +190,7 @@ export function createMapRoutes(deps: MapRoutesDeps = {}): Hono<WebAppEnv> {
         if (!parsed.success) {
             return c.json({ error: 'Invalid map query' }, 400)
         }
-        const settings = await readSettings(settingsFileOf())
-        const key = settings?.map?.webServiceKey?.trim()
+        const key = await readWebServiceKey()
         if (!key) return c.json({ error: 'map-not-configured' }, 503)
 
         let markers: z.infer<typeof staticMarkersSchema> | undefined

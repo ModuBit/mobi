@@ -87,7 +87,15 @@ describe('latexPlugin inline regex', () => {
         it('匹配单行 $$...$$', () => {
             const match = '$$\\sum_{i=1}^{n} i$$ rest'.match(INLINE_LATEX_RULE)
             expect(match).not.toBeNull()
-            expect(match![1]).toBe('\\sum_{i=1}^{n} i')
+            expect(match![2]).toBe('\\sum_{i=1}^{n} i')
+        })
+
+        it('匹配闭合定界符前带空格的单行 $$ E = mc^2 $$（流式输出常见形态，display 公式不受 Pandoc 行内空白约束）', () => {
+            // 2026-10-19 code-review 实锤：(?<!\s) 无差别作用于 \${1,2} 闭合，
+            // 单行 display 公式整体退化为原文显示（块级规则要求换行，兜不住单行）
+            const match = '$$ E = mc^2 $$ rest'.match(INLINE_LATEX_RULE)
+            expect(match).not.toBeNull()
+            expect(match![2]).toBe(' E = mc^2 ')
         })
 
         it('不匹配跨行的 $$...$$（行内规则限制）', () => {
@@ -101,7 +109,7 @@ describe('latexPlugin inline regex', () => {
         it('匹配 \\(x^2 + y^2\\)', () => {
             const match = '\\(x^2 + y^2\\) some text'.match(INLINE_LATEX_RULE)
             expect(match).not.toBeNull()
-            expect(match![2]).toBe('x^2 + y^2')
+            expect(match![3]).toBe('x^2 + y^2')
         })
 
         it('匹配跨行的 \\(...\\)', () => {
@@ -109,7 +117,7 @@ describe('latexPlugin inline regex', () => {
             const input = '\\(x^2\n+ y^2\\)'
             const match = input.match(INLINE_LATEX_RULE)
             expect(match).not.toBeNull()
-            expect(match![2]).toBe('x^2\n+ y^2')
+            expect(match![3]).toBe('x^2\n+ y^2')
         })
     })
 
@@ -117,7 +125,7 @@ describe('latexPlugin inline regex', () => {
         it('匹配 \\[\\frac{a}{b}\\]', () => {
             const match = '\\[\\frac{a}{b}\\]'.match(INLINE_LATEX_RULE)
             expect(match).not.toBeNull()
-            expect(match![3]).toBe('\\frac{a}{b}')
+            expect(match![4]).toBe('\\frac{a}{b}')
         })
 
         it('匹配跨行的 \\[...\\]', () => {
@@ -162,6 +170,10 @@ describe('containsLatex', () => {
 
     it('单行 $$...$$ → true', () => {
         expect(containsLatex('公式 $$\\sum_{i=1}^n i$$ 如上')).toBe(true)
+    })
+
+    it('定界符内侧带空格的单行 $$ E = mc^2 $$ → true（探测与 tokenizer 同口径，否则 chunk 永不加载）', () => {
+        expect(containsLatex('公式 $$ E = mc^2 $$ 如上')).toBe(true)
     })
 
     it('跨行块级 $$...$$ → true', () => {

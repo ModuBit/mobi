@@ -170,4 +170,25 @@ describe('纯函数', () => {
         const domestic = buildStaticMapUrl({ key: 'k', height: 200, zoom: 13, center: '116.39,39.9' })
         expect(new URL(domestic).searchParams.get('zoom')).toBe('13')
     })
+
+    // zoom 省略时高德按默认/自适应档出图（>8 级）：海外视野同样必须钳住
+    it('buildStaticMapUrl：海外视野 zoom 省略也钳到 8（默认档 >8 出空白瓦片）', () => {
+        const url = buildStaticMapUrl({ key: 'k', height: 200, markers: [{ position: '-122.4187,37.8021' }] })
+        expect(new URL(url).searchParams.get('zoom')).toBe('8')
+    })
+
+    it('buildStaticMapUrl：超长 path 不在此截断（截断在 route 的 schema parse，交互档无上限，两档不得静默分叉）', async () => {
+        // 250 点 path 走 route：schema transform 截到 200，上游收到的 paths 只含前 200 点
+        await Bun.write(settingsFile, JSON.stringify({ map: { webServiceKey: 'ws-key' } }))
+        const calls: string[] = []
+        const app = makeApp(pngFetch(calls))
+        const points = Array.from({ length: 250 }, (_, i) => `116.${30000 + i},39.9${i}`)
+        const query = new URLSearchParams({ paths: JSON.stringify([{ points }]) })
+
+        const res = await app.request(`/api/map/static?${query.toString()}`)
+        expect(res.status).toBe(200)
+        const upstreamPaths = new URL(calls[0]).searchParams.get('paths') ?? ''
+        const pointCount = (upstreamPaths.match(/;/g) ?? []).length + 1
+        expect(pointCount).toBe(200)
+    })
 })

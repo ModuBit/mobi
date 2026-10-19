@@ -75,7 +75,9 @@ export function containsLatex(content: string): boolean {
         .replace(/```[\s\S]*?```/g, '')
         .replace(/~~~[\s\S]*?~~~/g, '')
         .replace(/`[^`\n]*`/g, '')
-    return /\$(?!\s)[^\n$]+?(?<!\s)\$(?!\d)/.test(stripped)
+    // 与 INLINE_LATEX_RULE 同口径：单行 $$ display（无闭合空白约束）优先，再行内单 $
+    return /\$\$[^\n$]+?\$\$(?!\d)/.test(stripped)
+        || /\$(?!\s)[^\n$]+?(?<!\s)\$(?!\d)/.test(stripped)
         || /\${1,2}\n[\s\S]*?\n\${1,2}/.test(stripped)
         || /\\\([\s\S]*?\\\)/.test(stripped)
         || /\\\[[\s\S]*?\\\]/.test(stripped)
@@ -104,10 +106,13 @@ interface KatexToken extends Tokens.Generic {
 
 // 原始：[^$]{1,10000}? → 匹配包括换行在内的所有非 $ 字符
 // 修复 1：[^\n$]{1,10000}? → 排除换行，行内 $...$ 不能跨行
-// 修复 2（Pandoc 口径）：闭合 $ 前不能是空白、后不能紧跟数字——否则
+// 修复 2（Pandoc 口径）：单 $ 闭合前不能是空白、后不能紧跟数字——否则
 // `交通约 $15-25，餐饮约 $40-70` 会被当成一对行内公式，`$` 被吃掉
+// 修复 3（code-review）：$$ display 分支拆出且不受闭合空白约束——Pandoc 的
+// 空白约束只作用于行内单 $；`$$ E = mc^2 $$`（定界符内侧带空格的单行
+// display，流式输出常见）不得退化为原文
 export const INLINE_LATEX_RULE =
-    /^(?:\${1,2}([^\n$]{1,10000}?)(?<!\s)\${1,2}(?!\d)|\\\(([\s\S]{1,10000}?)\\\)|\\\[((?:\\.|[^\\]){1,10000}?)\\\])/
+    /^(?:\$([^\n$]+?)(?<!\s)\$(?!\d)|\$\$([^\n$]+?)\$\$(?!\d)|\\\(([\s\S]{1,10000}?)\\\)|\\\[((?:\\.|[^\\]){1,10000}?)\\\])/
 
 const blockRule =
     /^(\${1,2})\n([\s\S]{1,10000}?)\n\1(?:\s*(?:\n|$))|^\\\[((?:\\.|[^\\]){1,10000}?)\\\]/
@@ -147,10 +152,10 @@ function inlineKatex(renderer: RenderFn, replaceAlignStart: boolean): TokenizerA
         tokenizer(src: string) {
             const match = src.match(INLINE_LATEX_RULE)
             if (!match) return undefined
-            const rawText = match[1] || match[2] || match[3] || ''
+            const rawText = match[1] || match[2] || match[3] || match[4] || ''
             const text = replaceAlignStart ? replaceAlign(rawText.trim()) : rawText.trim()
 
-            const isBracketSyntax = match[3] !== undefined
+            const isBracketSyntax = match[4] !== undefined
             const hasNewline = rawText.includes('\n')
             return {
                 type: 'inlineKatex',

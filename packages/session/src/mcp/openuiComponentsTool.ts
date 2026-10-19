@@ -56,6 +56,10 @@ export const OPENUI_COMPONENTS_TOOL_SHAPE = {
 const CATALOG_NAMES = OPENUI_COMPONENT_CATALOG.map((entry) => entry.name)
 const FUNCTION_NAMES = OPENUI_FUNCTION_CATALOG.map((entry) => entry.name)
 
+/** 命中上限：单字符/常见词根的子串查询会命中整个 catalog，全量展开签名
+ *  一次性灌入数千 token，抵消「名录常驻+按需检索」的分层初衷 */
+const MAX_MATCHES = 12
+
 /** query → 命中目录项：按逗号切词，词内子串匹配（大小写不敏感）；函数词可带或不带 @ */
 function matchCatalog(query: string): Array<{ kind: 'component' | 'function'; entry: OpenUiCatalogEntry }> {
     const tokens = query
@@ -86,14 +90,19 @@ export async function executeOpenuiComponents(rawArgs: unknown): Promise<MobiToo
             `No openui component or function matches "${parsed.data.query}". Components:\n${CATALOG_NAMES.join(', ')}\nFunctions:\n${FUNCTION_NAMES.map((n) => '@' + n).join(', ')}`,
         )
     }
+    const shown = matched.slice(0, MAX_MATCHES)
+    const overflow = matched.length - shown.length
+    const footer = overflow > 0
+        ? `\n…${overflow} more matches for "${parsed.data.query}" — narrow the query to full or specific names.`
+        : ''
     return textResult(
-        matched
+        shown
             .map(({ kind, entry }) =>
                 kind === 'function'
                     ? `@${entry.signature}\n  ${entry.description}`
                     : `${entry.signature}\n  ${entry.description}`,
             )
-            .join('\n'),
+            .join('\n') + footer,
     )
 }
 

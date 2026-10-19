@@ -52,6 +52,15 @@ describe('openui_components', () => {
         expect(text(r)).toMatch(/Table\(columns:/)
     })
 
+    it('命中数设上限（2026-10-19 code-review）：单字符/常见词根不得全量展开 catalog 灌爆上下文', async () => {
+        const r = await executeOpenuiComponents({ query: 'e' })
+        const body = text(r)
+        // 上限 12 条：正文只含有限签名，且带「收窄 query」提示而非整目录
+        const signatureLines = body.split('\n').filter((l) => /^\s*(Stack|Table|Tag|Chart|Card)\(/.test(l) || /@\w+\(/.test(l))
+        expect(signatureLines.length).toBeLessThanOrEqual(12)
+        expect(body).toMatch(/narrow the query|more matches/i)
+    })
+
     it('未命中：isError=false + 返回全部组件名提示（改名重试比报错便宜）', async () => {
         const r = await executeOpenuiComponents({ query: 'NoSuchThing' })
         expect(r.isError).toBeFalsy()

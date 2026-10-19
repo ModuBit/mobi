@@ -80,6 +80,21 @@ describe('resolveFormSnapshotInjection（快照回注映射）', () => {
         expect(resolveFormSnapshotInjection({ 'evil': { f: { value: 1 } } }, forms)).toBeNull()
     })
 
+    it('归属校验失败只丢弃该键，不连坐已收集的有效键（2026-10-19 code-review：改版后表单名 → 整份快照 null，其余表单数据全丢）', () => {
+        // agent 在后续 turn 把 deploy 表单改名/删除后，快照里 deploy 已是历史残留；
+        // $todos 仍是当前表单的有效数据，必须照常回注
+        const forms = new Map([['todos', ['$todos']]])
+        expect(resolveFormSnapshotInjection(
+            { 'deploy': { serviceName: { value: 'x' } }, '$todos': { a: true } },
+            forms,
+        )).toEqual({ $todos: { a: true } })
+        // 0.x 侧同理：伪造 $ 键只丢自己
+        expect(resolveFormSnapshotInjection(
+            { '$evil': { x: 1 }, '$todos': { a: true } },
+            forms,
+        )).toEqual({ $todos: { a: true } })
+    })
+
     it('1.0 嵌套 + $ 标量混合包：各自通道回注（phase 机制键仍剔除）', () => {
         const formState = {
             'deploy': { serviceName: { value: 'api-gateway' } },
