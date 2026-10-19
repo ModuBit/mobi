@@ -1239,3 +1239,12 @@ HINDSIGHT_API_RERANKER_ALIBABA_API_KEY=sk-你的DashScope-key
 **用户保留意见（未决，动工前必须解决）**：「又是自己扫 transcript，很不靠谱」——Stop hook 读 transcript 自行扫描这条路存疑，需要找不依赖自扫 transcript 的更可靠触发位（如 SDK 流式出口/落盘前的结构化消息管线），待用户再想。
 
 **前置**：动工前先跑错误分布审计（拉生产 DB 近几日 openui fence 逐条 parse、按错误码/组件分类）——错误集中的模式可能指向 prompt 教学缺失（修 prompt 比修输出便宜），脚本雏形在 /tmp/openui-error-audit.mjs（消息信封三层套解析当时未调通，fences 提取为 0）。
+
+
+## 121. deriveMapMode 对无 securityJsCode 的旧版高德 JS key 判 none（2026-10-19 code-review 提出）
+
+**现状**：`packages/shared/src/mapSettings.ts` 的 `deriveMapMode` 要求 jsApiKey + securityJsCode 齐备才判 interactive。高德 2021-12-02 前申请的旧 JS key 无需安全密钥即可用，这类用户只填 jsApiKey → mode='none' → 交互地图永远显示「未配置高德地图 key」。
+
+**未修原因**：改判 interactive 是产品决策而非纯修 bug——2021-12 后的新 key 无安全密钥时高德 JS API 必失败（INVALID_USER_SCODE），现状的 none 档给出明确配置指引，改成 interactive 会把「明确指引」换成「运行时失败降级卡」（InteractiveMap failed → URI 链接），两种体验各有代价。
+
+**若要做**：deriveMapMode 放宽为 jsApiKey 在场即 interactive（失败降级卡兜底），同步改 daemon 三档推导测试与 Map 设置页文案；或设置页对「只填了 jsApiKey」给出安全密钥申请指引。
