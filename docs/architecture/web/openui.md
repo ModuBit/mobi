@@ -59,7 +59,7 @@ graph LR
 | `openui/actionStore.ts` | zustand 模块级单例：`anchor#var → phase` + 表单快照；setPhase 乐观口 / applyDerived（终态单调守卫）/ clearAll |
 | `openui/useOpenUIActionLifecycle.ts` | ChatContainer 喂数据的接线收口：签名门控重扫（length\|末条 id\|running），卸载清空 |
 | `openui/bindingParser.ts` | fence 源码 → 操作绑定表（AST 主 seam，parser 与 react-lang 同源）；产出 setTargets/stateVars/actions/forms |
-| `openui/snapshotInjection.ts` | 表单快照 → initialState `$` 键映射（direct 单通道）；多快照逐条解析后合并 |
+| `openui/snapshotInjection.ts` | 表单快照 → initialState 键映射（两代形状：0.x `$` 平铺走 bindingDefaults、1.0 formName 嵌套走 store.set）；多快照逐条解析后合并 |
 | `openui/fenceIndex.ts` | fence 身份 token 注解/反解（GFM 围栏扫描） |
 | `openui/mobiLibrary.tsx` | 组件库覆盖：Button capture 同步帧写 statementId 到 globalThis registry（取后即清） |
 | `openui/theme.ts` | antd token → react-ui Theme 双档翻译（主题同源跟随） |
@@ -73,7 +73,7 @@ graph LR
 | 孤儿 result 剥离算术：`孤儿数 = result数 − 已消费锚点数` | turn 进行中点击 → 锚点消费翻转不触发重扫 → 重扫时旧 turn 的收尾 result 已滞留窗口、会被队首闸门错配。顺序 turn 保证孤儿必在合法 result 之前，纯算术剥离让扫描时刻/刷新窗口同口径，无需历史消费时刻 |
 | applyDerived 终态单调守卫（done/failed 不被打回 running） | rewind 删掉 result 行后派生会给出 running，覆写让一次性按钮复活且终态证据已不在窗口；重跑走 setPhase 乐观口不经此。守卫条目整条跳过（phase 与快照同进退） |
 | 跨包 meta 单源（`buildUiAnchorMeta`）+ `$var` 形状单源（`STATE_VAR_RE`） | daemon 落库与 web 乐观气泡必须逐字段一致（echo 合并不回填 meta，缺字段导致扫描按无身份配对）；两端正则漂移会造成「daemon 收下、回注拒绝」的静默失败 |
-| 快照回注只认 `$` 键（direct 单通道） | 快照键集 = react-lang getFormPayload 的返回形状（键即绑定变量名带 `$`）；legacy 容器定位与值域正则降级随「生产未部署无旧数据」裁决（63aacaa5）删除。值 ∈ phase 值域的机制键剔除——否则回注以 idle 覆盖派生 done，一次性操作复开 |
+| 快照回注两代形状单通道判定（0.x `$` 平铺 / 1.0 formName 嵌套） | 1.0 起 getFormPayload(formName) 返回 `{ formName: { field: { value } } }` 嵌套、initialState 对无 `$` 键走 store.set——回注判定按值形状分通道（$ 键=绑定默认值、字段全对象包裹的嵌套键=store.set），归属校验 $ 键问 forms 值、嵌套键问 forms 键。值 ∈ phase 值域的机制键仍剔除——否则回注以 idle 覆盖派生 done，一次性操作复开 |
 | stateVars 只认绑定表，无正则降级 | bindingParser 与 react-lang 同 parser（`createParser(openuiLibrary.toJSONSchema())`）——源码 react-lang 渲染不了时这里也为空，不存在「绑定表空但 UI 正常」的中间态 |
 | per-key 切片订阅（useShallow） | 整 phases Map 订阅下任意块写入换新引用，屏幕上全部 openui 块重渲染且 react-lang 随 initialState 重建 store；切片后只有本 fence 变化重渲染。事件内读最新值走 getState |
 | 流式期间跳过 AST 解析（EMPTY_BINDINGS 门控） | code 每 delta 变化，解析结果无处消费——点击被 streaming 闸门挡、快照回注只在封口后生效 |
