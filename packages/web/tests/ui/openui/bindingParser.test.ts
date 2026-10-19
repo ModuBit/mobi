@@ -56,12 +56,14 @@ describe('resolveActionBindings', () => {
     })
 
     it('Set 目标直接命中教学句式', () => {
-        const code = 'btn = Button("go", Action([Set($actionState, "running"), @ToAssistant("go")]), "primary")\n$actionState = "idle"'
+        // 1.0 起无 root 语句的程序 parse().root === null（root-last 语义）→ 空表降级；
+        // 真实 fence 必有 root，用例带 root 反映真实形状
+        const code = 'root = Stack([btn])\nbtn = Button("go", Action([Set($actionState, "running"), @ToAssistant("go")]), "primary")\n$actionState = "idle"'
         expect(resolveActionBindings(code).setTargets).toEqual(['$actionState'])
     })
 
     it('值域过滤：默认值不在值域的变量不进 stateVars', () => {
-        const code = 'btn = Button(btnLabel, Action([@ToAssistant("x")]), "primary")\nbtnLabel = $name == "张三" ? "a" : "b"\n$name = "李四"'
+        const code = 'root = Stack([btn])\nbtn = Button(btnLabel, Action([@ToAssistant("x")]), "primary")\nbtnLabel = $name == "张三" ? "a" : "b"\n$name = "李四"'
         const b = resolveActionBindings(code)
         expect(b.stateVars).toEqual([])
         expect(b.setTargets).toEqual([])

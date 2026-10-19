@@ -15,19 +15,20 @@
  */
 
 /**
- * initialState 注入解析（状态持久化票 02，per-action 票 03 起按快照形状收敛）：
- * 把派生出的表单快照翻译成 react-lang initialState 的 `$` 键映射。纯函数、
- * 无 React 依赖，renderer 消费。
+ * initialState 注入解析（状态持久化票 02，per-action 票 03 起按快照形状收敛；
+ * 1.0 升级票补 react-lang 1.0 嵌套形状通道）：把派生出的表单快照翻译成
+ * react-lang initialState 的键映射。纯函数、无 React 依赖，renderer 消费。
  *
- * 快照键集 = react-lang getFormPayload 的返回形状（键即表单绑定变量名，带 `$`，
- * E2E 实锤 `{ "$todos": {...} }`），按值形状分类：
- * - 对象值键 = 命名表单容器，键原样回注（forms 提供时校验归属，伪造/无关键 →
- *   整体 null 静默降级）；盲目剥 `$` 会把唯一数据剥空
- * - 标量值键 = 直接绑定 `$var` 的字段原样回注；值 ∈ phase 值域的标量键是状态
- *   机制变量瞬态，剔除——否则回注以 idle 覆盖派生的 done，一次性操作按钮
- *   解锁定复开
- * 非 `$` 键不是 react-lang 的产出，无注入目标，忽略（legacy 容器定位通道随
- * 63aacaa5「生产未部署无旧数据」裁决删除）。
+ * 快照形状两代（1.0 升级 breaking 面实录，E2E 双实锤）：
+ * - 0.x：`{ "$todos": {...} }` 平铺 `$` 键——键即绑定变量名。对象值 = 命名表单
+ *   容器（forms 提供时校验归属，伪造/无关键 → 整体 null 静默降级）；标量值 =
+ *   直接绑定字段原样回注；值 ∈ phase 值域的标量键是状态机制变量瞬态，剔除——
+ *   否则回注以 idle 覆盖派生的 done，一次性操作按钮解锁定复开
+ * - 1.0：`{ deploy: { serviceName: { value } } }` 嵌套——顶层键 = formName（无
+ *   `$`，getFormPayload(formName) 的新形状）。initialState 对无 `$` 键走
+ *   store.set 通道原样回注，判定 = 字段值全为对象包裹（{ value } 形状）；归属
+ *   校验按 forms 的键（formName）而非值。字段含标量的非 `$` 对象不是任一代的
+ *   产出，忽略（legacy 容器定位通道随 63aacaa5 裁决删除）
  */
 
 /** 档③ phase 值域（单源于 bindingParser——绑定解析与快照回注共享同一词汇） */
@@ -40,23 +41,32 @@ import { STATE_VAR_RE } from '@mobi/shared'
 const SNAPSHOT_KEY_RE = STATE_VAR_RE
 
 /**
- * 解析表单快照 → 要并入 initialState 的 `$` 键映射；无可回注数据 → null。
+ * 解析表单快照 → 要并入 initialState 的键映射；无可回注数据 → null。
  */
 export function resolveFormSnapshotInjection(
     formState: Record<string, unknown>,
     forms?: Map<string, string[]>,
 ): Record<string, unknown> | null {
-    const isPlainObject = (v: unknown) => v != null && typeof v === 'object' && !Array.isArray(v)
-    const entries = Object.entries(formState).filter(([key]) => SNAPSHOT_KEY_RE.test(key))
-    if (entries.length === 0) return null
+    const isPlainObject = (v: unknown): v is Record<string, unknown> => v != null && typeof v === "object" && !Array.isArray(v)
     const knownFormVars = forms !== undefined && forms.size > 0 ? new Set([...forms.values()].flat()) : null
+    const knownFormNames = forms !== undefined && forms.size > 0 ? new Set(forms.keys()) : null
 
     const out: Record<string, unknown> = {}
-    for (const [key, value] of entries) {
-        if (isPlainObject(value)) {
-            if (knownFormVars !== null && !knownFormVars.has(key)) return null
-            out[key] = value
-        } else if (!PHASE_VALUES.has(String(value))) {
+    for (const [key, value] of Object.entries(formState)) {
+        if (SNAPSHOT_KEY_RE.test(key)) {
+            // 0.x 平铺 $ 键（bindingDefaults 通道）
+            if (isPlainObject(value)) {
+                if (knownFormVars !== null && !knownFormVars.has(key)) return null
+                out[key] = value
+            } else if (!PHASE_VALUES.has(String(value))) {
+                out[key] = value
+            }
+        } else if (isPlainObject(value)) {
+            // 1.0 嵌套形状（store.set 通道）：formName → field → { value } 包裹；
+            // 字段含标量的对象不是任一代产出，忽略
+            const fields: unknown[] = Object.values(value)
+            if (fields.length === 0 || !fields.every(isPlainObject)) continue
+            if (knownFormNames !== null && !knownFormNames.has(key)) return null
             out[key] = value
         }
     }

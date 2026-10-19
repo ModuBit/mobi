@@ -68,6 +68,30 @@ describe('resolveFormSnapshotInjection（快照回注映射）', () => {
         expect(resolveFormSnapshotInjection({ 'todo-panel': { task1: true } })).toBeNull()
     })
 
+    it('1.0 嵌套形状：formName → field → { value } 包裹原样回注（E2E 实锤 react-lang 1.0 getFormPayload 形状，走 initialState 的 store.set 通道）', () => {
+        const formState = { 'deploy': { serviceName: { value: 'api-gateway' } } }
+        expect(resolveFormSnapshotInjection(formState)).toEqual({ deploy: { serviceName: { value: 'api-gateway' } } })
+    })
+
+    it('1.0 嵌套形状：forms 提供时按 formName 键校验归属，无关键 → null', () => {
+        const forms = new Map([['deploy', []], ['other', ['$v']]])
+        expect(resolveFormSnapshotInjection({ 'deploy': { serviceName: { value: 'x' } } }, forms))
+            .toEqual({ deploy: { serviceName: { value: 'x' } } })
+        expect(resolveFormSnapshotInjection({ 'evil': { f: { value: 1 } } }, forms)).toBeNull()
+    })
+
+    it('1.0 嵌套 + $ 标量混合包：各自通道回注（phase 机制键仍剔除）', () => {
+        const formState = {
+            'deploy': { serviceName: { value: 'api-gateway' } },
+            '$actionState': 'idle',
+            '$note': '备注',
+        }
+        expect(resolveFormSnapshotInjection(formState)).toEqual({
+            deploy: { serviceName: { value: 'api-gateway' } },
+            $note: '备注',
+        })
+    })
+
     it('无 $ 键（空快照）→ null', () => {
         expect(resolveFormSnapshotInjection({})).toBeNull()
     })
