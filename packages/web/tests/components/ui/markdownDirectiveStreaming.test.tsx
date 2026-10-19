@@ -22,8 +22,8 @@
  * 成钮形态 = .quote-directive 上标（需 Provider 配对引用）；无数据降级 0.85em span。
  */
 
-import { describe, it, expect, afterEach } from 'vitest'
-import { render, cleanup } from '@testing-library/react'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, cleanup, act } from '@testing-library/react'
 import { TextBlock } from '@/features/chat/blocks/TextBlock'
 import { QuoteAnnotationsProvider } from '@/ui/shared/quoteDirectiveComponents'
 
@@ -63,5 +63,39 @@ describe('directive 原子揭示（drip 路径扣住半截尾巴）', () => {
     it('静态半截（模型真输出无闭合字面量）：诚实呈现原文不截断', () => {
         const { container } = renderBlock(HALF)
         expect(container.innerHTML).toContain(':mobi-quote')
+    })
+
+    it('句中指令随 drip 逐帧生长、收口成钮（2026-10-19 真机排查回归：jsdom 无 rAF，需泵动揭示时钟）', () => {
+        vi.useFakeTimers()
+        const raf = vi.stubGlobal('requestAnimationFrame', (cb: (t: number) => void) =>
+            setTimeout(() => cb(performance.now()), 16) as unknown as number)
+        vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
+        try {
+            // 生产实锤原文：指令在句中（前有中文散文，后跟代码 span），非串首
+            const text = '上一句比较的统计基准确实不成立，你说得对。:mobi-quote{index="1"} 官方 `openuiLibrary.prompt({})` 实测。'
+            const api = render(
+                <QuoteAnnotationsProvider quotes={QUOTES} onLocate={() => {}}>
+                    <TextBlock text="" isStreaming />
+                </QuoteAnnotationsProvider>,
+            )
+            for (let i = 4; i <= text.length; i += 4) {
+                const t = text.slice(0, i)
+                act(() => {
+                    api.rerender(
+                        <QuoteAnnotationsProvider quotes={QUOTES} onLocate={() => {}}>
+                            <TextBlock text={t} isStreaming={i < text.length || undefined} />
+                        </QuoteAnnotationsProvider>,
+                    )
+                    vi.advanceTimersByTime(50)
+                })
+            }
+            act(() => { vi.advanceTimersByTime(500) })
+            expect(api.container.querySelector('.quote-directive')).toBeTruthy()
+            expect(api.container.innerHTML).not.toContain(':mobi-quote')
+        } finally {
+            vi.unstubAllGlobals()
+            vi.useRealTimers()
+            void raf
+        }
     })
 })
