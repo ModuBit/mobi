@@ -3,7 +3,7 @@ name: generative-ui-verify
 description: generative-ui（Native openui 面板 + Sandbox App）真机验收 recipe——档②③回灌/原地更新/主题/bridge/安全探针的观测点与坑
 metadata:
   type: recipe
-  last_verified: 2026-10-11
+  last_verified: 2026-10-19
 ---
 
 # generative-ui 验收
@@ -24,9 +24,12 @@ metadata:
 - **getFormPayload 嵌套形状**：1.0 返回 `{ formName: { field: { value } } }`（0.x 是 `{ $var: value }` 平铺）——回灌消息 meta.openuiFormState 是嵌套形状；DB 断言快照形状别再用 $ 平铺口径
 - **档③排查链路**：锚点 meta 在消息 content JSON（`$.meta.openuiAnchor`）不在 metadata 列；turn 收尾证据按 `json_extract(content,'$.content.data.type')='result'` 数
 - **表单按钮 vs 动作按钮的 formState 不同源**：表单提交 = getFormPayload（嵌套）；动作按钮 = store 变量表快照（`$actionState` 平铺 + 声明碎片键），都合法
+- **流式渲染探针**：MutationObserver 观察 `main`，分别记录首个 `.openui-block` 出现与最后一次 DOM 变更时刻——块在围栏闭合即渲染，不等 turn 结束（2026-10-19 实测 12.5s vs 37.1s）。不要用「reticulating 消失」判 turn 结束（早于最后文本变更）
 
 ## 坑
 
+- **派生值不能写 `$name`**：`$submitBtn = 三元返回组件` 渲染为空——lang-core 的 `$` 初始化只存原始 AST、不求值（0.x/1.0 同行为）；生成物里必须用普通语句 `submitBtn = ...`，再放进 `Buttons([submitBtn])`
+- **Form 第二参数须 `Buttons([...])` 包裹**：直传单个 Button 被 schema 丢弃，整块无提交按钮（2026-10-19 实锤，prompt 已补教学）
 - **发消息探针必须单行**（[[input-box]] 通用坑），openui prompt 也不例外
 - **排队窗口抓取**：慢任务执行中点按钮 → 「排队中（N）」悬浮条出现即成功；慢任务结束瞬间的中间态（门控防误翻 done）真机抓不到，由 actionState 单测锁定（queued 窗口内 result 不归因），真机只验终态正确
 - **daemon 时限杀 + bootstrap 退出**：`run_in_background` 默认 30min 时限会杀 daemon；拉环境用 `timeout: 7200000`（2h 上限）。bootstrap 退出后手动拉 daemon 前必须 `mkdir -p ~/.mobi-e2e/logs`（trap 清目录致日志重定向失败 exit 1）
