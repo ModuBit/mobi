@@ -38,6 +38,7 @@
 
 import { shadcnLightToken, shadcnDarkToken } from '@/core/config/theme/tokens'
 import { MOBI_THEME_VAR_LIST, type MobiThemeVar } from '@mobi/shared'
+import { contrastOnPrimary } from '@/ui/base/theme/contrastOnPrimary'
 
 /** bridge 消息的 type 白名单值（唯一） */
 export const APP_BRIDGE_MSG_TYPE = 'mobi-app'
@@ -134,22 +135,6 @@ type MobiThemeToken = Pick<
     | 'colorPrimary' | 'colorSuccess' | 'colorWarning' | 'colorError'
     | 'colorBorder' | 'colorBorderSecondary' | 'borderRadius'
 >
-
-/**
- * colorPrimary 之上的可读前景色：按 WCAG 亮度公式（YIQ）派生黑/白——mobi 双档
- * primary 一深一浅，app 若硬编码白字在暗档会白底白字（2026-10-11 番茄钟实踩）。
- * 生成物教学（on-primary）与这里的派生是同一契约的两端。
- */
-function contrastOnPrimary(primary: string): string {
-    const hex = primary.replace('#', '')
-    const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex
-    const int = Number.parseInt(full, 16)
-    if (Number.isNaN(int)) return '#fff'
-    const r = (int >> 16) & 0xff
-    const g = (int >> 8) & 0xff
-    const b = int & 0xff
-    return (r * 299 + g * 587 + b * 114) / 1000 >= 160 ? '#1f1f1f' : '#fff'
-}
 
 /**
  * 变量名 → 值来源（exhaustive：键集即 shared MOBI_THEME_VAR_LIST——shared 表加变量

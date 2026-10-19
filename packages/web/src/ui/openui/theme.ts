@@ -23,6 +23,7 @@
 
 import { createTheme, type Theme } from '@openuidev/react-ui'
 import { shadcnLightToken, shadcnDarkToken } from '@/core/config/theme/tokens'
+import { contrastOnPrimary } from '@/ui/base/theme/contrastOnPrimary'
 
 type AntdToken = typeof shadcnLightToken
 
@@ -49,6 +50,12 @@ function toOpenUITheme(t: AntdToken): Theme {
         interactiveAccentDefault: t.colorPrimary,
         interactiveAccentHover: t.colorPrimaryHover,
         interactiveAccentPressed: t.colorPrimaryActive,
+        // accent 底上的可读前景与边框：0.18 的 primary 按钮字色（textAccentPrimary）
+        // 只按内置 brand 派生、不读覆写后的 accent——mobi 双档 primary 一深一浅，
+        // 不覆写则暗档白底白字（2026-10-19 实锤）；on-primary 派生与 sandboxAppHost
+        // 的 --mobi-on-primary 同源
+        textAccentPrimary: contrastOnPrimary(t.colorPrimary),
+        borderAccent: t.colorPrimary,
         borderDefault: t.colorBorder,
     })
 }
