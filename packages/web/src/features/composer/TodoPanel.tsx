@@ -17,18 +17,20 @@
 /**
  * 清单面板（todo + task 合并展示）——气泡 Popover 详情的平铺形态
  * CLI 的 TodoWrite 清单（todos）与任务清单（tasks）是同一类呈现，合并进一个列表：
- * 一个头行（图标 + 进行中文案 + 合并完成统计 + 清理）+ 一条按状态排序的勾选列表。
- * - todo 行显示 content
- * - task 行显示 `id: subject`，副行 description，过滤 deleted 状态
- * 合并/排序/统计口径见 checklist.ts（气泡摘要共用同一份）。
- * 合并前是 TodoPanel / TaskPanel 两个逐行重复的组件。
+ * 一个头行（图标 + 进行中文案 + 合并完成统计 + 清理）+ 一条按状态排序的胶囊行列表。
+ * - 行形态借鉴 beautifului Task Rows：状态徽标（完成对勾 / 进行中转环 / 待办空环）、
+ *   label、完成态胶囊；行高 44、圆角 22，展开时收紧到 14
+ * - todo 行显示 content，task 行显示 subject（不展示内部数字 id）
+ * - task 有 description 时整行成为展开按钮，详情落在状态列下方的导轨里；
+ *   todo 没有副信息，保持静态行（不造假数据，也不做无内容的展开）
+ * - 合并/排序/统计口径见 checklist.ts（气泡摘要共用同一份）
  */
 
-import { useMemo, type ReactNode } from 'react'
-import { Checkbox, Typography } from 'antd'
-import { Lightbulb } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
+import { useMemo, useState } from 'react'
 import styled from '@emotion/styled'
+import { css, keyframes } from '@emotion/react'
+import { Check, ChevronDown, Lightbulb } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { TodoItem, TaskItem } from '@mobi/shared'
 import { ClearStateButton, type ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
 import { ShinyText } from '@/ui/base/motion/ShinyText'
@@ -38,21 +40,202 @@ import { buildChecklist, type ChecklistEntry, type ChecklistStatus } from './che
 const CHECKLIST_ORANGE = '#e8825c'
 const CHECKLIST_GREEN = '#52c41a'
 
-const StyledCheckbox = styled(Checkbox)`
-    .ant-checkbox-inner {
-        border-radius: var(--radius-square);
+/** 胶囊行几何（行高 44 / 行距 8；圆角取档：收起面板档 22、展开控件档 14） */
+const ROW_HEIGHT = 44
+const ROW_RADIUS = 'var(--radius-panel)'
+const ROW_RADIUS_OPEN = 'var(--radius-control)'
+const ROW_GAP = 8
+
+/**
+ * 颜色只用 shadcn/UIARC 全局变量（--muted / --text-secondary / --muted-foreground /
+ * --border-subtle），不要用 --ant-color-*：本面板挂在 portal 到 body 的 Popover 里，
+ * antd cssVar 的作用域只在 antd 子树内，--ant-* 在弹层里全部解析为空
+ * （底色/描边/字色一起静默失效，2026-10-18 E2E 实拍：行底与转环整片消失）
+ */
+
+/** 状态转环几何 */
+const RING_SIZE = 24
+const RING_STROKE = 2
+const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS
+
+const spin = keyframes`
+    to { transform: rotate(360deg); }
+`
+
+const List = styled.div`
+    display: flex;
+    flex-direction: column;
+    gap: ${ROW_GAP}px;
+`
+
+/** 每行一张胶囊；展开时圆角收紧，detail 从下方长出 */
+const Row = styled.div<{ $open: boolean }>`
+    overflow: hidden;
+    border-radius: ${({ $open }) => ($open ? ROW_RADIUS_OPEN : ROW_RADIUS)};
+    /* --muted 在 light/dark 两档都是可辨识的一层浅面，又不至于像卡片那样抢眼 */
+    background: var(--muted);
+    transition: border-radius var(--mobi-duration-mid) var(--mobi-ease-out);
+    @media (prefers-reduced-motion: reduce) {
+        transition: none;
     }
-    &.ant-checkbox-checked .ant-checkbox-inner {
-        background-color: ${CHECKLIST_GREEN};
-        border-color: ${CHECKLIST_GREEN};
+`
+
+const rowLayout = css`
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-sizing: border-box;
+    width: 100%;
+    height: ${ROW_HEIGHT}px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+`
+
+/** 可展开行（有 description 的 task） */
+const RowButton = styled.button`
+    ${rowLayout};
+    cursor: pointer;
+
+    &:focus-visible {
+        outline: 2px solid var(--mobi-primary);
+        outline-offset: -2px;
     }
-    &.ant-checkbox-indeterminate .ant-checkbox-inner {
-        background-color: ${CHECKLIST_ORANGE};
-        border-color: ${CHECKLIST_ORANGE};
+`
+
+/** 无副信息的静态行（todo / 无 description 的 task） */
+const RowStatic = styled.div`
+    ${rowLayout};
+`
+
+/** 三态共用的 24px 状态槽：完成徽标 22px 在其中居中，保证所有行 label 起点一致 */
+const StatusSlot = styled.span`
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: ${RING_SIZE}px;
+    height: ${RING_SIZE}px;
+`
+
+/** 完成态：22px 绿色圆底 + 白色对勾 */
+const CheckBadge = styled.span`
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-pill);
+    background: ${CHECKLIST_GREEN};
+    color: var(--primary-foreground);
+`
+
+/** 进行中：24px 转环（1.1s 匀速）；待办：同一轨道的静态空环 */
+const RingSvg = styled.svg<{ $active: boolean }>`
+    flex: none;
+    ${({ $active }) => $active && css`animation: ${spin} 1.1s linear infinite;`}
+
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
     }
-    &.ant-checkbox-indeterminate .ant-checkbox-inner::after {
-        background: #fff;
+`
+
+const Label = styled.span<{ $status: ChecklistStatus }>`
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: ${({ $status }) => ($status === 'in_progress' ? 600 : 500)};
+    line-height: 1.3;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: ${({ $status }) => {
+        if ($status === 'in_progress') return CHECKLIST_ORANGE
+        if ($status === 'completed') return 'var(--muted-foreground)'
+        return 'var(--text-secondary)'
+    }};
+    text-decoration: ${({ $status }) => ($status === 'completed' ? 'line-through' : 'none')};
+`
+
+/** 完成态胶囊：与参考组件同尺寸（22 高 / 11.5 字） */
+const StatusPill = styled.span`
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, ${CHECKLIST_GREEN} 14%, transparent);
+    color: ${CHECKLIST_GREEN};
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+`
+
+/** 旋转放在外层 span：styled(lucide 组件) 不会过滤 $open，瞬态 prop 会漏到 svg 上 */
+const ChevronSlot = styled.span<{ $open: boolean }>`
+    display: inline-flex;
+    flex: none;
+    color: var(--muted-foreground);
+    transform: rotate(${({ $open }) => ($open ? 180 : 0)}deg);
+    transition: transform var(--mobi-duration-mid) var(--mobi-ease-out);
+
+    @media (prefers-reduced-motion: reduce) {
+        transition: none;
     }
+`
+
+/** 详情抽屉：grid-template-rows 0fr ↔ 1fr 过渡，内容始终在 DOM 里 */
+const DetailGrid = styled.div<{ $open: boolean }>`
+    display: grid;
+    grid-template-rows: ${({ $open }) => ($open ? '1fr' : '0fr')};
+    opacity: ${({ $open }) => ($open ? 1 : 0)};
+    transition:
+        grid-template-rows var(--mobi-duration-mid) var(--mobi-ease-out),
+        opacity var(--mobi-duration-mid) var(--mobi-ease-out);
+
+    @media (prefers-reduced-motion: reduce) {
+        transition: none;
+    }
+`
+
+const DetailOverflow = styled.div`
+    overflow: hidden;
+`
+
+const DetailRow = styled.div`
+    display: flex;
+    gap: 10px;
+    padding: 0 10px 10px;
+`
+
+/** 与行首状态槽同宽的导轨列，让竖线正对状态徽标中心 */
+const DetailRailSlot = styled.span`
+    display: flex;
+    flex: none;
+    justify-content: center;
+    width: ${RING_SIZE}px;
+`
+
+const DetailRail = styled.span`
+    width: 1px;
+    background: var(--border-subtle);
+`
+
+const DetailText = styled.p`
+    margin: 0;
+    min-width: 0;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    line-height: 18px;
+    overflow-wrap: anywhere;
 `
 
 export type TodoPanelProps = {
@@ -65,6 +248,7 @@ export type TodoPanelProps = {
 export function TodoPanel({ todos, tasks, sessionId, onClear }: TodoPanelProps) {
     const { t } = useTranslation()
     const checklist = useMemo(() => buildChecklist(todos, tasks), [todos, tasks])
+    const [openKeys, setOpenKeys] = useState<Record<string, boolean>>({})
 
     if (checklist.items.length === 0) return null
     const { items, completed, inProgress, total, activeText } = checklist
@@ -86,12 +270,12 @@ export function TodoPanel({ todos, tasks, sessionId, onClear }: TodoPanelProps) 
             ) : completed === total ? (
                 <span style={{ color: CHECKLIST_GREEN, fontWeight: 500 }}>✓ {t('chat.todo.allCompleted')}</span>
             ) : (
-                <span style={{ color: 'var(--ant-color-text-tertiary)' }}>
+                <span style={{ color: 'var(--muted-foreground)' }}>
                     {t('chat.task.pendingCount', { count: total - completed })}
                 </span>
             )}
-            <span style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)', marginLeft: 4 }}>
-                <span style={{ color: 'var(--ant-color-text-secondary)', fontWeight: 500 }}>{completed}/{total}</span> {t('chat.todo.completed')}
+            <span style={{ fontSize: 12, color: 'var(--muted-foreground)', marginLeft: 4 }}>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{completed}/{total}</span> {t('chat.todo.completed')}
                 {inProgress > 0 && (
                     <>
                         {' · '}
@@ -109,38 +293,61 @@ export function TodoPanel({ todos, tasks, sessionId, onClear }: TodoPanelProps) 
     )
 
     const list = (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <List>
             {items.map((entry) => {
-                const description = entry.kind === 'task' && entry.task.description
-                    ? <TaskDescription task={entry.task} />
-                    : undefined
-                const text = <ChecklistText status={entry.status}>{entryLabel(entry)}</ChecklistText>
+                const detail = entry.kind === 'task' ? entry.task.description : undefined
+                const expandable = Boolean(detail)
+                const open = expandable && Boolean(openKeys[entry.key])
+                const label = entryLabel(entry)
+                // 状态槽是纯视觉的（aria-hidden），非完成态补一份读屏可读的状态文案
+                const srStatus = entry.status === 'in_progress'
+                    ? t('chat.todo.inProgress')
+                    : entry.status === 'pending' ? t('chat.todo.pending') : null
+
+                const content = (
+                    <>
+                        <StatusMark status={entry.status} />
+                        <Label $status={entry.status} title={label}>{label}</Label>
+                        {srStatus && <span className="sr-only">{srStatus}</span>}
+                        {entry.status === 'completed' && (
+                            <StatusPill>{t('chat.todo.completed')}</StatusPill>
+                        )}
+                        {expandable && (
+                            <ChevronSlot $open={open} aria-hidden="true">
+                                <ChevronDown size={15} />
+                            </ChevronSlot>
+                        )}
+                    </>
+                )
+
                 return (
-                    <div
-                        key={entry.key}
-                        style={{
-                            display: 'flex',
-                            alignItems: description ? 'flex-start' : 'center',
-                            gap: 8,
-                            fontSize: 13,
-                        }}
-                    >
-                        <StyledCheckbox
-                            checked={entry.status === 'completed'}
-                            indeterminate={entry.status === 'in_progress'}
-                            disabled
-                            style={description ? { lineHeight: '22px' } : undefined}
-                        />
-                        {description ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                                {text}
-                                {description}
-                            </div>
-                        ) : text}
-                    </div>
+                    <Row key={entry.key} $open={open}>
+                        {expandable ? (
+                            <RowButton
+                                type="button"
+                                aria-expanded={open}
+                                onClick={() => setOpenKeys(prev => ({ ...prev, [entry.key]: !prev[entry.key] }))}
+                            >
+                                {content}
+                            </RowButton>
+                        ) : (
+                            <RowStatic>{content}</RowStatic>
+                        )}
+                        {expandable && (
+                            /* 收起时内容常驻 DOM（0fr 过渡需要），必须对辅助技术隐藏 */
+                            <DetailGrid $open={open} aria-hidden={!open}>
+                                <DetailOverflow>
+                                    <DetailRow>
+                                        <DetailRailSlot aria-hidden="true"><DetailRail /></DetailRailSlot>
+                                        <DetailText>{detail}</DetailText>
+                                    </DetailRow>
+                                </DetailOverflow>
+                            </DetailGrid>
+                        )}
+                    </Row>
                 )
             })}
-        </div>
+        </List>
     )
 
     // 外衬（纵向 flex / 间距 / 最小宽）与限高内滚由气泡详情容器提供
@@ -153,44 +360,52 @@ export function TodoPanel({ todos, tasks, sessionId, onClear }: TodoPanelProps) 
 }
 
 function entryLabel(entry: ChecklistEntry): string {
-    return entry.kind === 'todo' ? entry.todo.content : `${entry.task.id}: ${entry.task.subject}`
+    return entry.kind === 'todo' ? entry.todo.content : entry.task.subject
 }
 
-/** 三态文字样式：进行中橙色扫光 / 完成划线 / 待办弱化 */
-function ChecklistText({ status, children }: { status: ChecklistStatus; children: ReactNode }) {
-    if (status === 'in_progress') {
-        return (
-            <ShinyText solid style={{ color: CHECKLIST_ORANGE, fontWeight: 600 }}>
-                {children}
-            </ShinyText>
-        )
-    }
-
+/** 行首状态槽：完成对勾 / 进行中转环 / 待办空环（三态同一 24px 槽位，纯视觉） */
+function StatusMark({ status }: { status: ChecklistStatus }) {
     if (status === 'completed') {
         return (
-            <span style={{ textDecoration: 'line-through', color: 'var(--ant-color-text-quaternary)' }}>
-                {children}
-            </span>
+            <StatusSlot aria-hidden="true">
+                <CheckBadge>
+                    <Check size={12} strokeWidth={3.5} />
+                </CheckBadge>
+            </StatusSlot>
         )
     }
 
-    return <span style={{ color: 'var(--ant-color-text-tertiary)' }}>{children}</span>
-}
-
-const { Text } = Typography
-
-function TaskDescription({ task: { description, status } }: { task: TaskItem }) {
+    const active = status === 'in_progress'
     return (
-        <Text
-            style={{
-                fontSize: 12,
-                color: 'var(--ant-color-text-quaternary)',
-                lineHeight: '18px',
-                textDecoration: status === 'completed' ? 'line-through' : 'none',
-            }}
-            ellipsis
-        >
-            {description}
-        </Text>
+        <StatusSlot aria-hidden="true">
+            <RingSvg
+                width={RING_SIZE}
+                height={RING_SIZE}
+                viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}
+                $active={active}
+            >
+                <circle
+                    cx={RING_SIZE / 2}
+                    cy={RING_SIZE / 2}
+                    r={RING_RADIUS}
+                    fill="none"
+                    stroke="var(--muted-foreground)"
+                    strokeOpacity={0.45}
+                    strokeWidth={RING_STROKE}
+                />
+                {active && (
+                    <circle
+                        cx={RING_SIZE / 2}
+                        cy={RING_SIZE / 2}
+                        r={RING_RADIUS}
+                        fill="none"
+                        stroke="var(--muted-foreground)"
+                        strokeWidth={RING_STROKE}
+                        strokeLinecap="round"
+                        strokeDasharray={`${RING_CIRCUMFERENCE * 0.28} ${RING_CIRCUMFERENCE * 0.72}`}
+                    />
+                )}
+            </RingSvg>
+        </StatusSlot>
     )
 }

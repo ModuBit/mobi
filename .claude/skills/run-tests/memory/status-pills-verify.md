@@ -77,6 +77,16 @@ assistant 的 `message` 需要 `{ id, type:'message', role:'assistant', model, c
   2026-10-18 实踩：内衬 2px 时阴影上下被齐平切断；Wrap 底距回退过少时下缘仍被容器裁 2px。
 - 主题：`localStorage.mobi-ui` 的 `state.theme` + reload。
 - 横向渐隐：把 row 宽度临时压到 120px，`scrollLeft=0` 只有右侧渐变，滚到末尾只有左侧。
+- todo 气泡详情（Task Rows 胶囊行，2026-10-18 验收）：
+  - 每行 44px 高 / 圆角 22，行首 24px 状态槽：完成 = 绿底白勾，进行中 = 灰色转环，
+    待办 = 静态空环；完成行右侧带「已完成」胶囊。
+  - 有 `description` 的 task 行是 `button[aria-expanded]`：点击后圆角收到 14，description
+    从状态列下方的导轨展开；todo 行是静态 div（不可展开）。
+  - ⚠️ 详情在 portal 到 body 的 Popover 里，**不能用 `--ant-color-*`**（作用域只在 antd
+    子树内，弹层里解析为空，行底/转环/字色会一起静默失效）；用全局 shadcn 变量
+    （`--muted` / `--text-secondary` / `--muted-foreground` / `--border-subtle`）。
+    （2026-10-18 曾在此面板试过 hover 滑移 / chevron 弹簧 / 详情 blur 进场，产品决定不做，
+    全部回退；动效只落在文件树，recipe 见 [[file-tree-motion-verify]]。）
 
 ## 坑
 

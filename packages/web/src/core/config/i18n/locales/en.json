@@ -424,7 +424,8 @@
     "todo": {
       "allCompleted": "All completed",
       "completed": "completed",
-      "inProgress": "in progress"
+      "inProgress": "in progress",
+      "pending": "pending"
     },
     "task": {
       "completed": "completed",

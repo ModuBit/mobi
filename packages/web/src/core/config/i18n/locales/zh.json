@@ -415,7 +415,8 @@
     "todo": {
       "allCompleted": "全部完成",
       "completed": "已完成",
-      "inProgress": "进行中"
+      "inProgress": "进行中",
+      "pending": "待执行"
     },
     "task": {
       "completed": "已完成",

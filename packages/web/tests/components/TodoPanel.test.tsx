@@ -32,6 +32,7 @@ vi.mock('react-i18next', () => ({
                 'chat.todo.allCompleted': '全部完成',
                 'chat.todo.completed': '已完成',
                 'chat.todo.inProgress': '进行中',
+                'chat.todo.pending': '待执行',
                 'chat.task.allCompleted': '全部完成',
                 'chat.task.completed': '已完成',
                 'chat.task.inProgress': '进行中',
@@ -91,7 +92,8 @@ describe('TodoPanel（todo 分区）', () => {
 
         // 统计: 1/3 已完成 · 1 进行中
         expect(screen.getByText('1/3')).toBeInTheDocument()
-        expect(screen.getByText('进行中', { exact: false })).toBeInTheDocument()
+        // 行内的 sr-only 状态文案也含「进行中」，用选择器锚定头行统计那一处
+        expect(screen.getByText('进行中', { exact: false, selector: 'span:not(.sr-only)' })).toBeInTheDocument()
     })
 
     it('按状态排序：in_progress → pending → completed', () => {
@@ -146,7 +148,8 @@ describe('TodoPanel（task 分区，原 TaskPanel）', () => {
 
         // 统计: 1/3 已完成 · 1 进行中
         expect(screen.getByText('1/3')).toBeInTheDocument()
-        expect(screen.getByText('进行中', { exact: false })).toBeInTheDocument()
+        // 行内的 sr-only 状态文案也含「进行中」，用选择器锚定头行统计那一处
+        expect(screen.getByText('进行中', { exact: false, selector: 'span:not(.sr-only)' })).toBeInTheDocument()
     })
 
     it('按状态排序：in_progress → pending → completed', () => {
@@ -181,15 +184,54 @@ describe('TodoPanel（task 分区，原 TaskPanel）', () => {
         ]
         render(<TodoPanel tasks={tasks} />, { wrapper })
 
-        // header 中应显示 subject（因为没有 activeForm）
-        expect(screen.getByText('进行中无activeForm')).toBeInTheDocument()
+        // header 中应显示 subject（因为没有 activeForm）；行标签此时也是 subject，
+        // 用 shimmer-text 锚定 header 那一处，避免与行内文案混淆
+        expect(screen.getByText('进行中无activeForm', { selector: '.shimmer-text' })).toBeInTheDocument()
     })
 
     it('清单直接平铺（task 行可见）', () => {
         const tasks = [makeTask('1', '任务A', 'pending')]
         render(<TodoPanel tasks={tasks} />, { wrapper })
 
-        expect(screen.getByText('1: 任务A')).toBeInTheDocument()
+        expect(screen.getByText('任务A')).toBeInTheDocument()
+    })
+
+    it('有 description 的 task 行可展开/收起，todo 行保持静态', () => {
+        const tasks: TaskItem[] = [
+            { id: '2', subject: '任务B', status: 'pending', description: '补充细节' },
+        ]
+        const todos = [makeTodo('待办A', 'pending')]
+        render(<TodoPanel todos={todos} tasks={tasks} />, { wrapper })
+
+        // 详情常驻 DOM（0fr 过渡需要），收起时必须对辅助技术隐藏
+        const detail = screen.getByText('补充细节')
+        const row = screen.getByRole('button', { name: /任务B/ })
+        expect(row).toHaveAttribute('aria-expanded', 'false')
+        expect(detail.closest('[aria-hidden="true"]')).not.toBeNull()
+
+        fireEvent.click(row)
+        expect(row).toHaveAttribute('aria-expanded', 'true')
+        expect(detail.closest('[aria-hidden="true"]')).toBeNull()
+
+        fireEvent.click(row)
+        expect(row).toHaveAttribute('aria-expanded', 'false')
+        expect(detail.closest('[aria-hidden="true"]')).not.toBeNull()
+
+        // todo 没有副信息：不作为按钮出现（不提供无内容的展开）
+        expect(screen.queryByRole('button', { name: /待办A/ })).toBeNull()
+    })
+
+    it('状态图形 aria-hidden，靠 sr-only 文案区分进行中/待执行', () => {
+        const todos = [
+            makeTodo('进行中的待办', 'in_progress'),
+            makeTodo('等待中的待办', 'pending'),
+        ]
+        render(<TodoPanel todos={todos} />, { wrapper })
+
+        expect(screen.getByText('进行中', { selector: '.sr-only' })).toBeInTheDocument()
+        expect(screen.getByText('待执行', { selector: '.sr-only' })).toBeInTheDocument()
+        // 标签单行截断时，title 提供全文
+        expect(screen.getByText('进行中的待办')).toHaveAttribute('title', '进行中的待办')
     })
 })
 
@@ -202,7 +244,7 @@ describe('TodoPanel（todo + task 合并面板）', () => {
         expect(container.querySelector('.ant-collapse')).toBeNull()
         expect(screen.getByText('1/2')).toBeInTheDocument()
         expect(screen.getByText('待办A')).toBeInTheDocument()
-        expect(screen.getByText('1: 任务A')).toBeInTheDocument()
+        expect(screen.getByText('任务A')).toBeInTheDocument()
     })
 
     it('进行中文案取 todo 的 activeForm（同列表顺序）', () => {
