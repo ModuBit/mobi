@@ -82,7 +82,7 @@ describe('TodoPanel（todo 分区）', () => {
         expect(container.innerHTML).toBe('')
     })
 
-    it('渲染头行统计信息', () => {
+    it('头行不再展示完成统计（只保留进行中文案 / 全部完成 / 待执行数）', () => {
         const todos = [
             makeTodo('任务A', 'completed'),
             makeTodo('任务B', 'in_progress'),
@@ -90,10 +90,8 @@ describe('TodoPanel（todo 分区）', () => {
         ]
         render(<TodoPanel todos={todos} />, { wrapper })
 
-        // 统计: 1/3 已完成 · 1 进行中
-        expect(screen.getByText('1/3')).toBeInTheDocument()
-        // 行内的 sr-only 状态文案也含「进行中」，用选择器锚定头行统计那一处
-        expect(screen.getByText('进行中', { exact: false, selector: 'span:not(.sr-only)' })).toBeInTheDocument()
+        expect(screen.queryByText('1/3')).toBeNull()
+        expect(screen.getByText('正在任务B')).toBeInTheDocument()
     })
 
     it('按状态排序：in_progress → pending → completed', () => {
@@ -138,18 +136,16 @@ describe('TodoPanel（task 分区，原 TaskPanel）', () => {
         expect(container.innerHTML).toBe('')
     })
 
-    it('渲染头行统计信息', () => {
+    it('头行不再展示完成统计（只保留进行中文案 / 全部完成 / 待执行数）', () => {
         const tasks = [
             makeTask('1', '任务A', 'completed'),
-            makeTask('2', '任务B', 'in_progress'),
+            makeTask('2', '任务B', 'in_progress', '正在任务B'),
             makeTask('3', '任务C', 'pending'),
         ]
         render(<TodoPanel tasks={tasks} />, { wrapper })
 
-        // 统计: 1/3 已完成 · 1 进行中
-        expect(screen.getByText('1/3')).toBeInTheDocument()
-        // 行内的 sr-only 状态文案也含「进行中」，用选择器锚定头行统计那一处
-        expect(screen.getByText('进行中', { exact: false, selector: 'span:not(.sr-only)' })).toBeInTheDocument()
+        expect(screen.queryByText('1/3')).toBeNull()
+        expect(screen.getByText('正在任务B')).toBeInTheDocument()
     })
 
     it('按状态排序：in_progress → pending → completed', () => {
@@ -171,10 +167,8 @@ describe('TodoPanel（task 分区，原 TaskPanel）', () => {
         ]
         render(<TodoPanel tasks={tasks} />, { wrapper })
 
-        // 统计应为 0/1（deleted 不计入）
-        expect(screen.getByText('0/1')).toBeInTheDocument()
-
         // 已删除任务不应出现在 DOM 中
+        expect(screen.getByText('正常任务')).toBeInTheDocument()
         expect(screen.queryByText('已删除任务')).not.toBeInTheDocument()
     })
 
@@ -236,13 +230,13 @@ describe('TodoPanel（task 分区，原 TaskPanel）', () => {
 })
 
 describe('TodoPanel（todo + task 合并面板）', () => {
-    it('两类数据合并进同一个列表，统计合并计数', () => {
+    it('两类数据合并进同一个列表', () => {
         const todos = [makeTodo('待办A', 'pending')]
         const tasks = [makeTask('1', '任务A', 'completed')]
         const { container } = render(<TodoPanel todos={todos} tasks={tasks} />, { wrapper })
 
         expect(container.querySelector('.ant-collapse')).toBeNull()
-        expect(screen.getByText('1/2')).toBeInTheDocument()
+        expect(screen.queryByText('1/2')).toBeNull()
         expect(screen.getByText('待办A')).toBeInTheDocument()
         expect(screen.getByText('任务A')).toBeInTheDocument()
     })

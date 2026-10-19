@@ -38,7 +38,6 @@ import { buildChecklist, type ChecklistEntry, type ChecklistStatus } from './che
 
 /** 任务橙色，参考 Claude Code */
 const CHECKLIST_ORANGE = '#e8825c'
-const CHECKLIST_GREEN = '#52c41a'
 
 /** 胶囊行几何（行高 44 / 行距 8；圆角取档：收起面板档 22、展开控件档 14） */
 const ROW_HEIGHT = 44
@@ -125,7 +124,7 @@ const StatusSlot = styled.span`
     height: ${RING_SIZE}px;
 `
 
-/** 完成态：22px 绿色圆底 + 白色对勾 */
+/** 完成态：22px 黑灰圆底 + 反向墨色对勾（与完成行的灰阶文字同一体系） */
 const CheckBadge = styled.span`
     display: inline-flex;
     flex: none;
@@ -134,8 +133,8 @@ const CheckBadge = styled.span`
     width: 22px;
     height: 22px;
     border-radius: var(--radius-pill);
-    background: ${CHECKLIST_GREEN};
-    color: var(--primary-foreground);
+    background: var(--muted-foreground);
+    color: var(--background);
 `
 
 /** 进行中：24px 转环（1.1s 匀速）；待办：同一轨道的静态空环 */
@@ -165,7 +164,7 @@ const Label = styled.span<{ $status: ChecklistStatus }>`
     text-decoration: ${({ $status }) => ($status === 'completed' ? 'line-through' : 'none')};
 `
 
-/** 完成态胶囊：与参考组件同尺寸（22 高 / 11.5 字） */
+/** 完成态胶囊：与参考组件同尺寸（22 高 / 11.5 字），灰阶与完成行一致 */
 const StatusPill = styled.span`
     display: inline-flex;
     flex: none;
@@ -173,8 +172,8 @@ const StatusPill = styled.span`
     height: 22px;
     padding: 0 8px;
     border-radius: var(--radius-pill);
-    background: color-mix(in srgb, ${CHECKLIST_GREEN} 14%, transparent);
-    color: ${CHECKLIST_GREEN};
+    background: color-mix(in srgb, var(--muted-foreground) 14%, transparent);
+    color: var(--muted-foreground);
     font-size: 11.5px;
     font-weight: 500;
     line-height: 1;
@@ -253,7 +252,7 @@ function TodoPanelInner({ todos, tasks, sessionId, onClear }: TodoPanelProps) {
     const [openKeys, setOpenKeys] = useState<Record<string, boolean>>({})
 
     if (checklist.items.length === 0) return null
-    const { items, completed, inProgress, total, activeText } = checklist
+    const { items, completed, total, activeText } = checklist
 
     // 确认文案必须与真实清理范围一致：清理固定同时作用于 todos 与 tasks
     const hasTodos = (todos?.length ?? 0) > 0
@@ -270,21 +269,12 @@ function TodoPanelInner({ todos, tasks, sessionId, onClear }: TodoPanelProps) {
                     {activeText}
                 </ShinyText>
             ) : completed === total ? (
-                <span style={{ color: CHECKLIST_GREEN, fontWeight: 500 }}>✓ {t('chat.todo.allCompleted')}</span>
+                <span style={{ color: 'var(--muted-foreground)', fontWeight: 500 }}>✓ {t('chat.todo.allCompleted')}</span>
             ) : (
                 <span style={{ color: 'var(--muted-foreground)' }}>
                     {t('chat.task.pendingCount', { count: total - completed })}
                 </span>
             )}
-            <span style={{ fontSize: 12, color: 'var(--muted-foreground)', marginLeft: 4 }}>
-                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{completed}/{total}</span> {t('chat.todo.completed')}
-                {inProgress > 0 && (
-                    <>
-                        {' · '}
-                        <span style={{ color: CHECKLIST_ORANGE, fontWeight: 500 }}>{inProgress}</span> {t('chat.todo.inProgress')}
-                    </>
-                )}
-            </span>
             <ClearStateButton
                 sessionId={sessionId}
                 clearFields={["todos", "tasks"]}
