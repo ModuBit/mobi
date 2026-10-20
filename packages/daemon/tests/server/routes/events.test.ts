@@ -45,11 +45,11 @@ function makeApp(namespace: string, synced = 1) {
         c.set('namespace', namespace)
         await next()
     })
-    app.route('/', createEventsRoutes(
-        () => manager as never,
-        () => engine as unknown as SyncEngine,
-        () => null,
-    ))
+    app.route('/', createEventsRoutes({
+        getSseManager: () => manager as never,
+        getSyncEngine: () => engine as unknown as SyncEngine,
+        getVisibilityTracker: () => null,
+    }))
     return { app, resyncCalls }
 }
 
@@ -76,12 +76,12 @@ function makeAppWithWarm(namespace: string) {
             c.set('namespace', namespace)
             await next()
         })
-        hono.route('/', createEventsRoutes(
-            () => manager as never,
-            () => engine as unknown as SyncEngine,
-            () => null,
-            () => ({ onSessionViewed: (sessionId: string, visible: boolean) => { viewed.push({ sessionId, visible }) } }),
-        ))
+        hono.route('/', createEventsRoutes({
+            getSseManager: () => manager as never,
+            getSyncEngine: () => engine as unknown as SyncEngine,
+            getVisibilityTracker: () => null,
+            getWarmOnOpen: () => ({ onSessionViewed: (sessionId: string, visible: boolean) => { viewed.push({ sessionId, visible }) } }),
+        }))
         return { app: hono, resyncCalls }
     })()
     return { app, resyncCalls, viewed }

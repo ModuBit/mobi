@@ -24,8 +24,7 @@ import { existsSync } from 'node:fs'
 import { serveStatic } from 'hono/bun'
 import { configuration } from '../configuration'
 import { PROTOCOL_VERSION, MAX_UPLOAD_BYTES } from '@mobi/shared'
-import type { SyncEngine } from '../sync/syncEngine'
-import type { BackgroundTaskTracker } from '../sync/backgroundTaskTracker'
+import type { WebAppDeps } from './appDeps'
 import { createAuthMiddleware, type WebAppEnv } from './middleware/auth'
 import { createAuthRoutes } from './routes/auth'
 import { createEventsRoutes } from './routes/events'
@@ -42,8 +41,6 @@ import { createMapRoutes } from './routes/map'
 import { createCliRoutes } from './routes/cli'
 import { createPushRoutes } from './routes/push'
 import { createManifestRoutes } from './routes/manifest'
-import type { SSEManager } from '../sse/sseManager'
-import type { VisibilityTracker } from '../visibility/visibilityTracker'
 import type { Server as BunServer } from 'bun'
 import type { Server as SocketEngine } from '@socket.io/bun-engine'
 import type { WebSocketData } from '@socket.io/bun-engine'
@@ -51,7 +48,6 @@ import { loadEmbeddedAssetMap, type EmbeddedWebAsset } from './embeddedAssets'
 import { isBunCompiled } from '../utils/bunCompiled'
 import { assertCorsOriginsForCredentials } from '../utils/cors'
 import { staticCacheControl } from './utils/staticCacheControl'
-import type { Store } from '../store'
 
 function findWebappDistDir(override?: string): { distDir: string; indexHtmlPath: string } {
     // 测试可注入临时 dist 目录，避免依赖真实 web/dist 构建产物
@@ -84,21 +80,7 @@ function serveEmbeddedAsset(asset: EmbeddedWebAsset): Response {
     })
 }
 
-export function createWebApp(options: {
-    getSyncEngine: () => SyncEngine | null
-    getSseManager: () => SSEManager | null
-    getVisibilityTracker: () => VisibilityTracker | null
-    /** warm-on-open（票 3.3）：会话查看信号出口，缺省 noop */
-    getWarmOnOpen?: () => { onSessionViewed: (sessionId: string, visible: boolean) => void } | null
-    jwtSecret: Uint8Array
-    store: Store
-    vapidPublicKey: string
-    corsOrigins?: string[]
-    embeddedAssetMap: Map<string, EmbeddedWebAsset> | null
-    distDirOverride?: string
-    /** 活跃后台任务集合（rewind API 闸门；须与 CLI socket handler 写侧共用同一实例，生产组装层必传） */
-    backgroundTaskTracker?: BackgroundTaskTracker
-}): Hono<WebAppEnv> {
+export function createWebApp(options: WebAppDeps): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
     app.use('*', logger())
@@ -172,11 +154,18 @@ export function createWebApp(options: {
 
     app.route('/api', createAuthRoutes(options.jwtSecret))
     app.use('/api/*', createAuthMiddleware(options.jwtSecret))
-    app.route('/api', createEventsRoutes(options.getSseManager, options.getSyncEngine, options.getVisibilityTracker, options.getWarmOnOpen))
-    app.route('/api', createSessionsRoutes(
-        options.getSyncEngine,
-        options.backgroundTaskTracker ? () => options.backgroundTaskTracker : undefined,
-    ))
+    app.route('/api', createEventsRoutes({
+        getSseManager: options.getSseManager,
+        getSyncEngine: options.getSyncEngine,
+        getVisibilityTracker: options.getVisibilityTracker,
+        getWarmOnOpen: options.getWarmOnOpen,
+    }))
+    app.route('/api', createSessionsRoutes({
+        getSyncEngine: options.getSyncEngine,
+        getBackgroundTaskTracker: options.backgroundTaskTracker
+            ? () => options.backgroundTaskTracker
+            : undefined,
+    }))
     app.route('/api', createWorkspacesRoutes(options.getSyncEngine))
     app.route('/api', createMessagesRoutes(options.getSyncEngine))
     app.route('/api', createPermissionsRoutes(options.getSyncEngine))
@@ -188,7 +177,7 @@ export function createWebApp(options: {
     app.route('/api', createMemoryRoutes())
     // 地图设置 + 静态图代理（key 只在服务端；静态图按参数缓存）
     app.route('/api', createMapRoutes())
-    app.route('/api', createPushRoutes(options.store, options.vapidPublicKey))
+    app.route('/api', createPushRoutes({ store: options.store, vapidPublicKey: options.vapidPublicKey }))
 
     // PWA Manifest（不需要认证）
     app.route('/', createManifestRoutes())
@@ -276,8 +265,7 @@ export function createWebApp(options: {
  * （127.0.0.1:hostPort）上——不经 frp 暴露，外网物理够不到。CLI_API_TOKEN 校验
  * 保留在路由自身（createCliRoutes），边界靠拓扑而非仅靠判断
  */
-export function createHostApp(options: {
-    getSyncEngine: () => SyncEngine | null
+export function createHostApp(options: Pick<WebAppDeps, 'getSyncEngine'> & {
     corsOrigins?: string[]
 }): Hono {
     const app = new Hono()
@@ -335,34 +323,15 @@ export function startHostServer(options: {
     return server
 }
 
-export async function startWebServer(options: {
-    getSyncEngine: () => SyncEngine | null
-    getSseManager: () => SSEManager | null
-    getVisibilityTracker: () => VisibilityTracker | null
-    /** warm-on-open（票 3.3）：会话查看信号出口，缺省 noop */
-    getWarmOnOpen?: () => { onSessionViewed: (sessionId: string, visible: boolean) => void } | null
-    jwtSecret: Uint8Array
-    store: Store
-    vapidPublicKey: string
+export async function startWebServer(options: WebAppDeps & {
     socketEngine: SocketEngine
-    corsOrigins?: string[]
-    /** 活跃后台任务集合（rewind API 闸门；须与 CLI socket handler 写侧共用同一实例） */
-    backgroundTaskTracker?: BackgroundTaskTracker
 }): Promise<BunServer<WebSocketData>> {
     const isCompiled = isBunCompiled()
     const embeddedAssetMap = isCompiled ? await loadEmbeddedAssetMap() : null
-    const app = createWebApp({
-        getSyncEngine: options.getSyncEngine,
-        getSseManager: options.getSseManager,
-        getVisibilityTracker: options.getVisibilityTracker,
-        getWarmOnOpen: options.getWarmOnOpen,
-        jwtSecret: options.jwtSecret,
-        store: options.store,
-        vapidPublicKey: options.vapidPublicKey,
-        corsOrigins: options.corsOrigins,
-        embeddedAssetMap,
-        backgroundTaskTracker: options.backgroundTaskTracker,
-    })
+    // spread 透传（架构深化候选①）：字段清单不手抄——WebAppDeps 加字段自动到达
+    // createWebApp，漏字段由类型约束在编译期暴露（getWarmOnOpen 漏抄前科的根治）
+    const { socketEngine, ...appDeps } = options
+    const app = createWebApp({ ...appDeps, embeddedAssetMap })
 
     const socketHandler = options.socketEngine.handler()
 

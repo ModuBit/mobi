@@ -18,11 +18,9 @@ import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import type { SSEManager } from '../../sse/sseManager'
-import type { SyncEngine } from '../../sync/syncEngine'
 import type { VisibilityState } from '../../visibility/visibilityTracker'
-import type { VisibilityTracker } from '../../visibility/visibilityTracker'
 import type { WebAppEnv } from '../middleware/auth'
+import type { WebAppDeps } from '../appDeps'
 import { requireSession } from './guards'
 
 function parseOptionalId(value: string | undefined): string | null {
@@ -54,13 +52,17 @@ const snapshotResyncSchema = z.object({
     sessionId: z.string().min(1)
 })
 
+/**
+ * deps 对象参数（架构深化候选①）：此前的 4 位置参数形态带缺省值，第 4 参漏传时
+ * 静默落 () => null——getWarmOnOpen 事故（8311f1df）正是装配层漏传被缺省吞掉。
+ * 对象参数无位置缺省陷阱，字段来自 WebAppDeps 声明源
+ */
 export function createEventsRoutes(
-    getSseManager: () => SSEManager | null,
-    getSyncEngine: () => SyncEngine | null,
-    getVisibilityTracker: () => VisibilityTracker | null,
-    /** warm-on-open（票 3.3）：会话查看信号出口，缺省 noop（单测形态） */
-    getWarmOnOpen: () => { onSessionViewed: (sessionId: string, visible: boolean) => void } | null = () => null,
+    deps: Pick<WebAppDeps, 'getSseManager' | 'getSyncEngine' | 'getVisibilityTracker' | 'getWarmOnOpen'>,
 ): Hono<WebAppEnv> {
+    const { getSseManager, getSyncEngine, getVisibilityTracker } = deps
+    /** warm-on-open（票 3.3）：会话查看信号出口，缺省 noop（单测形态） */
+    const getWarmOnOpen = () => deps.getWarmOnOpen?.() ?? null
     const app = new Hono<WebAppEnv>()
 
     // 建立SSE连接

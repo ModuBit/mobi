@@ -31,7 +31,8 @@ const unsubscribeSchema = z.object({
     endpoint: z.string().min(1)
 })
 
-export function createPushRoutes(store: Store, vapidPublicKey: string): Hono<WebAppEnv> {
+export function createPushRoutes(deps: { store: Store; vapidPublicKey: string }): Hono<WebAppEnv> {
+    const { store, vapidPublicKey } = deps
     const app = new Hono<WebAppEnv>()
 
     app.get('/push/vapid-public-key', (c) => {

@@ -174,11 +174,14 @@ function registerSessionConfigRoute<K extends SessionConfigFieldKey>(
 }
 
 export function createSessionsRoutes(
-    getSyncEngine: () => SyncEngine | null,
-    /** 活跃后台任务集合（rewind 闸门权威数据源；与 CLI socket handler 写侧共用同一实例）。
-     *  缺省时跳过闸门（仅测试用），生产组装层必传 */
-    getBackgroundTaskTracker?: () => BackgroundTaskTracker | null | undefined,
+    deps: {
+        getSyncEngine: () => SyncEngine | null
+        /** 活跃后台任务集合（rewind 闸门权威数据源；与 CLI socket handler 写侧共用同一实例）。
+         *  缺省时跳过闸门（仅测试用），生产组装层必传 */
+        getBackgroundTaskTracker?: () => BackgroundTaskTracker | null | undefined
+    },
 ): Hono<WebAppEnv> {
+    const { getSyncEngine, getBackgroundTaskTracker } = deps
     const app = new Hono<WebAppEnv>()
 
     /**
