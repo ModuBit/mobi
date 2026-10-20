@@ -143,7 +143,6 @@ export function ErrorEventCard({ event, context, onAction, createdAt }: ErrorEve
                 borderRadius: 'var(--radius-control-sm)',
                 background: token.colorBgContainer,
                 boxShadow: `inset 0 0 0 1px ${token.colorBorderSecondary}`,
-                borderLeft: `3px solid ${severityColor}`,
             }}
         >
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
