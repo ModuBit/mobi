@@ -51,8 +51,9 @@ export type SpawnedCliProcess = {
 export type SpawnSessionDeps = {
     trackingTable: SessionTrackingTable;
     /** 预算闸（票 2.1）：可选注入——缺省零行为（测试假件/直跑形态不受约束）。
-     *  acquire 在 dedup 之后：already-running 幂等返回不占名额 */
-    governor?: { acquireSlot: (reason: 'user') => SlotAcquisition };
+     *  acquire 在 dedup 之后：already-running 幂等返回不占名额。reason 来自
+     *  SpawnSessionOptions.acquireReason（user 缺省 / warm 内层防御位） */
+    governor?: { acquireSlot: (reason: 'user' | 'warm') => SlotAcquisition };
     /** 宿主通道端口（求值归 startExecutor：daemon 配置优先，直跑回退默认派生） */
     hostPort: number;
     reportOutcome?: (outcome: SpawnOutcome) => void;
@@ -155,10 +156,12 @@ export async function spawnSession(options: SpawnSessionOptions, deps: SpawnSess
         return dedupHit;
     }
 
-    // 预算闸（票 2.1）：dedup 之后——already-running 幂等返回不占名额；到顶 yield
-    // （硬上限不破，spawn 方放弃）。in-flight 覆盖到结果落定：成功时追踪表已登记
-    // （active 即时接棒），任何失败路径 finally 兜底释放，不泄漏
-    const slot = deps.governor?.acquireSlot('user');
+    // 预算闸（票 2.1）：dedup 之后——already-running 幂等返回不占名额。reason 从
+    // spawn 选项穿透（缺省 user：新建/resume/fork 激活/投递唤醒；warm-on-open 内层
+    // 传 'warm'）。user 到顶走逐出降级链（永不拒绝）；warm 到顶 yield（内层防御位，
+    // 正常路径外层 coordinator 闸已挡）。in-flight 覆盖到结果落定：成功时追踪表已
+    // 登记（active 即时接棒），任何失败路径 finally 兜底释放，不泄漏
+    const slot = deps.governor?.acquireSlot(options.acquireReason ?? 'user');
     if (slot && !slot.granted) {
         logger.debug('[EXECUTOR] Governor yielded: session capacity reached');
         return { type: 'governor-yielded' };

@@ -828,12 +828,12 @@ export class SyncEngine {
      * 后续消息或手动唤醒可重试；消息不因唤醒失败丢失（queued 已落库，上线后
      * handleSessionAlive → redeliverQueued 补投）。
      */
-    wakeSession(sessionId: string): void {
+    wakeSession(sessionId: string, opts?: { acquireReason?: 'user' | 'warm' }): void {
         const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
         if (!session || session.active) return
         if (this.wakeInFlight.has(sessionId)) return
         this.wakeInFlight.add(sessionId)
-        void this.resumeSession(sessionId, session.namespace)
+        void this.resumeSession(sessionId, session.namespace, opts)
             // resumeSession 的 RPC 层（spawn/ack 超时）会 throw 而非返回 error result；
             // 唤醒是 fire-and-forget，异常必须就地消化——unhandled rejection 在 Bun 下
             // 默认终止进程（= 整个 daemon 下线），且对休眠会话发消息即可触发
@@ -845,7 +845,7 @@ export class SyncEngine {
             })
     }
 
-    async resumeSession(sessionId: string, namespace: string): Promise<ResumeSessionResult> {
+    async resumeSession(sessionId: string, namespace: string, opts?: { acquireReason?: 'user' | 'warm' }): Promise<ResumeSessionResult> {
         const access = this.sessionCache.resolveSessionAccess(sessionId, namespace)
         if (!access.ok) {
             return {
@@ -884,6 +884,9 @@ export class SyncEngine {
                 // sessionId：本行的查重键——目标行已有活 child（含在途启动中）时 already-running 零等待
                 // 返回，恢复交给 CLI 重连 + handleSessionAlive 补投（#108 首条消息唤醒竞态的闸）
                 sessionId: access.sessionId,
+                // 预算闸来源穿透（永不拒绝裁决）：调用方 user 缺省（点开恢复/发消息唤醒/
+                // 投递唤醒）；warm-on-open 传 'warm'（到顶内层 yield，不逐别人）
+                acquireReason: opts?.acquireReason,
                 model: session.runtimeState?.model ?? undefined,
                 permissionMode: session.permissionMode,
                 resumeSessionId: resumeToken,

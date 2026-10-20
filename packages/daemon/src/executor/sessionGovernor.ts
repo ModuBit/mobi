@@ -113,7 +113,8 @@ export type GovernorAcquireReason = 'user' | 'warm' | 'prewarm';
 /** 治理事件（遥测面：结构化日志起步，票 4.2 再扩持久通道） */
 export type GovernorEvent =
     | { type: 'governor_yielded'; reason: GovernorAcquireReason; effective: number; cap: number; hadEvictable: boolean; memLevel: MemoryPressureLevel }
-    | { type: 'governor_evicting'; sessionId: string; idleMs: number }
+    | { type: 'governor_over_cap'; reason: GovernorAcquireReason; effective: number; cap: number; memLevel: MemoryPressureLevel }
+    | { type: 'governor_evicting'; sessionId: string; idleMs: number; relaxed: boolean }
     | { type: 'governor_evict_failed'; sessionId: string }
     | { type: 'governor_memory_pressure'; level: MemoryPressureLevel };
 
@@ -229,18 +230,32 @@ export class SessionGovernor {
     }
 
     /**
-     * 预算闸（spawn 前置位调用）：授予返回一次性 release；到顶 yield 并记遥测。
-     * user 到顶先尝试 LRU 逐出（Desktop 同款：仅 user 专属）——受害者经守卫筛选后
-     * fire-and-forget 走 pause/governor_evict，evicting 即时扣额、本次授予。
+     * 预算闸（spawn 前置位调用）：授予返回一次性 release。
+     *
+     * reason 分级语义（单用户产品裁决：永不拒绝创建）：
+     * - 'user'（新建/resume/fork 激活/投递唤醒）到顶走**逐出降级链**——第 1 档常规
+     *   LRU（idle ≥120s）、第 2 档放宽（去时间门槛，idle 中选最久）、第 3 档兜底
+     *   **放行**（记 governor_over_cap，短暂超 cap 随会话结束自然回落）——cap 从
+     *   「准入墙」降级为「回收水位线」
+     * - 'warm'/'prewarm' 到顶 **yield**（预热不是承诺，放弃即止）
+     *
      * 判定与登记同一同步块——并发 acquire 不会双双穿过同一份额度。
      */
     acquireSlot(reason: GovernorAcquireReason): SlotAcquisition {
         if (this.effective >= this.cap) {
-            if (reason === 'user' && this.tryEvictOne()) {
-                // 名额已腾出，落入下方授予路径
+            if (reason === 'user') {
+                // 逐出降级链：两档尝试，全失败则兜底放行（永不拒绝）
+                if (!this.tryEvictOne(false) && !this.tryEvictOne(true)) {
+                    this.onEvent({
+                        type: 'governor_over_cap',
+                        reason,
+                        effective: this.effective,
+                        cap: this.cap,
+                        memLevel: this.currentMemoryLevel,
+                    });
+                }
             } else {
-                // 遥测口径（票 4.2 表）：yield 时是否有本可逐出的候选（区分「满且可解」
-                // 与「满且无解」）、当前内存档位（critical 降 cap 是 yield 的可能成因之一）
+                // 遥测口径（票 4.2 表）：yield 时是否有本可逐出的候选、当前内存档位
                 this.onEvent({
                     type: 'governor_yielded',
                     reason,
@@ -329,15 +344,19 @@ export class SessionGovernor {
         return pickLruIdleVictim(candidates, this.now()) !== null;
     }
 
-    /** user 到顶的逐出尝试：选受害者 → evicting 扣额 → fire 逐出。true = 已腾位 */
-    private tryEvictOne(): boolean {
+    /**
+     * user 到顶的逐出尝试（降级链单步）：选受害者 → evicting 扣额 → fire 逐出。
+     * true = 已腾位。relaxed=false 第 1 档（守卫 120s）；relaxed=true 第 2 档
+     * （去时间门槛——刚闲过的会话也可逐，idle/remote/gate 三守卫仍生效）
+     */
+    private tryEvictOne(relaxed: boolean): boolean {
         if (!this.getGovernedSessions || !this.evictSession) return false;
         const candidates = this.getGovernedSessions().filter((c) => !this.evicting.has(c.sessionId));
-        const victim = pickLruIdleVictim(candidates, this.now());
+        const victim = pickLruIdleVictim(candidates, this.now(), relaxed ? 0 : DEFAULT_MIN_VICTIM_IDLE_MS);
         if (!victim) return false;
 
         this.evicting.add(victim);
-        this.onEvent({ type: 'governor_evicting', sessionId: victim, idleMs: this.now() - this._victimActivityOf(candidates, victim) });
+        this.onEvent({ type: 'governor_evicting', sessionId: victim, idleMs: this.now() - this._victimActivityOf(candidates, victim), relaxed });
         void this.evictSession(victim)
             .then((ok) => {
                 if (!ok) this.onEvent({ type: 'governor_evict_failed', sessionId: victim });

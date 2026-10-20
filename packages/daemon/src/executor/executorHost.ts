@@ -46,6 +46,8 @@ export type SpawnSessionOptions = {
     agent?: 'claude'
     /** mobi 会话行 id（唤醒/激活路径携带）：executor spawn 查重键之一，见 shared SpawnSessionOptions */
     sessionId?: string
+    /** 预算闸来源分级（永不拒绝裁决）：user 缺省 / warm 内层防御位，语义见 shared SpawnSessionOptions */
+    acquireReason?: 'user' | 'warm'
     model?: string
     permissionMode?: PermissionMode
     sessionType?: 'simple' | 'worktree'

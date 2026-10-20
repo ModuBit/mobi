@@ -87,8 +87,8 @@ describe('acquireSlot 授予与记账', () => {
 
     it('active 自愈源变化（进程退出/ prune）即时反映', () => {
         const { governor, setActiveCount } = makeGovernor({ activeCount: 6 })
-        const slot = governor.acquireSlot('user')
-        expect(slot.granted).toBe(false) // 6/6 到顶
+        expect(governor.acquireSlot('warm').granted).toBe(false) // 6/6 到顶（warm 视角可见）
+        expect(governor.effective).toBe(6)
 
         setActiveCount(4) // 两个会话进程退场
         expect(governor.effective).toBe(4)
@@ -96,35 +96,32 @@ describe('acquireSlot 授予与记账', () => {
     })
 })
 
-describe('到顶 yield（硬上限不破）', () => {
-    it('同步连发不超发：cap=6 时第 7 个 acquire yield（互斥闸无竞态）', () => {
+describe('到顶行为（user 放行 / warm yield）', () => {
+    it('同步连发不设限：cap=6 时第 7 个 user acquire 仍授予并记 over_cap', () => {
         const { governor, events } = makeGovernor({ activeCount: 0 })
         const slots = Array.from({ length: 7 }, () => governor.acquireSlot('user'))
-        expect(slots.filter((s) => s.granted).length).toBe(6)
-        expect(slots[6].granted).toBe(false)
-        // 全程 effective 不曾超过 cap（判定与登记同一同步块，无 await 穿插）
-        expect(governor.effective).toBe(6)
-
-        // yield 遥测：governor_yielded 带水位快照
-        expect(events.at(-1)).toMatchObject({ type: 'governor_yielded', reason: 'user', effective: 6, cap: 6 })
+        expect(slots.filter((s) => s.granted).length).toBe(7)
+        // user 永不拒绝（单用户产品裁决）：到顶走逐出降级链，无解时兜底放行
+        expect(events.at(-1)).toMatchObject({ type: 'governor_over_cap', reason: 'user', effective: 6, cap: 6 })
     })
 
-    it('yield 后释放一个名额即可再次授予', () => {
-        const { governor } = makeGovernor({ activeCount: 5 })
-        const slot = governor.acquireSlot('user')
-        expect(slot.granted).toBe(true)
-        expect(governor.acquireSlot('user').granted).toBe(false)
-
-        if (slot.granted) slot.release()
-        expect(governor.acquireSlot('user').granted).toBe(true)
-    })
-
-    it('in-flight 到顶同样 yield（active=0 全在途也受 cap 约束）', () => {
-        const { governor } = makeGovernor({ activeCount: 0 })
+    it('warm 到顶 yield（预热不是承诺）：授予 6 个后第 7 个 warm 放弃', () => {
+        const { governor, events } = makeGovernor({ activeCount: 0 })
         for (let i = 0; i < 6; i++) {
             expect(governor.acquireSlot('user').granted).toBe(true)
         }
-        expect(governor.acquireSlot('user').granted).toBe(false)
+        expect(governor.acquireSlot('warm').granted).toBe(false)
+        expect(events.some((e) => e.type === 'governor_yielded' && e.reason === 'warm')).toBe(true)
+    })
+
+    it('释放名额后 warm 可再授予', () => {
+        const { governor } = makeGovernor({ activeCount: 5 })
+        const slot = governor.acquireSlot('warm')
+        expect(slot.granted).toBe(true)
+        expect(governor.acquireSlot('warm').granted).toBe(false)
+
+        if (slot.granted) slot.release()
+        expect(governor.acquireSlot('warm').granted).toBe(true)
     })
 })
 
@@ -227,12 +224,27 @@ describe('user 到顶触发逐出（票 2.2）', () => {
         expect(events.some((e) => e.type === 'governor_evicting')).toBe(true)
     })
 
-    it('无合格受害者（全在 turn 中/闲不够久）→ 仍 yield', () => {
-        const { governor, evicted } = makeEvictGovernor({
+    it('无合格受害者（全在 turn 中）→ 第 3 档兜底放行并记 over_cap', () => {
+        const { governor, evicted, events } = makeEvictGovernor({
             candidates: [{ sessionId: 'busy', state: 'active' }],
         })
-        expect(governor.acquireSlot('user').granted).toBe(false)
+        expect(governor.acquireSlot('user').granted).toBe(true)
         expect(evicted).toEqual([])
+        expect(events.some((e) => e.type === 'governor_over_cap')).toBe(true)
+    })
+
+    it('第 2 档放宽：无 ≥120s 候选时，idle 会话中选最久者逐出（刚闲的也可逐）', () => {
+        const { governor, evicted } = makeEvictGovernor({
+            candidates: [
+                { sessionId: 'fresh', lastActivityAt: NOW - 10 },
+                { sessionId: 'mid', lastActivityAt: NOW - 60_000 },
+                { sessionId: 'busy', state: 'active' },
+            ],
+        })
+        const slot = governor.acquireSlot('user')
+        expect(slot.granted).toBe(true)
+        // 两档都无 120s 合格者（fresh/mid 都太新）→ 第 2 档去时间门槛选 idle 最久者
+        expect(evicted).toEqual(['mid'])
     })
 
     it('warm/prewarm 到顶不逐出（user 专属，Desktop 同款）', () => {

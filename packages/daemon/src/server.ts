@@ -242,8 +242,9 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
         if (!engine || !wiredGovernor) return null
         if (!warmOnOpenCoordinator) {
             warmOnOpenCoordinator = new WarmOnOpenCoordinator({
-                // wakeSession 自吞 spawn 失败（warn 日志），warm 失败遥测面由其内部覆盖
-                warmSession: async (sessionId) => { engine.wakeSession(sessionId) },
+                // wakeSession 自吞 spawn 失败（warn 日志），warm 失败遥测面由其内部覆盖；
+                // acquireReason='warm'：预算闸内层穿透（到顶 yield，不逐别人会话）
+                warmSession: async (sessionId) => { engine.wakeSession(sessionId, { acquireReason: 'warm' }) },
                 acquireWarmSlot: () => wiredGovernor!.acquireSlot('warm'),
                 getSession: (sessionId) => {
                     const session = engine.getSession(sessionId)

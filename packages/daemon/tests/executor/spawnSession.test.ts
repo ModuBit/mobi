@@ -310,13 +310,23 @@ describe('spawnSession 预算闸', () => {
         return { governor: { acquireSlot }, release, acquireSlot }
     }
 
-    it('yield → 返回 governor-yielded，不 mkdir 不 spawn', async () => {
-        const { governor } = makeGovernorSpy(true)
+    it('yield → 返回 governor-yielded，不 mkdir 不 spawn（user 路径已不产生，防御位）', async () => {
+        const { governor, acquireSlot } = makeGovernorSpy(true)
         const { deps, spawnFn } = makeDeps({ governor })
         const result = await spawnSession(simpleOptions, deps)
         expect(result).toEqual({ type: 'governor-yielded' })
         expect(spawnFn).not.toHaveBeenCalled()
         expect(deps.fs.mkdir).not.toHaveBeenCalled()
+        // reason 缺省 user（永不拒绝裁决：user 路径到顶走降级链不 yield，
+        // 此返回只剩 warm 内层防御位可达）
+        expect(acquireSlot).toHaveBeenCalledWith('user')
+    })
+
+    it('acquireReason 穿透：warm-on-open 的内层 spawn 以 warm 语义过闸', async () => {
+        const { governor, acquireSlot } = makeGovernorSpy()
+        const { deps } = makeDeps({ governor })
+        await spawnSession({ ...simpleOptions, acquireReason: 'warm' } as SpawnSessionOptions, deps)
+        expect(acquireSlot).toHaveBeenCalledWith('warm')
     })
 
     it('dedup 命中（already-running）不 acquire——幂等返回不占名额', async () => {

@@ -59,3 +59,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [Bubble 布局类验证](bubble-layout-classes-verify.md) — 去 `.ant-bubble :has()` 后的显式类回归：工具气泡 80% 最小宽 / 事件对齐 / spacer 44 / artifact 与 turn-diff 全宽；一次 prompt 造齐四场景
 - [Map 组件验证](map-verify.md) — 高德三档：设置页 Tag/落盘、无 key 降级 URI 链接、静态图代理假 key 502→fallback 端到端、交互档需真 key 不伪造
 - [openui 档位验证](openui-profile-verify.md) — 名录/签名分层对比探针脚本 / regenerate 免重启 / transcript 三层结构与 skill 示例 fence 坑
+- [治理 E2E](governance-e2e.md) — Governor/warm-on-open 真机 recipe：cap=8、pause 态只能逐出造（dormant=stop）、SSE+snapshot-resync 触发 warm、日志双写点坑（daemonLogger→daemon.log / console→pid 文件）、spawn 直登无心跳

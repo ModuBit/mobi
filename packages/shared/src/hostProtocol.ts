@@ -69,6 +69,13 @@ export interface SpawnSessionOptions {
     worktreeName?: string
     /** 归属工作区 id（Web spawn 透传；缺省 = 游离） */
     workspaceId?: string
+    /**
+     * 预算闸来源分级（永不拒绝裁决）：user（缺省——新建/resume/fork 激活/投递唤醒，
+     * 到顶走逐出降级链，永不拒绝）；warm（warm-on-open 内层 spawn，到顶 yield 放弃）。
+     * warm 外层闸在 WarmOnOpenCoordinator，此处是同一管线的内层位——不穿透会让
+     * warm 撞 user 语义去逐别人的会话
+     */
+    acquireReason?: 'user' | 'warm'
 }
 
 export type SpawnSessionResult =
