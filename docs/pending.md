@@ -1266,3 +1266,29 @@ HINDSIGHT_API_RERANKER_ALIBABA_API_KEY=sk-你的DashScope-key
 **若确认是痛点，优先廉价替代**：不做进程预热，改前端感知——点发送后立即进入聊天页、消息入队（daemon 已有 queued + `redeliverQueued` 机制），改动面远小于 parked 壳的 6 个子系统（协议 / executor / session / SparePool / Governor / 遥测）。
 
 **关联**：同属「预先起进程换延迟」的 warm-on-open（票 3.3）已于同日暂停（`a6fefd71`，`WARM_ON_OPEN_ENABLED = false`），当前使用模式下该路线整体收益不足。
+
+
+## 123. YOLO 下结构复杂的 Bash 仍弹审批——CC bypass 免疫层，后续引入二次裁决（2026-10-20 调研）
+
+**结论（真机取证）**：mobi 的 YOLO 链路与 Claude Desktop 一致、无实现问题。会话确实处于 `bypassPermissions`（CC 每条 user 条目自带的 `permissionMode`、mobi DB `runtime_state`、CC 进程 argv 三处一致），单条 `chmod` / `mv` / `curl` 直接执行。但复杂命令形态会绕过 YOLO 弹审批。
+
+**已复现的触发形态**（mobi YOLO 会话内，均真机弹卡）：
+
+- `cd /tmp && mv ...`（复合 + `cd` + 写操作）
+- `cd /tmp && curl ...`（复合 + `cd`）
+- `TOKEN=$(...); if [...]; then ...; fi; curl ...`（命令替换 + 控制流）
+
+**机制**：CC 2.1.304 的 Bash 命令静态分析返回 `behavior:"ask"`、`decisionReason.type:"other"` + `bashMissKind`（`cd-compound-write` / `cd-compound-read` / `cd-compound-redirect` / `shell-expansion` / `shell-operators` / `too-complex` / `semantics` / `multi-cd` / `process-substitution` / `cd-git-compound` 等），这一层不随 `permissionMode` 放行；`xGt` 表区分哪些类别在 bypass 下仍强制人工。Desktop 走同一套 SDK 参数（`permissionMode` + `allowDangerouslySkipPermissions` + `settingSources` + `canUseTool`），同一 CLI 机制下行为一致（桌面端未用同样命令实测复测，属代码等价性推演；CLI 版本 2.1.295/2.1.299 与 mobi 2.1.304 可能有细节差异）。
+
+**后续能力（用户 2026-10-20 提出，暂挂）**：当会话处于 YOLO、CC 却因结构分析要求审批时，让 jev 再判断一次，判定放行或拒绝。
+
+**已否决方案**：YOLO 下装 PreToolUse hook 无条件返回 allow——会误放高危命令，风险不可接受。
+
+**待定问题**：
+
+- jev 的具体形态（模型判定 / 规则判定）与判定输入（command + bashMissKind + 会话上下文）
+- 哪些 `bashMissKind` 可进入二次裁决（建议只收窄到结构类，`dangerousRemoval` 等安全类不放）
+- 判定失败/超时的默认档（应 fail-closed，保持弹卡）
+- 放行需落审计日志，便于事后追溯
+
+**关联文件**：`packages/session/src/claude/utils/permissionHandler.ts`（canUseTool 入口）、`packages/session/src/claude/claudeRemote.ts`（SDK options）。
