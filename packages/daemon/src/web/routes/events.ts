@@ -58,6 +58,8 @@ export function createEventsRoutes(
     getSseManager: () => SSEManager | null,
     getSyncEngine: () => SyncEngine | null,
     getVisibilityTracker: () => VisibilityTracker | null,
+    /** warm-on-open（票 3.3）：会话查看信号出口，缺省 noop（单测形态） */
+    getWarmOnOpen: () => { onSessionViewed: (sessionId: string, visible: boolean) => void } | null = () => null,
 ): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
@@ -153,6 +155,13 @@ export function createEventsRoutes(
             return c.json({ error: 'Subscription not found' }, 404)
         }
 
+        // warm-on-open 信号（票 3.3）：页面可见性变化经订阅反查目标会话——
+        // hidden 取消防抖（快速滑走），visible 重新计窗
+        const subscription = getSseManager()?.getSubscription(parsed.data.subscriptionId)
+        if (subscription?.sessionId) {
+            getWarmOnOpen()?.onSessionViewed(subscription.sessionId, parsed.data.visibility === 'visible')
+        }
+
         return c.json({ ok: true })
     })
 
@@ -194,6 +203,10 @@ export function createEventsRoutes(
             parsed.data.subscriptionId,
             sessionResult.sessionId,
         )
+
+        // warm-on-open 信号（票 3.3）：resync 即「打开会话页」——防抖 2s 后若仍停留
+        // 且会话为 pause 态则触发冷 resume（用户发首条消息时会话已就绪）
+        getWarmOnOpen()?.onSessionViewed(sessionResult.sessionId, true)
 
         return c.json({ ok: true, synced })
     })

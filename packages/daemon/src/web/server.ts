@@ -88,6 +88,8 @@ export function createWebApp(options: {
     getSyncEngine: () => SyncEngine | null
     getSseManager: () => SSEManager | null
     getVisibilityTracker: () => VisibilityTracker | null
+    /** warm-on-open（票 3.3）：会话查看信号出口，缺省 noop */
+    getWarmOnOpen?: () => { onSessionViewed: (sessionId: string, visible: boolean) => void } | null
     jwtSecret: Uint8Array
     store: Store
     vapidPublicKey: string
@@ -170,7 +172,7 @@ export function createWebApp(options: {
 
     app.route('/api', createAuthRoutes(options.jwtSecret))
     app.use('/api/*', createAuthMiddleware(options.jwtSecret))
-    app.route('/api', createEventsRoutes(options.getSseManager, options.getSyncEngine, options.getVisibilityTracker))
+    app.route('/api', createEventsRoutes(options.getSseManager, options.getSyncEngine, options.getVisibilityTracker, options.getWarmOnOpen))
     app.route('/api', createSessionsRoutes(
         options.getSyncEngine,
         options.backgroundTaskTracker ? () => options.backgroundTaskTracker : undefined,
@@ -337,6 +339,8 @@ export async function startWebServer(options: {
     getSyncEngine: () => SyncEngine | null
     getSseManager: () => SSEManager | null
     getVisibilityTracker: () => VisibilityTracker | null
+    /** warm-on-open（票 3.3）：会话查看信号出口，缺省 noop */
+    getWarmOnOpen?: () => { onSessionViewed: (sessionId: string, visible: boolean) => void } | null
     jwtSecret: Uint8Array
     store: Store
     vapidPublicKey: string

@@ -38,6 +38,7 @@ import { getOrCreateJwtSecret } from './config/jwtSecret'
 import { startWebApiTokenWatcher } from './config/settingsWatcher'
 import type { SessionGovernor } from './executor/sessionGovernor'
 import { evaluateMemoryPressure } from './executor/sessionGovernor'
+import { WarmOnOpenCoordinator } from './sync/warmOnOpen'
 import { createSocketServer } from './socket/server'
 import { SSEManager } from './sse/sseManager'
 import { SnapshotDeltaStats } from './sync/snapshotDeltaStats'
@@ -232,10 +233,32 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
 
     const notificationHub = new NotificationHub(syncEngine, notificationChannels)
 
+    // warm-on-open（票 3.3）：惰性构造——governor 在 wireGovernor 后可用；
+    // 单测形态（未 wire）时 getWarmOnOpen 返回 null，信号 noop
+    let wiredGovernor: SessionGovernor | null = null
+    let warmOnOpenCoordinator: WarmOnOpenCoordinator | null = null
+    const getWarmOnOpen = () => {
+        const engine = syncEngine
+        if (!engine || !wiredGovernor) return null
+        if (!warmOnOpenCoordinator) {
+            warmOnOpenCoordinator = new WarmOnOpenCoordinator({
+                // wakeSession 自吞 spawn 失败（warn 日志），warm 失败遥测面由其内部覆盖
+                warmSession: async (sessionId) => { engine.wakeSession(sessionId) },
+                acquireWarmSlot: () => wiredGovernor!.acquireSlot('warm'),
+                getSession: (sessionId) => {
+                    const session = engine.getSession(sessionId)
+                    return session ? { active: session.active, endReason: session.endReason ?? null } : undefined
+                },
+            })
+        }
+        return warmOnOpenCoordinator
+    }
+
     const webServer: BunServer<WebSocketData> = await startWebServer({
         getSyncEngine: () => syncEngine,
         getSseManager: () => sseManager,
         getVisibilityTracker: () => visibilityTracker,
+        getWarmOnOpen,
         jwtSecret,
         store,
         vapidPublicKey: vapidKeys.publicKey,
@@ -279,6 +302,7 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
     const wireGovernor = (governor: SessionGovernor): void => {
         const engine = syncEngine
         if (!engine) return
+        wiredGovernor = governor
         governor.attachSessionFacts({
             getGovernedSessions: () => engine.sessionRegistry.live(),
             evictSession: async (sessionId) => {
