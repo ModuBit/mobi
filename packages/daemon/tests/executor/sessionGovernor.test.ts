@@ -378,7 +378,7 @@ describe('evaluateMemoryPressure（阈值纯函数）', () => {
 
 // ============ macOS 可用内存口径修正（票 4.2 收尾发现的 bug） ============
 
-import { parseVmStatFreeBytes } from '@/executor/sessionGovernor'
+import { parseVmStatFreeBytes, parseMemAvailableBytes } from '@/executor/sessionGovernor'
 
 describe('parseVmStatFreeBytes（macOS 可用内存口径）', () => {
     it('free + speculative + purgeable + inactive 求和（对齐 memory_pressure 口径）', () => {
@@ -398,5 +398,21 @@ describe('parseVmStatFreeBytes（macOS 可用内存口径）', () => {
 
     it('字段缺失按 0 容错（不误判为零可用）', () => {
         expect(parseVmStatFreeBytes('garbage output', 16384)).toBe(0)
+    })
+})
+
+describe('parseMemAvailableBytes（Linux 可用内存口径）', () => {
+    it('取 MemAvailable（KB → 字节），排除其他 Mem* 字段', () => {
+        const meminfo = [
+            'MemTotal:       16384000 kB',
+            'MemFree:         1024000 kB',
+            'MemAvailable:    9830400 kB',
+            'Buffers:          500000 kB',
+        ].join('\n')
+        expect(parseMemAvailableBytes(meminfo)).toBe(9_830_400 * 1024)
+    })
+
+    it('字段缺失返回 null（调用方退 freemem 兜底）', () => {
+        expect(parseMemAvailableBytes('MemTotal: 16384000 kB\n')).toBeNull()
     })
 })

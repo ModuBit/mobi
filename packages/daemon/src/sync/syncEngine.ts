@@ -671,12 +671,13 @@ export class SyncEngine {
 
     /**
      * Governor 逐出（票 2.2）：pause/governor_evict 单出口——经 killSession RPC 指定
-     * 终结语义，会话进程先记因再走单出口退出；session-death 载荷回落后由票 1.1
-     * 链路落库（endReason=pause），Web 侧可唤醒。gate 守卫已在受害者选择侧完成
-     * （Registry gateBlockers 空 + minVictimIdleMs），这里不再二次自查
+     * 终结语义，会话进程先记因再走单出口退出；daemon 侧同步合成 session-end 事实
+     * （与手动休眠/归档同一收尾口径），不依赖 CLI 的 session-death 载荷必达。
+     * gate 守卫已在受害者选择侧完成（Registry gateBlockers 空 + minVictimIdleMs），
+     * 这里不再二次自查
      */
     async evictSessionForGovernor(sessionId: string): Promise<void> {
-        await this.rpcGateway.killSession(sessionId, { endReason: 'pause', pauseTrigger: 'governor_evict' })
+        await this.killAndEndSession(sessionId, { endReason: 'pause', pauseTrigger: 'governor_evict' })
     }
 
     /**

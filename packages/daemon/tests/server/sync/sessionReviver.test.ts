@@ -52,7 +52,11 @@ function makeSession(overrides: Partial<Session> = {}): Session {
 function makeReviver(options: {
     session?: Session | null
     spawnResult?: unknown
+    /** 依次消费的 spawn 结果（覆盖 spawnResult），用于 already-running → 退场后再 spawn 类用例 */
+    spawnResults?: unknown[]
     waitForActive?: () => Promise<boolean>
+    /** 模拟缓存淘汰后回源 DB 抛错 */
+    lookupThrows?: Error
 }) {
     const spawned: Array<{ directory: string; options: Record<string, unknown> }> = []
     const activationErrors: Array<{ code: string; detail?: string }> = []
@@ -63,14 +67,21 @@ function makeReviver(options: {
                 options.session
                     ? { ok: true as const, sessionId: options.session.id, session: options.session }
                     : { ok: false as const, reason: 'not-found' as const },
-            getSession: () => options.session ?? undefined,
-            refreshSession: () => options.session ?? null,
+            getSession: () => {
+                if (options.lookupThrows) throw options.lookupThrows
+                return options.session ?? undefined
+            },
+            refreshSession: () => {
+                if (options.lookupThrows) throw options.lookupThrows
+                return options.session ?? null
+            },
             mergeSessions: async () => undefined,
         },
         executor: {
             spawnSession: async (directory, spawnOptions) => {
                 spawned.push({ directory, options: spawnOptions as unknown as Record<string, unknown> })
-                return (options.spawnResult ?? { type: 'success', sessionId: 's1' }) as never
+                const next = options.spawnResults?.shift()
+                return (next ?? options.spawnResult ?? { type: 'success', sessionId: 's1' }) as never
             },
         },
         isExecutorReady: () => true,
@@ -183,6 +194,26 @@ describe('SessionReviver.wake — 去重与容错', () => {
         reviver.wake('s1')
         await new Promise((resolve) => setTimeout(resolve, 10))
 
+        expect(spawned).toHaveLength(2)
+    })
+
+    test('会话查找抛错（缓存淘汰回源 DB 失败）→ 返回 error，wake 不 reject', async () => {
+        const { reviver } = makeReviver({ lookupThrows: new Error('db locked') })
+
+        await expect(reviver.wake('s1')).resolves.toEqual({
+            type: 'error', message: 'db locked', code: 'resume_failed',
+        })
+    })
+
+    test('archived（正在终结）的 already-running → 等进程退场后重新 spawn', async () => {
+        const { reviver, spawned } = makeReviver({
+            session: makeSession({ active: false, metadata: { path: '/tmp/demo', nativeSessionId: 'native-1', lifecycleState: 'archived' } as never }),
+            spawnResults: [{ type: 'already-running' }, { type: 'success', sessionId: 's1' }],
+        })
+
+        const result = await reviver.wake('s1')
+
+        expect(result).toEqual({ type: 'success', sessionId: 's1' })
         expect(spawned).toHaveLength(2)
     })
 })

@@ -15,6 +15,7 @@
  */
 
 import type { ForkedFromMetadata, ForkFromMetadata, Session, WorktreeMetadata } from './schemas'
+import type { SessionEndReason, SessionPauseTrigger } from './sessionEnd'
 
 export type SessionSummaryMetadata = {
     name?: string
@@ -53,6 +54,10 @@ export type SessionSummary = {
      * ['sessions'] 缓存就永远拿不到归属——取消置顶时无法回填原工作区分组
      */
     workspaceId?: string | null
+    /** 终结语义（票 1.1）：列表接口也要能区分 pause（可唤醒）与 stop，且与 SSE delta 白名单对齐 */
+    endReason?: SessionEndReason | null
+    pauseTrigger?: SessionPauseTrigger | null
+    endedAt?: number | null
 }
 
 export function toSessionSummary(session: Session): SessionSummary {
@@ -94,5 +99,8 @@ export function toSessionSummary(session: Session): SessionSummary {
         mode: session.mode,
         pinned: session.pinned,
         workspaceId: session.workspaceId ?? null,
+        endReason: session.endReason ?? null,
+        pauseTrigger: session.pauseTrigger ?? null,
+        endedAt: session.endedAt ?? null,
     }
 }

@@ -86,19 +86,20 @@ export class SessionReviver {
     }
 
     private async reviveDeferred(sessionId: string, opts?: { intent?: ReviveIntent }): Promise<ReviveResult> {
-        const session = this.deps.sessionCache.getSession(sessionId) ?? this.deps.sessionCache.refreshSession(sessionId)
-        if (!session) {
-            return { type: 'error', message: 'Session not found', code: 'session_not_found' }
-        }
-        if (session.active) {
-            return { type: 'success', sessionId }
-        }
         try {
+            const session = this.deps.sessionCache.getSession(sessionId) ?? this.deps.sessionCache.refreshSession(sessionId)
+            if (!session) {
+                return { type: 'error', message: 'Session not found', code: 'session_not_found' }
+            }
+            if (session.active) {
+                return { type: 'success', sessionId }
+            }
             return await this.revive(sessionId, session.namespace, opts)
         } catch (error) {
-            // revive 的 RPC 层（spawn/ack 超时）会 throw 而非返回 error result
+            // 会话查找（缓存淘汰后回源 DB）与 revive 的 RPC 层都可能 throw；
+            // wake() 的调用方（消息路由）不 await/catch，异常漏出会触发 unhandledRejection 杀 daemon
             const message = error instanceof Error ? error.message : String(error)
-            daemonLogger.warn(`[dormancy] wakeSession spawn failed (session=${sessionId}): ${message}`)
+            daemonLogger.warn(`[dormancy] wakeSession failed (session=${sessionId}): ${message}`)
             return { type: 'error', message, code: 'resume_failed' }
         }
     }
@@ -138,21 +139,29 @@ export class SessionReviver {
         }
 
         const intent: ReviveIntent = opts?.intent ?? 'activate'
-        const spawnResult = await this.deps.executor.spawnSession(
-            metadata.path,
-            {   // Mobi 当前仅支持 Claude（agent 缺省）；resume 无 sessionType/worktreeName/workspaceId
-                // sessionId：本行的查重键——目标行已有活 child（含在途启动中）时 already-running 零等待
-                // 返回，恢复交给 CLI 重连 + handleSessionAlive 补投（#108 首条消息唤醒竞态的闸）
-                sessionId: access.sessionId,
-                // 预算闸来源：intent 映射单源（activate→user 永不拒绝 / prewarm→warm yield）
-                acquireReason: INTENT_TO_ACQUIRE_REASON[intent],
-                model: session.runtimeState?.model ?? undefined,
-                permissionMode: session.permissionMode,
-                resumeSessionId: resumeToken,
-                effort: session.runtimeState?.effort ?? undefined,
-                outputStyle: session.runtimeState?.outputStyle ?? undefined,
+        const spawnOptions = {   // Mobi 当前仅支持 Claude（agent 缺省）；resume 无 sessionType/worktreeName/workspaceId
+            // sessionId：本行的查重键——目标行已有活 child（含在途启动中）时 already-running 零等待
+            // 返回，恢复交给 CLI 重连 + handleSessionAlive 补投（#108 首条消息唤醒竞态的闸）
+            sessionId: access.sessionId,
+            // 预算闸来源：intent 映射单源（activate→user 永不拒绝 / prewarm→warm yield）
+            acquireReason: INTENT_TO_ACQUIRE_REASON[intent],
+            model: session.runtimeState?.model ?? undefined,
+            permissionMode: session.permissionMode,
+            resumeSessionId: resumeToken,
+            effort: session.runtimeState?.effort ?? undefined,
+            outputStyle: session.runtimeState?.outputStyle ?? undefined,
+        }
+        let spawnResult = await this.deps.executor.spawnSession(metadata.path, spawnOptions)
+
+        // 旧进程正在终结（CLI cleanup 先写 lifecycleState=archived 再退出）：此时 already-running
+        // 的去重命中不是「重连中」而是「即将退场」，直接返回 success 会让入站消息滞留 queued。
+        // 去重表行由 exit 事件清理，短轮询等它退场后重新 spawn（上限 ~10s，超时退回既有语义）。
+        if (spawnResult.type === 'already-running' && session.metadata?.lifecycleState === 'archived') {
+            for (let i = 0; i < 20 && spawnResult.type === 'already-running'; i++) {
+                await new Promise((resolve) => { setTimeout(resolve, 500) })
+                spawnResult = await this.deps.executor.spawnSession(metadata.path, spawnOptions)
             }
-        )
+        }
 
         if (spawnResult.type === 'already-running') {
             // 唤醒去重（.scratch/wake-dedup）：executor 报告已有活 child 在 resume 该目标，

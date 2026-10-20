@@ -67,6 +67,26 @@ describe('toSessionSummary', () => {
         expect(summary.pendingRequestsCount).toBe(3)
     })
 
+    it('终结语义字段随摘要输出（列表接口与 SSE delta 白名单对齐）', () => {
+        const summary = toSessionSummary(makeSession({
+            endReason: 'pause',
+            pauseTrigger: 'idle_timeout',
+            endedAt: 12345,
+        }))
+
+        expect(summary.endReason).toBe('pause')
+        expect(summary.pauseTrigger).toBe('idle_timeout')
+        expect(summary.endedAt).toBe(12345)
+    })
+
+    it('终结字段缺省归一为 null', () => {
+        const summary = toSessionSummary(makeSession())
+
+        expect(summary.endReason).toBeNull()
+        expect(summary.pauseTrigger).toBeNull()
+        expect(summary.endedAt).toBeNull()
+    })
+
     it('agentState.requests 为空对象时 pendingRequestsCount 为 0', () => {
         const session = makeSession({
             agentState: { requests: {} },

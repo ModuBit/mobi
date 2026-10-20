@@ -98,12 +98,14 @@ describe('refreshMetadataImpl：取数优先级（活 Query → cwd 缓存 → �
         expect(extractSDKMetadata).not.toHaveBeenCalled()
     })
 
-    it('缓存失败 → 回退探针', async () => {
+    it('缓存失败 → 直接报错，不再二次探测（避免双倍成本）', async () => {
         const getForCwd = vi.fn(async () => { throw new Error('cache down') })
 
         const res = await refreshMetadataImpl({ cwd: '/tmp/wd' }, undefined, { getForCwd })
 
-        expect(res.success).toBe(true)
-        expect(extractSDKMetadata).toHaveBeenCalledTimes(1)
+        expect(res.success).toBe(false)
+        expect(res.error).toContain('cache down')
+        expect(getForCwd).toHaveBeenCalledWith('/tmp/wd')
+        expect(extractSDKMetadata).not.toHaveBeenCalled()
     })
 })

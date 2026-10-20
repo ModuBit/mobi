@@ -15,6 +15,9 @@
  */
 
 import { EventEmitter } from 'node:events'
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { platform } from 'node:os'
 import { logger } from '@mobi/node-core/logger'
 import { configuration } from '@mobi/node-core/configuration'
 import type { RawJSONLines } from '../claude/types'
@@ -56,6 +59,36 @@ import { registerCommandHandlers, type LiveCapabilityGetter } from '@mobi/node-c
 import { IdleTimer } from '../modules/common/idleTimer'
 import { SessionTransport } from './sessionTransport'
 import { SessionChannel, type SessionEventPayload } from './sessionChannel'
+
+/**
+ * 治理水位 rss：wrapper 自身 + 直接子进程（真正驻留数百 MB 的 claude CLI）。
+ * 只报 wrapper 的 rss 会让 daemon 侧「rss 汇总 >70%/85%」口径几乎永不触发。
+ * 子进程信息不可读（平台/权限/无子进程）时退回 wrapper 口径，采样失败不抛错。
+ */
+function sampleProcessTreeRss(): number {
+    let rss = process.memoryUsage().rss
+    try {
+        if (platform() === 'linux') {
+            const children = readFileSync(`/proc/${process.pid}/task/${process.pid}/children`, 'utf8').trim()
+            for (const pid of children.split(/\s+/).filter(Boolean)) {
+                const match = readFileSync(`/proc/${pid}/status`, 'utf8').match(/^VmRSS:\s+(\d+)\s+kB/m)
+                if (match) rss += Number(match[1]) * 1024
+            }
+        } else {
+            // BSD/macOS ps 没有 -P；一次列出全表再按 PPID 过滤（列：父 pid、rss KB）
+            const output = execFileSync('ps', ['-o', 'ppid=,rss=', '-ax'], { encoding: 'utf8' })
+            for (const line of output.trim().split('\n')) {
+                const [ppid, rssKb] = line.trim().split(/\s+/)
+                if (Number(ppid) === process.pid && Number.isFinite(Number(rssKb))) {
+                    rss += Number(rssKb) * 1024
+                }
+            }
+        }
+    } catch {
+        // 只保留 wrapper 口径
+    }
+    return rss
+}
 
 /**
  * CLI↔daemon 会话通道门面（深化候选③票①）。
@@ -396,7 +429,7 @@ export class ApiSessionClient extends EventEmitter {
     private buildGovernanceSnapshot(running: boolean, mode: 'local' | 'remote'): SessionGovernanceSnapshot {
         this.keepAliveBeatCount++
         if (this.keepAliveBeatCount % ApiSessionClient.RSS_SAMPLE_EVERY_N_BEATS === 1) {
-            this.lastRssSample = process.memoryUsage().rss
+            this.lastRssSample = sampleProcessTreeRss()
         }
         return {
             state: running ? 'active' : 'idle',

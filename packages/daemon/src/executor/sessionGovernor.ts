@@ -34,6 +34,7 @@
 
 import { totalmem, freemem, platform } from 'node:os';
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { logger } from '@mobi/node-core/logger';
 import type { SessionGovernanceSnapshot } from '@mobi/shared/types';
 
@@ -66,8 +67,18 @@ export function parseVmStatFreeBytes(vmStatOutput: string, pageSizeBytes: number
 }
 
 /**
- * 可用内存字节（跨平台口径）：darwin 用 vm_stat 派生（free+speculative+purgeable），
- * 其余平台退 os.freemem()。5min 扫描节流下一次 spawn 开销可忽略。
+ * Linux 可用内存（/proc/meminfo 的 MemAvailable，KB → 字节）：已扣除不可回收页缓存，
+ * 与 darwin 的 vm_stat 口径对齐。字段缺失/文件不可读返回 null。
+ */
+export function parseMemAvailableBytes(meminfo: string): number | null {
+    const match = meminfo.match(/^MemAvailable:\s+(\d+)\s+kB/m);
+    return match ? Number(match[1]) * 1024 : null;
+}
+
+/**
+ * 可用内存字节（跨平台口径）：darwin 用 vm_stat 派生（free+speculative+purgeable+inactive），
+ * linux 用 MemAvailable（含可回收页缓存——os.freemem() 只报 MemFree，会让健康主机常态
+ * 判 critical），其余平台退 os.freemem()。5min 扫描节流下一次 spawn 开销可忽略。
  */
 export function readAvailableMemoryBytes(): number {
     if (platform() === 'darwin') {
@@ -78,6 +89,14 @@ export function readAvailableMemoryBytes(): number {
             return parseVmStatFreeBytes(output, pageSize);
         } catch {
             return freemem(); // vm_stat 不可用时退裸口径（宁误报 warning 也不错乱）
+        }
+    }
+    if (platform() === 'linux') {
+        try {
+            const available = parseMemAvailableBytes(readFileSync('/proc/meminfo', 'utf8'));
+            if (available !== null) return available;
+        } catch {
+            // /proc 不可用（容器裁剪等）退裸口径
         }
     }
     return freemem();

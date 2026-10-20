@@ -40,6 +40,7 @@ export type DormancyBlocker = z.infer<typeof DormancyBlockerSchema>
 
 /** 会话治理状态：active = turn 运行中；idle = 空闲（含阻塞复查中） */
 export const SessionGovernanceStateSchema = z.enum(['active', 'idle'])
+export type SessionGovernanceState = z.infer<typeof SessionGovernanceStateSchema>
 
 /**
  * 治理水位快照（session-alive 心跳搭车字段）。

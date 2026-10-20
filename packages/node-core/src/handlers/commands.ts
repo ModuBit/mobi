@@ -82,7 +82,10 @@ export async function refreshMetadataImpl(
         try {
             return { success: true, metadata: await opts.getForCwd(effectiveCwd) }
         } catch (error) {
-            logger.debug('[refreshMetadata] cwd capability read failed, falling back:', error)
+            // 目录缓存本身就是「探测 + stale 兜底」的权威层：它失败时再跑一次 extractSDKMetadata
+            // 只会对同一 cwd 重复探测（最坏 2×超时、双倍占用全局探针槽），不再二次回退
+            logger.debug('[refreshMetadata] cwd capability read failed:', error)
+            return rpcError(getErrorMessage(error, 'Failed to refresh metadata'))
         }
     }
 
