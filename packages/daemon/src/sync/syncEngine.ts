@@ -14,15 +14,15 @@
  * limitations under the License.
  */
 
-import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SessionGovernanceSnapshot, SyncEvent } from '@mobi/shared/types'
+import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
 import type { ExecutorState } from '@mobi/node-core/api/types'
-import { DEFAULT_STOP_KIND, isCancelQueued, type PermissionAnswers, type PermissionUpdate, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, isCancelQueued, type PermissionAnswers, type PermissionUpdate, type SessionKillRequest, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { ForkCreationFailureReason } from '../store/sessionFork'
 import type { WorkspaceSessionsResult } from '../store/sessions'
 import { RewindDeleteBoundTracker } from './rewindDeleteBoundTracker'
-import type { SessionFactsSink } from './sessionFacts'
+import type { SessionAlivePayload, SessionFactsSink } from './sessionFacts'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import type { SSEManager } from '../sse/sseManager'
 import { EventPublisher, type SyncEventListener } from './eventPublisher'
@@ -402,17 +402,7 @@ export class SyncEngine {
         this.sessionTrackingSync = fn
     }
 
-    handleSessionAlive(payload: {
-        sid: string
-        time: number
-        running?: boolean
-        mode?: 'local' | 'remote'
-        permissionMode?: PermissionMode
-        model?: string | null
-        effort?: EffortLevel
-        outputStyle?: string
-        governance?: SessionGovernanceSnapshot
-    }): void {
+    handleSessionAlive(payload: SessionAlivePayload): void {
         // 追踪同步先行（补登/查重键刷新，fire-and-forget；失败不影响激活语义）
         try {
             this.sessionTrackingSync?.(payload.sid)
@@ -650,15 +640,7 @@ export class SyncEngine {
         if (!check.ok) return check
         // 手动休眠是「可唤醒」语义：必须落 pause/manual，否则默认 stop 会让 warm-on-open
         // 永远识别不到 pause 态（人工休眠是最主要的预热入口）
-        if (!this.isArchivedInDb(sessionId)) {
-            await this.rpcGateway.killSession(sessionId, { endReason: 'pause', pauseTrigger: 'manual' })
-        }
-        this.factsSink.handleSessionEnd?.({
-            sid: sessionId,
-            time: Date.now(),
-            endReason: 'pause',
-            pauseTrigger: 'manual',
-        })
+        await this.killAndEndSession(sessionId, { endReason: 'pause', pauseTrigger: 'manual' })
         return { ok: true }
     }
 
@@ -669,12 +651,19 @@ export class SyncEngine {
     }
 
     async archiveSession(sessionId: string): Promise<void> {
-        // DB 终态已 archived → 跳过必然 unreachable 的 killSession，只补收尾
-        // （handleSessionEnd 翻掉悬挂的 active）；RPC 失败由调用方收口，这里不吞
+        await this.killAndEndSession(sessionId)
+    }
+
+    /**
+     * 终止会话并合成 session-end 事实（archive / 手动休眠共用同一收尾口径）。
+     * DB 终态已 archived → 跳过必然 unreachable 的 killSession，只补收尾
+     * （handleSessionEnd 翻掉悬挂的 active）；RPC 失败由调用方收口，这里不吞。
+     */
+    private async killAndEndSession(sessionId: string, end?: SessionKillRequest): Promise<void> {
         if (!this.isArchivedInDb(sessionId)) {
-            await this.rpcGateway.killSession(sessionId)
+            await this.rpcGateway.killSession(sessionId, end)
         }
-        this.factsSink.handleSessionEnd?.({ sid: sessionId, time: Date.now() })
+        this.factsSink.handleSessionEnd?.({ sid: sessionId, time: Date.now(), ...end })
     }
     async switchSession(sessionId: string, to: 'remote' | 'local'): Promise<void> {
         await this.rpcGateway.switchSession(sessionId, to)

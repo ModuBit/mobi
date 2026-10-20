@@ -197,8 +197,16 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
             const metadata = session.metadata as { path?: string } | null | undefined
             return { namespace: session.namespace, sessionPath: metadata?.path ?? null }
         },
-        // Web 端实时事件（如文件变更、终端输出）→ 转发给 SyncEngine 处理
-        onWebappEvent: (event: SyncEvent) => syncEngine?.handleRealtimeEvent(event),
+        // Web 端实时事件（如文件变更、终端输出）→ 转发给 SyncEngine 处理。
+        // sdk-metadata-refreshed 同时失效同 cwd 的 host 能力缓存（命令列表可能已变，
+        // 新会话页下一次请求重新探测）——复用同一事件通道，不再单独穿回调
+        onWebappEvent: (event: SyncEvent) => {
+            if (event.type === 'sdk-metadata-refreshed') {
+                const cwd = (syncEngine?.getSession(event.sessionId)?.metadata as { path?: string } | null | undefined)?.path
+                if (cwd) capabilityCatalog.invalidate(cwd)
+            }
+            syncEngine?.handleRealtimeEvent(event)
+        },
         // 会话事实上报（心跳/水位/目标/轮次/结束）→ sink 落库 + SSE 推（深化候选③）；
         // 惰性：socket server 先于 SyncEngine 创建，handler 触发时才取 sink
         factsSink: () => syncEngine?.factsSink,
@@ -209,12 +217,6 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
         agentSessions: () => syncEngine?.agentSessions,
         // CLI 房间 new-message 广播出口（messageService 单一构造点），惰性取用
         emitCliNewMessage: () => syncEngine?.emitCliNewMessage.bind(syncEngine),
-        // CLI 上报 sdkMetadata 变更（commands_changed / outputStyle 等）→ 失效同 cwd 的
-        // host 能力缓存，避免新会话页继续吃旧命令列表
-        onSdkMetadataChanged: (sessionId) => {
-            const cwd = (syncEngine?.getSession(sessionId)?.metadata as { path?: string } | null | undefined)?.path
-            if (cwd) capabilityCatalog.invalidate(cwd)
-        }
     })
 
     // 执行层显式注入（ticket-15 接口 / ticket-17 本地化 / ticket-20 唯一实现）：

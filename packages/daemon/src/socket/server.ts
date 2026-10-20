@@ -93,8 +93,6 @@ export type SocketServerDeps = {
     factsSink?: SessionSocketCapabilities['factsSink'] | LazyCapability<SessionSocketCapabilities['factsSink']>
     agentSessions?: LazyCapability<SessionSocketCapabilities['agentSessions']>
     emitCliNewMessage?: LazyCapability<SessionSocketCapabilities['emitCliNewMessage']>
-    /** CLI 上报 sdkMetadata 变更（命令列表等）→ 装配层失效同 cwd 的能力缓存 */
-    onSdkMetadataChanged?: (sessionId: string) => void
 }
 
 export function createSocketServer(deps: SocketServerDeps): {
@@ -242,7 +240,6 @@ export function createSocketServer(deps: SocketServerDeps): {
             // Agent 会话操作（B 类工具族）：整份服务一次交付——不再逐方法包一层闭包
             // （四个方法名此前在这条链上被改了三遍名、判了四遍空）
             agentSessions,
-            onSdkMetadataChanged: deps.onSdkMetadataChanged
         })
     })
 

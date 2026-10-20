@@ -145,13 +145,15 @@ export function createCapabilityCatalog(options: CapabilityCatalogOptions = {}):
     /**
      * 探测并落缓存。single-flight：同一 cwd 的并发请求共享同一个 Promise。
      * 签名在探测**之前**采样——探测期间的变化会在下次请求体现，不会被误记为"已生效"。
+     * `knownInputs` 由调用方传入已采样的签名（stale 判定刚算过），省掉重复的文件系统遍历；
+     * undefined 才重新采样（null 是合法值，表示根目录不可读）。
      */
-    function refresh(key: string): Promise<SDKMetadata> {
+    function refresh(key: string, knownInputs?: string | null): Promise<SDKMetadata> {
         const running = inflight.get(key)
         if (running) return running
 
         const task = (async (): Promise<SDKMetadata> => {
-            const inputs = await signature(key)
+            const inputs = knownInputs !== undefined ? knownInputs : await signature(key)
             try {
                 const metadata = await probe(key)
                 store(key, metadata, inputs)
@@ -193,17 +195,18 @@ export function createCapabilityCatalog(options: CapabilityCatalogOptions = {}):
                 return entry.metadata
             }
 
+            let inputs: string | null | undefined
             if (entry && ageMs < staleMs) {
-                const inputs = await signature(key)
+                inputs = await signature(key)
                 if (inputs !== null && entry.signature !== null && inputs === entry.signature) {
                     logger.debug('[capability] revalidate', { cwd: key, ageMs })
-                    void refresh(key).catch(() => {})
+                    void refresh(key, inputs).catch(() => {})
                     return entry.metadata
                 }
             }
 
             logger.debug('[capability] miss', { cwd: key, ageMs })
-            return refresh(key)
+            return refresh(key, inputs)
         },
 
         invalidate(cwd: string): void {
@@ -258,16 +261,13 @@ async function directorySignature(dir: string): Promise<string | null> {
  */
 export async function computeCapabilityInputSignature(cwd: string): Promise<string | null> {
     const roots = [...new Set([resolveClaudeConfigDir(), join(resolve(cwd), '.claude')])]
-    const parts: string[] = []
-    for (const root of roots) {
-        for (const file of SIGNATURE_FILES) {
-            parts.push(`f:${file}=${await statToken(join(root, file))}`)
-        }
-        for (const dir of SIGNATURE_DIRS) {
+    // 两棵根目录的 stat/readdir 互相独立：并行取，避免 10 次串行文件系统往返
+    const parts = await Promise.all(roots.flatMap((root) => [
+        ...SIGNATURE_FILES.map(async (file) => `f:${file}=${await statToken(join(root, file))}`),
+        ...SIGNATURE_DIRS.map(async (dir) => {
             const inputs = await directorySignature(join(root, dir))
-            if (inputs === null) return null
-            parts.push(`d:${dir}=${inputs}`)
-        }
-    }
-    return parts.join('|')
+            return inputs === null ? null : `d:${dir}=${inputs}`
+        }),
+    ]))
+    return parts.includes(null) ? null : parts.join('|')
 }
