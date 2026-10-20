@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode } from '@mobi/shared/types'
+import type { CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, SessionEndReason, SessionGovernanceSnapshot, SessionPauseTrigger } from '@mobi/shared/types'
 
 /**
  * CLI 会话「事实上报」管线（深化候选③）：CLI 运行时持续上报会话实时状态
@@ -34,11 +34,16 @@ export type SessionAlivePayload = {
     model?: string | null
     effort?: EffortLevel
     outputStyle?: string
+    /** 治理水位快照（票 1.2 搭车）：只进 SessionRegistry，不落库不广播 */
+    governance?: SessionGovernanceSnapshot
 }
 
 export type SessionEndPayload = {
     sid: string
     time: number
+    /** 会话终结原因（票 1.1 单出口）；老 CLI 缺省（透传兼容），落库时按 stop 处理 */
+    endReason?: SessionEndReason
+    pauseTrigger?: SessionPauseTrigger
 }
 
 export type ContextUsagePayload = {

@@ -43,6 +43,9 @@ export type {
 
 export type { SessionSummary, SessionSummaryMetadata } from './sessionSummary'
 
+export type { SessionEndReason, SessionPauseTrigger } from './sessionEnd'
+export type { DormancyBlocker, SessionGovernanceSnapshot } from './governance'
+
 export type {
     RpcAcceptResult,
     SessionConfigApplyKind,

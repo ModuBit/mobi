@@ -232,3 +232,67 @@ describe('IdleTimer 阻塞复查', () => {
         expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1)
     })
 })
+
+// ============ 泛型化能力（票 1.3）：动态超时 + 可见性维度 ============
+
+describe('IdleTimer 泛型化能力', () => {
+    beforeEach(() => { vi.useFakeTimers() })
+    afterEach(() => { vi.useRealTimers() })
+
+    it('idleTimeoutMs 支持动态读取：排程时求值，配置热调生效', () => {
+        let current = IDLE_TIMEOUT_MS
+        const { timer, callbacks } = makeTimer({ idleTimeoutMs: () => current })
+        timer.start()
+
+        // 首排按 1 天
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS - 1)
+        expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
+
+        // 活动重置后热调到 5 分钟
+        current = 300_000
+        timer.reset()
+        vi.advanceTimersByTime(300_000 - 1)
+        expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
+        vi.advanceTimersByTime(1)
+        expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1)
+    })
+
+    it('setHidden(true) 暂停空闲计时（默认 timeoutOnHidden=false），恢复时折算续排并回调 onWarmUp', () => {
+        const onWarmUp = vi.fn()
+        const { timer, callbacks } = makeTimer({ onWarmUp })
+        timer.start()
+
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS - 600_000)
+        timer.setHidden(true)                              // 隐藏：暂停
+        vi.advanceTimersByTime(600_000)                    // 隐藏期间不累计……
+        expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
+
+        // 恢复可见：进度按 lastActivityAt 折算——隐藏前已空闲近一天，剩余 10 分钟里
+        // 隐藏窗口也计入进度（同重连折算语义），故恢复后立即到点
+        timer.setHidden(false)
+        expect(onWarmUp).toHaveBeenCalledTimes(1)
+        vi.advanceTimersByTime(0)
+        expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1)
+    })
+
+    it('timeoutOnHidden=true：隐藏不暂停，照常到点（防后台僵尸）', () => {
+        const { timer, callbacks } = makeTimer({ timeoutOnHidden: true })
+        timer.start()
+
+        timer.setHidden(true)
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS)
+        expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1)
+    })
+
+    it('stopped 状态 setHidden 不动作（能力位对停止态无副作用）', () => {
+        const onWarmUp = vi.fn()
+        const { timer, callbacks } = makeTimer({ onWarmUp })
+
+        timer.setHidden(true)
+        timer.setHidden(false)
+        expect(onWarmUp).not.toHaveBeenCalled()
+
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS)
+        expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
+    })
+})

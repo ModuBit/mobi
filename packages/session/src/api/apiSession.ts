@@ -37,6 +37,10 @@ import type {
     TurnOrigin,
     UiCommandAction,
     UiCommandAck,
+    SessionEndReason,
+    SessionPauseTrigger,
+    DormancyBlocker,
+    SessionGovernanceSnapshot,
 } from '@mobi/shared'
 import type {
     AgentState,
@@ -364,12 +368,41 @@ export class ApiSessionClient extends EventEmitter {
 
     // ── 保活（会话传输）──
 
+    /** rss 采样抽稀：每 N 拍心跳采一次进程内存（2s 一拍 × 15 = 30s 粒度，内存分级足够） */
+    private static readonly RSS_SAMPLE_EVERY_N_BEATS = 15
+    private keepAliveBeatCount = 0
+    private lastRssSample: number | undefined
+    /** 治理阻塞项 provider（票 1.2）：runClaude 装配后安装——gate 判定仍走 dormancyDecide，两路同源事实 */
+    private governanceBlockers: (() => DormancyBlocker[]) | null = null
+
     keepAlive(
         running: boolean,
         mode: 'local' | 'remote',
         runtime?: { permissionMode?: SessionPermissionMode; model?: SessionModel; effort?: EffortLevel; outputStyle?: string },
     ): void {
-        this.transport.keepAlive(this.sessionId, running, mode, runtime)
+        this.transport.keepAlive(this.sessionId, running, mode, runtime, this.buildGovernanceSnapshot(running))
+    }
+
+    /** 治理水位快照（票 1.2）：state/lastActivityAt 本地可得；blockers 经 provider；rss 抽稀采样 */
+    private buildGovernanceSnapshot(running: boolean): SessionGovernanceSnapshot {
+        this.keepAliveBeatCount++
+        if (this.keepAliveBeatCount % ApiSessionClient.RSS_SAMPLE_EVERY_N_BEATS === 1) {
+            this.lastRssSample = process.memoryUsage().rss
+        }
+        return {
+            state: running ? 'active' : 'idle',
+            lastActivityAt: this.idleTimer?.getLastActivityAt() ?? Date.now(),
+            gateBlockers: this.governanceBlockers?.() ?? [],
+            ...(this.lastRssSample !== undefined && { rss: this.lastRssSample }),
+        }
+    }
+
+    /**
+     * 安装治理阻塞项 provider（票 1.2）：与 installDormancyDecide 共用同一份 dormancy facts，
+     * 由 runClaude 在装配完成时安装；未安装按无阻塞上报（同 dormancyDecide 缺省语义）
+     */
+    installGovernanceBlockers(get: () => DormancyBlocker[]): void {
+        this.governanceBlockers = get
     }
 
     // ── 会话结束 ──
@@ -380,8 +413,8 @@ export class ApiSessionClient extends EventEmitter {
      * session-end，active 永久悬挂（2026-09-30 事故）。超时/断连时关闭照常进行，
      * daemon 侧由心跳过期清扫收敛 active。
      */
-    sendSessionDeath(): Promise<void> {
-        return this.channel.sendSessionDeath()
+    sendSessionDeath(payload?: { endReason: SessionEndReason; pauseTrigger?: SessionPauseTrigger }): Promise<void> {
+        return this.channel.sendSessionDeath(payload)
     }
 
     // ── 版本化 CAS 更新（会话协议）──

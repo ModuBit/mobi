@@ -171,7 +171,10 @@ export class Store {
                 runtime_state_updated_at INTEGER,
                 workspace_id TEXT,
                 pinned INTEGER DEFAULT 0,
-                seq INTEGER DEFAULT 0
+                seq INTEGER DEFAULT 0,
+                end_reason TEXT,
+                pause_trigger TEXT,
+                ended_at INTEGER
             );
             CREATE INDEX IF NOT EXISTS idx_sessions_tag ON sessions(tag);
             CREATE INDEX IF NOT EXISTS idx_sessions_tag_namespace ON sessions(tag, namespace);
@@ -317,6 +320,17 @@ export class Store {
                 'Stop the daemon, then rebuild the column as ' +
                 `'native_id TEXT GENERATED ALWAYS AS (json_extract(metadata, '$.nativeId')) STORED' ` +
                 '(drop the plain column and recreate, since SQLite cannot ALTER a plain column into a generated one), then restart.'
+            )
+        }
+
+        // 「SessionEndReason 之前」的存量库 user_version 同为 1（BASELINE=0 未发布期）：缺列放行会在
+        // markSessionEnded 的 UPDATE sessions SET end_reason=... 处报无引导错误。沿用 native_id 先例
+        // （部署时人工补列），此处只负责引导
+        if (!sessionColumns.some(column => column.name === 'end_reason')) {
+            throw new Error(
+                `Detected legacy sessions schema (sessions has no end_reason column) at ${this.dbPath}. ` +
+                'Stop the daemon, then run ' +
+                `'sqlite3 ${this.dbPath} "ALTER TABLE sessions ADD COLUMN end_reason TEXT; ALTER TABLE sessions ADD COLUMN pause_trigger TEXT; ALTER TABLE sessions ADD COLUMN ended_at INTEGER;"' and restart.`
             )
         }
     }

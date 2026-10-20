@@ -15,11 +15,15 @@
  */
 
 /**
- * Idle Timer - Session 自动超时关闭计时器
+ * Idle Manager（泛型空闲管理器，票 1.3 由会话专用计时器抽壳泛型化；类名 IdleTimer
+ * 为保留名，会话空闲是它的第一个实例）——资源闲置超时回收的通用时钟。
  *
  * 支持：
  * - 连接断开超时：Socket.IO 断开后独立计时
- * - 交互不活跃超时：无活动事件时计时
+ * - 交互不活跃超时：无活动事件时计时，超时值支持动态读取（配置热调）
+ * - 可见性维度（timeoutOnHidden 能力位）：默认隐藏时暂停空闲计时；开启后隐藏也
+ *   继续计时（防后台僵尸）。第一实例（会话空闲）不接线任何可见性信号源——
+ *   setHidden 无人调用，行为与抽壳前逐字节一致；mobi desktop 有窗口可见性概念时启用
  */
 
 import { logger } from '@mobi/node-core/logger';
@@ -28,10 +32,15 @@ import { logger } from '@mobi/node-core/logger';
 export const DEFAULT_RECHECK_MS = 30_000;
 
 export interface IdleTimerOptions {
+    /** 实例名（日志/遥测维度；缺省 'idle'——向后兼容会话实例的既有构造） */
+    name?: string;
     /** 连接断开超时（毫秒），默认 10 分钟 */
     disconnectTimeoutMs: number;
-    /** 交互不活跃超时（毫秒），默认 1 天 */
-    idleTimeoutMs: number;
+    /**
+     * 交互不活跃超时（毫秒），默认 1 天。支持动态读取（每次排程求值，配置热调
+     * 不必重建实例）；传数字等价于恒返回该值
+     */
+    idleTimeoutMs: number | (() => number);
     /**
      * 空闲到点被休眠 gate 阻塞后的复查判定（dormancy spec）：true = 阻塞事务已清、
      * 触发 onIdleTimeout 退出；false = 继续阻塞。缺省（未提供）= 到点直接退出，行为同旧版。
@@ -39,6 +48,13 @@ export interface IdleTimerOptions {
     onIdleTimeoutBlockedRecheck?: () => boolean;
     /** 阻塞复查周期（毫秒），默认 30 秒 */
     recheckIntervalMs?: number;
+    /**
+     * 可见性维度能力位（票 1.2 裁决：保留不接线）：false（缺省）= 隐藏期间暂停
+     * 空闲计时（进度保留，恢复可见时折算续排并回调 onWarmUp）；true = 隐藏也继续计时
+     */
+    timeoutOnHidden?: boolean;
+    /** 恢复可见（隐藏暂停结束）时回调——预热语义（warm-on-open 同族） */
+    onWarmUp?: () => void;
     /** 连接断开超时回调 */
     onDisconnectTimeout: () => void;
     /** 交互不活跃超时回调 */
@@ -48,12 +64,17 @@ export interface IdleTimerOptions {
 type TimerState = 'stopped' | 'running' | 'blocked';
 
 export class IdleTimer {
+    private readonly name: string;
     private readonly disconnectTimeoutMs: number;
-    private readonly idleTimeoutMs: number;
+    private readonly idleTimeoutMs: number | (() => number);
+    private readonly timeoutOnHidden: boolean;
+    private readonly onWarmUp?: () => void;
     private readonly onDisconnectTimeout: () => void;
     private readonly onIdleTimeout: () => void;
 
     private state: TimerState = 'stopped';
+    /** 可见性挂起位：hidden 且未开 timeoutOnHidden 时不排空闲计时（进度保留） */
+    private isHidden = false;
     /**
      * 最近一次真实活动时刻（start / reset 时推进）。空闲判定的时间戳基准：
      * 排程时按「距上次活动已过多久」折算剩余时间，而非恒排完整空闲期——
@@ -70,8 +91,11 @@ export class IdleTimer {
     private isDisconnected = false;
 
     constructor(options: IdleTimerOptions) {
+        this.name = options.name ?? 'idle';
         this.disconnectTimeoutMs = options.disconnectTimeoutMs;
         this.idleTimeoutMs = options.idleTimeoutMs;
+        this.timeoutOnHidden = options.timeoutOnHidden ?? false;
+        this.onWarmUp = options.onWarmUp;
         this.onIdleTimeoutBlockedRecheck = options.onIdleTimeoutBlockedRecheck;
         this.recheckIntervalMs = options.recheckIntervalMs ?? DEFAULT_RECHECK_MS;
         this.onDisconnectTimeout = options.onDisconnectTimeout;
@@ -99,6 +123,7 @@ export class IdleTimer {
         this.clearAllTimers();
         this.state = 'stopped';
         this.isDisconnected = false;
+        this.isHidden = false;
         logger.debug('[IdleTimer] Stopped');
     }
 
@@ -185,6 +210,7 @@ export class IdleTimer {
         this.clearAllTimers();
         this.state = 'stopped';
         this.isDisconnected = false;
+        this.isHidden = false;
         logger.debug('[IdleTimer] Destroyed');
     }
 
@@ -193,6 +219,13 @@ export class IdleTimer {
      */
     getState(): TimerState {
         return this.state;
+    }
+
+    /**
+     * 最近真实活动时刻（治理快照的 LRU 排序键；stopped 时无意义返回 0）
+     */
+    getLastActivityAt(): number {
+        return this.lastActivityAt;
     }
 
     /**
@@ -205,10 +238,17 @@ export class IdleTimer {
     private scheduleIdleTimers(): void {
         this.clearIdleTimers();
 
+        // 可见性挂起（票 1.3 能力位）：隐藏且未开 timeoutOnHidden 时不排空闲计时——
+        // lastActivityAt 不动，恢复可见时按剩余进度折算续排（同重连折算语义）
+        if (this.isHidden && !this.timeoutOnHidden) {
+            return;
+        }
+
         // 时间戳基准：按「距上次真实活动已过多久」折算剩余时间。
         // 断开窗口（onDisconnect 清计时器 → onReconnect 重排）不重置进度，
         // 已超期则 delay 折算为 0、立即到点（照常过休眠 gate）
-        const remainingMs = Math.max(0, this.idleTimeoutMs - (Date.now() - this.lastActivityAt));
+        const idleTimeoutMs = typeof this.idleTimeoutMs === 'function' ? this.idleTimeoutMs() : this.idleTimeoutMs;
+        const remainingMs = Math.max(0, idleTimeoutMs - (Date.now() - this.lastActivityAt));
 
         // 超时计时器
         this.idleTimer = setTimeout(() => {
@@ -222,6 +262,32 @@ export class IdleTimer {
             logger.debug('[IdleTimer] Idle timeout reached');
             this.onIdleTimeout();
         }, remainingMs);
+    }
+
+    /**
+     * 可见性切换（票 1.3 能力位，第一实例无人调用）：
+     * 隐藏 = 暂停空闲计时（未开 timeoutOnHidden 时）；恢复 = 折算续排 + onWarmUp 回调。
+     * 与断开路径正交：断开计时不受可见性影响。
+     */
+    setHidden(hidden: boolean): void {
+        if (this.state === 'stopped' || hidden === this.isHidden) {
+            return;
+        }
+
+        this.isHidden = hidden;
+        if (hidden) {
+            if (this.timeoutOnHidden) return; // 继续计时，不动作
+            this.clearIdleTimers();
+            logger.debug('[IdleTimer] Hidden, idle timers suspended');
+            return;
+        }
+
+        // 恢复可见：按剩余进度续排（折算语义同 onReconnect），并回调 onWarmUp
+        if (!this.isDisconnected && this.state === 'running') {
+            this.scheduleIdleTimers();
+        }
+        this.onWarmUp?.();
+        logger.debug('[IdleTimer] Visible again, idle timers resumed');
     }
 
     private clearIdleTimers(): void {

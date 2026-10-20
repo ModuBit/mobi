@@ -32,7 +32,7 @@ function makeStoredSession(sid: string): StoredSession {
         id: sid, tag: null, namespace: 'default',
         createdAt: 1, updatedAt: 1, metadata: null, metadataVersion: 0,
         agentState: null, agentStateVersion: 0, runtimeState: null,
-        runtimeStateUpdatedAt: null, workspaceId: null, pinned: false, seq: 1,
+        runtimeStateUpdatedAt: null, workspaceId: null, pinned: false, seq: 1, endReason: null, pauseTrigger: null, endedAt: null,
     }
 }
 

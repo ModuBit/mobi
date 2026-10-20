@@ -43,6 +43,8 @@ import type {
     UiCommandAction,
     UiCommandAck,
     Update,
+    SessionEndReason,
+    SessionPauseTrigger,
 } from '@mobi/shared'
 import { classifyMessage, isMobiSentCrossSession, toCrossSessionMeta } from '@mobi/shared'
 import { AgentStateSchema, CliMessagesResponseSchema, MetadataSchema, UserMessageSchema } from '@mobi/node-core/api/types'
@@ -761,10 +763,15 @@ export class SessionChannel {
      * session-end，active 永久悬挂（2026-09-30 事故）。超时/断连时关闭照常进行，
      * daemon 侧由心跳过期清扫收敛 active。
      */
-    async sendSessionDeath(): Promise<void> {
+    async sendSessionDeath(payload?: { endReason: SessionEndReason; pauseTrigger?: SessionPauseTrigger }): Promise<void> {
         void cleanupUploadDir(this.sessionId)
         try {
-            await this.transport.emitWithAck('session-end', { sid: this.sessionId, time: Date.now() }, SESSION_END_ACK_TIMEOUT_MS)
+            await this.transport.emitWithAck('session-end', {
+                sid: this.sessionId,
+                time: Date.now(),
+                ...(payload?.endReason !== undefined && { endReason: payload.endReason }),
+                ...(payload?.pauseTrigger !== undefined && { pauseTrigger: payload.pauseTrigger }),
+            }, SESSION_END_ACK_TIMEOUT_MS)
         } catch {
             // 上报失败不阻塞退出流程
         }

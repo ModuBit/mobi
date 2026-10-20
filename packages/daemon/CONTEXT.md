@@ -111,3 +111,7 @@ _Avoid_: 往编排里加闭包自由变量（新状态进追踪表）、绕过 d
 **CLI socket 能力集**（`SessionSocketCapabilities`）:
 socket 层消费的 daemon 侧会话能力的单一声明源（`socket/capabilities.ts`，架构评审候选⑥票①）：factsSink / emitCliNewMessage / onWebappEvent / hasActiveSseConnection / publishUiCommand / agentSessions 六项实体签名一份，`SocketServerDeps` / `CliHandlersDeps` / `SessionHandlersDeps` 三层只做 Partial/Pick/getter 投影——改一个能力签名从跨 4 文件变一处。factsSink 的载荷类型另有声明源 `sync/sessionFacts.ts`。组装层 socket server 先于 SyncEngine 创建（真环），惰性项在 SocketServerDeps 侧写 getter 投影、connection 时解包。
 _Avoid_: 三层 deps 手写能力字段（漂移前科：emitCliNewMessage 链式投影 + factsSink 手写三遍丢字段）、绕过 capabilities 直接引 SyncEngine 内部类型当 deps
+
+**会话治理登记簿**（`SessionRegistry`）:
+session-alive 心跳搭车的治理快照（state/lastActivityAt/gateBlockers/rss）的 daemon 侧登记处——纯内存不落库（daemon 重启即丢，进程存活探测兜底），stale 窗口 30s，session-end 即时离场。Governor（规划中）的预算数据面；当前只登记与查询，不做决策，**不参与 dormancy gate 判定**。
+_Avoid_: 往 Registry 加落库或决策逻辑（决策归 Governor）、把 registry 快照当 gate 判据（gate 在会话进程本地）

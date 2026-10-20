@@ -199,6 +199,62 @@ describe('SessionCache.handleContextUsage', () => {
     })
 })
 
+describe('SessionCache.handleSessionEnd · SessionEndReason 落库（票 1.1）', () => {
+    let store: Store
+    let emits: { type: string; sessionId: string; data: unknown }[]
+    let cache: SessionCache
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        emits = []
+        const rec = { emit: (e: { type: string; sessionId: string; data: unknown }) => emits.push(e) }
+        cache = new SessionCache(store, rec as unknown as EventPublisher)
+    })
+
+    afterEach(() => {
+        store.close()
+    })
+
+    test('pause + idle_timeout 落库 end_reason/pause_trigger/ended_at，SSE 携带结构化字段', () => {
+        const session = cache.getOrCreateSession('tag-end-1', { path: '/tmp/p' }, null, 'default')
+        const t = Date.now()
+        // 激活在先（未激活会话的 session-end 走早退分支不广播，落库仍生效）
+        cache.handleSessionAlive({ sid: session.id, time: t, running: false, mode: 'remote' })
+
+        cache.handleSessionEnd({ sid: session.id, time: t, endReason: 'pause', pauseTrigger: 'idle_timeout' })
+
+        const stored = store.sessions.getSession(session.id)
+        expect(stored?.endReason).toBe('pause')
+        expect(stored?.pauseTrigger).toBe('idle_timeout')
+        expect(stored?.endedAt).toBe(t)
+        const pushed = emits.filter(e => e.type === 'session-updated').pop()
+        expect((pushed!.data as { endReason: string }).endReason).toBe('pause')
+        expect((pushed!.data as { pauseTrigger: string }).pauseTrigger).toBe('idle_timeout')
+    })
+
+    test('老 CLI 无载荷 → 按 stop 落库（保守进终结名单）', () => {
+        const session = cache.getOrCreateSession('tag-end-2', { path: '/tmp/p' }, null, 'default')
+
+        cache.handleSessionEnd({ sid: session.id, time: Date.now() })
+
+        const stored = store.sessions.getSession(session.id)
+        expect(stored?.endReason).toBe('stop')
+        expect(stored?.pauseTrigger).toBeNull()
+    })
+
+    test('clearSessionEnd 唤醒时清终结字段（pause → 重新活跃）', () => {
+        const session = cache.getOrCreateSession('tag-end-3', { path: '/tmp/p' }, null, 'default')
+
+        cache.handleSessionEnd({ sid: session.id, time: Date.now(), endReason: 'pause', pauseTrigger: 'idle_timeout' })
+        expect(store.sessions.getSession(session.id)?.endReason).toBe('pause')
+
+        expect(store.sessions.clearSessionEnd(session.id, session.namespace)).toBeTrue()
+        const cleared = store.sessions.getSession(session.id)
+        expect(cleared?.endReason).toBeNull()
+        expect(cleared?.endedAt).toBeNull()
+    })
+})
+
 describe('SessionCache.handleGoalStatus', () => {
     let store: Store
     let emits: { type: string; sessionId: string; data: unknown }[]

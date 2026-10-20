@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { CacheStatusSchema, ContextUsageSchema, GoalStatusSchema, SnapshotDeltaFrameSchema, type ClientToServerEvents, type SDKMetadata } from '@mobi/shared'
+import { CacheStatusSchema, ContextUsageSchema, GoalStatusSchema, SessionEndReasonSchema, SessionPauseTriggerSchema, SnapshotDeltaFrameSchema, type ClientToServerEvents, type SDKMetadata } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { daemonLogger } from '../../../logger'
@@ -365,7 +365,13 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         'run-started': z.object({ sid: z.string(), runStartedAt: z.number().finite().positive() }).passthrough(),
         // 两个字段都是判据本身，缺一不可（不是「其余字段透传」那一类）
         'receive-readiness': z.object({ sid: z.string(), canReceive: z.boolean() }),
-        'session-end': z.object({ sid: z.string(), time: z.number() }).passthrough(),
+        // endReason/pauseTrigger 可选（老 CLI 兼容），出现时必须是合法枚举（票 1.1）
+        'session-end': z.object({
+            sid: z.string(),
+            time: z.number(),
+            endReason: SessionEndReasonSchema.optional(),
+            pauseTrigger: SessionPauseTriggerSchema.optional(),
+        }).passthrough(),
     } as const
 
     /** 事实上报公共前置：payload 校验 → session 鉴权 → sink 分发。

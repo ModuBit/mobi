@@ -15,7 +15,7 @@
  */
 
 import { AgentStateSchema, MetadataSchema, RuntimeStateSchema } from '@mobi/shared/schemas'
-import type { CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, RuntimeState, SDKMetadata, Session } from '@mobi/shared/types'
+import type { CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, RuntimeState, SDKMetadata, Session, SessionEndReason, SessionPauseTrigger } from '@mobi/shared/types'
 import type { Store } from '../store'
 import { daemonLogger } from '../logger'
 import { clampAliveTime } from './aliveTime'
@@ -377,11 +377,24 @@ export class SessionCache {
         })
     }
 
-    handleSessionEnd(payload: { sid: string; time: number }): void {
+    handleSessionEnd(payload: { sid: string; time: number; endReason?: SessionEndReason; pauseTrigger?: SessionPauseTrigger }): void {
         const t = clampAliveTime(payload.time) ?? Date.now()
 
         const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)
         if (!session) return
+
+        // 终结原因落库（票 1.1）：结构化 endReason/pauseTrigger 写 sessions 行；
+        // 老 CLI 无载荷按 stop 处理（人不可辨来源时保守标记为终结名单而非休眠）
+        try {
+            this.store.sessions.markSessionEnded(session.id, session.namespace, {
+                endReason: payload.endReason ?? 'stop',
+                pauseTrigger: payload.pauseTrigger,
+                endedAt: t,
+            })
+        } catch {
+            // 落库失败不阻塞收尾（内存 active=false 照常，列缺失/行消失仅损失 endReason 事实）
+            daemonLogger.debug(`[sessionCache] markSessionEnded failed (id=${session.id})`)
+        }
 
         if (!session.active && !session.running) {
             return
@@ -423,8 +436,18 @@ export class SessionCache {
             }
         }
 
-        // 广播（teamState 已自动清理，无需额外包含 runtimeState）
-        this.publisher.emit({ type: 'session-updated', sessionId: session.id, data: { active: false, running: false, mode: session.mode } })
+        // 广播（teamState 已自动清理，无需额外包含 runtimeState；endReason 供 web 区分休眠/终结名单）
+        this.publisher.emit({
+            type: 'session-updated',
+            sessionId: session.id,
+            data: {
+                active: false,
+                running: false,
+                mode: session.mode,
+                ...(payload.endReason !== undefined && { endReason: payload.endReason }),
+                ...(payload.pauseTrigger !== undefined && { pauseTrigger: payload.pauseTrigger }),
+            },
+        })
     }
 
     /**

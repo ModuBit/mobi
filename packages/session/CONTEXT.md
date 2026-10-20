@@ -51,8 +51,12 @@ _Avoid_: 各消费方自行从链推导「上一轮」（口径双写）、HEAD 
 ### 进程内组件
 
 **会话传输（SessionTransport）**:
-CLI↔daemon socket 的连接生命周期 module——建连鉴权、断线重连（内置自动重连 + 服务端断开的手动兜底退避，loopback 口径 0.5s 起封顶 5s）、connect_error 节流落盘、ack 发送咽喉（emitWithAck 统一超时）、keepAlive 心跳。不含任何会话语义。
+CLI↔daemon socket 的连接生命周期 module——建连鉴权、断线重连（内置自动重连 + 服务端断开的手动兜底退避，loopback 口径 0.5s 起封顶 5s）、connect_error 节流落盘、ack 发送咽喉（emitWithAck 统一超时）、keepAlive 心跳。不含任何会话语义——唯一例外：keepAlive 搭车的治理快照（见「治理快照」）。
 _Avoid_: 在协议层直接摸 socket（emit/timeout 散落）、把重连退避当远端 hub 时代口径调（1s→30s 已随单机化作废）
+
+**治理快照（SessionGovernanceSnapshot）**:
+随 2s volatile session-alive 心跳搭车上报的会话水位事实——state（active/idle）、lastActivityAt（LRU 排序键）、gateBlockers（休眠阻塞项快照，与 dormancy gate 同源）、rss（30s 粒度抽稀）。daemon 侧 SessionRegistry 登记供 Governor 预算决策；**不参与 gate 判定**（gate 只在会话进程本地求值）。volatile 丢拍无害（连续采样不是事件）。
+_Avoid_: 给治理字段单开上报通道（必须搭车心跳）、让 daemon 侧快照反过来参与 gate 判定（推翻 dormancy spec 裁决）
 
 **会话协议（SessionChannel）**:
 CLI↔daemon 的会话语义 module——入站分流（用户消息入队 + seq 记账 + 断线 HTTP 补拉）、出站消息五族、流式快照三方法、事实与状态上报（单一 `report` 出口，kind 映射回各 socket 事件，wire 不变）、rewind 两段回报（可靠队列）、agent 编排 RPC、metadata/agentState 版本化 CAS。连接反应（补拉/重基线/存活上报）由它响应传输回调。

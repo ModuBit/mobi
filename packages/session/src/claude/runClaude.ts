@@ -38,7 +38,7 @@ import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
 import { bootstrapSession } from '../agent/sessionFactory';
 import { createModeChangeHandler, createSessionLifecycle, setControlledByUser } from '../agent/sessionLifecycle';
-import { SESSION_CONFIG_FIELDS, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, type UserContentBlock } from '@mobi/shared';
+import { SESSION_CONFIG_FIELDS, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, type SessionPauseTrigger, type UserContentBlock } from '@mobi/shared';
 import { PermissionModeSchema } from '@mobi/shared/schemas';
 import { buildPromptFromBlocks, type PromptPayload } from '@mobi/node-core/utils/promptBuilder';
 import { normalizeClaudeSessionModel } from './model';
@@ -254,10 +254,11 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     // 休眠 gate 的 launcher 侧事实回传 holder（dormancy spec）：launcher 就绪前按 0 处理
     let launcherDormancyFacts: (() => LauncherDormancyFacts) | null = null;
 
-    // 监听超时事件
-    const handleTimeout = (reason: string) => {
+    // 监听超时事件（票 1.1：两类超时都是休眠语义——可复活，endReason=pause）
+    const handleTimeout = (reason: string, pauseTrigger: SessionPauseTrigger) => {
         logger.debug(`[Session] ${reason}, archiving and exiting`);
         lifecycle.setArchiveReason(reason);
+        lifecycle.setEndReason('pause', pauseTrigger);
         void lifecycle.cleanupAndExit();
     };
 
@@ -276,6 +277,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         };
     };
     apiSession.installDormancyDecide(() => evaluateDormancyGate(readDormancyFacts()).ok);
+    // 治理快照的阻塞项（票 1.2）：与 gate 判定同源同拍求值，Governor 逐出前据此确认受害者真的闲
+    apiSession.installGovernanceBlockers(() => evaluateDormancyGate(readDormancyFacts()).blockers);
 
     // 手动休眠预检（dormancy spec §D.11）：daemon 路由经此 RPC 问 gate，阻塞时逐项原因返回 web
     apiSession.rpcHandlerManager.registerHandler<Record<string, never>, ReturnType<typeof evaluateDormancyGate>>('dormancyCheck', async () =>
@@ -302,15 +305,15 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
                     if (evaluateDormancyGate(readDormancyFacts()).ok) {
                         logger.debug('[Session] Disconnect recheck passed, exiting');
                         stopDisconnectRecheck();
-                        handleTimeout('Disconnect timeout');
+                        handleTimeout('Disconnect timeout', 'disconnect_timeout');
                     }
                 }, DISCONNECT_RECHECK_INTERVAL_MS);
             }
             return;
         }
-        handleTimeout('Disconnect timeout');
+        handleTimeout('Disconnect timeout', 'disconnect_timeout');
     });
-    apiSession.on('idle-timeout', () => handleTimeout('Idle timeout'));
+    apiSession.on('idle-timeout', () => handleTimeout('Idle timeout', 'idle_timeout'));
 
     // Set initial agent state
     setControlledByUser(apiSession, startingMode);

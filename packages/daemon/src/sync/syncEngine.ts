@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
+import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SessionGovernanceSnapshot, SyncEvent } from '@mobi/shared/types'
 import type { ExecutorState } from '@mobi/node-core/api/types'
 import { DEFAULT_STOP_KIND, isCancelQueued, type PermissionAnswers, type PermissionUpdate, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
@@ -36,6 +36,7 @@ import { MessageService, type SendMessagePayload } from './messageService'
 import { WorkspaceCache } from './workspaceCache'
 import { RpcGateway } from './rpcGateway'
 import { SessionCache } from './sessionCache'
+import { SessionRegistry } from './sessionRegistry'
 import { readRpcFailure } from './rpcFailure'
 import { SessionReceiveReadiness } from './sessionReceiveReadiness'
 import { daemonLogger } from '../logger'
@@ -87,6 +88,8 @@ export type OutputStyleSwitchOutcome =
 export class SyncEngine {
     private readonly eventPublisher: EventPublisher
     private readonly sessionCache: SessionCache
+    /** 会话治理登记簿（票 1.2）：心跳搭车快照的内存登记，Governor（迭代二）的数据面 */
+    readonly sessionRegistry = new SessionRegistry()
     /** Agent 会话操作（B 类工具族）的业务规则入口；socket handler 经此取用，不重新实现一遍规则 */
     readonly agentSessions: AgentSessionService
     private readonly workspaceCache: WorkspaceCache
@@ -184,6 +187,8 @@ export class SyncEngine {
             handleSessionAlive: (payload) => this.handleSessionAlive(payload),
             handleSessionEnd: (payload) => {
                 this.sessionCache.handleSessionEnd(payload)
+                // 治理登记同步离场（不等 30s stale 窗口）
+                this.sessionRegistry.remove(payload.sid)
                 // 进程没了，这条「此刻」的事实跟着作废（回到没定论，而不是留个 false，见 clear 说明）
                 this.receiveReadiness.clear(payload.sid)
             },
@@ -393,6 +398,7 @@ export class SyncEngine {
         model?: string | null
         effort?: EffortLevel
         outputStyle?: string
+        governance?: SessionGovernanceSnapshot
     }): void {
         // 追踪同步先行（补登/查重键刷新，fire-and-forget；失败不影响激活语义）
         try {
@@ -403,6 +409,10 @@ export class SyncEngine {
         // 激活翻转入参快照：handleSessionAlive 同步更新 sessionCache，前后各读一次即可判定翻转
         const wasActive = this.sessionCache.getSession(payload.sid)?.active ?? false
         this.sessionCache.handleSessionAlive(payload)
+        // 治理快照登记（票 1.2）：心跳 2s 一拍 upsert；未携带（老 CLI / local 模式）跳过
+        if (payload.governance) {
+            this.sessionRegistry.upsert(payload.sid, payload.governance)
+        }
         const isActive = this.sessionCache.getSession(payload.sid)?.active ?? false
 
         // 首次激活补拉 sdkMetadata：新会话 web 打开页面的首次 metadata GET 常早于 CLI 就绪，

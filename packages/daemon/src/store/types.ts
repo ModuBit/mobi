@@ -33,6 +33,12 @@ export type StoredSession = {
     /** 会话置顶（true = 进「置顶」分组，同时从「工作区」「最近」过滤掉） */
     pinned: boolean
     seq: number
+    /** 会话终结原因（票 1.1）：null = 进程仍在或老数据未回填 */
+    endReason: string | null
+    /** pause 的触发来源（仅 endReason=pause 有值） */
+    pauseTrigger: string | null
+    /** 终结时刻（epoch ms） */
+    endedAt: number | null
 }
 
 export type StoredMessage = {

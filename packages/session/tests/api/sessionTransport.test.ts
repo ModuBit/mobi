@@ -161,6 +161,26 @@ describe('SessionTransport：发送与保活', () => {
         )
     })
 
+    it('keepAlive 携带 governance 搭车字段；未传不携带（票 1.2）', () => {
+        const { transport } = makeTransport()
+        transport.keepAlive('session-1', false, 'remote', undefined, {
+            state: 'idle',
+            lastActivityAt: 123,
+            gateBlockers: ['queued_messages'],
+            rss: 456,
+        })
+        expect(mockSocket.volatile.emit).toHaveBeenCalledWith(
+            'session-alive',
+            expect.objectContaining({
+                governance: { state: 'idle', lastActivityAt: 123, gateBlockers: ['queued_messages'], rss: 456 },
+            }),
+        )
+
+        transport.keepAlive('session-1', false, 'remote')
+        const secondCall = mockSocket.volatile.emit.mock.calls.at(-1)
+        expect((secondCall![1] as Record<string, unknown>).governance).toBeUndefined()
+    })
+
     it('emitWithAck 走统一超时咽喉', async () => {
         const { transport } = makeTransport()
         await expect(transport.emitWithAck('ping', {}, 1_000)).resolves.toBe('ack')

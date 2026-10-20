@@ -29,6 +29,8 @@
  * 在用终端 ≠ 会话不休眠（已知接受的行为变化）。
  */
 
+import type { DormancyBlocker as SharedDormancyBlocker } from '@mobi/shared'
+
 /** 四项运行时事实（全部来自会话进程本地，禁止引入跨进程查询——已否决 daemon 订阅者项） */
 export interface DormancyFacts {
     /** 待处理的权限审批数 */
@@ -44,11 +46,11 @@ export interface DormancyFacts {
 /** launcher 能回传的事实子集（turnRunning 的权威在 runClaude 的 currentSessionRef，launcher 不重复上报） */
 export type LauncherDormancyFacts = Pick<DormancyFacts, 'pendingPermissions' | 'backgroundTasks'>
 
-export type DormancyBlocker =
-    | 'pending_permissions'
-    | 'queued_messages'
-    | 'turn_running'
-    | 'background_tasks'
+/**
+ * 休眠阻塞项：枚举单源在 @mobi/shared（治理快照与 gate 判定共用同一词汇，票 1.2），
+ * 此处再导出保持既有引用面不变
+ */
+export type DormancyBlocker = SharedDormancyBlocker
 
 /**
  * 休眠判定：阻塞时逐项列出原因（手动休眠的失败反馈需要逐项文案，不能只给布尔）。

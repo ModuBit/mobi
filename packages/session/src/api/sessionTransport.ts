@@ -16,7 +16,7 @@
 
 import { io, type Socket } from 'socket.io-client'
 import { logger } from '@mobi/node-core/logger'
-import type { ClientToServerEvents, EffortLevel, ServerToClientEvents, Update } from '@mobi/shared'
+import type { ClientToServerEvents, EffortLevel, ServerToClientEvents, SessionGovernanceSnapshot, Update } from '@mobi/shared'
 import type { SessionModel, SessionPermissionMode } from '@mobi/node-core/api/types'
 import { configuration } from '@mobi/node-core/configuration'
 
@@ -147,12 +147,14 @@ export class SessionTransport {
         }).emit(event, body, callback)
     }
 
-    /** 会话心跳（volatile：断线时静默丢弃，下一拍再报——心跳是连续采样不是事件） */
+    /** 会话心跳（volatile：断线时静默丢弃，下一拍再报——心跳是连续采样不是事件）。
+     *  governance 搭车字段（票 1.2）：治理水位快照，供 daemon SessionRegistry 登记 */
     keepAlive(
         sessionId: string,
         running: boolean,
         mode: 'local' | 'remote',
         runtime?: { permissionMode?: SessionPermissionMode; model?: SessionModel; effort?: EffortLevel; outputStyle?: string },
+        governance?: SessionGovernanceSnapshot,
     ): void {
         this.socket.volatile.emit('session-alive', {
             sid: sessionId,
@@ -160,6 +162,7 @@ export class SessionTransport {
             running,
             mode,
             ...(runtime ?? {}),
+            ...(governance !== undefined && { governance }),
         })
     }
 

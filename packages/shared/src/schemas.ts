@@ -16,6 +16,7 @@
 
 import { z } from 'zod'
 import { PERMISSION_MODES, EFFORT_LEVELS } from './modes'
+import { SessionEndReasonSchema, SessionPauseTriggerSchema } from './sessionEnd'
 
 // —— executor 状态上报（运行时状态机；hostProtocol re-export 保持协议入口）——
 
@@ -807,6 +808,11 @@ export const SessionSchema = z.object({
     workspaceId: z.string().nullable().optional(),
     /** 会话置顶（true = 进「置顶」分组，同时从「工作区」「最近」过滤掉） */
     pinned: z.boolean().optional(),
+    /** 会话终结原因（票 1.1）：null/缺省 = 进程仍在或老数据未回填；pause = 休眠可唤醒 */
+    endReason: SessionEndReasonSchema.nullable().optional(),
+    pauseTrigger: SessionPauseTriggerSchema.nullable().optional(),
+    /** 终结时刻（epoch ms） */
+    endedAt: z.number().nullable().optional(),
 })
 
 export type Session = z.infer<typeof SessionSchema>

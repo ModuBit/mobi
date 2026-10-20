@@ -291,11 +291,14 @@ Mobi 宿主里 spawn 的 Claude 会话 shell 自带 `MOBI_API_URL=http://127.0.0
 - 现象：`curl -X POST localhost:5175/api/auth` 恒 404（proxy 打到别的服务）；登录页点「连接」无反应，
   但 daemon 2224 与 web 5175 两个 `/health` 都正常。
 - 诊断：`ps eww -o command= -p $(lsof -nP -iTCP:5175 -sTCP:LISTEN -t | head -1) | tr ' ' '\n' | grep MOBI_`
-- 正确启动姿势：
+- 正确启动姿势（smoke.sh 同坑，2026-10-20 实踩：daemon 继承 `MOBI_LISTEN_PORT=2222` 抢本会话宿主端口直接拒启）：
   ```bash
   env -u MOBI_API_URL -u MOBI_LISTEN_PORT -u MOBI_LISTEN_HOST \
-    nohup bash .claude/skills/run-tests/scripts/e2e-bootstrap.sh > /tmp/e2e-bootstrap.log 2>&1 &
+    bash .claude/skills/run-tests/scripts/e2e-bootstrap.sh   # 或 smoke.sh --source
   ```
+- 端口被占先验归属再杀（绝对禁 pkill）：残留的 e2e-bootstrap daemon 占 2224 时，
+  `ps -p <PID> -o command=` 确认命令带 `--profile e2e` 且父进程是 e2e-bootstrap.sh 才 SIGTERM；
+  监听 2222 的 `mobi` 进程是承载当前会话的宿主 daemon，误杀即断自己的会话
 
 另：bootstrap 脚本 **SIGTERM 时会删掉 `~/.mobi-e2e` 数据目录**。想改库后重读（如直写 goalStatus）
 必须在 bootstrap 之前写种子，不能先起环境再改库再重启——重启即清库。

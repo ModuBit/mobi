@@ -39,6 +39,9 @@ type DbSessionRow = {
     workspace_id: string | null
     pinned: number
     seq: number
+    end_reason: string | null
+    pause_trigger: string | null
+    ended_at: number | null
 }
 
 function toStoredSession(row: DbSessionRow): StoredSession {
@@ -56,7 +59,10 @@ function toStoredSession(row: DbSessionRow): StoredSession {
         runtimeStateUpdatedAt: row.runtime_state_updated_at,
         workspaceId: row.workspace_id,
         pinned: row.pinned === 1,
-        seq: row.seq
+        seq: row.seq,
+        endReason: row.end_reason,
+        pauseTrigger: row.pause_trigger,
+        endedAt: row.ended_at
     }
 }
 
@@ -444,6 +450,46 @@ export function getSessionsByNamespace(db: Database, namespace: string): StoredS
 export function deleteSession(db: Database, id: string, namespace: string): boolean {
     const result = db.prepare(
         'DELETE FROM sessions WHERE id = ? AND namespace = ?'
+    ).run(id, namespace)
+    return result.changes > 0
+}
+
+/**
+ * 会话终结落库（票 1.1）：endReason / pauseTrigger / endedAt 一次写入。
+ * 幂等语义：同值重写无害；namespace 不匹配（会话行不存在）返回 false。
+ * 会话再次激活（唤醒）时由调用方负责清字段（endReason=null 重生）。
+ */
+export function markSessionEnded(
+    db: Database,
+    id: string,
+    namespace: string,
+    fields: { endReason: string; pauseTrigger?: string; endedAt: number }
+): boolean {
+    const result = db.prepare(
+        `UPDATE sessions
+         SET end_reason = ?, pause_trigger = ?, ended_at = ?, updated_at = ?
+         WHERE id = ? AND namespace = ?`
+    ).run(
+        fields.endReason,
+        fields.pauseTrigger ?? null,
+        fields.endedAt,
+        fields.endedAt,
+        id,
+        namespace
+    )
+    return result.changes > 0
+}
+
+/** 会话复活（唤醒）时清终结字段（票 1.1：pause → 重新活跃） */
+export function clearSessionEnd(
+    db: Database,
+    id: string,
+    namespace: string
+): boolean {
+    const result = db.prepare(
+        `UPDATE sessions
+         SET end_reason = NULL, pause_trigger = NULL, ended_at = NULL
+         WHERE id = ? AND namespace = ?`
     ).run(id, namespace)
     return result.changes > 0
 }

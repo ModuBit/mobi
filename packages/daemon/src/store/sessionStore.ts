@@ -34,6 +34,8 @@ import {
     setRuntimeState,
     clearRuntimeStateFields,
     type ClearRuntimeStateFieldsResult,
+    markSessionEnded,
+    clearSessionEnd,
     mergeRuntimeState,
     updateSessionAgentState,
     updateSessionMetadata,
@@ -131,6 +133,16 @@ export class SessionStore {
 
     deleteSession(id: string, namespace: string): boolean {
         return deleteSession(this.db, id, namespace)
+    }
+
+    /** 会话终结落库（票 1.1）：endReason/pauseTrigger/endedAt 一次写入，幂等 */
+    markSessionEnded(id: string, namespace: string, fields: { endReason: string; pauseTrigger?: string; endedAt: number }): boolean {
+        return markSessionEnded(this.db, id, namespace, fields)
+    }
+
+    /** 会话复活（唤醒）时清终结字段 */
+    clearSessionEnd(id: string, namespace: string): boolean {
+        return clearSessionEnd(this.db, id, namespace)
     }
 
     // ============ 工作区归属相关 ============
