@@ -66,7 +66,7 @@ export {
 } from './reducerTools'
 
 // 事件处理
-export { parseMessageAsEvent, dedupeAgentEvents, foldErrorEvents } from './reducerEvents'
+export { parseMessageAsEvent, dedupeAgentEvents, dropEchoedErrorText, foldErrorEvents } from './reducerEvents'
 export type { I18nText, EventLine, FormattedEvent, TurnResultEvent } from './eventFormatter'
 export { formatEvent, formatDurationMs, formatTokensCount } from './eventFormatter'
 

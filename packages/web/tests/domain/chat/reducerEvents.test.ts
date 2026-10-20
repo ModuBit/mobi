@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { foldErrorEvents } from '@/domain/chat/reducerEvents'
+import { dropEchoedErrorText, foldErrorEvents } from '@/domain/chat/reducerEvents'
 import type { ChatBlock, ErrorEvent } from '@/domain/chat'
 
 function errorBlock(id: string, attempt: number, category: ErrorEvent['category']): ChatBlock {
@@ -76,5 +76,71 @@ describe('foldErrorEvents', () => {
     it('非错误事件原样保留', () => {
         const out = foldErrorEvents([textBlock('t1'), textBlock('t2')])
         expect(out.map((b) => b.id)).toEqual(['t1', 't2'])
+    })
+})
+
+function echoedText(id: string, text: string): ChatBlock {
+    return { kind: 'agent-text', id, localId: null, createdAt: 0, text }
+}
+
+function resultBlock(id: string, errorDetail: { message: string } | null): ChatBlock {
+    return {
+        kind: 'agent-event',
+        id,
+        createdAt: 0,
+        event: {
+            type: 'turn-result',
+            durationMs: 0,
+            tokens: 0,
+            numTurns: 1,
+            ...(errorDetail && {
+                error: errorDetail.message,
+                errorDetail: {
+                    attempt: 0,
+                    maxRetries: 0,
+                    message: errorDetail.message,
+                    isNetworkDown: false,
+                    category: 'quota_exhausted',
+                    evidence: { matchedBy: 'text', value: 'x' },
+                    raw: null,
+                },
+            }),
+        },
+    } as ChatBlock
+}
+
+describe('dropEchoedErrorText', () => {
+    it('result 带 errorDetail 时丢掉紧邻的同文文本块', () => {
+        const out = dropEchoedErrorText([
+            echoedText('t1', 'API Error: quota exhausted'),
+            resultBlock('r1', { message: 'API Error: quota exhausted' }),
+        ])
+        expect(out.map((b) => b.id)).toEqual(['r1'])
+    })
+
+    it('文本不同 → 保留', () => {
+        const out = dropEchoedErrorText([
+            echoedText('t1', '正常回复'),
+            resultBlock('r1', { message: 'API Error: quota exhausted' }),
+        ])
+        expect(out.map((b) => b.id)).toEqual(['t1', 'r1'])
+    })
+
+    it('中间夹 reasoning → 仍能丢掉同文文本', () => {
+        const reasoning: ChatBlock = { kind: 'agent-reasoning', id: 'k1', localId: null, createdAt: 0, text: '...' }
+        const out = dropEchoedErrorText([
+            echoedText('t1', 'API Error: quota exhausted'),
+            reasoning,
+            resultBlock('r1', { message: 'API Error: quota exhausted' }),
+        ])
+        expect(out.map((b) => b.id)).toEqual(['k1', 'r1'])
+    })
+
+    it('result 无 errorDetail → 一律保留', () => {
+        const out = dropEchoedErrorText([
+            echoedText('t1', 'API Error: quota exhausted'),
+            resultBlock('r1', null),
+        ])
+        expect(out.map((b) => b.id)).toEqual(['t1', 'r1'])
     })
 })

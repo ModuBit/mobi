@@ -148,3 +148,35 @@ export function foldErrorEvents(blocks: ChatBlock[]): ChatBlock[] {
 
     return result
 }
+
+/**
+ * 丢弃「错误原文回声」文本块。
+ *
+ * CLI 在 API 失败时会把同一段错误文本再作为 assistant 文本发一次，落盘后与
+ * turn-result 的 errorDetail 完全重复。result 已带 errorDetail 时把紧邻的
+ * 同文文本块去掉，让错误只由卡片承载（原文仍在卡片的详情里）。
+ */
+export function dropEchoedErrorText(blocks: ChatBlock[]): ChatBlock[] {
+    const result: ChatBlock[] = []
+
+    for (const block of blocks) {
+        if (block.kind === 'agent-event' && block.event.type === 'turn-result') {
+            const detail = (block.event as { errorDetail?: { message?: string } }).errorDetail
+            const message = detail?.message?.trim()
+            if (message) {
+                // 流式思考可能夹在文本与 result 之间，跳过它继续找最近一个文本块
+                const prev = result[result.length - 1]
+                const textIndex = prev?.kind === 'agent-reasoning' && result.length > 1
+                    ? result.length - 2
+                    : result.length - 1
+                const candidate = result[textIndex]
+                if (candidate?.kind === 'agent-text' && candidate.text.trim() === message) {
+                    result.splice(textIndex, 1)
+                }
+            }
+        }
+        result.push(block)
+    }
+
+    return result
+}
