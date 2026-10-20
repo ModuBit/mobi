@@ -1248,3 +1248,21 @@ HINDSIGHT_API_RERANKER_ALIBABA_API_KEY=sk-你的DashScope-key
 **未修原因**：改判 interactive 是产品决策而非纯修 bug——2021-12 后的新 key 无安全密钥时高德 JS API 必失败（INVALID_USER_SCODE），现状的 none 档给出明确配置指引，改成 interactive 会把「明确指引」换成「运行时失败降级卡」（InteractiveMap failed → URI 链接），两种体验各有代价。
 
 **若要做**：deriveMapMode 放宽为 jsApiKey 在场即 interactive（失败降级卡兜底），同步改 daemon 三档推导测试与 Map 设置页文案；或设置页对「只填了 jsApiKey」给出安全密钥申请指引。
+
+
+## 122. SparePool（票 3.2）维持搁置——ROI 数据不足（2026-10-20 讨论）
+
+**结论**：维持搁置，不按 `.scratch/session-lifecycle-rewrite/iter-3-prewarm.md` 的 parked 壳方案开工。
+
+**数据（生产库 2026-10-20 实测）**：
+
+- 新建会话频率：近 21 天 24 个，≈**1.1 个/天**（每天 0–4 个）
+- 创建 → 首条消息间隔（近 30 天 45 个）：<10s 8 / 10–60s 23 / 1–10min 13 / >10min 1
+
+**机制事实**：新建会话是 `spawnSession → sendMessage → navigate` 两步串行（`packages/web/src/pages/NewSessionPage.tsx`），spawn 发生在用户点发送之后，等待感知明显。但 spare 的常驻成本是 236MB + 1 个 Governor 名额（票 3.1 实测 rss），对应每天约 1 次收益，闲置率 ≈99%。
+
+**恢复条件**（任一成立再重开）：① 新建会话频率显著上升；② 冷启动分段 bench 证明 spawn 段在首字延迟中占比 >50%。测量方法：E2E 连续创建 10 次会话，记录 `POST /api/sessions` 的 p50/p95。
+
+**若确认是痛点，优先廉价替代**：不做进程预热，改前端感知——点发送后立即进入聊天页、消息入队（daemon 已有 queued + `redeliverQueued` 机制），改动面远小于 parked 壳的 6 个子系统（协议 / executor / session / SparePool / Governor / 遥测）。
+
+**关联**：同属「预先起进程换延迟」的 warm-on-open（票 3.3）已于同日暂停（`a6fefd71`，`WARM_ON_OPEN_ENABLED = false`），当前使用模式下该路线整体收益不足。
