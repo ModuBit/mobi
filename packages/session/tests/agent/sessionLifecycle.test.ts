@@ -24,9 +24,10 @@ import type { SessionEndReason, SessionPauseTrigger } from '@mobi/shared'
  * ack 制后，close 必须等它确认落达（或超时兜底）才执行——裸 emit + 立即 close 会把
  * 事件丢在本地缓冲，hub 收不到 session-end，active 永久悬挂。
  *
- * SessionEndReason 契约（票 1.1）：endReason 随 metadata 归档与 session-end 载荷
- * 双通道上报——结构化字段（daemon 落库 sessions.end_reason）与自由文本 archiveReason
- * （人读细节）并存，互不替代。
+ * SessionEndReason 契约（票 1.1 / 2026-10-20 收口）：结构化终结原因只经 session-end
+ * 载荷单通道上报（daemon 落库 sessions.end_state 单列）；metadata 只保留人读归档信息
+ * （lifecycleState/archiveReason），不再重复写 endReason/pauseTrigger——那份从未被任何
+ * 消费点读取，双份事实源只制造漂移风险。
  */
 
 type DeathPayload = { endReason: SessionEndReason; pauseTrigger?: SessionPauseTrigger }
@@ -66,7 +67,7 @@ describe('runnerLifecycle cleanup 的 session-end 顺序', () => {
 })
 
 describe('SessionEndReason 单出口（票 1.1）', () => {
-    it('默认退出 endReason=stop，随 metadata 与 session-end 双通道上报', async () => {
+    it('默认退出 endReason=stop，经 session-end 单通道上报', async () => {
         const captures: { metadata: Array<Record<string, unknown>>; death: Array<DeathPayload | undefined> } = { metadata: [], death: [] }
         const lifecycle = createSessionLifecycle({
             apiSession: makeFakeApiSession([], 0, captures),
@@ -77,11 +78,12 @@ describe('SessionEndReason 单出口（票 1.1）', () => {
 
         expect(captures.death[0]).toEqual({ endReason: 'stop', pauseTrigger: undefined })
         const archived = captures.metadata.at(-1)!
-        expect(archived.endReason).toBe('stop')
         expect(archived.lifecycleState).toBe('archived')
+        // 终结事实不再进 metadata（单通道契约）
+        expect(archived.endReason).toBeUndefined()
     })
 
-    it('setEndReason(pause, idle_timeout) → 双通道携带结构化字段，archiveReason 文本不丢', async () => {
+    it('setEndReason(pause, idle_timeout) → 载荷携带结构化字段，archiveReason 文本不丢', async () => {
         const captures: { metadata: Array<Record<string, unknown>>; death: Array<DeathPayload | undefined> } = { metadata: [], death: [] }
         const lifecycle = createSessionLifecycle({
             apiSession: makeFakeApiSession([], 0, captures),
@@ -94,9 +96,9 @@ describe('SessionEndReason 单出口（票 1.1）', () => {
 
         expect(captures.death[0]).toEqual({ endReason: 'pause', pauseTrigger: 'idle_timeout' })
         const archived = captures.metadata.at(-1)!
-        expect(archived.endReason).toBe('pause')
-        expect(archived.pauseTrigger).toBe('idle_timeout')
         expect(archived.archiveReason).toBe('Idle timeout')
+        expect(archived.endReason).toBeUndefined()
+        expect(archived.pauseTrigger).toBeUndefined()
     })
 
     it('markCrash → endReason=crash', async () => {
@@ -110,6 +112,6 @@ describe('SessionEndReason 单出口（票 1.1）', () => {
         await lifecycle.cleanup()
 
         expect(captures.death[0]).toEqual({ endReason: 'crash', pauseTrigger: undefined })
-        expect(captures.metadata.at(-1)!.endReason).toBe('crash')
+        expect(captures.metadata.at(-1)!.endReason).toBeUndefined()
     })
 })

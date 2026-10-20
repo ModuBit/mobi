@@ -10,7 +10,7 @@ SessionGovernor / LRU 逐出 / warm-on-open 的真机验证 recipe（会话生�
 
 - cap 公式：`max(6, floor(totalmem/3GiB))`；本机 24GiB → **cap=8**
 - 会话行/CLI 进程对账：`ps -eo pid,command | grep "packages/cli/src/index.ts claude" | grep -v grep | wc -l`
-- 逐出落库验证：`sqlite3 ~/.mobi-e2e/mobi.db "SELECT substr(id,1,8), end_reason, pause_trigger FROM sessions WHERE end_reason IS NOT NULL;"`
+- 逐出落库验证：`sqlite3 ~/.mobi-e2e/mobi.db "SELECT substr(id,1,8), end_state FROM sessions WHERE end_state IS NOT NULL;"`（终结快照单列 JSON：`{reason, trigger?, at}`）
 - **spawn 直登会话不产生 session-alive 心跳**（freshSpawn=1 走 resume 死链冷启，CLI 侧 never attach）——不进 SessionRegistry，governor 看不到它 → 纯 yield 场景（满员且无 120s 合格受害者）**无法用纯 spawn 造出**。历史唯一一次 governor_yielded 是首波 8 会话 idle<120s 的窗口
 - 逐出受害者判据走 registry lastActivityAt：发过消息的会话 idle ≥120s 即合格
 

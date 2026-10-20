@@ -172,9 +172,9 @@ export class Store {
                 workspace_id TEXT,
                 pinned INTEGER DEFAULT 0,
                 seq INTEGER DEFAULT 0,
-                end_reason TEXT,
-                pause_trigger TEXT,
-                ended_at INTEGER
+                -- 终结快照单列（{reason, trigger?, at?}）：终结原因/触发来源/时刻同生同灭，
+                -- 是一个聚合事实而非三个查询维度，合并承载以防「来一个需求加几列」
+                end_state TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_sessions_tag ON sessions(tag);
             CREATE INDEX IF NOT EXISTS idx_sessions_tag_namespace ON sessions(tag, namespace);
@@ -324,13 +324,18 @@ export class Store {
         }
 
         // 「SessionEndReason 之前」的存量库 user_version 同为 1（BASELINE=0 未发布期）：缺列放行会在
-        // markSessionEnded 的 UPDATE sessions SET end_reason=... 处报无引导错误。沿用 native_id 先例
-        // （部署时人工补列），此处只负责引导
-        if (!sessionColumns.some(column => column.name === 'end_reason')) {
+        // markSessionEnded 的 UPDATE sessions SET end_state=... 处报无引导错误。沿用 native_id 先例
+        // （部署时人工补列），此处只负责引导。
+        // 终结快照已由三列（end_reason/pause_trigger/ended_at）合并为 end_state 单列：
+        // 存量库既有三列时走合并迁移（回填 → 删旧列），更老的库直接补列
+        if (!sessionColumns.some(column => column.name === 'end_state')) {
+            const hasLegacyTriple = sessionColumns.some(column => column.name === 'end_reason')
             throw new Error(
-                `Detected legacy sessions schema (sessions has no end_reason column) at ${this.dbPath}. ` +
+                `Detected legacy sessions schema (sessions has no end_state column) at ${this.dbPath}. ` +
                 'Stop the daemon, then run ' +
-                `'sqlite3 ${this.dbPath} "ALTER TABLE sessions ADD COLUMN end_reason TEXT; ALTER TABLE sessions ADD COLUMN pause_trigger TEXT; ALTER TABLE sessions ADD COLUMN ended_at INTEGER;"' and restart.`
+                (hasLegacyTriple
+                    ? `'sqlite3 ${this.dbPath} "ALTER TABLE sessions ADD COLUMN end_state TEXT; UPDATE sessions SET end_state = json_object('reason', end_reason, 'trigger', pause_trigger, 'at', ended_at) WHERE end_reason IS NOT NULL; ALTER TABLE sessions DROP COLUMN end_reason; ALTER TABLE sessions DROP COLUMN pause_trigger; ALTER TABLE sessions DROP COLUMN ended_at;"' and restart.`
+                    : `'sqlite3 ${this.dbPath} "ALTER TABLE sessions ADD COLUMN end_state TEXT"' and restart.`)
             )
         }
     }

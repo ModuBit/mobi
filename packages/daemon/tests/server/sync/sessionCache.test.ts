@@ -215,7 +215,7 @@ describe('SessionCache.handleSessionEnd · SessionEndReason 落库（票 1.1）'
         store.close()
     })
 
-    test('pause + idle_timeout 落库 end_reason/pause_trigger/ended_at，SSE 携带结构化字段', () => {
+    test('pause + idle_timeout 落库 end_state 单列，SSE 携带结构化字段', () => {
         const session = cache.getOrCreateSession('tag-end-1', { path: '/tmp/p' }, null, 'default')
         const t = Date.now()
         // 激活在先（未激活会话的 session-end 走早退分支不广播，落库仍生效）
@@ -227,6 +227,16 @@ describe('SessionCache.handleSessionEnd · SessionEndReason 落库（票 1.1）'
         expect(stored?.endReason).toBe('pause')
         expect(stored?.pauseTrigger).toBe('idle_timeout')
         expect(stored?.endedAt).toBe(t)
+
+        // DB 形状：终结快照只落 end_state 一列（JSON），旧三列不再存在
+        const db = (store as unknown as { db: import('bun:sqlite').Database }).db
+        const raw = db.prepare('SELECT end_state FROM sessions WHERE id = ?').get(session.id) as { end_state: string }
+        expect(JSON.parse(raw.end_state)).toEqual({ reason: 'pause', trigger: 'idle_timeout', at: t })
+        const columns = (db.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>).map(c => c.name)
+        expect(columns).not.toContain('end_reason')
+        expect(columns).not.toContain('pause_trigger')
+        expect(columns).not.toContain('ended_at')
+
         const pushed = emits.filter(e => e.type === 'session-updated').pop()
         expect((pushed!.data as { endReason: string }).endReason).toBe('pause')
         expect((pushed!.data as { pauseTrigger: string }).pauseTrigger).toBe('idle_timeout')

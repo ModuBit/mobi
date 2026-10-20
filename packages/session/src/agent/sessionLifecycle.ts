@@ -49,18 +49,19 @@ export function createSessionLifecycle(options: SessionLifecycleOptions): Sessio
     const logPrefix = `[${options.logTag}]`
 
     const archiveAndClose = async () => {
+        // 终结事实只经 session-end 载荷上报（daemon 落库 sessions.end_state 单列）。
+        // 此前 metadata 里也重复写了一份 endReason/pauseTrigger，但 MetadataSchema 未声明
+        // （Zod strip）、全仓无消费点——双份事实源只制造漂移风险，已移除
         options.apiSession.updateMetadata((currentMetadata) => ({
             ...currentMetadata,
             lifecycleState: 'archived',
             lifecycleStateSince: Date.now(),
             archivedBy: 'cli',
             archiveReason,
-            endReason,
-            ...(pauseTrigger !== undefined && { pauseTrigger })
         }))
 
         // session-end 是 ack 制（sendSessionDeath 注释）：确认落达再关 socket；
-        // 载荷携带结构化 endReason/pauseTrigger，daemon 据此落库 sessions.end_reason
+        // 载荷携带结构化 endReason/pauseTrigger，daemon 据此落库 sessions.end_state
         await options.apiSession.sendSessionDeath({ endReason, pauseTrigger })
         await options.apiSession.flush()
         await options.apiSession.close()

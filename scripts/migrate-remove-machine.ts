@@ -73,7 +73,7 @@ const WORKSPACES_NEW_DDL = `
     )
 `
 
-/** 402 后 createSchema 的 sessions 形状（同旧表去 machine_id；end_* 终结三列为可空新增，
+/** 402 后 createSchema 的 sessions 形状（同旧表去 machine_id；end_state 终结快照为可空新增，
  * 与 store createSchema 保持同形，否则迁移产物会被 assertRequiredTablesPresent 拒启） */
 const SESSIONS_NEW_DDL = `
     CREATE TABLE sessions_new (
@@ -91,9 +91,7 @@ const SESSIONS_NEW_DDL = `
         workspace_id TEXT,
         pinned INTEGER DEFAULT 0,
         seq INTEGER DEFAULT 0,
-        end_reason TEXT,
-        pause_trigger TEXT,
-        ended_at INTEGER
+        end_state TEXT
     )
 `
 

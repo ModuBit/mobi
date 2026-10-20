@@ -16,8 +16,8 @@
 
 /**
  * 会话终结原因（session-lifecycle-rewrite 票 1.1）：所有会话进程退出路径的统一枚举，
- * 经 session-end 事件上报 daemon，落库 sessions.end_reason——daemon 与 Web 据此区分
- * 「休眠可唤醒」与「已终结」。
+ * 经 session-end 事件上报 daemon，落库 sessions.end_state 单列（JSON：reason/trigger/at）——
+ * daemon 与 Web 据此区分「休眠可唤醒」与「已终结」。
  *
  * 语义边界：SessionEndReason 回答「会话为什么结束」，与 LocalLaunchExitReason
  * （为什么没起来，启动失败语境）不同名不同义，勿混用。

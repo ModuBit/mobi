@@ -14,14 +14,13 @@
  * limitations under the License.
  */
 
-import { AgentStateSchema, MetadataSchema, RuntimeStateSchema } from '@mobi/shared/schemas'
-import { SessionEndReasonSchema, SessionPauseTriggerSchema } from '@mobi/shared'
 import type { CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, RuntimeState, SDKMetadata, Session, SessionEndReason, SessionPauseTrigger } from '@mobi/shared/types'
 import type { Store } from '../store'
 import { daemonLogger } from '../logger'
 import { clampAliveTime } from './aliveTime'
 import { isSessionRowDeletable } from './sessionDeleteGuard'
 import { EventPublisher } from './eventPublisher'
+import { applySessionEnd, projectSession } from './sessionProjection'
 import { RuntimeStateStore } from './runtimeStateStore'
 import { applyTeamStateDelta, handleTeamSessionEnd } from './teams'
 
@@ -138,64 +137,9 @@ export class SessionCache {
 
         const existing = this.sessions.get(sessionId)
 
-        const metadata = (() => {
-            const parsed = MetadataSchema.safeParse(stored.metadata)
-            return parsed.success ? parsed.data : null
-        })()
-
-        const agentState = (() => {
-            const parsed = AgentStateSchema.safeParse(stored.agentState)
-            return parsed.success ? parsed.data : null
-        })()
-
-        const runtimeState = (() => {
-            if (stored.runtimeState === null) return undefined
-            const parsed = RuntimeStateSchema.safeParse(stored.runtimeState)
-            return parsed.success ? parsed.data : undefined
-        })()
-
-        const session: Session = {
-            id: stored.id,
-            namespace: stored.namespace,
-            seq: stored.seq,
-            createdAt: stored.createdAt,
-            updatedAt: stored.updatedAt,
-            // active 和 activeAt 只从内存获取，不存储在数据库中
-            active: existing?.active ?? false,
-            // 重载时使用当前时间避免立即被 expireInactive 驱逐
-            activeAt: existing?.activeAt ?? Date.now(),
-            metadata,
-            metadataVersion: stored.metadataVersion,
-            agentState,
-            agentStateVersion: stored.agentStateVersion,
-            running: existing?.running ?? false,
-            runningAt: existing?.runningAt ?? 0,
-            runtimeState,
-            mode: existing?.mode,
-            tag: stored.tag,
-            // 归属工作区（null = 游离）：必须显式带上，否则路由层读 session.workspaceId 恒 undefined
-            workspaceId: stored.workspaceId,
-            // 置顶态：必须显式带上，否则 GET /sessions 与 SSE session-updated 载荷的
-            // toSessionSummary 读 session.pinned 恒 undefined → 全局缓存反复抹掉 pinned，
-            // 「置顶」分组按钮态/成员资格与分页查询打架（见 sessions_pinned 回归）
-            pinned: stored.pinned,
-            // 终结字段内存投影（warm-on-open 真机 E2E 回归）：缺了它
-            // WarmOnOpenCoordinator 判 pause 态恒 false，点开热身永不触发。
-            // store 层列是 string | null，经 schema 校验窄化（脏值按 null，防扩散）
-            endReason: SessionEndReasonSchema.nullable().catch(null).parse(stored.endReason),
-            pauseTrigger: SessionPauseTriggerSchema.nullable().catch(null).parse(stored.pauseTrigger),
-            endedAt: stored.endedAt ?? null,
-        }
-
-        // permissionMode 顶层可写快照已删除（深化候选⑤）：降级为 runtimeState.permissionMode 的
-        // 只读投影 getter——可写副本仅剩 runtimeState 一处（RuntimeStateStore.merge），「双写漂移」
-        // 类 bug（2fd3150e 漏落库 / 88da6179 失败脏写）失去存在土壤。getter 使 wire 形状不变
-        // （GET /sessions/:id 与 session-updated 全量载荷 JSON 序列化时自动带值），daemon 重启后
-        // refreshSession 也自动从 DB runtimeState 恢复；严格模式下赋值会 TypeError（暴露漏改的写点）
-        Object.defineProperty(session, 'permissionMode', {
-            get: () => session.runtimeState?.permissionMode,
-            enumerable: true,
-        })
+        // 整行投影单源（深化候选②）：字段装配与 schema 窄化内聚在 sessionProjection，
+        // refreshSession 不再手抄字段清单（终结三列、pinned 各漏过一次的根因）
+        const session = projectSession(stored, existing)
 
         this.sessions.set(sessionId, session)
         // 只在真正新增 session 时广播，避免循环触发
@@ -245,9 +189,7 @@ export class SessionCache {
         // 生产零调用——唤醒后 DB 残留 pause，daemon 重启后 Web 误显休眠、
         // warm-on-open 可对已唤醒会话重复触发。仅终结态时写，避免高频心跳重复落库
         if (session.endReason !== null && session.endReason !== undefined) {
-            session.endReason = null
-            session.pauseTrigger = null
-            session.endedAt = null
+            applySessionEnd(session, null)
             try {
                 this.store.sessions.clearSessionEnd(session.id, session.namespace)
             } catch {
@@ -419,9 +361,7 @@ export class SessionCache {
 
         if (!session.active && !session.running) {
             // 早退分支同样同步内存行（落库与投影一致，不依赖 DB 回读）
-            session.endReason = endedReason
-            session.pauseTrigger = payload.pauseTrigger ?? null
-            session.endedAt = t
+            applySessionEnd(session, { reason: endedReason, trigger: payload.pauseTrigger ?? null, at: t })
             return
         }
 
@@ -429,9 +369,7 @@ export class SessionCache {
         session.running = false
         session.runningAt = t
         // 内存行同步终结字段（与落库同值；pause 态消费方如 WarmOnOpen 即时可判）
-        session.endReason = endedReason
-        session.pauseTrigger = payload.pauseTrigger ?? null
-        session.endedAt = t
+        applySessionEnd(session, { reason: endedReason, trigger: payload.pauseTrigger ?? null, at: t })
 
         // Session 结束时标记 team members/tasks 为 completed。
         // 从 DB 现读做收尾判定与计算（内存 runtimeState 可能落后于 session-message 路径的

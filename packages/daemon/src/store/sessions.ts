@@ -39,12 +39,47 @@ type DbSessionRow = {
     workspace_id: string | null
     pinned: number
     seq: number
-    end_reason: string | null
-    pause_trigger: string | null
-    ended_at: number | null
+    /** 终结快照 JSON（{reason, trigger?, at?}）；null = 进程仍在或老数据未回填 */
+    end_state: string | null
+}
+
+/**
+ * 终结快照的解析/序列化单源（架构深化候选② + end_state 列合并）。
+ *
+ * DB 用单列承载「会话为什么结束」这一个概念：三字段同生同灭、无独立 SQL 过滤消费点，
+ * 拆成三列只会随需求膨胀（准入标准：写者唯一/独立生命周期/需原子条件更新——
+ * 后两条仍满足，但三字段本就是一个聚合，合并后概念内扩展不再加列）。
+ * 列内是自由文本，非法/脏值按 null 处理（与 endReason 的 catch(null) 同一防御策略）。
+ */
+type StoredEndState = {
+    reason: string
+    trigger?: string
+    at?: number
+}
+
+function parseEndState(raw: string | null): StoredEndState | null {
+    if (!raw) return null
+    const parsed = safeJsonParse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return null
+    const { reason, trigger, at } = parsed as Record<string, unknown>
+    if (typeof reason !== 'string') return null
+    return {
+        reason,
+        ...(typeof trigger === 'string' && { trigger }),
+        ...(typeof at === 'number' && { at }),
+    }
+}
+
+function serializeEndState(fields: { endReason: string; pauseTrigger?: string; endedAt: number }): string {
+    return JSON.stringify({
+        reason: fields.endReason,
+        ...(fields.pauseTrigger !== undefined && { trigger: fields.pauseTrigger }),
+        at: fields.endedAt,
+    } satisfies StoredEndState)
 }
 
 function toStoredSession(row: DbSessionRow): StoredSession {
+    const endState = parseEndState(row.end_state)
     return {
         id: row.id,
         tag: row.tag,
@@ -60,9 +95,9 @@ function toStoredSession(row: DbSessionRow): StoredSession {
         workspaceId: row.workspace_id,
         pinned: row.pinned === 1,
         seq: row.seq,
-        endReason: row.end_reason,
-        pauseTrigger: row.pause_trigger,
-        endedAt: row.ended_at
+        endReason: endState?.reason ?? null,
+        pauseTrigger: endState?.trigger ?? null,
+        endedAt: endState?.at ?? null
     }
 }
 
@@ -467,12 +502,10 @@ export function markSessionEnded(
 ): boolean {
     const result = db.prepare(
         `UPDATE sessions
-         SET end_reason = ?, pause_trigger = ?, ended_at = ?, updated_at = ?
+         SET end_state = ?, updated_at = ?
          WHERE id = ? AND namespace = ?`
     ).run(
-        fields.endReason,
-        fields.pauseTrigger ?? null,
-        fields.endedAt,
+        serializeEndState(fields),
         fields.endedAt,
         id,
         namespace
@@ -480,7 +513,7 @@ export function markSessionEnded(
     return result.changes > 0
 }
 
-/** 会话复活（唤醒）时清终结字段（票 1.1：pause → 重新活跃） */
+/** 会话复活（唤醒）时清终结快照（票 1.1：pause → 重新活跃） */
 export function clearSessionEnd(
     db: Database,
     id: string,
@@ -488,7 +521,7 @@ export function clearSessionEnd(
 ): boolean {
     const result = db.prepare(
         `UPDATE sessions
-         SET end_reason = NULL, pause_trigger = NULL, ended_at = NULL
+         SET end_state = NULL
          WHERE id = ? AND namespace = ?`
     ).run(id, namespace)
     return result.changes > 0
