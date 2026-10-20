@@ -56,7 +56,7 @@ function makeArchiveEngine(opts: { throws?: Error } = {}): SyncEngine {
 }
 
 function makeApp(engine: SyncEngine) {
-    return createSessionsRoutes({ getSyncEngine: () => engine, getBackgroundTaskTracker: () => new BackgroundTaskTracker() })
+    return createSessionsRoutes({ getSyncEngine: () => engine, backgroundTaskTracker: new BackgroundTaskTracker() })
 }
 
 describe('POST /api/sessions/:id/archive 异常收口', () => {

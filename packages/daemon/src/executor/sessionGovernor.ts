@@ -28,13 +28,14 @@
  *
  * 互斥闸：判定与 in-flight 登记在同一同步块（无 await 穿插），JS 单线程下即互斥。
  *
- * reason 分级（'user' | 'warm' | 'prewarm'）：迭代二 spawn 恒为 user；warm/prewarm
- * 留给迭代三预热体系（user 到顶可触发 LRU 逐出，见票 2.2）。
+ * reason 分级（'user' | 'warm'）：迭代二 spawn 恒为 user；warm 留给迭代三预热体系
+ * （user 到顶可触发 LRU 逐出，见票 2.2）。
  */
 
 import { totalmem, freemem, platform } from 'node:os';
 import { execSync } from 'node:child_process';
 import { logger } from '@mobi/node-core/logger';
+import type { SessionGovernanceSnapshot } from '@mobi/shared/types';
 
 /** cap 下限（Desktop 同款：小内存机也保 6 个并发会话） */
 export const MIN_SESSION_CAP = 6;
@@ -71,8 +72,10 @@ export function parseVmStatFreeBytes(vmStatOutput: string, pageSizeBytes: number
 export function readAvailableMemoryBytes(): number {
     if (platform() === 'darwin') {
         try {
-            const pageSize = Number(execSync('vm_stat | head -1').toString().match(/page size of (\d+)/)?.[1] ?? 16384);
-            return parseVmStatFreeBytes(execSync('vm_stat').toString(), pageSize);
+            // 页大小就在 vm_stat 首行，不必再起一个 shell/进程（原先 `vm_stat | head -1` + `vm_stat` 两次同步阻塞）
+            const output = execSync('vm_stat').toString();
+            const pageSize = Number(output.match(/page size of (\d+)/)?.[1] ?? 16384);
+            return parseVmStatFreeBytes(output, pageSize);
         } catch {
             return freemem(); // vm_stat 不可用时退裸口径（宁误报 warning 也不错乱）
         }
@@ -107,8 +110,8 @@ export const MEMORY_SCAN_INTERVAL_MS = 5 * 60_000;
  *  critical cap 折半（钳下限）+ spare 目标降 0（迭代三接线） */
 export type MemoryPressureLevel = 'normal' | 'warning' | 'critical';
 
-/** acquire 方来源分级：user（用户动作）最高优先；warm/prewarm 属预热体系（迭代三） */
-export type GovernorAcquireReason = 'user' | 'warm' | 'prewarm';
+/** acquire 方来源分级：user（用户动作）最高优先；warm 属预热体系（到顶 yield） */
+export type GovernorAcquireReason = 'user' | 'warm';
 
 /** 治理事件（遥测面：结构化日志起步，票 4.2 再扩持久通道） */
 export type GovernorEvent =
@@ -119,14 +122,7 @@ export type GovernorEvent =
     | { type: 'governor_memory_pressure'; level: MemoryPressureLevel };
 
 /** 逐出候选（Registry 心跳快照投影；Governor 只读不持有） */
-export interface GovernorCandidate {
-    sessionId: string;
-    state: 'active' | 'idle';
-    lastActivityAt: number;
-    gateBlockers: string[];
-    /** 会话控制方向（总纲裁决 #12）：local 仅占名额——不可被逐出、rss 不计汇总 */
-    mode?: 'local' | 'remote';
-}
+export type GovernorCandidate = { sessionId: string } & SessionGovernanceSnapshot
 
 /**
  * LRU 受害者选择（纯函数，Desktop peekLruIdleVictim 同款守卫）：
@@ -139,6 +135,15 @@ export function pickLruIdleVictim(
     now: number,
     minVictimIdleMs: number = DEFAULT_MIN_VICTIM_IDLE_MS,
 ): string | null {
+    return pickLruIdleVictimCandidate(candidates, now, minVictimIdleMs)?.sessionId ?? null
+}
+
+/** 选中受害者本体（逐出遥测需要 lastActivityAt，避免再扫一遍找 id） */
+function pickLruIdleVictimCandidate(
+    candidates: GovernorCandidate[],
+    now: number,
+    minVictimIdleMs: number,
+): GovernorCandidate | null {
     let victim: GovernorCandidate | null = null;
     for (const candidate of candidates) {
         if (candidate.state !== 'idle') continue;
@@ -149,7 +154,7 @@ export function pickLruIdleVictim(
             victim = candidate;
         }
     }
-    return victim?.sessionId ?? null;
+    return victim;
 }
 
 export interface SessionGovernorOptions {
@@ -237,20 +242,23 @@ export class SessionGovernor {
      *   LRU（idle ≥120s）、第 2 档放宽（去时间门槛，idle 中选最久）、第 3 档兜底
      *   **放行**（记 governor_over_cap，短暂超 cap 随会话结束自然回落）——cap 从
      *   「准入墙」降级为「回收水位线」
-     * - 'warm'/'prewarm' 到顶 **yield**（预热不是承诺，放弃即止）
+     * - 'warm' 到顶 **yield**（预热不是承诺，放弃即止）
      *
      * 判定与登记同一同步块——并发 acquire 不会双双穿过同一份额度。
      */
     acquireSlot(reason: GovernorAcquireReason): SlotAcquisition {
-        if (this.effective >= this.cap) {
+        const effective = this.effective
+        const cap = this.cap
+        if (effective >= cap) {
             if (reason === 'user') {
-                // 逐出降级链：两档尝试，全失败则兜底放行（永不拒绝）
-                if (!this.tryEvictOne(false) && !this.tryEvictOne(true)) {
+                // 逐出降级链：两档尝试（共用同一份候选快照），全失败则兜底放行（永不拒绝）
+                const candidates = this.evictCandidates()
+                if (!this.tryEvictOne(candidates, false) && !this.tryEvictOne(candidates, true)) {
                     this.onEvent({
                         type: 'governor_over_cap',
                         reason,
                         effective: this.effective,
-                        cap: this.cap,
+                        cap,
                         memLevel: this.currentMemoryLevel,
                     });
                 }
@@ -259,8 +267,8 @@ export class SessionGovernor {
                 this.onEvent({
                     type: 'governor_yielded',
                     reason,
-                    effective: this.effective,
-                    cap: this.cap,
+                    effective,
+                    cap,
                     hadEvictable: this.hasEvictableCandidate(),
                     memLevel: this.currentMemoryLevel,
                 });
@@ -337,11 +345,15 @@ export class SessionGovernor {
         this.startMemoryScanning();
     }
 
+    /** 逐出候选数据面（已剔除逐出在途；一次 acquire 只投影一次） */
+    private evictCandidates(): GovernorCandidate[] {
+        if (!this.getGovernedSessions) return []
+        return this.getGovernedSessions().filter((c) => !this.evicting.has(c.sessionId))
+    }
+
     /** yield 遥测用：当前是否存在合格逐出候选（只读探测，不启动逐出） */
     private hasEvictableCandidate(): boolean {
-        if (!this.getGovernedSessions) return false;
-        const candidates = this.getGovernedSessions().filter((c) => !this.evicting.has(c.sessionId));
-        return pickLruIdleVictim(candidates, this.now()) !== null;
+        return pickLruIdleVictimCandidate(this.evictCandidates(), this.now(), DEFAULT_MIN_VICTIM_IDLE_MS) !== null
     }
 
     /**
@@ -349,25 +361,24 @@ export class SessionGovernor {
      * true = 已腾位。relaxed=false 第 1 档（守卫 120s）；relaxed=true 第 2 档
      * （去时间门槛——刚闲过的会话也可逐，idle/remote/gate 三守卫仍生效）
      */
-    private tryEvictOne(relaxed: boolean): boolean {
-        if (!this.getGovernedSessions || !this.evictSession) return false;
-        const candidates = this.getGovernedSessions().filter((c) => !this.evicting.has(c.sessionId));
-        const victim = pickLruIdleVictim(candidates, this.now(), relaxed ? 0 : DEFAULT_MIN_VICTIM_IDLE_MS);
-        if (!victim) return false;
+    private tryEvictOne(candidates: GovernorCandidate[], relaxed: boolean): boolean {
+        if (!this.evictSession) return false
+        // 第 1 档刚选中的受害者已进 evicting，第 2 档需在剩余候选里再选
+        const victim = pickLruIdleVictimCandidate(
+            candidates.filter((c) => !this.evicting.has(c.sessionId)),
+            this.now(),
+            relaxed ? 0 : DEFAULT_MIN_VICTIM_IDLE_MS,
+        )
+        if (!victim) return false
 
-        this.evicting.add(victim);
-        this.onEvent({ type: 'governor_evicting', sessionId: victim, idleMs: this.now() - this._victimActivityOf(candidates, victim), relaxed });
-        void this.evictSession(victim)
+        this.evicting.add(victim.sessionId);
+        this.onEvent({ type: 'governor_evicting', sessionId: victim.sessionId, idleMs: this.now() - victim.lastActivityAt, relaxed });
+        void this.evictSession(victim.sessionId)
             .then((ok) => {
-                if (!ok) this.onEvent({ type: 'governor_evict_failed', sessionId: victim });
+                if (!ok) this.onEvent({ type: 'governor_evict_failed', sessionId: victim.sessionId });
             })
-            .catch(() => this.onEvent({ type: 'governor_evict_failed', sessionId: victim }))
-            .finally(() => { this.evicting.delete(victim); });
+            .catch(() => this.onEvent({ type: 'governor_evict_failed', sessionId: victim.sessionId }))
+            .finally(() => { this.evicting.delete(victim.sessionId); });
         return true;
-    }
-
-    /** 逐出遥测用的空闲时长（不二次遍历的取值助手） */
-    private _victimActivityOf(candidates: GovernorCandidate[], sessionId: string): number {
-        return candidates.find((c) => c.sessionId === sessionId)?.lastActivityAt ?? this.now();
     }
 }

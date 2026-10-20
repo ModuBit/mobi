@@ -16,7 +16,7 @@
 
 import { Hono } from 'hono'
 import { z } from 'zod'
-import type { Store } from '../../store'
+import type { WebAppDeps } from '../appDeps'
 import type { WebAppEnv } from '../middleware/auth'
 
 const subscriptionSchema = z.object({
@@ -31,7 +31,7 @@ const unsubscribeSchema = z.object({
     endpoint: z.string().min(1)
 })
 
-export function createPushRoutes(deps: { store: Store; vapidPublicKey: string }): Hono<WebAppEnv> {
+export function createPushRoutes(deps: Pick<WebAppDeps, 'store' | 'vapidPublicKey'>): Hono<WebAppEnv> {
     const { store, vapidPublicKey } = deps
     const app = new Hono<WebAppEnv>()
 

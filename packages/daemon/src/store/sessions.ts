@@ -60,7 +60,7 @@ type StoredEndState = {
 function parseEndState(raw: string | null): StoredEndState | null {
     if (!raw) return null
     const parsed = safeJsonParse(raw)
-    if (typeof parsed !== 'object' || parsed === null) return null
+    if (!isObject(parsed)) return null
     const { reason, trigger, at } = parsed as Record<string, unknown>
     if (typeof reason !== 'string') return null
     return {

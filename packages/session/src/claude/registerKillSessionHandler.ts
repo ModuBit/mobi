@@ -16,11 +16,10 @@
 
 import { RpcHandlerManager } from "@mobi/node-core/rpc/RpcHandlerManager";
 import { logger } from '@mobi/node-core/logger'
-import type { SessionEndReason, SessionPauseTrigger } from '@mobi/shared'
+import type { SessionKillRequest } from '@mobi/shared'
 
-/** 可选终结语义（票 2.2）：携带时 daemon 指定了本次退出的 endReason——
- *  Governor 逐出走 pause/governor_evict；缺省沿用会话内已记录的终结原因（stop） */
-type KillSessionRequest = { endReason?: SessionEndReason; pauseTrigger?: SessionPauseTrigger };
+/** 可选终结语义与 daemon 发送端共用同一形状（总纲裁决：跨进程契约单一声明） */
+type KillSessionRequest = SessionKillRequest;
 
 interface KillSessionResponse {
     success: boolean;

@@ -26,8 +26,8 @@ import { z } from 'zod'
 import { checkWorkspaceAssignable, type SyncEngine, type Session, type OutputStyleSwitchOutcome, type ForkSessionResult } from '../../sync/syncEngine'
 import { readRpcFailure } from '../../sync/rpcFailure'
 import { isSessionRowDeletable } from '../../sync/sessionDeleteGuard'
-import type { BackgroundTaskTracker } from '../../sync/backgroundTaskTracker'
 import type { WebAppEnv } from '../middleware/auth'
+import type { WebAppDeps } from '../appDeps'
 import { toSummaryWithLiveState } from '../utils/sessionSummary'
 import { requireSessionFromParam, requireSyncEngine } from './guards'
 import { fileMetaHttpStatus, serveFileContent, type FileContentReader } from './serveFileContent'
@@ -174,14 +174,10 @@ function registerSessionConfigRoute<K extends SessionConfigFieldKey>(
 }
 
 export function createSessionsRoutes(
-    deps: {
-        getSyncEngine: () => SyncEngine | null
-        /** 活跃后台任务集合（rewind 闸门权威数据源；与 CLI socket handler 写侧共用同一实例）。
-         *  缺省时跳过闸门（仅测试用），生产组装层必传 */
-        getBackgroundTaskTracker?: () => BackgroundTaskTracker | null | undefined
-    },
+    // 依赖形直接取自 WebAppDeps（候选①声明源）：字段改名/增删在装配处暴露
+    deps: Pick<WebAppDeps, 'getSyncEngine' | 'backgroundTaskTracker'>,
 ): Hono<WebAppEnv> {
-    const { getSyncEngine, getBackgroundTaskTracker } = deps
+    const { getSyncEngine, backgroundTaskTracker } = deps
     const app = new Hono<WebAppEnv>()
 
     /**
@@ -733,7 +729,6 @@ export function createSessionsRoutes(
             return c.json({ error: 'Invalid body: nativeId and restoreFiles are required' }, 400)
         }
 
-        const backgroundTaskTracker = getBackgroundTaskTracker?.()
         if (backgroundTaskTracker?.hasActive(sessionResult.sessionId)) {
             return c.json({ error: 'session has background tasks in flight' }, 409)
         }

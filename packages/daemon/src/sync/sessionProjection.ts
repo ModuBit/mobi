@@ -42,6 +42,11 @@ export type SessionEndSnapshot = {
     at: number | null
 }
 
+// 脏值按 null 窄化（防扩散）。包装器提到模块级：投影在 warmupCache 里逐行执行，
+// 每次调用重建 `.nullable().catch()` 是纯浪费
+const EndReasonOrNull = SessionEndReasonSchema.nullable().catch(null)
+const PauseTriggerOrNull = SessionPauseTriggerSchema.nullable().catch(null)
+
 /**
  * 整行投影：stored → 内存 Session。
  *
@@ -92,8 +97,8 @@ export function projectSession(stored: StoredSession, existing?: Session): Sessi
         // 「置顶」分组按钮态/成员资格与分页查询打架（见 sessions_pinned 回归）
         pinned: stored.pinned,
         // 终结快照：store 层是 string | null，经 schema 校验窄化（脏值按 null，防扩散）
-        endReason: SessionEndReasonSchema.nullable().catch(null).parse(stored.endReason),
-        pauseTrigger: SessionPauseTriggerSchema.nullable().catch(null).parse(stored.pauseTrigger),
+        endReason: EndReasonOrNull.parse(stored.endReason),
+        pauseTrigger: PauseTriggerOrNull.parse(stored.pauseTrigger),
         endedAt: stored.endedAt,
     }
 

@@ -67,13 +67,10 @@ export class SessionRegistry {
     /** 全部存活条目（已剔除 stale）——Governor 的 LRU 排序数据面 */
     live(): Array<{ sessionId: string } & SessionGovernanceSnapshot> {
         this.evictStale()
-        return Array.from(this.entries.entries()).map(([sessionId, entry]) => ({
+        // 整包投影：新快照字段自动流向 Governor，不再手抄字段清单（漏抄前科：mode/rss）
+        return Array.from(this.entries.entries()).map(([sessionId, { receivedAt: _receivedAt, ...snapshot }]) => ({
             sessionId,
-            state: entry.state,
-            lastActivityAt: entry.lastActivityAt,
-            gateBlockers: entry.gateBlockers,
-            ...(entry.mode !== undefined && { mode: entry.mode }),
-            ...(entry.rss !== undefined && { rss: entry.rss }),
+            ...snapshot,
         }))
     }
 

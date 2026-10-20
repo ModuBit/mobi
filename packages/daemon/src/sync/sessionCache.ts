@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-import type { CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, RuntimeState, SDKMetadata, Session, SessionEndReason, SessionPauseTrigger } from '@mobi/shared/types'
+import type { CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, RuntimeState, SDKMetadata, Session, SessionEndReason } from '@mobi/shared/types'
 import type { Store } from '../store'
 import { daemonLogger } from '../logger'
 import { clampAliveTime } from './aliveTime'
 import { isSessionRowDeletable } from './sessionDeleteGuard'
 import { EventPublisher } from './eventPublisher'
 import { applySessionEnd, projectSession } from './sessionProjection'
+import type { SessionAlivePayload, SessionEndPayload } from './sessionFacts'
 import { RuntimeStateStore } from './runtimeStateStore'
 import { applyTeamStateDelta, handleTeamSessionEnd } from './teams'
 
@@ -161,16 +162,7 @@ export class SessionCache {
         }
     }
 
-    handleSessionAlive(payload: {
-        sid: string
-        time: number
-        running?: boolean
-        mode?: 'local' | 'remote'
-        permissionMode?: PermissionMode
-        model?: string | null
-        effort?: EffortLevel
-        outputStyle?: string
-    }): void {
+    handleSessionAlive(payload: SessionAlivePayload): void {
         const t = clampAliveTime(payload.time)
         if (!t) return
 
@@ -339,7 +331,7 @@ export class SessionCache {
         })
     }
 
-    handleSessionEnd(payload: { sid: string; time: number; endReason?: SessionEndReason; pauseTrigger?: SessionPauseTrigger }): void {
+    handleSessionEnd(payload: SessionEndPayload): void {
         const t = clampAliveTime(payload.time) ?? Date.now()
 
         const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)
@@ -359,17 +351,17 @@ export class SessionCache {
             daemonLogger.debug(`[sessionCache] markSessionEnded failed (id=${session.id})`)
         }
 
+        // 内存行同步终结字段（与落库同值；pause 态消费方如 WarmOnOpen 即时可判）。
+        // 早退分支与正常收尾同值，统一在分支前写
+        applySessionEnd(session, { reason: endedReason, trigger: payload.pauseTrigger ?? null, at: t })
+
         if (!session.active && !session.running) {
-            // 早退分支同样同步内存行（落库与投影一致，不依赖 DB 回读）
-            applySessionEnd(session, { reason: endedReason, trigger: payload.pauseTrigger ?? null, at: t })
             return
         }
 
         session.active = false
         session.running = false
         session.runningAt = t
-        // 内存行同步终结字段（与落库同值；pause 态消费方如 WarmOnOpen 即时可判）
-        applySessionEnd(session, { reason: endedReason, trigger: payload.pauseTrigger ?? null, at: t })
 
         // Session 结束时标记 team members/tasks 为 completed。
         // 从 DB 现读做收尾判定与计算（内存 runtimeState 可能落后于 session-message 路径的

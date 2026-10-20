@@ -67,7 +67,7 @@ function makeRewindEngine(opts: { dryRunResult?: unknown; rewindResult?: unknown
 
 /** 直接在 sessions 路由上挂 tracker（不走 createWebApp 的可选透传，闸门行为在此单测） */
 function makeApp(getEngine: () => SyncEngine | null, tracker: BackgroundTaskTracker) {
-    return createSessionsRoutes({ getSyncEngine: getEngine, getBackgroundTaskTracker: () => tracker })
+    return createSessionsRoutes({ getSyncEngine: getEngine, backgroundTaskTracker: tracker })
 }
 
 describe('rewind API 路由', () => {

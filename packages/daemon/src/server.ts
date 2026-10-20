@@ -246,10 +246,7 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
                 // intent='prewarm'：预算闸内层穿透（到顶 yield，不逐别人会话）
                 warmSession: async (sessionId) => { engine.wakeSession(sessionId, { intent: 'prewarm' }) },
                 acquireWarmSlot: () => wiredGovernor!.acquireSlot('warm'),
-                getSession: (sessionId) => {
-                    const session = engine.getSession(sessionId)
-                    return session ? { active: session.active, endReason: session.endReason ?? null } : undefined
-                },
+                getSession: (sessionId) => engine.getSession(sessionId),
             })
             // warmAbandoned 判定面（票 4.2）：用户活动 / 再次休眠两条信号由 coordinator
             // 自己从事件流翻译（候选④：装配层内联 10 行订阅收编）

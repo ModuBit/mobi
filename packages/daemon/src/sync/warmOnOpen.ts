@@ -26,15 +26,14 @@
 
 import { daemonLogger } from '../logger'
 import type { SlotAcquisition } from '../executor/sessionGovernor'
+import type { Session } from '@mobi/shared/types'
+import type { SyncEventListener } from './eventPublisher'
 
 /** 防抖窗口：翻列表的快速滑动不触发（spec 定稿 2s） */
 export const WARM_ON_OPEN_DEBOUNCE_MS = 2_000
 
-/** 会话状态投影（SessionCache 行的最小消费面） */
-export interface WarmSessionView {
-    active: boolean
-    endReason: string | null
-}
+/** 会话状态投影（SessionCache 行的最小消费面；复用 Session 声明，不另立字段清单） */
+export type WarmSessionView = Pick<Session, 'active' | 'endReason'>
 
 export interface WarmOnOpenOptions {
     /** 会话状态查询（pause 态识别：!active && endReason === 'pause'） */
@@ -137,11 +136,14 @@ export class WarmOnOpenCoordinator {
      * 事件源接线（候选④自 server 内联装配收编）：warmAbandoned 判定面的两条信号
      * （用户活动 / 再次休眠）由 coordinator 自己从事件流翻译，装配层只提供订阅函数。
      */
-    attachEventSource(subscribe: (handler: (event: { type: string; sessionId?: string }) => void) => void): void {
+    attachEventSource(subscribe: (listener: SyncEventListener) => () => void): void {
         subscribe((event) => {
-            if (event.type === 'message-received' && event.sessionId) {
+            if (event.type === 'message-received') {
                 this.observeUserActivity(event.sessionId)
-            } else if ((event.type === 'session-updated' || event.type === 'session-removed') && event.sessionId) {
+            } else if (event.type === 'session-updated' || event.type === 'session-removed') {
+                // 先判是否处于 abandoned 观察窗口：未热身过的会话不必查会话行
+                // （getSession 未命中会回落到 DB 读 + 投影）
+                if (!this.pendingActivity.has(event.sessionId)) return
                 const session = this.getSession(event.sessionId)
                 // warm 后再次 pause（休眠）= 热身落空；非 pause 终态/会话删除也解除观察
                 if (!session || !session.active) this.observeSessionPaused(event.sessionId)

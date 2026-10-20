@@ -23,8 +23,10 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 
 import { WarmOnOpenCoordinator, WARM_ON_OPEN_DEBOUNCE_MS } from '../../../src/sync/warmOnOpen'
+import type { SyncEventListener } from '../../../src/sync/eventPublisher'
+import type { Session, SyncEvent } from '@mobi/shared/types'
 
-type SessionState = { active: boolean; endReason: string | null }
+type SessionState = { active: boolean; endReason: Session['endReason'] }
 
 /** 假调度器：手动推进虚拟时间（bun:test 无 timer mock，调度器注入即测试面） */
 class FakeScheduler {
@@ -213,8 +215,8 @@ describe('WarmOnOpenCoordinator warmAbandoned', () => {
     test('attachEventSource：事件流翻译——session-updated 非 active 记 abandoned', async () => {
         // 候选④：观察接线由 server 内联订阅收编进 coordinator，装配层只给订阅函数
         const h = makeCoordinator({ sessions: { s1: PAUSED } })
-        let handler: (event: { type: string; sessionId?: string }) => void = () => {}
-        h.coordinator.attachEventSource((cb) => { handler = cb })
+        let handler: SyncEventListener = () => {}
+        h.coordinator.attachEventSource((cb) => { handler = cb; return () => {} })
 
         h.coordinator.onSessionViewed('s1', true)
         h.scheduler.advance(WARM_ON_OPEN_DEBOUNCE_MS)
@@ -227,15 +229,15 @@ describe('WarmOnOpenCoordinator warmAbandoned', () => {
 
     test('attachEventSource：message-received 解除观察（用户用上了热身成果）', async () => {
         const h = makeCoordinator({ sessions: { s1: PAUSED } })
-        let handler: (event: { type: string; sessionId?: string }) => void = () => {}
-        h.coordinator.attachEventSource((cb) => { handler = cb })
+        let handler: SyncEventListener = () => {}
+        h.coordinator.attachEventSource((cb) => { handler = cb; return () => {} })
 
         h.coordinator.onSessionViewed('s1', true)
         h.scheduler.advance(WARM_ON_OPEN_DEBOUNCE_MS)
         h.settleWarm()
         await Promise.resolve(); await Promise.resolve()
 
-        handler({ type: 'message-received', sessionId: 's1' })
+        handler({ type: 'message-received', sessionId: 's1' } as SyncEvent)
         handler({ type: 'session-updated', sessionId: 's1' })
         expect(h.events.some((e) => e.type === 'warm_abandoned')).toBe(false)
     })

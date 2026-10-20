@@ -46,3 +46,12 @@ export const SessionPauseTriggerSchema = z.enum([
     'manual',
 ])
 export type SessionPauseTrigger = z.infer<typeof SessionPauseTriggerSchema>
+
+/**
+ * killSession RPC 的可选终结语义（daemon → 会话进程）：两端共用一份形状——
+ * 此前发送端与接收端各写一份，字段漂移不会被任一侧编译期发现。
+ */
+export type SessionKillRequest = {
+    endReason?: SessionEndReason
+    pauseTrigger?: SessionPauseTrigger
+}

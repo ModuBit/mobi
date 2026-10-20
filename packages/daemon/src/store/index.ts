@@ -51,6 +51,22 @@ const REQUIRED_TABLES = [
     'workspaces'
 ] as const
 
+/**
+ * 存量库 sessions 表的人工迁移命令（部署时执行，代码内不做迁移）：
+ * 三列时代 → end_state 单列（json_object 回填后删旧列）；更老的库直接补列。
+ */
+function mergeLegacyEndStateCommand(dbPath: string): string {
+    return `'sqlite3 ${dbPath} "ALTER TABLE sessions ADD COLUMN end_state TEXT; `
+        + `UPDATE sessions SET end_state = json_object('reason', end_reason, 'trigger', pause_trigger, 'at', ended_at) `
+        + `WHERE end_reason IS NOT NULL; `
+        + `ALTER TABLE sessions DROP COLUMN end_reason; ALTER TABLE sessions DROP COLUMN pause_trigger; `
+        + `ALTER TABLE sessions DROP COLUMN ended_at;"'`
+}
+
+function addEndStateColumnCommand(dbPath: string): string {
+    return `'sqlite3 ${dbPath} "ALTER TABLE sessions ADD COLUMN end_state TEXT"'`
+}
+
 export class Store {
     private readonly db: Database
     private readonly dbPath: string
@@ -330,12 +346,12 @@ export class Store {
         // 存量库既有三列时走合并迁移（回填 → 删旧列），更老的库直接补列
         if (!sessionColumns.some(column => column.name === 'end_state')) {
             const hasLegacyTriple = sessionColumns.some(column => column.name === 'end_reason')
+            const command = hasLegacyTriple
+                ? mergeLegacyEndStateCommand(this.dbPath)
+                : addEndStateColumnCommand(this.dbPath)
             throw new Error(
-                `Detected legacy sessions schema (sessions has no end_state column) at ${this.dbPath}. ` +
-                'Stop the daemon, then run ' +
-                (hasLegacyTriple
-                    ? `'sqlite3 ${this.dbPath} "ALTER TABLE sessions ADD COLUMN end_state TEXT; UPDATE sessions SET end_state = json_object('reason', end_reason, 'trigger', pause_trigger, 'at', ended_at) WHERE end_reason IS NOT NULL; ALTER TABLE sessions DROP COLUMN end_reason; ALTER TABLE sessions DROP COLUMN pause_trigger; ALTER TABLE sessions DROP COLUMN ended_at;"' and restart.`
-                    : `'sqlite3 ${this.dbPath} "ALTER TABLE sessions ADD COLUMN end_state TEXT"' and restart.`)
+                `Detected legacy sessions schema (sessions has no end_state column) at ${this.dbPath}. `
+                + `Stop the daemon, then run ${command} and restart.`
             )
         }
     }

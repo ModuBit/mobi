@@ -154,18 +154,8 @@ export function createWebApp(options: WebAppDeps): Hono<WebAppEnv> {
 
     app.route('/api', createAuthRoutes(options.jwtSecret))
     app.use('/api/*', createAuthMiddleware(options.jwtSecret))
-    app.route('/api', createEventsRoutes({
-        getSseManager: options.getSseManager,
-        getSyncEngine: options.getSyncEngine,
-        getVisibilityTracker: options.getVisibilityTracker,
-        getWarmOnOpen: options.getWarmOnOpen,
-    }))
-    app.route('/api', createSessionsRoutes({
-        getSyncEngine: options.getSyncEngine,
-        getBackgroundTaskTracker: options.backgroundTaskTracker
-            ? () => options.backgroundTaskTracker
-            : undefined,
-    }))
+    app.route('/api', createEventsRoutes(options))
+    app.route('/api', createSessionsRoutes(options))
     app.route('/api', createWorkspacesRoutes(options.getSyncEngine))
     app.route('/api', createMessagesRoutes(options.getSyncEngine))
     app.route('/api', createPermissionsRoutes(options.getSyncEngine))
@@ -177,7 +167,7 @@ export function createWebApp(options: WebAppDeps): Hono<WebAppEnv> {
     app.route('/api', createMemoryRoutes())
     // 地图设置 + 静态图代理（key 只在服务端；静态图按参数缓存）
     app.route('/api', createMapRoutes())
-    app.route('/api', createPushRoutes({ store: options.store, vapidPublicKey: options.vapidPublicKey }))
+    app.route('/api', createPushRoutes(options))
 
     // PWA Manifest（不需要认证）
     app.route('/', createManifestRoutes())

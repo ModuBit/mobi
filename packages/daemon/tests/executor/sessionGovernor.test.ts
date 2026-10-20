@@ -155,7 +155,7 @@ const NOW = 1_000_000
 const IDLE_SINCE = NOW - DEFAULT_MIN_VICTIM_IDLE_MS - 1 // 恰好闲够了
 
 function makeEvictGovernor(overrides: {
-    candidates?: Array<{ sessionId: string; state?: 'active' | 'idle'; lastActivityAt?: number; gateBlockers?: string[] }>
+    candidates?: Array<{ sessionId: string; state?: 'active' | 'idle'; lastActivityAt?: number; gateBlockers?: GovernorCandidate['gateBlockers'] }>
     activeCount?: number
     evictResult?: boolean
 } = {}) {
@@ -247,10 +247,9 @@ describe('user 到顶触发逐出（票 2.2）', () => {
         expect(evicted).toEqual(['mid'])
     })
 
-    it('warm/prewarm 到顶不逐出（user 专属，Desktop 同款）', () => {
+    it('warm 到顶不逐出（user 专属，Desktop 同款）', () => {
         const { governor, evicted } = makeEvictGovernor({ candidates: [{ sessionId: 'old-1' }] })
         expect(governor.acquireSlot('warm').granted).toBe(false)
-        expect(governor.acquireSlot('prewarm').granted).toBe(false)
         expect(evicted).toEqual([])
     })
 

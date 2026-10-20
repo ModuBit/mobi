@@ -50,7 +50,8 @@ const INTENT_TO_ACQUIRE_REASON: Record<ReviveIntent, GovernorAcquireReason> = {
     prewarm: 'warm',
 }
 
-/** reviver 消费面（Pick 声明依赖，测试直接喂假件） */export type SessionReviverDeps = {
+/** reviver 消费面（Pick 声明依赖，测试直接喂假件） */
+export type SessionReviverDeps = {
     sessionCache: Pick<SessionCache, 'resolveSessionAccess' | 'getSession' | 'refreshSession' | 'mergeSessions'>
     executor: Pick<LocalExecutor, 'spawnSession'>
     /** executor bridge 是否已注入（同进程 spawn 管线就绪） */
