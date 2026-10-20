@@ -49,3 +49,15 @@ curl -b ~/.mobi-e2e/cookies.txt -X POST http://localhost:2224/api/snapshot-resyn
 ## spawn 直登无心跳的绕法
 
 governor 逐出实验要受害者进 registry：必须给会话发过消息（消息驱动 attach + 心跳）。纯 spawn 的 filler 只是占名额（追踪表计数），对 registry 不可见——**对 cap 记账无影响（effective 走追踪表），只影响逐出候选池**。
+
+## idle_timeout 自主路径（1.1/1.3 验收）
+
+daemon env 加 `MOBI_IDLE_TIMEOUT_MS=30000`（默认 86400000=1 天，node-core configuration.ts）→ 会话空闲 30s 自主 pause 退出，DB 落 `pause|idle_timeout`；再发消息即唤醒（active + endReason 清空 + 即答）。bootstrap 命令前缀直接加变量即可（`MOBI_IDLE_TIMEOUT_MS=30000 perl ... env -u ...`——env -u 只删列出的变量）。
+
+## 内存 critical 档 mock（2.2 验收，零代码改动）
+
+daemon PATH 前置假 `vm_stat` 脚本（`PATH=/tmp/fakevm-bin:$PATH`）——`readAvailableMemoryBytes` 走 `execSync('vm_stat')`（shell 管道，PATH 劫持生效）。脚本输出 free/speculative/purgeable/inactive 各 ~100 页（page size 16384）→ 可用 ~6.5MB（0.03%）→ 启动即扫出 `governor_memory_pressure critical` + cap 折半（8→4）。假脚本只含 vm_stat 一个文件，其余命令继续走原 PATH。验完删目录。
+
+## QuitCleanup 验收形态（4.1）
+
+SIGTERM daemon pid（`lsof -ti :2224 -sTCP:LISTEN`）→ 5s 内优雅退出 ✓。注意：**生产 registerQuitHandler 零调用**（空注册表）——验的是「退出序不崩」，handler 计时/abandoned 名单只有单测覆盖；要真机验 handler 需先有生产注册项。daemon 退出后 bootstrap trap 会 rm 数据目录（含日志），退出日志要趁活着抓。
