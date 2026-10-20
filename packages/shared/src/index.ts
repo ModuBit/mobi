@@ -45,6 +45,7 @@ export * from './openuiFunctions'
 export * from './openuiComponents'
 export * from './mention'
 export * from './fileMeta'
+export * from './errorPresentation'
 // 注意：exitLogger 不走 barrel 导出——它 import node:os/node:fs，
 // 进 barrel 会污染浏览器 bundle（web 通过 @mobi/shared 拉入会崩）。
 // daemon/cli 一律走子路径 @mobi/shared/exitLogger（与 profile.ts 同策略）。

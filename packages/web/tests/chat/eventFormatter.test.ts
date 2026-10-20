@@ -103,15 +103,9 @@ describe('formatEvent 结构化产出（分层治理票 01）', () => {
         expect(sw).toEqual({ kind: 'lines', lines: [{ segments: [{ key: 'chat.switchMode', params: { mode: 'plan' } }] }] })
     })
 
-    it('api-retry → 主行 + 可选重试延时行（spaced）', () => {
-        const f = formatEvent({ type: 'api-retry', attempt: 1, maxRetries: 3, retryDelayMs: 5000, errorStatus: 429 })
-        expect(f).toEqual({
-            kind: 'lines',
-            lines: [
-                { segments: [{ key: 'chat.apiRateLimit' }, ' (', { key: 'chat.retry' }, ' 1/3)'] },
-                { segments: [{ key: 'chat.retryDelay', params: { seconds: 5 } }], spaced: true },
-            ],
-        })
+    it('error → 交给 ErrorEventCard（formatEvent 不产出行）', () => {
+        const f = formatEvent({ type: 'error', category: 'rate_limit', attempt: 1, maxRetries: 3, message: 'x' })
+        expect(f).toBeNull()
     })
 
     it('turn-result → 委托形态（事件载荷透传，UI 归 TurnResultMeta）', () => {

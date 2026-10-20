@@ -22,10 +22,12 @@ import { IconButton } from '@/ui/base/interactive/IconButton'
 
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
-import type { StopKind, UiMessageOrigin } from '@mobi/shared'
-import { readCrossSessionOrigin, readTurnOrigin } from '@mobi/shared'
+import { useNavigate } from '@tanstack/react-router'
+import type { ErrorAction, ErrorContext, NormalizedErrorEvent, StopKind, UiMessageOrigin } from '@mobi/shared'
+import { deriveContextFullState, readCrossSessionOrigin, readTurnOrigin, type ContextFullEvent } from '@mobi/shared'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { useSession } from '@/core/data/hooks/queries/useSession'
+import { useSDKMetadata } from '@/core/data/hooks/queries/useSDKMetadata'
 import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { useForkSession } from '@/core/data/hooks/mutations/useForkSession'
@@ -51,6 +53,7 @@ import { collectUserText } from '@/domain/chat/userContent'
 import { hasActiveTool } from '@/domain/chat/groupToolCalls'
 import { isTerminalUserLifecycle, terminalLifecycleLabelKey, terminalReasonLabelKey } from '@/domain/chat/terminalReason'
 import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, extractRewindRejectReason, mergeSegmentRows, rewindFailureKind, rewindFailedReasonKey, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
+import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { canForkMessage, collectForkTargetBlockIds, extractForkRejectCode, forkRejectReasonKey } from '@/domain/chat/fork'
 import { agentBlockMessageKey, decryptedMessageBlockKeyPrefix } from '@/domain/chat/blockId'
 import { ChatWelcome } from '@/features/chat/ChatWelcome'
@@ -58,7 +61,7 @@ import { UserMessageFooter } from '@/features/chat/UserMessageFooter'
 import { AgentTurnActions } from '@/features/chat/AgentTurnActions'
 import { CrossSessionTag } from '@/features/chat/blocks/CrossSessionTag'
 import { SentFromTag } from '@/features/chat/blocks/SentFromTag'
-import { renderUserBubbleHeader, renderChatBlock, type ChatBlockContext } from '@/features/chat/blocks'
+import { renderUserBubbleHeader, renderChatBlock, type ChatBlockContext, type ErrorCardContext } from '@/features/chat/blocks'
 import { ToolCallGroupRenderer } from '@/features/chat/blocks/toolCallGroupBlock'
 import { ToolDetailDrawer } from '@/features/chat/tool-card/ToolDetailDrawer'
 import { useToolDetailDrawer } from '@/features/chat/tool-card/useToolDetailDrawer'
@@ -248,6 +251,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const { data: session } = useSession(sessionId)
     const sendMutation = useSendMessage(sessionId, session?.running ?? false)
     const sessionActions = useSessionActions(sessionId)
+    const navigate = useNavigate()
+    // 错误卡片的「切换模型」需要备选清单（与 composer 同源：SDK init 上报，缺省用内置回退表）
+    const { data: errorSdkMetadata } = useSDKMetadata(sessionId)
     const chatListRef = useRef<BubbleListChatHandle>(null)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
     // ── 画板（气泡 sketch 图重编辑入口，spec D3/D4）──
@@ -961,6 +967,65 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
     `, [token])
 
+    // ──────────────────────────────────────────────────────────────
+    // 错误卡片宿主（error-presentation）：上下文派生 + 动作派发
+    // ──────────────────────────────────────────────────────────────
+    const errorModelList = errorSdkMetadata?.models?.length ? errorSdkMetadata.models : CLAUDE_MODEL_FALLBACK
+    const errorFallbackModel = errorModelList.find((m) => m.value !== (session?.runtimeState?.model ?? null))?.value ?? null
+    const errorSessionState: 'active' | 'dormant' | 'ended' = session?.active
+        ? 'active'
+        : session?.endReason === 'pause' ? 'dormant' : 'ended'
+
+    /** 错误卡片上下文：canRewind 绑定「触发本轮的最后一条用户消息」，压缩状态由块序列现算 */
+    const errorContextFor = useCallback((blockId: string): ErrorContext => {
+        const idx = chatBlocks.findIndex((b) => b.id === blockId)
+        let target: (typeof chatBlocks)[number] | undefined
+        for (let i = idx - 1; i >= 0; i--) {
+            if (chatBlocks[i]?.kind === 'user-text') { target = chatBlocks[i]; break }
+        }
+        const targetMessage = target ? messages.find((m) => m.id === target.id) : undefined
+        const canRewind = Boolean(target) && canRewindMessage(
+            { metadata: targetMessage?.metadata ?? null, seq: targetMessage?.seq ?? null },
+            sessionNativeSessionId,
+            { running: !!session?.running, backgroundTasks: backgroundTasksCount, rewinding: rewindBusy, active: session?.active, contextBoundarySeq: metadata?.contextBoundarySeq },
+            chainHeadIds?.has(target!.id),
+        )
+
+        // 上下文满状态机：只喂「上下文满错误 + 压缩生命周期」，其余块忽略
+        const events: ContextFullEvent[] = []
+        let anchor = -1
+        for (let i = 0; i < chatBlocks.length; i++) {
+            const b = chatBlocks[i]
+            if (b?.kind !== 'agent-event') continue
+            const ev = b.event
+            const kind: ContextFullEvent['type'] | null =
+                ev.type === 'compact-started' ? 'compact-started'
+                    : ev.type === 'compact' || ev.type === 'compact-completed' ? 'compact'
+                        : ev.type === 'error' && ev.category === 'context_length' ? 'error'
+                            : null
+            if (!kind) continue
+            events.push({ type: kind })
+            if (i === idx) anchor = events.length - 1
+        }
+        const fullState = anchor >= 0 ? deriveContextFullState(events, anchor) : undefined
+
+        return {
+            canRewind,
+            canSend: errorSessionState === 'active' && !sendMutation.isPending,
+            sessionState: errorSessionState,
+            ...(fullState && { compact: { pending: fullState.pending, tried: fullState.tried } }),
+            hasFallbackModel: errorFallbackModel !== null,
+            hasWorkspace: Boolean(session?.workspaceId),
+        }
+    }, [chatBlocks, messages, session?.running, session?.active, session?.endReason, session?.workspaceId, metadata?.contextBoundarySeq, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, sendMutation.isPending, errorSessionState, errorFallbackModel])
+
+    // 动作派发入口：只在点击时执行，经 ref 取最新闭包（赋值在下方命令式区），不拖累装配链 memo
+    const errorActionRef = useRef<(action: ErrorAction, blockId: string, event: NormalizedErrorEvent) => void>(() => {})
+    const errorCardContext = useMemo<ErrorCardContext>(() => ({
+        contextFor: errorContextFor,
+        onAction: (action, blockId, event) => errorActionRef.current(action, blockId, event),
+    }), [errorContextFor])
+
     const decoratedItems = useMemo(() => {
         // ── fork 判据数据（fork-session spec §4.1/§4.2）──
         // 入口仅挂「turn 的 result 落点」：每 turn 最后一条 agent 文本块的 id 集合
@@ -1046,6 +1111,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             onEditSketchBlock: (block) => { void handleEditSketchFromBubble(block) },
             onQuoteLocate: handleQuoteLocate,
             resolveQuoteAnnotations: (agentMessageId) => quoteAnnotationsByAgentId.get(agentMessageId),
+            errorCard: errorCardContext,
         }
         const baseItems = buildChatBubbleItems(
             chatBlocks,
@@ -1268,7 +1334,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const { items, cache } = reconcileBubbleItems(decorated, reusableCache)
         prevItemsRef.current = { cache, ctxKey }
         return items
-    }, [chatBlocks, session?.running, session?.active, session?.mode, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind, openForkPopover, forkPending, confirmFork, cancelFork, forkDraft, isMobile, handleEditSketchFromBubble, rewindCompletion])
+    }, [chatBlocks, errorCardContext, session?.running, session?.active, session?.mode, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind, openForkPopover, forkPending, confirmFork, cancelFork, forkDraft, isMobile, handleEditSketchFromBubble, rewindCompletion])
 
     const bubbleItems = useMemo(() => {
         // 列表尾部的「系统动作行」：命令进行中（compact/clear/rewind）、缓存过期提示、
@@ -1418,6 +1484,44 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     const handleEffortChange = async (effort: string) => {
         await sessionActions.setEffort(effort)
+    }
+
+    // 动作派发：只在点击时执行，经 ref 取最新闭包，避免把整条消息装配链的 memo 拖垮
+    errorActionRef.current = (action, blockId) => {
+        const idx = chatBlocks.findIndex((b) => b.id === blockId)
+        let target: (typeof chatBlocks)[number] | undefined
+        for (let i = idx - 1; i >= 0; i--) {
+            if (chatBlocks[i]?.kind === 'user-text') { target = chatBlocks[i]; break }
+        }
+        switch (action) {
+            case 'retry': {
+                const text = target && target.kind === 'user-text' ? collectUserText(target.blocks) : ''
+                if (text) handleSend({ ...emptySegments(), text })
+                break
+            }
+            case 'compact':
+                handleSend({ ...emptySegments(), text: COMPACT_COMMAND })
+                break
+            case 'rewind': {
+                const nativeId = target ? messages.find((m) => m.id === target.id)?.metadata?.nativeId : null
+                if (target && nativeId) handleOpenRewind(target.id, nativeId)
+                break
+            }
+            case 'resume':
+                void sessionActions.resumeSession()
+                break
+            case 'switchModel':
+                if (errorFallbackModel) void handleModelChange(errorFallbackModel)
+                break
+            case 'newSession':
+                void navigate({ to: '/sessions/new', search: { workspaceId: session?.workspaceId ?? undefined } })
+                break
+            case 'reauth':
+                void navigate({ to: '/settings' })
+                break
+            case 'copyDetails':
+                break
+        }
     }
 
     const agentFlavor = session?.metadata?.flavor ?? null

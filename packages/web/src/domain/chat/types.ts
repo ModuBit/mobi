@@ -15,7 +15,7 @@
  */
 
 import type { MessageStatus } from '@/core/data/api/types'
-import type { CrossSessionMeta, TurnOrigin, PermissionUpdate, StopKind, UserContentBlock, ContentBlock } from '@mobi/shared'
+import type { CrossSessionMeta, TurnOrigin, PermissionUpdate, StopKind, UserContentBlock, ContentBlock, NormalizedErrorEvent } from '@mobi/shared'
 
 /** 消息元数据。
  *
@@ -49,8 +49,8 @@ export type AgentEvent =
     | { type: 'title-changed'; title: string }
     | { type: 'limit-reached'; endsAt: number }
     | { type: 'ready' }
-    | { type: 'api-error'; retryAttempt: number; maxRetries: number; error: unknown }
-    | { type: 'api-retry'; attempt: number; maxRetries: number; retryDelayMs: number; errorStatus: number; error: string }
+    // 统一错误事件：api_error / 历史 api_retry / result 错误都归一到这里（error-presentation 票 01）
+    | ({ type: 'error' } & NormalizedErrorEvent)
     | { type: 'turn-duration'; durationMs: number }
     | { type: 'microcompact'; trigger: string; preTokens: number; tokensSaved: number }
     | { type: 'compact'; trigger: string; preTokens: number; postTokens: number; durationMs: number }
@@ -63,6 +63,8 @@ export type AgentEvent =
     | { type: 'aborted'; numTurns: number | null; durationMs?: number; tokens?: number;
         stopKind?: StopKind; stillQueuedCount?: number }
     | { type: 'turn-result'; durationMs: number; tokens: number; error?: string;
+        /** result 错误的分类结果（有 error 时必带）——渲染端直接画卡片，不重判 */
+        errorDetail?: NormalizedErrorEvent;
         numTurns: number | null; ttftMs?: number; costUsd?: number;
         inputTokens?: number; outputTokens?: number;
         cacheReadTokens?: number; cacheCreationTokens?: number; model?: string;
@@ -81,6 +83,9 @@ export type AgentEvent =
     // normalize 只透传；是否渲染由 reducerTimeline 的收窄判据二次决定（shouldRenderSystemNotice）
     | { type: 'informational'; content: string; level: SystemNoticeLevel; preventContinuation?: boolean }
     | ({ type: string } & Record<string, unknown>)
+
+/** 统一错误事件（判别成员；AgentEvent 末尾有 string 兜底成员，`type` 判别不足以收窄） */
+export type ErrorEvent = Extract<AgentEvent, { type: 'error' }>
 
 export type ToolResultPermission = {
     date: number

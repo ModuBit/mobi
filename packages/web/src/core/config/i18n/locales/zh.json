@@ -200,6 +200,76 @@
     }
   },
   "chat": {
+    "error": {
+      "title": {
+        "quota_exhausted": "用量额度已用完",
+        "rate_limit": "请求过于频繁",
+        "overloaded": "服务暂时过载",
+        "server_error": "服务端错误",
+        "context_length": "上下文窗口已满",
+        "network": "网络连接中断",
+        "auth": "需要重新登录",
+        "permission_denied": "没有使用权限",
+        "org_policy_denied": "被组织策略拦截",
+        "org_disabled": "组织访问已被停用",
+        "usage_policy": "内容被安全策略拦截",
+        "image_dimension": "图片尺寸超出限制",
+        "image_invalid": "图片无法读取",
+        "request_too_large": "请求内容过大",
+        "model_not_found": "模型不可用",
+        "output_token_limit": "响应超出输出上限",
+        "max_turns": "已达到轮次上限",
+        "billing": "计费状态异常",
+        "invalid_request": "请求不合法",
+        "unknown": "未知错误"
+      },
+      "body": {
+        "quota_exhausted": "当前账号的用量额度已用完，额度刷新后可重试；也可以新建会话继续其他任务。",
+        "rate_limit": "短时间内请求过多，稍等片刻后重试即可。",
+        "overloaded": "服务端当前负载过高，稍后重试通常就能恢复。",
+        "server_error": "服务端返回了内部错误，重试一次通常可以恢复；持续失败请查看详情。",
+        "context_length": "这次对话已经超出模型可处理的上下文。压缩对话可以保留要点后继续，或回退到较早的消息删掉多余内容。",
+        "network": "与服务的连接中断了。检查网络、VPN 或代理后重试；如果只是短暂抖动，重试会从当前进度继续。",
+        "auth": "登录凭证已失效或缺失。重新登录后再试。",
+        "permission_denied": "当前账号没有执行这次请求的权限。可以新建会话换一种方式，或联系管理员。",
+        "org_policy_denied": "这次请求被组织策略拦截，需要管理员调整策略后才能继续。",
+        "org_disabled": "所属组织的访问已被停用，请联系管理员恢复。",
+        "usage_policy": "消息被内容安全策略拦截。改写措辞或删除相关引用后重试，也可以回退到上一条消息修改。",
+        "image_dimension": "图片尺寸超出模型允许的范围，请回退并换一张更小的图片。",
+        "image_invalid": "图片无法被读取或格式不受支持，请回退并重新选择文件。",
+        "request_too_large": "请求体（含附件）超出大小限制，请回退移除部分内容或附件。",
+        "model_not_found": "当前模型不可用或已下线。切换到其他可用模型，或新建会话重新开始。",
+        "output_token_limit": "回答达到单次输出上限被截断。发送「继续」让模型接着写，或把任务拆小一些。",
+        "max_turns": "这一轮达到工具调用轮次上限已停止。发送消息可以继续推进。",
+        "billing": "计费状态异常导致请求失败，请在账号设置中检查支付信息。",
+        "invalid_request": "请求参数不被服务端接受。可以新建会话重试，详情里有原始错误。",
+        "unknown": "发生了未识别的错误。可以重试；若持续失败，请展开详情并复制原始错误。"
+      },
+      "note": {
+        "compactTried": "已经尝试过压缩但仍超出上限，建议回退到较早的消息删除部分内容，或新建会话。",
+        "rewindUnavailable": "当前状态无法回退（可能在运行中，或这条消息之前没有可回退的锚点），可以改用其他操作。",
+        "composerUnavailable": "当前无法发送消息，先恢复会话或等待当前操作完成。"
+      },
+      "action": {
+        "retry": "重试",
+        "rewind": "回退到这里",
+        "compact": "压缩对话",
+        "resume": "唤醒会话",
+        "switchModel": "切换模型",
+        "newSession": "新建会话",
+        "reauth": "重新登录",
+        "copyDetails": "查看详情"
+      },
+      "attempt": "第 {{attempt}}/{{maxRetries}} 次尝试",
+      "resetAt": "额度预计在 {{time}} 重置",
+      "compacting": "正在压缩对话…",
+      "retryIn": "{{seconds}} 秒后自动重试",
+      "details": "详情",
+      "requestId": "请求 ID",
+      "copy": "复制",
+      "copied": "已复制",
+      "copyRaw": "复制原始错误"
+    },
     "origin": {
       "openui": "界面触发",
       "app": "应用触发"

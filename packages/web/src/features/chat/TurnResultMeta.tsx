@@ -99,7 +99,8 @@ export function TurnResultMeta({ event, createdAt, actions }: { event: TurnResul
                     </div>
                 </div>
             )}
-            {event.error && (
+            {/* 有分类详情时错误已由 ErrorEventCard 呈现，避免同一错误出现两遍 */}
+            {event.error && !event.errorDetail && (
                 <div style={{ marginTop: 2, color: 'rgba(255, 77, 79, 0.63)', fontFamily: 'var(--font-sans)' }}>
                     {event.error}
                 </div>

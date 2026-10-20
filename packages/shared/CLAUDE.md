@@ -32,6 +32,7 @@
 | `src/openuiFunctions/` | openui `@函数`目录（59 个，纯 JS + Zod）：web 渲染器与 session prompt 生成器单源（票 02） |
 | `src/openuiComponents/` | openui 自定义组件签名（13 个：Chart / Map / Svg 图元 / HtmlView）：实现留 web，签名两面共用（票 03/04） |
 | `src/mapSettings.ts` | 地图设置（高德两种 key 分开存）+ 三档模式推导 `deriveMapMode`（interactive / static / none）与锁内合并写 |
+| `src/errorPresentation.ts` | 错误分类与呈现单一来源：classifyError / presentError / 上下文满状态机 / 重置时间与请求 ID 提取（web 渲染与未来 daemon 遥测共用） |
 | `src/index.ts` | Barrel export |
 
 ## 测试

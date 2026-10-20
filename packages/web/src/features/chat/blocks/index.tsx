@@ -37,7 +37,7 @@ import { UserBlocksView } from '../userBlocks/UserBlocksView'
 import { UserBubbleHeader } from '../userBlocks/UserBubbleHeader'
 
 /** ChatBlockContext 类型定义已抽离 blocks/types.ts（分层治理票 03 破装配环），此处保留兼容 re-export */
-export type { ChatBlockContext } from './types'
+export type { ChatBlockContext, ErrorCardContext } from './types'
 
 /** 根据 block 类型渲染对应组件 */
 export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.ReactNode {
@@ -100,7 +100,7 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
         case 'tool-call':
             return <ToolCallRenderer block={block} metadata={ctx.metadata} api={ctx.api} sessionId={ctx.sessionId} disabled={ctx.disabled} onDone={ctx.onDone} />
         case 'agent-event':
-            return <AgentEventBlock block={block} actions={ctx.turnResultActions?.(block)} />
+            return <AgentEventBlock block={block} actions={ctx.turnResultActions?.(block)} errorCard={ctx.errorCard} />
         case 'system-notice':
             return <SystemNoticeBlock block={block} />
         case 'custom':

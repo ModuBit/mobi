@@ -200,6 +200,76 @@
     }
   },
   "chat": {
+    "error": {
+      "title": {
+        "quota_exhausted": "Usage limit reached",
+        "rate_limit": "Too many requests",
+        "overloaded": "Service overloaded",
+        "server_error": "Server error",
+        "context_length": "Context window is full",
+        "network": "Connection lost",
+        "auth": "Sign-in required",
+        "permission_denied": "Permission denied",
+        "org_policy_denied": "Blocked by organization policy",
+        "org_disabled": "Organization access disabled",
+        "usage_policy": "Blocked by content policy",
+        "image_dimension": "Image is too large",
+        "image_invalid": "Image cannot be read",
+        "request_too_large": "Request is too large",
+        "model_not_found": "Model unavailable",
+        "output_token_limit": "Output limit reached",
+        "max_turns": "Turn limit reached",
+        "billing": "Billing problem",
+        "invalid_request": "Invalid request",
+        "unknown": "Unknown error"
+      },
+      "body": {
+        "quota_exhausted": "This account has used up its allowance. Retry after the limit resets, or start a new session for other work.",
+        "rate_limit": "Too many requests in a short window. Retry in a moment.",
+        "overloaded": "The service is under heavy load. Retrying shortly usually works.",
+        "server_error": "The server returned an internal error. Retry once; open details if it keeps failing.",
+        "context_length": "This conversation has exceeded the model's context window. Compacting keeps the essentials and continues, or rewind to an earlier message and remove extra content.",
+        "network": "The connection to the service was interrupted. Check your network, VPN, or proxy and retry; a brief blip resumes from current progress.",
+        "auth": "Your credentials are missing or expired. Sign in again and retry.",
+        "permission_denied": "This account is not allowed to make this request. Start a new session another way, or contact an administrator.",
+        "org_policy_denied": "Your organization's policy blocks this request. An administrator needs to adjust it first.",
+        "org_disabled": "Access for your organization has been disabled. Contact your administrator.",
+        "usage_policy": "The message was blocked by the content policy. Rephrase it or remove related quotes, or rewind and edit the previous message.",
+        "image_dimension": "The image is larger than the model allows. Rewind and use a smaller image.",
+        "image_invalid": "The image could not be read or its format is unsupported. Rewind and pick another file.",
+        "request_too_large": "The request (including attachments) exceeds the size limit. Rewind and remove some content or attachments.",
+        "model_not_found": "The current model is unavailable or retired. Switch to another model, or start a new session.",
+        "output_token_limit": "The answer hit the single-response output limit and was cut off. Send 'continue' to keep going, or split the task.",
+        "max_turns": "This turn hit the tool-call turn limit and stopped. Send a message to keep going.",
+        "billing": "A billing problem blocked the request. Check your payment details in account settings.",
+        "invalid_request": "The server rejected the request parameters. Start a new session and retry; details hold the raw error.",
+        "unknown": "Something unrecognized went wrong. Retry; if it keeps failing, open details and copy the raw error."
+      },
+      "note": {
+        "compactTried": "Compaction was already tried and the context still overflowed. Rewind to an earlier message and remove content, or start a new session.",
+        "rewindUnavailable": "Rewind is not available right now (the session may be running, or there is no anchor before this point). Use another action instead.",
+        "composerUnavailable": "Messages cannot be sent right now. Resume the session or wait for the current operation to finish."
+      },
+      "action": {
+        "retry": "Retry",
+        "rewind": "Rewind here",
+        "compact": "Compact",
+        "resume": "Resume",
+        "switchModel": "Switch model",
+        "newSession": "New session",
+        "reauth": "Sign in again",
+        "copyDetails": "View details"
+      },
+      "attempt": "attempt {{attempt}}/{{maxRetries}}",
+      "resetAt": "Limit resets at {{time}}",
+      "compacting": "Compacting conversation…",
+      "retryIn": "Retrying in {{seconds}}s",
+      "details": "Details",
+      "requestId": "Request ID",
+      "copy": "Copy",
+      "copied": "Copied",
+      "copyRaw": "Copy raw error"
+    },
     "origin": {
       "openui": "UI action",
       "app": "App action"

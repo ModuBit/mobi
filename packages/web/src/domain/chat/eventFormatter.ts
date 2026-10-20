@@ -64,64 +64,12 @@ export function formatTokensCount(tokens: number): string {
     return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k tokens` : `${tokens} tokens`
 }
 
-/** 从嵌套 error 对象中提取错误详情 */
-export function extractApiErrorDetail(error: unknown): string | null {
-    if (!error || typeof error !== 'object') return null
-    const err = error as Record<string, unknown>
-    if (err.error && typeof err.error === 'object') {
-        const inner = err.error as Record<string, unknown>
-        if (inner.error && typeof inner.error === 'object') {
-            const deepest = inner.error as Record<string, unknown>
-            const code = typeof deepest.code === 'string' ? deepest.code : ''
-            const message = typeof deepest.message === 'string' ? deepest.message : ''
-            if (code || message) return `${code ? `[${code}] ` : ''}${message}`
-        }
-    }
-    return null
-}
-
 /**
  * 格式化 Agent 事件为结构化描述（原返回 ReactNode，分层治理票 01 起纯数据化）。
  * 呈现由 features/chat/EventText 执行；turn-result 委托 TurnResultMeta（actions 挂概要行尾）。
  */
 export function formatEvent(event: { type: string; [key: string]: unknown }, createdAt?: number): FormattedEvent {
     switch (event.type) {
-        case 'api-retry': {
-            const attempt = Number(event.attempt) || 0
-            const maxRetries = Number(event.maxRetries) || 0
-            const delaySec = Math.ceil((Number(event.retryDelayMs) || 0) / 1000)
-            const errorStatus = Number(event.errorStatus) || 0
-            const errorLabel: I18nText = { key: errorStatus === 429 ? 'chat.apiRateLimit' : 'chat.apiError' }
-            return {
-                kind: 'lines',
-                lines: [
-                    {
-                        segments: [
-                            errorLabel,
-                            ...(attempt > 0 ? [' (', { key: 'chat.retry' }, ` ${attempt}/${maxRetries})`] : []),
-                        ],
-                    },
-                    ...(delaySec > 0 ? [{ segments: [{ key: 'chat.retryDelay', params: { seconds: delaySec } } as I18nText] as Array<string | I18nText>, spaced: true }] : []),
-                ],
-            }
-        }
-        case 'api-error': {
-            const detail = extractApiErrorDetail(event.error)
-            const retryAttempt = Number(event.retryAttempt) || 0
-            const maxRetries = Number(event.maxRetries) || 0
-            return {
-                kind: 'lines',
-                lines: [
-                    {
-                        segments: [
-                            { key: 'chat.apiError' },
-                            ...(retryAttempt > 0 ? [' (', { key: 'chat.retry' }, ` ${retryAttempt}/${maxRetries})`] : []),
-                        ],
-                    },
-                    ...(detail ? [{ segments: [detail] as Array<string | I18nText>, spaced: true }] : []),
-                ],
-            }
-        }
         case 'turn-duration': {
             const ms = Number(event.durationMs) || 0
             return { kind: 'lines', lines: [{ segments: [{ key: 'chat.durationValue', params: { value: formatDurationMs(ms) } }] }] }

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { AgentEvent, ChatBlock, NormalizedMessage } from './types'
+import type { AgentEvent, ChatBlock, ErrorEvent, NormalizedMessage } from './types'
 
 /**
  * 解析 Claude 使用限制消息
@@ -110,9 +110,12 @@ export function dedupeAgentEvents(blocks: ChatBlock[]): ChatBlock[] {
 }
 
 /**
- * 折叠连续的 api-error / api-retry 事件，只保留最新状态
+ * 折叠连续的错误事件：同一类别且彼此相邻时只留最新一次（时间戳、原文取最新），
+ * 尝试次数取序列最大值。类别切换或中间插入普通事件 → 新起一张卡片。
+ *
+ * 「相邻」是硬条件：折叠的是「一次错误的重试序列」，不是跨轮次的同类错误。
  */
-export function foldApiErrorEvents(blocks: ChatBlock[]): ChatBlock[] {
+export function foldErrorEvents(blocks: ChatBlock[]): ChatBlock[] {
     const result: ChatBlock[] = []
 
     for (const block of blocks) {
@@ -120,16 +123,24 @@ export function foldApiErrorEvents(blocks: ChatBlock[]): ChatBlock[] {
             result.push(block)
             continue
         }
-
-        const event = block.event as { type: string }
-        if (event.type !== 'api-error' && event.type !== 'api-retry') {
+        // AgentEvent 末尾有 string 兜底成员，不能用 `type` 判别收窄，这里显式取判别成员
+        const errorEvent = block.event.type === 'error' ? block.event as ErrorEvent : null
+        if (!errorEvent) {
             result.push(block)
             continue
         }
 
-        const prev = result[result.length - 1] as { kind: string; event: { type: string } } | undefined
-        if (prev?.kind === 'agent-event' && (prev.event.type === 'api-error' || prev.event.type === 'api-retry')) {
-            result[result.length - 1] = block
+        const prev = result[result.length - 1]
+        const prevEvent = prev?.kind === 'agent-event' && prev.event.type === 'error'
+            ? prev.event as ErrorEvent
+            : null
+        if (prevEvent && prevEvent.category === errorEvent.category) {
+            const attempt = Math.max(prevEvent.attempt, errorEvent.attempt)
+            const maxRetries = Math.max(prevEvent.maxRetries, errorEvent.maxRetries)
+            result[result.length - 1] = {
+                ...block,
+                event: { ...errorEvent, attempt, maxRetries },
+            }
         } else {
             result.push(block)
         }

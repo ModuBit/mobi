@@ -17,13 +17,30 @@
 import { memo } from 'react'
 import type { ReactNode } from 'react'
 import { theme as antTheme } from 'antd'
-import type { AgentEventBlock as AgentEventBlockType } from '@/domain/chat'
+import type { AgentEventBlock as AgentEventBlockType, ErrorEvent } from '@/domain/chat'
 import { formatEvent } from '@/domain/chat'
 import { EventText } from '../EventText'
+import { ErrorEventCard } from './ErrorEventCard'
+import type { ErrorCardContext } from './types'
 
 /** Agent 事件渲染。actions 仅 turn-result 概要行消费（复制/fork 操作组，挂行尾） */
-export const AgentEventBlock = memo(function AgentEventBlock({ block, actions }: { block: AgentEventBlockType; actions?: ReactNode }) {
+export const AgentEventBlock = memo(function AgentEventBlock({ block, actions, errorCard }: { block: AgentEventBlockType; actions?: ReactNode; errorCard?: ErrorCardContext }) {
     const { token } = antTheme.useToken()
+
+    // 统一错误事件 → 分类卡片（error-presentation 票 01）
+    if (block.event.type === 'error') {
+        const errorEvent = block.event as ErrorEvent
+        const context = errorCard?.contextFor(block.id)
+        return (
+            <ErrorEventCard
+                event={errorEvent}
+                context={context}
+                onAction={context && errorCard
+                    ? (action) => errorCard.onAction(action, block.id, errorEvent)
+                    : undefined}
+            />
+        )
+    }
 
     // 后台任务完成卡片
     if (block.event.type === 'bg-task-completed') {
@@ -71,6 +88,19 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block, actions }:
     const formatted = formatEvent(block.event, block.createdAt)
     if (formatted === null) return null
 
+    // result 携带的错误与 api_error 同一张卡片（票 05），排在 turn 概要之前
+    const resultError = block.event.type === 'turn-result' ? (block.event as Extract<AgentEventBlockType['event'], { type: 'turn-result' }>).errorDetail : undefined
+    const resultErrorContext = resultError ? errorCard?.contextFor(block.id) : undefined
+    const errorCardNode = resultError ? (
+        <ErrorEventCard
+            event={resultError}
+            context={resultErrorContext}
+            onAction={resultErrorContext && errorCard
+                ? (action) => errorCard.onAction(action, block.id, resultError)
+                : undefined}
+        />
+    ) : null
+
     const d = block.display
     // 对齐由列表项声明（buildBubbleItems 的 bubble-event-align-*，消费方是 antd.css）；
     // 行内不再重复声明 event-align-*（旧 :has() 锚点删除后已无消费方）
@@ -83,14 +113,17 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block, actions }:
                 ? token.colorSuccess
                 : token.colorTextQuaternary
     return (
-        <div
-            style={{
-                padding: d?.padding === false ? 0 : '4px 0',
-                fontSize: 11,
-                color: colorValue,
-            }}
-        >
-            <EventText formatted={formatted} actions={actions} />
-        </div>
+        <>
+            {errorCardNode}
+            <div
+                style={{
+                    padding: d?.padding === false ? 0 : '4px 0',
+                    fontSize: 11,
+                    color: colorValue,
+                }}
+            >
+                <EventText formatted={formatted} actions={actions} />
+            </div>
+        </>
     )
 })

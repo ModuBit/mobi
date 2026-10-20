@@ -15,7 +15,7 @@
  */
 
 import type { AgentEvent, AgentMetrics, NormalizedAgentContent, NormalizedMessage, StructuredPatch, SystemNoticeLevel, ToolResult, ToolResultPermission, MessageMeta } from './types'
-import { asNumber, asString, getField, isAbortedTerminalReason, isObject, type StopKind } from '@mobi/shared'
+import { asNumber, asString, classifyError, getField, isAbortedTerminalReason, isObject, type ErrorInput, type NormalizedErrorEvent, type StopKind } from '@mobi/shared'
 import { isClaudeChatVisibleMessage } from '@mobi/shared/messageClassification'
 import { calcCacheHitRate } from '@/core/lib/cacheHitRate'
 
@@ -347,25 +347,96 @@ function createEventMessage(ctx: HandlerContext, content: AgentEvent): Normalize
     }
 }
 
-/** 处理 system:api_retry 消息 */
+/** 从嵌套错误对象里取面向用户的文本：formatted 优先，其次逐层 message */
+function pickErrorText(error: unknown): string {
+    if (typeof error === 'string') return error
+    if (!isObject(error)) return ''
+    const formatted = asString(error.formatted)
+    if (formatted) return formatted
+    const message = asString(error.message)
+    if (message) return message
+    return error.error ? pickErrorText(error.error) : ''
+}
+
+/** 逐层取错误类型 / 供应商码（CLI 的 error 对象可嵌 2-3 层） */
+function pickErrorField(error: unknown, field: 'type' | 'code'): string | undefined {
+    if (!isObject(error)) return undefined
+    const direct = asString(error[field])
+    if (direct) return direct
+    return error.error ? pickErrorField(error.error, field) : undefined
+}
+
+/**
+ * 归一化错误事件：分类结果随事件一起产出（渲染端不再重判）。
+ * api_error / 历史 api_retry / result 错误走同一条路径。
+ */
+function buildNormalizedError(params: {
+    input: ErrorInput
+    message: string
+    attempt: number
+    maxRetries: number
+    retryInMs?: number
+    source?: string
+    raw: unknown
+}): NormalizedErrorEvent {
+    const { category, evidence } = classifyError(params.input)
+    return {
+        attempt: params.attempt,
+        maxRetries: params.maxRetries,
+        ...(params.input.status != null && { status: params.input.status }),
+        ...(params.input.code && { code: params.input.code }),
+        ...(params.input.errorType && { errorType: params.input.errorType }),
+        message: params.message,
+        isNetworkDown: params.input.isNetworkDown === true,
+        ...(params.source && { source: params.source }),
+        ...(params.retryInMs != null && { retryInMs: params.retryInMs }),
+        category,
+        evidence,
+        raw: params.raw,
+    }
+}
+
+/** 处理 system:api_retry 消息（历史载荷，归一成统一 error 事件） */
 const handleApiRetryOutput: OutputHandler = (data, ctx) => {
+    const status = asNumber(getField(data, 'errorStatus')) ?? undefined
+    const message = asString(getField(data, 'error')) ?? ''
     return createEventMessage(ctx, {
-        type: 'api-retry',
-        attempt: asNumber(getField(data, 'attempt')) ?? 0,
-        maxRetries: asNumber(getField(data, 'maxRetries')) ?? 0,
-        retryDelayMs: asNumber(getField(data, 'retryDelayMs')) ?? 0,
-        errorStatus: asNumber(getField(data, 'errorStatus')) ?? 0,
-        error: asString(getField(data, 'error')) ?? ''
+        type: 'error',
+        ...buildNormalizedError({
+            input: { status: status ?? null, message },
+            message,
+            attempt: asNumber(getField(data, 'attempt')) ?? 0,
+            maxRetries: asNumber(getField(data, 'maxRetries')) ?? 0,
+            retryInMs: asNumber(getField(data, 'retryDelayMs')) ?? undefined,
+            source: 'request_retry',
+            raw: { attempt: asNumber(getField(data, 'attempt')), maxRetries: asNumber(getField(data, 'maxRetries')), retryDelayMs: asNumber(getField(data, 'retryDelayMs')), errorStatus: status ?? null, error: message },
+        }),
     })
 }
 
 /** 处理 system:api_error 消息 */
 const handleApiErrorOutput: OutputHandler = (data, ctx) => {
+    const error = data.error
+    const status = isObject(error) ? (asNumber(error.status) ?? undefined) : undefined
+    const message = pickErrorText(error)
+    const input: ErrorInput = {
+        status: status ?? null,
+        code: pickErrorField(error, 'code') ?? null,
+        errorType: pickErrorField(error, 'type') ?? null,
+        message,
+        isNetworkDown: isObject(error) && error.isNetworkDown === true,
+    }
     return createEventMessage(ctx, {
-        type: 'api-error',
-        retryAttempt: asNumber(getField(data, 'retryAttempt')) ?? 0,
-        maxRetries: asNumber(getField(data, 'maxRetries')) ?? 0,
-        error: data.error
+        type: 'error',
+        ...buildNormalizedError({
+            input,
+            message,
+            attempt: asNumber(getField(data, 'retryAttempt')) ?? asNumber(getField(data, 'attempt')) ?? 0,
+            maxRetries: asNumber(getField(data, 'maxRetries')) ?? 0,
+            retryInMs: asNumber(getField(data, 'retryInMs')) ?? undefined,
+            source: asString(getField(data, 'source')) ?? undefined,
+            raw: error ?? data,
+        }),
     })
 }
 
@@ -557,11 +628,24 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
 
     // 提取错误信息
     let error: string | undefined
-    if (isError || subtype === 'error_during_execution') {
+    let errorDetail: NormalizedErrorEvent | undefined
+    if (isError || subtype === 'error_during_execution' || subtype === 'error_max_turns') {
         const errors = Array.isArray(data.errors)
             ? (data.errors as unknown[]).filter((e): e is string => typeof e === 'string')
             : []
         error = errors.length > 0 ? errors.join(', ') : subtype ?? 'unknown error'
+        // result 错误与 api_error 同一条分类/卡片路径（票 05）
+        errorDetail = buildNormalizedError({
+            input: {
+                resultSubtype: subtype,
+                message: error,
+                stopReason: asString(getField(data, 'stop_reason')),
+            },
+            message: error,
+            attempt: 0,
+            maxRetries: 0,
+            raw: data,
+        })
     }
 
     return createEventMessage(ctx, {
@@ -578,6 +662,7 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
         ...(totalInput > 0 && { totalInputTokens: totalInput }),
         ...(cacheHitRate !== undefined && { cacheHitRate }),
         ...(error && { error }),
+        ...(errorDetail && { errorDetail }),
     })
 }
 

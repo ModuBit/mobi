@@ -21,7 +21,7 @@
  */
 
 import type { ReactNode } from 'react'
-import type { UserImageBlock, UserQuoteBlock } from '@mobi/shared'
+import type { UserImageBlock, UserQuoteBlock, ErrorAction, ErrorContext, NormalizedErrorEvent } from '@mobi/shared'
 import type { ChatBlock } from '@/domain/chat'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
@@ -52,4 +52,13 @@ export type ChatBlockContext = {
      *  index 对齐，位置 i = 注释 i+1；spec .scratch/response-annotations）。缺省 = 无批注数据，
      *  directive 按原文降级呈现 */
     resolveQuoteAnnotations?: (agentMessageId: string) => UserQuoteBlock[] | undefined
+    /** 错误卡片宿主能力（error-presentation 票 01）：上下文派生 + 动作派发。
+     *  缺省 = 只读展示（无动作按钮），用于无操作能力的渲染场景 */
+    errorCard?: ErrorCardContext
+}
+
+/** 错误卡片的宿主适配：上下文按块派生（canRewind 依赖具体消息位置），动作回交页面执行 */
+export type ErrorCardContext = {
+    contextFor: (blockId: string) => ErrorContext
+    onAction: (action: ErrorAction, blockId: string, event: NormalizedErrorEvent) => void
 }

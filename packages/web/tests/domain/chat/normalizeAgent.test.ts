@@ -658,7 +658,7 @@ describe('normalizeAgentRecord', () => {
         expect(result).not.toBeNull()
         expect(result?.role).toBe('event')
         if (result && 'type' in result.content) {
-            expect(result.content.type).toBe('api-retry')
+            expect(result.content.type).toBe('error')
         }
     })
 

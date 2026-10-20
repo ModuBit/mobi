@@ -541,10 +541,12 @@ describe('normalizeDecryptedMessage', () => {
         const result = normalizeDecryptedMessage(message)
         expect(result).not.toBeNull()
         expect(result!.role).toBe('event')
-        const content = result!.content as { type: string; retryAttempt: number; maxRetries: number }
-        expect(content.type).toBe('api-error')
-        expect(content.retryAttempt).toBe(2)
+        const content = result!.content as { type: string; attempt: number; maxRetries: number; message: string; category: string }
+        expect(content.type).toBe('error')
+        expect(content.attempt).toBe(2)
         expect(content.maxRetries).toBe(5)
+        expect(content.message).toBe('timeout')
+        expect(content.category).toBe('unknown')
     })
 
     it('应解析 api_retry 系统事件', () => {
@@ -573,13 +575,14 @@ describe('normalizeDecryptedMessage', () => {
         const result = normalizeDecryptedMessage(message)
         expect(result).not.toBeNull()
         expect(result!.role).toBe('event')
-        const content = result!.content as { type: string; attempt: number; maxRetries: number; retryDelayMs: number; errorStatus: number; error: string }
-        expect(content.type).toBe('api-retry')
+        const content = result!.content as { type: string; attempt: number; maxRetries: number; retryInMs: number; status: number; message: string; category: string }
+        expect(content.type).toBe('error')
         expect(content.attempt).toBe(3)
         expect(content.maxRetries).toBe(10)
-        expect(content.retryDelayMs).toBe(15000)
-        expect(content.errorStatus).toBe(429)
-        expect(content.error).toBe('rate_limit')
+        expect(content.retryInMs).toBe(15000)
+        expect(content.status).toBe(429)
+        expect(content.message).toBe('rate_limit')
+        expect(content.category).toBe('rate_limit')
     })
 
     it('应处理无法识别的 user content 类型（兜底 JSON dump）', () => {

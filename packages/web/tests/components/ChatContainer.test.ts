@@ -373,6 +373,11 @@ vi.mock('@/core/data/hooks/queries/useSession', () => ({
     }),
 }))
 
+// 错误卡片宿主读取模型清单：测试里无 API provider，直接喂空
+vi.mock('@/core/data/hooks/queries/useSDKMetadata', () => ({
+    useSDKMetadata: () => ({ data: null }),
+}))
+
 vi.mock('@/core/data/hooks/mutations/useSendMessage', () => ({
     useSendMessage: () => ({ isPending: false, mutate: vi.fn() }),
 }))
