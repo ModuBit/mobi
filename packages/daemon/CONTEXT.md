@@ -120,6 +120,10 @@ _Avoid_: 往 Registry 加落库或决策逻辑（决策归 Governor）、把 reg
 会话进程数的全局回收治理（executor spawn 管线前置位，dedup 之后）：cap = max(6, floor(总内存/3GiB))，可被 settings.sessionGovernor.maxActive 覆盖（钳下限）；记账 `effective = 活跃进程数（追踪表现读自愈）+ 在途 spawn − 逐出在途`。**user 来源（新建/resume/fork 激活/投递唤醒）到顶永不拒绝**——走逐出降级链：第 1 档 LRU（idle ≥120s）、第 2 档放宽（去时间门槛选 idle 最久）、第 3 档兜底放行（记 governor_over_cap，短暂超 cap 随会话结束回落）——cap 是「回收水位线」不是「准入墙」（单用户产品裁决）。warm/prewarm 到顶 yield（预热不是承诺）。**state=active（跑 turn 中）与 local 会话永不逐**（local 仅占名额、rss 不计汇总，总纲裁决 #12）。
 _Avoid_: 让 Governor 判定 dormancy gate（gate 在会话进程本地）、给 user 来源加 yield/拒绝（单用户产品永不拒绝创建）、绕过 acquireSlot 直接 spawn（记账失真）、给 in-flight/逐出记账加落库（自愈源在追踪表与 Registry）
 
+**会话苏醒**（`SessionReviver`）:
+把一个非活跃会话行拉回活跃的单一编排点（`sync/sessionReviver.ts`）：access 校验、唤醒去重、resume 参数组装、already-running 语义、等待 active、mergeSessions 收敛都在这里。`intent`（activate / prewarm）是预算分级的唯一来源——映射到 Governor reason（user / warm）只此一处，**不进入跨进程协议**。手动恢复与发消息唤醒都走 activate；点开热身走 prewarm。warm 的防抖与遥测不属本模块（WarmOnOpenCoordinator 是前端信号适配器）。
+_Avoid_: 在 syncEngine 或路由里另写一份 resume 组装、把预算语义放进 shared hostProtocol（协议层不承载 daemon 内部预算概念）、新增唤醒入口自己拼 spawn 选项
+
 **点开热身**（`WarmOnOpenCoordinator`）:
 点开休眠（pause 态）会话停留 ≥2s → 触发冷 resume 的防抖协调器——用户发首条消息时会话已就绪。信号复用既有通道（snapshot-resync = 打开，visibility 变化 = 滑走），不新建上报；预算走 acquireSlot('warm')，yield 即放弃（预热不是承诺）；冷 resume 复用休眠唤醒管线（wakeSession）。只热身 pause 态（active 不需要，stop/archive 终态不可 resume）。
 _Avoid_: 给热身新建 web→daemon 信号通道（resync/visibility 已覆盖）、warm 排队或重试（下次打开重新计防抖即可）

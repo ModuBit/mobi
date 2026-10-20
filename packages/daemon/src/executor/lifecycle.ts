@@ -26,7 +26,8 @@
 import fs from 'fs/promises';
 
 import { ExecutorState, Metadata } from '@mobi/node-core/api/types';
-import { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol';
+import { SpawnSessionResult } from '@mobi/shared/hostProtocol';
+import type { SpawnRequest } from './executorHost';
 import { logger } from '@mobi/node-core/logger';
 import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli';
 import { acquireDaemonLock, releaseDaemonLock } from '@mobi/node-core/persistence';
@@ -54,7 +55,7 @@ export type ExecutorShutdownSource = 'mobi-cli' | 'os-signal' | 'exception';
  * 闭包）；该端点已随 machine 通道删除（ticket-20），spawn 唯一入口是本桥。
  */
 export interface ExecutorBridge {
-    spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>
+    spawnSession: (options: SpawnRequest) => Promise<SpawnSessionResult>
     stopSession: (sessionId: string) => boolean
     /** 追踪补登/刷新（Q8）：决策单源见 sessionTracking.applySessionTrackingSignal */
     registerSessionTracking: (signal: SessionTrackingSignal) => void
@@ -199,7 +200,7 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
     removeWorktree,
     isProcessAlive,
   };
-  const spawnSession = (options: SpawnSessionOptions) => runSpawnSession(options, spawnDeps);
+  const spawnSession = (options: SpawnRequest) => runSpawnSession(options, spawnDeps);
   // Stop a session by sessionId or PID fallback
   const stopSession = (sessionId: string): boolean => {
     logger.debug(`[EXECUTOR] Attempting to stop session ${sessionId}`);

@@ -51,11 +51,12 @@ export class LocalExecutor {
             // 或脱离 daemon 的调用方会到这里，按明确错误透出而非静默等待
             return { type: 'error' as const, message: 'Executor bridge is not wired', failure: 'other' as const }
         }
-        const { agent = 'claude', sessionId, model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, workspaceId } = options ?? {}
+        const { agent = 'claude', sessionId, acquireReason, model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, workspaceId } = options ?? {}
         try {
             // 直调 executor 核心（同一份 spawnSession 闭包，dedup/目录建/worktree/webhook 等待全同源）；
-            // 结果归一映射与 socket 路径共用单源
-            const result = await bridge.spawnSession({ type: 'spawn-in-directory', directory, sessionId, agent, model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, workspaceId } as never)
+            // 结果归一映射与 socket 路径共用单源。预算语义（acquireReason）必须原样透传——
+            // 此前本层解构漏字段，warm-on-open 的内层 yield 实际退化成 user 语义（候选③）
+            const result = await bridge.spawnSession({ directory, sessionId, acquireReason, agent, model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, workspaceId })
             return mapSpawnResultToGateway(result)
         } catch (error) {
             // 直调不会抛 RpcFailure（transport 不存在了）；executor 闭包自身全捕获。

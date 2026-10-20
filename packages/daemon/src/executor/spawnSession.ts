@@ -24,7 +24,10 @@
  * SpawnSessionDeps 注入（accept dependencies, don't create them）。
  */
 
-import { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol';
+import { SpawnSessionResult } from '@mobi/shared/hostProtocol';
+// 预算闸字段（acquireReason）只存在于 daemon 内部签名，不属跨进程协议（候选③）
+import type { SpawnRequest } from './executorHost';
+import type { GovernorAcquireReason } from './sessionGovernor';
 import { logger } from '@mobi/node-core/logger';
 import { hostChannelUrl } from '@mobi/node-core/hostChannel';
 import { keepTail } from '@mobi/node-core/utils/keepTail';
@@ -52,8 +55,8 @@ export type SpawnSessionDeps = {
     trackingTable: SessionTrackingTable;
     /** 预算闸（票 2.1）：可选注入——缺省零行为（测试假件/直跑形态不受约束）。
      *  acquire 在 dedup 之后：already-running 幂等返回不占名额。reason 来自
-     *  SpawnSessionOptions.acquireReason（user 缺省 / warm 内层防御位） */
-    governor?: { acquireSlot: (reason: 'user' | 'warm') => SlotAcquisition };
+     *  SpawnRequest.acquireReason（user 缺省 / warm 内层防御位） */
+    governor?: { acquireSlot: (reason: GovernorAcquireReason) => SlotAcquisition };
     /** 宿主通道端口（求值归 startExecutor：daemon 配置优先，直跑回退默认派生） */
     hostPort: number;
     reportOutcome?: (outcome: SpawnOutcome) => void;
@@ -139,7 +142,7 @@ export function buildWebhookFailureMessage(
 const MAX_TAIL_CHARS = 4000;
 
 /** Spawn a new session (sessionId reserved for future --resume functionality) */
-export async function spawnSession(options: SpawnSessionOptions, deps: SpawnSessionDeps): Promise<SpawnSessionResult> {
+export async function spawnSession(options: SpawnRequest, deps: SpawnSessionDeps): Promise<SpawnSessionResult> {
     logger.debugLargeJson('[EXECUTOR] Spawning session', options);
 
     // 唤醒去重（.scratch/wake-dedup + #108 双键）：同机已有活 child 属于同一会话时不再

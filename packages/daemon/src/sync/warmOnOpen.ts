@@ -133,6 +133,22 @@ export class WarmOnOpenCoordinator {
         this.onEvent({ type: 'warm_abandoned', sessionId, abandonedAfterMs: this.now() - warmAt })
     }
 
+    /**
+     * 事件源接线（候选④自 server 内联装配收编）：warmAbandoned 判定面的两条信号
+     * （用户活动 / 再次休眠）由 coordinator 自己从事件流翻译，装配层只提供订阅函数。
+     */
+    attachEventSource(subscribe: (handler: (event: { type: string; sessionId?: string }) => void) => void): void {
+        subscribe((event) => {
+            if (event.type === 'message-received' && event.sessionId) {
+                this.observeUserActivity(event.sessionId)
+            } else if ((event.type === 'session-updated' || event.type === 'session-removed') && event.sessionId) {
+                const session = this.getSession(event.sessionId)
+                // warm 后再次 pause（休眠）= 热身落空；非 pause 终态/会话删除也解除观察
+                if (!session || !session.active) this.observeSessionPaused(event.sessionId)
+            }
+        })
+    }
+
     private async fire(sessionId: string): Promise<void> {
         const slot = this.acquireWarmSlot()
         if (!slot.granted) {

@@ -209,4 +209,34 @@ describe('WarmOnOpenCoordinator warmAbandoned', () => {
         h.coordinator.observeSessionPaused('s1')
         expect(h.events.some((e) => e.type === 'warm_abandoned')).toBe(false)
     })
+
+    test('attachEventSource：事件流翻译——session-updated 非 active 记 abandoned', async () => {
+        // 候选④：观察接线由 server 内联订阅收编进 coordinator，装配层只给订阅函数
+        const h = makeCoordinator({ sessions: { s1: PAUSED } })
+        let handler: (event: { type: string; sessionId?: string }) => void = () => {}
+        h.coordinator.attachEventSource((cb) => { handler = cb })
+
+        h.coordinator.onSessionViewed('s1', true)
+        h.scheduler.advance(WARM_ON_OPEN_DEBOUNCE_MS)
+        h.settleWarm()
+        await Promise.resolve(); await Promise.resolve()
+
+        handler({ type: 'session-updated', sessionId: 's1' })
+        expect(h.events).toContainEqual(expect.objectContaining({ type: 'warm_abandoned', sessionId: 's1' }))
+    })
+
+    test('attachEventSource：message-received 解除观察（用户用上了热身成果）', async () => {
+        const h = makeCoordinator({ sessions: { s1: PAUSED } })
+        let handler: (event: { type: string; sessionId?: string }) => void = () => {}
+        h.coordinator.attachEventSource((cb) => { handler = cb })
+
+        h.coordinator.onSessionViewed('s1', true)
+        h.scheduler.advance(WARM_ON_OPEN_DEBOUNCE_MS)
+        h.settleWarm()
+        await Promise.resolve(); await Promise.resolve()
+
+        handler({ type: 'message-received', sessionId: 's1' })
+        handler({ type: 'session-updated', sessionId: 's1' })
+        expect(h.events.some((e) => e.type === 'warm_abandoned')).toBe(false)
+    })
 })

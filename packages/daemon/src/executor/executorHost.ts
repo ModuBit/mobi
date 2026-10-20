@@ -26,8 +26,9 @@
  */
 
 import type { RedactedWebToolsConfig } from '@mobi/shared'
-import type { EffortLevel, PermissionMode } from '@mobi/shared/types'
+import type { SpawnSessionOptions as SharedSpawnSessionOptions } from '@mobi/shared/hostProtocol'
 import type { RpcFailureKind } from '../sync/rpcFailure'
+import type { GovernorAcquireReason } from './sessionGovernor'
 import type { RefreshMetadataResponse } from '@mobi/node-core/handlers/commands'
 
 // 文件元数据（流式读取前置查询）与文件范围读取——响应形状单源在 shared，此处 re-export 兼容既有引用
@@ -40,23 +41,18 @@ export type { RpcFileMeta, RpcReadFileMetaResponse, RpcReadFileRangeResponse }
 
 /** spawn 会话选项（深化候选②：位置参数 → 对象——effort/outputStyle 等字段此前靠
  *  第 9/10 位次约定透传，新增字段漏位/错位无法被类型捕获）。
- *  仅进程内签名；'spawn-mobi-session' 的 wire payload 本就是对象，线上协议不变 */
-export type SpawnSessionOptions = {
-    /** Mobi 当前仅支持 Claude */
-    agent?: 'claude'
-    /** mobi 会话行 id（唤醒/激活路径携带）：executor spawn 查重键之一，见 shared SpawnSessionOptions */
-    sessionId?: string
-    /** 预算闸来源分级（永不拒绝裁决）：user 缺省 / warm 内层防御位，语义见 shared SpawnSessionOptions */
-    acquireReason?: 'user' | 'warm'
-    model?: string
-    permissionMode?: PermissionMode
-    sessionType?: 'simple' | 'worktree'
-    worktreeName?: string
-    resumeSessionId?: string
-    effort?: EffortLevel
-    outputStyle?: string
-    workspaceId?: string
+ *  仅进程内签名；'spawn-mobi-session' 的 wire payload 本就是对象，线上协议不变。
+ *
+ *  预算闸字段（候选③）：acquireReason 是 daemon 内部预算概念，**不属于跨进程协议**
+ *  （shared/hostProtocol 已移除）——CLI 侧 spawn 请求不携带预算语义，只有 daemon
+ *  编排层（reviver / warm coordinator）能赋予。 */
+export type SpawnRequest = SharedSpawnSessionOptions & {
+    /** 预算闸来源分级（永不拒绝裁决）：user 缺省 / warm 内层防御位 */
+    acquireReason?: GovernorAcquireReason
 }
+
+/** LocalExecutor.spawnSession 的 options（directory 是独立位置参数，请求体里不再重复） */
+export type SpawnSessionOptions = Omit<SpawnRequest, 'directory'>
 
 export type SpawnGatewayResult =
     | { type: 'success'; sessionId: string }

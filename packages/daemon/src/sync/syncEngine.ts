@@ -36,6 +36,7 @@ import { MessageService, type SendMessagePayload } from './messageService'
 import { WorkspaceCache } from './workspaceCache'
 import { RpcGateway } from './rpcGateway'
 import { SessionCache } from './sessionCache'
+import { SessionReviver, type ReviveIntent, type ReviveResult } from './sessionReviver'
 import { SessionRegistry } from './sessionRegistry'
 import { readRpcFailure } from './rpcFailure'
 import { SessionReceiveReadiness } from './sessionReceiveReadiness'
@@ -58,9 +59,7 @@ export type {
     RpcWriteFileRangeResponse
 } from '../executor/executorHost'
 
-export type ResumeSessionResult =
-    | { type: 'success'; sessionId: string }
-    | { type: 'error'; message: string; code: 'session_not_found' | 'access_denied' | 'executor_not_ready' | 'resume_unavailable' | 'resume_failed' }
+export type ResumeSessionResult = ReviveResult
 
 /**
  * fork 会话创建（POST /api/sessions/:id/fork）的结构化结果：
@@ -114,8 +113,8 @@ export class SyncEngine {
     /** rewind 软删除上界（受理时写 / 截断回报消费；与 CLI socket handler 共用实例，index.ts 注入） */
     private readonly rewindDeleteBounds: RewindDeleteBoundTracker
     private inactivityTimer: NodeJS.Timeout | null = null
-    /** 唤醒防重入：在途 resume spawn 的会话集合（wakeSession 单源读写） */
-    private readonly wakeInFlight = new Set<string>()
+    /** 会话苏醒编排（候选④）：resume 组装/唤醒去重/容错/预算意图的单源 */
+    private readonly reviver: SessionReviver
     /**
      * executor（同进程 spawn 管线）就绪标志：bridge 注入即置位（server.setExecutorBridge）。
      * 取代旧 machineCache online 检查作为「能否 spawn/resume」的判据——旧判据依赖 machines 表
@@ -180,6 +179,15 @@ export class SyncEngine {
         // socket 版实现已随 machine 通道删除（ticket-20）；缺省给无 bridge 的本地实现——
         // 非直调路径全可用，spawn 会报「bridge 未接线」（生产由 hubServer 注入带 bridge 的实例）
         this.executor = executor ?? new LocalExecutor(() => null)
+        // 苏醒编排收口（候选④）：依赖经 this 动态取值——waitForActive /
+        // markActivationError 保留实例方法（测试仍可 spyOn engine.waitForSessionActive）
+        this.reviver = new SessionReviver({
+            sessionCache: this.sessionCache,
+            executor: this.executor,
+            isExecutorReady: () => this.isExecutorReady(),
+            markActivationError: (sessionId, code, detail) => this.markForkActivationErrorIfPending(sessionId, code, detail),
+            waitForActive: (sessionId, timeoutMs) => this.waitForSessionActive(sessionId, timeoutMs),
+        })
         this.executionAccess = new SessionExecutionAccess(store, this.executor)
         this.store = store
         this.rewindDeleteBounds = rewindDeleteBounds ?? new RewindDeleteBoundTracker()
@@ -822,108 +830,15 @@ export class SyncEngine {
     }
 
     /**
-     * 休眠会话唤醒（dormancy spec §B）：非活跃会话入队消息后 fire-and-forget 触发
-     * resume spawn（与 fork 激活同管线）。防重入：同一会话只允许一个在途 spawn——
-     * 短窗口多条消息只触发一次，唤醒失败（无机器在线/spawn 失败）时在途即释放，
-     * 后续消息或手动唤醒可重试；消息不因唤醒失败丢失（queued 已落库，上线后
-     * handleSessionAlive → redeliverQueued 补投）。
+     * 休眠会话唤醒（fire-and-forget）：编排收口在 SessionReviver（候选④）。
+     * opts.intent 是预算意图（activate 缺省 / prewarm），映射规则单源在 reviver。
      */
-    wakeSession(sessionId: string, opts?: { acquireReason?: 'user' | 'warm' }): void {
-        const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
-        if (!session || session.active) return
-        if (this.wakeInFlight.has(sessionId)) return
-        this.wakeInFlight.add(sessionId)
-        void this.resumeSession(sessionId, session.namespace, opts)
-            // resumeSession 的 RPC 层（spawn/ack 超时）会 throw 而非返回 error result；
-            // 唤醒是 fire-and-forget，异常必须就地消化——unhandled rejection 在 Bun 下
-            // 默认终止进程（= 整个 daemon 下线），且对休眠会话发消息即可触发
-            .catch((error) => {
-                daemonLogger.warn(`[dormancy] wakeSession spawn failed (session=${sessionId}): ${error instanceof Error ? error.message : String(error)}`)
-            })
-            .finally(() => {
-                this.wakeInFlight.delete(sessionId)
-            })
+    wakeSession(sessionId: string, opts?: { intent?: ReviveIntent }): void {
+        this.reviver.wake(sessionId, opts)
     }
 
-    async resumeSession(sessionId: string, namespace: string, opts?: { acquireReason?: 'user' | 'warm' }): Promise<ResumeSessionResult> {
-        const access = this.sessionCache.resolveSessionAccess(sessionId, namespace)
-        if (!access.ok) {
-            return {
-                type: 'error',
-                message: access.reason === 'access-denied' ? 'Session access denied' : 'Session not found',
-                code: access.reason === 'access-denied' ? 'access_denied' : 'session_not_found'
-            }
-        }
-
-        const session = access.session
-        if (session.active) {
-            return { type: 'success', sessionId: access.sessionId }
-        }
-
-        const metadata = session.metadata
-        if (!metadata || typeof metadata.path !== 'string') {
-            return { type: 'error', message: 'Session metadata missing path', code: 'resume_unavailable' }
-        }
-
-        // Mobi 当前仅支持 Claude
-        // nativeSessionId 可能为空（会话创建后未发送消息就退出），
-        // 此时 fallback 为新会话而非 resume
-        const resumeToken = metadata.nativeSessionId
-
-        // 单机世界：executor（同进程 spawn 管线）就绪即可 resume——不再有「挑机器/
-        // 匹配 metadata.machineId|host」这一层（machine 概念移除，ticket 201）
-        if (!this.isExecutorReady()) {
-            // fork 行：executor 未就绪也激活不了——daemon 侧落 forkError 错误态（spec §5.3）
-            this.markForkActivationErrorIfPending(sessionId, 'activation-failed', 'executor not ready')
-            return { type: 'error', message: 'Executor not ready', code: 'executor_not_ready' }
-        }
-
-        const spawnResult = await this.executor.spawnSession(
-            metadata.path,
-            {   // Mobi 当前仅支持 Claude（agent 缺省）；resume 无 sessionType/worktreeName/workspaceId
-                // sessionId：本行的查重键——目标行已有活 child（含在途启动中）时 already-running 零等待
-                // 返回，恢复交给 CLI 重连 + handleSessionAlive 补投（#108 首条消息唤醒竞态的闸）
-                sessionId: access.sessionId,
-                // 预算闸来源穿透（永不拒绝裁决）：调用方 user 缺省（点开恢复/发消息唤醒/
-                // 投递唤醒）；warm-on-open 传 'warm'（到顶内层 yield，不逐别人）
-                acquireReason: opts?.acquireReason,
-                model: session.runtimeState?.model ?? undefined,
-                permissionMode: session.permissionMode,
-                resumeSessionId: resumeToken,
-                effort: session.runtimeState?.effort ?? undefined,
-                outputStyle: session.runtimeState?.outputStyle ?? undefined,
-            }
-        )
-
-        if (spawnResult.type === 'already-running') {
-            // 唤醒去重（.scratch/wake-dedup）：executor 报告已有活 child 在 resume 该目标，
-            // 未 spawn 新进程。旧进程断连中正无限重连（≤5s 间隔），恢复交给其重连 +
-            // web 终端 create 重试 / handleSessionAlive 补投收敛——daemon 零等待：不得落到
-            // waitForSessionActive，否则断连场景（重连遥遥无期）会干等满 15s
-            return { type: 'success', sessionId: access.sessionId }
-        }
-
-        if (spawnResult.type !== 'success') {
-            this.markForkActivationErrorIfPending(sessionId, 'activation-failed', spawnResult.message)
-            return { type: 'error', message: spawnResult.message, code: 'resume_failed' }
-        }
-
-        const becameActive = await this.waitForSessionActive(spawnResult.sessionId)
-        if (!becameActive) {
-            this.markForkActivationErrorIfPending(sessionId, 'activation-failed', 'session failed to become active')
-            return { type: 'error', message: 'Session failed to become active', code: 'resume_failed' }
-        }
-
-        if (spawnResult.sessionId !== access.sessionId) {
-            try {
-                await this.sessionCache.mergeSessions(access.sessionId, spawnResult.sessionId, namespace)
-            } catch (error) {
-                const message = error instanceof Error ? error.message : 'Failed to merge resumed session'
-                return { type: 'error', message, code: 'resume_failed' }
-            }
-        }
-
-        return { type: 'success', sessionId: spawnResult.sessionId }
+    async resumeSession(sessionId: string, namespace: string, opts?: { intent?: ReviveIntent }): Promise<ResumeSessionResult> {
+        return this.reviver.revive(sessionId, namespace, opts)
     }
 
     async waitForSessionActive(sessionId: string, timeoutMs: number = 15_000): Promise<boolean> {
