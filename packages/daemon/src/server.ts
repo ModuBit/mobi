@@ -233,13 +233,18 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
 
     const notificationHub = new NotificationHub(syncEngine, notificationChannels)
 
+    // warm-on-open 总开关（2026-10-20 暂停）：可见停留 2s 即冷 resume，收益只有
+    // 首字延迟 ~600ms，成本却是「仅为翻历史」也起进程并常驻到 IdleTimer 默认 1 天。
+    // 待改为输入意图触发（composer 聚焦/输入）后重新启用；模块与测试保留。
+    const WARM_ON_OPEN_ENABLED = false
+
     // warm-on-open（票 3.3）：惰性构造——governor 在 wireGovernor 后可用；
     // 单测形态（未 wire）时 getWarmOnOpen 返回 null，信号 noop
     let wiredGovernor: SessionGovernor | null = null
     let warmOnOpenCoordinator: WarmOnOpenCoordinator | null = null
     const getWarmOnOpen = () => {
         const engine = syncEngine
-        if (!engine || !wiredGovernor) return null
+        if (!WARM_ON_OPEN_ENABLED || !engine || !wiredGovernor) return null
         if (!warmOnOpenCoordinator) {
             warmOnOpenCoordinator = new WarmOnOpenCoordinator({
                 // 结构化预热：await 到 spawn 落定才置 warm_done / pendingActivity
