@@ -125,7 +125,7 @@ const boxStyle = (height: number): CSSProperties => ({
     // 给地图一个最小固有宽度，保证只输出 Map 的回复也能撑开气泡。
     width: '100%',
     minWidth: 280,
-    borderRadius: 12,
+    borderRadius: 'var(--radius-control-sm)',
     overflow: 'hidden',
     // 底纹：图片/瓦片未就绪时不留纯色空白（rgba 双档通用，不依赖主题变量）
     background: 'var(--iui-surface, #f5f5f5)',
@@ -141,7 +141,7 @@ const attributionStyle: CSSProperties = {
     right: 6,
     bottom: 4,
     padding: '1px 5px',
-    borderRadius: 3,
+    borderRadius: 'var(--radius-square)',
     background: 'rgba(255, 255, 255, 0.72)',
     color: '#4a4a4a',
     fontSize: 10,

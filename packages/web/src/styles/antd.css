@@ -241,7 +241,7 @@ html:not([data-theme='dark']) .user-msg-bubble .x-markdown .slash-command-badge 
     width: 100%;
     height: 52px;
     padding: 0 12px 0 6px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--ant-color-bg-container);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ant-color-border-secondary) 55%, transparent);
     user-select: none;
@@ -252,7 +252,7 @@ html:not([data-theme='dark']) .user-msg-bubble .x-markdown .slash-command-badge 
     inset: 0;
     z-index: -1;
     overflow: hidden;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     mix-blend-mode: multiply;
 }
 html[data-theme='dark'] .voice-note-glow {
@@ -270,7 +270,7 @@ html[data-theme='dark'] .voice-note-glow {
     position: absolute;
     left: 0;
     top: 0;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
 }
 /* 播放/暂停圆钮 */
 .voice-note-control {
@@ -281,7 +281,7 @@ html[data-theme='dark'] .voice-note-glow {
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     border: none;
     cursor: pointer;
     background: var(--ant-color-bg-elevated);
@@ -321,7 +321,7 @@ html[data-theme='dark'] .voice-note-glow {
 .voice-note-bars > span {
     flex: 1;
     min-width: 2px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
 }
 /* 未播条：文本色低透明（双档自动适配）；已播条：文本色全值 */
 .voice-note-bars-bg {
@@ -343,7 +343,7 @@ html[data-theme='dark'] .voice-note-glow {
     border: none;
     background: none;
     padding: 2px 4px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     cursor: pointer;
     font-size: 11.5px;
     font-weight: 600;
@@ -356,7 +356,7 @@ html[data-theme='dark'] .voice-note-glow {
     color: var(--ant-color-text-secondary);
 }
 .voice-note-speed {
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     padding: 1px 5px;
     font-size: 10px;
     line-height: 1.2;
@@ -373,7 +373,7 @@ html[data-theme='dark'] .voice-note-glow {
     height: 26px;
     border: none;
     background: none;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     cursor: pointer;
     color: var(--ant-color-text-tertiary);
     outline-offset: 2px;
@@ -391,7 +391,7 @@ html[data-theme='dark'] .voice-note-glow {
 .mobi-audio-slider .ant-slider-rail,
 .mobi-audio-slider .ant-slider-track {
     height: 3px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     top: 0;
 }
 .mobi-audio-slider .ant-slider-rail {
@@ -413,7 +413,7 @@ html[data-theme='dark'] .voice-note-glow {
 .mobi-audio-slider .ant-slider-handle::after {
     background-color: var(--ant-color-primary) !important;
     box-shadow: none !important;
-    border-radius: 999px !important;
+    border-radius: var(--radius-pill) !important;
     inset: auto !important;
     top: 50% !important;
     left: 50% !important;
@@ -522,10 +522,30 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
 .ant-image-preview .ant-image-preview-close,
 .ant-image-preview .ant-image-preview-switch {
     color: var(--ant-image-preview-operation-color);
+    /* 控件底不再吃遮罩 alpha：半透明圆钮叠在亮图 / 浅色遮罩上读不清（2026-10-20 真机反馈） */
+    background: var(--ant-color-bg-elevated);
+    box-shadow: 0 0 0 1px var(--ant-color-border-secondary), var(--ant-box-shadow-tertiary);
 }
 
-.ant-image-preview .ant-image-preview-switch.ant-image-preview-switch-disabled {
+.ant-image-preview .ant-image-preview-close:hover,
+.ant-image-preview .ant-image-preview-switch:hover,
+.ant-image-preview .ant-image-preview-close:active,
+.ant-image-preview .ant-image-preview-switch:active {
+    background: var(--ant-color-fill-secondary);
+}
+
+/* 底部动作条（缩放 / 旋转 / 计数）同样落实底 */
+.ant-image-preview .ant-image-preview-operations-actions {
+    background: var(--ant-color-bg-elevated);
+    box-shadow: 0 0 0 1px var(--ant-color-border-secondary), var(--ant-box-shadow-tertiary);
+}
+
+.ant-image-preview .ant-image-preview-switch.ant-image-preview-switch-disabled,
+.ant-image-preview .ant-image-preview-switch.ant-image-preview-switch-disabled:hover,
+.ant-image-preview .ant-image-preview-switch.ant-image-preview-switch-disabled:active {
     color: var(--ant-image-preview-operation-color-disabled);
+    background: transparent;
+    box-shadow: none;
 }
 
 /* 产物 iframe / turn-diff 卡需要真实容器宽：borderless 气泡内容默认 shrink-to-fit，
@@ -598,7 +618,7 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
 /* 行 hover 铺淡底挂 header（含 padding 满行，整行可点的 affordance；圆角避免色块贴边生硬） */
 .review-collapse > .ant-collapse-item > .ant-collapse-header:hover {
     background-color: var(--ant-color-fill-tertiary);
-    border-radius: var(--ant-border-radius, var(--radius-icon));
+    border-radius: var(--radius-control-sm);
 }
 .review-collapse .ant-collapse-expand-icon {
     display: none;

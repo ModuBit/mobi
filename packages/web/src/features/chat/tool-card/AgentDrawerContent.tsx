@@ -59,7 +59,7 @@ const DRAWER_BUBBLE_ROLES = {
     user: {
         placement: 'end' as const,
         variant: 'borderless' as const,
-        styles: { content: { background: 'var(--ant-color-bg-text-hover)', padding: '6px 10px', borderRadius: 6 } },
+        styles: { content: { background: 'var(--ant-color-bg-text-hover)', padding: '6px 10px', borderRadius: 'var(--radius-control-sm)' } },
     },
     divider: {
         variant: 'borderless' as const,

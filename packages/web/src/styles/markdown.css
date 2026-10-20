@@ -110,7 +110,7 @@ html[data-theme='dark'] .x-markdown code {
     border: 1px solid var(--mobi-hairline);
     margin: 0.75em 0;
     width: 100%;
-    border-radius: var(--radius-icon);
+    border-radius: var(--radius-control-sm);
     font-size: 0.875em;
     line-height: 1.5;
     table-layout: auto;
@@ -214,7 +214,7 @@ html[data-theme='dark'] .x-markdown .slash-command-badge {
    与代码区融为一体。attribute selector 规避 antd X 的 prefixCls 差异（ant- / ant-x-）。 */
 .x-markdown [class*="codeHighlighter"]:not([class*="header"]) {
     background: var(--ant-color-fill-quaternary);
-    border-radius: 8px;
+    border-radius: var(--radius-control-sm);
     overflow: hidden;
 }
 

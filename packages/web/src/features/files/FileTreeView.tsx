@@ -245,7 +245,7 @@ const TreeWrap = styled.div`
         line-height: 1.4;
         color: var(--ant-color-warning-text);
         background: var(--ant-color-warning-bg);
-        border-radius: var(--ant-border-radius-sm);
+        border-radius: var(--radius-control-sm);
     }
     /* 刷新按钮转圈：不用 antd Button loading（会把 lucide 图标换成 antd spinner，与树内其他图标不统一） */
     .refresh-spinning {

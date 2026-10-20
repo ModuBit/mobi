@@ -44,7 +44,7 @@ const Row = styled.div`
     min-width: 0;
     width: 100%;
     padding: 6px 10px;
-    border-radius: var(--radius-square);
+    border-radius: var(--radius-control-sm);
 
     /* 触屏没有 hover：动作常驻；hover 设备上悬停/聚焦才现形。
        不用 emotion 组件选择器（需要 babel 插件，vitest 转换链没有） */

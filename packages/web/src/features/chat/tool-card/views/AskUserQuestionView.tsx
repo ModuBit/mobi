@@ -121,7 +121,7 @@ export function AskUserQuestionView(props: ToolViewProps) {
                     <div
                         key={idx}
                         style={{
-                            borderRadius: 6,
+                            borderRadius: 'var(--radius-control-sm)',
                             border: `1px solid ${token.colorBorder}`,
                             background: token.colorBgContainer,
                             padding: 12,

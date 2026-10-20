@@ -100,7 +100,7 @@ export const collapsibleUserMessageStyles = css`
         gap: 4px;
         padding: 2px 10px;
         border: none;
-        border-radius: 999px;
+        border-radius: var(--radius-pill);
         background: transparent;
         font-size: 12px;
         line-height: 1.5;

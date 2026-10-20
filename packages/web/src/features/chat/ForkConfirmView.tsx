@@ -45,7 +45,7 @@ const Notice = styled.div`
     align-items: flex-start;
     gap: 8px;
     padding: 10px 12px;
-    border-radius: var(--ant-border-radius);
+    border-radius: var(--radius-control);
     background: var(--ant-color-warning-bg);
     border: 1px solid var(--ant-color-warning-border);
     color: var(--ant-color-warning-text);
@@ -61,7 +61,7 @@ const Notice = styled.div`
 const TargetCard = styled.div`
     position: relative;
     padding: 12px 14px 12px 18px;
-    border-radius: var(--ant-border-radius);
+    border-radius: var(--radius-control);
     background: var(--ant-color-bg-layout);
     border: 1px solid var(--ant-color-border-secondary);
     &::before {
@@ -101,7 +101,7 @@ const OptionCardButton = styled.button`
     gap: 12px;
     width: 100%;
     padding: 12px 14px;
-    border-radius: var(--ant-border-radius);
+    border-radius: var(--radius-control);
     text-align: left;
     cursor: pointer;
     transition: border-color 0.15s ease, background 0.15s ease;
@@ -125,7 +125,7 @@ const OptionIcon = styled.span`
     flex-shrink: 0;
     width: 34px;
     height: 34px;
-    border-radius: var(--ant-border-radius-sm);
+    border-radius: var(--radius-control-sm);
     color: var(--ant-color-success-text);
     background: var(--ant-color-success-bg);
 `

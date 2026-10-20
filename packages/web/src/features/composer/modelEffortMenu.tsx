@@ -129,7 +129,7 @@ export function useModelOptionsWithEffort(
                     <span
                         style={{
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                            minWidth: 24, minHeight: 24, borderRadius: 4, cursor: 'pointer',
+                            minWidth: 24, minHeight: 24, borderRadius: 'var(--radius-icon)', cursor: 'pointer',
                         }}
                         onClick={(ev) => ev.stopPropagation()}
                     >

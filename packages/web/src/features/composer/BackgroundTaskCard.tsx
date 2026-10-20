@@ -153,7 +153,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
             style={{
                 flexShrink: 0, width: 22, height: 22,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                borderRadius: 4, cursor: 'pointer',
+                borderRadius: 'var(--radius-icon)', cursor: 'pointer',
             }}
         >
             <CircleStop size={14} style={{ color: token.colorTextQuaternary }} />
@@ -187,7 +187,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
                 style={{
                     display: 'flex', alignItems: 'center', gap: 6,
                     width: 'var(--agent-card-width, 200px)', height: 40,
-                    padding: '4px 8px', borderRadius: 8,
+                    padding: '4px 8px', borderRadius: 'var(--radius-control-sm)',
                     cursor: clickable ? 'pointer' : 'default',
                     border: 'none', background: agentCardBg(name, isDark),
                     boxSizing: 'border-box',
@@ -264,7 +264,7 @@ function ToolIcon({ toolName, status }: { toolName: string; status: BackgroundTa
             <div style={{
                 width: 24, height: 24, display: 'flex',
                 alignItems: 'center', justifyContent: 'center',
-                borderRadius: 4,
+                borderRadius: 'var(--radius-icon)',
             }}>
                 <Eye size={16} style={{ color: terminalStatusPalette(status, token).fg }} />
             </div>

@@ -30,7 +30,7 @@ import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
 const preStyle = (token: GlobalToken, extra?: CSSProperties): CSSProperties => ({
     background: token.colorBgContainer,
     padding: 8,
-    borderRadius: 6,
+    borderRadius: 'var(--radius-square)',
     fontSize: 12,
     overflowX: 'auto',
     margin: '4px 0',

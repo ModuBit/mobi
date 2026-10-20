@@ -102,7 +102,7 @@ export const TurnDiffCard = memo(function TurnDiffCard({ payload, onReview }: { 
                         onClick={onReview}
                         style={{
                             display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
-                            cursor: 'pointer', borderRadius: 999,
+                            cursor: 'pointer', borderRadius: 'var(--radius-pill)',
                             border: `1px solid ${token.colorBorder}`, padding: '3px 12px',
                             fontSize: token.fontSizeSM, color: token.colorText, background: token.colorBgContainer,
                         }}

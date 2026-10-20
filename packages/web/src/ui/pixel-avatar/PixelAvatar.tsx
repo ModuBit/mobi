@@ -52,7 +52,7 @@ function getContainerStyle(status: AgentStatus, size: number, overrides?: Status
     const style: React.CSSProperties = {
         width: size,
         height: size,
-        borderRadius: 12,
+        borderRadius: 'var(--radius-control)',
         overflow: 'hidden',
         transition: 'background 0.3s, border-color 0.3s, box-shadow 0.3s, opacity 0.3s',
     };

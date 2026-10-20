@@ -66,7 +66,7 @@ export const FileTypeBadge = memo(function FileTypeBadge({ path, size = 14, know
         justifyContent: 'center',
         width: size,
         height: size,
-        borderRadius: 3,
+        borderRadius: 'var(--radius-square)',
         flexShrink: 0,
         // 右距收进组件：行内消费方（ActionLink / FileChip）都在徽章后紧跟文本，
         // 调用方各自拼空格会引入文本空格宽度不齐 + 复制带空格的问题

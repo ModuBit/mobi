@@ -44,7 +44,7 @@ const Layer = styled.div`
     padding: 2px;
     background: var(--ant-color-bg-elevated);
     border: 1px solid var(--ant-color-border-secondary);
-    border-radius: var(--ant-border-radius-lg);
+    border-radius: var(--radius-panel);
     box-shadow: var(--ant-box-shadow-secondary);
 `
 
@@ -56,7 +56,7 @@ const ActionItem = styled.button`
     background: transparent;
     /* 同心公式（DESIGN.md「Shapes」）：内圆角 = 外圆角 − 容器内边距。本层 padding 2px，
      * 故 = panel − 3px（uiarc 的菜单项同样是「padding + 1」的收法） */
-    border-radius: calc(var(--ant-border-radius-lg) - 3px);
+    border-radius: calc(var(--radius-panel) - 3px);
     font-size: 13px;
     line-height: 20px;
     color: var(--ant-color-text);

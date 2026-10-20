@@ -35,7 +35,7 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block, actions }:
             <div style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '8px 12px', margin: '4px 0',
-                borderRadius: 8, background: token.colorBgContainer,
+                borderRadius: 'var(--radius-control-sm)', background: token.colorBgContainer,
                 boxShadow: `inset 0px 0px 0px 1px ${token.colorBorderSecondary}`,
             }}>
                 <span style={{ fontSize: 14 }}>

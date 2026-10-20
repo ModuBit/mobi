@@ -323,7 +323,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         return (
             <div style={{
                 display: 'flex', flexDirection: 'column', gap: 6,
-                padding: 10, borderRadius: 8,
+                padding: 10, borderRadius: 'var(--radius-control-sm)',
                 background: token.colorBgLayout,
                 border: `1px solid ${token.colorBorderSecondary}`,
             }}>

@@ -120,7 +120,7 @@ export function OptionRow(props: OptionRowProps) {
         gap: 10,
         minHeight: 44,
         padding: '10px 12px 10px 14px',
-        borderRadius: 8,
+        borderRadius: 'var(--radius-control-sm)',
         textAlign: 'left',
         fontSize: 14,
         // 选中：实色细边框做轮廓反馈；未选中：中性淡边框。不再染整行背景

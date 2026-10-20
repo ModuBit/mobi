@@ -19,7 +19,8 @@
  * CLI 的 TodoWrite 清单（todos）与任务清单（tasks）是同一类呈现，合并进一个列表：
  * 一个头行（图标 + 进行中文案 + 合并完成统计 + 清理）+ 一条按状态排序的胶囊行列表。
  * - 行形态借鉴 beautifului Task Rows：状态徽标（完成对勾 / 进行中转环 / 待办空环）、
- *   label、完成态胶囊；行高 44、圆角 22，展开时收紧到 14
+ *   label、完成态胶囊；行高 44；行是 Popover（panel 22 / 内衬 12）的同心内层，
+ *   取 control-sm 10
  * - todo 行显示 content，task 行显示 subject（不展示内部数字 id）
  * - task 有 description 时整行成为展开按钮，详情落在状态列下方的导轨里；
  *   todo 没有副信息，保持静态行（不造假数据，也不做无内容的展开）
@@ -39,10 +40,9 @@ import { buildChecklist, type ChecklistEntry, type ChecklistStatus } from './che
 /** 任务橙色，参考 Claude Code */
 const CHECKLIST_ORANGE = '#e8825c'
 
-/** 胶囊行几何（行高 44 / 行距 8；圆角取档：收起面板档 22、展开控件档 14） */
+/** 胶囊行几何（行高 44 / 行距 8）；圆角 = 弹层 panel − 内衬 12 = control-sm（同心公式） */
 const ROW_HEIGHT = 44
-const ROW_RADIUS = 'var(--radius-panel)'
-const ROW_RADIUS_OPEN = 'var(--radius-control)'
+const ROW_RADIUS = 'var(--radius-control-sm)'
 const ROW_GAP = 8
 /** 行内左右内衬（= 状态槽与文字间距）：DetailRow 必须与行布局同值，导轨竖线才正对状态槽 */
 const ROW_INSET = 10
@@ -70,16 +70,12 @@ const List = styled.div`
     gap: ${ROW_GAP}px;
 `
 
-/** 每行一张胶囊；展开时圆角收紧，detail 从下方长出 */
-const Row = styled.div<{ $open: boolean }>`
+/** 每行一张胶囊；detail 从下方长出（圆角不随展开变化，避免同心关系被打破） */
+const Row = styled.div`
     overflow: hidden;
-    border-radius: ${({ $open }) => ($open ? ROW_RADIUS_OPEN : ROW_RADIUS)};
+    border-radius: ${ROW_RADIUS};
     /* --muted 在 light/dark 两档都是可辨识的一层浅面，又不至于像卡片那样抢眼 */
     background: var(--muted);
-    transition: border-radius var(--mobi-duration-mid) var(--mobi-ease-out);
-    @media (prefers-reduced-motion: reduce) {
-        transition: none;
-    }
 `
 
 const rowLayout = css`
@@ -313,7 +309,7 @@ function TodoPanelInner({ todos, tasks, sessionId, onClear }: TodoPanelProps) {
                 )
 
                 return (
-                    <Row key={entry.key} $open={open}>
+                    <Row key={entry.key}>
                         {expandable ? (
                             <RowButton
                                 type="button"

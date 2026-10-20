@@ -25,7 +25,7 @@
 //
 // 注意：antd 主题 token 必须是**具体色值**（它要按色值做派生计算），故这里引用 tokens.ts 的
 // 中性阶常量而非 CSS 变量——常量本身就是单一来源。
-import { NEUTRAL_DARK, NEUTRAL_LIGHT, RADIUS_TIERS, withAlpha } from './tokens'
+import { NEUTRAL_DARK, NEUTRAL_LIGHT, RADIUS_TIERS } from './tokens'
 
 /**
  * 与主题无关的组件覆写：不含颜色、双档应当完全一致，故共享同一份对象——
@@ -63,7 +63,7 @@ export const shadcnLightComponents = {
     // 图片预览工具栏：图标色必须跟随遮罩（--ant-color-bg-mask light=纸色/dark=深色），
     // 同一色两档必有一档隐形（2026-09-26 真机：白图标在 light 纸色遮罩上不可见）
     Image: {
-        previewOperationColor: withAlpha(NEUTRAL_LIGHT.primary, 0.88),
+        previewOperationColor: NEUTRAL_LIGHT.primary,
         previewOperationHoverColor: NEUTRAL_LIGHT.ink,
     },
     // 按钮的四处状态色全部落在中性阶上：rest → hover → active 逐档加深（DESIGN.md Buttons 章）
@@ -115,10 +115,10 @@ export const shadcnLightComponents = {
 /** 净墨主题的组件覆写（与净白同构，状态方向相反：hover/active 逐档提亮） */
 export const shadcnDarkComponents = {
     ...sharedComponents,
-    // 图片预览工具栏：默认图标透明度过低，dark 遮罩下几乎不可见（2026-09-26 真机），
-    // 提到接近不透明；hover 全白（与 light 侧同法取 withAlpha，不写裸 rgba 字面量）
+    // 图片预览工具栏：默认图标透明度过低，dark 遮罩下几乎不可见（2026-09-26 真机）。
+    // 操作色给满不透明（控件底由 antd.css 落成实底），hover 全白
     Image: {
-        previewOperationColor: withAlpha('#ffffff', 0.92),
+        previewOperationColor: '#ffffff',
         previewOperationHoverColor: '#ffffff',
     },
     // Tooltip 背景走 colorBgSpotlight（全局 dark token 是浅色，服务于浅底场景）——

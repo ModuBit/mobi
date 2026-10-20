@@ -103,7 +103,7 @@ export function ImageInline({ sessionId, path, etag }: ArtifactInlineProps) {
                     <AppImage
                         src={src}
                         alt={basename(path)}
-                        style={{ maxWidth: '100%', borderRadius: 8 }}
+                        style={{ maxWidth: '100%', borderRadius: 'var(--radius-control-sm)' }}
                         referrerPolicy="no-referrer"
                         onError={onError}
                     />

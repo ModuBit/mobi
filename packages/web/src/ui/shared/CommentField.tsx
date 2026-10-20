@@ -40,7 +40,7 @@ const Wrap = styled.div`
     gap: 2px;
     padding: 6px 8px;
     border: 1px solid var(--ant-color-border);
-    border-radius: var(--ant-border-radius);
+    border-radius: var(--radius-control);
     background: var(--ant-color-bg-container);
     transition: border-color 0.15s;
 

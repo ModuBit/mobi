@@ -40,7 +40,7 @@ export function ForkStateBadge({ variant, errorText }: { variant: 'pending' | 'e
                 fontSize: 10,
                 lineHeight: '16px',
                 padding: '0 5px',
-                borderRadius: 4,
+                borderRadius: 'var(--radius-square)',
                 color,
                 background: isError ? token.colorErrorBg : token.colorFillSecondary,
                 border: `1px solid ${isError ? token.colorErrorBorder : token.colorBorderSecondary}`,

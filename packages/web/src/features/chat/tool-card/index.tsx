@@ -298,7 +298,7 @@ function CodeBlock(props: { code: string; language?: string }) {
         <pre style={{
             background: token.colorBgContainer,
             padding: 8,
-            borderRadius: 4,
+            borderRadius: 'var(--radius-square)',
             fontSize: 12,
             overflowX: 'auto',
             margin: '4px 0',
@@ -339,7 +339,7 @@ function InlineDiffView(props: { oldString: string; newString: string; filePath?
     }
 
     return (
-        <div style={{ border: `1px solid ${token.colorBorder}`, borderRadius: 4, overflow: 'hidden' }}>
+        <div style={{ border: `1px solid ${token.colorBorder}`, borderRadius: 'var(--radius-square)', overflow: 'hidden' }}>
             {props.filePath && (
                 <div style={{ padding: '4px 8px', background: token.colorBgLayout, fontSize: 11, color: token.colorTextSecondary }}>
                     {props.filePath}
@@ -477,7 +477,7 @@ function ToolCardInner(props: ToolCardProps) {
                             display: 'inline-block', marginTop: 6, fontSize: 11,
                             color: token.colorPrimary, background: token.colorPrimaryBg,
                             border: `1px solid ${token.colorPrimaryBorder}`,
-                            padding: '1px 8px', borderRadius: 10,
+                            padding: '1px 8px', borderRadius: 'var(--radius-control-sm)',
                         }}
                     >
                         {t('chat.tool.waitingForApproval')}

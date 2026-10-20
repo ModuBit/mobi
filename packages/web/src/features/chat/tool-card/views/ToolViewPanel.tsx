@@ -39,7 +39,7 @@ export function ToolViewPanel({ header, style, className, hoverBackground, child
             className={className}
             style={{
                 overflow: 'hidden',
-                borderRadius: 4,
+                borderRadius: 'var(--radius-control-sm)',
                 border: `1px solid ${token.colorBorder}`,
                 background: token.colorBgContainer,
                 transition: hoverBackground ? 'background 0.2s' : undefined,

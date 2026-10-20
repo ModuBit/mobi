@@ -48,7 +48,7 @@ export function AgentCard({ name, seed, onClick }: {
                 width: 'var(--agent-card-width, 200px)',
                 height: 40,
                 padding: '4px 8px',
-                borderRadius: 8,
+                borderRadius: 'var(--radius-control-sm)',
                 cursor: onClick ? 'pointer' : 'default',
                 border: 'none',
                 background: agentCardBg(name, isDark),

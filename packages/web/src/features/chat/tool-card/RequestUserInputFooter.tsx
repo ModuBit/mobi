@@ -149,7 +149,7 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
     return (
         <div style={{
             marginTop: 12,
-            borderRadius: 8,
+            borderRadius: 'var(--radius-control-sm)',
             border: `1px solid ${token.colorBorder}`,
             background: token.colorBgContainer,
             padding: 12
@@ -207,7 +207,7 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
                                                 width: '100%',
                                                 alignItems: 'flex-start',
                                                 gap: 8,
-                                                borderRadius: 6,
+                                                borderRadius: 'var(--radius-control-sm)',
                                                 padding: 8,
                                                 textAlign: 'left',
                                                 fontSize: 14,

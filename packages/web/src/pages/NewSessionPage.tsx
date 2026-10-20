@@ -134,7 +134,7 @@ const TitleBar = styled.div<{ $color: string }>`
 const InputCard = styled.div`
     background: var(--ant-color-fill-tertiary);
     border: 1px solid var(--ant-color-border-secondary);
-    border-radius: var(--ant-border-radius-lg, 12px);
+    border-radius: var(--radius-panel);
     padding: 8px;
 
     ${composerSenderCard}
@@ -920,7 +920,7 @@ export function NewSessionPage() {
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 gap: 8,
-                                borderRadius: 'var(--ant-border-radius)',
+                                borderRadius: 'var(--radius-panel)',
                                 zIndex: 20,
                                 background: `color-mix(in srgb, ${token.colorBgContainer} 85%, transparent)`,
                                 backdropFilter: 'blur(2px)',

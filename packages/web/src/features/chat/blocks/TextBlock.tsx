@@ -36,7 +36,7 @@ function TruncatedTag() {
                 padding: '0 6px',
                 fontSize: 11,
                 lineHeight: '18px',
-                borderRadius: 4,
+                borderRadius: 'var(--radius-square)',
                 border: '1px solid var(--ant-color-border-secondary)',
                 color: 'var(--ant-color-text-tertiary)',
                 whiteSpace: 'nowrap',

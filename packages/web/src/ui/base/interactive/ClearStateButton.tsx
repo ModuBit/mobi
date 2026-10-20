@@ -64,7 +64,7 @@ export function ClearStateButton({ sessionId, clearFields, confirmKey, onClear }
         justifyContent: 'center',
         width: 20,
         height: 20,
-        borderRadius: 4,
+        borderRadius: 'var(--radius-icon)',
         border: 'none',
         background: hovered ? token.colorErrorBg : 'transparent',
         color: hovered ? token.colorError : token.colorTextQuaternary,

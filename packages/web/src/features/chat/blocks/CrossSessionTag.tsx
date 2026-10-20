@@ -52,7 +52,7 @@ export function CrossSessionTag({ from, turnOrigin }: { from: string | null; tur
                 alignItems: 'center',
                 gap: 5,
                 padding: '1px 8px 1px 6px',
-                borderRadius: 999,
+                borderRadius: 'var(--radius-pill)',
                 background: token.colorFillQuaternary,
                 border: `1px solid ${token.colorBorderSecondary}`,
                 fontSize: 11,

@@ -103,7 +103,7 @@ export const QuoteDirectiveMarker: FC<{ index?: string; children?: ReactNode }> 
                 // 仿 antd 默认 Tag（border + 弱填充背景）；inline 元素的垂直 border/padding
                 // 是纯视觉，不参与行盒
                 border: '1px solid var(--ant-color-border)',
-                borderRadius: 8,
+                borderRadius: 'var(--radius-control-sm)',
                 padding: '1px 6px 1px 15px',
                 background: 'var(--ant-color-fill-quaternary)',
             }}>

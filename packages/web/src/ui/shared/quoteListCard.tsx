@@ -32,7 +32,7 @@ export const QuoteChip = styled.button`
     align-items: center;
     gap: 6px;
     padding: 3px 10px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     border: 1px solid var(--ant-color-border-secondary);
     background: var(--ant-color-bg-container);
     font-size: 12px;

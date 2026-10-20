@@ -42,7 +42,7 @@
 
 .list::-webkit-scrollbar-thumb {
     border: 2px solid transparent;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: color-mix(in oklab, var(--foreground) 18%, transparent);
     background-clip: padding-box;
 }

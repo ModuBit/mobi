@@ -376,7 +376,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                 alignItems: 'center',
                                 gap: 6,
                                 padding: '4px 8px',
-                                borderRadius: 6,
+                                borderRadius: 'var(--radius-pill)',
                                 background: agentCardBg(
                                     agentInfo.description ?? agentInfo.subagentType ?? 'Agent',
                                     isDark,

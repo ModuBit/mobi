@@ -132,7 +132,7 @@ const ArtifactCard: FC<{ path: string, reason?: ArtifactCardReason, sessionId?: 
     const menuIcon = (icon: ReactNode) => (
         <span style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 26, height: 26, borderRadius: 6,
+            width: 26, height: 26, borderRadius: 'var(--radius-control-sm)',
             background: token.colorFillSecondary, color: token.colorTextSecondary,
         }}>{icon}</span>
     )
@@ -205,7 +205,7 @@ const ArtifactCard: FC<{ path: string, reason?: ArtifactCardReason, sessionId?: 
                 onClick={(e) => e.stopPropagation()}
                 style={{
                     flexShrink: 0, display: 'inline-flex', alignItems: 'center',
-                    border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 999,
+                    border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 'var(--radius-pill)',
                     background: token.colorBgContainer, overflow: 'hidden',
                 }}
             >

@@ -69,7 +69,7 @@ const View = styled.div`
     overflow: hidden;
     min-height: 280px;
     background: var(--ant-color-bg-container);
-    border-radius: var(--ant-border-radius, 8px);
+    border-radius: var(--radius-panel);
     animation: ${viewInKf} 420ms cubic-bezier(.22, 1, .36, 1) both;
 
     ${reducedMotion} { animation: none; }
@@ -83,7 +83,7 @@ const EnvChip = styled.div`
     align-items: center;
     gap: 8px;
     padding: 5px 12px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--ant-color-fill-tertiary);
     border: 1px solid var(--ant-color-border-secondary);
     font-family: var(--font-mono);
@@ -140,7 +140,7 @@ const Sub = styled.div`
 const Progress = styled.div`
     width: 220px;
     height: 3px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--ant-color-border);
     overflow: hidden;
     position: relative;

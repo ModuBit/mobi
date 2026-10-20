@@ -102,7 +102,7 @@ export function MainLayout() {
                         display: 'flex',
                         overflow: 'hidden',
                         minWidth: 0,
-                        borderRadius: !isMobile && sidebarExpanded ? '12px 0 0 12px' : undefined,
+                        borderRadius: !isMobile && sidebarExpanded ? 'var(--radius-panel) 0 0 var(--radius-panel)' : undefined,
                         borderLeft: !isMobile && sidebarExpanded ? `1px solid ${token.colorBorder}` : undefined,
                         background: token.colorBgLayout,
                     }}>

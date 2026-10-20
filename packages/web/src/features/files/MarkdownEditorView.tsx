@@ -238,7 +238,7 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
         <div style={{
             display: 'flex', alignItems: 'center', gap: 2, padding: '2px 4px',
             background: token.colorBgElevated,
-            borderRadius: 6,
+            borderRadius: 'var(--radius-control-sm)',
             boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
         }}>
             <Btn icon={Bold} title="加粗" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />

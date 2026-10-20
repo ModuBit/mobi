@@ -232,7 +232,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
                         <pre style={{
                             background: token.colorBgContainer,
                             padding: 8,
-                            borderRadius: 4,
+                            borderRadius: 'var(--radius-square)',
                             fontSize: 12,
                             overflowX: 'auto',
                             margin: '4px 0',

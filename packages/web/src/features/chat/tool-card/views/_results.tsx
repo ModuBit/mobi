@@ -117,7 +117,7 @@ function CodeBlock(props: { code: string; language?: string }) {
         <pre style={{
             background: token.colorBgContainer,
             padding: 8,
-            borderRadius: 4,
+            borderRadius: 'var(--radius-square)',
             fontSize: 12,
             overflowX: 'hidden',
             margin: '4px 0',

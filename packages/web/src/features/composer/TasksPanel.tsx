@@ -174,7 +174,7 @@ export function TasksPanel({
             <span style={{
                 fontSize: 10, color: token.colorTextQuaternary,
                 background: token.colorBgTextHover,
-                padding: '0 4px', borderRadius: 4,
+                padding: '0 4px', borderRadius: 'var(--radius-square)',
             }}>
                 {items.length}
             </span>

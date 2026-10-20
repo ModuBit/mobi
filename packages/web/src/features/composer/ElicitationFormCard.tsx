@@ -168,7 +168,7 @@ export function ElicitationFormCard({
                 padding: 12,
                 background: token.colorBgContainer,
                 border: `1px solid ${token.colorBorderSecondary}`,
-                borderRadius: 8,
+                borderRadius: 'var(--radius-control-sm)',
             }}
         >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8 }}>

@@ -83,7 +83,7 @@ const ToolPill = styled.code<{ $token: Token }>`
     font-size: 11.5px;
     color: ${p => p.$token.colorTextSecondary};
     background: ${p => p.$token.colorFillQuaternary};
-    border-radius: 5px;
+    border-radius: var(--radius-square);
     padding: 1.5px 7px;
 `
 

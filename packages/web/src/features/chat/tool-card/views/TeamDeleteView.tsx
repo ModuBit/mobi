@@ -55,7 +55,7 @@ export function TeamDeleteView(props: ToolViewProps) {
             display: 'flex',
             gap: 12,
             padding: '10px 12px',
-            borderRadius: 6,
+            borderRadius: 'var(--radius-control-sm)',
             border: `1px solid ${token.colorBorderSecondary}`,
             background: token.colorBgLayout,
         }}>
@@ -66,7 +66,7 @@ export function TeamDeleteView(props: ToolViewProps) {
                 justifyContent: 'center',
                 width: 36,
                 height: 36,
-                borderRadius: 8,
+                borderRadius: 'var(--radius-control-sm)',
                 background: iconBg,
                 color: iconColor,
             }}>

@@ -58,7 +58,7 @@ export function TeamAgentCard({ member, teamName }: TeamAgentCardProps) {
         <div style={{
             display: 'flex', alignItems: 'center', gap: 6,
             width: 'var(--agent-card-width, 200px)', height: 40,
-            padding: '4px 8px', borderRadius: 8,
+            padding: '4px 8px', borderRadius: 'var(--radius-control-sm)',
             cursor: 'default', border: 'none',
             background: token.colorBgTextHover,
             boxSizing: 'border-box',

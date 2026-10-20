@@ -43,7 +43,7 @@ export const SystemNoticeBlock = memo(function SystemNoticeBlock({ block }: { bl
                 gap: 8,
                 padding: '6px 10px',
                 margin: '4px 0',
-                borderRadius: 6,
+                borderRadius: 'var(--radius-control-sm)',
                 borderLeft: `3px solid ${accentColor}`,
                 background: backgroundColor,
                 fontSize: 12,
@@ -60,7 +60,7 @@ export const SystemNoticeBlock = memo(function SystemNoticeBlock({ block }: { bl
                         flexShrink: 0,
                         fontSize: 11,
                         padding: '0 6px',
-                        borderRadius: 4,
+                        borderRadius: 'var(--radius-square)',
                         border: `1px solid ${accentColor}`,
                     }}
                 >

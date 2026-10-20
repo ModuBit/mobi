@@ -37,7 +37,7 @@ const Badge = styled.span<{ $textColor: string; $bgColor: string }>`
     gap: 6px;
     flex-shrink: 0;
     padding: 1px 8px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 12px;
     line-height: 18px;
     color: ${(p) => p.$textColor};

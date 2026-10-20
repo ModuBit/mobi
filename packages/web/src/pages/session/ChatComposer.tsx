@@ -178,7 +178,7 @@ const ComposerDock = styled.div`
        ——比没有 Dock 更难看，此时白卡直接落在页面底色上，分层只靠底色差 + 圆角 */
     &&:not(:has(> :only-child)) {
         background: var(--ant-color-fill-quaternary);
-        border-radius: var(--ant-border-radius-lg, 12px) var(--ant-border-radius-lg, 12px) 0 0;
+        border-radius: var(--radius-panel) var(--radius-panel) 0 0;
         /* 下方不留内衬：有白卡 margin 8px + padding 8px 叠出的灰带会悬在卡片底下 */
         padding: 8px 8px 0;
     }
@@ -976,7 +976,7 @@ export function ChatComposer(props: ChatComposerProps) {
                         className="activate-cover-mask"
                         loading={activatePending}
                         onActivate={onActivate!}
-                        borderRadius="var(--ant-border-radius)"
+                        borderRadius="var(--radius-panel)"
                     />
                 )}
 
@@ -993,7 +993,7 @@ export function ChatComposer(props: ChatComposerProps) {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            borderRadius: 'var(--ant-border-radius)',
+                            borderRadius: 'var(--radius-panel)',
                             zIndex: 10,
                         }}
                     >
@@ -1018,7 +1018,7 @@ export function ChatComposer(props: ChatComposerProps) {
                             alignItems: 'center',
                             justifyContent: 'center',
                             gap: 8,
-                            borderRadius: 'var(--ant-border-radius)',
+                            borderRadius: 'var(--radius-panel)',
                             zIndex: 20,
                             background: `color-mix(in srgb, ${token.colorBgContainer} 85%, transparent)`,
                             backdropFilter: 'blur(2px)',

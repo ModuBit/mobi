@@ -116,7 +116,7 @@ function MailCardView({ full, block }: ToolViewProps & { full: boolean }) {
                 display: 'flex',
                 gap: 12,
                 padding: '10px 12px',
-                borderRadius: 6,
+                borderRadius: 'var(--radius-control-sm)',
                 border: `1px solid ${token.colorErrorBorder}`,
                 background: token.colorErrorBg,
             }}>
@@ -127,7 +127,7 @@ function MailCardView({ full, block }: ToolViewProps & { full: boolean }) {
                     justifyContent: 'center',
                     width: 36,
                     height: 36,
-                    borderRadius: 8,
+                    borderRadius: 'var(--radius-control-sm)',
                     background: token.colorErrorBg,
                     color: token.colorError,
                 }}>
@@ -190,7 +190,7 @@ function MailCardView({ full, block }: ToolViewProps & { full: boolean }) {
             display: 'flex',
             gap: 12,
             padding: '10px 12px',
-            borderRadius: 6,
+            borderRadius: 'var(--radius-control-sm)',
             border: `1px solid ${isSuccess ? token.colorSuccessBorder : token.colorBorderSecondary}`,
             background: token.colorBgLayout,
         }}>
@@ -202,7 +202,7 @@ function MailCardView({ full, block }: ToolViewProps & { full: boolean }) {
                 justifyContent: 'center',
                 width: 36,
                 height: 36,
-                borderRadius: 8,
+                borderRadius: 'var(--radius-control-sm)',
                 background: isSuccess ? token.colorSuccessBg : token.colorPrimaryBg,
                 color: isSuccess ? token.colorSuccess : token.colorPrimary,
                 marginTop: 2,

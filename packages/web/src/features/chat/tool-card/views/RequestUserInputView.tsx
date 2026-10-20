@@ -63,7 +63,7 @@ export function RequestUserInputView(props: ToolViewProps) {
                     <div
                         key={q.id}
                         style={{
-                            borderRadius: 6,
+                            borderRadius: 'var(--radius-control-sm)',
                             border: `1px solid ${token.colorBorder}`,
                             background: token.colorBgContainer,
                             padding: 12
@@ -80,7 +80,7 @@ export function RequestUserInputView(props: ToolViewProps) {
                             hasAnswers && answer?.userNote ? (
                                 <div style={{ marginTop: 12 }}>
                                     <div style={{
-                                        borderRadius: 6,
+                                        borderRadius: 'var(--radius-control-sm)',
                                         border: `1px solid ${token.colorSuccessBorder}`,
                                         background: token.colorSuccessBg,
                                         padding: 8
@@ -106,7 +106,7 @@ export function RequestUserInputView(props: ToolViewProps) {
                                         <div
                                             key={optIdx}
                                             style={{
-                                                borderRadius: 6,
+                                                borderRadius: 'var(--radius-control-sm)',
                                                 border: `1px solid ${isSelected ? token.colorSuccessBorder : token.colorBorder}`,
                                                 background: isSelected ? token.colorSuccessBg : 'transparent',
                                                 padding: 8
@@ -146,7 +146,7 @@ export function RequestUserInputView(props: ToolViewProps) {
                                 {hasAnswers && answer?.userNote ? (
                                     <div style={{
                                         marginTop: 8,
-                                        borderRadius: 6,
+                                        borderRadius: 'var(--radius-control-sm)',
                                         border: `1px solid ${token.colorPrimaryBorder}`,
                                         background: token.colorPrimaryBg,
                                         padding: 8

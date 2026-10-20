@@ -114,7 +114,7 @@ export const Favicon = memo(function Favicon({ href, size = 14 }: { href: string
             loading="lazy"
             style={{
                 ...INLINE_BADGE_STYLE,
-                borderRadius: 3,
+                borderRadius: 'var(--radius-square)',
             }}
         />
     )

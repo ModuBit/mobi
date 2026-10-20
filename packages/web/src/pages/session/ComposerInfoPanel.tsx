@@ -284,7 +284,7 @@ function ToolRequestCard({ titleText, subtitle, chipNode, footerNode, testId }: 
             padding: 12,
             background: token.colorBgContainer,
             border: `1px solid ${token.colorBorderSecondary}`,
-            borderRadius: 8,
+            borderRadius: 'var(--radius-control-sm)',
         }}>
             <button
                 type="button"

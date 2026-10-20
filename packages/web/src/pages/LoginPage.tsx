@@ -102,7 +102,7 @@ const ActiveLocale = styled.span`
     line-height: 14px;
     z-index: 2;
     padding: 0 3px;
-    border-radius: 3px;
+    border-radius: var(--radius-square);
     background: color-mix(in srgb, var(--mobi-stage-canvas) 90%, transparent);
     color: var(--mobi-stage-ink);
 
@@ -121,7 +121,7 @@ const InactiveLocale = styled.span`
     line-height: 12px;
     z-index: 1;
     padding: 0 2px;
-    border-radius: 2px;
+    border-radius: var(--radius-square);
     background: transparent;
     border: 1px solid rgba(20, 20, 19, 0.2);
     color: rgba(20, 20, 19, 0.4);

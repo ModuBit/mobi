@@ -194,7 +194,7 @@ const Body = styled.div`
     }
     &::-webkit-scrollbar-thumb {
         background: ${TERMINAL.line};
-        border-radius: 3px;
+        border-radius: var(--radius-square);
     }
     &::-webkit-scrollbar-thumb:hover {
         background: ${TERMINAL.lineStrong};

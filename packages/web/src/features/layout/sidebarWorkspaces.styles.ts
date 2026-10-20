@@ -39,7 +39,7 @@ export const SectionTitleRow = styled.div`
     align-items: center;
     gap: 2px;
     padding: 8px 8px 4px;
-    border-radius: var(--radius-icon);
+    border-radius: var(--radius-control-sm);
     cursor: pointer;
     user-select: none;
 
@@ -79,7 +79,7 @@ export const SectionActionButton = styled.button<{ $token: SidebarToken }>`
     border: none;
     background: transparent;
     color: ${props => props.$token.colorTextTertiary};
-    border-radius: var(--radius-square);
+    border-radius: var(--radius-icon);
     cursor: pointer;
     flex-shrink: 0;
     transition: color 0.15s, background 0.15s;
@@ -103,7 +103,7 @@ export const GroupHeader = styled.div<{ $token: SidebarToken }>`
     width: 100%;
     height: 32px;
     padding: 0 8px;
-    border-radius: var(--radius-icon);
+    border-radius: var(--radius-control-sm);
     cursor: pointer;
     font-size: 13px;
     line-height: 1;
@@ -136,7 +136,7 @@ export const HeaderActionButton = styled.button<{ $token: SidebarToken }>`
     border: none;
     background: transparent;
     color: ${props => props.$token.colorTextTertiary};
-    border-radius: var(--radius-square);
+    border-radius: var(--radius-icon);
     cursor: pointer;
     flex-shrink: 0;
     transition: color 0.15s, background 0.15s;
@@ -198,7 +198,7 @@ export const SessionItem = styled.div<{
     border: none;
     background: transparent;
     color: ${props => props.$token.colorText};
-    border-radius: var(--radius-icon);
+    border-radius: var(--radius-control-sm);
     cursor: pointer;
     font-size: 12px;
     line-height: 1;
@@ -263,7 +263,7 @@ export const ActionButton = styled.button<{ $token: SidebarToken; $danger?: bool
     border: none;
     background: transparent;
     color: ${props => props.$danger ? props.$token.colorError : props.$token.colorTextTertiary};
-    border-radius: var(--radius-square);
+    border-radius: var(--radius-icon);
     cursor: pointer;
     transition: color 0.15s, background 0.15s;
 

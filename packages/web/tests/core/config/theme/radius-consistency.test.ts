@@ -22,7 +22,8 @@
  * 本测试把三件事锁死：
  *   ① 档位表：DESIGN.md ←→ tokens.ts.RADIUS_TIERS ←→ antd 槽位 ←→ 注入的 CSS 变量；
  *   ② 组件覆写只允许落到指定档，且不许出现「与全局同值」的冗余覆写；
- *   ③ **源码里不许再出现等于档位值的字面量**——散落的字面量正是「逐个调不动」的根因。
+ *   ③ **源码里不许再出现 ≥4px 的圆角字面量**（CSS 与内联样式都扫）——散落的字面量
+ *      正是「逐个调不动」的根因；4px 以下只留小标记 / 圆点。
  */
 
 import { describe, it, expect } from 'vitest'
@@ -133,9 +134,10 @@ describe('圆角档位与 DESIGN.md 一致性（文档与代码同源守卫）',
         }
     })
 
-    it('源码里没有等于档位值的 border-radius 字面量（一律取档引用）', () => {
-        const tierValues = new Set(Object.values(designTiers))
+    it('源码里不出现 ≥4px 的圆角字面量（一律取档引用）', () => {
         const offenders: string[] = []
+        /** 4px 以下只允许小标记 / 圆点（如 9px 色块、像素灯格），它们不承担表面层级 */
+        const isMark = (value: number) => value < designTiers['square']!
         for (const file of collectSourceFiles(resolve(WEB_ROOT, 'src'))) {
             const rel = relative(WEB_ROOT, file)
             if (RADIUS_LITERAL_EXCEPTIONS.some((prefix) => rel.startsWith(prefix))) continue
@@ -144,11 +146,18 @@ describe('圆角档位与 DESIGN.md 一致性（文档与代码同源守卫）',
                 const value = decl[1]!.trim()
                 // calc() 里的数值是结构性的内缩量（同心公式），不是取档
                 if (value.startsWith('calc(')) continue
-                for (const px of value.matchAll(/(\d+)px/g)) {
-                    if (tierValues.has(Number(px[1]))) offenders.push(`${rel} → border-radius: ${value}`)
+                for (const px of value.matchAll(/(\d+(?:\.\d+)?)px/g)) {
+                    const n = Number(px[1])
+                    if (!isMark(n)) offenders.push(`${rel} → border-radius: ${value}`)
                 }
             }
+            // 内联样式 camelCase 不经过上面的 CSS 扫描——这是过去字面量（8/12/24）躲过守卫的盲区
+            for (const decl of source.matchAll(/borderRadius:\s*(['"`]?)([^,;\n}]+)/g)) {
+                const value = decl[2]!.trim()
+                const literal = value.match(/^(\d+(?:\.\d+)?)(?:px)?$/)
+                if (literal && !isMark(Number(literal[1]))) offenders.push(`${rel} → borderRadius: ${value}`)
+            }
         }
-        expect(offenders, `这些字面量应改成 var(--radius-<档名>)`).toEqual([])
+        expect(offenders, '这些字面量应改成档位引用（var(--radius-<档名>) / token.borderRadius*）').toEqual([])
     })
 })

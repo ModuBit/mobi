@@ -41,7 +41,7 @@ export const composerSenderCard = css`
     && .ant-sender {
         border: none !important;
         box-shadow: none !important;
-        border-radius: 24px !important;
+        border-radius: var(--radius-panel) !important;
         background: var(--ant-color-bg-container) !important;
         width: auto !important;
         margin: 8px -16px;
