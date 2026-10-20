@@ -15,6 +15,7 @@
  */
 
 import { AgentStateSchema, MetadataSchema, RuntimeStateSchema } from '@mobi/shared/schemas'
+import { SessionEndReasonSchema, SessionPauseTriggerSchema } from '@mobi/shared'
 import type { CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, RuntimeState, SDKMetadata, Session, SessionEndReason, SessionPauseTrigger } from '@mobi/shared/types'
 import type { Store } from '../store'
 import { daemonLogger } from '../logger'
@@ -177,7 +178,13 @@ export class SessionCache {
             // 置顶态：必须显式带上，否则 GET /sessions 与 SSE session-updated 载荷的
             // toSessionSummary 读 session.pinned 恒 undefined → 全局缓存反复抹掉 pinned，
             // 「置顶」分组按钮态/成员资格与分页查询打架（见 sessions_pinned 回归）
-            pinned: stored.pinned
+            pinned: stored.pinned,
+            // 终结字段内存投影（warm-on-open 真机 E2E 回归）：缺了它
+            // WarmOnOpenCoordinator 判 pause 态恒 false，点开热身永不触发。
+            // store 层列是 string | null，经 schema 校验窄化（脏值按 null，防扩散）
+            endReason: SessionEndReasonSchema.nullable().catch(null).parse(stored.endReason),
+            pauseTrigger: SessionPauseTriggerSchema.nullable().catch(null).parse(stored.pauseTrigger),
+            endedAt: stored.endedAt ?? null,
         }
 
         // permissionMode 顶层可写快照已删除（深化候选⑤）：降级为 runtimeState.permissionMode 的
@@ -234,6 +241,19 @@ export class SessionCache {
         session.activeAt = Math.max(session.activeAt, t)
         session.running = Boolean(payload.running)
         session.runningAt = t
+        // 唤醒收口：激活心跳到达即清终结字段（DB + 内存行）。clearSessionEnd 此前
+        // 生产零调用——唤醒后 DB 残留 pause，daemon 重启后 Web 误显休眠、
+        // warm-on-open 可对已唤醒会话重复触发。仅终结态时写，避免高频心跳重复落库
+        if (session.endReason !== null && session.endReason !== undefined) {
+            session.endReason = null
+            session.pauseTrigger = null
+            session.endedAt = null
+            try {
+                this.store.sessions.clearSessionEnd(session.id, session.namespace)
+            } catch {
+                daemonLogger.debug(`[sessionCache] clearSessionEnd failed (id=${session.id})`)
+            }
+        }
         if (payload.mode !== undefined) {
             session.mode = payload.mode
         }
@@ -385,9 +405,10 @@ export class SessionCache {
 
         // 终结原因落库（票 1.1）：结构化 endReason/pauseTrigger 写 sessions 行；
         // 老 CLI 无载荷按 stop 处理（人不可辨来源时保守标记为终结名单而非休眠）
+        const endedReason: SessionEndReason = payload.endReason ?? 'stop'
         try {
             this.store.sessions.markSessionEnded(session.id, session.namespace, {
-                endReason: payload.endReason ?? 'stop',
+                endReason: endedReason,
                 pauseTrigger: payload.pauseTrigger,
                 endedAt: t,
             })
@@ -397,12 +418,20 @@ export class SessionCache {
         }
 
         if (!session.active && !session.running) {
+            // 早退分支同样同步内存行（落库与投影一致，不依赖 DB 回读）
+            session.endReason = endedReason
+            session.pauseTrigger = payload.pauseTrigger ?? null
+            session.endedAt = t
             return
         }
 
         session.active = false
         session.running = false
         session.runningAt = t
+        // 内存行同步终结字段（与落库同值；pause 态消费方如 WarmOnOpen 即时可判）
+        session.endReason = endedReason
+        session.pauseTrigger = payload.pauseTrigger ?? null
+        session.endedAt = t
 
         // Session 结束时标记 team members/tasks 为 completed。
         // 从 DB 现读做收尾判定与计算（内存 runtimeState 可能落后于 session-message 路径的

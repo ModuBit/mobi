@@ -253,6 +253,40 @@ describe('SessionCache.handleSessionEnd · SessionEndReason 落库（票 1.1）'
         expect(cleared?.endReason).toBeNull()
         expect(cleared?.endedAt).toBeNull()
     })
+
+    test('终结字段内存投影：handleSessionEnd 同步内存 Session，refreshSession 从 DB 带回', () => {
+        // 回归（warm-on-open 真机 E2E 实锤）：内存 Session 曾不带 endReason，
+        // WarmOnOpenCoordinator.getSession() 读 endReason 恒 undefined → pause 判据永不满足
+        const session = cache.getOrCreateSession('tag-end-4', { path: '/tmp/p' }, null, 'default')
+        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: false, mode: 'remote' })
+        const t = Date.now()
+
+        cache.handleSessionEnd({ sid: session.id, time: t, endReason: 'pause', pauseTrigger: 'governor_evict' })
+
+        // 内存行即时同步（不重读 DB 也要可判 pause 态）
+        const inMemory = cache.getSession(session.id)
+        expect(inMemory?.endReason).toBe('pause')
+        expect(inMemory?.pauseTrigger).toBe('governor_evict')
+
+        // daemon 重启形态：缓存 miss → refreshSession 从 stored 带回
+        cache.refreshSession(session.id)
+        expect(cache.getSession(session.id)?.endReason).toBe('pause')
+    })
+
+    test('session-alive 心跳激活即清终结字段（唤醒收口：DB + 内存同步）', () => {
+        // 回归：clearSessionEnd 曾生产零调用——唤醒后 DB 残留 pause，daemon 重启后
+        // Web 误显休眠 + warm-on-open 可对已唤醒会话重复触发
+        const session = cache.getOrCreateSession('tag-end-5', { path: '/tmp/p' }, null, 'default')
+        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: false, mode: 'remote' })
+        cache.handleSessionEnd({ sid: session.id, time: Date.now(), endReason: 'pause', pauseTrigger: 'governor_evict' })
+        expect(store.sessions.getSession(session.id)?.endReason).toBe('pause')
+
+        // 唤醒后第一条心跳：终结字段必须清掉（DB 与内存行同步）
+        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: false, mode: 'remote' })
+        expect(store.sessions.getSession(session.id)?.endReason).toBeNull()
+        expect(cache.getSession(session.id)?.endReason).toBeNull()
+        expect(cache.getSession(session.id)?.active).toBeTrue()
+    })
 })
 
 describe('SessionCache.handleGoalStatus', () => {
