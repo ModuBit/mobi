@@ -37,11 +37,32 @@ describe('collectQuoteAnnotationsByAgentId（批注↔回复 turn 配对）', ()
         expect(map.get('r3')?.[0].messageId).toBe('m2')
     })
 
-    it('steer 场景：回复落库前用户连发多条，回复按 FIFO 消费最早未配对的 user 引用', () => {
-        // 块序 u1, u2, r1, r2（r1 是对 u1 的回复，r2 才处理 u2 的 steer）——线性覆盖会让 r1 错配 u2
+    it('steer 场景：同一轮内多条 user 时，回复归属最近一条 user（模型实际看到的最新引用）', () => {
+        // 块序 u1, u2, r1, r2——r1/r2 都在 u2 之后产出，模型视野里最新的是 u2 的引用
         const blocks = [user('u1', quote('m1')), user('u2', quote('m2')), agent('r1'), agent('r2')]
         const map = collectQuoteAnnotationsByAgentId(blocks)
-        expect(map.get('r1')?.[0].messageId).toBe('m1')
+        expect(map.get('r1')?.[0].messageId).toBe('m2')
+        expect(map.get('r2')?.[0].messageId).toBe('m2')
+    })
+
+    it('未回复的 user 不累积错位（2026-10-20 生产实锤：长会话 FIFO 队列越跑越偏）', () => {
+        // u1 有引用但没有正文回复（工具调用轮/中断轮），u2 的回复必须拿到 u2 自己的引用
+        const blocks = [
+            user('u1', quote('m1')),
+            user('u2', quote('m2')), agent('r2'),
+            user('u3', quote('m3')), agent('r3'),
+        ]
+        const map = collectQuoteAnnotationsByAgentId(blocks)
+        expect(map.get('r2')?.[0].messageId).toBe('m2')
+        expect(map.get('r3')?.[0].messageId).toBe('m3')
+    })
+
+    it('一轮多条 agent-text 只归属本轮 user，不吞掉后续 user 的引用', () => {
+        // 一个 turn 常有 thinking/text 分段产生多条 agent-text；旧实现每条都消费一个 user
+        const blocks = [user('u1', quote('m1')), agent('r1a'), agent('r1b'), user('u2', quote('m2')), agent('r2')]
+        const map = collectQuoteAnnotationsByAgentId(blocks)
+        expect(map.get('r1a')?.[0].messageId).toBe('m1')
+        expect(map.get('r1b')?.[0].messageId).toBe('m1')
         expect(map.get('r2')?.[0].messageId).toBe('m2')
     })
 

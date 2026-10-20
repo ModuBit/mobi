@@ -49,16 +49,22 @@ const QUOTE_DEFINITION: DirectiveDefinition<string> = {
 
 registerDirective(QUOTE_DEFINITION)
 
+/** 会话完全无引用时返回共享空 Map（零分配早退——渲染热路径每帧调用，无批注会话不付全量构建成本） */
+const EMPTY_ANNOTATIONS: ReadonlyMap<string, UserQuoteBlock[]> = new Map()
+
 /**
  * 回应批注↔回复的 turn 配对（spec .scratch/response-annotations，领域规则单源）：
  * 与 CLI 协议注入同语义——每条 agent 回复配「触发它的那条 user 消息」的引用。
- * user-text 入队（FIFO），agent-text 出队消费：steer 场景（回复落库前用户连发多条，
- * 块序 u1/u2/r1/r2）线性覆盖会让 r1 错配 u2，FIFO 保证 r1 配 u1、r2 配 u2；队列
- * 空则沿用最近一次消费值（一轮可有多条 agent 消息共享同一引用）。会话完全无引用
- * 时返回共享空 Map（零分配早退——渲染热路径每帧调用，无批注会话不付全量构建成本）。
+ *
+ * 归属按块顺序线性推导：user-text 之后、下一个 user-text 之前的所有 agent-text
+ * 都属于这一轮（一轮常有 thinking/text 分段产生的多条 agent-text）。steer 场景
+ * （u1/u2/r1/r2）下回复归属最近一条 user——模型看到的最新协议注入就是它。
+ *
+ * 旧实现用 FIFO 队列、每条 agent-text 消费一个 user：一轮多条 agent-text 会吞掉
+ * 后续 user，而没有产出正文的 user（工具轮/中断轮）会在队列里残留，队列长度越跑
+ * 越偏。2026-10-20 生产实锤：会话 e32acfef 的 user 6118 带引用，其回复 6123 被
+ * 配到空数组，`:mobi-quote` 在正文里降级成原文。
  */
-const EMPTY_ANNOTATIONS: ReadonlyMap<string, UserQuoteBlock[]> = new Map()
-
 export function collectQuoteAnnotationsByAgentId(
     chatBlocks: readonly ChatBlock[],
 ): ReadonlyMap<string, UserQuoteBlock[]> {
@@ -68,14 +74,12 @@ export function collectQuoteAnnotationsByAgentId(
     if (!hasAnyQuote) return EMPTY_ANNOTATIONS
 
     const byId = new Map<string, UserQuoteBlock[]>()
-    const queue: UserQuoteBlock[][] = []
-    let last: UserQuoteBlock[] | undefined
+    let currentQuotes: UserQuoteBlock[] = []
     for (const block of chatBlocks) {
         if (block.kind === 'user-text') {
-            queue.push(block.blocks.filter((b): b is UserQuoteBlock => b.type === 'quote'))
-        } else if (block.kind === 'agent-text') {
-            if (queue.length > 0) last = queue.shift()
-            if (last && last.length > 0) byId.set(block.id, last)
+            currentQuotes = block.blocks.filter((b): b is UserQuoteBlock => b.type === 'quote')
+        } else if (block.kind === 'agent-text' && currentQuotes.length > 0) {
+            byId.set(block.id, currentQuotes)
         }
     }
     return byId
