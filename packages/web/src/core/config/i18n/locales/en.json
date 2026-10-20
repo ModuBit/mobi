@@ -270,7 +270,9 @@
       "copied": "Copied",
       "copyRaw": "Copy raw error",
       "reauthHint": "Auth failed — run claude in a terminal and use /login to sign in again",
-      "reauthCopied": "Login command copied"
+      "reauthCopied": "Login command copied",
+      "switchModelFailed": "Failed to switch model, please try again",
+      "resumeFailed": "Failed to wake session, please try again"
     },
     "origin": {
       "openui": "UI action",

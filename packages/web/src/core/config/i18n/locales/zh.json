@@ -270,7 +270,9 @@
       "copied": "已复制",
       "copyRaw": "复制原始错误",
       "reauthHint": "鉴权失败需在终端运行 claude，输入 /login 重新登录",
-      "reauthCopied": "登录命令已复制"
+      "reauthCopied": "登录命令已复制",
+      "switchModelFailed": "切换模型失败，请稍后重试",
+      "resumeFailed": "唤醒会话失败，请稍后重试"
     },
     "origin": {
       "openui": "界面触发",

@@ -1068,14 +1068,15 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
         return {
             canRewind,
-            canSend: errorSessionState === 'active' && !sendMutation.isPending,
+            // 与 composer 的禁用条件同源：压缩/回退/清空进行中不允许发送，卡片动作也不能绕过
+            canSend: errorSessionState === 'active' && !sendMutation.isPending && !isCompressing && !isRewinding && !(isClearing && !clearStuck),
             sessionState: errorSessionState,
             ...(fullState && { compact: { pending: fullState.pending, tried: fullState.tried } }),
             hasFallbackModel: errorFallbackModel !== null,
             hasWorkspace: Boolean(session?.workspaceId),
             turnHasAssistantOutput: turnHasOutputByBlockId.get(blockId) ?? false,
         }
-    }, [chatBlocks, contextFullEvents, turnHasOutputByBlockId, messages, session?.running, session?.active, session?.endReason, session?.workspaceId, metadata?.contextBoundarySeq, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, sendMutation.isPending, errorSessionState, errorFallbackModel])
+    }, [chatBlocks, contextFullEvents, turnHasOutputByBlockId, messages, session?.running, session?.active, session?.endReason, session?.workspaceId, metadata?.contextBoundarySeq, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, sendMutation.isPending, isCompressing, isRewinding, isClearing, clearStuck, errorSessionState, errorFallbackModel])
 
     // 动作派发入口：只在点击时执行，经 ref 取最新闭包（赋值在下方命令式区），不拖累装配链 memo
     const errorActionRef = useRef<(action: ErrorAction, blockId: string, event: NormalizedErrorEvent) => void>(() => {})
@@ -1562,10 +1563,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 break
             }
             case 'resume':
-                void sessionActions.resumeSession().catch(() => {})
+                void sessionActions.resumeSession().catch(() => messageApi.error(t('chat.error.resumeFailed')))
                 break
             case 'switchModel':
-                if (errorFallbackModel) void handleModelChange(errorFallbackModel)
+                if (errorFallbackModel) {
+                    void handleModelChange(errorFallbackModel)
+                        .catch(() => messageApi.error(t('chat.error.switchModelFailed')))
+                }
                 break
             case 'newSession':
                 void navigate({ to: '/sessions/new', search: { workspaceId: session?.workspaceId ?? undefined } })
