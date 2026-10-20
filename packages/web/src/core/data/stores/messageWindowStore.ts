@@ -126,13 +126,7 @@ function isWithdrawn(sessionId: string, m: DecryptedMessage): boolean {
  * 会把卡片压到气泡之后（E2E 实锤）；有序时调用方守卫拦截，本函数不进热路径。
  */
 function insertOutOfOrderTail(messages: DecryptedMessage[]): DecryptedMessage[] {
-    const tail = messages[messages.length - 1]!
-    let idx = messages.length - 1
-    while (idx > 0 && compareMessages(messages[idx - 1]!, tail) > 0) idx--
-    const next = messages.slice()
-    next.copyWithin(idx + 1, idx, messages.length - 1)
-    next[idx] = tail
-    return next
+    return insertOrdered(messages.slice(0, -1), messages[messages.length - 1]!)
 }
 
 /** 过滤墓碑命中行（fetch/ingest 入库前的统一闸门） */
@@ -158,11 +152,6 @@ function insertOrdered(messages: DecryptedMessage[], message: DecryptedMessage):
     return next
 }
 
-/** 该行是否为 turn 终态行（agent result，SDK 一轮结束的 usage 概要行） */
-function isTurnResultRow(message: DecryptedMessage): boolean {
-    return isTurnResultContent(message.content)
-}
-
 /**
  * 剪掉窗口内全部 snapshot 行（未等到 full 的流式预览）。
  *
@@ -171,8 +160,8 @@ function isTurnResultRow(message: DecryptedMessage): boolean {
  * 中断/被拒的死流基线经 resync 重放后即成为「凭空多出的 thinking」。
  */
 function dropSnapshotRows(messages: DecryptedMessage[]): DecryptedMessage[] {
-    const kept = messages.filter(m => !m.snapshot)
-    return kept.length === messages.length ? messages : kept
+    if (!messages.some(m => m.snapshot)) return messages
+    return messages.filter(m => !m.snapshot)
 }
 
 /** 测试用：清空所有 store 状态（vitest 隔离） */
@@ -431,7 +420,7 @@ export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMes
         }
         // turn 终态（result 实时入库）→ 剪掉窗口内残留的流式快照行：turn 已结束，这些流
         // 不可能再等到 full。backfill 是历史回放（重连补拉），不能据此判活流已死。
-        if (!options?.backfill && effective.some(isTurnResultRow)) {
+        if (!options?.backfill && effective.some(m => isTurnResultContent(m.content))) {
             messages = dropSnapshotRows(messages)
         }
         // 实时入库时刻（活跃判据）：backfill 是历史重播，不代表模型在活动，沿用旧值

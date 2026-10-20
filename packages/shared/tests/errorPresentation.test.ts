@@ -223,12 +223,16 @@ describe('classifyError', () => {
 })
 
 describe('presentError', () => {
+    it('额度耗尽：原文直接铺在卡片里', () => {
+        expect(presentError('quota_exhausted', OPEN_CONTEXT).inlineRaw).toBe(true)
+    })
+
     it('上下文满（可回退）→ 压缩为主按钮', () => {
         const p = presentError('context_length', OPEN_CONTEXT)
         expect(p.actions).toEqual(['compact', 'rewind', 'newSession'])
         expect(p.bodyKey).toBe('chat.error.body.context_length')
         expect(p.noteKey).toBeUndefined()
-        expect(p.raw).toBe('drop')
+        expect(p.inlineRaw).toBe(false)
         expect(p.severity).toBe('error')
     })
 
@@ -255,7 +259,7 @@ describe('presentError', () => {
     it('瞬时限流是警告级、原文转述', () => {
         const p = presentError('rate_limit', OPEN_CONTEXT)
         expect(p.severity).toBe('warning')
-        expect(p.raw).toBe('describe')
+        expect(p.inlineRaw).toBe(false)
         expect(p.actions[0]).toBe('retry')
     })
 
@@ -278,7 +282,7 @@ describe('presentError', () => {
 
     it('轮次到顶：原文仅进详情，不给重复上一轮的重试', () => {
         const p = presentError('max_turns', OPEN_CONTEXT)
-        expect(p.raw).toBe('drop')
+        expect(p.inlineRaw).toBe(false)
         expect(p.actions).not.toContain('retry')
         expect(p.actions).toContain('copyDetails')
     })

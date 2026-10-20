@@ -372,7 +372,6 @@ function pickErrorField(error: unknown, field: 'type' | 'code'): string | undefi
  */
 function buildNormalizedError(params: {
     input: ErrorInput
-    message: string
     attempt: number
     maxRetries: number
     retryInMs?: number
@@ -386,7 +385,7 @@ function buildNormalizedError(params: {
         ...(params.input.status != null && { status: params.input.status }),
         ...(params.input.code && { code: params.input.code }),
         ...(params.input.errorType && { errorType: params.input.errorType }),
-        message: params.message,
+        message: params.input.message ?? '',
         isNetworkDown: params.input.isNetworkDown === true,
         ...(params.source && { source: params.source }),
         ...(params.retryInMs != null && { retryInMs: params.retryInMs }),
@@ -400,16 +399,18 @@ function buildNormalizedError(params: {
 const handleApiRetryOutput: OutputHandler = (data, ctx) => {
     const status = asNumber(getField(data, 'errorStatus')) ?? undefined
     const message = asString(getField(data, 'error')) ?? ''
+    const attempt = asNumber(getField(data, 'attempt'))
+    const maxRetries = asNumber(getField(data, 'maxRetries'))
+    const retryDelayMs = asNumber(getField(data, 'retryDelayMs'))
     return createEventMessage(ctx, {
         type: 'error',
         ...buildNormalizedError({
             input: { status: status ?? null, message },
-            message,
-            attempt: asNumber(getField(data, 'attempt')) ?? 0,
-            maxRetries: asNumber(getField(data, 'maxRetries')) ?? 0,
-            retryInMs: asNumber(getField(data, 'retryDelayMs')) ?? undefined,
+            attempt: attempt ?? 0,
+            maxRetries: maxRetries ?? 0,
+            retryInMs: retryDelayMs ?? undefined,
             source: 'request_retry',
-            raw: { attempt: asNumber(getField(data, 'attempt')), maxRetries: asNumber(getField(data, 'maxRetries')), retryDelayMs: asNumber(getField(data, 'retryDelayMs')), errorStatus: status ?? null, error: message },
+            raw: { attempt, maxRetries, retryDelayMs, errorStatus: status ?? null, error: message },
         }),
     })
 }
@@ -430,7 +431,6 @@ const handleApiErrorOutput: OutputHandler = (data, ctx) => {
         type: 'error',
         ...buildNormalizedError({
             input,
-            message,
             attempt: asNumber(getField(data, 'retryAttempt')) ?? asNumber(getField(data, 'attempt')) ?? 0,
             maxRetries: asNumber(getField(data, 'maxRetries')) ?? 0,
             retryInMs: asNumber(getField(data, 'retryInMs')) ?? undefined,
@@ -645,7 +645,6 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
                 message: error,
                 stopReason: asString(getField(data, 'stop_reason')),
             },
-            message: error,
             attempt: 0,
             maxRetries: 0,
             raw: data,

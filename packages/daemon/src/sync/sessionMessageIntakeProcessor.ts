@@ -58,11 +58,11 @@ export type SessionMessageIntakePublication =
 /**
  * 消息受理 module：CLI session-message 主路径落库规则的权威入口。
  *
- * 收口四条此前散在 Socket adapter 内联的领域规则——
+ * 收口四条此前散在 Socket adapter 内联的领域规则（按执行顺序）——
  * ① nsid 补写（连接级上下文经注入 enricher，防 CLI 本地合成行滞留 attach 孤儿池）；
  * ② position 锚定（审查卡 positionBeforeResultId → 归属 result 行 position_at − 1）；
- * ③ 边界指针推进（contextBoundary 落库 → advance(MAX(seq))，单调幂等在 advance 内部）；
- * ④ 快照流清理时机（终态落库后清同 localId 的流式快照；turn result 落库清整会话死流基线）。
+ * ③ 快照流清理时机（终态落库后清同 localId 的流式快照；turn result 落库清整会话死流基线）；
+ * ④ 边界指针推进（contextBoundary 落库 → advance(MAX(seq))，单调幂等在 advance 内部）。
  * 并编排 RuntimeProjector（注入实例，配对状态仍连接级）。
  *
  * Socket adapter 只负责载荷校验、访问权与 publication 翻译（CLI 房间广播出口 +
@@ -103,15 +103,15 @@ export class SessionMessageIntakeProcessor {
             positionAt,
         )
 
-        // ④ 终态已持久化：清理同 localId 的流式快照
+        // ③ 快照流清理（逐流）：终态已持久化，清同 localId 的流式快照
         this.snapshotSync.messagePersisted(sessionId, input.localId ?? null)
 
-        // ⑤ turn 终态（result 落库）= 本会话再无活流：清空全部流式基线。逐流 messagePersisted
-        // 依赖 full 的 localId 与流 uuid 对应，中断/被拒的死流两者都拿不到信号，残留基线会在
-        // 后续 resync 里被当「流式中」重放（web 端幽灵 thinking 行）。
+        // ③ 快照流清理（整会话）：turn 终态（result 落库）= 本会话再无活流，清空全部流式基线。
+        // 逐流 messagePersisted 依赖 full 的 localId 与流 uuid 对应，中断/被拒的死流两者都拿不到
+        // 信号，残留基线会在后续 resync 里被当「流式中」重放（web 端幽灵 thinking 行）。
         if (isTurnResultContent(input.content)) this.snapshotSync.clearSession(sessionId)
 
-        // ③ 边界指针推进（fork/rewind 入口判据）。两个写入时机：compact_boundary 落库 →
+        // ④ 边界指针推进（fork/rewind 入口判据）。两个写入时机：compact_boundary 落库 →
         // 该行 seq；context-cleared 事件到达 → 当前 MAX(seq)。二者刚落库后 MAX 恒含该行
         // seq，统一取 MAX 兼容 resume 重放去重路径下 msg.seq 落后于当前 MAX 的情况；
         // 单调守卫在 advance 内部（不回退、幂等）

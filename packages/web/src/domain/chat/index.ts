@@ -78,10 +78,6 @@ export { parseCliOutputText } from './cliParser'
 export type { ChatBlocksById } from './reconcile'
 export { reconcileChatBlocks } from './reconcile'
 
-// 展示逻辑
-export type { EventPresentation } from './presentation'
-export { formatUnixTimestamp, getEventPresentation, renderEventLabel } from './presentation'
-
 // 模型配置
 export { getContextBudgetTokens } from './modelConfig'
 

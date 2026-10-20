@@ -18,6 +18,7 @@ import { memo } from 'react'
 import type { ReactNode } from 'react'
 import { theme as antTheme } from 'antd'
 import type { AgentEventBlock as AgentEventBlockType, ErrorEvent } from '@/domain/chat'
+import type { NormalizedErrorEvent } from '@mobi/shared'
 import { formatEvent } from '@/domain/chat'
 import { EventText } from '../EventText'
 import { ErrorEventCard } from './ErrorEventCard'
@@ -27,9 +28,8 @@ import type { ErrorCardContext } from './types'
 export const AgentEventBlock = memo(function AgentEventBlock({ block, actions, errorCard }: { block: AgentEventBlockType; actions?: ReactNode; errorCard?: ErrorCardContext }) {
     const { token } = antTheme.useToken()
 
-    // 统一错误事件 → 分类卡片（error-presentation 票 01）
-    if (block.event.type === 'error') {
-        const errorEvent = block.event as ErrorEvent
+    // 统一错误事件的卡片装配（error 事件与 result.errorDetail 两处共用）
+    const renderErrorCard = (errorEvent: NormalizedErrorEvent) => {
         const context = errorCard?.contextFor(block.id)
         return (
             <ErrorEventCard
@@ -41,6 +41,11 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block, actions, e
                     : undefined}
             />
         )
+    }
+
+    // 统一错误事件 → 分类卡片（error-presentation 票 01）
+    if (block.event.type === 'error') {
+        return renderErrorCard(block.event as ErrorEvent)
     }
 
     // 后台任务完成卡片
@@ -91,17 +96,7 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block, actions, e
 
     // result 携带的错误与 api_error 同一张卡片（票 05），排在 turn 概要之前
     const resultError = block.event.type === 'turn-result' ? (block.event as Extract<AgentEventBlockType['event'], { type: 'turn-result' }>).errorDetail : undefined
-    const resultErrorContext = resultError ? errorCard?.contextFor(block.id) : undefined
-    const errorCardNode = resultError ? (
-        <ErrorEventCard
-            event={resultError}
-            context={resultErrorContext}
-            createdAt={block.createdAt}
-            onAction={resultErrorContext && errorCard
-                ? (action) => errorCard.onAction(action, block.id, resultError)
-                : undefined}
-        />
-    ) : null
+    const errorCardNode = resultError ? renderErrorCard(resultError) : null
 
     const d = block.display
     // 对齐由列表项声明（buildBubbleItems 的 bubble-event-align-*，消费方是 antd.css）；

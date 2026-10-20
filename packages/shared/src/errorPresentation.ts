@@ -127,9 +127,6 @@ export type ErrorAction =
     | 'reauth'
     | 'copyDetails'
 
-/** 原文策略：keep 直接展示 / describe 转述 / drop 仅收进详情 */
-export type ErrorRawPolicy = 'keep' | 'describe' | 'drop'
-
 export type ErrorPresentation = {
     category: ErrorCategory
     severity: 'warning' | 'error'
@@ -139,7 +136,8 @@ export type ErrorPresentation = {
     bodyKey: string
     /** 附加说明键（不可回退 / 输入不可用 / 压缩已试过），无则省略 */
     noteKey?: string
-    raw: ErrorRawPolicy
+    /** 是否把错误原文直接铺在卡片里（否则只收进详情） */
+    inlineRaw: boolean
     /** 有序动作集，第一项为主按钮 */
     actions: ErrorAction[]
 }
@@ -164,9 +162,8 @@ const TEXT_RULES: Array<{ category: ErrorCategory; pattern: RegExp }> = [
     { category: 'quota_exhausted', pattern: /usage limit|quota|额度|限额|已达(?:到|上限)|reset (?:at|on)|will reset/i },
 ]
 
-/** errorType 映射（结构化字段，优先于文本） */
+/** errorType 映射（文本规则兜不住时的粗分类；rate_limit_error 交给 429/文本细分） */
 const ERROR_TYPE_MAP: Record<string, ErrorCategory> = {
-    rate_limit_error: 'rate_limit',
     overloaded_error: 'overloaded',
     authentication_error: 'auth',
     permission_error: 'permission_denied',
@@ -189,6 +186,11 @@ function matchText(input: ErrorInput): { category: ErrorCategory; pattern: RegEx
     return null
 }
 
+/** 分类命中结果的单点构造（避免 15 处手写同形状字面量） */
+function hit(category: ErrorCategory, matchedBy: ErrorEvidence['matchedBy'], value: string): ClassifiedError {
+    return { category, evidence: { matchedBy, value } }
+}
+
 /**
  * 分类一条错误。
  *
@@ -203,54 +205,32 @@ export function classifyError(input: ErrorInput): ClassifiedError {
     const resultSubtype = input.resultSubtype ?? null
     const stopReason = input.stopReason ?? null
 
-    if (resultSubtype === 'error_max_turns') {
-        return { category: 'max_turns', evidence: { matchedBy: 'resultSubtype', value: resultSubtype } }
-    }
-    if (stopReason === 'max_tokens') {
-        return { category: 'output_token_limit', evidence: { matchedBy: 'stopReason', value: stopReason } }
-    }
-    if (input.isNetworkDown === true) {
-        return { category: 'network', evidence: { matchedBy: 'flag', value: 'isNetworkDown' } }
-    }
-    if (status === 401) {
-        return { category: 'auth', evidence: { matchedBy: 'status', value: '401' } }
-    }
+    if (resultSubtype === 'error_max_turns') return hit('max_turns', 'resultSubtype', resultSubtype)
+    if (stopReason === 'max_tokens') return hit('output_token_limit', 'stopReason', stopReason)
+    if (input.isNetworkDown === true) return hit('network', 'flag', 'isNetworkDown')
+    if (status === 401) return hit('auth', 'status', '401')
     if (status === 403) {
         const text = matchText(input)
         if (text?.category === 'org_policy_denied' || text?.category === 'org_disabled') {
-            return { category: text.category, evidence: { matchedBy: 'text', value: text.pattern.source } }
+            return hit(text.category, 'text', text.pattern.source)
         }
-        return { category: 'permission_denied', evidence: { matchedBy: 'status', value: '403' } }
+        return hit('permission_denied', 'status', '403')
     }
-    if (status === 529) {
-        return { category: 'overloaded', evidence: { matchedBy: 'status', value: '529' } }
-    }
-    if (status !== null && status >= 500) {
-        return { category: 'server_error', evidence: { matchedBy: 'status', value: String(status) } }
-    }
-    if (status === 413) {
-        return { category: 'request_too_large', evidence: { matchedBy: 'status', value: '413' } }
-    }
+    if (status === 529) return hit('overloaded', 'status', '529')
+    if (status !== null && status >= 500) return hit('server_error', 'status', String(status))
+    if (status === 413) return hit('request_too_large', 'status', '413')
+
     const text = matchText(input)
-    if (text) {
-        return { category: text.category, evidence: { matchedBy: 'text', value: text.pattern.source } }
-    }
+    if (text) return hit(text.category, 'text', text.pattern.source)
 
-    if (input.errorType) {
-        const mapped = ERROR_TYPE_MAP[input.errorType]
-        if (mapped && mapped !== 'rate_limit') {
-            // rate_limit 交给 429/文本细分（额度耗尽 vs 瞬时限流）
-            return { category: mapped, evidence: { matchedBy: 'errorType', value: input.errorType } }
-        }
-    }
+    const mapped = input.errorType ? ERROR_TYPE_MAP[input.errorType] : undefined
+    if (mapped) return hit(mapped, 'errorType', input.errorType!)
 
-    if (input.errorType === 'rate_limit_error' || status === 429) {
-        return { category: 'rate_limit', evidence: { matchedBy: status === 429 ? 'status' : 'errorType', value: status === 429 ? '429' : String(input.errorType) } }
-    }
-    if (status === 400) {
-        return { category: 'invalid_request', evidence: { matchedBy: 'status', value: '400' } }
-    }
-    return { category: 'unknown', evidence: { matchedBy: 'none', value: input.code ?? input.errorType ?? '' } }
+    // 429 是瞬时限流；额度耗尽的 429 已被上面的文本规则先命中
+    if (status === 429) return hit('rate_limit', 'status', '429')
+    if (input.errorType === 'rate_limit_error') return hit('rate_limit', 'errorType', input.errorType)
+    if (status === 400) return hit('invalid_request', 'status', '400')
+    return hit('unknown', 'none', input.code ?? input.errorType ?? '')
 }
 
 // ============================================================================
@@ -288,28 +268,13 @@ const NEEDS_SEND: ReadonlySet<ErrorAction> = new Set(['retry', 'compact'])
 /** 需要「能回退」才有意义的动作 */
 const NEEDS_REWIND: ReadonlySet<ErrorAction> = new Set(['rewind'])
 
-const RAW_POLICY: Partial<Record<ErrorCategory, ErrorRawPolicy>> = {
-    quota_exhausted: 'keep',
-    rate_limit: 'describe',
-    overloaded: 'describe',
-    server_error: 'describe',
-    context_length: 'drop',
-    network: 'describe',
-    auth: 'describe',
-    permission_denied: 'describe',
-    org_policy_denied: 'describe',
-    org_disabled: 'describe',
-    usage_policy: 'describe',
-    image_dimension: 'describe',
-    image_invalid: 'describe',
-    request_too_large: 'describe',
-    model_not_found: 'describe',
-    output_token_limit: 'describe',
-    billing: 'keep',
-    invalid_request: 'keep',
-    max_turns: 'drop',
-    unknown: 'keep',
-}
+/**
+ * 原文直接铺在卡片里的类别；其余类别原文只收进「详情」。
+ * （此前是 keep/describe/drop 三态，但 describe 与 drop 在渲染端行为完全相同。）
+ */
+const INLINE_RAW: ReadonlySet<ErrorCategory> = new Set([
+    'quota_exhausted', 'billing', 'invalid_request', 'unknown',
+])
 
 /** 警告级（可恢复、不打断会话） */
 const WARNING_CATEGORIES: ReadonlySet<ErrorCategory> = new Set(['rate_limit', 'overloaded', 'network'])
@@ -329,7 +294,7 @@ function noteKey(category: ErrorCategory, context: ErrorContext): string | undef
     if (category === 'context_length' && context.compact?.tried) {
         return 'chat.error.note.compactTried'
     }
-    if (!context.canRewind && NEEDS_REWIND_ANYWHERE.has(category)) {
+    if (!context.canRewind && CATEGORY_ACTIONS[category].includes('rewind')) {
         return 'chat.error.note.rewindUnavailable'
     }
     if (!context.canSend) {
@@ -338,23 +303,17 @@ function noteKey(category: ErrorCategory, context: ErrorContext): string | undef
     return undefined
 }
 
-/** 默认动作里含回退的类别——用于选 no-rewind 文案变体 */
-const NEEDS_REWIND_ANYWHERE: ReadonlySet<ErrorCategory> = new Set([
-    'context_length', 'usage_policy', 'image_dimension', 'image_invalid', 'request_too_large',
-])
-
 /**
  * 由类别 + 上下文产出呈现决策。
  *
  * 动作裁剪规则：
- * - 会话非 active → 主按钮改为唤醒会话，其余需要活会话的动作全部去掉
+ * - 会话非 active → 主按钮改为唤醒会话，基础动作只保留详情
  * - 不能发送 → 去掉 retry / compact
  * - 不能回退 → 去掉 rewind，正文走 noRewind 变体
  * - 无工作区 → 去掉 newSession
  * - 无备选模型 → 去掉 switchModel
  */
 export function presentError(category: ErrorCategory, context: ErrorContext): ErrorPresentation {
-    const raw = RAW_POLICY[category] ?? 'keep'
     const base = CATEGORY_ACTIONS[category]
 
     let actions: ErrorAction[]
@@ -369,8 +328,8 @@ export function presentError(category: ErrorCategory, context: ErrorContext): Er
             return true
         })
     }
-    // 去掉空动作集：至少保留详情（除 drop 策略）
-    if (actions.length === 0 && raw !== 'drop') actions = ['copyDetails']
+    // 动作被全部裁掉时至少保留详情入口
+    if (actions.length === 0) actions = ['copyDetails']
 
     const note = noteKey(category, context)
     return {
@@ -379,7 +338,7 @@ export function presentError(category: ErrorCategory, context: ErrorContext): Er
         titleKey: titleKey(category),
         bodyKey: `chat.error.body.${category}`,
         ...(note ? { noteKey: note } : {}),
-        raw,
+        inlineRaw: INLINE_RAW.has(category),
         actions,
     }
 }

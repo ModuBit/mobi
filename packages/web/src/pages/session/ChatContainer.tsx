@@ -36,7 +36,7 @@ import { isSegmentEmpty, emptySegments, type ComposerSegments, type PendingQuote
 import { resolveQuoteSelection } from '@/domain/chat/quoteSelection'
 import { collectQuoteAnnotationsByAgentId } from '@/domain/chat/quoteDirectives'
 import { QUOTE_FLASH_CLASS, QUOTE_FLASH_MS, QUOTE_FRAGMENT_HIGHLIGHT, locateQuotedMessage, type QuoteFragmentOffsets } from '@/core/lib/quoteLocate'
-import { reduceChatBlocks, normalizeDecryptedMessage, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
+import { reduceChatBlocks, normalizeDecryptedMessage, reconcileChatBlocks, type ChatBlock, type ChatBlocksById } from '@/domain/chat'
 import { buildChatBubbleItems } from '@/features/chat/buildBubbleItems'
 import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from '@/features/chat/BubbleListChat'
 import { reconcileBubbleItems, type BubbleItemsCache } from '@/features/chat/reconcileBubbleItems'
@@ -219,6 +219,20 @@ export const CHAT_MAX_WIDTH = 1200
 /** 用户滚动手势窗口（ms）：手势后此窗口内的 scroll 才视为用户滚动（关引用浮层）；
  *  流式 stick-to-bottom 的程序滚动无手势先行，不关 */
 const USER_SCROLL_GESTURE_WINDOW_MS = 250
+
+/**
+ * 错误卡片的轮次锚点：触发本轮的最后一条用户消息。
+ * 错误事件本身不带「属于哪一轮」，按块序向前找最近的 user-text；
+ * 卡片上下文（canRewind）与动作派发（重试/回退）经同一入口取锚点，避免两处扫描各写一遍。
+ */
+function precedingUserTextBlock(blocks: ChatBlock[], blockId: string): Extract<ChatBlock, { kind: 'user-text' }> | undefined {
+    const idx = blocks.findIndex((b) => b.id === blockId)
+    for (let i = idx - 1; i >= 0; i--) {
+        const block = blocks[i]
+        if (block?.kind === 'user-text') return block
+    }
+    return undefined
+}
 
 interface ChatContainerProps {
     sessionId: string
@@ -976,13 +990,31 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         ? 'active'
         : session?.endReason === 'pause' ? 'dormant' : 'ended'
 
+    /**
+     * 上下文满状态机的输入序列：只收「上下文满错误 + 压缩生命周期」事件块，
+     * 并记下每个事件块在序列里的锚点。错误卡片逐个渲染，序列只随块列表变化重算一次。
+     */
+    const contextFullEvents = useMemo(() => {
+        const events: ContextFullEvent[] = []
+        const anchorByBlockId = new Map<string, number>()
+        for (const block of chatBlocks) {
+            if (block.kind !== 'agent-event') continue
+            const ev = block.event
+            const kind: ContextFullEvent['type'] | null =
+                ev.type === 'compact-started' ? 'compact-started'
+                    : ev.type === 'compact' || ev.type === 'compact-completed' ? 'compact'
+                        : ev.type === 'error' && ev.category === 'context_length' ? 'error'
+                            : null
+            if (!kind) continue
+            anchorByBlockId.set(block.id, events.length)
+            events.push({ type: kind })
+        }
+        return { events, anchorByBlockId }
+    }, [chatBlocks])
+
     /** 错误卡片上下文：canRewind 绑定「触发本轮的最后一条用户消息」，压缩状态由块序列现算 */
     const errorContextFor = useCallback((blockId: string): ErrorContext => {
-        const idx = chatBlocks.findIndex((b) => b.id === blockId)
-        let target: (typeof chatBlocks)[number] | undefined
-        for (let i = idx - 1; i >= 0; i--) {
-            if (chatBlocks[i]?.kind === 'user-text') { target = chatBlocks[i]; break }
-        }
+        const target = precedingUserTextBlock(chatBlocks, blockId)
         const targetMessage = target ? messages.find((m) => m.id === target.id) : undefined
         const canRewind = Boolean(target) && canRewindMessage(
             { metadata: targetMessage?.metadata ?? null, seq: targetMessage?.seq ?? null },
@@ -991,23 +1023,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             chainHeadIds?.has(target!.id),
         )
 
-        // 上下文满状态机：只喂「上下文满错误 + 压缩生命周期」，其余块忽略
-        const events: ContextFullEvent[] = []
-        let anchor = -1
-        for (let i = 0; i < chatBlocks.length; i++) {
-            const b = chatBlocks[i]
-            if (b?.kind !== 'agent-event') continue
-            const ev = b.event
-            const kind: ContextFullEvent['type'] | null =
-                ev.type === 'compact-started' ? 'compact-started'
-                    : ev.type === 'compact' || ev.type === 'compact-completed' ? 'compact'
-                        : ev.type === 'error' && ev.category === 'context_length' ? 'error'
-                            : null
-            if (!kind) continue
-            events.push({ type: kind })
-            if (i === idx) anchor = events.length - 1
-        }
-        const fullState = anchor >= 0 ? deriveContextFullState(events, anchor) : undefined
+        const anchor = contextFullEvents.anchorByBlockId.get(blockId)
+        const fullState = anchor !== undefined
+            ? deriveContextFullState(contextFullEvents.events, anchor)
+            : undefined
 
         return {
             canRewind,
@@ -1017,7 +1036,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             hasFallbackModel: errorFallbackModel !== null,
             hasWorkspace: Boolean(session?.workspaceId),
         }
-    }, [chatBlocks, messages, session?.running, session?.active, session?.endReason, session?.workspaceId, metadata?.contextBoundarySeq, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, sendMutation.isPending, errorSessionState, errorFallbackModel])
+    }, [chatBlocks, contextFullEvents, messages, session?.running, session?.active, session?.endReason, session?.workspaceId, metadata?.contextBoundarySeq, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, sendMutation.isPending, errorSessionState, errorFallbackModel])
 
     // 动作派发入口：只在点击时执行，经 ref 取最新闭包（赋值在下方命令式区），不拖累装配链 memo
     const errorActionRef = useRef<(action: ErrorAction, blockId: string, event: NormalizedErrorEvent) => void>(() => {})
@@ -1488,14 +1507,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // 动作派发：只在点击时执行，经 ref 取最新闭包，避免把整条消息装配链的 memo 拖垮
     errorActionRef.current = (action, blockId) => {
-        const idx = chatBlocks.findIndex((b) => b.id === blockId)
-        let target: (typeof chatBlocks)[number] | undefined
-        for (let i = idx - 1; i >= 0; i--) {
-            if (chatBlocks[i]?.kind === 'user-text') { target = chatBlocks[i]; break }
-        }
+        const target = precedingUserTextBlock(chatBlocks, blockId)
         switch (action) {
             case 'retry': {
-                const text = target && target.kind === 'user-text' ? collectUserText(target.blocks) : ''
+                const text = target ? collectUserText(target.blocks) : ''
                 if (text) handleSend({ ...emptySegments(), text })
                 break
             }
@@ -1519,8 +1534,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             case 'reauth':
                 void navigate({ to: '/settings' })
                 break
-            case 'copyDetails':
-                break
+            // copyDetails 由卡片的「详情」折叠区承载，不派发动作
         }
     }
 

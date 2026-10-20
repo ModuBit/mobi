@@ -18,13 +18,11 @@
  * 错误卡片（error-presentation）：分类 → 文案 → 动作三层由 shared 的
  * `presentError` 决策，本组件只执行呈现与交互。
  *
- * 原文策略（raw）：
- * - keep：原文直接铺在正文下方（额度/未知/非法请求这类「原文就是唯一线索」）
- * - describe：原文收进「详情」
- * - drop：正文不出现原文，详情里仍可查看（排障需要，但默认不吓人）
+ * 原文策略：`inlineRaw` 为 true 的类别（额度/未知/非法请求这类「原文就是唯一线索」）
+ * 原文直接铺在正文下方；其余类别只收进「详情」。
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { theme as antTheme } from 'antd'
 import { ChevronDown, ChevronRight, CircleAlert, Copy, TriangleAlert } from 'lucide-react'
@@ -32,11 +30,13 @@ import {
     extractRequestId,
     extractResetAt,
     presentError,
+    safeStringify,
     type ErrorAction,
     type ErrorContext,
     type NormalizedErrorEvent,
 } from '@mobi/shared'
 import { Button } from '@/ui/base/interactive/button/Button'
+import { useCopyFeedback } from '@/ui/base/interactive/copy-button/useCopyFeedback'
 
 /** 动作 i18n 键（文案在 locales 的 chat.error.action.*） */
 const ACTION_LABEL_KEYS: Record<ErrorAction, string> = {
@@ -48,17 +48,6 @@ const ACTION_LABEL_KEYS: Record<ErrorAction, string> = {
     newSession: 'chat.error.action.newSession',
     reauth: 'chat.error.action.reauth',
     copyDetails: 'chat.error.action.copyDetails',
-}
-
-/** 详情里的原文：字符串直出，对象转缩进 JSON（裁剪循环引用/超长值） */
-export function formatErrorRaw(raw: unknown): string {
-    if (raw == null) return ''
-    if (typeof raw === 'string') return raw
-    try {
-        return JSON.stringify(raw, null, 2)
-    } catch {
-        return String(raw)
-    }
 }
 
 export type ErrorEventCardProps = {
@@ -74,7 +63,8 @@ export function ErrorEventCard({ event, context, onAction, createdAt }: ErrorEve
     const { t } = useTranslation()
     const { token } = antTheme.useToken()
     const [detailsOpen, setDetailsOpen] = useState(false)
-    const [copied, setCopied] = useState<'raw' | 'requestId' | null>(null)
+    const copyFeedback = useCopyFeedback()
+    const copiedKey = copyFeedback.state === 'copied' ? copyFeedback.activeKey : null
 
     const presentation = presentError(
         event.category,
@@ -106,8 +96,12 @@ export function ErrorEventCard({ event, context, onAction, createdAt }: ErrorEve
         )
     }
     const severityColor = presentation.severity === 'warning' ? token.colorWarning : token.colorError
-    const rawText = formatErrorRaw(event.raw)
-    const requestId = extractRequestId(rawText) ?? extractRequestId(event.message)
+    // 详情折叠时不做序列化：turn-result 的 raw 是整条 CLI result 载荷，逐帧重算代价不小
+    const rawText = useMemo(
+        () => (detailsOpen && event.raw != null ? safeStringify(event.raw) : ''),
+        [detailsOpen, event.raw],
+    )
+    const requestId = detailsOpen ? extractRequestId(rawText) ?? extractRequestId(event.message) : null
     const resetAt = event.category === 'quota_exhausted' ? extractResetAt(event.message) : null
     // 重试倒计时只对「还没到点」的事件成立：历史消息（例如最终失败前最后一次 retry）
     // 若继续显示「N 秒后自动重试」会误导用户以为还有自动恢复
@@ -116,20 +110,10 @@ export function ErrorEventCard({ event, context, onAction, createdAt }: ErrorEve
         event.retryInMs > 0 &&
         (createdAt == null || Date.now() < createdAt + event.retryInMs)
     const retrySeconds = retryPending ? Math.ceil((event.retryInMs ?? 0) / 1000) : null
-    const showInlineRaw = presentation.raw === 'keep' && event.message.trim().length > 0
+    const showInlineRaw = presentation.inlineRaw && event.message.trim().length > 0
     // copyDetails 由下方的「详情」开关承载，避免出现两个入口
     const visibleActions = presentation.actions.filter((action) => action !== 'copyDetails')
 
-    const copy = async (kind: 'raw' | 'requestId', text: string) => {
-        if (!navigator.clipboard) return
-        try {
-            await navigator.clipboard.writeText(text)
-            setCopied(kind)
-            setTimeout(() => setCopied((current) => (current === kind ? null : current)), 1500)
-        } catch {
-            // 剪贴板不可用（非安全上下文/权限拒绝）时静默——详情仍可手动选中复制
-        }
-    }
 
     return (
         <div
@@ -228,9 +212,9 @@ export function ErrorEventCard({ event, context, onAction, createdAt }: ErrorEve
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
                             <span style={{ color: token.colorTextTertiary }}>{t('chat.error.requestId')}</span>
                             <span style={{ fontFamily: 'var(--font-mono)', color: token.colorTextSecondary }}>{requestId}</span>
-                            <Button size="sm" variant="ghost" onClick={() => void copy('requestId', requestId)}>
+                            <Button size="sm" variant="ghost" onClick={() => void copyFeedback.copy(requestId, 'requestId')}>
                                 <Copy size={12} aria-hidden />
-                                {copied === 'requestId' ? t('chat.error.copied') : t('chat.error.copy')}
+                                {copiedKey === 'requestId' ? t('chat.error.copied') : t('chat.error.copy')}
                             </Button>
                         </div>
                     )}
@@ -253,9 +237,9 @@ export function ErrorEventCard({ event, context, onAction, createdAt }: ErrorEve
                                 {rawText}
                             </pre>
                             <div>
-                                <Button size="sm" variant="ghost" onClick={() => void copy('raw', rawText)}>
+                                <Button size="sm" variant="ghost" onClick={() => void copyFeedback.copy(rawText, 'raw')}>
                                     <Copy size={12} aria-hidden />
-                                    {copied === 'raw' ? t('chat.error.copied') : t('chat.error.copyRaw')}
+                                    {copiedKey === 'raw' ? t('chat.error.copied') : t('chat.error.copyRaw')}
                                 </Button>
                             </div>
                         </>
