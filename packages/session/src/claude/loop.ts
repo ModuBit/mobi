@@ -16,6 +16,7 @@
 
 import { ApiSessionClient } from "../api/apiSession"
 import type { LauncherDormancyFacts } from "./utils/dormancyGate";
+import type { LiveCapabilityGetter } from "@mobi/node-core/handlers/commands"
 import { MessageQueue } from "@mobi/node-core/utils/MessageQueue"
 import { logger } from "@mobi/node-core/logger"
 import { runLocalRemoteSession } from "../agent/loopBase"
@@ -58,6 +59,8 @@ interface LoopOptions {
     forkActivation?: ForkActivationPlan | null
     /** 休眠 gate 事实回传（dormancy spec）：launcher 就绪后回填 provider，供 runClaude 组装 gate 快照 */
     onDormancyFacts?: (provider: () => LauncherDormancyFacts) => void
+    /** 活 Query 能力源回传：refreshMetadata 直接问 Query，避免活跃会话再起探针进程 */
+    onLiveCapabilitySource?: (getter: LiveCapabilityGetter) => void
 }
 
 export async function loop(opts: LoopOptions) {
@@ -98,7 +101,7 @@ export async function loop(opts: LoopOptions) {
         startingMode: opts.startingMode,
         logTag: 'loop',
         runLocal: (s) => claudeLocalLauncher(s, cleanup, opts.getSessionConfig),
-        runRemote: (s) => claudeRemoteLauncher(s, cleanup, queryControl, opts.getSessionConfig, opts.flushConfig, opts.onDormancyFacts),
+        runRemote: (s) => claudeRemoteLauncher(s, cleanup, queryControl, opts.getSessionConfig, opts.flushConfig, opts.onDormancyFacts, opts.onLiveCapabilitySource),
         onSessionReady: opts.onSessionReady
     });
 }

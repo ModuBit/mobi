@@ -93,10 +93,12 @@ export type SessionHandlersDeps = {
     snapshotSync: SnapshotSync
     /** rewind 软删除上界（写侧：SyncEngine 受理时 mark；读侧：受理 module rewindTruncate 消费，共用实例） */
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
+    /** sdkMetadata 子对象变更（CLI 上报）→ 装配层失效同 cwd 的能力缓存 */
+    onSdkMetadataChanged?: (sessionId: string) => void
 } & Partial<Pick<SessionSocketCapabilities, 'factsSink' | 'emitCliNewMessage' | 'onWebappEvent'>>
 
 export function registerSessionHandlers(socket: CliSocketWithData, deps: SessionHandlersDeps): void {
-    const { store, resolveSessionAccess, emitAccessError, backgroundTaskTracker, rewindDeleteBoundTracker, snapshotSync, factsSink, emitCliNewMessage, onWebappEvent } = deps
+    const { store, resolveSessionAccess, emitAccessError, backgroundTaskTracker, rewindDeleteBoundTracker, snapshotSync, factsSink, emitCliNewMessage, onWebappEvent, onSdkMetadataChanged } = deps
 
     // runtimeState 投影内部持有跨消息配对状态，故每个 Socket 连接独立实例化。
     const runtimeProjector = new SessionMessageRuntimeProjector(store, backgroundTaskTracker)
@@ -299,6 +301,8 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             const newSdk = (metadata as Record<string, unknown> | null)?.sdkMetadata as SDKMetadata | undefined
             if (sdkMetadataChanged(oldSdk, newSdk)) {
                 onWebappEvent?.({ type: 'sdk-metadata-refreshed', sessionId: sid })
+                // 命令列表可能已变：失效同 cwd 的 host 能力缓存（新会话页下一次请求重新探测）
+                onSdkMetadataChanged?.(sid)
             }
         }
     }

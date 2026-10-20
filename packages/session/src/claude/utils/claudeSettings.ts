@@ -22,8 +22,8 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { logger } from '@mobi/node-core/logger';
+import { resolveClaudeConfigDir } from '@mobi/node-core/claudeSdk/claudeConfigDir';
 
 export interface ClaudeSettings {
   [key: string]: unknown;
@@ -33,7 +33,7 @@ export interface ClaudeSettings {
  * Get the path to Claude's settings.json file
  */
 function getClaudeSettingsPath(): string {
-  const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+  const claudeConfigDir = resolveClaudeConfigDir();
   return join(claudeConfigDir, 'settings.json');
 }
 

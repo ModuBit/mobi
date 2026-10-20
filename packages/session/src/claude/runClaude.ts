@@ -649,6 +649,8 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
             },
             // 休眠 gate 事实回传（dormancy spec）：launcher 就绪后回填，组装 gate 快照用
             onDormancyFacts: (provider) => { launcherDormancyFacts = provider },
+            // 活 Query 能力源回传：refreshMetadata 优先问 Query，活跃会话不再新起探针进程
+            onLiveCapabilitySource: (getter) => apiSession.installLiveCapabilitySource(getter),
             mcpServers: buildSessionMcpServers({
                 startingMode,
                 httpMcpUrl: mobiMcpServer?.url ?? null,

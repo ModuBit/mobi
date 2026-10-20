@@ -55,7 +55,7 @@ vi.mock('@mobi/node-core/runtime/bundledPlugins', () => ({
 }))
 
 // 在 mock 设置之后 import
-import { extractSDKMetadata, extractSDKMetadataAsync } from '@/claudeSdk/metadataExtractor'
+import { extractSDKMetadata, extractSDKMetadataAsync, PROBE_TIMEOUT_MS } from '@/claudeSdk/metadataExtractor'
 
 // 构造模拟的 initializationResult 响应
 function makeInitResponse(overrides?: Record<string, unknown>) {
@@ -159,22 +159,18 @@ describe('extractSDKMetadata', () => {
         expect(mockClose).toHaveBeenCalled()
     })
 
-    it('initializationResult 失败时返回空对象', async () => {
+    it('initializationResult 失败时抛错（不再返回空对象冒充成功）', async () => {
         mockInitializationResult.mockRejectedValue(new Error('spawn failed'))
 
-        const result = await extractSDKMetadata()
-
-        expect(result).toEqual({})
+        await expect(extractSDKMetadata()).rejects.toThrow('spawn failed')
     })
 
-    it('AbortError 时返回空对象', async () => {
+    it('AbortError 时抛错', async () => {
         const abortError = new Error('Aborted')
         abortError.name = 'AbortError'
         mockInitializationResult.mockRejectedValue(abortError)
 
-        const result = await extractSDKMetadata()
-
-        expect(result).toEqual({})
+        await expect(extractSDKMetadata()).rejects.toThrow('Aborted')
     })
 
     it('init 中缺少可选字段时映射为 undefined', async () => {
@@ -189,6 +185,98 @@ describe('extractSDKMetadata', () => {
         expect(result.fastModeState).toBeUndefined()
         // commands 仍正常返回
         expect(result.commands).toHaveLength(1)
+    })
+})
+
+describe('探针护栏（票 02）', () => {
+    it('query options：默认权限、禁 hooks、canUseTool 全拒', async () => {
+        await extractSDKMetadata()
+
+        const options = mockQuery.mock.calls[0][0].options
+        expect(options.permissionMode).toBe('default')
+        expect(options.settings).toEqual({ disableAllHooks: true })
+        await expect(options.canUseTool('Bash', {}, { signal: new AbortController().signal }))
+            .resolves.toMatchObject({ behavior: 'deny' })
+    })
+
+    it('三件套全空 → 抛 CapabilityProbeError(empty)，且不重试', async () => {
+        mockInitializationResult.mockResolvedValue(makeInitResponse({
+            commands: [],
+            agents: [],
+            models: [],
+        }))
+
+        await expect(extractSDKMetadata()).rejects.toMatchObject({ code: 'empty' })
+        expect(mockQuery).toHaveBeenCalledTimes(1)
+    })
+
+    it('非超时失败且带插件 → 去插件重试一次', async () => {
+        let call = 0
+        mockQuery.mockImplementation(() => {
+            call += 1
+            return {
+                initializationResult: call === 1
+                    ? vi.fn().mockRejectedValue(new Error('plugin boom'))
+                    : mockInitializationResult,
+                close: mockClose,
+            }
+        })
+
+        const result = await extractSDKMetadata()
+
+        expect(result.commands).toHaveLength(1)
+        expect(mockQuery).toHaveBeenCalledTimes(2)
+        expect(mockQuery.mock.calls[0][0].options.plugins).toBeTruthy()
+        expect(mockQuery.mock.calls[1][0].options.plugins).toBeUndefined()
+    })
+
+    it('90 秒超时 → 抛 CapabilityProbeError(timeout) 且不重试', async () => {
+        vi.useFakeTimers()
+        try {
+            mockInitializationResult.mockReturnValue(new Promise(() => {}))
+
+            const pending = extractSDKMetadata()
+            const assertion = expect(pending).rejects.toMatchObject({ code: 'timeout' })
+            await vi.advanceTimersByTimeAsync(PROBE_TIMEOUT_MS)
+            await assertion
+
+            expect(mockQuery).toHaveBeenCalledTimes(1)
+            expect(mockClose).toHaveBeenCalled()
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    it('并发上限 2：第三个调用等前两个结束才起进程', async () => {
+        const resolvers: Array<(value: unknown) => void> = []
+        mockInitializationResult.mockImplementation(
+            () => new Promise((resolve) => { resolvers.push(resolve) }),
+        )
+        mockQuery.mockImplementation(() => ({
+            initializationResult: mockInitializationResult,
+            close: mockClose,
+        }))
+
+        const settleUntil = async (predicate: () => boolean) => {
+            for (let i = 0; i < 100; i += 1) {
+                if (predicate()) return
+                await new Promise((resolve) => setTimeout(resolve, 0))
+            }
+            throw new Error('condition not reached')
+        }
+
+        const first = extractSDKMetadata()
+        const second = extractSDKMetadata()
+        const third = extractSDKMetadata()
+
+        await settleUntil(() => mockQuery.mock.calls.length === 2)
+        expect(resolvers).toHaveLength(2)
+
+        resolvers.shift()?.(makeInitResponse())
+        await settleUntil(() => mockQuery.mock.calls.length === 3)
+
+        for (const resolve of resolvers.splice(0)) resolve(makeInitResponse())
+        await Promise.all([first, second, third])
     })
 })
 

@@ -51,6 +51,7 @@ import { createSessionObservability } from "./sessionObservability";
 import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
 import type { LauncherDormancyFacts } from "./utils/dormancyGate";
+import type { LiveCapabilityGetter } from '@mobi/node-core/handlers/commands';
 import { extractLiveBackgroundTaskIds, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
 import {
     resolveStopAction,
@@ -136,6 +137,14 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             backgroundTasks: this.backgroundTaskIds.size,
         }
     }
+
+    /**
+     * 活 Query 能力源（slash 命令 / agent / model 列表）。
+     * queryRef 在创建时赋值、teardown 置 null——这里原样返回，未就绪时调用方回退探针。
+     */
+    getLiveCapabilitySource(): Query | null {
+        return this.queryRef
+    }
     /** 待注入到下一条中断 result 的停止信息（emitAbortedEvent 的落点，见该方法的注释） */
     private pendingAbortInfo: { stopKind: StopKind; stillQueuedCount: number } | null = null
     /** compact started 幂等闸门：手动 specialCommand 与 system:status{compacting} 双源同汇，
@@ -172,7 +181,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         void discoverCapabilities(query, (caps) => {
             this.session.client.updateMetadata((metadata) => ({
                 ...metadata,
-                sdkMetadata: caps,
+                // 合并而非替换：活发现不覆盖本代未上报的字段（旧快照 / 未来新增键）
+                sdkMetadata: { ...metadata.sdkMetadata, ...caps },
             }));
         });
     }
@@ -1303,6 +1313,8 @@ export async function claudeRemoteLauncher(
     flushConfig?: () => void,
     /** 休眠 gate 事实回传（dormancy spec）：launcher 就绪后回填，供 runClaude 组装 gate 快照 */
     onDormancyFacts?: (provider: () => LauncherDormancyFacts) => void,
+    /** 活 Query 能力源回传：供 apiSession 的 refreshMetadata 直接问 Query（零新增进程） */
+    onLiveCapabilitySource?: (getter: LiveCapabilityGetter) => void,
 ): Promise<'switch' | 'exit'> {
     const launcher = new ClaudeRemoteLauncher(
         session,
@@ -1312,5 +1324,6 @@ export async function claudeRemoteLauncher(
         flushConfig ?? (() => {}),
     );
     onDormancyFacts?.(() => launcher.getDormancyFacts());
+    onLiveCapabilitySource?.(() => launcher.getLiveCapabilitySource());
     return launcher.launch();
 }

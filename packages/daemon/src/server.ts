@@ -44,6 +44,7 @@ import { SSEManager } from './sse/sseManager'
 import { SnapshotDeltaStats } from './sync/snapshotDeltaStats'
 import { SnapshotSync } from './sync/snapshotSync'
 import { LocalExecutor } from './executor/localExecutor'
+import { createCapabilityCatalog } from '@mobi/node-core/claudeSdk/capabilityCatalog'
 import type { ExecutorBridge } from './executor/lifecycle'
 import { createSessionTrackingSync } from './executor/sessionTracking'
 import { updateExecutorState as writeExecutorState } from './sync/executorRuntime'
@@ -175,6 +176,10 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
     // rewind 软删除上界：SyncEngine 受理时写、CLI socket handler 截断回报时读——共用同一实例
     const rewindDeleteBoundTracker = new RewindDeleteBoundTracker()
 
+    // 能力面 per-cwd 缓存：LocalExecutor 宿主取数用它；CLI 上报 sdkMetadata 变更时经
+    // socket 回调主动失效，会话里新增命令后新会话页下一次请求即可见
+    const capabilityCatalog = createCapabilityCatalog()
+
     let syncEngine: SyncEngine | null = null
     const socketServer = createSocketServer({
         store,
@@ -203,7 +208,13 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
         // Agent 会话操作（agent 触达其他会话，B 类）：同属 SyncEngine 内部实例，惰性取用
         agentSessions: () => syncEngine?.agentSessions,
         // CLI 房间 new-message 广播出口（messageService 单一构造点），惰性取用
-        emitCliNewMessage: () => syncEngine?.emitCliNewMessage.bind(syncEngine)
+        emitCliNewMessage: () => syncEngine?.emitCliNewMessage.bind(syncEngine),
+        // CLI 上报 sdkMetadata 变更（commands_changed / outputStyle 等）→ 失效同 cwd 的
+        // host 能力缓存，避免新会话页继续吃旧命令列表
+        onSdkMetadataChanged: (sessionId) => {
+            const cwd = (syncEngine?.getSession(sessionId)?.metadata as { path?: string } | null | undefined)?.path
+            if (cwd) capabilityCatalog.invalidate(cwd)
+        }
     })
 
     // 执行层显式注入（ticket-15 接口 / ticket-17 本地化 / ticket-20 唯一实现）：
@@ -217,7 +228,7 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
         socketServer.rpcRegistry,
         sseManager,
         rewindDeleteBoundTracker,
-        new LocalExecutor(() => executorBridge)
+        new LocalExecutor(() => executorBridge, capabilityCatalog)
     )
 
     // daemon 主 namespace 盖章 + executor 初始态（401：machines 行自注册退场——

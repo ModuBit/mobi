@@ -34,8 +34,10 @@ describe('QuitCleanup', () => {
 
         expect(result.completed.sort()).toEqual(['a', 'b'])
         expect(result.abandoned).toEqual([])
-        expect(result.timings.a).toBeGreaterThanOrEqual(10)
-        expect(result.timings.b).toBeGreaterThanOrEqual(30)
+        // 定时器可提前 1-2ms 触发（clamp/时钟精度），留容差；关键在 b 明显大于 a
+        expect(result.timings.a).toBeGreaterThanOrEqual(8)
+        expect(result.timings.b).toBeGreaterThanOrEqual(25)
+        expect(result.timings.b).toBeGreaterThan(result.timings.a)
     })
 
     it('慢 handler 超总时限被放弃，不拖总时长', async () => {

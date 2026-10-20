@@ -45,10 +45,12 @@ export type CliHandlersDeps = {
      * 由 server.ts 组装传入；缺省（部分单测直接调 registerCliHandlers）时跳过仲裁。
      */
     sessionSocketOwners?: SessionSocketOwners
+    /** sdkMetadata 变更回调（透传给 session handlers，用于失效 host 能力缓存） */
+    onSdkMetadataChanged?: (sessionId: string) => void
 } & Partial<SessionSocketCapabilities>
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, sessionSocketOwners, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, factsSink, emitCliNewMessage, onWebappEvent, hasActiveSseConnection, publishUiCommand, agentSessions } = deps
+    const { io, store, rpcRegistry, sessionSocketOwners, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, factsSink, emitCliNewMessage, onWebappEvent, hasActiveSseConnection, publishUiCommand, agentSessions, onSdkMetadataChanged } = deps
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
     const resolveSessionAccess = (sessionId: string): AccessResult<StoredSession> => {
@@ -100,7 +102,8 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         rewindDeleteBoundTracker,
         factsSink,
         emitCliNewMessage,
-        onWebappEvent
+        onWebappEvent,
+        onSdkMetadataChanged
     })
     registerUiCommandHandlers(socket, {
         resolveSessionAccess,

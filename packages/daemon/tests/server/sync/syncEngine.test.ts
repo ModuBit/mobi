@@ -291,6 +291,29 @@ describe('SyncEngine.handleSessionAlive —— 首次激活补拉 sdkMetadata', 
             h.cleanup()
         }
     })
+
+    test('30 秒内重复后台刷新不重复 RPC（metadata GET 触发的节流，票 04）', async () => {
+        const h = makeEngine({ renameOnline: false, onlineMethods: ['refreshMetadata'] })
+        try {
+            const session = h.engine.getOrCreateSession(
+                'tag-alive-meta-3',
+                { path: '/tmp/proj', host: 'h-alive3' },
+                null,
+                'default'
+            )
+
+            h.engine.handleSessionAlive({ sid: session.id, time: Date.now(), running: false })
+            await new Promise(r => setTimeout(r, 0))
+            expect(h.emitCalls.filter(c => c.method.endsWith(':refreshMetadata'))).toHaveLength(1)
+
+            // metadata 端点命中缓存时会反复调用本方法；30s 内不再发 RPC
+            await h.engine.refreshSDKMetadataBackground(session.id)
+            await new Promise(r => setTimeout(r, 0))
+            expect(h.emitCalls.filter(c => c.method.endsWith(':refreshMetadata'))).toHaveLength(1)
+        } finally {
+            h.cleanup()
+        }
+    })
 })
 
 /**

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { resolveClaudeConfigDir } from "@mobi/node-core/claudeSdk/claudeConfigDir";
 
 /**
  * 根据 workingDirectory 获取 Claude 项目配置目录路径。
@@ -30,6 +30,6 @@ import { join, resolve } from "node:path";
 export function getProjectPath(workingDirectory: string) {
     // 将绝对路径转换为安全的目录名（仅保留字母数字，其余替换为 '-'）
     const projectId = resolve(workingDirectory).replace(/[^a-zA-Z0-9]/g, '-');
-    const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+    const claudeConfigDir = resolveClaudeConfigDir();
     return join(claudeConfigDir, 'projects', projectId);
 }

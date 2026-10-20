@@ -628,6 +628,7 @@ describe('update-metadata：sdkMetadata 变更 → sdk-metadata-refreshed 补发
             version = store.sessions.getSession(sid)!.metadataVersion
         }
         const events: SyncEvent[] = []
+        const changed: string[] = []
         const deps: SessionHandlersDeps = {
             store,
             resolveSessionAccess: (id: string) => {
@@ -638,9 +639,11 @@ describe('update-metadata：sdkMetadata 变更 → sdk-metadata-refreshed 补发
             backgroundTaskTracker: new BackgroundTaskTracker(),
             snapshotSync: new SnapshotSync(),
             onWebappEvent: (e: SyncEvent) => { events.push(e) },
+            // 能力缓存失效回调（票 04）：CLI 上报命令列表变化时装配层据此 invalidate 同 cwd 缓存
+            onSdkMetadataChanged: (id: string) => { changed.push(id) },
         }
         const current = store.sessions.getSession(sid)!
-        return { store, sid, deps, events, version: current.metadataVersion }
+        return { store, sid, deps, events, changed, version: current.metadataVersion }
     }
 
     /** 触发 update-metadata（CLI 快照回写路径），返回收到的事件类型列表 */
@@ -655,7 +658,7 @@ describe('update-metadata：sdkMetadata 变更 → sdk-metadata-refreshed 补发
 
     test('sdkMetadata 内容有变（commands 增）→ 补发 sdk-metadata-refreshed', () => {
         const fakeSocket = makeFakeSocket()
-        const { sid, deps, events, version } = makeUpdateMetadataDeps({
+        const { sid, deps, events, changed, version } = makeUpdateMetadataDeps({
             commands: [{ name: 'compact', description: '', argumentHint: '' }],
         })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
@@ -673,12 +676,14 @@ describe('update-metadata：sdkMetadata 变更 → sdk-metadata-refreshed 补发
         expect(events.some(e => e.type === 'session-updated')).toBe(true)
         // RED：当前实现不发该事件——web sdkMetadata query 不会失效，/ 面板持续旧命令
         expect(events.some(e => e.type === 'sdk-metadata-refreshed')).toBe(true)
+        // 同 cwd 的能力缓存同步失效（票 04）
+        expect(changed).toEqual([sid])
     })
 
     test('sdkMetadata 无变化（仅其他 metadata 字段变）→ 不补发', () => {
         const fakeSocket = makeFakeSocket()
         const sdk = { commands: [{ name: 'compact', description: '', argumentHint: '' }] }
-        const { sid, deps, events, version } = makeUpdateMetadataDeps(sdk)
+        const { sid, deps, events, changed, version } = makeUpdateMetadataDeps(sdk)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         emitUpdateMetadata(fakeSocket, sid, version, {
@@ -688,6 +693,7 @@ describe('update-metadata：sdkMetadata 变更 → sdk-metadata-refreshed 补发
 
         expect(events.some(e => e.type === 'session-updated')).toBe(true)
         expect(events.some(e => e.type === 'sdk-metadata-refreshed')).toBe(false)
+        expect(changed).toEqual([])
     })
 
     test('首次写入 sdkMetadata（旧无新有）→ 补发', () => {

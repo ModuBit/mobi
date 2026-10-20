@@ -887,6 +887,10 @@ export class SyncEngine {
     // 相等检查会重新引入无限循环，不要被此 Set 的存在误导。
     private readonly refreshingMetadata = new Set<string>()
 
+    /** 后台刷新最小间隔：web 每次 metadata GET 都会触发，30s 内复用上次结果（票 04） */
+    private static readonly BACKGROUND_REFRESH_MIN_INTERVAL_MS = 30_000
+    private readonly lastBackgroundRefreshAt = new Map<string, number>()
+
     /**
      * 后台刷新 sdkMetadata（SWR 配套）。
      * 由 metadata 端点在命中缓存时 fire-and-forget 调用：
@@ -899,8 +903,18 @@ export class SyncEngine {
         // CLI 不在线时 RPC 必失败/超时，且会占去重槽位直到超时——提前跳过省资源（web 仍用缓存）
         const sessionBefore = this.sessionCache.getSession(sessionId)
         if (!sessionBefore?.active) return
+        // 节流：命中缓存的 metadata GET 会反复触发本方法；30s 内只真正 RPC 一次
+        const now = Date.now()
+        const last = this.lastBackgroundRefreshAt.get(sessionId) ?? 0
+        if (now - last < SyncEngine.BACKGROUND_REFRESH_MIN_INTERVAL_MS) return
+        this.lastBackgroundRefreshAt.set(sessionId, now)
+        if (this.lastBackgroundRefreshAt.size > 512) {
+            const oldest = this.lastBackgroundRefreshAt.keys().next().value
+            if (oldest !== undefined) this.lastBackgroundRefreshAt.delete(oldest)
+        }
         // 快照发起时的 metadataVersion，apply 时比对——RPC 期间若有别处写入（version 变），放弃 stale 结果
         const versionBefore = sessionBefore.metadataVersion
+        daemonLogger.debug('[capability] background-refresh', { sessionId })
         this.refreshingMetadata.add(sessionId)
         try {
             const result = await this.refreshMetadata(sessionId)

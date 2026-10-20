@@ -32,6 +32,7 @@ import { searchSessionFilesImpl, listSessionDirectoryImpl } from '@mobi/node-cor
 import { gitReviewRpcImpl } from '@mobi/node-core/handlers/gitReview'
 import { getWebToolsConfigImpl, setWebToolsConfigImpl, verifyWebToolsProviderImpl } from '@mobi/node-core/handlers/webToolsConfig'
 import { refreshMetadataImpl } from '@mobi/node-core/handlers/commands'
+import { createCapabilityCatalog, type CapabilityCatalog } from '@mobi/node-core/claudeSdk/capabilityCatalog'
 import type { RpcGetWebToolsConfigResponse, RpcRefreshMetadataResponse, SpawnSessionOptions } from './executorHost'
 import { mapSpawnResultToGateway } from './spawnResultMapping'
 import type { ExecutorBridge } from '../executor/lifecycle'
@@ -39,9 +40,15 @@ import type { ExecutorBridge } from '../executor/lifecycle'
 export class LocalExecutor {
     /** 会话执行桥（ticket-18 spawn 直调）；daemon 编排在 executor 就绪后注入 */
     private readonly executorBridge: () => ExecutorBridge | null
+    /** 能力面 per-cwd 缓存（装配层注入同一实例，socket 侧变更时主动失效） */
+    private readonly capabilityCatalog: CapabilityCatalog
 
-    constructor(executorBridge: () => ExecutorBridge | null = () => null) {
+    constructor(
+        executorBridge: () => ExecutorBridge | null = () => null,
+        capabilityCatalog: CapabilityCatalog = createCapabilityCatalog(),
+    ) {
         this.executorBridge = executorBridge
+        this.capabilityCatalog = capabilityCatalog
     }
 
     async spawnSession(directory: string, options?: SpawnSessionOptions) {
@@ -181,6 +188,9 @@ export class LocalExecutor {
     }
 
     async hostRefreshMetadata(cwd: string): Promise<RpcRefreshMetadataResponse> {
-        return await refreshMetadataImpl({ cwd })
+        // 宿主路径：走 per-cwd 缓存（新会话页无会话，30s fresh / 10min SWR + 输入签名失效）
+        return await refreshMetadataImpl({ cwd }, undefined, {
+            getForCwd: (target) => this.capabilityCatalog.get(target),
+        })
     }
 }

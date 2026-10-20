@@ -52,7 +52,7 @@ import type {
     UserMessage,
 } from '@mobi/node-core/api/types'
 import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { registerCommandHandlers } from '@mobi/node-core/handlers/commands'
+import { registerCommandHandlers, type LiveCapabilityGetter } from '@mobi/node-core/handlers/commands'
 import { IdleTimer } from '../modules/common/idleTimer'
 import { SessionTransport } from './sessionTransport'
 import { SessionChannel, type SessionEventPayload } from './sessionChannel'
@@ -79,6 +79,11 @@ export class ApiSessionClient extends EventEmitter {
      * 空闲到点不退出、进入 IdleTimer 阻塞复查。由 runClaude 装配完成后安装。
      */
     private dormancyDecide: (() => boolean) | null = null
+    /**
+     * 活 Query 能力源（slash 命令 / agent / model 列表）：launcher 就绪后由 runClaude
+     * 安装，未安装（本地模式、启动早期）时 refreshMetadata 回退临时探针。
+     */
+    private liveCapabilitySource: LiveCapabilityGetter | null = null
 
     // 原 ApiClient.sessionSyncClient 工厂（ticket-12：ApiClient 归 node-core 后跨包无法直接构造本类）
     static create(token: string, session: Session): ApiSessionClient {
@@ -98,7 +103,10 @@ export class ApiSessionClient extends EventEmitter {
             // 深化候选②票②：socket 注册只剩 refreshMetadata（唯一活 wire——daemon rpcGateway
             // 经 'rpc-request' 调用）；文件/上传/审查族 handler 注册已死（ticket-20 起 daemon
             // 全走 LocalExecutor 直调），不再上线
-            registerCommandHandlers(this.rpcHandlerManager, session.metadata.path)
+            registerCommandHandlers(this.rpcHandlerManager, session.metadata.path, {
+                // 活 Query 可用时直接读（零新增进程）；否则 refreshMetadataImpl 回退探针
+                getLiveCapabilities: () => this.liveCapabilitySource?.() ?? null,
+            })
         }
 
         // 初始化 IdleTimer。休眠 gate 的复查判定经 onIdleTimeoutBlockedRecheck 注入
@@ -467,6 +475,14 @@ export class ApiSessionClient extends EventEmitter {
      */
     installDormancyDecide(decide: () => boolean): void {
         this.dormancyDecide = decide
+    }
+
+    /**
+     * 安装活 Query 能力源（refreshMetadata 的数据源；构造后装配——launcher 晚于本类创建）。
+     * 与 installDormancyDecide 同一模式：未安装时 refreshMetadata 走临时探针。
+     */
+    installLiveCapabilitySource(getter: LiveCapabilityGetter): void {
+        this.liveCapabilitySource = getter
     }
 
     /**
