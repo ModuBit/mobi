@@ -50,6 +50,10 @@ export interface Settings {
     memory?: MemorySettings
     /** 地图设置块：高德 JS API（交互）与 Web 服务 key（静态图代理） */
     map?: MapSettings
+    /** 会话治理设置块（票 2.1）：maxActive 覆盖 cap 公式（钳下限 6） */
+    sessionGovernor?: {
+        maxActive?: number
+    }
 }
 
 /** daemon 配置文件（本文件字段的唯一持久化位置） */

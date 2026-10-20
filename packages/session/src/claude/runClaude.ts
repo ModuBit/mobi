@@ -249,7 +249,14 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     });
 
     lifecycle.registerProcessHandlers();
-    registerKillSessionHandler(apiSession.rpcHandlerManager, lifecycle.cleanupAndExit);
+    // killSession 承载 daemon 指定的终结语义（票 2.2）：Governor 逐出带 pause/
+    // governor_evict——先记因再走单出口退出，session-death 载荷据此上报
+    registerKillSessionHandler(apiSession.rpcHandlerManager, async (end) => {
+        if (end?.endReason) {
+            lifecycle.setEndReason(end.endReason, end.pauseTrigger);
+        }
+        await lifecycle.cleanupAndExit();
+    });
 
     // 休眠 gate 的 launcher 侧事实回传 holder（dormancy spec）：launcher 就绪前按 0 处理
     let launcherDormancyFacts: (() => LauncherDormancyFacts) | null = null;

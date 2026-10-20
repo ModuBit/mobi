@@ -24,6 +24,7 @@
  * 砍掉清理。
  */
 
+import { freemem, totalmem } from 'node:os'
 import { configuration, createConfiguration } from './configuration'
 import { daemonLogger } from './logger'
 import { Store } from './store'
@@ -35,6 +36,8 @@ import type { NotificationChannel } from './notifications/notificationTypes'
 import { startWebServer, startHostServer, createHostApp } from './web/server'
 import { getOrCreateJwtSecret } from './config/jwtSecret'
 import { startWebApiTokenWatcher } from './config/settingsWatcher'
+import type { SessionGovernor } from './executor/sessionGovernor'
+import { evaluateMemoryPressure } from './executor/sessionGovernor'
 import { createSocketServer } from './socket/server'
 import { SSEManager } from './sse/sseManager'
 import { SnapshotDeltaStats } from './sync/snapshotDeltaStats'
@@ -66,6 +69,12 @@ export interface ServerHandle {
      * 未调用（单测）时 spawn 报 bridge 未接线。
      */
     setExecutorBridge(bridge: ExecutorBridge): void
+    /**
+     * Governor 会话事实接线（票 2.2）：daemon 编排在 executor + syncEngine 均就绪后
+     * 调用——逐出候选（Registry 心跳）、逐出动作（pause/governor_evict 单出口）、
+     * 内存水位求值（os 可用率 + remote rss 汇总，local 不计）三面注入
+     */
+    wireGovernor(governor: SessionGovernor): void
     /**
      * executor 状态直写（401 起 machineCache 落库退场）：daemon 编排注入给
      * executor core——spawn 结果上报 / 关停状态经此写 executorRuntime 内存单例并广播
@@ -267,6 +276,29 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
         engine?.setSessionTrackingSync(createSessionTrackingSync((sid) => engine.getSession(sid), bridge.registerSessionTracking))
     }
 
+    const wireGovernor = (governor: SessionGovernor): void => {
+        const engine = syncEngine
+        if (!engine) return
+        governor.attachSessionFacts({
+            getGovernedSessions: () => engine.sessionRegistry.live(),
+            evictSession: async (sessionId) => {
+                try {
+                    await engine.evictSessionForGovernor(sessionId)
+                    return true
+                } catch {
+                    return false // unreachable/timeout：best-effort 逐出，遥测记失败
+                }
+            },
+            // 内存水位（票 2.2）：os 可用率 + remote 会话 rss 汇总双口径（local 不计，裁决 #12）
+            getMemoryPressure: () => {
+                const rssSum = engine.sessionRegistry.live()
+                    .filter((entry) => entry.mode !== 'local')
+                    .reduce((sum, entry) => sum + (entry.rss ?? 0), 0)
+                return evaluateMemoryPressure(freemem(), totalmem(), rssSum)
+            },
+        })
+    }
+
     /**
      * executor 状态直写（205 收敛读源，401 落库退场）：daemon 编排注入给
      * executor core——spawn 结果上报 / 关停状态经此①写 executorRuntime 内存单例（权威读源，
@@ -283,6 +315,7 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
         hostPort: config.hostPort,
         dataDir: config.dataDir,
         setExecutorBridge,
+        wireGovernor,
         updateExecutorState,
         stop: async () => {
             if (stopped) return

@@ -113,5 +113,9 @@ socket 层消费的 daemon 侧会话能力的单一声明源（`socket/capabilit
 _Avoid_: 三层 deps 手写能力字段（漂移前科：emitCliNewMessage 链式投影 + factsSink 手写三遍丢字段）、绕过 capabilities 直接引 SyncEngine 内部类型当 deps
 
 **会话治理登记簿**（`SessionRegistry`）:
-session-alive 心跳搭车的治理快照（state/lastActivityAt/gateBlockers/rss）的 daemon 侧登记处——纯内存不落库（daemon 重启即丢，进程存活探测兜底），stale 窗口 30s，session-end 即时离场。Governor（规划中）的预算数据面；当前只登记与查询，不做决策，**不参与 dormancy gate 判定**。
+session-alive 心跳搭车的治理快照（state/lastActivityAt/gateBlockers/rss/mode）的 daemon 侧登记处——纯内存不落库（daemon 重启即丢，进程存活探测兜底），stale 窗口 30s，session-end 即时离场。Governor 的预算数据面；当前只登记与查询，不做决策，**不参与 dormancy gate 判定**。
 _Avoid_: 往 Registry 加落库或决策逻辑（决策归 Governor）、把 registry 快照当 gate 判据（gate 在会话进程本地）
+
+**会话预算闸**（`SessionGovernor`）:
+会话进程数的全局预算治理（executor spawn 管线前置位，dedup 之后）：cap = max(6, floor(总内存/3GiB))，可被 settings.sessionGovernor.maxActive 覆盖（钳下限）；记账 `effective = 活跃进程数（追踪表现读自愈）+ 在途 spawn − 逐出在途`，到顶 **yield**（spawn 方放弃，硬上限不破）。user 来源到顶可触发 LRU 逐出：按 lastActivityAt 选最久空闲的 remote 会话（守卫：空闲 ≥120s、gateBlockers 空、state=idle），走 pause/governor_evict 单出口（Web 可唤醒）；内存分级 warning/critical（os 可用率 + remote rss 汇总双口径），critical 时 cap 折半，warning→normal 滞回。**local 会话仅占名额**（不被逐出、rss 不计汇总，总纲裁决 #12）。
+_Avoid_: 让 Governor 判定 dormancy gate（gate 在会话进程本地）、绕过 acquireSlot 直接 spawn（硬上限会破）、给 in-flight/逐出记账加落库（自愈源在追踪表与 Registry）

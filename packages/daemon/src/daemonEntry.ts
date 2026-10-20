@@ -110,6 +110,11 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<void> 
     server.setExecutorBridge(executor.bridge)
     logger.debug('[DAEMON] Executor session bridge wired to server')
 
+    // Governor 会话事实接线（票 2.2）：Registry 心跳候选 + pause/governor_evict 逐出
+    // + 内存水位扫描（5min 节流 + 滞回）在 server 侧数据面就绪后注入
+    server.wireGovernor(executor.governor)
+    logger.debug('[DAEMON] Session governor wired to server')
+
     writeDaemonState({
         pid: process.pid,
         httpPort: server.port,

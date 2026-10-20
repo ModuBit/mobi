@@ -72,6 +72,7 @@ export class SessionRegistry {
             state: entry.state,
             lastActivityAt: entry.lastActivityAt,
             gateBlockers: entry.gateBlockers,
+            ...(entry.mode !== undefined && { mode: entry.mode }),
             ...(entry.rss !== undefined && { rss: entry.rss }),
         }))
     }

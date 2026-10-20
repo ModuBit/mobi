@@ -76,6 +76,9 @@ export type SpawnSessionResult =
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
     | { type: 'error'; errorMessage: string }
     | { type: 'already-running' }
+    /** 预算闸到顶（票 2.1 SessionGovernor yield）：硬上限不破，spawn 方放弃——
+     *  消费方据此提示「等待资源」而非静默失败（错误归因见 spawnResultMapping） */
+    | { type: 'governor-yielded' }
 
 // —— worktree 形状（executor 创建结果 ↔ 会话侧环境感知共用）——
 

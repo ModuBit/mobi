@@ -380,11 +380,12 @@ export class ApiSessionClient extends EventEmitter {
         mode: 'local' | 'remote',
         runtime?: { permissionMode?: SessionPermissionMode; model?: SessionModel; effort?: EffortLevel; outputStyle?: string },
     ): void {
-        this.transport.keepAlive(this.sessionId, running, mode, runtime, this.buildGovernanceSnapshot(running))
+        this.transport.keepAlive(this.sessionId, running, mode, runtime, this.buildGovernanceSnapshot(running, mode))
     }
 
-    /** 治理水位快照（票 1.2）：state/lastActivityAt 本地可得；blockers 经 provider；rss 抽稀采样 */
-    private buildGovernanceSnapshot(running: boolean): SessionGovernanceSnapshot {
+    /** 治理水位快照（票 1.2）：state/lastActivityAt 本地可得；blockers 经 provider；rss 抽稀采样；
+     *  mode（票 2.2 裁决 #12）——local 仅占名额，daemon 侧逐出与内存汇总据此排除 */
+    private buildGovernanceSnapshot(running: boolean, mode: 'local' | 'remote'): SessionGovernanceSnapshot {
         this.keepAliveBeatCount++
         if (this.keepAliveBeatCount % ApiSessionClient.RSS_SAMPLE_EVERY_N_BEATS === 1) {
             this.lastRssSample = process.memoryUsage().rss
@@ -393,6 +394,7 @@ export class ApiSessionClient extends EventEmitter {
             state: running ? 'active' : 'idle',
             lastActivityAt: this.idleTimer?.getLastActivityAt() ?? Date.now(),
             gateBlockers: this.governanceBlockers?.() ?? [],
+            mode,
             ...(this.lastRssSample !== undefined && { rss: this.lastRssSample }),
         }
     }

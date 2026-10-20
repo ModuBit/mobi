@@ -298,3 +298,62 @@ describe('错误文案树纯函数', () => {
         expect(msg).toContain(`stderr: ${'a'.repeat(800)}`)
     })
 })
+
+// ============ 预算闸接线（票 2.1）：dedup 之后 acquire，结果落定必 release ============
+
+describe('spawnSession 预算闸', () => {
+    function makeGovernorSpy(yieldAll = false) {
+        const release = vi.fn()
+        const acquireSlot = vi.fn(() => (yieldAll
+            ? { granted: false as const }
+            : { granted: true as const, release }))
+        return { governor: { acquireSlot }, release, acquireSlot }
+    }
+
+    it('yield → 返回 governor-yielded，不 mkdir 不 spawn', async () => {
+        const { governor } = makeGovernorSpy(true)
+        const { deps, spawnFn } = makeDeps({ governor })
+        const result = await spawnSession(simpleOptions, deps)
+        expect(result).toEqual({ type: 'governor-yielded' })
+        expect(spawnFn).not.toHaveBeenCalled()
+        expect(deps.fs.mkdir).not.toHaveBeenCalled()
+    })
+
+    it('dedup 命中（already-running）不 acquire——幂等返回不占名额', async () => {
+        const { governor, acquireSlot } = makeGovernorSpy()
+        const { deps } = makeDeps({ governor })
+        deps.trackingTable.registerDaemon({ startedBy: 'daemon', pid: 1, MobiSessionId: 's-1' } as never)
+        ;(deps.isProcessAlive as ReturnType<typeof vi.fn>).mockReturnValue(true)
+
+        const result = await spawnSession({ ...simpleOptions, sessionId: 's-1' } as SpawnSessionOptions, deps)
+        expect(result).toEqual({ type: 'already-running' })
+        expect(acquireSlot).not.toHaveBeenCalled()
+    })
+
+    it('授予 + 失败路径（mkdir 失败）→ finally 兜底 release', async () => {
+        const { governor, release } = makeGovernorSpy()
+        const { deps } = makeDeps({
+            governor,
+            fs: {
+                access: vi.fn().mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' })),
+                mkdir: vi.fn().mockRejectedValue(Object.assign(new Error('denied'), { code: 'EACCES' })),
+            },
+        })
+        const result = await spawnSession(simpleOptions, deps)
+        expect((result as { type: string }).type).toBe('error')
+        expect(release).toHaveBeenCalledTimes(1)
+    })
+
+    it('授予 + 成功（webhook 到达）→ release 恰好一次', async () => {
+        const { governor, release } = makeGovernorSpy()
+        const child = new FakeProcess()
+        child.pid = 44
+        const { deps, table } = makeDeps({ governor, spawn: () => child })
+        const promise = spawnSession(simpleOptions, deps)
+        await vi.waitFor(() => expect(table.get(44)).toBeDefined())
+        table.applyWebhook('s-9', { hostPid: 44 } as never)
+        const result = await promise
+        expect(result).toEqual({ type: 'success', sessionId: 's-9' })
+        expect(release).toHaveBeenCalledTimes(1)
+    })
+})

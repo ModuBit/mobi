@@ -40,6 +40,7 @@ import { isProcessAlive, killProcess, killProcessByChildProcess } from '@mobi/no
 import { startExecutorControlServer } from './controlServer';
 import { createWorktree, removeWorktree } from './worktree';
 import { SessionTrackingTable } from './sessionTrackingTable';
+import { SessionGovernor } from './sessionGovernor';
 import { spawnSession as runSpawnSession, type SpawnOutcome } from './spawnSession';
 import type { SessionTrackingSignal } from './sessionTracking';
 import { ShutdownLatch } from './shutdownLatch';
@@ -69,6 +70,11 @@ export interface ExecutorHandle {
      * 经 ServerHandle.setExecutorBridge 注入。
      */
     bridge: ExecutorBridge
+    /**
+     * 预算闸（票 2.1）：会话进程数上限治理。spawn 编排经 bridge 自动过闸；
+     * 逐出/内存分级（票 2.2）在 server 侧消费本句柄
+     */
+    governor: SessionGovernor
     /**
      * 优雅关停（幂等）。清理顺序沿用原 cleanupAndShutdown：停心跳 → 上报
      * shutting-down → 停 control server → 清 state → 释放锁。
@@ -160,6 +166,19 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
   let reportSpawnOutcomeToHub: ((outcome: SpawnOutcome) => void) | null = null;
   const getCurrentChildren = () => trackingTable.all();
 
+  // 预算闸（票 2.1）：active 数经追踪表现读（进程退出/自检自愈，Governor 不缓存）；
+  // cap 覆盖启动时读 settings（sessionGovernor.maxActive），getter 现读 = 未来
+  // settings 通用 watcher 接上即热调。直跑形态（配置未初始化）回退公式默认值
+  let governorCapOverride: number | undefined;
+  try {
+    const config = getConfiguration();
+    governorCapOverride = (await readSettings(config.settingsFile))?.sessionGovernor?.maxActive;
+  } catch { /* 直跑形态无 daemon 配置：cap 用公式默认值 */ }
+  const sessionGovernor = new SessionGovernor({
+    getActiveCount: () => trackingTable.all().length,
+    getCapOverride: () => governorCapOverride,
+  });
+
   // Handle webhook from MOBI session reporting itself
   const onMobiSessionWebhook = (sessionId: string, sessionMetadata: Metadata) => {
     trackingTable.applyWebhook(sessionId, sessionMetadata);
@@ -170,6 +189,7 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
   // 装配的 reportSpawnOutcomeToHub（controlServer 起来前可空）
     const spawnDeps = {
     trackingTable,
+    governor: sessionGovernor,
     hostPort: resolveSpawnHostPort(),
     resolveMemoryEnv: makeResolveMemoryEnv(),
     reportOutcome: (outcome: SpawnOutcome) => { reportSpawnOutcomeToHub?.(outcome); },
@@ -326,6 +346,8 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
   const handle: ExecutorHandle = {
     httpPort: controlPort,
     bridge,
+    /** 预算闸暴露（票 2.2 逐出/内存分级经 server 侧消费；票 2.1 仅诊断可读） */
+    governor: sessionGovernor,
     stop: (source, errorMessage) => shutdownLatch.shutdown(source, errorMessage),
     exited: shutdownLatch.exited,
   };
