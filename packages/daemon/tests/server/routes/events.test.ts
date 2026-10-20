@@ -53,6 +53,40 @@ function makeApp(namespace: string, synced = 1) {
     return { app, resyncCalls }
 }
 
+// 带 warm 信号出口的 app（透传第 4 参）：记录 onSessionViewed 调用
+function makeAppWithWarm(namespace: string) {
+    const viewed: Array<{ sessionId: string; visible: boolean }> = []
+    const { app, resyncCalls } = (() => {
+        const resyncCalls: Array<{ subscriptionId: string; sessionId: string }> = []
+        const manager = {
+            getSubscription: (id: string) => (id === 'sub-1' ? { id: 'sub-1', namespace } : null),
+            resyncSnapshots: (subscriptionId: string, sessionId: string) => {
+                resyncCalls.push({ subscriptionId, sessionId })
+                return 1
+            },
+        }
+        const engine = {
+            resolveSessionAccess: (sessionId: string, ns: string) =>
+                ns === namespace
+                    ? { ok: true as const, sessionId, session: { id: sessionId } }
+                    : { ok: false as const, reason: 'access-denied' as const },
+        }
+        const hono = new Hono<{ Variables: { namespace: string } }>()
+        hono.use('*', async (c, next) => {
+            c.set('namespace', namespace)
+            await next()
+        })
+        hono.route('/', createEventsRoutes(
+            () => manager as never,
+            () => engine as unknown as SyncEngine,
+            () => null,
+            () => ({ onSessionViewed: (sessionId: string, visible: boolean) => { viewed.push({ sessionId, visible }) } }),
+        ))
+        return { app: hono, resyncCalls }
+    })()
+    return { app, resyncCalls, viewed }
+}
+
 describe('POST /snapshot-resync — 订阅属主校验（D1）', () => {
     test('订阅不属调用者 namespace → 404，不补发也不重置游标', async () => {
         const { app, resyncCalls } = makeApp('ns-b') // 调用者 ns-b，订阅属 ns-a
@@ -87,5 +121,19 @@ describe('POST /snapshot-resync — 订阅属主校验（D1）', () => {
         expect(res.status).toBe(200)
         expect(resyncCalls).toEqual([{ subscriptionId: 'sub-1', sessionId: 's1' }])
         expect(await res.json()).toEqual({ ok: true, synced: 2 })
+    })
+
+    test('resync 触发 warm-on-open 信号（visible=true）', async () => {
+        // 回归（真机 E2E 实锤）：信号出口曾整链装配为默认 noop（startWebServer→createWebApp
+        // 透传漏 getWarmOnOpen 字段），点开热身真机永不触发——本测试锁路由层信号语义
+        const { app, viewed } = makeAppWithWarm('ns-a')
+
+        const res = await app.request('/snapshot-resync', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ subscriptionId: 'sub-1', sessionId: 's1' }),
+        })
+        expect(res.status).toBe(200)
+        expect(viewed).toEqual([{ sessionId: 's1', visible: true }])
     })
 })

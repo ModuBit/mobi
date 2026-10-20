@@ -355,6 +355,7 @@ export async function startWebServer(options: {
         getSyncEngine: options.getSyncEngine,
         getSseManager: options.getSseManager,
         getVisibilityTracker: options.getVisibilityTracker,
+        getWarmOnOpen: options.getWarmOnOpen,
         jwtSecret: options.jwtSecret,
         store: options.store,
         vapidPublicKey: options.vapidPublicKey,
