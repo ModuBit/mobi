@@ -323,7 +323,9 @@ describe('queued/optimistic actions', () => {
     it('appendOptimisticMessage 追加到末尾 + messagesVersion 递增', () => {
         ingestIncomingMessages('s1', [msg('a', 1)])
         const v0 = getMessageWindowState('s1').messagesVersion
-        appendOptimisticMessage('s1', msg('opt', null))
+        // 发送时刻晚于已锚定行（真实发送路径 positionAt/createdAt = Date.now()）
+        const now = Date.now()
+        appendOptimisticMessage('s1', { ...msg('opt', null), positionAt: now, createdAt: now })
         const s = getMessageWindowState('s1')
         expect(s.messages.map(m => m.id)).toEqual(['a', 'opt'])
         expect(s.messagesVersion).toBe(v0 + 1)
@@ -408,7 +410,8 @@ describe('reconcileLatestMessages（rewind 超时对账）', () => {
     })
 
     it('tombstone 命中的 localPending 行对账不复活（撤回闸门覆盖乐观行合并路径）', async () => {
-        const opt = { ...msg('opt', null), localId: 'loc-opt', status: 'queued' as const } as DecryptedMessage
+        const now = Date.now()
+        const opt = { ...msg('opt', null), positionAt: now, createdAt: now, localId: 'loc-opt', status: 'queued' as const } as DecryptedMessage
         ingestIncomingMessages('s1', [msg('a', 3)])
         appendOptimisticMessage('s1', opt)
         withdrawFrom('s1', 'loc-opt') // 撤回：墓碑 + 乐观移除
@@ -765,5 +768,76 @@ describe('迟到 snapshot 帧闸门（turn 尾孤立工具块根因，2026-10 �
         const tail = messages.at(-1) as unknown as { id: string; seq: number }
         expect(tail.id).toBe('stream-uuid-1')
         expect(tail.seq).toBe(2)
+    })
+})
+
+// ──────────────────────────────────────────────────────────────
+// turn 终态清理死流快照（「用户消息上方多出 thinking」，2026-10 报障）
+// ──────────────────────────────────────────────────────────────
+
+describe('turn 终态清理死流快照', () => {
+    beforeEach(() => _resetForTest())
+
+    /** 流式快照行（未落库，行 id = 流 uuid；positionAt/seq 均空） */
+    function snapshotRow(id: string): DecryptedMessage {
+        return {
+            id, seq: null, localId: id, positionAt: null, createdAt: Date.now(), snapshot: true,
+            content: { role: 'agent', content: { type: 'output', data: { type: 'assistant', message: { id: `anthropic-${id}`, content: [{ type: 'thinking', thinking: '…' }] } } } },
+        } as unknown as DecryptedMessage
+    }
+
+    /** turn 终态行（SDK result，已落库） */
+    function turnResultRow(id: string, seq: number): DecryptedMessage {
+        return {
+            id, seq, localId: id, positionAt: seq, createdAt: seq, snapshot: false,
+            content: { role: 'agent', content: { type: 'output', data: { type: 'result', subtype: 'success' } } },
+        } as unknown as DecryptedMessage
+    }
+
+    it('result 实时入库 → 剪掉未等到 full 的 snapshot 行（死流基线重放不残留）', () => {
+        // 现场：死流（中断/被拒）基线经 resync 重放，落成窗口尾部的 snapshot 行
+        ingestIncomingMessages('s1', [msg('user-1', 1)])
+        ingestIncomingMessages('s1', [snapshotRow('stream-orphan')])
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['user-1', 'stream-orphan'])
+
+        ingestIncomingMessages('s1', [turnResultRow('result-1', 3)])
+
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['user-1', 'result-1'])
+    })
+
+    it('backfill 重播的 result 行不触发清理（历史回放不能误判活流已死）', () => {
+        ingestIncomingMessages('s1', [msg('user-1', 1)])
+        ingestIncomingMessages('s1', [turnResultRow('result-1', 2)])
+        ingestIncomingMessages('s1', [snapshotRow('stream-live')])
+
+        // 带 metadata 补写让 backfill 命中「有变化」路径，确保走到清理判定
+        const replay = { ...turnResultRow('result-1', 2), metadata: { nativeId: 'native-1' } } as DecryptedMessage
+        ingestIncomingMessages('s1', [replay], { skipIfNotSnapshot: true, backfill: true })
+
+        expect(getMessageWindowState('s1').messages.some(m => m.id === 'stream-live')).toBe(true)
+    })
+
+    it('普通消息入库不清 snapshot 行（流式期间每条增量都会到达）', () => {
+        ingestIncomingMessages('s1', [snapshotRow('stream-live')])
+        ingestIncomingMessages('s1', [msg('later', 2)])
+        expect(getMessageWindowState('s1').messages.some(m => m.id === 'stream-live')).toBe(true)
+    })
+})
+
+describe('乐观消息有序插入（不落在残余 snapshot 行之后）', () => {
+    beforeEach(() => _resetForTest())
+
+    it('尾部有 snapshot 行时，乐观用户消息插到其前（已锚定行之后）', () => {
+        ingestIncomingMessages('s1', [msg('a', 1)])
+        ingestIncomingMessages('s1', [{
+            id: 'ghost', seq: null, localId: 'ghost', positionAt: null, createdAt: Date.now(), snapshot: true,
+            content: { role: 'agent', content: { type: 'output', data: { type: 'assistant', message: { id: 'anthropic-ghost', content: [{ type: 'thinking', thinking: '…' }] } } } },
+        } as unknown as DecryptedMessage])
+
+        const now = Date.now()
+        appendOptimisticMessage('s1', { ...msg('opt', null), positionAt: now, createdAt: now })
+
+        // snapshot 行恒排在已锚定行之后，但用户气泡不得被它压住
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'opt', 'ghost'])
     })
 })

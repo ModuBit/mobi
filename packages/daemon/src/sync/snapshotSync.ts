@@ -156,10 +156,8 @@ export class SnapshotSync {
             disconnect: () => {
                 if (this.cliOwners.get(sessionId) !== lease) return
                 this.cliOwners.delete(sessionId)
-                this.cache.delete(sessionId)
-                for (const bySession of this.cursors.values()) {
-                    bySession.delete(sessionId)
-                }
+                // CLI 断开 = 该会话所有流都不再有产出方（与 turn 终态同语义的整会话清理）
+                this.clearSession(sessionId)
             },
         }
     }
@@ -176,6 +174,22 @@ export class SnapshotSync {
         this.deleteCachedStream(sessionId, localId)
         for (const bySession of this.cursors.values()) {
             bySession.get(sessionId)?.delete(localId)
+        }
+    }
+
+    /**
+     * turn 终态（result 落库）清空该会话的全部流式基线。
+     *
+     * turn 结束即不存在活流：缓存里残留的只能是「永远不会再推进」的死流（被中断/被拒后
+     * 既没落库 full 也没有 stream-end 信号的流）。它们留到 TTL 期间，每次 resync 都会被
+     * 当作「流式中」重放出旧基线——web 端成为永久钉在窗口尾部的幽灵行（比较器把
+     * snapshot 行判为「锚点在未来」，下一轮用户消息会落在它下方）。逐流 endStream 依赖
+     * CLI 信号，恰恰覆盖不到这类流，故由 turn 边界兜底整会话清理。
+     */
+    clearSession(sessionId: string): void {
+        if (!this.cache.delete(sessionId)) return
+        for (const bySession of this.cursors.values()) {
+            bySession.delete(sessionId)
         }
     }
 

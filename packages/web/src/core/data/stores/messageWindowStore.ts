@@ -28,6 +28,7 @@ import type { DecryptedMessage, MessageStatus } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import type { SnapshotBlock, SnapshotBlockDelta } from '@mobi/shared'
 import { applySnapshotBlockDeltas, locateSnapshotBlocks } from '@mobi/shared'
+import { isTurnResultContent } from '@mobi/shared/messages'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
 import { maybePublishLiveNotice } from '@/core/data/stores/liveNoticeStore'
 import { compareMessages, mergeMessages, isQueuedInMobi } from '@/core/lib/messages'
@@ -139,6 +140,39 @@ function filterWithdrawn(sessionId: string, messages: DecryptedMessage[]): Decry
     const tombstone = withdrawnTombstones.get(sessionId)
     if (!tombstone || tombstone.size === 0) return messages
     return messages.filter(m => !isWithdrawn(sessionId, m))
+}
+
+/**
+ * 有序插入一条消息（其余行引用原样不动），返回新数组。
+ *
+ * 乐观消息必须走这里而不是裸 append：它没有 positionAt，compareMessages 用 createdAt 兜底
+ * （= 发送时刻，晚于一切已锚定行、早于一切 snapshot 行）。裸 append 会把它排到尾部残余的
+ * snapshot 行之后——用户气泡被幽灵流式行压在上面（2026-10 报障「用户消息上方多出 thinking」）。
+ */
+function insertOrdered(messages: DecryptedMessage[], message: DecryptedMessage): DecryptedMessage[] {
+    let idx = messages.length
+    while (idx > 0 && compareMessages(messages[idx - 1]!, message) > 0) idx--
+    if (idx === messages.length) return [...messages, message]
+    const next = messages.slice()
+    next.splice(idx, 0, message)
+    return next
+}
+
+/** 该行是否为 turn 终态行（agent result，SDK 一轮结束的 usage 概要行） */
+function isTurnResultRow(message: DecryptedMessage): boolean {
+    return isTurnResultContent(message.content)
+}
+
+/**
+ * 剪掉窗口内全部 snapshot 行（未等到 full 的流式预览）。
+ *
+ * 只在 turn 终态（result 实时入库）时调用：turn 结束即不存在活流，任何残留 snapshot 行
+ * 都不可能再推进。它们会被 compareMessages 判「锚点在未来」，永久钉在窗口尾部——
+ * 中断/被拒的死流基线经 resync 重放后即成为「凭空多出的 thinking」。
+ */
+function dropSnapshotRows(messages: DecryptedMessage[]): DecryptedMessage[] {
+    const kept = messages.filter(m => !m.snapshot)
+    return kept.length === messages.length ? messages : kept
 }
 
 /** 测试用：清空所有 store 状态（vitest 隔离） */
@@ -395,6 +429,11 @@ export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMes
         if (tail !== prevTail && prevTail !== undefined && compareMessages(prevTail, tail!) > 0) {
             messages = insertOutOfOrderTail(messages)
         }
+        // turn 终态（result 实时入库）→ 剪掉窗口内残留的流式快照行：turn 已结束，这些流
+        // 不可能再等到 full。backfill 是历史回放（重连补拉），不能据此判活流已死。
+        if (!options?.backfill && effective.some(isTurnResultRow)) {
+            messages = dropSnapshotRows(messages)
+        }
         // 实时入库时刻（活跃判据）：backfill 是历史重播，不代表模型在活动，沿用旧值
         const lastActivityAt = options?.backfill ? prev.lastActivityAt : Date.now()
         // turn 边界裁剪（#40 C-1）：超阈值时裁头，游标随裁剪点前移（历史由 fetchOlder 回补）
@@ -532,7 +571,7 @@ function filterMessages(sessionId: string, pred: (m: DecryptedMessage) => boolea
 
 /** 乐观发送（useSendMessage onMutate） */
 export function appendOptimisticMessage(sessionId: string, message: DecryptedMessage): void {
-    _internal.updateState(sessionId, prev => _internal.buildState(prev, { messages: [...prev.messages, message] }))
+    _internal.updateState(sessionId, prev => _internal.buildState(prev, { messages: insertOrdered(prev.messages, message) }))
 }
 
 /** 取消排队（useCancelQueuedMessage onMutate）—— 按 localId 或 id 移除 */

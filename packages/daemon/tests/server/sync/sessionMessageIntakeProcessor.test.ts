@@ -41,11 +41,17 @@ function makeHarness(opts: { enrich?: (sid: string, m: unknown) => unknown; trac
     const store = new Store(':memory:')
     const sid = store.sessions.getOrCreateSession('intake-test', { path: '/tmp/x' }, null, 'default').id
     const persistedCalls: Array<{ sid: string; localId: string | null }> = []
+    const clearedSessions: string[] = []
     const snapshotSync = new SnapshotSync()
     const originalMessagePersisted = snapshotSync.messagePersisted.bind(snapshotSync)
     snapshotSync.messagePersisted = (sessionId: string, localId: string | null) => {
         persistedCalls.push({ sid: sessionId, localId })
         originalMessagePersisted(sessionId, localId)
+    }
+    const originalClearSession = snapshotSync.clearSession.bind(snapshotSync)
+    snapshotSync.clearSession = (sessionId: string) => {
+        clearedSessions.push(sessionId)
+        originalClearSession(sessionId)
     }
     const projector = new SessionMessageRuntimeProjector(store, new BackgroundTaskTracker())
     const enrichCalls: Array<{ sid: string; metadata: unknown }> = []
@@ -68,7 +74,7 @@ function makeHarness(opts: { enrich?: (sid: string, m: unknown) => unknown; trac
             namespace: 'default',
             ...input,
         })]
-    return { store, sid, module: processor, intake, persistedCalls, enrichCalls }
+    return { store, sid, module: processor, intake, persistedCalls, enrichCalls, clearedSessions }
 }
 
 const types = (pubs: SessionMessageIntakePublication[]) => pubs.map(p => p.type)
@@ -90,8 +96,19 @@ describe('SessionMessageIntakeProcessor：受理规则收口', () => {
         expect(pubs[0]).toMatchObject({ type: 'stored-messages', sessionId: sid, messages: [row] })
     })
 
-    test('enricher 未补（连接级上下文缺失）→ metadata 保持缺省由 attach 兜底', () => {
-        const { store, sid, intake } = makeHarness()
+    test('turn result 落库 → 清空该会话全部流式基线（死流无 stream-end 信号的兜底清理）', () => {
+        const { intake, sid, clearedSessions } = makeHarness()
+        const resultContent = { role: 'agent', content: { type: 'output', data: { type: 'result', subtype: 'success' } } }
+
+        intake({ content: resultContent, localId: 'result-1' })
+        expect(clearedSessions).toEqual([sid])
+
+        // 非 turn 终态消息不得触发整会话清理（流式中每条增量都可能到达）
+        intake({ content: userEnvelope('next'), localId: 'loc-2' })
+        expect(clearedSessions).toEqual([sid])
+    })
+
+    test('enricher 未补（连接级上下文缺失）→ metadata 保持缺省由 attach 兜底', () => {        const { store, sid, intake } = makeHarness()
 
         intake({ metadata: { nativeId: 'uu-1' } })
 

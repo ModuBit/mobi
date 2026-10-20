@@ -164,6 +164,34 @@ describe('SnapshotSync', () => {
             .toEqual({ status: 'ignored', reason: 'missing-baseline' })
     })
 
+    test('turn 终态清空整会话流缓存：死流基线不再被 resync 重放，其他会话不受影响', () => {
+        // 死流（中断/被拒，永不落库 full）拿不到 stream-end 信号，只能靠 turn 边界整会话清理；
+        // 残留基线会在下一次 resync 里被当「流式中」重放 → web 端幽灵行。
+        const sync = new SnapshotSync()
+        const subscription = sync.attachSubscription({ id: 'web-1', wantsDelta: true })
+        for (const localId of ['stream-orphan-1', 'stream-orphan-2']) {
+            expect(sync.ingest({
+                kind: 'full', sessionId: 'session-1', localId, content: textEnvelope('partial'), rev: 1,
+            }).status).toBe('accepted')
+        }
+        expect(sync.ingest({
+            kind: 'full', sessionId: 'session-2', localId: 'other', content: textEnvelope('x'), rev: 1,
+        }).status).toBe('accepted')
+
+        sync.clearSession('session-1')
+
+        expect(subscription.resync('session-1')).toEqual([])
+        // 其他会话的基线照常重同步（清理粒度是会话，不是订阅）
+        const other = subscription.resync('session-2')
+        expect(other).toHaveLength(1)
+        // 同 localId 后续增量按「无基线」丢弃，不会复活半截流
+        expect(sync.ingest({
+            kind: 'delta',
+            sessionId: 'session-1',
+            frame: { ...delta(2, 1, 'more'), localId: 'stream-orphan-1' },
+        })).toEqual({ status: 'ignored', reason: 'missing-baseline' })
+    })
+
     test('陈旧全量不覆盖当前基线，版本断档使流等待下一次完整基线', () => {
         const sync = new SnapshotSync()
         sync.ingest({
