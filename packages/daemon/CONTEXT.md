@@ -123,3 +123,9 @@ _Avoid_: 让 Governor 判定 dormancy gate（gate 在会话进程本地）、绕
 **点开热身**（`WarmOnOpenCoordinator`）:
 点开休眠（pause 态）会话停留 ≥2s → 触发冷 resume 的防抖协调器——用户发首条消息时会话已就绪。信号复用既有通道（snapshot-resync = 打开，visibility 变化 = 滑走），不新建上报；预算走 acquireSlot('warm')，yield 即放弃（预热不是承诺）；冷 resume 复用休眠唤醒管线（wakeSession）。只热身 pause 态（active 不需要，stop/archive 终态不可 resume）。
 _Avoid_: 给热身新建 web→daemon 信号通道（resync/visibility 已覆盖）、warm 排队或重试（下次打开重新计防抖即可）
+
+### 退出清理
+
+**退出清理链**（`QuitCleanup`）:
+daemon 退出时的逐项清理编排——命名 handler 注册表（重复 name 注册期报错）+ 并发分批（≤4）+ 逐项计时 + **总时限（2s 预算，对齐 supervisor KILL_GRACE_MS 5s 的内部分配）到点放弃未完成者并落名单**，不阻塞退出。降载与进程级关停（executor/server stop）不在此注册表内，由 daemonEntry 编排：handlers → executor.stop → server.stop。
+_Avoid_: 给单个 handler 设独立超时（总时限是唯一闸）、把进程级 stop 塞进注册表（编排序与注册表职责不同）

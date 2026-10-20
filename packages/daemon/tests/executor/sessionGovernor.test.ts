@@ -351,3 +351,28 @@ describe('evaluateMemoryPressure（阈值纯函数）', () => {
         expect(evaluateMemoryPressure(TB, TB, TB * 0.5)).toBe('normal')
     })
 })
+
+// ============ macOS 可用内存口径修正（票 4.2 收尾发现的 bug） ============
+
+import { parseVmStatFreeBytes } from '@/executor/sessionGovernor'
+
+describe('parseVmStatFreeBytes（macOS 可用内存口径）', () => {
+    it('free + speculative + purgeable + inactive 求和（对齐 memory_pressure 口径）', () => {
+        const output = [
+            'Mach Virtual Memory Statistics: (page size of 16384 bytes)',
+            'Pages free:                             11000.',
+            'Pages active:                          300000.',
+            'Pages inactive:                        514212.',
+            'Pages speculative:                      22000.',
+            'Pages wired down:                       300000.',
+            'Pages purgeable:                         5000.',
+            'Pages stored in compressor:            2765417.',
+        ].join('\n')
+        // (11000 + 514212 + 22000 + 5000) * 16384
+        expect(parseVmStatFreeBytes(output, 16384)).toBe(552_212 * 16384)
+    })
+
+    it('字段缺失按 0 容错（不误判为零可用）', () => {
+        expect(parseVmStatFreeBytes('garbage output', 16384)).toBe(0)
+    })
+})

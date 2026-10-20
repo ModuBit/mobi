@@ -32,7 +32,8 @@
  * 留给迭代三预热体系（user 到顶可触发 LRU 逐出，见票 2.2）。
  */
 
-import { totalmem } from 'node:os';
+import { totalmem, freemem, platform } from 'node:os';
+import { execSync } from 'node:child_process';
 import { logger } from '@mobi/node-core/logger';
 
 /** cap 下限（Desktop 同款：小内存机也保 6 个并发会话） */
@@ -44,6 +45,39 @@ const BYTES_PER_SESSION = 3 * 1024 ** 3;
 /** Desktop 同款 cap 公式（纯函数，测试断言点） */
 export function computeDefaultCap(totalmemBytes: number): number {
     return Math.max(MIN_SESSION_CAP, Math.floor(totalmemBytes / BYTES_PER_SESSION));
+}
+
+/**
+ * macOS vm_stat 输出的可用字节数（纯函数）：Pages free + speculative + purgeable +
+ * inactive 之和 × 页大小（对齐 kernel memory_pressure 的 free percentage 口径，
+ * inactive 是大头——file-backed 可回收缓存）。裸 os.freemem() 在 darwin 只计
+ * 真正 free 页（实测 0.7% vs 真实可用 67%），拿它做水位判定会常态误判 critical
+ * （票 4.2 真机实锤）。本口径不含 anonymous inactive，相对官方口径保守偏低——
+ * 宁可早 warning 不漏报。字段缺失按 0 容错。
+ */
+export function parseVmStatFreeBytes(vmStatOutput: string, pageSizeBytes: number): number {
+    const readCount = (name: string): number => {
+        const match = vmStatOutput.match(new RegExp(`Pages ${name}:\\s+(\\d+)\\.`));
+        return match ? Number(match[1]) : 0;
+    };
+    const pages = readCount('free') + readCount('speculative') + readCount('purgeable') + readCount('inactive');
+    return pages * pageSizeBytes;
+}
+
+/**
+ * 可用内存字节（跨平台口径）：darwin 用 vm_stat 派生（free+speculative+purgeable），
+ * 其余平台退 os.freemem()。5min 扫描节流下一次 spawn 开销可忽略。
+ */
+export function readAvailableMemoryBytes(): number {
+    if (platform() === 'darwin') {
+        try {
+            const pageSize = Number(execSync('vm_stat | head -1').toString().match(/page size of (\d+)/)?.[1] ?? 16384);
+            return parseVmStatFreeBytes(execSync('vm_stat').toString(), pageSize);
+        } catch {
+            return freemem(); // vm_stat 不可用时退裸口径（宁误报 warning 也不错乱）
+        }
+    }
+    return freemem();
 }
 
 /**
@@ -78,7 +112,7 @@ export type GovernorAcquireReason = 'user' | 'warm' | 'prewarm';
 
 /** 治理事件（遥测面：结构化日志起步，票 4.2 再扩持久通道） */
 export type GovernorEvent =
-    | { type: 'governor_yielded'; reason: GovernorAcquireReason; effective: number; cap: number }
+    | { type: 'governor_yielded'; reason: GovernorAcquireReason; effective: number; cap: number; hadEvictable: boolean; memLevel: MemoryPressureLevel }
     | { type: 'governor_evicting'; sessionId: string; idleMs: number }
     | { type: 'governor_evict_failed'; sessionId: string }
     | { type: 'governor_memory_pressure'; level: MemoryPressureLevel };
@@ -205,7 +239,16 @@ export class SessionGovernor {
             if (reason === 'user' && this.tryEvictOne()) {
                 // 名额已腾出，落入下方授予路径
             } else {
-                this.onEvent({ type: 'governor_yielded', reason, effective: this.effective, cap: this.cap });
+                // 遥测口径（票 4.2 表）：yield 时是否有本可逐出的候选（区分「满且可解」
+                // 与「满且无解」）、当前内存档位（critical 降 cap 是 yield 的可能成因之一）
+                this.onEvent({
+                    type: 'governor_yielded',
+                    reason,
+                    effective: this.effective,
+                    cap: this.cap,
+                    hadEvictable: this.hasEvictableCandidate(),
+                    memLevel: this.currentMemoryLevel,
+                });
                 return { granted: false };
             }
         }
@@ -277,6 +320,13 @@ export class SessionGovernor {
         this.evictSession = facts.evictSession;
         this.getMemoryPressure = facts.getMemoryPressure;
         this.startMemoryScanning();
+    }
+
+    /** yield 遥测用：当前是否存在合格逐出候选（只读探测，不启动逐出） */
+    private hasEvictableCandidate(): boolean {
+        if (!this.getGovernedSessions) return false;
+        const candidates = this.getGovernedSessions().filter((c) => !this.evicting.has(c.sessionId));
+        return pickLruIdleVictim(candidates, this.now()) !== null;
     }
 
     /** user 到顶的逐出尝试：选受害者 → evicting 扣额 → fire 逐出。true = 已腾位 */

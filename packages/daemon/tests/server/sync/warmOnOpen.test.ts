@@ -183,3 +183,30 @@ describe('WarmOnOpenCoordinator', () => {
         expect(h.warmCalls).toEqual(['s1'])
     })
 })
+
+// ============ warmAbandoned 判定面（票 4.2） ============
+
+describe('WarmOnOpenCoordinator warmAbandoned', () => {
+    test('warm 兑现后无活动且再次休眠 → warm_abandoned', async () => {
+        const h = makeCoordinator({ sessions: { s1: PAUSED } })
+        h.coordinator.onSessionViewed('s1', true)
+        h.scheduler.advance(WARM_ON_OPEN_DEBOUNCE_MS)
+        h.settleWarm()
+        await Promise.resolve(); await Promise.resolve()
+
+        h.coordinator.observeSessionPaused('s1')
+        expect(h.events).toContainEqual(expect.objectContaining({ type: 'warm_abandoned', sessionId: 's1' }))
+    })
+
+    test('warm 兑现后用户活动 → 再次休眠不算 abandoned', async () => {
+        const h = makeCoordinator({ sessions: { s1: PAUSED } })
+        h.coordinator.onSessionViewed('s1', true)
+        h.scheduler.advance(WARM_ON_OPEN_DEBOUNCE_MS)
+        h.settleWarm()
+        await Promise.resolve(); await Promise.resolve()
+
+        h.coordinator.observeUserActivity('s1')
+        h.coordinator.observeSessionPaused('s1')
+        expect(h.events.some((e) => e.type === 'warm_abandoned')).toBe(false)
+    })
+})

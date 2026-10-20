@@ -24,7 +24,7 @@
  * 砍掉清理。
  */
 
-import { freemem, totalmem } from 'node:os'
+import { totalmem } from 'node:os'
 import { configuration, createConfiguration } from './configuration'
 import { daemonLogger } from './logger'
 import { Store } from './store'
@@ -37,7 +37,7 @@ import { startWebServer, startHostServer, createHostApp } from './web/server'
 import { getOrCreateJwtSecret } from './config/jwtSecret'
 import { startWebApiTokenWatcher } from './config/settingsWatcher'
 import type { SessionGovernor } from './executor/sessionGovernor'
-import { evaluateMemoryPressure } from './executor/sessionGovernor'
+import { evaluateMemoryPressure, readAvailableMemoryBytes } from './executor/sessionGovernor'
 import { WarmOnOpenCoordinator } from './sync/warmOnOpen'
 import { createSocketServer } from './socket/server'
 import { SSEManager } from './sse/sseManager'
@@ -250,6 +250,18 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
                     return session ? { active: session.active, endReason: session.endReason ?? null } : undefined
                 },
             })
+            // warmAbandoned 判定面（票 4.2）：热身兑现后的用户活动 / 再次休眠，从事件流喂入
+            engine.subscribe((event) => {
+                const coordinator = getWarmOnOpen()
+                if (!coordinator) return
+                if (event.type === 'message-received' && event.sessionId) {
+                    coordinator.observeUserActivity(event.sessionId)
+                } else if ((event.type === 'session-updated' || event.type === 'session-removed') && event.sessionId) {
+                    const session = engine.getSession(event.sessionId)
+                    // warm 后再次 pause（休眠）= 热身落空；非 pause 终态/会话删除也解除观察
+                    if (!session || !session.active) coordinator.observeSessionPaused(event.sessionId)
+                }
+            })
         }
         return warmOnOpenCoordinator
     }
@@ -318,7 +330,7 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
                 const rssSum = engine.sessionRegistry.live()
                     .filter((entry) => entry.mode !== 'local')
                     .reduce((sum, entry) => sum + (entry.rss ?? 0), 0)
-                return evaluateMemoryPressure(freemem(), totalmem(), rssSum)
+                return evaluateMemoryPressure(readAvailableMemoryBytes(), totalmem(), rssSum)
             },
         })
     }

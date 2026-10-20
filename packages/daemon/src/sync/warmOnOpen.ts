@@ -57,6 +57,7 @@ export type WarmOnOpenEvent =
     | { type: 'warm_done'; sessionId: string; warmLeadMs: number }
     | { type: 'warm_failed'; sessionId: string }
     | { type: 'warm_yielded'; sessionId: string }
+    | { type: 'warm_abandoned'; sessionId: string; abandonedAfterMs: number }
 
 /** 每会话去重状态：debouncing（防抖中）→ warming（执行中）→ 落定离场 */
 type WarmState =
@@ -71,6 +72,8 @@ export class WarmOnOpenCoordinator {
     private readonly schedule: (fn: () => void, ms: number) => () => void
     private readonly now: () => number
     private readonly states = new Map<string, WarmState>()
+    /** 热身已兑现但未见用户活动的会话（warmAbandoned 判定面，票 4.2）：warmAt 时间戳 */
+    private readonly pendingActivity = new Map<string, number>()
 
     constructor(options: WarmOnOpenOptions) {
         this.getSession = options.getSession
@@ -110,6 +113,26 @@ export class WarmOnOpenCoordinator {
         this.states.set(sessionId, { phase: 'debouncing', cancel })
     }
 
+    /**
+     * 用户活动信号（票 4.2 warmAbandoned 判定面）：warm 兑现后会话收到任何消息
+     * （用户发言/投递）即视为热身被使用，解除 abandoned 观察。由 server 装配层
+     * 从 syncEngine 事件流喂入
+     */
+    observeUserActivity(sessionId: string): void {
+        this.pendingActivity.delete(sessionId)
+    }
+
+    /**
+     * 会话再次休眠信号：若热身兑现后始终无用户活动即记 warm_abandoned
+     * （预热落空的度量——多次 abandoned 说明该会话形态不适合 warm-on-open）
+     */
+    observeSessionPaused(sessionId: string): void {
+        const warmAt = this.pendingActivity.get(sessionId)
+        if (warmAt === undefined) return
+        this.pendingActivity.delete(sessionId)
+        this.onEvent({ type: 'warm_abandoned', sessionId, abandonedAfterMs: this.now() - warmAt })
+    }
+
     private async fire(sessionId: string): Promise<void> {
         const slot = this.acquireWarmSlot()
         if (!slot.granted) {
@@ -126,6 +149,7 @@ export class WarmOnOpenCoordinator {
             await this.warmSession(sessionId)
             slot.release()
             this.onEvent({ type: 'warm_done', sessionId, warmLeadMs: this.now() - startedAt })
+            this.pendingActivity.set(sessionId, this.now())
         } catch (error) {
             slot.release()
             daemonLogger.warn(`[WARM-ON-OPEN] warm failed (session=${sessionId}): ${error instanceof Error ? error.message : String(error)}`)

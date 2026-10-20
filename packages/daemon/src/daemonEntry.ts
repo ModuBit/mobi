@@ -38,6 +38,7 @@ import { logger } from '@mobi/node-core/logger'
 import { daemonLogger } from './logger'
 import { startServer, type ServerHandle } from './server'
 import { startExecutor, ExecutorLockHeldError, type ExecutorHandle } from './executor/lifecycle'
+import { QuitCleanup } from './quitCleanup'
 
 export interface StartDaemonOptions {
     host?: string
@@ -123,11 +124,19 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<void> 
         startTime: new Date().toLocaleString()
     } satisfies DaemonLocallyPersistedState)
 
-    // 关停编排：先 executor（会话宿主）后 server（服务），幂等
+    // 关停编排（票 4.1 onQuitCleanup）：降载 → 命名清理 handler（预算内并发分批、
+    // 到点放弃记名单）→ 进程级 stop（executor 会话宿主 → server 服务），幂等。
+    // 总预算对齐 supervisor KILL_GRACE_MS(5s)：handlers ≤2s，余量留给两级 stop 与缓冲
+    const quitCleanup = new QuitCleanup()
+    // 已知注册方：暂无必刷项（governance/遥测均纯内存 + 结构化日志即写即落）；
+    // 注册表先接线空载，后续票按需注册（spare 回收等）
+    const QUIT_HANDLER_BUDGET_MS = 2_000
+
     let shuttingDown = false
     const shutdown = async (exitCode: number) => {
         if (shuttingDown) return
         shuttingDown = true
+        await quitCleanup.runAll(QUIT_HANDLER_BUDGET_MS).catch(() => {})
         await executor.stop('os-signal').catch(() => {})
         await server.stop().catch(() => {})
         clearDaemonState()
