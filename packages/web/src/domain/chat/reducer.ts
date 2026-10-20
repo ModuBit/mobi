@@ -18,7 +18,7 @@ import type { AgentState } from '@/core/data/api/types'
 import type { ChatBlock, NormalizedMessage, UsageData } from './types'
 import { indexBlocks, type ChatBlocksById } from './reconcile'
 import { traceMessages, type TracedMessage } from './tracer'
-import { dedupeAgentEvents, dropEchoedErrorText, foldErrorEvents } from './reducerEvents'
+import { dedupeAgentEvents, dropEchoedErrorText, dropRetriedErrors, foldErrorEvents } from './reducerEvents'
 import { collectHiddenToolUseIds, collectTitleChanges, collectToolIdsFromMessages, ensureToolBlock, getPermissions } from './reducerTools'
 import { reduceTimeline } from './reducerTimeline'
 
@@ -180,7 +180,7 @@ export function reduceChatBlocks(
         }
     }
 
-    const finalBlocks = dedupeAgentEvents(dropEchoedErrorText(foldErrorEvents(rootResult.blocks)))
+    const finalBlocks = dedupeAgentEvents(dropRetriedErrors(dropEchoedErrorText(foldErrorEvents(rootResult.blocks))))
     const byId: ChatBlocksById = new Map()
     indexBlocks(finalBlocks, byId)
     return { blocks: finalBlocks, byId, hasReadyEvent, latestUsage }

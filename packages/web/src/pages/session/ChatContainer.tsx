@@ -36,6 +36,7 @@ import { isSegmentEmpty, emptySegments, type ComposerSegments, type PendingQuote
 import { resolveQuoteSelection } from '@/domain/chat/quoteSelection'
 import { collectQuoteAnnotationsByAgentId } from '@/domain/chat/quoteDirectives'
 import { QUOTE_FLASH_CLASS, QUOTE_FLASH_MS, QUOTE_FRAGMENT_HIGHLIGHT, locateQuotedMessage, type QuoteFragmentOffsets } from '@/core/lib/quoteLocate'
+import { copyTextToClipboard } from '@/core/utils/clipboard'
 import { reduceChatBlocks, normalizeDecryptedMessage, reconcileChatBlocks, type ChatBlock, type ChatBlocksById } from '@/domain/chat'
 import { buildChatBubbleItems } from '@/features/chat/buildBubbleItems'
 import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from '@/features/chat/BubbleListChat'
@@ -219,6 +220,13 @@ export const CHAT_MAX_WIDTH = 1200
 /** 用户滚动手势窗口（ms）：手势后此窗口内的 scroll 才视为用户滚动（关引用浮层）；
  *  流式 stick-to-bottom 的程序滚动无手势先行，不关 */
 const USER_SCROLL_GESTURE_WINDOW_MS = 250
+
+/**
+ * 鉴权类错误的重新登录指引：错误来自模型供应商，登录态由本机 CLI 掌管，
+ * 只能在终端启动 claude 后输入 `/login` 完成——卡片提供可复制的命令，
+ * 而不是跳到 web 登录页（web 的 /login 是另一套登录）。
+ */
+const REAUTH_COMMAND = '/login'
 
 /**
  * 错误卡片的轮次锚点：触发本轮的最后一条用户消息。
@@ -992,24 +1000,54 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     /**
      * 上下文满状态机的输入序列：只收「上下文满错误 + 压缩生命周期」事件块，
-     * 并记下每个事件块在序列里的锚点。错误卡片逐个渲染，序列只随块列表变化重算一次。
+     * 并记下每个错误块在序列里的锚点。错误卡片逐个渲染，序列只随块列表变化重算一次。
+     *
+     * - result 错误也是上下文满的主路径之一（errorDetail.category），同样登记锚点
+     * - 非 /compact 的新用户输入写入 `turn-end`：其后的压缩属于下一轮，不该影响本锚点
      */
     const contextFullEvents = useMemo(() => {
         const events: ContextFullEvent[] = []
         const anchorByBlockId = new Map<string, number>()
         for (const block of chatBlocks) {
+            if (block.kind === 'user-text') {
+                if (collectUserText(block.blocks).trim() !== COMPACT_COMMAND) events.push({ type: 'turn-end' })
+                continue
+            }
             if (block.kind !== 'agent-event') continue
             const ev = block.event
             const kind: ContextFullEvent['type'] | null =
                 ev.type === 'compact-started' ? 'compact-started'
                     : ev.type === 'compact' || ev.type === 'compact-completed' ? 'compact'
                         : ev.type === 'error' && ev.category === 'context_length' ? 'error'
-                            : null
+                            : (ev as { errorDetail?: { category?: string } }).errorDetail?.category === 'context_length' ? 'error'
+                                : null
             if (!kind) continue
             anchorByBlockId.set(block.id, events.length)
             events.push({ type: kind })
         }
         return { events, anchorByBlockId }
+    }, [chatBlocks])
+
+    /**
+     * 每个块所属轮次「有没有助手产出」：重试动作只在本轮无产出时成立（spec 动作表）。
+     *
+     * 判据覆盖整轮（含错误之后才到达的输出）——自动重试成功后，历史错误卡若还留着
+     * 「重试」，点一下就会把旧用户消息当新消息再发一次、重跑整轮工作。
+     */
+    const turnHasOutputByBlockId = useMemo(() => {
+        const turnByBlockId = new Map<string, string>()
+        const outputTurns = new Set<string>()
+        let currentTurn = ''
+        for (const block of chatBlocks) {
+            if (block.kind === 'user-text') currentTurn = block.id
+            turnByBlockId.set(block.id, currentTurn)
+            if (block.kind === 'agent-text' || block.kind === 'agent-reasoning' || block.kind === 'tool-call') {
+                outputTurns.add(currentTurn)
+            }
+        }
+        const produced = new Map<string, boolean>()
+        for (const [blockId, turn] of turnByBlockId) produced.set(blockId, outputTurns.has(turn))
+        return produced
     }, [chatBlocks])
 
     /** 错误卡片上下文：canRewind 绑定「触发本轮的最后一条用户消息」，压缩状态由块序列现算 */
@@ -1035,8 +1073,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             ...(fullState && { compact: { pending: fullState.pending, tried: fullState.tried } }),
             hasFallbackModel: errorFallbackModel !== null,
             hasWorkspace: Boolean(session?.workspaceId),
+            turnHasAssistantOutput: turnHasOutputByBlockId.get(blockId) ?? false,
         }
-    }, [chatBlocks, contextFullEvents, messages, session?.running, session?.active, session?.endReason, session?.workspaceId, metadata?.contextBoundarySeq, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, sendMutation.isPending, errorSessionState, errorFallbackModel])
+    }, [chatBlocks, contextFullEvents, turnHasOutputByBlockId, messages, session?.running, session?.active, session?.endReason, session?.workspaceId, metadata?.contextBoundarySeq, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, sendMutation.isPending, errorSessionState, errorFallbackModel])
 
     // 动作派发入口：只在点击时执行，经 ref 取最新闭包（赋值在下方命令式区），不拖累装配链 memo
     const errorActionRef = useRef<(action: ErrorAction, blockId: string, event: NormalizedErrorEvent) => void>(() => {})
@@ -1523,7 +1562,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 break
             }
             case 'resume':
-                void sessionActions.resumeSession()
+                void sessionActions.resumeSession().catch(() => {})
                 break
             case 'switchModel':
                 if (errorFallbackModel) void handleModelChange(errorFallbackModel)
@@ -1532,7 +1571,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 void navigate({ to: '/sessions/new', search: { workspaceId: session?.workspaceId ?? undefined } })
                 break
             case 'reauth':
-                void navigate({ to: '/settings' })
+                // 鉴权失败来自模型供应商，重新登录要在终端 CLI 里做（web 的 /login 是另一套登录）
+                void copyTextToClipboard(REAUTH_COMMAND)
+                    .then(() => messageApi.success(t('chat.error.reauthCopied')))
+                    .catch(() => {})
                 break
             // copyDetails 由卡片的「详情」折叠区承载，不派发动作
         }

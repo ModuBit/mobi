@@ -115,6 +115,8 @@ export type ErrorContext = {
     hasFallbackModel: boolean
     /** 是否处于工作区（可新建会话） */
     hasWorkspace: boolean
+    /** 本轮（当前错误之前）是否已有助手产出——有则重发旧消息会重跑整轮工作 */
+    turnHasAssistantOutput: boolean
 }
 
 export type ErrorAction =
@@ -156,6 +158,7 @@ const TEXT_RULES: Array<{ category: ErrorCategory; pattern: RegExp }> = [
     { category: 'org_disabled', pattern: /organization[’']?s? access has been disabled|organization (?:is )?disabled/i },
     { category: 'usage_policy', pattern: /usage polic|safeguard|flagged this message/i },
     { category: 'model_not_found', pattern: /model (?:is )?not (?:found|available)|unknown model|is unknown to|supported (?:api )?model names?|model_not_found/i },
+    { category: 'billing', pattern: /credit balance|billing|payment required|insufficient (?:credit|funds)|balance is too low|余额不足|欠费/i },
     { category: 'output_token_limit', pattern: /max(?:imum)? output tokens|output (?:token )?limit|response exceeded/i },
     { category: 'auth', pattern: /invalid (?:x-)?api[- ]?key|authentication (?:failed|error)|oauth|sign ?in (?:again|required)|unauthorized/i },
     { category: 'network', pattern: /enotfound|econnreset|econnrefused|socket hang up|fetch failed|network (?:error|down)|connection (?:error|reset|refused)/i },
@@ -167,7 +170,7 @@ const ERROR_TYPE_MAP: Record<string, ErrorCategory> = {
     overloaded_error: 'overloaded',
     authentication_error: 'auth',
     permission_error: 'permission_denied',
-    not_found_error: 'model_not_found',
+    // not_found_error 不映射：404 可能是会话/文件/路由不存在，只有「模型」语义才归 model_not_found
     request_too_large: 'request_too_large',
     invalid_request_error: 'invalid_request',
     api_error: 'server_error',
@@ -325,6 +328,8 @@ export function presentError(category: ErrorCategory, context: ErrorContext): Er
             if (NEEDS_REWIND.has(action) && !context.canRewind) return false
             if (action === 'newSession' && !context.hasWorkspace) return false
             if (action === 'switchModel' && !context.hasFallbackModel) return false
+            // 本轮已有产出：重发旧消息会重跑整轮工作，重试只有“本轮无产出”时才成立
+            if (action === 'retry' && context.turnHasAssistantOutput) return false
             return true
         })
     }
@@ -386,8 +391,11 @@ export function extractRequestId(text: string | null | undefined): string | null
 // 上下文满状态机
 // ============================================================================
 
-/** 状态机输入：只关心「上下文满错误」与压缩生命周期（调用方先按分类过滤） */
-export type ContextFullEvent = { type: 'error' | 'compact-started' | 'compact' }
+/**
+ * 状态机输入：只关心「上下文满错误」与压缩生命周期（调用方先按分类过滤）。
+ * `turn-end` 是本轮结束标记（出现新的用户输入），其后的压缩属于别的轮次，不再影响本锚点。
+ */
+export type ContextFullEvent = { type: 'error' | 'compact-started' | 'compact' | 'turn-end' }
 
 export type ContextFullState = {
     /** 压缩正在进行 */
@@ -404,6 +412,7 @@ export type ContextFullState = {
  * 序列语义：
  * - 锚点之后出现 compact-started 且其后无 compact → pending
  * - 锚点之后有 compact → spent；若其后又出现上下文满错误 → tried
+ * - 遇到 turn-end → 本轮结束，后续事件不再计入（另起一轮的 /compact 不该让历史卡片变 pending）
  */
 export function deriveContextFullState(events: ContextFullEvent[], anchorIndex: number): ContextFullState {
     let pending = false
@@ -411,6 +420,7 @@ export function deriveContextFullState(events: ContextFullEvent[], anchorIndex: 
     let tried = false
     for (let i = anchorIndex + 1; i < events.length; i++) {
         const type = events[i]!.type
+        if (type === 'turn-end') break
         if (type === 'compact-started') {
             pending = true
             tried = false

@@ -15,8 +15,18 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { dropEchoedErrorText, foldErrorEvents } from '@/domain/chat/reducerEvents'
+import { dropEchoedErrorText, dropRetriedErrors, foldErrorEvents } from '@/domain/chat/reducerEvents'
 import type { ChatBlock, ErrorEvent } from '@/domain/chat'
+
+function userTextBlock(id: string, text = 'hello'): ChatBlock {
+    return {
+        kind: 'user-text',
+        id,
+        localId: null,
+        createdAt: 0,
+        blocks: [{ type: 'text', text }],
+    }
+}
 
 function errorBlock(id: string, attempt: number, category: ErrorEvent['category']): ChatBlock {
     return {
@@ -83,7 +93,7 @@ function echoedText(id: string, text: string): ChatBlock {
     return { kind: 'agent-text', id, localId: null, createdAt: 0, text }
 }
 
-function resultBlock(id: string, errorDetail: { message: string } | null): ChatBlock {
+function resultBlock(id: string, errorDetail: { message: string; category?: ErrorEvent['category'] } | null): ChatBlock {
     return {
         kind: 'agent-event',
         id,
@@ -100,7 +110,7 @@ function resultBlock(id: string, errorDetail: { message: string } | null): ChatB
                     maxRetries: 0,
                     message: errorDetail.message,
                     isNetworkDown: false,
-                    category: 'quota_exhausted',
+                    category: errorDetail.category ?? 'quota_exhausted',
                     evidence: { matchedBy: 'text', value: 'x' },
                     raw: null,
                 },
@@ -108,6 +118,47 @@ function resultBlock(id: string, errorDetail: { message: string } | null): ChatB
         },
     } as ChatBlock
 }
+
+describe('dropRetriedErrors', () => {
+    it('result 带同类错误 → 丢掉本轮先前的重试错误卡（最终态由 result 承载）', () => {
+        const out = dropRetriedErrors([
+            userTextBlock('u1'),
+            errorBlock('e1', 1, 'quota_exhausted'),
+            errorBlock('e2', 2, 'quota_exhausted'),
+            resultBlock('r1', { message: 'quota' }),
+        ])
+        expect(out.map((b) => b.id)).toEqual(['u1', 'r1'])
+    })
+
+    it('不同类别的错误保留', () => {
+        const out = dropRetriedErrors([
+            userTextBlock('u1'),
+            errorBlock('e1', 1, 'rate_limit'),
+            errorBlock('e2', 2, 'network'),
+            resultBlock('r1', { message: 'quota' }),
+        ])
+        expect(out.map((b) => b.id)).toEqual(['u1', 'e1', 'e2', 'r1'])
+    })
+
+    it('上一轮的同类别错误不受影响', () => {
+        const out = dropRetriedErrors([
+            userTextBlock('u1'),
+            errorBlock('e1', 1, 'quota_exhausted'),
+            userTextBlock('u2'),
+            resultBlock('r1', { message: 'quota' }),
+        ])
+        expect(out.map((b) => b.id)).toEqual(['u1', 'e1', 'u2', 'r1'])
+    })
+
+    it('result 无 errorDetail → 一律保留', () => {
+        const out = dropRetriedErrors([
+            userTextBlock('u1'),
+            errorBlock('e1', 1, 'quota_exhausted'),
+            resultBlock('r1', null),
+        ])
+        expect(out.map((b) => b.id)).toEqual(['u1', 'e1', 'r1'])
+    })
+})
 
 describe('dropEchoedErrorText', () => {
     it('result 带 errorDetail 时丢掉紧邻的同文文本块', () => {

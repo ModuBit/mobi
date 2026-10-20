@@ -32,6 +32,7 @@ const OPEN_CONTEXT: ErrorContext = {
     sessionState: 'active',
     hasFallbackModel: true,
     hasWorkspace: true,
+    turnHasAssistantOutput: false,
 }
 
 describe('classifyError', () => {
@@ -184,6 +185,24 @@ describe('classifyError', () => {
             matchedBy: 'text',
         },
         {
+            // 网关余额不足：既不是限流也不是模型问题
+            name: '余额不足 → billing',
+            input: {
+                status: 400,
+                errorType: 'invalid_request_error',
+                message: 'Your credit balance is too low to access the Anthropic API.',
+            },
+            expected: 'billing',
+            matchedBy: 'text',
+        },
+        {
+            // not_found_error 不等于模型不存在：会话/文件/路由 404 也会带它
+            name: 'not_found_error 无语义文本 → unknown',
+            input: { status: 404, errorType: 'not_found_error', message: 'Not found' },
+            expected: 'unknown',
+            matchedBy: 'none',
+        },
+        {
             name: '输出上限（stop reason）',
             input: { stopReason: 'max_tokens' },
             expected: 'output_token_limit',
@@ -280,6 +299,12 @@ describe('presentError', () => {
         expect(p.actions).toEqual(['reauth', 'copyDetails'])
     })
 
+    it('本轮已有助手产出 → 去掉重试（重发会重跑整轮工作）', () => {
+        const p = presentError('rate_limit', { ...OPEN_CONTEXT, turnHasAssistantOutput: true })
+        expect(p.actions).not.toContain('retry')
+        expect(p.actions).toContain('copyDetails')
+    })
+
     it('轮次到顶：原文仅进详情，不给重复上一轮的重试', () => {
         const p = presentError('max_turns', OPEN_CONTEXT)
         expect(p.inlineRaw).toBe(false)
@@ -313,6 +338,14 @@ describe('deriveContextFullState', () => {
             0,
         )
         expect(state).toEqual({ pending: false, tried: false, spent: true })
+    })
+
+    it('turn-end 之后的事件不计入（下一轮的压缩不改写历史卡片）', () => {
+        const state = deriveContextFullState(
+            [{ type: 'error' }, { type: 'turn-end' }, { type: 'compact-started' }],
+            0,
+        )
+        expect(state).toEqual({ pending: false, tried: false, spent: false })
     })
 
     it('锚点之前的事件不计入', () => {

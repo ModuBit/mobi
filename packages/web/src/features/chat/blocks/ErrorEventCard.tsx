@@ -74,27 +74,9 @@ export function ErrorEventCard({ event, context, onAction, createdAt }: ErrorEve
             sessionState: 'active',
             hasFallbackModel: false,
             hasWorkspace: false,
+            turnHasAssistantOutput: false,
         },
     )
-    // 压缩进行中：退化为进行态占位，不重复铺错误正文（票 02）
-    if (event.category === 'context_length' && context?.compact?.pending) {
-        return (
-            <div
-                role="status"
-                style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '8px 12px', margin: '6px 0',
-                    borderRadius: 'var(--radius-control-sm)',
-                    background: token.colorBgContainer,
-                    boxShadow: `inset 0 0 0 1px ${token.colorBorderSecondary}`,
-                    fontSize: 12, color: token.colorTextSecondary,
-                }}
-            >
-                <CircleAlert size={14} style={{ color: token.colorWarning, flexShrink: 0 }} aria-hidden />
-                {t('chat.error.compacting')}
-            </div>
-        )
-    }
     const severityColor = presentation.severity === 'warning' ? token.colorWarning : token.colorError
     // 详情折叠时不做序列化：turn-result 的 raw 是整条 CLI result 载荷，逐帧重算代价不小
     const rawText = useMemo(
@@ -114,7 +96,26 @@ export function ErrorEventCard({ event, context, onAction, createdAt }: ErrorEve
     // copyDetails 由下方的「详情」开关承载，避免出现两个入口
     const visibleActions = presentation.actions.filter((action) => action !== 'copyDetails')
 
-
+    // 压缩进行中：退化为进行态占位，不重复铺错误正文（票 02）。
+    // 必须放在全部 hooks 之后——pending 翻转时 hook 数量不能变。
+    if (event.category === 'context_length' && context?.compact?.pending) {
+        return (
+            <div
+                role="status"
+                style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '8px 12px', margin: '6px 0',
+                    borderRadius: 'var(--radius-control-sm)',
+                    background: token.colorBgContainer,
+                    boxShadow: `inset 0 0 0 1px ${token.colorBorderSecondary}`,
+                    fontSize: 12, color: token.colorTextSecondary,
+                }}
+            >
+                <CircleAlert size={14} style={{ color: token.colorWarning, flexShrink: 0 }} aria-hidden />
+                {t('chat.error.compacting')}
+            </div>
+        )
+    }
     return (
         <div
             role={presentation.severity === 'error' ? 'alert' : 'status'}
@@ -147,6 +148,12 @@ export function ErrorEventCard({ event, context, onAction, createdAt }: ErrorEve
                 {t(presentation.bodyKey)}
             </div>
 
+            {event.category === 'auth' && (
+                <div style={{ fontSize: 12, color: token.colorTextTertiary }}>
+                    {t('chat.error.reauthHint')}
+                </div>
+            )}
+
             {resetAt && (
                 <div style={{ fontSize: 12, color: token.colorTextSecondary }}>
                     {t('chat.error.resetAt', { time: new Date(resetAt).toLocaleString() })}
@@ -155,11 +162,6 @@ export function ErrorEventCard({ event, context, onAction, createdAt }: ErrorEve
             {presentation.noteKey && (
                 <div style={{ fontSize: 12, color: token.colorTextTertiary }}>
                     {t(presentation.noteKey)}
-                </div>
-            )}
-            {context?.compact?.pending && (
-                <div style={{ fontSize: 12, color: token.colorTextTertiary }}>
-                    {t('chat.error.compacting')}
                 </div>
             )}
             {retrySeconds != null && (

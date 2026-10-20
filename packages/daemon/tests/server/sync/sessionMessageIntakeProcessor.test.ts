@@ -108,7 +108,8 @@ describe('SessionMessageIntakeProcessor：受理规则收口', () => {
         expect(clearedSessions).toEqual([sid])
     })
 
-    test('enricher 未补（连接级上下文缺失）→ metadata 保持缺省由 attach 兜底', () => {        const { store, sid, intake } = makeHarness()
+    test('enricher 未补（连接级上下文缺失）→ metadata 保持缺省由 attach 兜底', () => {
+        const { store, sid, intake } = makeHarness()
 
         intake({ metadata: { nativeId: 'uu-1' } })
 

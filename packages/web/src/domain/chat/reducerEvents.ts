@@ -150,6 +150,35 @@ export function foldErrorEvents(blocks: ChatBlock[]): ChatBlock[] {
 }
 
 /**
+ * 丢弃「重试耗尽前的同类错误卡片」。
+ *
+ * 自动重试失败时 CLI 先发若干条 system/api_error（每次重试一条），最后 result 再带
+ * 同一错误——两处都画卡片，用户看到同一错误两遍。result 已带 errorDetail 时，把本轮
+ * （最近一条用户消息之后）同类别 error 事件去掉：最终态由 result 卡片承载，重试次数
+ * 已无独立展示价值；不同类别的错误（如先限流后断网）仍各自保留。
+ */
+export function dropRetriedErrors(blocks: ChatBlock[]): ChatBlock[] {
+    const result: ChatBlock[] = []
+
+    for (const block of blocks) {
+        if (block.kind === 'agent-event' && block.event.type === 'turn-result') {
+            const detail = (block.event as { errorDetail?: { category?: string } }).errorDetail
+            if (detail?.category) {
+                for (let i = result.length - 1; i >= 0; i--) {
+                    const prev = result[i]!
+                    if (prev.kind === 'user-text') break
+                    if (prev.kind !== 'agent-event' || prev.event.type !== 'error') continue
+                    if ((prev.event as ErrorEvent).category === detail.category) result.splice(i, 1)
+                }
+            }
+        }
+        result.push(block)
+    }
+
+    return result
+}
+
+/**
  * 丢弃「错误原文回声」文本块。
  *
  * CLI 在 API 失败时会把同一段错误文本再作为 assistant 文本发一次，落盘后与

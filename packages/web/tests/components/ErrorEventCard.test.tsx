@@ -37,6 +37,7 @@ const OPEN: ErrorContext = {
     sessionState: 'active',
     hasFallbackModel: true,
     hasWorkspace: true,
+    turnHasAssistantOutput: false,
 }
 
 function makeEvent(category: ErrorCategory, overrides: Partial<NormalizedErrorEvent> = {}): NormalizedErrorEvent {
@@ -124,6 +125,36 @@ describe('ErrorEventCard', () => {
             { wrapper },
         )
         expect(screen.queryByText(/chat\.error\.retryIn/)).toBeNull()
+    })
+
+    it('已存在助手产出的轮次不给重试（重发会重跑整轮）', () => {
+        render(
+            <ErrorEventCard
+                event={makeEvent('rate_limit')}
+                context={{ ...OPEN, turnHasAssistantOutput: true }}
+                onAction={() => {}}
+            />,
+            { wrapper },
+        )
+        expect(screen.queryByText('chat.error.action.retry')).toBeNull()
+    })
+
+    it('压缩状态翻转（占位 ↔ 卡片）不改变 hook 数量', () => {
+        const event = makeEvent('context_length')
+        const { rerender } = render(
+            <ErrorEventCard event={event} context={{ ...OPEN, compact: { pending: true, tried: false } }} onAction={() => {}} />,
+            { wrapper },
+        )
+        expect(screen.getByText('chat.error.compacting')).toBeInTheDocument()
+        rerender(
+            <ErrorEventCard event={event} context={{ ...OPEN, compact: { pending: false, tried: true } }} onAction={() => {}} />,
+        )
+        expect(screen.getByText('chat.error.title.context_length')).toBeInTheDocument()
+    })
+
+    it('鉴权类：展示重新登录指引', () => {
+        render(<ErrorEventCard event={makeEvent('auth')} context={OPEN} onAction={() => {}} />, { wrapper })
+        expect(screen.getByText('chat.error.reauthHint')).toBeInTheDocument()
     })
 
     it('只读渲染（无上下文）不出现动作按钮', () => {

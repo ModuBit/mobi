@@ -268,7 +268,9 @@
       "requestId": "Request ID",
       "copy": "Copy",
       "copied": "Copied",
-      "copyRaw": "Copy raw error"
+      "copyRaw": "Copy raw error",
+      "reauthHint": "Auth failed — run claude in a terminal and use /login to sign in again",
+      "reauthCopied": "Login command copied"
     },
     "origin": {
       "openui": "UI action",
@@ -349,7 +351,6 @@
     "compacting": "Optimizing conversation...",
     "clearing": "Clearing conversation...",
     "durationValue": "Duration: {{value}}",
-    "retry": "Retry",
     "switchMode": "Switch to {{mode}} mode",
     "aborted": "Session aborted",
     "abortedStillQueued": "Session aborted · {{count}} message(s) will still run",
