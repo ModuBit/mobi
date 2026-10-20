@@ -110,6 +110,22 @@ describe('ErrorEventCard', () => {
         expect(screen.getByText('chat.error.copyRaw')).toBeInTheDocument()
     })
 
+    it('重试倒计时：未到点显示，已成历史则隐藏', () => {
+        const event = makeEvent('rate_limit', { retryInMs: 38000 })
+        const { unmount } = render(
+            <ErrorEventCard event={event} context={OPEN} createdAt={Date.now()} />,
+            { wrapper },
+        )
+        expect(screen.getByText(/chat\.error\.retryIn/)).toBeInTheDocument()
+        unmount()
+
+        render(
+            <ErrorEventCard event={event} context={OPEN} createdAt={Date.now() - 60000} />,
+            { wrapper },
+        )
+        expect(screen.queryByText(/chat\.error\.retryIn/)).toBeNull()
+    })
+
     it('只读渲染（无上下文）不出现动作按钮', () => {
         render(<ErrorEventCard event={makeEvent('server_error')} />, { wrapper })
         expect(screen.getByText('chat.error.title.server_error')).toBeInTheDocument()

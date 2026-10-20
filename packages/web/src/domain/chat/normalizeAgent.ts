@@ -633,11 +633,15 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
         const errors = Array.isArray(data.errors)
             ? (data.errors as unknown[]).filter((e): e is string => typeof e === 'string')
             : []
-        error = errors.length > 0 ? errors.join(', ') : subtype ?? 'unknown error'
+        // CLI 在 is_error 的 result 上把真正的错误文本放在 result 字段（如 429 额度耗尽），
+        // subtype 这时仍是 "success"，直接拿它当文案会丢掉全部信息
+        const resultText = asString(data.result)
+        error = errors.length > 0 ? errors.join(', ') : resultText ?? (subtype && subtype !== 'success' ? subtype : 'unknown error')
         // result 错误与 api_error 同一条分类/卡片路径（票 05）
         errorDetail = buildNormalizedError({
             input: {
                 resultSubtype: subtype,
+                status: asNumber(getField(data, 'api_error_status')),
                 message: error,
                 stopReason: asString(getField(data, 'stop_reason')),
             },

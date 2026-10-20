@@ -66,9 +66,11 @@ export type ErrorEventCardProps = {
     /** 缺省 = 只读展示（不出现动作按钮） */
     context?: ErrorContext
     onAction?: (action: ErrorAction) => void
+    /** 事件产生时间（毫秒）；用于判断「N 秒后自动重试」是否已成为历史 */
+    createdAt?: number
 }
 
-export function ErrorEventCard({ event, context, onAction }: ErrorEventCardProps) {
+export function ErrorEventCard({ event, context, onAction, createdAt }: ErrorEventCardProps) {
     const { t } = useTranslation()
     const { token } = antTheme.useToken()
     const [detailsOpen, setDetailsOpen] = useState(false)
@@ -107,6 +109,13 @@ export function ErrorEventCard({ event, context, onAction }: ErrorEventCardProps
     const rawText = formatErrorRaw(event.raw)
     const requestId = extractRequestId(rawText) ?? extractRequestId(event.message)
     const resetAt = event.category === 'quota_exhausted' ? extractResetAt(event.message) : null
+    // 重试倒计时只对「还没到点」的事件成立：历史消息（例如最终失败前最后一次 retry）
+    // 若继续显示「N 秒后自动重试」会误导用户以为还有自动恢复
+    const retryPending =
+        event.retryInMs != null &&
+        event.retryInMs > 0 &&
+        (createdAt == null || Date.now() < createdAt + event.retryInMs)
+    const retrySeconds = retryPending ? Math.ceil((event.retryInMs ?? 0) / 1000) : null
     const showInlineRaw = presentation.raw === 'keep' && event.message.trim().length > 0
     // copyDetails 由下方的「详情」开关承载，避免出现两个入口
     const visibleActions = presentation.actions.filter((action) => action !== 'copyDetails')
@@ -170,9 +179,9 @@ export function ErrorEventCard({ event, context, onAction }: ErrorEventCardProps
                     {t('chat.error.compacting')}
                 </div>
             )}
-            {event.retryInMs != null && event.retryInMs > 0 && (
+            {retrySeconds != null && (
                 <div style={{ fontSize: 12, color: token.colorTextTertiary }}>
-                    {t('chat.error.retryIn', { seconds: Math.ceil(event.retryInMs / 1000) })}
+                    {t('chat.error.retryIn', { seconds: retrySeconds })}
                 </div>
             )}
 

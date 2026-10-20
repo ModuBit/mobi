@@ -911,6 +911,35 @@ describe('normalizeAgentRecord', () => {
         }
     })
 
+    it('should take error text from result when subtype is success (real 429 quota payload)', () => {
+        const message =
+            'API Error: Request rejected (429) · [1310][您已达到每周/每月使用上限，您的限额将在 2026-10-21 10:02:11 重置。]'
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'result',
+                    subtype: 'success',
+                    is_error: true,
+                    api_error_status: 429,
+                    result: message,
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        expect(result?.role).toBe('event')
+        if (result && 'type' in result.content) {
+            expect(result.content.type).toBe('turn-result')
+            expect(result.content.error).toBe(message)
+            expect(result.content.errorDetail?.category).toBe('quota_exhausted')
+            expect(result.content.errorDetail?.status).toBe(429)
+        }
+    })
+
     it('should handle system:task_started', () => {
         const result = normalizeAgentRecord(
             baseParams.messageId, baseParams.localId, baseParams.createdAt,

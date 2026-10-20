@@ -35,6 +35,7 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block, actions, e
             <ErrorEventCard
                 event={errorEvent}
                 context={context}
+                createdAt={block.createdAt}
                 onAction={context && errorCard
                     ? (action) => errorCard.onAction(action, block.id, errorEvent)
                     : undefined}
@@ -95,6 +96,7 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block, actions, e
         <ErrorEventCard
             event={resultError}
             context={resultErrorContext}
+            createdAt={block.createdAt}
             onAction={resultErrorContext && errorCard
                 ? (action) => errorCard.onAction(action, block.id, resultError)
                 : undefined}

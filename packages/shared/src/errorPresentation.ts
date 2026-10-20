@@ -157,7 +157,7 @@ const TEXT_RULES: Array<{ category: ErrorCategory; pattern: RegExp }> = [
     { category: 'org_policy_denied', pattern: /organization[’']?s? policy|blocked by your organization/i },
     { category: 'org_disabled', pattern: /organization[’']?s? access has been disabled|organization (?:is )?disabled/i },
     { category: 'usage_policy', pattern: /usage polic|safeguard|flagged this message/i },
-    { category: 'model_not_found', pattern: /model (?:is )?not (?:found|available)|unknown model|model_not_found/i },
+    { category: 'model_not_found', pattern: /model (?:is )?not (?:found|available)|unknown model|is unknown to|supported (?:api )?model names?|model_not_found/i },
     { category: 'output_token_limit', pattern: /max(?:imum)? output tokens|output (?:token )?limit|response exceeded/i },
     { category: 'auth', pattern: /invalid (?:x-)?api[- ]?key|authentication (?:failed|error)|oauth|sign ?in (?:again|required)|unauthorized/i },
     { category: 'network', pattern: /enotfound|econnreset|econnrefused|socket hang up|fetch failed|network (?:error|down)|connection (?:error|reset|refused)/i },
@@ -192,8 +192,11 @@ function matchText(input: ErrorInput): { category: ErrorCategory; pattern: RegEx
 /**
  * 分类一条错误。
  *
- * 结构化证据先判：resultSubtype → 断网标记 → HTTP 状态 → errorType；
- * 之后才是文本规则；最后落到 invalid_request / unknown。
+ * 顺序：resultSubtype / stopReason / 断网标记 → 粗粒度 HTTP 状态（401/403/529/5xx/413）
+ * → 文本规则 → errorType 映射 → 429 / 400 → unknown。
+ *
+ * errorType 排在文本之后是有意为之：CC 用 `invalid_request_error` 承载上下文满、图片、
+ * 内容策略等具体原因，若先按类型映射会把它们全部压成 invalid_request。
  */
 export function classifyError(input: ErrorInput): ClassifiedError {
     const status = typeof input.status === 'number' ? input.status : null
@@ -228,18 +231,17 @@ export function classifyError(input: ErrorInput): ClassifiedError {
     if (status === 413) {
         return { category: 'request_too_large', evidence: { matchedBy: 'status', value: '413' } }
     }
+    const text = matchText(input)
+    if (text) {
+        return { category: text.category, evidence: { matchedBy: 'text', value: text.pattern.source } }
+    }
+
     if (input.errorType) {
         const mapped = ERROR_TYPE_MAP[input.errorType]
-        if (mapped === 'auth') return { category: 'auth', evidence: { matchedBy: 'errorType', value: input.errorType } }
         if (mapped && mapped !== 'rate_limit') {
             // rate_limit 交给 429/文本细分（额度耗尽 vs 瞬时限流）
             return { category: mapped, evidence: { matchedBy: 'errorType', value: input.errorType } }
         }
-    }
-
-    const text = matchText(input)
-    if (text) {
-        return { category: text.category, evidence: { matchedBy: 'text', value: text.pattern.source } }
     }
 
     if (input.errorType === 'rate_limit_error' || status === 429) {
@@ -386,7 +388,8 @@ export function presentError(category: ErrorCategory, context: ErrorContext): Er
 // 额度重置时间
 // ============================================================================
 
-const ISO_TIMESTAMP = /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?Z)/
+/** ISO 8601 或 CC 原生 `YYYY-MM-DD HH:mm:ss`（无时区，按本地时间理解） */
+const TIMESTAMP = /(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)/
 
 /** 文本里带「重置/恢复」语义的短语，用于确认它附近的 ISO 时间就是重置时间 */
 const RESET_PHRASE = /reset|resets|reset at|refresh|renews|恢复|重置|刷新/i
@@ -394,17 +397,20 @@ const RESET_PHRASE = /reset|resets|reset at|refresh|renews|恢复|重置|刷新/
 /**
  * 从错误文本中解析额度重置时间。
  *
- * 只认文本里真实出现的 ISO 8601 时间戳，且要求附近有重置语义；
+ * 只认文本里真实出现的时间戳，且要求附近有重置语义；
  * 解析不到返回 null——调用方应退回展示原文，绝不编造时间。
+ *
+ * 返回可直接交给 `new Date()` 的串：CC 网关给的是 `2026-10-21 10:02:11` 这种本地时间，
+ * 统一把空格换成 `T` 以避开各浏览器对非 ISO 格式的解析差异（仍按本地时间处理）。
  */
 export function extractResetAt(message: string | null | undefined): string | null {
     if (!message) return null
-    const match = ISO_TIMESTAMP.exec(message)
+    const match = TIMESTAMP.exec(message)
     if (!match) return null
     const index = match.index
     const window = message.slice(Math.max(0, index - 80), index + match[1]!.length + 80)
     if (!RESET_PHRASE.test(window)) return null
-    return match[1]!
+    return match[1]!.replace(' ', 'T')
 }
 
 /**

@@ -48,6 +48,16 @@ describe('classifyError', () => {
             matchedBy: 'text',
         },
         {
+            // 真实网关额度耗尽（result 载荷）：中文文案 + 429 + 1310
+            name: '429 额度耗尽（中文网关真实文案）',
+            input: {
+                status: 429,
+                message: 'API Error: Request rejected (429) · [1310][您已达到每周/每月使用上限，您的限额将在 2026-10-21 10:02:11 重置。]',
+            },
+            expected: 'quota_exhausted',
+            matchedBy: 'text',
+        },
+        {
             name: '429 瞬时限流',
             input: {
                 status: 429,
@@ -75,6 +85,23 @@ describe('classifyError', () => {
             input: { status: 400, message: 'Prompt is too long: 210000 tokens > 200000 maximum' },
             expected: 'context_length',
             matchedBy: 'text',
+        },
+        {
+            // 真实 api_error 载荷同时带 type=invalid_request_error——文本必须先于类型映射
+            name: '上下文满（真实 api_error 载荷带 invalid_request_error）',
+            input: {
+                status: 400,
+                errorType: 'invalid_request_error',
+                message: 'Prompt is too long: 210000 tokens > 200000 maximum',
+            },
+            expected: 'context_length',
+            matchedBy: 'text',
+        },
+        {
+            name: '400 invalid_request_error 无具体文本 → invalid_request',
+            input: { status: 400, errorType: 'invalid_request_error', message: 'Malformed request body' },
+            expected: 'invalid_request',
+            matchedBy: 'errorType',
         },
         {
             name: '断网标记优先于状态码',
@@ -133,6 +160,26 @@ describe('classifyError', () => {
         {
             name: '模型不存在',
             input: { status: 404, message: 'unknown model: claude-nonexistent' },
+            expected: 'model_not_found',
+            matchedBy: 'text',
+        },
+        {
+            // CC Switch 真实响应（400）：聚合模型不在白名单
+            name: '聚合模型不存在（CC Switch 真实文案）',
+            input: {
+                status: 400,
+                message: 'Aggregated model ccs-claude-unknown--x is unknown to CC Switch; pick a model from the model list again',
+            },
+            expected: 'model_not_found',
+            matchedBy: 'text',
+        },
+        {
+            // DeepSeek 真实响应（400）：模型名不在支持列表
+            name: '供应商模型名不在支持列表（DeepSeek 真实文案）',
+            input: {
+                status: 400,
+                message: 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed no-such-model.',
+            },
             expected: 'model_not_found',
             matchedBy: 'text',
         },
@@ -282,6 +329,12 @@ describe('extractResetAt', () => {
 
     it('中文重置语义同样命中', () => {
         expect(extractResetAt('额度已用完，将于 2026-10-21T08:00:00Z 重置。')).toBe('2026-10-21T08:00:00Z')
+    })
+
+    it('CC 网关的本地时间格式（无时区）', () => {
+        const message =
+            'API Error: Request rejected (429) · [1310][您已达到每周/每月使用上限，您的限额将在 2026-10-21 10:02:11 重置。][2026102022313069bf1b0a3ae240cc]'
+        expect(extractResetAt(message)).toBe('2026-10-21T10:02:11')
     })
 
     it('无时间戳 → null', () => {
