@@ -282,9 +282,15 @@ export class IdleTimer {
             return;
         }
 
-        // 恢复可见：按剩余进度续排（折算语义同 onReconnect），并回调 onWarmUp
-        if (!this.isDisconnected && this.state === 'running') {
-            this.scheduleIdleTimers();
+        // 恢复可见：按剩余进度续排（折算语义同 onReconnect），并回调 onWarmUp。
+        // blocked 态必须补排复查——隐藏时 clearIdleTimers 连复查计时器一并清掉，
+        // 只对 running 续排会让阻塞复查永久停摆（既不复查也不退出）
+        if (!this.isDisconnected) {
+            if (this.state === 'blocked') {
+                this.scheduleBlockedRecheck();
+            } else if (this.state === 'running') {
+                this.scheduleIdleTimers();
+            }
         }
         this.onWarmUp?.();
         logger.debug('[IdleTimer] Visible again, idle timers resumed');

@@ -224,6 +224,19 @@ describe('user 到顶触发逐出（票 2.2）', () => {
         expect(events.some((e) => e.type === 'governor_evicting')).toBe(true)
     })
 
+    it('逐出成功但会话未离场 → 名额保持扣除；Registry 离场后才清算', async () => {
+        const overrides = { candidates: [{ sessionId: 'old-1' }], activeCount: 6 }
+        const { governor } = makeEvictGovernor(overrides)
+        expect(governor.acquireSlot('user').granted).toBe(true)
+        await Promise.resolve(); await Promise.resolve()
+        // killSession ack 早于进程退出：fake 的 activeCount 已降，但 Registry 仍见 old-1
+        expect(governor.effective).toBe(5) // 5 active + 1 inFlight − 1 evicting
+        // Registry 见到离场（session-end）→ 下一次 acquire 清算，不再重复扣除
+        overrides.candidates = []
+        expect(governor.acquireSlot('user').granted).toBe(true)
+        expect(governor.effective).toBe(7) // 5 active + 2 inFlight − 0 evicting
+    })
+
     it('无合格受害者（全在 turn 中）→ 第 3 档兜底放行并记 over_cap', () => {
         const { governor, evicted, events } = makeEvictGovernor({
             candidates: [{ sessionId: 'busy', state: 'active' }],

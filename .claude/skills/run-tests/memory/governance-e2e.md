@@ -16,12 +16,17 @@ SessionGovernor / LRU 逐出 / warm-on-open 的真机验证 recipe（会话生�
 
 ## 造 pause 态会话（warm-on-open 前置）
 
-`POST /api/sessions/:id/dormant` 是 **archive 终态（stop）不是 pause**！造 pause 只能走 governor 逐出：
+`POST /api/sessions/:id/dormant` 现在直接落 **pause|manual**（2026-10-20 修复：此前误用
+archiveSession 的默认 stop，warm-on-open 永远识别不到人工休眠）。前置：会话 `running:false`
+（轮询 `GET /api/sessions/:id`；answer 刚出时 turn 收尾有延迟，`dormant` 会 409 `turn_running`）。
 
-1. 会话 A spawn + 发消息（`POST /api/sessions/:id/messages`）等回复——**判 role=='agent' 不是 'assistant'**
-2. spawn 7 个 filler 填满 cap=8
-3. 等 130s（A idle ≥120s）
-4. 第 9 个 spawn → governor 逐出 A → DB 落 `pause|governor_evict`
+```bash
+curl -b jar -X POST http://localhost:2224/api/sessions/<A>/dormant
+# 断言：DB end_state = {"reason":"pause","trigger":"manual","at":...}
+# SSE session-updated data = {active:false, endReason:"pause", pauseTrigger:"manual", endedAt:...}
+```
+
+governor 逐出（`pause|governor_evict`）仍是另一条造 pause 的路径，需 cap 满员 + idle≥120s。
 
 ## warm-on-open 触发（无需浏览器）
 
@@ -36,8 +41,12 @@ curl -b ~/.mobi-e2e/cookies.txt -X POST http://localhost:2224/api/snapshot-resyn
   -H "Content-Type: application/json" -d "{\"sessionId\":\"<A>\",\"subscriptionId\":\"$SUBID\"}"
 ```
 
-- 2s 防抖后 fire；满员 → `warm_yielded`（正确放弃）；有空位 → `warm_triggered` → `warm_done` → A 翻 active + endReason 清 null
-- 验收断言：日志 `[WARM-ON-OPEN] warm_*` + A 发消息即答（热身意义实证）
+- 2s 防抖后 fire；满员且无 120s 候选 → `warm_yielded`（来自 spawn 内层 governor yield，
+  现在以 `governor_yielded` 结构化返回）；有空位 → `warm_triggered` → `warm_done`
+  （**warmLeadMs 是真实 resume 耗时，实测 ~600ms；fire-and-forget 时代恒 ≈0**）→
+  A 翻 active + endReason 清 null
+- 验收断言：日志 `[WARM-ON-OPEN] warm_*`（固定查 daemon.log）+ A 发消息即答（热身意义实证）
+- 唤醒后 SSE 增量载荷显式带 `endReason:null / pauseTrigger:null / endedAt:null`（Web 补丁靠它清旧值）
 
 ## 日志双写点坑（定位耗 1h 的教训）
 

@@ -141,9 +141,14 @@ export class SyncEngine {
             spawnSession: async (directory, options) => {
                 // agent 会话创建不走 resume（无 resume 目标，already-running 不可达），收窄回既有契约
                 const result = await this.executor.spawnSession(directory, options)
-                return isUnexpectedAlreadyRunning(result)
-                    ? { type: 'error', message: UNEXPECTED_ALREADY_RUNNING, failure: 'other' }
-                    : result
+                if (isUnexpectedAlreadyRunning(result)) {
+                    return { type: 'error', message: UNEXPECTED_ALREADY_RUNNING, failure: 'other' }
+                }
+                // user 路径到顶走兜底放行，yield 不可达；防御位按错误透出
+                if (result.type === 'governor-yielded') {
+                    return { type: 'error', message: 'Session capacity reached', failure: 'other' }
+                }
+                return result
             },
             getSessionByNamespace: (sessionId, namespace) => this.sessionCache.getSessionByNamespace(sessionId, namespace),
             // 投递（RPC）与落库（DB）是两个独立步骤，顺序由服务决定：先投递成功才落库，
@@ -643,7 +648,17 @@ export class SyncEngine {
             return { ok: false, blockers: [kind === 'other' ? message : 'Session is not reachable'] }
         }
         if (!check.ok) return check
-        await this.archiveSession(sessionId)
+        // 手动休眠是「可唤醒」语义：必须落 pause/manual，否则默认 stop 会让 warm-on-open
+        // 永远识别不到 pause 态（人工休眠是最主要的预热入口）
+        if (!this.isArchivedInDb(sessionId)) {
+            await this.rpcGateway.killSession(sessionId, { endReason: 'pause', pauseTrigger: 'manual' })
+        }
+        this.factsSink.handleSessionEnd?.({
+            sid: sessionId,
+            time: Date.now(),
+            endReason: 'pause',
+            pauseTrigger: 'manual',
+        })
         return { ok: true }
     }
 
@@ -812,6 +827,10 @@ export class SyncEngine {
             // 不进 HTTP body：Web 只读 message，多带一个字段等于悄悄改了一处对外契约
             return { type: 'error', message: result.message }
         }
+        // user 路径到顶走兜底放行，yield 不可达；防御位按错误透出
+        if (result.type === 'governor-yielded') {
+            return { type: 'error', message: 'Session capacity reached' }
+        }
         return result
     }
 
@@ -830,11 +849,12 @@ export class SyncEngine {
     }
 
     /**
-     * 休眠会话唤醒（fire-and-forget）：编排收口在 SessionReviver（候选④）。
+     * 休眠会话唤醒（去重；异常已由 reviver 消化为 error result）。
      * opts.intent 是预算意图（activate 缺省 / prewarm），映射规则单源在 reviver。
+     * 返回结构化结果供预热方区分「就绪 / 预算放弃 / 失败」；消息路径可忽略。
      */
-    wakeSession(sessionId: string, opts?: { intent?: ReviveIntent }): void {
-        this.reviver.wake(sessionId, opts)
+    wakeSession(sessionId: string, opts?: { intent?: ReviveIntent }): Promise<ResumeSessionResult> {
+        return this.reviver.wake(sessionId, opts)
     }
 
     async resumeSession(sessionId: string, namespace: string, opts?: { intent?: ReviveIntent }): Promise<ResumeSessionResult> {

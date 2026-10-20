@@ -242,10 +242,15 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
         if (!engine || !wiredGovernor) return null
         if (!warmOnOpenCoordinator) {
             warmOnOpenCoordinator = new WarmOnOpenCoordinator({
-                // wakeSession 自吞 spawn 失败（warn 日志），warm 失败遥测面由其内部覆盖；
-                // intent='prewarm'：预算闸内层穿透（到顶 yield，不逐别人会话）
-                warmSession: async (sessionId) => { engine.wakeSession(sessionId, { intent: 'prewarm' }) },
-                acquireWarmSlot: () => wiredGovernor!.acquireSlot('warm'),
+                // 结构化预热：await 到 spawn 落定才置 warm_done / pendingActivity
+                //（fire-and-forget 会导致 leadMs≈0、失败不可观测、abandoned 误判）；
+                // 预算判定归 spawn 管线 (intent='prewarm' → warm)，本层不再预占名额
+                warmSession: async (sessionId) => {
+                    const result = await engine.wakeSession(sessionId, { intent: 'prewarm' })
+                    if (result.type === 'success') return 'warmed'
+                    if (result.code === 'governor_yielded') return 'yielded'
+                    throw new Error(result.message)
+                },
                 getSession: (sessionId) => engine.getSession(sessionId),
             })
             // warmAbandoned 判定面（票 4.2）：用户活动 / 再次休眠两条信号由 coordinator

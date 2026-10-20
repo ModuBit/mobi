@@ -208,6 +208,26 @@ describe('IdleTimer 阻塞复查', () => {
         expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
     })
 
+    it('阻塞复查期间隐藏再恢复 → 复查续排（不永久停摆）', () => {
+        let allow = false
+        const decide = vi.fn(() => allow)
+        const { timer, callbacks } = makeBlockedTimer(decide)
+        timer.start()
+
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS)
+        expect(decide).toHaveBeenCalledTimes(1) // 进入阻塞复查
+
+        timer.setHidden(true)                   // 隐藏：复查暂停
+        vi.advanceTimersByTime(30_000)
+        expect(decide).toHaveBeenCalledTimes(1)
+
+        timer.setHidden(false)                  // 恢复：复查必须续排
+        allow = true
+        vi.advanceTimersByTime(30_000)
+        expect(decide).toHaveBeenCalledTimes(2)
+        expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1)
+    })
+
     it('阻塞期间用户活动（reset）→ 解除复查状态，重新等完整空闲期', () => {
         let allow = false
         const { timer, callbacks } = makeBlockedTimer(() => allow)

@@ -222,6 +222,11 @@ export class SessionCache {
                     running: session.running,
                     mode: session.mode,
                     permissionMode: session.permissionMode,
+                    // 唤醒收口：显式带 null 清掉 Web 缓存的休眠标记（缺字段的增量载荷
+                    // 永远清不掉旧值）；与 session-end 载荷同字段名
+                    endReason: session.endReason ?? null,
+                    pauseTrigger: session.pauseTrigger ?? null,
+                    endedAt: session.endedAt ?? null,
                     model: session.runtimeState?.model,
                     effort: session.runtimeState?.effort,
                     outputStyle: session.runtimeState?.outputStyle
@@ -403,8 +408,10 @@ export class SessionCache {
                 active: false,
                 running: false,
                 mode: session.mode,
-                ...(payload.endReason !== undefined && { endReason: payload.endReason }),
-                ...(payload.pauseTrigger !== undefined && { pauseTrigger: payload.pauseTrigger }),
+                // 恒带（缺省值已按 stop 归一）：Web 增量补丁需要确定值区分休眠/终结
+                endReason: endedReason,
+                pauseTrigger: payload.pauseTrigger ?? null,
+                endedAt: t,
             },
         })
     }

@@ -56,8 +56,7 @@ class FakeScheduler {
 
 function makeCoordinator(overrides: {
     sessions?: Record<string, SessionState>
-    warmResult?: 'ok' | 'fail'
-    grantWarm?: boolean
+    warmResult?: 'ok' | 'fail' | 'yield'
 } = {}) {
     const sessions: Record<string, SessionState> = overrides.sessions ?? {}
     const events: Array<Record<string, unknown>> = []
@@ -67,15 +66,14 @@ function makeCoordinator(overrides: {
 
     const coordinator = new WarmOnOpenCoordinator({
         getSession: (sessionId) => sessions[sessionId],
-        // warm 动作可控 resolve（warming 中状态的去重断言需要挂起窗口）
-        warmSession: (sessionId) => new Promise<void>((resolve, reject) => {
+        // warm 动作可控 resolve（warming 中状态的去重断言需要挂起窗口）；
+        // 三态由实现方提供：'warmed' / 'yielded'，失败走 reject
+        warmSession: (sessionId) => new Promise<'warmed' | 'yielded'>((resolve, reject) => {
             warmCalls.push(sessionId)
             if (overrides.warmResult === 'fail') { reject(new Error('spawn failed')); return }
-            warmDeferred.push(resolve)
+            if (overrides.warmResult === 'yield') { resolve('yielded'); return }
+            warmDeferred.push(() => resolve('warmed'))
         }),
-        acquireWarmSlot: () => (overrides.grantWarm === false
-            ? { granted: false as const }
-            : { granted: true as const, release: () => {} }),
         onEvent: (event) => { events.push(event as unknown as Record<string, unknown>) },
         schedule: scheduler.schedule,
         now: () => scheduler.now,
@@ -152,12 +150,14 @@ describe('WarmOnOpenCoordinator', () => {
         expect(h.warmCalls).toEqual(['s1'])
     })
 
-    test('Governor yield → 放弃不排队，遥测 warm_yielded', () => {
-        const h = makeCoordinator({ sessions: { s1: PAUSED }, grantWarm: false })
+    test('预算闸 yield → 放弃不排队，遥测 warm_yielded', async () => {
+        const h = makeCoordinator({ sessions: { s1: PAUSED }, warmResult: 'yield' })
         h.coordinator.onSessionViewed('s1', true)
         h.scheduler.advance(WARM_ON_OPEN_DEBOUNCE_MS)
-        expect(h.warmCalls).toEqual([])
+        await Promise.resolve(); await Promise.resolve()
+        expect(h.warmCalls).toEqual(['s1'])
         expect(h.events).toContainEqual(expect.objectContaining({ type: 'warm_yielded' }))
+        expect(h.events.some((e) => e.type === 'warm_failed')).toBe(false)
     })
 
     test('warm 失败 → 清状态，下次打开可再触发', async () => {

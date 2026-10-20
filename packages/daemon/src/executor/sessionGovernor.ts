@@ -247,6 +247,7 @@ export class SessionGovernor {
      * 判定与登记同一同步块——并发 acquire 不会双双穿过同一份额度。
      */
     acquireSlot(reason: GovernorAcquireReason): SlotAcquisition {
+        this.pruneSettledEvictions()
         const effective = this.effective
         const cap = this.cap
         if (effective >= cap) {
@@ -375,10 +376,30 @@ export class SessionGovernor {
         this.onEvent({ type: 'governor_evicting', sessionId: victim.sessionId, idleMs: this.now() - victim.lastActivityAt, relaxed });
         void this.evictSession(victim.sessionId)
             .then((ok) => {
-                if (!ok) this.onEvent({ type: 'governor_evict_failed', sessionId: victim.sessionId });
+                if (!ok) {
+                    this.evicting.delete(victim.sessionId);
+                    this.onEvent({ type: 'governor_evict_failed', sessionId: victim.sessionId });
+                }
+                // ok：killSession ack 早于进程真正退出，名额保留到 Registry 见到它离场
+                // （见 pruneSettledEvictions）——ack 即释放会让下一次 spawn 重复计入并再逐一个
             })
-            .catch(() => this.onEvent({ type: 'governor_evict_failed', sessionId: victim.sessionId }))
-            .finally(() => { this.evicting.delete(victim.sessionId); });
+            .catch(() => {
+                this.evicting.delete(victim.sessionId);
+                this.onEvent({ type: 'governor_evict_failed', sessionId: victim.sessionId });
+            });
         return true;
+    }
+
+    /**
+     * 逐出在途的自愈清算：成功逐出的名额一直扣除，直到会话从 Registry 离场
+     * （session-end/remove，或 30s stale 兜底）。用 Registry 而不是 killSession
+     * ack 作为落定信号——ack 时 CLI 进程通常还在退出途中。
+     */
+    private pruneSettledEvictions(): void {
+        if (this.evicting.size === 0 || !this.getGovernedSessions) return
+        const live = new Set(this.getGovernedSessions().map((c) => c.sessionId))
+        for (const sessionId of this.evicting) {
+            if (!live.has(sessionId)) this.evicting.delete(sessionId)
+        }
     }
 }

@@ -20,12 +20,12 @@
  *
  * 信号源复用既有 SSE 订阅/可见性通道（/events?sessionId&visibility 与 POST
  * /visibility），不新建通道。判定面：pause 态识别来自票 1.1 落库的 endReason；
- * 预算经 Governor acquireSlot('warm')——yield 即放弃（不排队不重试，warm 是
+ * 预算语义由 spawn 管线单一所有者裁决（intent=prewarm → acquireSlot('warm')），
+ * yield 由调用方翻译成 'yielded'——本模块不预占名额、不排队不重试（warm 是
  * 预热不是承诺）；冷 resume 复用休眠唤醒既有管线（syncEngine.wakeSession）。
  */
 
 import { daemonLogger } from '../logger'
-import type { SlotAcquisition } from '../executor/sessionGovernor'
 import type { Session } from '@mobi/shared/types'
 import type { SyncEventListener } from './eventPublisher'
 
@@ -38,10 +38,13 @@ export type WarmSessionView = Pick<Session, 'active' | 'endReason'>
 export interface WarmOnOpenOptions {
     /** 会话状态查询（pause 态识别：!active && endReason === 'pause'） */
     getSession: (sessionId: string) => WarmSessionView | undefined
-    /** 冷 resume（复用休眠唤醒既有 fork 管线；拒绝/失败由调用方语义决定重试面） */
-    warmSession: (sessionId: string) => Promise<void>
-    /** 预算闸（yield 即放弃） */
-    acquireWarmSlot: () => SlotAcquisition
+    /**
+     * 冷 resume（复用休眠唤醒管线）。返回三态中的两态：
+     * - 'warmed'：会话已就绪（或本就 active / already-running）
+     * - 'yielded'：预算闸到顶，预热放弃（不是失败）
+     * 真失败必须 throw。预算判定归 spawn 管线单一所有者，本模块不再预占名额。
+     */
+    warmSession: (sessionId: string) => Promise<'warmed' | 'yielded'>
     /** 遥测出口 */
     onEvent?: (event: WarmOnOpenEvent) => void
     /** 调度器注入（默认 setTimeout；测试面） */
@@ -65,8 +68,7 @@ type WarmState =
 
 export class WarmOnOpenCoordinator {
     private readonly getSession: (sessionId: string) => WarmSessionView | undefined
-    private readonly warmSession: (sessionId: string) => Promise<void>
-    private readonly acquireWarmSlot: () => SlotAcquisition
+    private readonly warmSession: (sessionId: string) => Promise<'warmed' | 'yielded'>
     private readonly onEvent: (event: WarmOnOpenEvent) => void
     private readonly schedule: (fn: () => void, ms: number) => () => void
     private readonly now: () => number
@@ -77,7 +79,6 @@ export class WarmOnOpenCoordinator {
     constructor(options: WarmOnOpenOptions) {
         this.getSession = options.getSession
         this.warmSession = options.warmSession
-        this.acquireWarmSlot = options.acquireWarmSlot
         this.onEvent = options.onEvent ?? ((event) => { daemonLogger.info(`[WARM-ON-OPEN] ${event.type}`, event) })
         this.schedule = options.schedule ?? ((fn, ms) => {
             const timer = setTimeout(fn, ms)
@@ -152,28 +153,25 @@ export class WarmOnOpenCoordinator {
     }
 
     private async fire(sessionId: string): Promise<void> {
-        const slot = this.acquireWarmSlot()
-        if (!slot.granted) {
-            // 预算闸 yield：warm 是预热不是承诺，放弃即止（下次打开重新计防抖）
-            this.states.delete(sessionId)
-            this.onEvent({ type: 'warm_yielded', sessionId })
-            return
-        }
-
         const startedAt = this.now()
         this.states.set(sessionId, { phase: 'warming' })
         this.onEvent({ type: 'warm_triggered', sessionId })
         try {
-            await this.warmSession(sessionId)
-            slot.release()
+            const outcome = await this.warmSession(sessionId)
+            if (outcome === 'yielded') {
+                // 预算闸 yield：warm 是预热不是承诺，放弃即止（下次打开重新计防抖）
+                this.onEvent({ type: 'warm_yielded', sessionId })
+                return
+            }
+            // 就绪后才置 abandoned 观察位：此前置位会把「到达 active 前的
+            // session-updated」误判成再次休眠
             this.onEvent({ type: 'warm_done', sessionId, warmLeadMs: this.now() - startedAt })
             this.pendingActivity.set(sessionId, this.now())
         } catch (error) {
-            slot.release()
             daemonLogger.warn(`[WARM-ON-OPEN] warm failed (session=${sessionId}): ${error instanceof Error ? error.message : String(error)}`)
             this.onEvent({ type: 'warm_failed', sessionId })
         } finally {
-            // done/failed 都落定离场：失败后下次打开可再触发；done 后 active 判据天然挡住重复
+            // done/failed/yielded 都落定离场：失败后下次打开可再触发；done 后 active 判据天然挡住重复
             this.states.delete(sessionId)
         }
     }

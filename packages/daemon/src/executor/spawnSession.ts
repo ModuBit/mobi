@@ -376,6 +376,11 @@ export async function spawnSession(options: SpawnRequest, deps: SpawnSessionDeps
             };
 
             deps.trackingTable.registerDaemon(trackedSession);
+            // 名额接棒点：追踪表已把该进程计入 active，inFlight 必须同时交还——
+            // 否则 waitForWebhook（最长 15s）窗口内同一子进程被 effective 计两次，
+            // 并发的第二个 spawn 会看到虚高水位、无谓逐出一个空闲会话。
+            // 失败路径由 finally 兜底（release 幂等）
+            slot?.release();
 
             MobiProcess.on('exit', (code, signal) => {
                 observed.exitCode = typeof code === 'number' ? code : null;

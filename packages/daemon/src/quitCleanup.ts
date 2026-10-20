@@ -94,11 +94,15 @@ export class QuitCleanup {
             }
         })();
 
+        // 总时限计时器：竞速胜出后必须清掉，否则空注册表/秒完的 handler 仍把事件循环
+        // 占住 totalTimeoutMs（daemon 生产路径靠紧随其后的 process.exit 兜底，属隐性契约）
+        let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
         const deadline = new Promise<'timeout'>((resolve) => {
-            setTimeout(() => { resolve('timeout'); }, totalTimeoutMs);
+            deadlineTimer = setTimeout(() => { resolve('timeout'); }, totalTimeoutMs);
         });
 
         const outcome = await Promise.race([runBatches.then(() => 'done' as const), deadline]);
+        if (deadlineTimer) clearTimeout(deadlineTimer);
         if (outcome === 'timeout') {
             const abandoned = entries.map(([name]) => name).filter((name) => !settled.has(name));
             daemonLogger.warn(

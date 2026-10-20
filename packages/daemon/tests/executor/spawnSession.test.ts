@@ -303,11 +303,12 @@ describe('错误文案树纯函数', () => {
 
 describe('spawnSession 预算闸', () => {
     function makeGovernorSpy(yieldAll = false) {
-        const release = vi.fn()
+        let released = false
+        const release = vi.fn(() => { released = true })
         const acquireSlot = vi.fn(() => (yieldAll
             ? { granted: false as const }
             : { granted: true as const, release }))
-        return { governor: { acquireSlot }, release, acquireSlot }
+        return { governor: { acquireSlot }, release, acquireSlot, isReleased: () => released }
     }
 
     it('yield → 返回 governor-yielded，不 mkdir 不 spawn（user 路径已不产生，防御位）', async () => {
@@ -354,16 +355,17 @@ describe('spawnSession 预算闸', () => {
         expect(release).toHaveBeenCalledTimes(1)
     })
 
-    it('授予 + 成功（webhook 到达）→ release 恰好一次', async () => {
-        const { governor, release } = makeGovernorSpy()
+    it('授予 + 成功（webhook 到达）→ 名额在登记处接棒', async () => {
+        const { governor, isReleased } = makeGovernorSpy()
         const child = new FakeProcess()
         child.pid = 44
         const { deps, table } = makeDeps({ governor, spawn: () => child })
         const promise = spawnSession(simpleOptions, deps)
         await vi.waitFor(() => expect(table.get(44)).toBeDefined())
+        // 接棒点：追踪表登记后立即交还 inFlight，不等 waitForWebhook（此前重复计一次）
+        expect(isReleased()).toBe(true)
         table.applyWebhook('s-9', { hostPid: 44 } as never)
         const result = await promise
         expect(result).toEqual({ type: 'success', sessionId: 's-9' })
-        expect(release).toHaveBeenCalledTimes(1)
     })
 })

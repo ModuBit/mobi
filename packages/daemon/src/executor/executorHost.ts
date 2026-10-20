@@ -57,6 +57,8 @@ export type SpawnSessionOptions = Omit<SpawnRequest, 'directory'>
 export type SpawnGatewayResult =
     | { type: 'success'; sessionId: string }
     | { type: 'already-running' }
+    /** 预算闸 yield（warm/prewarm 专属）：调用方按「放弃」语义处理，不是故障 */
+    | { type: 'governor-yielded' }
     | { type: 'error'; message: string; failure: RpcFailureKind }
 
 /** 新会话 spawn 路径（agent 会话通道 / web 新建路由）无 resume 目标，already-running

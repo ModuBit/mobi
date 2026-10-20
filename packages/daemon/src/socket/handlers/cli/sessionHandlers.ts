@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { CacheStatusSchema, ContextUsageSchema, GoalStatusSchema, SessionEndReasonSchema, SessionPauseTriggerSchema, SnapshotDeltaFrameSchema, type ClientToServerEvents, type SDKMetadata } from '@mobi/shared'
+import { CacheStatusSchema, ContextUsageSchema, GoalStatusSchema, SessionEndReasonSchema, SessionGovernanceSnapshotSchema, SessionPauseTriggerSchema, SnapshotDeltaFrameSchema, type ClientToServerEvents, type SDKMetadata } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { daemonLogger } from '../../../logger'
@@ -358,7 +358,13 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     // 其余字段透传，CLI 是其值权威）；context-usage / goal-status 的非空载荷必须是合法
     // schema（防 malformed 落库 + SSE 推 web 崩溃）
     const factSchemas = {
-        'session-alive': z.object({ sid: z.string(), time: z.number() }).passthrough(),
+        'session-alive': z.object({
+            sid: z.string(),
+            time: z.number(),
+            // 治理快照搭车（票 1.2）：出现时必须在边界校验——SessionRegistry 会把它
+            // 直接交给 Governor 解引用 gateBlockers，脏载荷不得穿到预算判定
+            governance: SessionGovernanceSnapshotSchema.optional(),
+        }).passthrough(),
         'context-usage': z.object({ sid: z.string(), contextUsage: ContextUsageSchema.nullable() }),
         'goal-status': z.object({ sid: z.string(), goalStatus: GoalStatusSchema.nullable() }),
         'cache-status': z.object({ sid: z.string(), cacheStatus: CacheStatusSchema.nullable() }),

@@ -43,9 +43,9 @@ export function mapSpawnResultToGateway(result: unknown): SpawnGatewayResult {
             return spawnError(`Directory creation requires approval: ${obj.directory}`)
         }
         if (obj.type === 'governor-yielded') {
-            // 预算闸 yield（票 2.1）：可编程信号在 SpawnSessionResult 上，网关层
-            // 统一翻人话——Web 侧现有 error 分支即显示，后续 UI 迭代再升排队态
-            return spawnError('Session capacity reached. An idle session is being freed up — try again shortly.')
+            // 预算闸 yield（票 2.1）：保留可编程信号——预热方据此走「放弃」而非
+            // 「失败」语义（warm_yielded 遥测 / 不重试）；普通 spawn 调用方按 error 兜底
+            return { type: 'governor-yielded' }
         }
         if (typeof obj.error === 'string') {
             return spawnError(obj.error)

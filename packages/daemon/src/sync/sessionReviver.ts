@@ -39,7 +39,7 @@ export type ReviveIntent = 'activate' | 'prewarm'
 
 export type ReviveResult =
     | { type: 'success'; sessionId: string }
-    | { type: 'error'; message: string; code: 'session_not_found' | 'access_denied' | 'executor_not_ready' | 'resume_unavailable' | 'resume_failed' }
+    | { type: 'error'; message: string; code: 'session_not_found' | 'access_denied' | 'executor_not_ready' | 'resume_unavailable' | 'resume_failed' | 'governor_yielded' }
 
 /**
  * intent → 预算闸 reason 的单一映射点（候选③）：user 到顶走逐出降级链/兜底放行；
@@ -63,32 +63,44 @@ export type SessionReviverDeps = {
 }
 
 export class SessionReviver {
-    /** 唤醒去重：同一会话只允许一个在途 spawn（短窗口多条消息只触发一次） */
-    private readonly wakeInFlight = new Set<string>()
+    /** 唤醒去重：同一会话只允许一个在途 spawn（短窗口多条消息/预热/手动唤醒共用） */
+    private readonly wakeInFlight = new Map<string, Promise<ReviveResult>>()
 
     constructor(private readonly deps: SessionReviverDeps) {}
 
     /**
-     * 休眠会话唤醒（fire-and-forget）：非活跃会话触发 resume spawn，失败就地消化。
+     * 休眠会话唤醒（去重 + 自吞异常）：非活跃会话触发 resume spawn。
      *
-     * 防重入：同一会话只允许一个在途 spawn——唤醒失败时在途即释放，后续消息或
-     * 手动唤醒可重试；消息不因唤醒失败丢失（queued 已落库，上线后补投）。
+     * 返回结构化结果而非 void——warm-on-open 需要「就绪/放弃/失败」三态（warm_done /
+     * warm_yielded / warm_failed 遥测与 pendingActivity 置位时点）；消息路径可忽略返回值。
+     * 异常在内部消化：Bun 下未捕获 rejection 会终止 daemon，而对休眠会话发消息即可触发。
      */
-    wake(sessionId: string, opts?: { intent?: ReviveIntent }): void {
+    wake(sessionId: string, opts?: { intent?: ReviveIntent }): Promise<ReviveResult> {
+        const inFlight = this.wakeInFlight.get(sessionId)
+        if (inFlight) return inFlight
+
+        const pending = this.reviveDeferred(sessionId, opts)
+            .finally(() => { this.wakeInFlight.delete(sessionId) })
+        this.wakeInFlight.set(sessionId, pending)
+        return pending
+    }
+
+    private async reviveDeferred(sessionId: string, opts?: { intent?: ReviveIntent }): Promise<ReviveResult> {
         const session = this.deps.sessionCache.getSession(sessionId) ?? this.deps.sessionCache.refreshSession(sessionId)
-        if (!session || session.active) return
-        if (this.wakeInFlight.has(sessionId)) return
-        this.wakeInFlight.add(sessionId)
-        void this.revive(sessionId, session.namespace, opts)
-            // revive 的 RPC 层（spawn/ack 超时）会 throw 而非返回 error result；
-            // 唤醒是 fire-and-forget，异常必须就地消化——unhandled rejection 在 Bun 下
-            // 默认终止进程（= 整个 daemon 下线），且对休眠会话发消息即可触发
-            .catch((error) => {
-                daemonLogger.warn(`[dormancy] wakeSession spawn failed (session=${sessionId}): ${error instanceof Error ? error.message : String(error)}`)
-            })
-            .finally(() => {
-                this.wakeInFlight.delete(sessionId)
-            })
+        if (!session) {
+            return { type: 'error', message: 'Session not found', code: 'session_not_found' }
+        }
+        if (session.active) {
+            return { type: 'success', sessionId }
+        }
+        try {
+            return await this.revive(sessionId, session.namespace, opts)
+        } catch (error) {
+            // revive 的 RPC 层（spawn/ack 超时）会 throw 而非返回 error result
+            const message = error instanceof Error ? error.message : String(error)
+            daemonLogger.warn(`[dormancy] wakeSession spawn failed (session=${sessionId}): ${message}`)
+            return { type: 'error', message, code: 'resume_failed' }
+        }
     }
 
     /** 同步苏醒（手动恢复/预热兑现）：返回结构化结果，调用方决定反馈 */
@@ -148,6 +160,11 @@ export class SessionReviver {
             // web 终端 create 重试 / handleSessionAlive 补投收敛——daemon 零等待：不得落到
             // waitForActive，否则断连场景（重连遥遥无期）会干等满 15s
             return { type: 'success', sessionId: access.sessionId }
+        }
+
+        if (spawnResult.type === 'governor-yielded') {
+            // 预算闸放弃（warm 专属）：不是故障，也不落激活错误档——调用方按「未兑现」处理
+            return { type: 'error', message: 'Session capacity reached', code: 'governor_yielded' }
         }
 
         if (spawnResult.type !== 'success') {
