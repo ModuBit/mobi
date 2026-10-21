@@ -23,9 +23,18 @@
  * 自定义 style（init 上报的非内置名）只渲染原名、无描述行（SDK 不透传 frontmatter）。
  */
 
-import { LineStyle } from 'lucide-react'
+import {
+    AlignLeft,
+    BookOpen,
+    GraduationCap,
+    LineStyle,
+    Settings2,
+    Sparkles,
+    Zap,
+    type LucideIcon,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { OUTPUT_STYLES, OUTPUT_STYLE_LABELS } from '@mobi/shared'
+import { OUTPUT_STYLES, OUTPUT_STYLE_FOLLOW_SETTING, OUTPUT_STYLE_LABELS } from '@mobi/shared'
 import { CompactHoverSelect } from './CompactHoverSelect'
 
 export interface OutputStyleSelectOption {
@@ -53,9 +62,27 @@ function resolveDescriptionI18nKey(option: OutputStyleSelectOption): string | un
         ?? (option.descriptionKey ? `composer.outputStyleDescriptions.${option.descriptionKey}` : undefined)
 }
 
-/** Output style 收起态图标（lucide LineStyle——样式线列表，直观对应对话风格）：单点维护 */
-export function OutputStyleIcon() {
-    return <LineStyle size={12} strokeWidth={2} className="opacity-55" />
+/**
+ * 每个 style 一个语义图标（收起态与下拉项同源）：选择器收起时也能一眼看出当前风格。
+ * - default: Sparkles（标准行为）
+ * - Proactive: Zap（立即行动）
+ * - Concise: AlignLeft（短文本行）
+ * - Explanatory: BookOpen（解释与模式）
+ * - Learning: GraduationCap（教学）
+ * - 跟随 CC 设置：Settings2；自定义 style 回落 LineStyle
+ */
+const OUTPUT_STYLE_ICONS: Record<string, LucideIcon> = {
+    default: Sparkles,
+    Proactive: Zap,
+    Concise: AlignLeft,
+    Explanatory: BookOpen,
+    Learning: GraduationCap,
+}
+
+/** Output style 图标（按选项值取档；未知自定义 style 回落 LineStyle）：单点维护 */
+export function OutputStyleIcon({ value }: { value: string }) {
+    const Icon = value === OUTPUT_STYLE_FOLLOW_SETTING ? Settings2 : (OUTPUT_STYLE_ICONS[value] ?? LineStyle)
+    return <Icon size={12} strokeWidth={2} className="opacity-55" />
 }
 
 export interface OutputStyleSelectProps {
@@ -83,7 +110,7 @@ export function OutputStyleSelect({ value, options, onChange, disabled, loading,
     const labelOf = (v: string) => known(v)?.label ?? OUTPUT_STYLE_LABELS[v as keyof typeof OUTPUT_STYLE_LABELS] ?? v
     const shellOptions = options.map((o) => {
         const key = resolveDescriptionI18nKey(o)
-        return { value: o.value, label: labelOf(o.value), description: key ? t(key) : undefined, icon: <OutputStyleIcon /> }
+        return { value: o.value, label: labelOf(o.value), description: key ? t(key) : undefined, icon: <OutputStyleIcon value={o.value} /> }
     })
     return (
         <CompactHoverSelect
