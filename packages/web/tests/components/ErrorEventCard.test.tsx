@@ -157,6 +157,27 @@ describe('ErrorEventCard', () => {
         expect(screen.getByText('chat.error.reauthHint')).toBeInTheDocument()
     })
 
+    it('每个动作按钮都派发对应的 action', () => {
+        const cases: Array<{ event: NormalizedErrorEvent; context?: Partial<ErrorContext>; label: string; action: string }> = [
+            { event: makeEvent('rate_limit'), label: 'chat.error.action.retry', action: 'retry' },
+            { event: makeEvent('context_length'), label: 'chat.error.action.rewind', action: 'rewind' },
+            { event: makeEvent('context_length'), label: 'chat.error.action.newSession', action: 'newSession' },
+            { event: makeEvent('model_not_found'), label: 'chat.error.action.switchModel', action: 'switchModel' },
+            { event: makeEvent('auth'), label: 'chat.error.action.reauth', action: 'reauth' },
+            { event: makeEvent('quota_exhausted'), context: { sessionState: 'dormant' }, label: 'chat.error.action.resume', action: 'resume' },
+        ]
+        for (const c of cases) {
+            const onAction = vi.fn()
+            const { unmount } = render(
+                <ErrorEventCard event={c.event} context={{ ...OPEN, ...c.context }} onAction={onAction} />,
+                { wrapper },
+            )
+            fireEvent.click(screen.getByText(c.label))
+            expect(onAction).toHaveBeenCalledWith(c.action)
+            unmount()
+        }
+    })
+
     it('只读渲染（无上下文）不出现动作按钮', () => {
         render(<ErrorEventCard event={makeEvent('server_error')} />, { wrapper })
         expect(screen.getByText('chat.error.title.server_error')).toBeInTheDocument()

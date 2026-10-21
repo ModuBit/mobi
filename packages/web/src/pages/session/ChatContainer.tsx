@@ -1559,7 +1559,16 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 break
             case 'rewind': {
                 const nativeId = target ? messages.find((m) => m.id === target.id)?.metadata?.nativeId : null
-                if (target && nativeId) handleOpenRewind(target.id, nativeId)
+                if (target && nativeId) {
+                    // 移动端 footer 走 hideActions、不挂受控 Popover（确认视图在 MessageActionsDrawer 里），
+                    // modal 来源在移动端没有承载物；指定「⋯」目标并改为 drawer 来源，抽屉直接落在回退确认
+                    if (isMobile) {
+                        setActionsTarget(actionsInfoByRef.current.get(target.id) ?? null)
+                        void openRewindDialog(nativeId, 'drawer')
+                    } else {
+                        handleOpenRewind(target.id, nativeId)
+                    }
+                }
                 break
             }
             case 'resume':
