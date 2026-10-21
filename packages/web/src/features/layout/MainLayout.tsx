@@ -52,6 +52,9 @@ export function MainLayout() {
     // WCO 标题栏：桌面 PWA 启用时替代系统标题栏；PC Web / 移动端 / standalone 返回 false 不受影响
     const isWco = useWindowControlsOverlay()
 
+    /** 内容区是否作为「悬浮面」呈现：桌面端且侧栏展开——圆角、描边、上下呼吸同进同退 */
+    const framedContent = !isMobile && sidebarExpanded
+
     // 应用主题：同步浏览器 chrome（标签栏/地址栏）theme-color
     // theme-color 取 resolveChromeColor —— 与 WcoTitleBar 同源、与 html 背景一致
     // （data-theme 属性由 ThemeProvider 单源写入，此处不再重复）
@@ -102,10 +105,12 @@ export function MainLayout() {
                         display: 'flex',
                         overflow: 'hidden',
                         minWidth: 0,
-                        borderRadius: !isMobile && sidebarExpanded ? 'var(--radius-panel) 0 0 var(--radius-panel)' : undefined,
-                        borderLeft: !isMobile && sidebarExpanded ? `1px solid ${token.colorBorder}` : undefined,
-                        /* 内容区与顶/底之间留 4px 呼吸：圆角与描边才不贴着窗口边缘（移动端全屏，不留） */
-                        marginBlock: !isMobile && sidebarExpanded ? 4 : undefined,
+                        borderRadius: framedContent ? 'var(--radius-panel) 0 0 var(--radius-panel)' : undefined,
+                        /* 三边描边 + 上下 4px 呼吸：内容区才读作浮在布局底色上的面，而不是贴着窗口边缘的色块 */
+                        borderLeft: framedContent ? `1px solid ${token.colorBorder}` : undefined,
+                        borderTop: framedContent ? `1px solid ${token.colorBorder}` : undefined,
+                        borderBottom: framedContent ? `1px solid ${token.colorBorder}` : undefined,
+                        marginBlock: framedContent ? 4 : undefined,
                         background: token.colorBgLayout,
                     }}>
                         {/* 页面级懒加载 chunk 的内层边界：跳转时只内容区出 loading，
