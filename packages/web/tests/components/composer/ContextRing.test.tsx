@@ -220,27 +220,21 @@ describe('ContextRing', () => {
         expect(screen.getByRole('button', { name: '0%' })).toBeTruthy()
     })
 
-    it('衰减刻度线：1M 窗口渲染两根（200k@20% 角度、400k@40% 角度）', () => {
-        render(<ContextRing usage={makeUsage({ maxTokens: 1_000_000, percentage: 13 })} />)
+    it('自动压缩刻度：阈值/窗口角度处画一根线（不再写死 200k/400k）', () => {
+        render(<ContextRing usage={makeUsage({ maxTokens: 1_000_000, percentage: 13, autoCompactAtTokens: 350_000 })} />)
         const lines = document.querySelectorAll('svg[role="button"] line')
-        expect(lines.length).toBe(2)
-        // 第一根 20% 角度（顶部起顺时针 72°）：外端 x≈23.89, y≈8.14
-        expect(Number(lines[0].getAttribute('x2'))).toBeCloseTo(23.89, 1)
-        expect(Number(lines[0].getAttribute('y2'))).toBeCloseTo(8.14, 1)
-        // 第二根 40% 角度（144°）：外端 x≈19.35, y≈22.11
-        expect(Number(lines[1].getAttribute('x2'))).toBeCloseTo(19.35, 1)
-        expect(Number(lines[1].getAttribute('y2'))).toBeCloseTo(22.11, 1)
+        expect(lines.length).toBe(1)
+        // 35% 角度（顶部起顺时针 126°）：外端 x≈22.11, y≈19.35
+        expect(Number(lines[0].getAttribute('x2'))).toBeCloseTo(22.11, 1)
+        expect(Number(lines[0].getAttribute('y2'))).toBeCloseTo(19.35, 1)
     })
 
-    it('衰减刻度线退化：窗口 ≤200k 不渲染任何刻度；400k 窗口只渲染 200k 一根', () => {
-        const { unmount } = render(<ContextRing usage={makeUsage({ maxTokens: 200_000, percentage: 13 })} />)
-        expect(document.querySelector('svg[role="button"] line')).toBeNull()
+    it('自动压缩刻度缺省或越界（≥窗口）→ 不渲染线', () => {
+        const { unmount } = render(<ContextRing usage={makeUsage({ maxTokens: 1_000_000 })} />)
+        expect(document.querySelector('svg[role="button"] line')).toBeNull()  // 无阈值：不猜 200k/400k
         unmount()
-        render(<ContextRing usage={makeUsage({ maxTokens: 100_000, percentage: 13 })} />)
+        render(<ContextRing usage={makeUsage({ maxTokens: 1_000_000, autoCompactAtTokens: 1_000_000 })} />)
         expect(document.querySelector('svg[role="button"] line')).toBeNull()
-        unmount()
-        render(<ContextRing usage={makeUsage({ maxTokens: 400_000, percentage: 13 })} />)
-        expect(document.querySelectorAll('svg[role="button"] line').length).toBe(1)
     })
 })
 

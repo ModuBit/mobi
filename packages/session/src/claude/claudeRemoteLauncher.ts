@@ -763,7 +763,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 // 主线 assistant（子代理 parent_tool_use_id 非空，其 usage 是独立子上下文不作水位）；
                 // 有效性判据（渠道零值跳过）统一在 tracker.onAssistantUsage 内的 hasAssistantUsage
                 if (!usageMsg.parent_tool_use_id && usageMsg.message?.usage) {
-                    this.contextTracker.onAssistantUsage(usageMsg.message.usage, usageMsg.message.model);
+                    this.contextTracker.onAssistantUsage(usageMsg.message.usage);
                 }
                 const umessage = message as SDKAssistantMessage;
                 if (umessage.message.content && Array.isArray(umessage.message.content)) {
@@ -1081,10 +1081,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         onCacheStatus: (status) => this.reportCacheStatusEvent(status),
                         onQueryReady: (query, { isResume }) => {
                             this.queryRef = query;
-                            // 首轮前水位：基础占用 + CC 权威窗口（仅会话尚无 result 时生效，tracker 内有双检）。
-                            // resume 会话跳过：daemon 已持久化真实水位/成本（web 首拉恢复），
-                            // 静态基线 totalTokens + costUsd 0 会把真实读数覆盖回退到首个 result 才自愈
-                            if (!isResume) void this.contextTracker.collectStartupUsage(query);
+                            // 窗口权威值（summary.rawMaxTokens）任何新 query 都取，含 resume——
+                            // 猜窗口的链路已删除；resume 只取窗口，静态基线 totalTokens 会
+                            // 覆盖 daemon 持久化的真实水位，交给首个 result 纠偏
+                            void this.contextTracker.collectStartupUsage(query, { reportBaseline: !isResume });
                             // 暴露给外部用于动态 setModel/setPermissionMode
                             if (this.queryControlRef) {
                                 this.queryControlRef.current = query;

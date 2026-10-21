@@ -17,8 +17,7 @@
 import type { ContextUsage, ContextUsageBreakdown } from '@mobi/shared'
 import type { SDKAssistantMessage, SDKControlGetContextUsageResponse, SDKResultMessage, Query } from '@anthropic-ai/claude-agent-sdk'
 import { logger } from '@mobi/node-core/logger'
-import { calcContextUsageFromAssistant, calcContextUsageFromCompact, calcContextUsageFromResult, hasAssistantUsage, type AssistantUsage } from './utils/contextUsageCalc'
-import { guessContextWindow } from './utils/modelContextWindow'
+import { calcContextUsageFromAssistant, calcContextUsageFromCompact, calcContextUsageFromResult, hasAssistantUsage, resolveAutoCompactAtTokens, type AssistantUsage } from './utils/contextUsageCalc'
 import { extractBreakdown } from './utils/contextBreakdown'
 
 /**
@@ -40,12 +39,15 @@ export type ContextUsageMemory = {
     lastBreakdown: ContextUsageBreakdown | undefined
     /** CC 有效窗口（getContextUsage summary 的 rawMaxTokens）：经 CC 内部解析链（env → settings →
      *  clientdata → 模型档位），已含用户 autocompact 阈值（如设 350k 时 = 350k，非模型最大 1m）。
-     *  水位语义「距压缩还有多少」，此值优先于 modelUsage.contextWindow（模型最大窗口）。
-     *  0 = 未知（尚未采集或渠道不支持），回落旧链 */
+     *  水位语义「距压缩还有多少」，**唯一**窗口权威来源（不再按模型名猜测）。
+     *  0 = 未知（query 未就绪/渠道不支持），此时不产水位读数 */
     lastCcWindowTokens: number
     /** 模型最大窗口（result.modelUsage 主模型 contextWindow）：信息展示（Popover「模型上限」行），
      *  不参与百分比计算；缺字段的 result 不覆写。0 = 未知 */
     lastModelContextTokens: number
+    /** 自动压缩触发点（summary.autoCompactThreshold，tokens）：环上刻度标注用。
+     *  undefined = 未启用 / 自动推导 / 尚不知晓——环上不画刻度 */
+    lastAutoCompactAtTokens: number | undefined
 }
 
 /** 水位上报通道（seam）：launcher 注入实现，测试注入 mock */
@@ -65,6 +67,7 @@ export class ContextUsageTracker {
         lastBreakdown: undefined,
         lastCcWindowTokens: 0,
         lastModelContextTokens: 0,
+        lastAutoCompactAtTokens: undefined,
     }
     /** 水位上报代际：compact_boundary（真实水位骤变）与主线 assistant 实时上报（更新读数）各自递增；
      *  onResult 的上报在 fetchSummary await 前后比对，代际变化 = 期间已有更新数据上报
@@ -80,25 +83,18 @@ export class ContextUsageTracker {
     constructor(private readonly channels: ContextUsageChannels) {}
 
     /** system/init 到达：记录 CLI 请求名。init 先于一切 assistant 到达且每次新 query（含 resume）
-     *  都重发，模型切换自动更新——窗口猜测与 result.modelUsage 同源的模型名 */
+     *  都重发，模型切换自动更新——requestModel 只用于 result.modelUsage 的精确匹配（展示字段） */
     onInit(model: string | undefined): void {
         if (model) this.requestModel = model
     }
 
-    /** 主线 assistant 到达即实时上报水位（turn 内逐步上涨）；零 usage（渠道不返回）跳过 */
-    onAssistantUsage(u: SDKAssistantMessage['message']['usage'], model?: string): void {
+    /** 主线 assistant 到达即实时上报水位（turn 内逐步上涨）；零 usage（渠道不返回）跳过。
+     *  窗口只认 summary 的 rawMaxTokens（query 就绪时采集），尚未拿到 → 本轮不上报：
+     *  宁可环显示不可用，也不拿猜测窗当分母（猜错会让百分比整个会话失真）。 */
+    onAssistantUsage(u: SDKAssistantMessage['message']['usage']): void {
         if (!hasAssistantUsage(u)) return  // 渠道零值/缺失跳过（判据与 calc 同源，勿内联重算）
         this.memory.lastAssistantUsage = u
-        // 窗口未记忆（首 turn / resume 后新进程）→ 按模型名预填猜测值，实时上报立即生效，
-        // 不必等第一个 result。注意：猜测仅在 result.modelUsage 携带 contextWindow 时才被
-        // 真实值覆盖；渠道不返回该字段时猜测值整个会话生效（已知取舍，pending #57）。
-        // 猜测输入优先用 init 的请求名（requestModel）——网关渠道 assistant.message.model
-        // 是上游真实名（如 glm-5.3），与 modelUsage 按请求名查的窗口知识不同源，会猜出
-        // 与 result 修正值不一致的窗口（实测 [1M] 请求被按上游名猜成 200k）
-        if (this.memory.lastMaxTokens === 0) {
-            this.memory.lastMaxTokens = guessContextWindow(this.requestModel ?? model) ?? 0
-        }
-        if (this.memory.lastMaxTokens === 0) return  // 模型名也缺失的极端情况，等 result 兜底
+        if (this.memory.lastMaxTokens === 0) return  // 窗口权威值未到（启动采集在途/不可用）
         const usage = calcContextUsageFromAssistant(u, this.memory.lastMaxTokens, this.memory.lastCostUsd)
         if (!usage) return
         // 实时读数代表当前最新水位，推进代际：作废仍在途的上一轮 result 上报（防乱序回退）
@@ -112,6 +108,8 @@ export class ContextUsageTracker {
                 ...usage,
                 ...(breakdown ? { breakdown } : {}),
                 ...(modelContextTokens > 0 ? { modelContextTokens } : {}),
+                ...(this.memory.lastAutoCompactAtTokens !== undefined
+                    ? { autoCompactAtTokens: this.memory.lastAutoCompactAtTokens } : {}),
             })
         } catch (e) { logger.debug('[remote]: reportContextUsage (assistant) failed', e) }
     }
@@ -124,11 +122,12 @@ export class ContextUsageTracker {
             this.memory.lastCostUsd = resultMsg.total_cost_usd ?? this.memory.lastCostUsd
             return
         }
-        // 请求名传入 result 刷新：modelUsage 多模型条目时按请求名精确选中主模型，
-        // 不靠「inputTokens 最大」启发式（子代理流量大的 turn 会误选，见 calcContextUsageFromResult）。
-        // 类目细分 + CC 有效窗口（rawMaxTokens，含用户 autocompact 阈值）先拉取再参与计算，
-        // 让本轮 result 的窗口口径即用上最新值（而非滞后一轮）。await 期间代际变化（下轮流式
-        // 上报 / compact_boundary 到达）→ 本条旧 turn 读数放弃，此刻再发会让水位环短暂回退
+        // 请求名传入 result 刷新：modelUsage 多模型条目时按请求名精确选中主模型（只用于
+        // 「模型上限」展示；窗口分母已是 summary 权威值）。
+        // 类目细分 + CC 有效窗口（rawMaxTokens，含用户 autocompact 阈值）+ 压缩触发点先拉取
+        // 再参与计算，让本轮 result 的窗口口径即用上最新值（而非滞后一轮）。await 期间代际
+        // 变化（下轮流式上报 / compact_boundary 到达）→ 本条旧 turn 读数放弃，此刻再发会让
+        // 水位环短暂回退
         const generation = this.generation
         const summary = await this.channels.fetchSummary()
         if (generation !== this.generation) return
@@ -136,6 +135,8 @@ export class ContextUsageTracker {
             if (summary.rawMaxTokens > 0) this.memory.lastCcWindowTokens = summary.rawMaxTokens
             const breakdown = extractBreakdown(summary) ?? undefined
             if (breakdown) this.memory.lastBreakdown = breakdown
+            // 每次 result 都以最新 summary 为准（含「用户关掉 autocompact」→ 刻度消失）
+            this.memory.lastAutoCompactAtTokens = resolveAutoCompactAtTokens(summary)
         }
         const r = calcContextUsageFromResult(resultMsg, this.memory.lastAssistantUsage, this.memory.lastMaxTokens, this.memory.lastCostUsd, this.requestModel, this.memory.lastCcWindowTokens)
         if (r.maxTokens > 0) this.memory.lastMaxTokens = r.maxTokens
@@ -147,6 +148,8 @@ export class ContextUsageTracker {
                 ...r.usage,
                 ...(this.memory.lastBreakdown ? { breakdown: this.memory.lastBreakdown } : {}),
                 ...(this.memory.lastModelContextTokens > 0 ? { modelContextTokens: this.memory.lastModelContextTokens } : {}),
+                ...(this.memory.lastAutoCompactAtTokens !== undefined
+                    ? { autoCompactAtTokens: this.memory.lastAutoCompactAtTokens } : {}),
             })
         } catch (e) {
             logger.debug('[remote]: reportContextUsage failed', e)
@@ -164,10 +167,13 @@ export class ContextUsageTracker {
         const usage = calcContextUsageFromCompact(postTokens, this.memory.lastMaxTokens, this.memory.lastCostUsd)
         if (!usage) return
         try {
-            // 模型最大窗口自记忆附带（compact 上报本体只有总量口径）
+            // 模型最大窗口与压缩触发点自记忆附带（compact 上报本体只有总量口径；窗口未变，
+            // 两者都不需重取）
             this.channels.reportUsage({
                 ...usage,
                 ...(this.memory.lastModelContextTokens > 0 ? { modelContextTokens: this.memory.lastModelContextTokens } : {}),
+                ...(this.memory.lastAutoCompactAtTokens !== undefined
+                    ? { autoCompactAtTokens: this.memory.lastAutoCompactAtTokens } : {}),
             })
         } catch (e) {
             logger.debug('[remote]: reportContextUsage (compact) failed', e)
@@ -175,27 +181,43 @@ export class ContextUsageTracker {
     }
 
     /**
-     * query 启动时采集首轮前水位：fresh query 无 response usage，summary 的 totalTokens
-     * 回退为类目估算之和（= 静态基础占用：system prompt + 工具定义 + CLAUDE.md + skills），
-     * rawMaxTokens 是 CC 权威窗口（替代 guessContextWindow 的 [1m] 正则猜测优先级）。
-     * 仅在尚无窗口记忆时上报（lastMaxTokens===0 = 本会话还没有 result）；拉取期间已有
-     * result 到达（竞态）则放弃——result 路径的实测值更权威。
-     * resume 会话由调用方跳过：daemon 已持久化真实水位/成本（web 首拉恢复），
-     * 静态基线 totalTokens + costUsd 0 会把真实读数覆盖回退到首个 result 才自愈
+     * query 启动时采集窗口（以及 fresh 会话的首轮前水位）。
+     *
+     * - 窗口：`rawMaxTokens` 是 CC 权威窗口（含用户 autocompact 阈值），**任何新增 query 都取**
+     *   （含 resume）——替代此前按模型名猜测的窗口猜测链；取不到（旧 CLI / 渠道不支持）
+     *   就什么都不记，水位环保持不可用，不用猜测值充数
+     * - 水位：fresh query 无 response usage，summary 的 totalTokens 回退为类目估算之和
+     *   （= 静态基础占用：system prompt + 工具定义 + CLAUDE.md + skills），可安全上报；
+     *   resume 时这个基线会把 daemon 已持久化的真实水位覆盖回退，故只取窗口
+     *   （reportBaseline=false），等首个 result 再纠偏
+     * - 拉取期间已有 result 到达（竞态）则放弃——result 路径的实测值更权威
      */
-    async collectStartupUsage(query: Query): Promise<void> {
+    async collectStartupUsage(query: Query, options: { reportBaseline?: boolean } = {}): Promise<void> {
         if (!query.getContextUsage) return
         if (this.memory.lastMaxTokens > 0) return
         try {
             const summary = await query.getContextUsage({ detail: 'summary' })
             if (this.memory.lastMaxTokens > 0) return  // 双检：await 期间 result 已到达
-            const rawMax = summary.rawMaxTokens > 0
-                ? summary.rawMaxTokens
-                : guessContextWindow(summary.model) ?? 0
-            if (rawMax <= 0) return
-            this.memory.lastMaxTokens = rawMax
-            this.memory.lastCcWindowTokens = summary.rawMaxTokens > 0 ? summary.rawMaxTokens : 0
+            if (summary.rawMaxTokens <= 0) return
+            this.memory.lastMaxTokens = summary.rawMaxTokens
+            this.memory.lastCcWindowTokens = summary.rawMaxTokens
+            this.memory.lastAutoCompactAtTokens = resolveAutoCompactAtTokens(summary)
+            if (options.reportBaseline === false) return
             const breakdown = extractBreakdown(summary) ?? undefined
+            // 拉取期间已有主线 assistant 到达（首轮抢跑）：它的用法比静态基线新，直接按它报，
+            // 否则首 turn 的实时水位要等 result 才第一次出现
+            const live = this.memory.lastAssistantUsage
+                ? calcContextUsageFromAssistant(this.memory.lastAssistantUsage, summary.rawMaxTokens, this.memory.lastCostUsd)
+                : null
+            if (live) {
+                this.channels.reportUsage({
+                    ...live,
+                    ...(breakdown ? { breakdown } : {}),
+                    ...(this.memory.lastAutoCompactAtTokens !== undefined
+                        ? { autoCompactAtTokens: this.memory.lastAutoCompactAtTokens } : {}),
+                })
+                return
+            }
             // 启动快照不缓存进 lastBreakdown：采样时机注定早于 MCP 就绪（/clear 重启瞬间
             // MCP server 尚未连接完成，CC 类目里没有 MCP tools），缓存会让这份不完整明细
             // 随首 turn 的实时上报持续扩散（总量/明细口径错位），直到首个 result 才自愈。
@@ -203,10 +225,12 @@ export class ContextUsageTracker {
             if (summary.totalTokens <= 0 && !breakdown) return  // 全空响应不产出 0 水位噪声
             this.channels.reportUsage({
                 totalTokens: summary.totalTokens,
-                maxTokens: rawMax,
-                percentage: (summary.totalTokens / rawMax) * 100,
+                maxTokens: summary.rawMaxTokens,
+                percentage: (summary.totalTokens / summary.rawMaxTokens) * 100,
                 costUsd: 0,
                 ...(breakdown ? { breakdown } : {}),
+                ...(this.memory.lastAutoCompactAtTokens !== undefined
+                    ? { autoCompactAtTokens: this.memory.lastAutoCompactAtTokens } : {}),
             })
         } catch (e) {
             logger.debug('[remote]: startup getContextUsage failed', e)
@@ -223,6 +247,7 @@ export class ContextUsageTracker {
         this.memory.lastBreakdown = undefined
         this.memory.lastCcWindowTokens = 0
         this.memory.lastModelContextTokens = 0
+        this.memory.lastAutoCompactAtTokens = undefined
         this.generation++
     }
 }

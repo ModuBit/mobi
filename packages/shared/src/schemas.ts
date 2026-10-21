@@ -566,19 +566,20 @@ export type ContextUsageBreakdown = z.infer<typeof ContextUsageBreakdownSchema>
 /**
  * 上下文窗口用量快照
  *
- * 完全由 SDK 消息流派生，**不调用** `Query.getContextUsage()`（后者会触发大量
- * count_tokens / Haiku 兜底请求，撑爆 provider 请求频率限制）。由 CLI 本地组装：
- * - totalTokens：主线最后一条 assistant 消息的 input + cache_creation + cache_read + output
- *   （message_start 三项输入 + message_delta 累计 output = 该条消息完成后的瞬时窗口占用）
- * - maxTokens：窗口大小，权威来源 result.modelUsage[model].contextWindow（launcher 记忆）；
- *   首 turn / resume 后由模型名猜测预填（guessContextWindow，[1m]→1M 其余→200k），
- *   result 携带 contextWindow 时用真实值覆盖（渠道不返回时猜测值整个会话生效，见 pending #57）
+ * 由 SDK 消息流 + `Query.getContextUsage({detail:'summary'})` 共同派生。summary 口径是
+ * 「最近一次 response 的 usage + 本地估算」，**不触发** count_tokens / Haiku 兜底请求
+ * （`detail` 省略时的 full 模式才会）。分工：
+ * - totalTokens：turn 进行中用主线最后一条 assistant 的 input + cache_creation + cache_read
+ *   + output（message_start 三项输入 + message_delta 累计 output = 瞬时窗口占用）；
+ *   turn 边界（query 就绪 / result / compact_boundary）由 summary 或 post_tokens 锚定
+ * - maxTokens：窗口大小，**唯一**权威来源是 summary.rawMaxTokens（经 CC 解析链，含用户
+ *   autocompact 阈值）；拿不到时不产读数，环显示不可用（不再按模型名猜测）
  * - percentage：totalTokens / maxTokens × 100
  * - costUsd：result.total_cost_usd（会话累计成本，launcher 记忆）
  * 上报时机：每条主线 assistant 消息实时上报（turn 内上涨）；result 兜底一次；compact_boundary
  * 用 post_tokens 反映压缩后占用。注意 result.usage 是 turn 内累计，不是瞬时水位，不作 totalTokens。
  *
- * 分类细分经可选 breakdown 字段携带（getContextUsage({detail:'summary'}) 本地估算口径，
+ * 分类细分经可选 breakdown 字段携带（getContextUsage summary 本地估算口径，
  * 缺省 = 该轮无细分——旧 CLI / local 模式 / 采集失败）。
  * 「距窗口上限剩余」= maxTokens − totalTokens，无需阈值。
  */
@@ -602,6 +603,12 @@ export const ContextUsageSchema = z.object({
     /** 模型最大窗口（modelUsage 主模型 contextWindow，未受 autocompact 收缩）。
      *  仅信息展示（Popover「模型上限」行），不参与百分比计算；缺省 = 未知（隐藏该行） */
     modelContextTokens: z.number().optional(),
+    /**
+     * 自动压缩触发点（tokens，取自 summary.autoCompactThreshold）。
+     * 环上刻度标注「再涨多少会触发压缩」；只在启用且阈值为显式配置时提供——自动推导的
+     * 阈值随模型/窗口浮动，缺省 = 不画刻度
+     */
+    autoCompactAtTokens: z.number().optional(),
 })
 
 export type ContextUsage = z.infer<typeof ContextUsageSchema>

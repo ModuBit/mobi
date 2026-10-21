@@ -45,28 +45,24 @@ const R = 10
 const CIRC = 2 * Math.PI * R
 
 /**
- * 上下文质量衰减线（绝对值集合）：超过该值长上下文召回/效果开始变差，与窗口大小无关。
- * 在环上各 threshold/maxTokens 角度处画一根静态橙色短刻度线（仪表红线隐喻），弧越过即
- * 「进衰减区」；仅作位置标注、不参与变色——环色仍由窗口百分比四档决定，两维度零冲突。
- * ratio ≥ 1（如窗口 ≤ 该档位）时线与满弧终点重合/越界，无意义，不画。
+ * 自动压缩刻度位置。压缩触发点来自 CLI（summary.autoCompactThreshold），不由前端假设
+ * 「200k/400k 开始衰减」——阈值随用户配置与模型窗口变化。在 ratio 角度处画一根橙色短刻度线
+ * （仪表红线隐喻），弧越过即进入压缩区；仅作位置标注、不参与变色——环色仍由窗口百分比四档决定。
+ * 阈值缺省（未启用 / 自动推导 / 未知）或 ratio 越界（≤0、≥1）时不画。
  */
-const DEGRADATION_THRESHOLDS = [200_000, 400_000]
-/** 刻度线径向范围（略跨环带出头，r7.5→r12.5） */
 const TICK_R_INNER = 7.5
 const TICK_R_OUTER = 12.5
 
-/** 计算各阈值刻度线两端坐标；ratio 无效或 ≥1 的档位跳过 */
-function degradationTicks(maxTokens: number): Array<{ x1: number; y1: number; x2: number; y2: number }> {
-    return DEGRADATION_THRESHOLDS.flatMap((threshold) => {
-        const ratio = threshold / maxTokens
-        if (!Number.isFinite(ratio) || ratio <= 0 || ratio >= 1) return []
-        const theta = ratio * 2 * Math.PI // 顶部起顺时针
-        const sin = Math.sin(theta), cos = Math.cos(theta)
-        return [{
-            x1: 12 + TICK_R_INNER * sin, y1: 12 - TICK_R_INNER * cos,
-            x2: 12 + TICK_R_OUTER * sin, y2: 12 - TICK_R_OUTER * cos,
-        }]
-    })
+function compactTick(maxTokens: number, autoCompactAtTokens?: number): { x1: number; y1: number; x2: number; y2: number } | null {
+    if (autoCompactAtTokens === undefined || maxTokens <= 0) return null
+    const ratio = autoCompactAtTokens / maxTokens
+    if (!Number.isFinite(ratio) || ratio <= 0 || ratio >= 1) return null
+    const theta = ratio * 2 * Math.PI // 顶部起顺时针
+    const sin = Math.sin(theta), cos = Math.cos(theta)
+    return {
+        x1: 12 + TICK_R_INNER * sin, y1: 12 - TICK_R_INNER * cos,
+        x2: 12 + TICK_R_OUTER * sin, y2: 12 - TICK_R_OUTER * cos,
+    }
 }
 
 interface ContextRingProps {
@@ -92,7 +88,7 @@ export function ContextRing({ usage, size = 20, placement = 'top' }: ContextRing
         : tone === 'notice' ? token.colorWarning
         : token.colorTextTertiary
     const remaining = Math.max(0, usage.maxTokens - usage.totalTokens)
-    const ticks = degradationTicks(usage.maxTokens)
+    const tick = compactTick(usage.maxTokens, usage.autoCompactAtTokens)
     const usedSummary = `${formatTokens(usage.totalTokens)} / ${formatTokens(usage.maxTokens)} (${pct}%)`
     // 受控 Popover：打开期间隐藏 hover Tooltip（两者同屏重叠）；移动端无 hover，整体禁用。
     // 关闭 Popover 后 title 恢复但 AppTooltip 的内部打开态已被清空（title 清空时同步复位），
@@ -118,11 +114,11 @@ export function ContextRing({ usage, size = 20, placement = 'top' }: ContextRing
                 strokeDashoffset={CIRC * (1 - pct / 100)}
                 transform="rotate(-90 12 12)"
             />
-            {/* 衰减刻度线（200k/400k 档位）：画在进度弧之上（后画），横跨环带出头，弧越过即进衰减区 */}
-            {ticks.map((tick, i) => (
-                <line key={i} x1={tick.x1} y1={tick.y1} x2={tick.x2} y2={tick.y2}
+            {/* 自动压缩刻度（后画、压在弧上）：横跨环带出头，弧越过即「该压缩了」 */}
+            {tick && (
+                <line x1={tick.x1} y1={tick.y1} x2={tick.x2} y2={tick.y2}
                     stroke="#fa8c16" strokeWidth="1.4" strokeLinecap="round" />
-            ))}
+            )}
         </svg>
     )
 

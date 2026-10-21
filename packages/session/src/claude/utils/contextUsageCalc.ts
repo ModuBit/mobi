@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { SDKControlGetContextUsageResponse, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { ContextUsage } from '@mobi/shared/types'
 
 /**
@@ -99,9 +99,10 @@ export function hasAssistantUsage(usage: AssistantUsage | undefined): boolean {
  * 不是瞬时窗口占用——**绝不**用 result.usage 的三项和当 totalTokens。
  * maxTokens / costUsd 只在此消息（modelUsage 主模型 contextWindow / total_cost_usd）。
  *
- * 主模型识别：优先按 requestModel（init 请求名）精确匹配 modelUsage key——两者同源；
- * 匹配不到才退回「累计 inputTokens 最大」启发式。子代理流量大的 turn 里启发式会误选
- * 小窗口的子代理条目，把已正确的 1M 记忆刷成 200k（019bef94 实测）。
+ * 主模型识别：只认 requestModel（init 请求名）与 modelUsage key 的精确匹配——两者同源。
+ * 不再退回「累计 inputTokens 最大」启发式：子代理流量大的 turn 会误选小窗口的子代理条目，
+ * 把已正确的 1M 记忆刷成 200k（019bef94 实测）；窗口权威来源是 summary 的 rawMaxTokens，
+ * 匹配不到时宁可用旧记忆，也不拿子代理条目的窗口充数。
  */
 export function calcContextUsageFromResult(
     resultMsg: SDKResultMessage,
@@ -112,11 +113,7 @@ export function calcContextUsageFromResult(
     ccWindowTokens?: number,
 ): ResultUsageRefresh {
     const entries = Object.entries(resultMsg.modelUsage ?? {})
-    const exactPair = requestModel ? entries.find(([name]) => name === requestModel) : undefined
-    // 启发式兜底：取累计 inputTokens 最大的条目（fallback/subagent 可能有多个，主对话占大头）
-    const mainPair = exactPair
-        ?? (entries.length > 0 ? entries.reduce((a, b) => (b[1].inputTokens > a[1].inputTokens ? b : a)) : undefined)
-    const main = mainPair?.[1]
+    const main = requestModel ? entries.find(([name]) => name === requestModel)?.[1] : undefined
     // 窗口优先级：CC 有效窗口（getContextUsage rawMaxTokens，经 CC 内部解析链、含用户
     // autocompact 阈值——设 350k 时 = 350k 而非模型最大 1m；水位语义「距压缩还有多少」）
     // > modelUsage.contextWindow（模型最大窗口实测）> lastMaxTokens 记忆
@@ -150,4 +147,21 @@ export function calcContextUsageFromCompact(
         percentage: (postTokens / lastMaxTokens) * 100,
         costUsd: lastCostUsd,
     }
+}
+
+/**
+ * summary 里的自动压缩触发点（tokens），供环上刻度标注「再涨多少会触发压缩」。
+ *
+ * 只有「启用 && 阈值有值 && 不是自动推导」时才采纳：`autocompactSource === 'auto'` 的阈值
+ * 随模型/窗口浮动，画在环上没有信息量（与 Desktop 的 autoCompactsAtPercent 判定同源）。
+ * 注：`autocompactSource` 尚未进入 SDK 类型声明，按可选字段读取（CLI 实际返回该字段）。
+ */
+export function resolveAutoCompactAtTokens(
+    summary: SDKControlGetContextUsageResponse | undefined,
+): number | undefined {
+    if (!summary?.isAutoCompactEnabled) return undefined
+    const threshold = summary.autoCompactThreshold
+    if (threshold === undefined || !Number.isFinite(threshold) || threshold <= 0) return undefined
+    const source = (summary as { autocompactSource?: string }).autocompactSource
+    return source === 'auto' ? undefined : threshold
 }

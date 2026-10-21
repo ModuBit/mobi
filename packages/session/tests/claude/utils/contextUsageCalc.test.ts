@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { calcContextUsageFromAssistant, calcContextUsageFromCompact, calcContextUsageFromResult, hasAssistantUsage } from '../../../src/claude/utils/contextUsageCalc'
+import { calcContextUsageFromAssistant, calcContextUsageFromCompact, calcContextUsageFromResult, hasAssistantUsage, resolveAutoCompactAtTokens } from '../../../src/claude/utils/contextUsageCalc'
 import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk'
 
 describe('calcContextUsageFromAssistant', () => {
@@ -77,7 +77,7 @@ describe('calcContextUsageFromResult（新口径）', () => {
         const r = calcContextUsageFromResult(
             makeResult({ input_tokens: 1509, cache_creation_input_tokens: 0, cache_read_input_tokens: 255232, output_tokens: 353 }),
             { input_tokens: 1199, cache_creation_input_tokens: 0, cache_read_input_tokens: 127744 },
-            0, 0)
+            0, 0, 'claude-opus-4-8[1m]')
         // 128943 = 1199+127744（assistant 瞬时），不是 256741（result 累计）
         expect(r.usage).toEqual({
             totalTokens: 128943, maxTokens: 1_000_000, percentage: 12.8943, costUsd: 0.5,
@@ -88,7 +88,9 @@ describe('calcContextUsageFromResult（新口径）', () => {
     })
 
     it('无可靠 assistant usage → usage 为 null 但记忆字段仍返回', () => {
-        const r = calcContextUsageFromResult(makeResult({ input_tokens: 1509, cache_read_input_tokens: 255232 }), undefined, 0, 0)
+        const r = calcContextUsageFromResult(
+            makeResult({ input_tokens: 1509, cache_read_input_tokens: 255232 }),
+            undefined, 0, 0, 'claude-opus-4-8[1m]')
         expect(r.usage).toBeNull()
         expect(r.maxTokens).toBe(1_000_000)
     })
@@ -97,16 +99,16 @@ describe('calcContextUsageFromResult（新口径）', () => {
         // 用户设 autocompact 350k：模型最大窗口 1m，但压缩线在 350k——水位语义「距压缩还有多少」
         const r = calcContextUsageFromResult(
             makeResult({ input_tokens: 1509, cache_read_input_tokens: 255232 }),
-            undefined, 0, 0, undefined, 350_000)
+            undefined, 0, 0, 'claude-opus-4-8[1m]', 350_000)
         expect(r.maxTokens).toBe(350_000)
         // 模型最大窗口单独透出（信息展示，不作分母）
         expect(r.modelContextTokens).toBe(1_000_000)
     })
 
-    it('CC 窗口未知（0/undefined）→ 回落 modelUsage.contextWindow', () => {
+    it('CC 窗口未知（0/undefined）→ 只回落请求名精确命中的 modelUsage 窗口', () => {
         const r = calcContextUsageFromResult(
             makeResult({ input_tokens: 1509, cache_read_input_tokens: 255232 }),
-            undefined, 200_000, 0, undefined, 0)
+            undefined, 200_000, 0, 'claude-opus-4-8[1m]', 0)
         expect(r.maxTokens).toBe(1_000_000)
     })
 
@@ -145,18 +147,20 @@ describe('calcContextUsageFromResult（新口径）', () => {
         expect(r.usage?.maxTokens).toBe(1_000_000)
     })
 
-    it('请求名未命中任何 key（旧版 SDK/异常）→ 回退「inputTokens 最大」启发式', () => {
+    it('请求名未命中任何 key → 不采子代理窗口，沿用旧记忆（启发式已删除）', () => {
         const r = calcContextUsageFromResult(
             makeMultiModelResult(),
-            undefined, 0, 0,
+            undefined, 1_000_000, 0,
             'some-model-not-in-usage',
         )
-        expect(r.maxTokens).toBe(200_000)   // 启发式选中 inputTokens 最大的 sonnet 条目
+        expect(r.maxTokens).toBe(1_000_000)
+        expect(r.modelContextTokens).toBeUndefined()   // 展示字段也不拿子代理条目顶替
     })
 
-    it('未传请求名 → 保持启发式行为', () => {
-        const r = calcContextUsageFromResult(makeMultiModelResult(), undefined, 0, 0)
-        expect(r.maxTokens).toBe(200_000)
+    it('未传请求名 → 同样只用旧记忆', () => {
+        const r = calcContextUsageFromResult(makeMultiModelResult(), undefined, 500_000, 0)
+        expect(r.maxTokens).toBe(500_000)
+        expect(r.modelContextTokens).toBeUndefined()
     })
 
     it('result 无 modelUsage → 沿用旧窗口记忆；两者皆无 → usage 为 null', () => {
@@ -182,5 +186,25 @@ describe('hasAssistantUsage（判据单一来源）', () => {
         expect(hasAssistantUsage({ input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 })).toBe(false)
         expect(hasAssistantUsage({})).toBe(false)
         expect(hasAssistantUsage(undefined)).toBe(false)
+    })
+})
+
+describe('resolveAutoCompactAtTokens（环刻度来源）', () => {
+    const summary = (overrides: Record<string, unknown>) => ({
+        rawMaxTokens: 1_000_000, totalTokens: 0, categories: [],
+        isAutoCompactEnabled: true,
+        autoCompactThreshold: 350_000,
+        ...overrides,
+    }) as never
+
+    it('启用 + 阈值 + 非自动推导 → 采纳阈值', () => {
+        expect(resolveAutoCompactAtTokens(summary({}))).toBe(350_000)
+    })
+
+    it('未启用 / 阈值缺失 / 自动推导 → 不采纳（不画刻度）', () => {
+        expect(resolveAutoCompactAtTokens(summary({ isAutoCompactEnabled: false }))).toBeUndefined()
+        expect(resolveAutoCompactAtTokens(summary({ autoCompactThreshold: undefined }))).toBeUndefined()
+        expect(resolveAutoCompactAtTokens(summary({ autocompactSource: 'auto' }))).toBeUndefined()
+        expect(resolveAutoCompactAtTokens(undefined)).toBeUndefined()
     })
 })
