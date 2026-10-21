@@ -62,7 +62,8 @@ function makeReviver(options: {
 }) {
     const spawned: Array<{ directory: string; options: Record<string, unknown> }> = []
     const activationErrors: Array<{ code: string; detail?: string }> = []
-    const detached: string[] = []
+    const merges: Array<[string, string]> = []
+    const redelivered: string[] = []
     let waited = 0
     const reviver = new SessionReviver({
         sessionCache: {
@@ -78,7 +79,7 @@ function makeReviver(options: {
                 if (options.lookupThrows) throw options.lookupThrows
                 return options.session ?? null
             },
-            mergeSessions: async () => undefined,
+            mergeSessions: async (oldId: string, newId: string) => { merges.push([oldId, newId]) },
         },
         executor: {
             spawnSession: async (directory, spawnOptions) => {
@@ -94,13 +95,9 @@ function makeReviver(options: {
             return options.waitForActive ? options.waitForActive() : true
         },
         isCliAttached: options.isCliAttached ?? (() => true),
-        // 生产实现是 SessionCache.markDetached：内存行同步翻 inactive，这里照做的同时记账
-        markDetached: (sessionId: string) => {
-            detached.push(sessionId)
-            if (options.session?.id === sessionId) options.session.active = false
-        },
+        redeliverQueued: (sessionId: string) => { redelivered.push(sessionId) },
     })
-    return { reviver, spawned, activationErrors, detached, waited: () => waited }
+    return { reviver, spawned, activationErrors, merges, redelivered, waited: () => waited }
 }
 
 describe('SessionReviver — intent 到预算语义的单一映射', () => {
@@ -138,21 +135,22 @@ describe('SessionReviver — intent 到预算语义的单一映射', () => {
 })
 
 describe('SessionReviver — active 是心跳推断，连接事实优先', () => {
-    test('active 但 CLI 未附着（强杀窗口）→ 就地纠正并照常唤醒', async () => {
-        const { reviver, spawned, detached } = makeReviver({
-            session: makeSession({ active: true }),
+    test('active 但 CLI 未附着（强杀窗口）→ 照常唤醒；读路径不改缓存（可能只是瞬时断线）', async () => {
+        const session = makeSession({ active: true })
+        const { reviver, spawned } = makeReviver({
+            session,
             isCliAttached: () => false,
         })
 
         const result = await reviver.wake('s1')
 
-        expect(detached).toEqual(['s1'])
         expect(spawned).toHaveLength(1)
+        expect(session.active).toBe(true)   // 死亡由心跳过期收口，读路径只读不写
         expect(result).toEqual({ type: 'success', sessionId: 's1' })
     })
 
     test('active 且附着 → 不擦除激活态、不重复 spawn', async () => {
-        const { reviver, spawned, detached } = makeReviver({
+        const { reviver, spawned } = makeReviver({
             session: makeSession({ active: true }),
             isCliAttached: () => true,
         })
@@ -160,7 +158,6 @@ describe('SessionReviver — active 是心跳推断，连接事实优先', () =>
         await reviver.wake('s1')
 
         expect(spawned).toHaveLength(0)
-        expect(detached).toEqual([])
     })
 
     test('手动 revive 同判据：未附着的 active 会话也能被拉起', async () => {
@@ -175,13 +172,35 @@ describe('SessionReviver — active 是心跳推断，连接事实优先', () =>
         expect(spawned).toHaveLength(1)
     })
 
-    test('未注入探针（测试/直跑形态）→ 沿用旧语义：active 即视为活着', async () => {
-        const { reviver, spawned, detached } = makeReviver({ session: makeSession({ active: true }) })
+    test('缺省探针视为附着 → 沿用旧语义：active 即视为活着', async () => {
+        const { reviver, spawned } = makeReviver({ session: makeSession({ active: true }) })
 
         await reviver.wake('s1')
 
         expect(spawned).toHaveLength(0)
-        expect(detached).toEqual([])
+    })
+})
+
+describe('SessionReviver — 会话 id 归并后的补投', () => {
+    test('resume 以新 id 上线 → 归并后补投新 id（附着补投先于归并，搬过来的 queued 消息需再触发）', async () => {
+        const { reviver, merges, redelivered } = makeReviver({
+            session: makeSession(),
+            spawnResult: { type: 'success', sessionId: 's2' },
+        })
+
+        await reviver.revive('s1', 'default')
+
+        expect(merges).toEqual([['s1', 's2']])
+        expect(redelivered).toEqual(['s2'])
+    })
+
+    test('id 未变（无需归并）→ 不重复补投（附着回调已负责）', async () => {
+        const { reviver, merges, redelivered } = makeReviver({ session: makeSession() })
+
+        await reviver.revive('s1', 'default')
+
+        expect(merges).toEqual([])
+        expect(redelivered).toEqual([])
     })
 })
 

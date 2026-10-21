@@ -197,6 +197,30 @@ describe('SessionCache.handleContextUsage', () => {
         const pushed = emits.filter(e => e.type === 'session-updated').pop()
         expect(pushed).toBeTruthy()
     })
+
+    test('新上报成本为 0 且历史非 0 → 续用历史成本（进程重启/流式首轮不把 $ 刷成 0）', () => {
+        const session = cache.getOrCreateSession('tag-ctx-cost', { path: '/tmp/p' }, null, 'default')
+        cache.handleContextUsage({ sid: session.id, contextUsage: usage })
+
+        // resume 后首个 assistant 的实时上报：CLI 侧累计成本记忆尚未建立
+        cache.handleContextUsage({
+            sid: session.id,
+            contextUsage: { ...usage, totalTokens: 125000, costUsd: 0 },
+        })
+        expect(cache.getSession(session.id)?.runtimeState?.contextUsage?.costUsd).toBe(0.043)
+
+        // 真实 result 到达 → 正常覆盖
+        cache.handleContextUsage({ sid: session.id, contextUsage: { ...usage, costUsd: 0.06 } })
+        expect(cache.getSession(session.id)?.runtimeState?.contextUsage?.costUsd).toBe(0.06)
+    })
+
+    test('清空后再报 0 成本 → 保持 0（/clear 已先 null，不复活旧成本）', () => {
+        const session = cache.getOrCreateSession('tag-ctx-cost-clear', { path: '/tmp/p' }, null, 'default')
+        cache.handleContextUsage({ sid: session.id, contextUsage: usage })
+        cache.handleContextUsage({ sid: session.id, contextUsage: null })
+        cache.handleContextUsage({ sid: session.id, contextUsage: { ...usage, totalTokens: 1000, costUsd: 0 } })
+        expect(cache.getSession(session.id)?.runtimeState?.contextUsage?.costUsd).toBe(0)
+    })
 })
 
 describe('SessionCache.handleSessionEnd · SessionEndReason 落库（票 1.1）', () => {
@@ -883,7 +907,7 @@ describe('SessionCache.getSessionByNamespace 缓存 miss 回落数据库', () =>
     })
 })
 
-describe('SessionCache.markDetached — 连接事实纠正陈旧 active', () => {
+describe('SessionCache.markDetached — 心跳过期纠正陈旧 active', () => {
     function makeCache() {
         const store = new Store(':memory:')
         const emitted: Array<{ type: string; sessionId?: string; data?: unknown }> = []

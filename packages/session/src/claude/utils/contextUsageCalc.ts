@@ -114,8 +114,7 @@ export function calcContextUsageFromResult(
 ): ResultUsageRefresh {
     const entries = Object.entries(resultMsg.modelUsage ?? {})
     const main = requestModel ? entries.find(([name]) => name === requestModel)?.[1] : undefined
-    // 窗口优先级：CC 有效窗口（getContextUsage rawMaxTokens，经 CC 内部解析链、含用户
-    // autocompact 阈值——设 350k 时 = 350k 而非模型最大 1m；水位语义「距压缩还有多少」）
+    // 窗口优先级：CC 有效窗口（getContextUsage rawMaxTokens，经 CC 内部解析链）
     // > modelUsage.contextWindow（模型最大窗口实测）> lastMaxTokens 记忆
     const maxTokens = (ccWindowTokens && ccWindowTokens > 0)
         ? ccWindowTokens

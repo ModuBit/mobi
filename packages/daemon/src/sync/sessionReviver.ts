@@ -64,11 +64,15 @@ export type SessionReviverDeps = {
     /**
      * CLI socket 此刻是否还挂在会话上（连接事实；唯一构造者 SyncEngine 注入 socket 层
      * 持有者探针）。心跳只说明 30s 内报过活——进程被强杀时 CLI 来不及上报 session-end，
-     * 这个窗口里 active 是陈旧事实，靠本探针纠正。
+     * 这个窗口里 active 是陈旧事实：唤醒必须再问一次连接，不能只信 active。
      */
     isCliAttached: (sessionId: string) => boolean
-    /** 陈旧 active 的就地纠正（生产注入 SessionCache.markDetached） */
-    markDetached: (sessionId: string) => void
+    /**
+     * 补投仍 queued 的消息（CLI 附着时已触发一次）。resume 的 CLI 可能以新 id 上线，
+     * 归并把旧 id 下的排队消息搬到新 id；附着补投发生在这之前（socket 连接早于 webhook
+     * 归并），搬过来的消息就再也没有触发器——归并后必须再触发一次。
+     */
+    redeliverQueued: (sessionId: string) => void
 }
 
 export class SessionReviver {
@@ -78,15 +82,17 @@ export class SessionReviver {
     constructor(private readonly deps: SessionReviverDeps) {}
 
     /**
-     * 「此刻真能收消息吗」的唯一判据：active 只是心跳推断（30s 窗口），CLI socket
-     * 是否还挂在会话上才是连接事实。两者冲突时以连接为准并就地纠正缓存——
-     * 否则唤醒会以为「还活着」直接放行，排队消息与补投都永远等不到触发器。
+     * 「此刻真能收消息吗」的判据：active 是心跳推断（30s 窗口），CLI socket 是否还挂在
+     * 会话上才是连接事实。两者冲突时按「未附着」处理、让唤醒继续走 spawn——同 session
+     * 已有活进程时 spawnDedup 会 already-running 零等待返回，消息等重连后由附着补投。
+     *
+     * 这里**不改缓存**：socket 脱落也可能只是瞬时断线（Wi-Fi 切换/ping 超时），按死亡纠正
+     * 会把 running 一并清掉并广播 active:false，UI 闪成不活跃；真正的死亡由心跳过期
+     * （expireInactive → markDetached）收口，读路径只读不写。
      */
     private isLive(session: Session): boolean {
         if (!session.active) return false
-        if (this.deps.isCliAttached(session.id)) return true
-        this.deps.markDetached(session.id)
-        return false
+        return this.deps.isCliAttached(session.id)
     }
 
     /**
@@ -162,7 +168,7 @@ export class SessionReviver {
         const intent: ReviveIntent = opts?.intent ?? 'activate'
         const spawnOptions = {   // Mobi 当前仅支持 Claude（agent 缺省）；resume 无 sessionType/worktreeName/workspaceId
             // sessionId：本行的查重键——目标行已有活 child（含在途启动中）时 already-running 零等待
-            // 返回，恢复交给 CLI 重连 + handleSessionAlive 补投（#108 首条消息唤醒竞态的闸）
+            // 返回，恢复交给 CLI 重连 + 附着补投（onCliAttached，见 handleCliAttached）
             sessionId: access.sessionId,
             // 预算闸来源：intent 映射单源（activate→user 永不拒绝 / prewarm→warm yield）
             acquireReason: INTENT_TO_ACQUIRE_REASON[intent],
@@ -187,7 +193,7 @@ export class SessionReviver {
         if (spawnResult.type === 'already-running') {
             // 唤醒去重（.scratch/wake-dedup）：executor 报告已有活 child 在 resume 该目标，
             // 未 spawn 新进程。旧进程断连中正无限重连（≤5s 间隔），恢复交给其重连 +
-            // web 终端 create 重试 / handleSessionAlive 补投收敛——daemon 零等待：不得落到
+            // 附着补投（onCliAttached）收敛——daemon 零等待：不得落到
             // waitForActive，否则断连场景（重连遥遥无期）会干等满 15s
             return { type: 'success', sessionId: access.sessionId }
         }
@@ -215,6 +221,9 @@ export class SessionReviver {
                 const message = error instanceof Error ? error.message : 'Failed to merge resumed session'
                 return { type: 'error', message, code: 'resume_failed' }
             }
+            // 归并把旧 id 下仍 queued 的消息搬到新 id，而附着补投（onCliAttached）先于归并
+            // 发生——搬过来的消息否则永久滞留，直到用户再发一条（2026-10-21 merge 竞态）
+            this.deps.redeliverQueued(spawnResult.sessionId)
         }
 
         return { type: 'success', sessionId: spawnResult.sessionId }

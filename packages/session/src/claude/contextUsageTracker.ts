@@ -38,8 +38,9 @@ export type ContextUsageMemory = {
     /** 最近一次类目细分（result 时拉取缓存）：实时上报附带，防流式期间细分被无 breakdown 的上报覆盖丢失 */
     lastBreakdown: ContextUsageBreakdown | undefined
     /** CC 有效窗口（getContextUsage summary 的 rawMaxTokens）：经 CC 内部解析链（env → settings →
-     *  clientdata → 模型档位），已含用户 autocompact 阈值（如设 350k 时 = 350k，非模型最大 1m）。
-     *  水位语义「距压缩还有多少」，**唯一**窗口权威来源（不再按模型名猜测）。
+     *  clientdata → 模型档位）解析出的窗口大小，**唯一**窗口权威来源（不再按模型名猜测）。
+     *  与压缩触发点（autoCompactThreshold，见 lastAutoCompactAtTokens）是两个独立事实——
+     *  阈值可能小于窗口（E2E 实测 267k / 300k），环上单独画刻度，勿把两者混为一谈。
      *  0 = 未知（query 未就绪/渠道不支持），此时不产水位读数 */
     lastCcWindowTokens: number
     /** 模型最大窗口（result.modelUsage 主模型 contextWindow）：信息展示（Popover「模型上限」行），
@@ -96,6 +97,26 @@ export class ContextUsageTracker {
         return payload
     }
 
+    /**
+     * 采纳 summary 的记忆块（窗口 / 类目细分 / 压缩触发点）：result 兜底与启动采集共用
+     * 同一套守卫与更新顺序，避免下次给 summary 增派记忆字段时只改一边。启动采集早于 MCP
+     * 就绪，快照可能缺 MCP 类目，故 cacheBreakdown=false 时只返回、不进记忆（见调用处）。
+     */
+    private adoptSummary(
+        summary: SDKControlGetContextUsageResponse,
+        options: { cacheBreakdown: boolean },
+    ): ContextUsageBreakdown | undefined {
+        if (summary.rawMaxTokens > 0) {
+            this.memory.lastMaxTokens = summary.rawMaxTokens
+            this.memory.lastCcWindowTokens = summary.rawMaxTokens
+        }
+        const breakdown = extractBreakdown(summary) ?? undefined
+        if (options.cacheBreakdown && breakdown) this.memory.lastBreakdown = breakdown
+        // 每次都以最新 summary 为准（含「用户关掉 autocompact」→ 刻度消失）
+        this.memory.lastAutoCompactAtTokens = resolveAutoCompactAtTokens(summary)
+        return breakdown
+    }
+
     /** system/init 到达：记录 CLI 请求名。init 先于一切 assistant 到达且每次新 query（含 resume）
      *  都重发，模型切换自动更新——requestModel 只用于 result.modelUsage 的精确匹配（展示字段） */
     onInit(model: string | undefined): void {
@@ -137,13 +158,7 @@ export class ContextUsageTracker {
         const generation = this.generation
         const summary = await this.channels.fetchSummary()
         if (generation !== this.generation) return
-        if (summary) {
-            if (summary.rawMaxTokens > 0) this.memory.lastCcWindowTokens = summary.rawMaxTokens
-            const breakdown = extractBreakdown(summary) ?? undefined
-            if (breakdown) this.memory.lastBreakdown = breakdown
-            // 每次 result 都以最新 summary 为准（含「用户关掉 autocompact」→ 刻度消失）
-            this.memory.lastAutoCompactAtTokens = resolveAutoCompactAtTokens(summary)
-        }
+        if (summary) this.adoptSummary(summary, { cacheBreakdown: true })
         const r = calcContextUsageFromResult(resultMsg, this.memory.lastAssistantUsage, this.memory.lastMaxTokens, this.memory.lastCostUsd, this.requestModel, this.memory.lastCcWindowTokens)
         if (r.maxTokens > 0) this.memory.lastMaxTokens = r.maxTokens
         if (r.modelContextTokens !== undefined) this.memory.lastModelContextTokens = r.modelContextTokens
@@ -190,15 +205,16 @@ export class ContextUsageTracker {
     async collectStartupUsage(query: Query, options: { reportBaseline?: boolean } = {}): Promise<void> {
         if (!query.getContextUsage) return
         if (this.memory.lastMaxTokens > 0) return
+        // 代际快照：await 期间可能 /clear（reset 归零记忆并推进代际）——此时旧 query 的
+        // summary 属于上一个上下文，双检（lastMaxTokens 已被归零）会误放行，必须按代际丢弃
+        const generation = this.generation
         try {
             const summary = await query.getContextUsage({ detail: 'summary' })
+            if (generation !== this.generation) return  // 上下文已重置，旧 query 快照作废
             if (this.memory.lastMaxTokens > 0) return  // 双检：await 期间 result 已到达
             if (summary.rawMaxTokens <= 0) return
-            this.memory.lastMaxTokens = summary.rawMaxTokens
-            this.memory.lastCcWindowTokens = summary.rawMaxTokens
-            this.memory.lastAutoCompactAtTokens = resolveAutoCompactAtTokens(summary)
+            const breakdown = this.adoptSummary(summary, { cacheBreakdown: false })
             if (options.reportBaseline === false) return
-            const breakdown = extractBreakdown(summary) ?? undefined
             // 拉取期间已有主线 assistant 到达（首轮抢跑）：它的用法比静态基线新，直接按它报，
             // 否则首 turn 的实时水位要等 result 才第一次出现
             const live = this.memory.lastAssistantUsage

@@ -194,7 +194,8 @@ export class SyncEngine {
             waitForActive: (sessionId, timeoutMs) => this.waitForSessionActive(sessionId, timeoutMs),
             // 连接事实由 socket 层经 setCliAttachedProbe 注入（未接线前按「挂着」处理）
             isCliAttached: (sessionId) => this.cliAttachedProbe(sessionId),
-            markDetached: (sessionId) => this.sessionCache.markDetached(sessionId),
+            // 会话 id 归并后补投：附着补投先于归并，搬过来的排队消息需再触发一次
+            redeliverQueued: (sessionId) => this.messageService.redeliverQueued(sessionId),
         })
         this.executionAccess = new SessionExecutionAccess(store, this.executor)
         this.store = store

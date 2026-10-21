@@ -245,8 +245,16 @@ export class SessionCache {
         const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)
         if (!session) return
         try {
+            // 流式首轮 / 进程重启后：CLI 侧累计成本记忆还没建立（0），整对象覆盖会把 daemon
+            // 已持久化的真实累计成本刷成 $0.00，直到该 turn 的 result 才恢复——与窗口基线
+            // 同一类回退。/clear 会先显式上报 null 清空，故只需「新值为 0 且历史非 0」时续用历史值
+            const incoming = payload.contextUsage
+            const previousCost = session.runtimeState?.contextUsage?.costUsd ?? 0
+            const contextUsage = incoming && incoming.costUsd === 0 && previousCost > 0
+                ? { ...incoming, costUsd: previousCost }
+                : incoming ?? undefined
             // contextUsage 为 null → 清空（/clear 后新会话从 0 开始）；否则落库覆盖
-            this.runtimeStateStore.merge(session, { contextUsage: payload.contextUsage ?? undefined })
+            this.runtimeStateStore.merge(session, { contextUsage })
         } catch {
             // 落库失败不阻塞采集流程（CLI 下次事件会重试上报）
             return
@@ -448,11 +456,11 @@ export class SessionCache {
     }
 
     /**
-     * 就地判定「它已经不在了」：active 立刻作废并广播，不等 30s 心跳过期窗口。
+     * 就地判定「它已经不在了」：active/running 立刻作废并广播（幂等：非 active 静默返回）。
      *
-     * 判据来自连接事实而不是时间——CLI socket 已从会话上脱落（进程被强杀时来不及上报
-     * session-end）。窗口期内 active 仍为 true 会让唤醒与补投降级成 no-op（2026-10-21
-     * resume 首投滞留事故）；纠正后所有读 active 的路径看到同一个事实。幂等：非 active 静默返回。
+     * 只在心跳过期（expireInactive）时调用——socket 脱落本身不足以判死（可能只是瞬时断线，
+     * 唤醒判定只读探针、不改缓存）；连续 30s 没心跳才收口，避免进程被强杀后陈旧 active
+     * 一直挂在缓存里（2026-10-21 resume 首投滞留的背景）。
      */
     markDetached(sessionId: string): void {
         const session = this.sessions.get(sessionId)

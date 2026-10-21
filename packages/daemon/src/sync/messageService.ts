@@ -191,12 +191,14 @@ export class MessageService {
     }
 
     /**
-     * 补投仍排队（lifecycle='queued'）的用户消息到 CLI 房间（fork 激活翻转时调用）。
+     * 补投仍排队（lifecycle='queued'）的用户消息到 CLI 房间（CLI 附着时调用：
+     * socket 已进会话房间、接管旧连接之后，见 SyncEngine.handleCliAttached）。
      *
      * 入队广播与 CLI 进房存在时序窗：web 发送侧先 fire-and-forget 触发 resume spawn，
      * POST /messages 的房间广播落在 CLI socket join 之前——首连场景下 emit 落空，
      * 消息永久滞留 queued（CLI 的断线 backfill 只覆盖「重连且 lastSeenMessageSeq 非空」）。
-     * 在激活翻转点整体补发，body 形态与 sendMessage 逐字段一致；幂等性由两端保证：
+     * 在附着点整体补发（**不是** active 翻转点：进程被强杀时心跳窗口内 active 仍为 true，
+     * 翻转永不发生），body 形态与 sendMessage 逐字段一致；幂等性由两端保证：
      * CLI lastSeenMessageSeq 去重 + 消费后 lifecycle 推进（不再 queued，不会二次补投）。
      * 只重放 CLI 房间，不发 message-received SSE——web 端在入队时已渲染，重复推送会造成
      * 排队条闪烁。

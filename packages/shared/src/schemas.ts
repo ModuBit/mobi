@@ -572,8 +572,8 @@ export type ContextUsageBreakdown = z.infer<typeof ContextUsageBreakdownSchema>
  * - totalTokens：turn 进行中用主线最后一条 assistant 的 input + cache_creation + cache_read
  *   + output（message_start 三项输入 + message_delta 累计 output = 瞬时窗口占用）；
  *   turn 边界（query 就绪 / result / compact_boundary）由 summary 或 post_tokens 锚定
- * - maxTokens：窗口大小，**唯一**权威来源是 summary.rawMaxTokens（经 CC 解析链，含用户
- *   autocompact 阈值）；拿不到时不产读数，环显示不可用（不再按模型名猜测）
+ * - maxTokens：窗口大小，**唯一**权威来源是 summary.rawMaxTokens（经 CC 解析链）；拿不到时
+ *   不产读数，环显示不可用（不再按模型名猜测）。压缩触发点是独立事实，见 autoCompactAtTokens
  * - percentage：totalTokens / maxTokens × 100
  * - costUsd：result.total_cost_usd（会话累计成本，launcher 记忆）
  * 上报时机：每条主线 assistant 消息实时上报（turn 内上涨）；result 兜底一次；compact_boundary

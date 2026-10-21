@@ -309,6 +309,20 @@ describe('collectStartupUsage（query 启动采集）', () => {
         }))
     })
 
+    it('拉取期间发生 reset（/clear）→ 旧 query 的 summary 作废，不写记忆也不上报', async () => {
+        const { tracker, reportUsage } = makeTracker()
+        let resolveSummary!: (s: SDKControlGetContextUsageResponse) => void
+        const getContextUsage = vi.fn(() => new Promise<SDKControlGetContextUsageResponse>(res => { resolveSummary = res }))
+        const pending = tracker.collectStartupUsage({ getContextUsage } as never)
+        tracker.reset()   // lastMaxTokens 归零：仅靠「双检」会误放行旧快照
+        resolveSummary(SUMMARY_WITH_BREAKDOWN(400_000))
+        await pending
+        expect(reportUsage).not.toHaveBeenCalled()
+        // 记忆未被旧快照写回：流式上报仍因窗口未知而跳过
+        tracker.onAssistantUsage(U(100, 0, 10, 0))
+        expect(reportUsage).not.toHaveBeenCalled()
+    })
+
     it('自动压缩阈值：启动采集即透传（环刻度不必等首个 result）', async () => {
         const { tracker, reportUsage } = makeTracker()
         await tracker.collectStartupUsage({ getContextUsage: vi.fn(async () => SUMMARY_WITH_AUTOCOMPACT(1_000_000)) } as never)
