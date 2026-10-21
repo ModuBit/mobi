@@ -148,10 +148,12 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             formState: newVars?.formState,
             stateVar: newVars?.stateVar,
         })
-        // 休眠/待激活会话唤醒（fire-and-forget）：判定单点在 wakeSession 内部（用刷新后的
-        // 会话行 + CLI 附着事实，活跃且附着才是 no-op）。入队已持久化，spawn 失败消息仍留
-        // queued，下次发送或手动唤醒重试；CLI 进程上线进房（onCliAttached）即补投
-        engine.wakeSession(sessionId)
+        // 唤醒（fire-and-forget，与手动恢复/预热共用 reviver 的在途闸）：判定单点在
+        // reviveSession 内部（用刷新后的会话行 + CLI 附着事实，活跃且附着才是 no-op）。
+        // 入队已持久化，spawn 失败消息仍留 queued，下次发送或手动唤醒重试；CLI 进程
+        // 上线进房（onCliAttached）即补投。不在这里判 active——陈旧心跳会漏掉「进程已死」
+        // 的会话，判活统一交给 reviver 的 isLive
+        engine.reviveSession(sessionId, { namespace: c.get('namespace') })
         return c.json({ ok: true })
     })
 

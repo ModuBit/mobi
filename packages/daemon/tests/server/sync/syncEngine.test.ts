@@ -468,7 +468,7 @@ describe('SyncEngine.resumeSession 回放 runtimeState', () => {
                 { effort: 'high', outputStyle: 'Concise' }
             )
 
-            const result = await engine.resumeSession(session.id, 'default')
+            const result = await engine.reviveSession(session.id, { namespace: 'default' })
             expect(result.type).toBe('success')
 
             expect(spawnOptions).toHaveLength(1)

@@ -23,7 +23,7 @@ import { LocalExecutor } from '../../../src/executor/localExecutor'
 import type { SpawnSessionOptions } from '@mobi/shared/hostProtocol'
 
 /**
- * SyncEngine.wakeSession 单测（dormancy spec §B）：休眠会话唤醒 = fire-and-forget
+ * SyncEngine.reviveSession 单测（dormancy spec §B）：休眠会话唤醒 = fire-and-forget
  * 触发 resume spawn（fork 激活同管线）。spawn 选项组装/时序窗处理由 fork 测试与
  * resumeSession 自身覆盖，这里验证 wake 的编排契约：触发、防重入、活跃 no-op、
  * 失败不丢消息。
@@ -92,7 +92,7 @@ function seedDormantSession(h: ReturnType<typeof makeWakeEngine>) {
     return session
 }
 
-/** wakeSession 是 fire-and-forget：轮询到 spawn 发生（或超时）为止 */
+/** reviveSession 是 fire-and-forget：轮询到 spawn 发生（或超时）为止 */
 async function waitForSpawns(h: ReturnType<typeof makeWakeEngine>, count: number, timeoutMs = 1000): Promise<boolean> {
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
@@ -102,7 +102,7 @@ async function waitForSpawns(h: ReturnType<typeof makeWakeEngine>, count: number
     return false
 }
 
-describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
+describe('SyncEngine.reviveSession（dormancy 唤醒管线）', () => {
     test('非活跃会话 → 触发 resume spawn，spawn 选项携带 runtime_state 持久化配置', async () => {
         const h = makeWakeEngine()
         try {
@@ -115,7 +115,7 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
                 outputStyle: 'Concise',
             })
 
-            h.engine.wakeSession(session.id)
+            h.engine.reviveSession(session.id)
             expect(await waitForSpawns(h, 1)).toBe(true)
 
             const params = h.spawnCalls()[0] as {
@@ -140,9 +140,9 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
         const h = makeWakeEngine()
         try {
             const session = seedDormantSession(h)
-            h.engine.wakeSession(session.id)
-            h.engine.wakeSession(session.id)
-            h.engine.wakeSession(session.id)
+            h.engine.reviveSession(session.id)
+            h.engine.reviveSession(session.id)
+            h.engine.reviveSession(session.id)
 
             expect(await waitForSpawns(h, 1)).toBe(true)
             // 在途集合释放前不会二次 spawn（fake 同步完成，此处只断言无并发放大）
@@ -160,7 +160,7 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
             h.engine.handleSessionAlive({ sid: session.id, time: Date.now() })
             expect(h.engine.getSession(session.id)!.active).toBe(true)
 
-            h.engine.wakeSession(session.id)
+            h.engine.reviveSession(session.id)
             await new Promise((resolve) => setTimeout(resolve, 50))
             expect(h.spawnCalls()).toEqual([])
         } finally {
@@ -190,7 +190,7 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
                 'wake-throw', { path: '/tmp/proj', host: 'h-1', nativeSessionId: 'native-1' }, null, 'default',
             )
             // fire-and-forget 内部必须自吞异常：Bun 下 unhandled rejection 默认终止进程
-            engine.wakeSession(session.id)
+            engine.reviveSession(session.id)
             await new Promise((resolve) => setTimeout(resolve, 50))
             expect(engine.getSession(session.id)!.active).toBe(false)
         } finally {
@@ -219,7 +219,7 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
             h.store.messages.addMessage(session.id, { role: 'user', content: [{ type: 'text', text: 'hi' }], meta: { sentFrom: 'webapp' } }, 'l1')
 
             // fire-and-forget：不 throw 即为过
-            h.engine.wakeSession(session.id)
+            h.engine.reviveSession(session.id)
             await new Promise((resolve) => setTimeout(resolve, 50))
 
             expect(h.spawnCalls()).toEqual([])
@@ -238,7 +238,7 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
             // 绊线：already-running 分支不得落 waitForSessionActive（会话 active=false
             // 时误入会干等满 15s）——以调用断言替代墙钟计时，规避压载 flaky
             const waitSpy = spyOn(h.engine, 'waitForSessionActive')
-            const result = await h.engine.resumeSession(session.id, 'default')
+            const result = await h.engine.reviveSession(session.id, { namespace: 'default' })
 
             expect(result).toEqual({ type: 'success', sessionId: session.id })
             expect(waitSpy).not.toHaveBeenCalled()

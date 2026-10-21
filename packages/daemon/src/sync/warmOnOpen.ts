@@ -22,7 +22,7 @@
  * /visibility），不新建通道。判定面：pause 态识别来自票 1.1 落库的 endReason；
  * 预算语义由 spawn 管线单一所有者裁决（intent=prewarm → acquireSlot('warm')），
  * yield 由调用方翻译成 'yielded'——本模块不预占名额、不排队不重试（warm 是
- * 预热不是承诺）；冷 resume 复用休眠唤醒既有管线（syncEngine.wakeSession）。
+ * 预热不是承诺）；冷 resume 复用休眠唤醒既有管线（syncEngine.reviveSession）。
  */
 
 import { daemonLogger } from '../logger'

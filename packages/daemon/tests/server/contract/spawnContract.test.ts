@@ -176,7 +176,7 @@ describe('Spawn Contract: Resume 会话 (S02)', () => {
         const spawnMock = mock(async () => ({ type: 'success' as const, sessionId: 'should-not-call' }))
         h.getLocalExecutor().spawnSession = spawnMock
 
-        const result = await h.engine.resumeSession(existing.id, NAMESPACE)
+        const result = await h.engine.reviveSession(existing.id, { namespace: NAMESPACE })
 
         expect(result.type).toBe('success')
         if (result.type === 'success') {
@@ -198,7 +198,7 @@ describe('Spawn Contract: Resume 会话 (S02)', () => {
         }))
 
         // 启动 resumeSession，它会调用 waitForSessionActive 轮询
-        const resumePromise = h.engine.resumeSession(existing.id, NAMESPACE)
+        const resumePromise = h.engine.reviveSession(existing.id, { namespace: NAMESPACE })
 
         // 异步标记会话为 active，模拟 executor 发送 /session-started
         setTimeout(() => h.markActive(existing.id), 100)
@@ -237,7 +237,7 @@ describe('Spawn Contract: already-running 结果 (S03)', () => {
             type: 'already-running' as const,
         }))
 
-        const result = await h.engine.resumeSession(existing.id, NAMESPACE)
+        const result = await h.engine.reviveSession(existing.id, { namespace: NAMESPACE })
 
         // 期望：零等待返回 success（不进入 waitForSessionActive）
         expect(result.type).toBe('success')
@@ -278,7 +278,7 @@ describe('Spawn Contract: 等待 active 超时 (S06)', () => {
             return await originalWait(sessionId, 100) // 100ms 超时
         }
 
-        const result = await h.engine.resumeSession(existing.id, NAMESPACE)
+        const result = await h.engine.reviveSession(existing.id, { namespace: NAMESPACE })
 
         expect(result.type).toBe('error')
         if (result.type === 'error') {
@@ -312,7 +312,7 @@ describe('Spawn Contract: RPC 错误处理 (S07)', () => {
             message: 'Test spawn failed',
         }))
 
-        const result = await h.engine.resumeSession(existing.id, NAMESPACE)
+        const result = await h.engine.reviveSession(existing.id, { namespace: NAMESPACE })
 
         expect(result.type).toBe('error')
         if (result.type === 'error') {
@@ -334,7 +334,7 @@ describe('Spawn Contract: 会话不存在或无权限', () => {
     })
 
     test('resume 不存在的会话 → session_not_found', async () => {
-        const result = await h.engine.resumeSession('nonexistent', NAMESPACE)
+        const result = await h.engine.reviveSession('nonexistent', { namespace: NAMESPACE })
 
         expect(result.type).toBe('error')
         if (result.type === 'error') {
@@ -369,7 +369,7 @@ describe('Spawn Contract: 会话不存在或无权限', () => {
             0
         )
 
-        const result = await h.engine.resumeSession(sessionId, NAMESPACE)
+        const result = await h.engine.reviveSession(sessionId, { namespace: NAMESPACE })
 
         expect(result.type).toBe('error')
         if (result.type === 'error') {
@@ -383,7 +383,7 @@ describe('Spawn Contract: 会话不存在或无权限', () => {
         try {
             const existing = createSessionWithPath(h2, '/tmp/offline')
 
-            const result = await h2.engine.resumeSession(existing.id, NAMESPACE)
+            const result = await h2.engine.reviveSession(existing.id, { namespace: NAMESPACE })
 
             expect(result.type).toBe('error')
             if (result.type === 'error') {

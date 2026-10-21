@@ -33,7 +33,7 @@ import type { Metadata } from '@mobi/node-core/api/types';
 import { isProcessAlive } from '@mobi/node-core/utils/process';
 import type { TrackedSession } from './types';
 import { applySessionTrackingSignal, pruneDeadTrackedSessions, type SessionTrackingSignal } from './sessionTracking';
-import { createSpawnDedupGuard, type SpawnDedupKey } from './spawnDedup';
+import { createSpawnDedupGuard, dedupKeys, type SpawnClaim, type SpawnDedupKey } from './spawnDedup';
 
 /** waitForWebhook 的结果：webhook 到达（成功）或 exit/error/超时（失败） */
 export type WebhookWaitResult =
@@ -42,6 +42,8 @@ export type WebhookWaitResult =
 
 export class SessionTrackingTable {
     private readonly sessions = new Map<number, TrackedSession>();
+    /** 在途 spawn 的会话键预约（dedupKeys 编码 → 占用令牌）；登记表行后释放 */
+    private readonly pendingSpawnClaims = new Map<string, symbol>();
     /** spawn 等待端（webhook 到达 resolve）与失败端（exit/error/timeout resolve），与表行同生共死 */
     private readonly successAwaiters = new Map<number, (session: TrackedSession) => void>();
     private readonly errorAwaiters = new Map<number, (errorMessage: string) => void>();
@@ -65,6 +67,36 @@ export class SessionTrackingTable {
      *  传快照而非内部 Map 活引用——spawnDedup 只做一次性决策，不应对表内部结构形成依赖 */
     checkSpawnDedup(key: SpawnDedupKey) {
         return createSpawnDedupGuard(new Map(this.sessions))(key);
+    }
+
+    /**
+     * spawn 在途预约（同步）：查重命中（活表项或别的在途 spawn 已占同一会话键）返回
+     * null；否则当场占用比对键并返回释放凭证。查重与占用之间没有 await——这是收口
+     * check-then-act 竞态的关键：registerDaemon 之前隔着目录检查/mkdir/进程创建，
+     * 并发激活请求都能通过 checkSpawnDedup。
+     *
+     * 登记追踪表行后立即 release（交接：表行接管去重），失败路径由调用方 finally 释放。
+     * 无键（Web 新会话）不预约，行为与既有查重一致。
+     */
+    claimSpawn(key: SpawnDedupKey): SpawnClaim | null {
+        if (this.checkSpawnDedup(key)) return null;
+
+        const keys = dedupKeys(key);
+        if (keys.some((k) => this.pendingSpawnClaims.has(k))) return null;
+
+        const token = Symbol('spawn-claim');
+        for (const k of keys) this.pendingSpawnClaims.set(k, token);
+
+        let released = false;
+        return {
+            release: () => {
+                if (released) return;
+                released = true;
+                for (const k of keys) {
+                    if (this.pendingSpawnClaims.get(k) === token) this.pendingSpawnClaims.delete(k);
+                }
+            },
+        };
     }
 
     /**

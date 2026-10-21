@@ -145,18 +145,20 @@ const MAX_TAIL_CHARS = 4000;
 export async function spawnSession(options: SpawnRequest, deps: SpawnSessionDeps): Promise<SpawnSessionResult> {
     logger.debugLargeJson('[EXECUTOR] Spawning session', options);
 
-    // 唤醒去重（.scratch/wake-dedup + #108 双键）：同机已有活 child 属于同一会话时不再
-    // spawn 第二个进程——resume 目标相同，或 mobi 行 id 相同（在途 child 已由 webhook /
-    // 注册戳带上行 id，覆盖「webhook 已到、socket 未活跃」的首条消息唤醒竞态窗口）。
-    // 「表项存在 = 进程存活」由 exit 既有清理保证；查重决策与结果构造单源见 spawnDedup。
+    // 唤醒去重 + 在途预约（.scratch/wake-dedup + #108 双键 + 2026-10-21 竞态收口）：
+    // 同机已有活 child 属于同一会话时不再 spawn 第二个进程——resume 目标相同，或 mobi
+    // 行 id 相同（在途 child 已由 webhook / 注册戳带上行 id）。命中返回 null；未命中则
+    // **同步**占用本次比对键，堵住「查重 → await 目录检查/mkdir/spawn → registerDaemon」
+    // 之间并发的第二次激活（两个 --resume 同 native id 的进程互相抢 socket）。
+    // 「表项存在 = 进程存活」由 exit 既有清理保证；查重决策单源见 spawnDedup。
     // server 侧对 already-running 零等待幂等消费（票 02）
-    const dedupHit = deps.trackingTable.checkSpawnDedup({
+    const claim = deps.trackingTable.claimSpawn({
         resumeSessionId: options.resumeSessionId,
         mobiSessionId: options.sessionId,
     });
-    if (dedupHit) {
+    if (!claim) {
         logger.debug('[EXECUTOR] Spawn deduped: live child already exists for this session');
-        return dedupHit;
+        return { type: 'already-running' };
     }
 
     // 预算闸（票 2.1）：dedup 之后——already-running 幂等返回不占名额。reason 从
@@ -167,6 +169,7 @@ export async function spawnSession(options: SpawnRequest, deps: SpawnSessionDeps
     const slot = deps.governor?.acquireSlot(options.acquireReason ?? 'user');
     if (slot && !slot.granted) {
         logger.debug('[EXECUTOR] Governor yielded: session capacity reached');
+        claim.release();
         return { type: 'governor-yielded' };
     }
     try {
@@ -376,6 +379,8 @@ export async function spawnSession(options: SpawnRequest, deps: SpawnSessionDeps
             };
 
             deps.trackingTable.registerDaemon(trackedSession);
+            // 预约交接：表行已登记，去重从此刻起由追踪表接管，预约键可以释放
+            claim.release();
             // 名额接棒点：追踪表已把该进程计入 active，inFlight 必须同时交还——
             // 否则 waitForWebhook（最长 15s）窗口内同一子进程被 effective 计两次，
             // 并发的第二个 spawn 会看到虚高水位、无谓逐出一个空闲会话。
@@ -444,6 +449,8 @@ export async function spawnSession(options: SpawnRequest, deps: SpawnSessionDeps
             };
     }
     } finally {
+        // 幂等：成功路径已在 registerDaemon 后交接释放，这里兜住所有失败/早退路径
+        claim.release();
         slot?.release();
     }
 }

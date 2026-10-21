@@ -343,7 +343,7 @@ export function createSessionsRoutes(
         }
 
         const namespace = c.get('namespace')
-        const result = await engine.resumeSession(sessionResult.sessionId, namespace)
+        const result = await engine.reviveSession(sessionResult.sessionId, { namespace })
         if (result.type === 'error') {
             const status: 200 | 401 | 403 | 404 | 500 | 503 =
                 result.code === 'executor_not_ready' ? 503

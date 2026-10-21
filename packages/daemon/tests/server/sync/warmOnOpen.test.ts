@@ -90,7 +90,7 @@ function makeCoordinator(overrides: {
 const PAUSED: SessionState = { active: false, endReason: 'pause' }
 
 describe('WarmOnOpenCoordinator', () => {
-    test('打开 pause 态会话停留 ≥2s → 触发 warm（wakeSession）+ warmLeadMs 遥测', async () => {
+    test('打开 pause 态会话停留 ≥2s → 触发 warm（reviveSession）+ warmLeadMs 遥测', async () => {
         const h = makeCoordinator({ sessions: { s1: PAUSED } })
         h.coordinator.onSessionViewed('s1', true)
 

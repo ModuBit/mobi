@@ -36,7 +36,7 @@ import { MessageService, type SendMessagePayload } from './messageService'
 import { WorkspaceCache } from './workspaceCache'
 import { RpcGateway } from './rpcGateway'
 import { SessionCache } from './sessionCache'
-import { SessionReviver, type ReviveIntent, type ReviveResult } from './sessionReviver'
+import { SessionReviver, type ReviveOptions, type ReviveResult } from './sessionReviver'
 import { SessionRegistry } from './sessionRegistry'
 import { readRpcFailure } from './rpcFailure'
 import { SessionReceiveReadiness } from './sessionReceiveReadiness'
@@ -863,16 +863,13 @@ export class SyncEngine {
     }
 
     /**
-     * 休眠会话唤醒（去重；异常已由 reviver 消化为 error result）。
+     * 苏醒唯一入口（手动恢复 / 发消息唤醒 / 预热共用；去重在 reviver 内按会话 id 收口）。
+     * opts.namespace 有值 = web 路由（校验归属），缺省 = 内部调用。
      * opts.intent 是预算意图（activate 缺省 / prewarm），映射规则单源在 reviver。
-     * 返回结构化结果供预热方区分「就绪 / 预算放弃 / 失败」；消息路径可忽略。
+     * 永不 reject：异常已由 reviver 消化为 error result，消息路径可忽略返回值。
      */
-    wakeSession(sessionId: string, opts?: { intent?: ReviveIntent }): Promise<ResumeSessionResult> {
-        return this.reviver.wake(sessionId, opts)
-    }
-
-    async resumeSession(sessionId: string, namespace: string, opts?: { intent?: ReviveIntent }): Promise<ResumeSessionResult> {
-        return this.reviver.revive(sessionId, namespace, opts)
+    reviveSession(sessionId: string, opts?: ReviveOptions): Promise<ResumeSessionResult> {
+        return this.reviver.revive(sessionId, opts)
     }
 
     async waitForSessionActive(sessionId: string, timeoutMs: number = 15_000): Promise<boolean> {

@@ -40,6 +40,18 @@ export type SpawnDedupKey = {
 }
 
 /**
+ * 查重键的规范编码（单源）：同一次 spawn 的比对键集合。resumeSessionId / mobiSessionId
+ * 为空串视为未提供（与 undefined 同义），都缺（Web 新会话 spawn，行 id 尚不存在）返回空集，
+ * 此时不查重也不预约。
+ */
+export function dedupKeys(key: SpawnDedupKey): string[] {
+    const keys: string[] = []
+    if (key.resumeSessionId) keys.push(`resume:${key.resumeSessionId}`)
+    if (key.mobiSessionId) keys.push(`mobi:${key.mobiSessionId}`)
+    return keys
+}
+
+/**
  * 在在册 child 中查「属于同一会话」的活表项：resume 目标相同，或 mobi 行 id 相同。
  * 表项缺键（手动 / webhook 注册前拿不到该信息）不参与该键比对。
  * resumeSessionId / mobiSessionId 为空串视为未提供（与 undefined 同义）。
@@ -61,6 +73,17 @@ export function findRunningDuplicate(
     }
     return null
 }
+
+/**
+ * spawn 在途预约（check-then-act 竞态的收口）：查重命中返回 null；空闲则**同步**占用
+ * 本次 spawn 的比对键，返回可释放的预约凭证。调用方登记追踪表行后应立即 release
+ * （交接给追踪表），任何失败路径由 finally 幂等释放。
+ *
+ * 为什么需要：`checkSpawnDedup` 与 `registerDaemon` 之间隔着目录检查/mkdir/进程创建
+ * 等多个 await，并发的两个激活请求（手动 resume + 消息唤醒）都能通过查重又都去 spawn，
+ * 最终得到两个 `--resume <同一 native id>` 的进程互相抢 socket（2026-10-21 分叉闪烁）。
+ */
+export type SpawnClaim = { release: () => void }
 
 /**
  * spawn 入口的去重闸（查重 + 结果构造收口于此，run.ts 只做早退）：命中返回

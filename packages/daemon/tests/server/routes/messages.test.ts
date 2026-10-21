@@ -64,7 +64,7 @@ function makeMockEngine(opts: {
     return engine as unknown as SyncEngine & { deleteCalled: boolean }
 }
 
-/** mock engine 捕获 POST /messages 透传给 sendMessage 的 payload 与 wakeSession 触发 */
+/** mock engine 捕获 POST /messages 透传给 sendMessage 的 payload 与 reviveSession 触发 */
 function makeSendEngine(opts: { active?: boolean; forkFrom?: unknown } = {}) {
     const sent: { sessionId: string; payload: unknown }[] = []
     const woken: string[] = []
@@ -80,7 +80,7 @@ function makeSendEngine(opts: { active?: boolean; forkFrom?: unknown } = {}) {
         sendMessage: async (sessionId: string, payload: unknown) => {
             sent.push({ sessionId, payload })
         },
-        wakeSession: (sessionId: string) => {
+        reviveSession: (sessionId: string) => {
             woken.push(sessionId)
         },
     }
@@ -138,7 +138,7 @@ describe('POST /api/sessions/:id/messages（双发送格式）', () => {
         expect(woken).toEqual(['test-session-1'])
     })
 
-    test('active 会话 → 路由无条件委托 wakeSession（活跃 no-op 由 engine 内部判定）', async () => {
+    test('active 会话 → 路由无条件委托 reviveSession（活跃 no-op 由 engine 内部判定）', async () => {
         const { engine, woken } = makeSendEngine({ active: true })
         const res = await postMessage(engine, { content: 'hi' })
         expect(res.status).toBe(200)

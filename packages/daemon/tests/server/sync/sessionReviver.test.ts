@@ -19,8 +19,9 @@ import { SessionReviver } from '../../../src/sync/sessionReviver'
 import type { Session } from '@mobi/shared/types'
 
 /**
- * 苏醒编排收口（候选④）+ 预算意图单源（候选③）：revive 的 intent 决定 acquireReason，
- * 映射只此一处；already-running 必须零等待；失败路径落 fork 错误档。
+ * 苏醒编排收口（候选④）+ 预算意图单源（候选③）+ 单入口在途闸（2026-10-21 双进程事故）：
+ * revive 是唯一入口，activate/prewarm 共用一把闸且用户操作不并入预热；already-running
+ * 必须零等待；异常一律结构化为 error result（永不 reject）。
  */
 
 function makeSession(overrides: Partial<Session> = {}): Session {
@@ -59,6 +60,12 @@ function makeReviver(options: {
     lookupThrows?: Error
     /** CLI socket 附着探针（缺省视为附着 = 旧语义「active 即活着」） */
     isCliAttached?: (sessionId: string) => boolean
+    /** spawn 挂起闸：resolve 前 spawnSession 不返回（并发用例控制落定顺序） */
+    spawnGate?: Promise<void>
+    /** spawnSession 直接抛错（RPC 层异常） */
+    spawnThrows?: Error
+    /** resolveSessionAccess 拒绝（越权/不存在） */
+    accessDenied?: boolean
 }) {
     const spawned: Array<{ directory: string; options: Record<string, unknown> }> = []
     const activationErrors: Array<{ code: string; detail?: string }> = []
@@ -68,9 +75,11 @@ function makeReviver(options: {
     const reviver = new SessionReviver({
         sessionCache: {
             resolveSessionAccess: () =>
-                options.session
-                    ? { ok: true as const, sessionId: options.session.id, session: options.session }
-                    : { ok: false as const, reason: 'not-found' as const },
+                options.accessDenied
+                    ? { ok: false as const, reason: 'access-denied' as const }
+                    : options.session
+                        ? { ok: true as const, sessionId: options.session.id, session: options.session }
+                        : { ok: false as const, reason: 'not-found' as const },
             getSession: () => {
                 if (options.lookupThrows) throw options.lookupThrows
                 return options.session ?? undefined
@@ -83,6 +92,8 @@ function makeReviver(options: {
         },
         executor: {
             spawnSession: async (directory, spawnOptions) => {
+                if (options.spawnGate) await options.spawnGate
+                if (options.spawnThrows) throw options.spawnThrows
                 spawned.push({ directory, options: spawnOptions as unknown as Record<string, unknown> })
                 const next = options.spawnResults?.shift()
                 return (next ?? options.spawnResult ?? { type: 'success', sessionId: 's1' }) as never
@@ -104,7 +115,7 @@ describe('SessionReviver — intent 到预算语义的单一映射', () => {
     test('intent=prewarm → acquireReason=warm（到顶 yield，不逐别人）', async () => {
         const { reviver, spawned } = makeReviver({ session: makeSession() })
 
-        const result = await reviver.revive('s1', 'default', { intent: 'prewarm' })
+        const result = await reviver.revive('s1', { namespace: 'default', intent: 'prewarm' })
 
         expect(result).toEqual({ type: 'success', sessionId: 's1' })
         expect(spawned[0].options.acquireReason).toBe('warm')
@@ -113,7 +124,7 @@ describe('SessionReviver — intent 到预算语义的单一映射', () => {
     test('intent 缺省 = activate → acquireReason=user（永不拒绝）', async () => {
         const { reviver, spawned } = makeReviver({ session: makeSession() })
 
-        await reviver.revive('s1', 'default')
+        await reviver.revive('s1', { namespace: 'default' })
 
         expect(spawned[0].options.acquireReason).toBe('user')
     })
@@ -121,7 +132,7 @@ describe('SessionReviver — intent 到预算语义的单一映射', () => {
     test('resume 参数组装：path/native token/model/effort/outputStyle 从会话行取', async () => {
         const { reviver, spawned } = makeReviver({ session: makeSession() })
 
-        await reviver.revive('s1', 'default')
+        await reviver.revive('s1', { namespace: 'default' })
 
         expect(spawned[0].directory).toBe('/tmp/demo')
         expect(spawned[0].options).toMatchObject({
@@ -134,6 +145,63 @@ describe('SessionReviver — intent 到预算语义的单一映射', () => {
     })
 })
 
+describe('SessionReviver — 单入口在途闸（手动恢复 / 发消息唤醒 / 预热共用）', () => {
+    test('同会话并发两次 revive → 只 spawn 一次（两路共享同一 Promise）', async () => {
+        const { reviver, spawned } = makeReviver({ session: makeSession() })
+
+        const [a, b] = await Promise.all([
+            reviver.revive('s1', { namespace: 'default' }),
+            reviver.revive('s1'),
+        ])
+
+        expect(spawned).toHaveLength(1)
+        expect(a).toEqual({ type: 'success', sessionId: 's1' })
+        expect(b).toEqual(a)
+    })
+
+    test('在途 prewarm 时用户 activate 到达 → 另起一次（不继承 governor yield 结果）', async () => {
+        let releaseGate: () => void = () => {}
+        const gate = new Promise<void>((resolve) => { releaseGate = resolve })
+        const { reviver, spawned } = makeReviver({ session: makeSession(), spawnGate: gate })
+
+        const warm = reviver.revive('s1', { namespace: 'default', intent: 'prewarm' })
+        const activate = reviver.revive('s1', { namespace: 'default' })
+
+        releaseGate()
+        await Promise.all([warm, activate])
+
+        expect(spawned).toHaveLength(2)
+        expect(spawned.map((s) => s.options.acquireReason)).toEqual(['warm', 'user'])
+    })
+
+    test('在途 activate 时 prewarm 到达 → 复用在途（不重复 spawn）', async () => {
+        let releaseGate: () => void = () => {}
+        const gate = new Promise<void>((resolve) => { releaseGate = resolve })
+        const { reviver, spawned } = makeReviver({ session: makeSession(), spawnGate: gate })
+
+        const activate = reviver.revive('s1', { namespace: 'default' })
+        const warm = reviver.revive('s1', { intent: 'prewarm' })
+
+        releaseGate()
+        await Promise.all([activate, warm])
+
+        expect(spawned).toHaveLength(1)
+        expect(spawned[0].options.acquireReason).toBe('user')
+    })
+
+    test('在途落定后可重试（失败不粘住去重）', async () => {
+        const { reviver, spawned } = makeReviver({
+            session: makeSession(),
+            spawnResult: { type: 'error', message: 'boom' },
+        })
+
+        await reviver.revive('s1', { namespace: 'default' })
+        await reviver.revive('s1', { namespace: 'default' })
+
+        expect(spawned).toHaveLength(2)
+    })
+})
+
 describe('SessionReviver — active 是心跳推断，连接事实优先', () => {
     test('active 但 CLI 未附着（强杀窗口）→ 照常唤醒；读路径不改缓存（可能只是瞬时断线）', async () => {
         const session = makeSession({ active: true })
@@ -142,7 +210,7 @@ describe('SessionReviver — active 是心跳推断，连接事实优先', () =>
             isCliAttached: () => false,
         })
 
-        const result = await reviver.wake('s1')
+        const result = await reviver.revive('s1')
 
         expect(spawned).toHaveLength(1)
         expect(session.active).toBe(true)   // 死亡由心跳过期收口，读路径只读不写
@@ -155,27 +223,15 @@ describe('SessionReviver — active 是心跳推断，连接事实优先', () =>
             isCliAttached: () => true,
         })
 
-        await reviver.wake('s1')
+        await reviver.revive('s1')
 
         expect(spawned).toHaveLength(0)
-    })
-
-    test('手动 revive 同判据：未附着的 active 会话也能被拉起', async () => {
-        const { reviver, spawned } = makeReviver({
-            session: makeSession({ active: true }),
-            isCliAttached: () => false,
-        })
-
-        const result = await reviver.revive('s1', 'default')
-
-        expect(result).toEqual({ type: 'success', sessionId: 's1' })
-        expect(spawned).toHaveLength(1)
     })
 
     test('缺省探针视为附着 → 沿用旧语义：active 即视为活着', async () => {
         const { reviver, spawned } = makeReviver({ session: makeSession({ active: true }) })
 
-        await reviver.wake('s1')
+        await reviver.revive('s1')
 
         expect(spawned).toHaveLength(0)
     })
@@ -188,7 +244,7 @@ describe('SessionReviver — 会话 id 归并后的补投', () => {
             spawnResult: { type: 'success', sessionId: 's2' },
         })
 
-        await reviver.revive('s1', 'default')
+        await reviver.revive('s1', { namespace: 'default' })
 
         expect(merges).toEqual([['s1', 's2']])
         expect(redelivered).toEqual(['s2'])
@@ -197,7 +253,7 @@ describe('SessionReviver — 会话 id 归并后的补投', () => {
     test('id 未变（无需归并）→ 不重复补投（附着回调已负责）', async () => {
         const { reviver, merges, redelivered } = makeReviver({ session: makeSession() })
 
-        await reviver.revive('s1', 'default')
+        await reviver.revive('s1', { namespace: 'default' })
 
         expect(merges).toEqual([])
         expect(redelivered).toEqual([])
@@ -211,7 +267,7 @@ describe('SessionReviver — 结果语义', () => {
             spawnResult: { type: 'already-running' },
         })
 
-        const result = await reviver.revive('s1', 'default')
+        const result = await reviver.revive('s1', { namespace: 'default' })
 
         expect(result).toEqual({ type: 'success', sessionId: 's1' })
         expect(waited()).toBe(0)
@@ -223,7 +279,7 @@ describe('SessionReviver — 结果语义', () => {
             spawnResult: { type: 'error', message: 'boom' },
         })
 
-        const result = await reviver.revive('s1', 'default')
+        const result = await reviver.revive('s1', { namespace: 'default' })
 
         expect(result).toEqual({ type: 'error', message: 'boom', code: 'resume_failed' })
         expect(activationErrors).toEqual([{ code: 'activation-failed', detail: 'boom' }])
@@ -232,52 +288,45 @@ describe('SessionReviver — 结果语义', () => {
     test('会话不存在 → session_not_found（不触达 spawn）', async () => {
         const { reviver, spawned } = makeReviver({ session: null })
 
-        const result = await reviver.revive('missing', 'default')
+        const result = await reviver.revive('missing', { namespace: 'default' })
 
         expect(result).toEqual({ type: 'error', message: 'Session not found', code: 'session_not_found' })
+        expect(spawned).toHaveLength(0)
+    })
+
+    test('namespace 校验失败 → access_denied（web 路由语义）', async () => {
+        const { reviver, spawned } = makeReviver({ session: makeSession(), accessDenied: true })
+
+        const result = await reviver.revive('s1', { namespace: 'other' })
+
+        expect(result).toEqual({ type: 'error', message: 'Session access denied', code: 'access_denied' })
         expect(spawned).toHaveLength(0)
     })
 
     test('已 active → 直接 success（不重复 spawn）', async () => {
         const { reviver, spawned } = makeReviver({ session: makeSession({ active: true }) })
 
-        const result = await reviver.revive('s1', 'default')
+        const result = await reviver.revive('s1', { namespace: 'default' })
 
         expect(result).toEqual({ type: 'success', sessionId: 's1' })
         expect(spawned).toHaveLength(0)
     })
 })
 
-describe('SessionReviver.wake — 去重与容错', () => {
-    test('同会话在途只触发一次 revive', async () => {
-        const { reviver, spawned } = makeReviver({ session: makeSession() })
-
-        reviver.wake('s1')
-        reviver.wake('s1')
-        await new Promise((resolve) => setTimeout(resolve, 10))
-
-        expect(spawned).toHaveLength(1)
-    })
-
-    test('在途落定后可重试（失败不粘住去重）', async () => {
-        const { reviver, spawned } = makeReviver({
-            session: makeSession(),
-            spawnResult: { type: 'error', message: 'boom' },
-        })
-
-        reviver.wake('s1')
-        await new Promise((resolve) => setTimeout(resolve, 10))
-        reviver.wake('s1')
-        await new Promise((resolve) => setTimeout(resolve, 10))
-
-        expect(spawned).toHaveLength(2)
-    })
-
-    test('会话查找抛错（缓存淘汰回源 DB 失败）→ 返回 error，wake 不 reject', async () => {
+describe('SessionReviver — 容错（永不 reject）', () => {
+    test('会话查找抛错（缓存淘汰回源 DB 失败）→ 返回 error，不 reject', async () => {
         const { reviver } = makeReviver({ lookupThrows: new Error('db locked') })
 
-        await expect(reviver.wake('s1')).resolves.toEqual({
+        await expect(reviver.revive('s1')).resolves.toEqual({
             type: 'error', message: 'db locked', code: 'resume_failed',
+        })
+    })
+
+    test('executor.spawnSession 抛错 → 结构化为 resume_failed，不 reject', async () => {
+        const { reviver } = makeReviver({ session: makeSession(), spawnThrows: new Error('rpc down') })
+
+        await expect(reviver.revive('s1', { namespace: 'default' })).resolves.toEqual({
+            type: 'error', message: 'rpc down', code: 'resume_failed',
         })
     })
 
@@ -287,7 +336,7 @@ describe('SessionReviver.wake — 去重与容错', () => {
             spawnResults: [{ type: 'already-running' }, { type: 'success', sessionId: 's1' }],
         })
 
-        const result = await reviver.wake('s1')
+        const result = await reviver.revive('s1', { namespace: 'default' })
 
         expect(result).toEqual({ type: 'success', sessionId: 's1' })
         expect(spawned).toHaveLength(2)

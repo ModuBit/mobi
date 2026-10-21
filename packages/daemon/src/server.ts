@@ -269,7 +269,7 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
                 //（fire-and-forget 会导致 leadMs≈0、失败不可观测、abandoned 误判）；
                 // 预算判定归 spawn 管线 (intent='prewarm' → warm)，本层不再预占名额
                 warmSession: async (sessionId) => {
-                    const result = await engine.wakeSession(sessionId, { intent: 'prewarm' })
+                    const result = await engine.reviveSession(sessionId, { intent: 'prewarm' })
                     if (result.type === 'success') return 'warmed'
                     if (result.code === 'governor_yielded') return 'yielded'
                     throw new Error(result.message)

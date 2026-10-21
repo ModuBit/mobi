@@ -305,7 +305,7 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
             expect(forkNativeId).toBeTruthy()
             expect(forkNativeId).not.toBe('parent-native-1')
 
-            const result = await h.engine.resumeSession(forkSession.id, 'default')
+            const result = await h.engine.reviveSession(forkSession.id, { namespace: 'default' })
             expect(result.type).toBe('success')
 
             const params = h.spawnParams()
@@ -367,7 +367,7 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
             expect(forkResult.ok).toBe(true)
             if (!forkResult.ok) return
 
-            const result = await h.engine.resumeSession(forkResult.sessionId, 'default')
+            const result = await h.engine.reviveSession(forkResult.sessionId, { namespace: 'default' })
             expect(result.type).toBe('error')
 
             // forkError 落档 + forkFrom 保留（未激活判定与删除守卫的依据，shared 契约）

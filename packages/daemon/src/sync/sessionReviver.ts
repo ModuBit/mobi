@@ -16,13 +16,18 @@
 
 /**
  * 会话苏醒编排（架构深化候选④）：把「一个 pause 态会话行拉回活跃」从 4 处散落
- * （syncEngine.resumeSession / wakeSession / warmOnOpenCoordinator / server 内联装配）
+ * （syncEngine.reviveSession / warmOnOpenCoordinator / server 内联装配）
  * 收成一个模块。
  *
  * 持有：access 校验、唤醒去重、resume 参数组装、already-running 语义、等待 active、
  * mergeSessions 收敛、预算意图（intent → acquireReason）。
  * 不持有：warm 的防抖/遥测（WarmOnOpenCoordinator 是前端信号适配器）、fork 错误落档
  * （engine 领域，经回调注入）、web API 形状（syncEngine 薄转发）。
+ *
+ * 单入口：所有苏醒路径（手动恢复 / 发消息唤醒 / 预热）都走 `revive()`，共用一个在途闸。
+ * 2026-10-21 双进程事故：web 对分叉显式 resume 与消息路由的唤醒同时到达，而 resume 走
+ * 无闸的旧 revive、唤醒走有闸的旧 wake，两把锁各管各的 → 同一 native id 被拉起两个进程，
+ * 互相抢 socket 造成 running 闪烁。
  *
  * 两个调用来源天然存在（用户动作 / 预热），所以这层缝是真的：
  * - 发消息唤醒、手动恢复 → intent 'activate'（预算语义 user，永不拒绝）
@@ -41,6 +46,17 @@ export type ReviveIntent = 'activate' | 'prewarm'
 export type ReviveResult =
     | { type: 'success'; sessionId: string }
     | { type: 'error'; message: string; code: 'session_not_found' | 'access_denied' | 'executor_not_ready' | 'resume_unavailable' | 'resume_failed' | 'governor_yielded' }
+
+/**
+ * 苏醒入口参数：
+ * - namespace 有值 → 校验会话归属（web 路由；未知 id 与越权 id 分别报 404/403）
+ * - namespace 缺省 → 服务端内部调用（预热等），按 id 直接查
+ * - intent 缺省 = activate
+ */
+export type ReviveOptions = {
+    namespace?: string
+    intent?: ReviveIntent
+}
 
 /**
  * intent → 预算闸 reason 的单一映射点（候选③）：user 到顶走逐出降级链/兜底放行；
@@ -75,11 +91,74 @@ export type SessionReviverDeps = {
     redeliverQueued: (sessionId: string) => void
 }
 
+/** 在途恢复表行：intent 用于「用户操作不得并入预热」的升级判定 */
+type InFlightRevive = {
+    intent: ReviveIntent
+    promise: Promise<ReviveResult>
+}
+
+/** 会话解析结果：命中错误时携带可直接返回的结构化结果 */
+type ResolvedSession =
+    | { ok: true; session: Session; targetId: string }
+    | { ok: false; result: ReviveResult }
+
 export class SessionReviver {
-    /** 唤醒去重：同一会话只允许一个在途 spawn（短窗口多条消息/预热/手动唤醒共用） */
-    private readonly wakeInFlight = new Map<string, Promise<ReviveResult>>()
+    /**
+     * 在途恢复闸：同一会话只允许一个 spawn 编排。手动恢复（`POST /resume`）、发消息唤醒、
+     * warm-on-open 共用这一把——2026-10-21 之前 awake 各有各的闸，两条路径同时到达会
+     * 各自 spawn 一个进程（executor 查重是 check-then-act，窗口内拦不住）。
+     */
+    private readonly inFlight = new Map<string, InFlightRevive>()
 
     constructor(private readonly deps: SessionReviverDeps) {}
+
+    /**
+     * 唯一的苏醒入口。返回结构化结果；**永不 reject**——消息路由 fire-and-forget 调用，
+     * Bun 下未捕获 rejection 会终止 daemon，异常统一消化为 `resume_failed`。
+     *
+     * 在途去重 + 意图升级：
+     * - 同 intent（或新来的是 prewarm）→ 复用在途 Promise
+     * - 在途 prewarm、新来 activate → 另起一次（预热到顶会被 governor yield，用户操作
+     *   不能继承这个结果）；已起的进程由 executor 同步预约拦成 already-running 零等待
+     */
+    revive(sessionId: string, opts: ReviveOptions = {}): Promise<ReviveResult> {
+        const intent: ReviveIntent = opts.intent ?? 'activate'
+        const existing = this.inFlight.get(sessionId)
+        if (existing && !(existing.intent === 'prewarm' && intent === 'activate')) {
+            return existing.promise
+        }
+
+        const entry: InFlightRevive = {
+            intent,
+            promise: this.reviveInner(sessionId, { ...opts, intent }),
+        }
+        this.inFlight.set(sessionId, entry)
+        // 落定即释放（成败都放：失败不粘住去重，下次可重试）；升级场景下旧 entry 的
+        // 回调不得删掉新 entry，故按引用比对
+        const settle = () => {
+            if (this.inFlight.get(sessionId) === entry) this.inFlight.delete(sessionId)
+        }
+        void entry.promise.then(settle, settle)
+        return entry.promise
+    }
+
+    private async reviveInner(sessionId: string, opts: ReviveOptions & { intent: ReviveIntent }): Promise<ReviveResult> {
+        try {
+            const resolved = this.resolveSession(sessionId, opts.namespace)
+            if (!resolved.ok) return resolved.result
+            const { session, targetId } = resolved
+            if (this.isLive(session)) {
+                return { type: 'success', sessionId: targetId }
+            }
+            return await this.spawnRevived(session, targetId, opts.intent)
+        } catch (error) {
+            // 会话查找（缓存淘汰后回源 DB）与 spawn/merge 的 RPC 层都可能 throw；
+            // 调用方（消息路由）不 await/catch，异常漏出会触发 unhandledRejection 杀 daemon
+            const message = error instanceof Error ? error.message : String(error)
+            daemonLogger.warn(`[dormancy] reviveSession failed (session=${sessionId}): ${message}`)
+            return { type: 'error', message, code: 'resume_failed' }
+        }
+    }
 
     /**
      * 「此刻真能收消息吗」的判据：active 是心跳推断（30s 窗口），CLI socket 是否还挂在
@@ -95,58 +174,32 @@ export class SessionReviver {
         return this.deps.isCliAttached(session.id)
     }
 
-    /**
-     * 休眠会话唤醒（去重 + 自吞异常）：非活跃会话触发 resume spawn。
-     *
-     * 返回结构化结果而非 void——warm-on-open 需要「就绪/放弃/失败」三态（warm_done /
-     * warm_yielded / warm_failed 遥测与 pendingActivity 置位时点）；消息路径可忽略返回值。
-     * 异常在内部消化：Bun 下未捕获 rejection 会终止 daemon，而对休眠会话发消息即可触发。
-     */
-    wake(sessionId: string, opts?: { intent?: ReviveIntent }): Promise<ReviveResult> {
-        const inFlight = this.wakeInFlight.get(sessionId)
-        if (inFlight) return inFlight
+    /** 查会话（有 namespace 才做归属校验）；错误语义与旧两入口保持一致 */
+    private resolveSession(sessionId: string, namespace?: string): ResolvedSession {
+        if (namespace !== undefined) {
+            const access = this.deps.sessionCache.resolveSessionAccess(sessionId, namespace)
+            if (!access.ok) {
+                return {
+                    ok: false,
+                    result: {
+                        type: 'error',
+                        message: access.reason === 'access-denied' ? 'Session access denied' : 'Session not found',
+                        code: access.reason === 'access-denied' ? 'access_denied' : 'session_not_found',
+                    },
+                }
+            }
+            return { ok: true, session: access.session, targetId: access.sessionId }
+        }
 
-        const pending = this.reviveDeferred(sessionId, opts)
-            .finally(() => { this.wakeInFlight.delete(sessionId) })
-        this.wakeInFlight.set(sessionId, pending)
-        return pending
+        const session = this.deps.sessionCache.getSession(sessionId) ?? this.deps.sessionCache.refreshSession(sessionId)
+        if (!session) {
+            return { ok: false, result: { type: 'error', message: 'Session not found', code: 'session_not_found' } }
+        }
+        return { ok: true, session, targetId: sessionId }
     }
 
-    private async reviveDeferred(sessionId: string, opts?: { intent?: ReviveIntent }): Promise<ReviveResult> {
-        try {
-            const session = this.deps.sessionCache.getSession(sessionId) ?? this.deps.sessionCache.refreshSession(sessionId)
-            if (!session) {
-                return { type: 'error', message: 'Session not found', code: 'session_not_found' }
-            }
-            if (this.isLive(session)) {
-                return { type: 'success', sessionId }
-            }
-            return await this.revive(sessionId, session.namespace, opts)
-        } catch (error) {
-            // 会话查找（缓存淘汰后回源 DB）与 revive 的 RPC 层都可能 throw；
-            // wake() 的调用方（消息路由）不 await/catch，异常漏出会触发 unhandledRejection 杀 daemon
-            const message = error instanceof Error ? error.message : String(error)
-            daemonLogger.warn(`[dormancy] wakeSession failed (session=${sessionId}): ${message}`)
-            return { type: 'error', message, code: 'resume_failed' }
-        }
-    }
-
-    /** 同步苏醒（手动恢复/预热兑现）：返回结构化结果，调用方决定反馈 */
-    async revive(sessionId: string, namespace: string, opts?: { intent?: ReviveIntent }): Promise<ReviveResult> {
-        const access = this.deps.sessionCache.resolveSessionAccess(sessionId, namespace)
-        if (!access.ok) {
-            return {
-                type: 'error',
-                message: access.reason === 'access-denied' ? 'Session access denied' : 'Session not found',
-                code: access.reason === 'access-denied' ? 'access_denied' : 'session_not_found'
-            }
-        }
-
-        const session = access.session
-        if (this.isLive(session)) {
-            return { type: 'success', sessionId: access.sessionId }
-        }
-
+    /** 真正拉起进程：spawn → 等上线 → 新 id 归并 + 补投 */
+    private async spawnRevived(session: Session, sessionId: string, intent: ReviveIntent): Promise<ReviveResult> {
         const metadata = session.metadata
         if (!metadata || typeof metadata.path !== 'string') {
             return { type: 'error', message: 'Session metadata missing path', code: 'resume_unavailable' }
@@ -165,11 +218,10 @@ export class SessionReviver {
             return { type: 'error', message: 'Executor not ready', code: 'executor_not_ready' }
         }
 
-        const intent: ReviveIntent = opts?.intent ?? 'activate'
         const spawnOptions = {   // Mobi 当前仅支持 Claude（agent 缺省）；resume 无 sessionType/worktreeName/workspaceId
             // sessionId：本行的查重键——目标行已有活 child（含在途启动中）时 already-running 零等待
             // 返回，恢复交给 CLI 重连 + 附着补投（onCliAttached，见 handleCliAttached）
-            sessionId: access.sessionId,
+            sessionId,
             // 预算闸来源：intent 映射单源（activate→user 永不拒绝 / prewarm→warm yield）
             acquireReason: INTENT_TO_ACQUIRE_REASON[intent],
             model: session.runtimeState?.model ?? undefined,
@@ -195,7 +247,7 @@ export class SessionReviver {
             // 未 spawn 新进程。旧进程断连中正无限重连（≤5s 间隔），恢复交给其重连 +
             // 附着补投（onCliAttached）收敛——daemon 零等待：不得落到
             // waitForActive，否则断连场景（重连遥遥无期）会干等满 15s
-            return { type: 'success', sessionId: access.sessionId }
+            return { type: 'success', sessionId }
         }
 
         if (spawnResult.type === 'governor-yielded') {
@@ -214,9 +266,9 @@ export class SessionReviver {
             return { type: 'error', message: 'Session failed to become active', code: 'resume_failed' }
         }
 
-        if (spawnResult.sessionId !== access.sessionId) {
+        if (spawnResult.sessionId !== sessionId) {
             try {
-                await this.deps.sessionCache.mergeSessions(access.sessionId, spawnResult.sessionId, namespace)
+                await this.deps.sessionCache.mergeSessions(sessionId, spawnResult.sessionId, session.namespace)
             } catch (error) {
                 const message = error instanceof Error ? error.message : 'Failed to merge resumed session'
                 return { type: 'error', message, code: 'resume_failed' }

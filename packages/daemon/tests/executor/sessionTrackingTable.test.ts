@@ -99,6 +99,52 @@ describe('SessionTrackingTable 失败端与退场', () => {
     })
 })
 
+describe('SessionTrackingTable.claimSpawn（在途预约：查重与占用同步收口）', () => {
+    it('首次占用成功；同键第二个请求（在登记前）被拦下', () => {
+        const table = new SessionTrackingTable()
+        const first = table.claimSpawn({ resumeSessionId: 'native-1', mobiSessionId: 'mobi-9' })
+        expect(first).not.toBeNull()
+
+        expect(table.claimSpawn({ resumeSessionId: 'native-1' })).toBeNull()
+        expect(table.claimSpawn({ mobiSessionId: 'mobi-9' })).toBeNull()
+        // 无关会话不受影响
+        expect(table.claimSpawn({ resumeSessionId: 'native-2' })).not.toBeNull()
+    })
+
+    it('释放后可再次占用（失败路径不粘住预约）', () => {
+        const table = new SessionTrackingTable()
+        const first = table.claimSpawn({ resumeSessionId: 'native-1' })
+        first?.release()
+
+        expect(table.claimSpawn({ resumeSessionId: 'native-1' })).not.toBeNull()
+    })
+
+    it('release 幂等，且不会删掉别人后来占用的键', () => {
+        const table = new SessionTrackingTable()
+        const first = table.claimSpawn({ resumeSessionId: 'native-1' })
+        first?.release()
+        const second = table.claimSpawn({ resumeSessionId: 'native-1' })
+
+        first?.release()   // 重复释放不得影响第二次预约
+        expect(table.claimSpawn({ resumeSessionId: 'native-1' })).toBeNull()
+        second?.release()
+    })
+
+    it('活表项已存在时直接拒绝（与 checkSpawnDedup 同判据）', () => {
+        const table = new SessionTrackingTable()
+        table.registerDaemon({ startedBy: 'daemon', pid: 701, resumeSessionId: 'resume-1' } as TrackedSession)
+
+        expect(table.claimSpawn({ resumeSessionId: 'resume-1' })).toBeNull()
+    })
+
+    it('无任何键（Web 新会话）恒放行，release 为空操作', () => {
+        const table = new SessionTrackingTable()
+        const claim = table.claimSpawn({})
+        expect(claim).not.toBeNull()
+        claim?.release()
+    })
+})
+
 describe('SessionTrackingTable 纯函数转发', () => {
     it('checkSpawnDedup 命中活行（决策单源在 spawnDedup，此处只验证接线）', () => {
         const table = new SessionTrackingTable()
