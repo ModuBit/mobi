@@ -22,6 +22,7 @@ import { useMobiApi } from '@/core/data/api/client'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { getPermissionDescription } from '@/core/lib/toolInputUtils'
 import type { ToolInfo } from '@/domain/tool/types'
+import { buildPendingToolInfo } from '@/domain/tool/pendingRequest'
 import { isAskUserQuestionToolName } from '@/domain/tool/askUserQuestion'
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
 import { isElicitationToolName } from '@/domain/tool/elicitation'
@@ -75,23 +76,7 @@ export function ApprovalNotificationCard({ item, onResolved, onOpen }: ApprovalN
 
     const tool = useMemo<ToolInfo | null>(() => {
         if (!target) return null
-        const { id, request } = target
-        return {
-            name: request.tool,
-            input: request.arguments,
-            result: null,
-            state: 'pending',
-            description: null,
-            startedAt: null,
-            createdAt: request.createdAt ?? 0,
-            permission: {
-                id,
-                status: 'pending',
-                createdAt: request.createdAt ?? null,
-                suggestions: request.suggestions,
-            },
-            sdkHints: request.sdkHints,
-        }
+        return buildPendingToolInfo(target.id, target.request)
     }, [target])
 
     const summary = useMemo(() => {

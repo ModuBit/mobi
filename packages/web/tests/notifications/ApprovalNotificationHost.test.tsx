@@ -96,7 +96,8 @@ describe('ApprovalNotificationHost', () => {
 
         act(() => notifyOpenSpy.mock.calls[0][0].onClick())
 
-        expect(navigateSpy).toHaveBeenCalledWith({ to: '/sessions/$sessionId', params: { sessionId: 's1' } })
+        // 落地地址由 daemon 随通知下发（item.url），不在前端重拼路由
+        expect(navigateSpy).toHaveBeenCalledWith({ to: ITEM.url })
         expect(useApprovalNotificationStore.getState().items).toHaveLength(0)
         expect(notifyDestroySpy).toHaveBeenCalledWith(ITEM.key)
     })

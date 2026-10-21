@@ -34,7 +34,7 @@ import {
     type LucideIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { OUTPUT_STYLES, OUTPUT_STYLE_FOLLOW_SETTING, OUTPUT_STYLE_LABELS } from '@mobi/shared'
+import { OUTPUT_STYLES, OUTPUT_STYLE_FOLLOW_SETTING, OUTPUT_STYLE_LABELS, isBuiltinOutputStyle, type OutputStyle } from '@mobi/shared'
 import { CompactHoverSelect } from './CompactHoverSelect'
 
 export interface OutputStyleSelectOption {
@@ -63,15 +63,10 @@ function resolveDescriptionI18nKey(option: OutputStyleSelectOption): string | un
 }
 
 /**
- * 每个 style 一个语义图标（收起态与下拉项同源）：选择器收起时也能一眼看出当前风格。
- * - default: Sparkles（标准行为）
- * - Proactive: Zap（立即行动）
- * - Concise: AlignLeft（短文本行）
- * - Explanatory: BookOpen（解释与模式）
- * - Learning: GraduationCap（教学）
- * - 跟随 CC 设置：Settings2；自定义 style 回落 LineStyle
+ * 每个内置 style 一个语义图标（收起态与下拉项同源），选择器收起时也能一眼看出当前风格。
+ * 键集与 shared 的 OutputStyle 同源受检：新增内置风格漏配图标会编译失败。
  */
-const OUTPUT_STYLE_ICONS: Record<string, LucideIcon> = {
+const OUTPUT_STYLE_ICONS: Record<OutputStyle, LucideIcon> = {
     default: Sparkles,
     Proactive: Zap,
     Concise: AlignLeft,
@@ -79,9 +74,11 @@ const OUTPUT_STYLE_ICONS: Record<string, LucideIcon> = {
     Learning: GraduationCap,
 }
 
-/** Output style 图标（按选项值取档；未知自定义 style 回落 LineStyle）：单点维护 */
+/** Output style 图标（按选项值取档；跟随 CC 设置用 Settings2，未知自定义 style 回落 LineStyle）：单点维护 */
 export function OutputStyleIcon({ value }: { value: string }) {
-    const Icon = value === OUTPUT_STYLE_FOLLOW_SETTING ? Settings2 : (OUTPUT_STYLE_ICONS[value] ?? LineStyle)
+    const Icon = value === OUTPUT_STYLE_FOLLOW_SETTING
+        ? Settings2
+        : isBuiltinOutputStyle(value) ? OUTPUT_STYLE_ICONS[value] : LineStyle
     return <Icon size={12} strokeWidth={2} className="opacity-55" />
 }
 

@@ -26,7 +26,7 @@ import { shadcnLightComponents, shadcnDarkComponents } from './components'
 import { injectShadcnThemeCss } from './cssVars'
 
 // 动态主题提供者：订阅 uiStore.theme 和 locale，切换 Shadcn 风格主题
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
+function useResolvedTheme() {
     const locale = useUiStore((state) => state.locale)
     // 解析后档位是全站主题单源：antd algorithm、data-theme、.dark class、shadcn 变量
     // 注入四通道都从这里派生（system 档按 store.systemIsDark 解析——此前裸判
@@ -34,10 +34,66 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     // highlight.css 失效，见 pending #113）
     const mode = useUiStore((state) => resolveTheme(state.theme, state.systemIsDark))
     const isDark = mode === 'dark'
-    const token = isDark ? shadcnDarkToken : shadcnLightToken
-    const components = isDark ? shadcnDarkComponents : shadcnLightComponents
-    const algorithm = isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm
-    const antdLocale = locale === 'zh' ? zhCN : enUS
+    return {
+        locale,
+        mode,
+        isDark,
+        token: isDark ? shadcnDarkToken : shadcnLightToken,
+        components: isDark ? shadcnDarkComponents : shadcnLightComponents,
+        algorithm: isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
+        antdLocale: locale === 'zh' ? zhCN : enUS,
+    }
+}
+
+/** 只做 antd 主题/语言装配，不碰任何文档级副作用 */
+function AntThemeConfig({ config, children }: { config: ReturnType<typeof useResolvedTheme>; children: React.ReactNode }) {
+    return (
+        <ConfigProvider
+            locale={config.antdLocale}
+            // 两字按钮自动插空格（「连 接」）与三字以上按钮字距节奏不一致，全局关闭
+            button={{ autoInsertSpace: false }}
+            // 全站输入类默认 filled 形态：无边框、淡底填充（组件级 variant 显式传入时可覆盖）
+            input={{ variant: 'filled' }}
+            select={{ variant: 'filled' }}
+            theme={{
+                token: {
+                    ...config.token,
+                    // 输入类 focus halo 彻底关停：Select 直接用它画 box-shadow，Input 的
+                    // activeShadow 默认派生也源于它——归零即全站输入框聚焦无环（无边框审美
+                    // 的延续，filled 形态只靠淡底变化表达聚焦）
+                    controlOutlineWidth: 0,
+                },
+                components: config.components,
+                algorithm: config.algorithm,
+                // 显式开启 CSS 变量模式：把 token 注册为全局 --ant-* 自定义属性（v6 变量名为
+                // kebab-case，如 --ant-color-warning）。组件层多处样式依赖这些变量（如
+                // SubmitButton 光环的 color-mix、CommandProgressBubble 的 warning 色光标/
+                // 进度条）——不开启时这些 var() 全部无效（光环透明不可见、颜色静默降级为继承色）。
+                // v6 类型只接受 { prefix?, key? }，空对象 = 开启并走默认值
+                cssVar: {},
+            }}
+        >
+            <AntApp>
+                {children}
+            </AntApp>
+        </ConfigProvider>
+    )
+}
+
+/**
+ * 主题作用域：只给「独立 React 根」里的内容补 antd 主题/语言上下文。
+ *
+ * 通知、portal 这类内容不继承主树 context，但也不需要 ThemeProvider 的文档级副作用
+ * （订阅 OS 主题、写 data-theme/.dark、注入 shadcn 变量、切 i18n 语言）——那些是
+ * 全站单例，由 ThemeProvider 独占；在条目上再挂一份会重复触发全站重渲与样式表重写。
+ */
+export function ThemeScope({ children }: { children: React.ReactNode }) {
+    return <AntThemeConfig config={useResolvedTheme()}>{children}</AntThemeConfig>
+}
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+    const config = useResolvedTheme()
+    const { mode, isDark, locale } = config
 
     // OS 暗色偏好订阅由本组件独占（全站主题单源）：system 档下 OS 切档 → systemIsDark
     // 变更 → 上面的 mode 重算 → 四通道一起更新。其余消费点只读 store 不各自监听
@@ -64,35 +120,5 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         i18n.changeLanguage(locale)
     }, [locale])
 
-    return (
-        <ConfigProvider
-            locale={antdLocale}
-            // 两字按钮自动插空格（「连 接」）与三字以上按钮字距节奏不一致，全局关闭
-            button={{ autoInsertSpace: false }}
-            // 全站输入类默认 filled 形态：无边框、淡底填充（组件级 variant 显式传入时可覆盖）
-            input={{ variant: 'filled' }}
-            select={{ variant: 'filled' }}
-            theme={{
-                token: {
-                    ...token,
-                    // 输入类 focus halo 彻底关停：Select 直接用它画 box-shadow，Input 的
-                    // activeShadow 默认派生也源于它——归零即全站输入框聚焦无环（无边框审美
-                    // 的延续，filled 形态只靠淡底变化表达聚焦）
-                    controlOutlineWidth: 0,
-                },
-                components,
-                algorithm,
-                // 显式开启 CSS 变量模式：把 token 注册为全局 --ant-* 自定义属性（v6 变量名为
-                // kebab-case，如 --ant-color-warning）。组件层多处样式依赖这些变量（如
-                // SubmitButton 光环的 color-mix、CommandProgressBubble 的 warning 色光标/
-                // 进度条）——不开启时这些 var() 全部无效（光环透明不可见、颜色静默降级为继承色）。
-                // v6 类型只接受 { prefix?, key? }，空对象 = 开启并走默认值
-                cssVar: {},
-            }}
-        >
-            <AntApp>
-                {children}
-            </AntApp>
-        </ConfigProvider>
-    )
+    return <AntThemeConfig config={config}>{children}</AntThemeConfig>
 }

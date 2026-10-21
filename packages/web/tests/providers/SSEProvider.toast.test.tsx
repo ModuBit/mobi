@@ -114,11 +114,12 @@ describe('SSEProvider toast 分支(渲染集成)', () => {
         sseListener.current = null
         authState.authenticated = true
         Object.defineProperty(document, 'hidden', { value: false, configurable: true })
+        // 信箱是模块级 store：清掉上个用例的残留，免得跨用例污染
+        useApprovalNotificationStore.getState().clearAll()
     })
     afterEach(() => cleanup())
 
     it('连发两条同类审批通知 → 信箱条目各自独立 key(防同 key 互相吞)且不直接弹文本 toast', async () => {
-        useApprovalNotificationStore.getState().clearAll()
         await renderProvider()
         expect(sseListener.current).toBeTruthy()
 
@@ -131,7 +132,6 @@ describe('SSEProvider toast 分支(渲染集成)', () => {
         expect(items[0]!.key).not.toBe(items[1]!.key)
         expect(items.map(i => i.requestId)).toEqual(['r1', 'r2'])
         expect(notifyInfoSpy).not.toHaveBeenCalled()
-        useApprovalNotificationStore.getState().clearAll()
     })
 
     it('点击文本 toast → 立即收回该条(destroy 自己的 key)并跳转', async () => {

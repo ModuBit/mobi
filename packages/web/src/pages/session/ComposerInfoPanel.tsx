@@ -28,13 +28,14 @@ import { ExclamationCircleOutlined } from '@ant-design/icons'
 import { ChevronDown } from 'lucide-react'
 import type { AgentState, SessionMetadataSummary, DecryptedMessage } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
-import type { SDKUIHints, PermissionUpdate, PermissionAnswers } from '@mobi/shared'
+import type { PermissionAnswers } from '@mobi/shared'
 import { PermissionFooter, getPermissionDisplayText } from '@/features/chat/tool-card/PermissionFooter'
 import { AskUserQuestionFooter } from '@/features/chat/tool-card/AskUserQuestionFooter'
 import { RequestUserInputFooter } from '@/features/chat/tool-card/RequestUserInputFooter'
 import { isAskUserQuestionToolName, joinQuestionHeaders } from '@/domain/tool/askUserQuestion'
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
 import { isElicitationToolName, parseElicitationPayload } from '@/domain/tool/elicitation'
+import { buildPendingToolInfo } from '@/domain/tool/pendingRequest'
 import { ElicitationFormCard } from '@/features/composer/ElicitationFormCard'
 import { getPermissionDescription } from '@/core/lib/toolInputUtils'
 import { inferToolRow } from '@/core/lib/toolRow'
@@ -76,35 +77,16 @@ function ToolInteractionPanel({
         return Object.entries(requests).map(([requestId, request]) => {
             // mcp_elicitation 由独立 ElicitationFormCard 消费（spec D1 渲染层分流），不进通用审批卡
             if (isElicitationToolName(request.tool)) return null
-            const req = request as {
-                tool?: string; arguments?: unknown; createdAt?: number | null
-                sdkHints?: SDKUIHints
-                suggestions?: PermissionUpdate[]
-            }
-            const toolName = req.tool || 'Unknown'
-            const tool = {
-                name: toolName,
-                input: req.arguments,
-                result: undefined,
-                state: 'running' as const,
-                description: null,
-                startedAt: null,
-                createdAt: req.createdAt ?? Date.now(),
-                permission: {
-                    id: requestId,
-                    status: 'pending' as const,
-                    createdAt: req.createdAt ?? null,
-                    suggestions: req.suggestions,
-                },
-                sdkHints: req.sdkHints,
-            }
+            // 视图模型与会话页外的审批入口共用同一份映射（通知卡片也走它）
+            const tool = buildPendingToolInfo(requestId, request)
+            const toolName = tool.name
             return {
                 id: requestId,
                 tool,
                 isAskUserQuestion: isAskUserQuestionToolName(toolName),
                 isRequestUserInput: isRequestUserInputToolName(toolName),
                 askUserQuestionHeader: isAskUserQuestionToolName(toolName)
-                    ? joinQuestionHeaders(req.arguments) ?? undefined
+                    ? joinQuestionHeaders(request.arguments) ?? undefined
                     : undefined,
             }
         }).filter((entry) => entry !== null)

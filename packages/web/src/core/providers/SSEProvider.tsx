@@ -578,6 +578,11 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     body,
                     url,
                 })
+                /** 前台展示形态的唯一分派点：审批类弹可操作卡片，其余纯文本 toast */
+                const presentToast = () => {
+                    if (kind === 'permission') enqueueApprovalNotification()
+                    else showPlainToast()
+                }
 
                 if (action === 'system-notification') {
                     // 场景③ 后台:SW 系统通知（移动端不支持页面层 new Notification），
@@ -593,16 +598,14 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                         data: { url },
                     }).then((ok) => {
                         if (ok) return
-                        if (kind === 'permission') enqueueApprovalNotification()
-                        else showPlainToast()
+                        presentToast()
                     })
                     markUnreadRef.current(sessionId, kind)
                     break
                 }
 
                 // 场景② 前台但不在该 session:审批类弹可操作卡片,其余弹文本 Toast + 角标
-                if (kind === 'permission') enqueueApprovalNotification()
-                else showPlainToast()
+                presentToast()
                 markUnreadRef.current(sessionId, kind)
                 break
             }
