@@ -42,10 +42,10 @@
 .listbox { position: relative; max-height: min(300px, 40vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
 .listbox::-webkit-scrollbar { display: none; }
 /* 高亮由 gliding highlight 色块弹簧跟随当前项（共享组件），不再逐项瞬时刷背景 */
-.highlight { position: absolute; top: 0; right: 2px; left: 2px; border-radius: calc(var(--radius-panel) - 5px); background: color-mix(in oklab, var(--foreground) 6.5%, transparent); opacity: 0; pointer-events: none; transition: opacity var(--duration-instant) var(--ease-standard); }
+.highlight { position: absolute; top: 0; right: 2px; left: 2px; border-radius: calc(var(--radius-panel) - 6px); background: color-mix(in oklab, var(--foreground) 6.5%, transparent); opacity: 0; pointer-events: none; transition: opacity var(--duration-instant) var(--ease-standard); }
 .highlight[data-on] { opacity: 1; }
 /* 方向键高频移动高亮，所以背景几乎即时变化。 */
-.option { position: relative; display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: var(--space-3); border-radius: calc(var(--radius-panel) - 5px); padding: 0 12px; color: var(--foreground); font-size: var(--text-sm); cursor: pointer; outline: none; user-select: none; transition: color 80ms var(--ease-standard); }
+.option { position: relative; display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: var(--space-3); border-radius: calc(var(--radius-panel) - 6px); padding: 0 12px; color: var(--foreground); font-size: var(--text-sm); cursor: pointer; outline: none; user-select: none; transition: color 80ms var(--ease-standard); }
 .option > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .option[data-active="true"] { color: var(--foreground); }
 .option[data-disabled="true"] { opacity: .42; cursor: not-allowed; }

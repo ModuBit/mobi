@@ -22,7 +22,7 @@
  * 本测试把三件事锁死：
  *   ① 档位表：DESIGN.md ←→ tokens.ts.RADIUS_TIERS ←→ antd 槽位 ←→ 注入的 CSS 变量；
  *   ② 组件覆写只允许落到指定档，且不许出现「与全局同值」的冗余覆写；
- *   ③ **源码里不许再出现 ≥4px 的圆角字面量**（CSS 与内联样式都扫）——散落的字面量
+ *   ③ **源码里不许再出现 ≥4px 的圆角字面量**（CSS、内联样式与 `$radius`/`borderRadius` 透传都扫）——散落的字面量
  *      正是「逐个调不动」的根因；4px 以下只留小标记 / 圆点。
  */
 
@@ -156,6 +156,13 @@ describe('圆角档位与 DESIGN.md 一致性（文档与代码同源守卫）',
                 const value = decl[2]!.trim()
                 const literal = value.match(/^(\d+(?:\.\d+)?)(?:px)?$/)
                 if (literal && !isMark(Number(literal[1]))) offenders.push(`${rel} → borderRadius: ${value}`)
+            }
+            // 组件透传（$radius="6px" / borderRadius={8}）：底色滑块、遮罩等由 prop 绘制圆角，
+            // 不经过上面两条扫描——侧栏选中底曾因此一直停在 icon 档而无人发现
+            for (const decl of source.matchAll(/(?:\$radius|borderRadius)\s*=\s*(?:"([^"]*)"|\{(\d+(?:\.\d+)?)\})/g)) {
+                const value = (decl[1] ?? decl[2] ?? '').trim()
+                const n = Number(value.replace(/px$/, ''))
+                if (!Number.isNaN(n) && !isMark(n)) offenders.push(`${rel} → $radius/borderRadius=${value}`)
             }
         }
         expect(offenders, '这些字面量应改成档位引用（var(--radius-<档名>) / token.borderRadius*）').toEqual([])

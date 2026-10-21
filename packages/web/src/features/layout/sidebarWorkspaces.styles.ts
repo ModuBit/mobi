@@ -39,7 +39,7 @@ export const SectionTitleRow = styled.div`
     align-items: center;
     gap: 2px;
     padding: 8px 8px 4px;
-    border-radius: var(--radius-control-sm);
+    border-radius: var(--radius-control);
     cursor: pointer;
     user-select: none;
 
@@ -103,7 +103,7 @@ export const GroupHeader = styled.div<{ $token: SidebarToken }>`
     width: 100%;
     height: 32px;
     padding: 0 8px;
-    border-radius: var(--radius-control-sm);
+    border-radius: var(--radius-control);
     cursor: pointer;
     font-size: 13px;
     line-height: 1;
@@ -198,7 +198,7 @@ export const SessionItem = styled.div<{
     border: none;
     background: transparent;
     color: ${props => props.$token.colorText};
-    border-radius: var(--radius-control-sm);
+    border-radius: var(--radius-control);
     cursor: pointer;
     font-size: 12px;
     line-height: 1;

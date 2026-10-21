@@ -189,8 +189,8 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
                                 style={{ marginTop: 12, position: 'relative', display: 'flex', flexDirection: 'column', gap: 4 }}
                             >
                                 {/* 悬停 / 选中底色：两块滑移块，替代逐行静态底色；选中比悬停深一档（DESIGN.md 三档阶梯） */}
-                                <HoverGlideLayer containerRef={containerRef} $background={token.colorBgTextHover} $radius="6px" />
-                                <GlideLayer target={activeEl} $background={token.colorPrimaryBg} $radius="6px" />
+                                <HoverGlideLayer containerRef={containerRef} $background={token.colorBgTextHover} $radius="var(--radius-control-sm)" />
+                                <GlideLayer target={activeEl} $background={token.colorPrimaryBg} $radius="var(--radius-control-sm)" />
                                 {currentQuestion.options.map((opt, optIdx) => {
                                     const isSelected = currentState?.selected === opt.label
                                     return (

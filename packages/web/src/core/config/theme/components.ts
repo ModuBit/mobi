@@ -55,6 +55,12 @@ const sharedComponents = {
     Checkbox: {
         borderRadiusSM: RADIUS_TIERS.square,
     },
+    // antd Menu 默认菜单项走 borderRadiusLG（我们的 panel 22），项会读成药丸；
+    // 弹层内菜单项与自管 dropdown-menu / morph-select 同语言，取小尺寸控件档
+    Menu: {
+        itemBorderRadius: RADIUS_TIERS.controlSm,
+        subMenuItemBorderRadius: RADIUS_TIERS.controlSm,
+    },
 }
 
 /** 净白主题的组件覆写 */

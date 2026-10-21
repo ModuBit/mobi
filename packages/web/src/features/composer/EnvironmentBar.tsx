@@ -52,7 +52,7 @@ interface EnvironmentBarProps {
 /** 弹层底部「+ 新建工作区」（Combobox footer）：与侧边栏新建工作区共用 WorkspaceFormModal */
 const CreateButton = styled.button`
     display: flex; width: 100%; min-height: 30px; align-items: center; justify-content: center; gap: 6px;
-    border: 0; border-radius: calc(var(--radius-control) - 4px);
+    border: 0; border-radius: calc(var(--radius-panel) - 6px);
     background: transparent; color: var(--foreground); font: inherit; font-size: var(--text-sm);
     cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard);
     @media (hover: hover) and (pointer: fine) { &:hover:not(:disabled) { background: var(--surface-muted); } }

@@ -52,7 +52,7 @@ const NavItem = styled.button<{ $active: boolean; $disabled?: boolean; $token: R
         if (props.$disabled) return props.$token.colorTextQuaternary
         return props.$active ? props.$token.colorPrimary : props.$token.colorTextSecondary
     }};
-    border-radius: var(--radius-icon);
+    border-radius: var(--radius-control);
     cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
     font-size: 13px;
     line-height: 1;
@@ -88,8 +88,8 @@ export function SidebarNav() {
     return (
         <NavList>
             <NavItems ref={containerRef}>
-                <HoverGlideLayer containerRef={containerRef} $background={token.colorBgTextHover} />
-                <GlideLayer target={activeEl} $background={token.colorPrimaryBg} />
+                <HoverGlideLayer containerRef={containerRef} $background={token.colorBgTextHover} $radius="var(--radius-control)" />
+                <GlideLayer target={activeEl} $background={token.colorPrimaryBg} $radius="var(--radius-control)" />
                 {mainNavItems.map((item) => {
                     const active = getNavActiveKey(location.pathname, item.key)
                     return (

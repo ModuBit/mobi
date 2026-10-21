@@ -181,7 +181,7 @@ const ArtifactCard: FC<{ path: string, reason?: ArtifactCardReason, sessionId?: 
             }}
         >
             <div style={{
-                width: 36, height: 36, flexShrink: 0, borderRadius: token.borderRadiusLG,
+                width: 36, height: 36, flexShrink: 0, borderRadius: token.borderRadiusSM,
                 background: token.colorFillTertiary, display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
                 <Icon size={18} style={{ color: token.colorTextSecondary }} />

@@ -27,16 +27,16 @@
 .hint { color: var(--text-muted); font-size: var(--text-xs); }
 /* Radix 扣住动画直到菜单完成定位，所以面板始终从 trigger 边缘生长。
    z 走 overlay 层级变量（antd 弹层从 1000 起，上游写死的 1000 会被压住，dropdown-menu 先例） */
-.content { --menu-x: 0px; --menu-y: -6px; box-sizing: border-box; z-index: var(--mobi-z-overlay, 1000); width: var(--radix-select-trigger-width); min-width: var(--radix-select-trigger-width); max-width: min(24rem, calc(100vw - 20px)); max-height: min(320px, var(--radix-select-content-available-height)); overflow: hidden; border: 1px solid var(--border); border-radius: calc(var(--radius-control) + 2px); padding: 6px; background: var(--surface-raised); color: var(--foreground); box-shadow: var(--shadow-floating); transform-origin: var(--radix-select-content-transform-origin); animation: select-in var(--duration-standard) var(--ease-enter) both; }
+.content { --menu-x: 0px; --menu-y: -6px; box-sizing: border-box; z-index: var(--mobi-z-overlay, 1000); width: var(--radix-select-trigger-width); min-width: var(--radix-select-trigger-width); max-width: min(24rem, calc(100vw - 20px)); max-height: min(320px, var(--radix-select-content-available-height)); overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-panel); padding: 6px; background: var(--surface-raised); color: var(--foreground); box-shadow: var(--shadow-floating); transform-origin: var(--radix-select-content-transform-origin); animation: select-in var(--duration-standard) var(--ease-enter) both; }
 .content[data-side="top"] { --menu-y: 6px; }
 .content[data-side="left"] { --menu-x: 6px; --menu-y: 0px; }
 .content[data-side="right"] { --menu-x: -6px; --menu-y: 0px; }
 .content[data-state="closed"] { animation: select-out var(--duration-instant) var(--ease-standard) both; }
 .viewport { position: relative; padding: 2px 0; }
-.item { position: relative; display: flex; align-items: center; min-height: 36px; border-radius: calc(var(--radius-control) - 4px); padding: 0 34px 0 11px; color: var(--foreground); font-size: var(--text-sm); cursor: pointer; outline: none; user-select: none; transition: color var(--duration-instant) var(--ease-standard); }
+.item { position: relative; display: flex; align-items: center; min-height: 36px; border-radius: calc(var(--radius-panel) - 6px); padding: 0 34px 0 11px; color: var(--foreground); font-size: var(--text-sm); cursor: pointer; outline: none; user-select: none; transition: color var(--duration-instant) var(--ease-standard); }
 .item[data-disabled] { opacity: .45; cursor: not-allowed; }
 /* 高亮不再逐项瞬时刷背景（上游风格），由 gliding highlight 色块弹簧跟随当前项 */
-.highlight { position: absolute; top: 0; right: 2px; left: 2px; border-radius: calc(var(--radius-control) - 4px); background: color-mix(in oklab, var(--foreground) 6.5%, transparent); opacity: 0; pointer-events: none; transition: opacity var(--duration-instant) var(--ease-standard); }
+.highlight { position: absolute; top: 0; right: 2px; left: 2px; border-radius: calc(var(--radius-panel) - 6px); background: color-mix(in oklab, var(--foreground) 6.5%, transparent); opacity: 0; pointer-events: none; transition: opacity var(--duration-instant) var(--ease-standard); }
 .highlight[data-on] { opacity: 1; }
 .indicator { position: absolute; right: 10px; display: inline-flex; align-items: center; color: var(--foreground); animation: indicator-in var(--duration-standard) var(--ease-enter) 40ms both; }
 .scrollButton { display: grid; height: 28px; place-items: center; color: var(--text-muted); }

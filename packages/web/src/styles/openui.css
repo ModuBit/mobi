@@ -110,7 +110,7 @@
    CardBlock/卡片列表的视觉一致；"sunk"/"clear" 保持上游语义不动。 */
 .openui-block .openui-card-card {
     padding: var(--openui-space-l);
-    border-radius: var(--openui-radius-3xl);
+    border-radius: var(--radius-panel);
     background: var(--openui-elevated);
     border-color: var(--openui-border-default);
 }

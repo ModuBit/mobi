@@ -94,8 +94,8 @@ export function SessionRowsList({
 
     return (
         <SessionListContainer ref={containerRef}>
-            <HoverGlideLayer containerRef={containerRef} $background={token.colorBgTextHover} />
-            <GlideLayer target={activeEl} $background={token.colorPrimaryBg} />
+            <HoverGlideLayer containerRef={containerRef} $background={token.colorBgTextHover} $radius="var(--radius-control)" />
+            <GlideLayer target={activeEl} $background={token.colorPrimaryBg} $radius="var(--radius-control)" />
             {showSkeleton ? (
                 <SessionSkeletonRows variant="desktop" rows={3} />
             ) : showEmpty ? (
