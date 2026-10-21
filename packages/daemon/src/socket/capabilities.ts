@@ -48,6 +48,10 @@ export type SessionSocketCapabilities = {
     ) => void
     /** Web 端实时事件转发（文件变更/终端输出等 → SyncEngine.handleRealtimeEvent） */
     onWebappEvent: (event: SyncEvent) => void
+    /** CLI 连接附着（新 socket 已进会话房间、接管旧连接之后触发一次）→ 补投仍 queued 的消息。
+     *  补投挂在附着事实而非 active 翻转上：进程被强杀时心跳窗口内 active 仍为 true，
+     *  翻转永不发生，排队消息会一直滞留（2026-10-21 resume 首投滞留） */
+    onCliAttached: (sessionId: string) => void
     /** Web SSE 在线检查（ui-command 离线静默判定；hidden 后台 tab 也算在线） */
     hasActiveSseConnection: (namespace: string) => boolean
     /** ui-command 发布（经 EventPublisher 盖章 namespace 并 SSE 广播） */

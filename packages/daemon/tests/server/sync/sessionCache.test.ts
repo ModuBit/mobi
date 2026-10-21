@@ -882,3 +882,53 @@ describe('SessionCache.getSessionByNamespace 缓存 miss 回落数据库', () =>
         expect(cache.getSessionByNamespace(session.id, 'ns-b')).toBeUndefined()
     })
 })
+
+describe('SessionCache.markDetached — 连接事实纠正陈旧 active', () => {
+    function makeCache() {
+        const store = new Store(':memory:')
+        const emitted: Array<{ type: string; sessionId?: string; data?: unknown }> = []
+        const cache = new SessionCache(store, {
+            emit: (event: { type: string; sessionId?: string; data?: unknown }) => { emitted.push(event) },
+        } as unknown as EventPublisher)
+        return { store, cache, emitted }
+    }
+
+    test('active 会话被就地判死：active/running 清零并广播 active:false', () => {
+        const { store, cache, emitted } = makeCache()
+        const session = cache.getOrCreateSession('tag-detach-1', { path: '/tmp/p' }, null, 'default')
+        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: true, mode: 'remote' })
+        emitted.length = 0
+
+        cache.markDetached(session.id)
+
+        expect(cache.getSession(session.id)?.active).toBe(false)
+        expect(cache.getSession(session.id)?.running).toBe(false)
+        expect(emitted).toEqual([
+            { type: 'session-updated', sessionId: session.id, data: { active: false } },
+        ])
+        store.close()
+    })
+
+    test('幂等：已 inactive 的会话不重复广播', () => {
+        const { store, cache, emitted } = makeCache()
+        const session = cache.getOrCreateSession('tag-detach-2', { path: '/tmp/p' }, null, 'default')
+        emitted.length = 0
+
+        cache.markDetached(session.id)
+
+        expect(emitted).toEqual([])
+        store.close()
+    })
+
+    test('expireInactive 仍按心跳过期翻 inactive（共用同一纠正路径）', () => {
+        const { store, cache } = makeCache()
+        const session = cache.getOrCreateSession('tag-detach-3', { path: '/tmp/p' }, null, 'default')
+        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: true, mode: 'remote' })
+
+        const gone = cache.expireInactive(Date.now() + 31_000)
+
+        expect(gone).toContain(session.id)
+        expect(cache.getSession(session.id)?.active).toBe(false)
+        store.close()
+    })
+})

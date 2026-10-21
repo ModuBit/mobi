@@ -573,3 +573,52 @@ describe('SyncEngine.switchOutputStyle 结构化分层（深化候选⑥）', ()
     })
 })
 
+
+describe('SyncEngine.handleCliAttached — 附着即补投（心跳窗口漏投的修复）', () => {
+    /** 只关心 CLI 房间广播：捕获 of('/cli').to(room).emit(...) */
+    function makeAttachEngine() {
+        const store = new Store(':memory:')
+        const emitted: Array<{ room: string; event: string; payload: unknown }> = []
+        const ns = {
+            to(room: string) {
+                const target = {
+                    except() { return target },
+                    emit(event: string, payload: unknown) { emitted.push({ room, event, payload }) },
+                }
+                return target
+            },
+        }
+        const io = { of: () => ns } as unknown as import('socket.io').Server
+        const registry = { getSocketIdForMethod: () => null } as unknown as RpcRegistry
+        const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
+        const engine = new SyncEngine(store, io, registry, sseManager)
+        const sid = store.sessions.getOrCreateSession('tag-attach', { path: '/tmp/p' }, null, 'default').id
+        return { engine, store, sid, emitted }
+    }
+
+    test('仍 queued 的本地消息在附着时重放到 CLI 房间', () => {
+        const h = makeAttachEngine()
+        h.store.messages.addMessage(h.sid, { role: 'user', content: [{ type: 'text', text: 'hi' }] }, 'local-1')
+
+        h.engine.handleCliAttached(h.sid)
+
+        expect(h.emitted).toHaveLength(1)
+        expect(h.emitted[0].room).toBe(`session:${h.sid}`)
+        expect(h.emitted[0].event).toBe('session-update')
+        const body = (h.emitted[0].payload as { body: { t: string; message: { localId: string } } }).body
+        expect(body.t).toBe('new-message')
+        expect(body.message.localId).toBe('local-1')
+        h.engine.stop()
+        h.store.close()
+    })
+
+    test('没有排队消息 → 不广播（不制造空补投）', () => {
+        const h = makeAttachEngine()
+
+        h.engine.handleCliAttached(h.sid)
+
+        expect(h.emitted).toEqual([])
+        h.engine.stop()
+        h.store.close()
+    })
+})

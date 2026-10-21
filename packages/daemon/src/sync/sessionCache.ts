@@ -431,10 +431,8 @@ export class SessionCache {
         for (const session of this.sessions.values()) {
             if (!session.active) continue
             if (now - session.activeAt <= sessionTimeoutMs) continue
-            session.active = false
-            session.running = false
+            this.markDetached(session.id)
             gone.add(session.id)
-            this.publisher.emit({ type: 'session-updated', sessionId: session.id, data: { active: false } })
         }
 
         // 驱逐长时间 inactive 的 session（仍在 DB 中，按需重新加载）
@@ -447,6 +445,21 @@ export class SessionCache {
         }
 
         return [...gone]
+    }
+
+    /**
+     * 就地判定「它已经不在了」：active 立刻作废并广播，不等 30s 心跳过期窗口。
+     *
+     * 判据来自连接事实而不是时间——CLI socket 已从会话上脱落（进程被强杀时来不及上报
+     * session-end）。窗口期内 active 仍为 true 会让唤醒与补投降级成 no-op（2026-10-21
+     * resume 首投滞留事故）；纠正后所有读 active 的路径看到同一个事实。幂等：非 active 静默返回。
+     */
+    markDetached(sessionId: string): void {
+        const session = this.sessions.get(sessionId)
+        if (!session?.active) return
+        session.active = false
+        session.running = false
+        this.publisher.emit({ type: 'session-updated', sessionId, data: { active: false } })
     }
 
     /** live 字段的落库键（深化候选②：新增 live 字段在此追加即获得「落库+内存+广播」，

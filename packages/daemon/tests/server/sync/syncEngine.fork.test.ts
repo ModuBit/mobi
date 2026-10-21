@@ -383,8 +383,8 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
     })
 })
 
-describe('fork 激活翻转补投排队消息', () => {
-    test('session-alive 激活翻转时把仍 queued 的消息补发进 CLI 房间（入队广播早于 CLI 进房的时序窗）', () => {
+describe('fork 首条消息补投：挂在 CLI 附着上', () => {
+    test('CLI 附着时把仍 queued 的消息补发进 CLI 房间（入队广播早于 CLI 进房的时序窗）', () => {
         const store = new Store(':memory:')
         const emits: Array<{ room: string; args: unknown[] }> = []
         const io = {
@@ -408,7 +408,12 @@ describe('fork 激活翻转补投排队消息', () => {
             // 激活窗口期入队的首条消息（CLI 尚未进房，入队广播必然落空）
             store.messages.addMessage(session.id, userMsg('激活前的首条消息'), 'l-redeliver')
 
+            // 心跳本身不再补投（单触发器不变量：附着时已投过一次，翻转再投就是重复）
             engine.handleSessionAlive({ sid: session.id, time: Date.now(), running: true })
+            expect(emits.filter(e => e.room === `session:${session.id}`)).toHaveLength(0)
+
+            // 附着（socket 已进房）才是补投时机
+            engine.handleCliAttached(session.id)
 
             const redelivered = emits.filter(e =>
                 e.room === `session:${session.id}`

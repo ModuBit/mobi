@@ -49,6 +49,7 @@ function makeDeps(opts: {
     owners: SessionSocketOwners
     registry: RpcRegistry
     sockets: Map<string, unknown>
+    onCliAttached?: (sessionId: string) => void
 }) {
     return {
         io: { of: () => ({ sockets: opts.sockets }) } as unknown as CliHandlersDeps['io'],
@@ -68,6 +69,7 @@ function makeDeps(opts: {
         backgroundTaskTracker: {} as CliHandlersDeps['backgroundTaskTracker'],
         snapshotSync: new SnapshotSync(),
         onWebappEvent: () => {},
+        onCliAttached: opts.onCliAttached,
         sessionSocketOwners: opts.owners,
     } as CliHandlersDeps
 }
@@ -128,5 +130,59 @@ describe('session CLI socket 接管仲裁', () => {
         const socket = makeFakeSocket('sock-1', null)
         sockets.set('sock-1', socket)
         expect(() => registerCliHandlers(socket as never, deps)).not.toThrow()
+    })
+})
+
+describe('CLI 附着补投（onCliAttached）', () => {
+    test('连接进房后触发一次；持有点在 takeOver 之后由持有者表可查', () => {
+        const owners = new SessionSocketOwners()
+        const registry = new RpcRegistry()
+        const sockets = new Map<string, unknown>()
+        const attached: Array<{ sessionId: string; owner: boolean }> = []
+        const deps = makeDeps({
+            owners,
+            registry,
+            sockets,
+            // 回调时刻即「已附着」：持有者表必须已经记上，否则唤醒判据会误判为未附着
+            onCliAttached: (sessionId) => { attached.push({ sessionId, owner: owners.has(sessionId) }) },
+        })
+
+        const socket = makeFakeSocket('sock-1', 's1')
+        sockets.set('sock-1', socket)
+        registerCliHandlers(socket as never, deps)
+
+        expect(attached).toEqual([{ sessionId: 's1', owner: true }])
+    })
+
+    test('重连（新 socket 接管）再次触发；无 sessionId 不触发', () => {
+        const owners = new SessionSocketOwners()
+        const registry = new RpcRegistry()
+        const sockets = new Map<string, unknown>()
+        const attached: string[] = []
+        const deps = makeDeps({ owners, registry, sockets, onCliAttached: (sid) => { attached.push(sid) } })
+
+        const first = makeFakeSocket('sock-1', 's1')
+        sockets.set('sock-1', first)
+        registerCliHandlers(first as never, deps)
+
+        const second = makeFakeSocket('sock-2', 's1')
+        sockets.set('sock-2', second)
+        registerCliHandlers(second as never, deps)
+
+        const anonymous = makeFakeSocket('sock-3', null)
+        sockets.set('sock-3', anonymous)
+        registerCliHandlers(anonymous as never, deps)
+
+        expect(attached).toEqual(['s1', 's1'])
+    })
+
+    test('持有者断开后附着事实作废（release 生效）', () => {
+        const owners = new SessionSocketOwners()
+        const socket = makeFakeSocket('sock-1', 's1')
+        owners.takeOver('s1', socket.id)
+
+        expect(owners.has('s1')).toBe(true)
+        owners.release('s1', socket.id)
+        expect(owners.has('s1')).toBe(false)
     })
 })

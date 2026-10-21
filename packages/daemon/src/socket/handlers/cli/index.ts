@@ -48,7 +48,7 @@ export type CliHandlersDeps = {
 } & Partial<SessionSocketCapabilities>
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, sessionSocketOwners, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, factsSink, emitCliNewMessage, onWebappEvent, hasActiveSseConnection, publishUiCommand, agentSessions } = deps
+    const { io, store, rpcRegistry, sessionSocketOwners, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, factsSink, emitCliNewMessage, onCliAttached, onWebappEvent, hasActiveSseConnection, publishUiCommand, agentSessions } = deps
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
     const resolveSessionAccess = (sessionId: string): AccessResult<StoredSession> => {
@@ -79,6 +79,10 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         if (prevOwnerId) {
             io.of('/cli').sockets.get(prevOwnerId)?.disconnect(true)
         }
+        // 附着完成（已在会话房间、旧连接已踢）→ 补投仍 queued 的消息。放在这里而不是
+        // 「active 翻转」：进程被强杀后心跳窗口内 active 仍是 true，翻转永远不触发
+        //（2026-10-21 resume 首投滞留）；同连接只触发一次，重复投递由 CLI 侧按 seq 吞掉
+        onCliAttached?.(sessionId)
     }
 
     const emitAccessError = (scope: 'session', id: string, reason: AccessErrorReason) => {

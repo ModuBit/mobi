@@ -45,4 +45,9 @@ export class SessionSocketOwners {
             this.owners.delete(key)
         }
     }
+
+    /** 该会话此刻是否有 CLI 连接附着（断连/被踢都会走 release，故这里反映的是实时连接事实） */
+    has(key: string): boolean {
+        return this.owners.has(key)
+    }
 }

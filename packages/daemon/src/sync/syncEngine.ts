@@ -192,6 +192,9 @@ export class SyncEngine {
             isExecutorReady: () => this.isExecutorReady(),
             markActivationError: (sessionId, code, detail) => this.markForkActivationErrorIfPending(sessionId, code, detail),
             waitForActive: (sessionId, timeoutMs) => this.waitForSessionActive(sessionId, timeoutMs),
+            // 连接事实由 socket 层注入（setCliAttachedProbe）；未接线时按「挂着」处理
+            isCliAttached: (sessionId) => this.cliAttachedProbe ? this.cliAttachedProbe(sessionId) : true,
+            markDetached: (sessionId) => this.sessionCache.markDetached(sessionId),
         })
         this.executionAccess = new SessionExecutionAccess(store, this.executor)
         this.store = store
@@ -402,6 +405,28 @@ export class SyncEngine {
         this.sessionTrackingSync = fn
     }
 
+    /**
+     * CLI socket 附着探针（由组装层注入 socket 层的持有者表）。未注入时按「挂着」处理，
+     * 与旧语义一致（缓存 active 即视为可用）。
+     */
+    private cliAttachedProbe: ((sessionId: string) => boolean) | null = null
+
+    setCliAttachedProbe(fn: ((sessionId: string) => boolean) | null): void {
+        this.cliAttachedProbe = fn
+    }
+
+    /**
+     * CLI 附着完成（socket 已进会话房间、接管旧连接之后）→ 补投仍 queued 的消息。
+     *
+     * 补投挂在「附着」而不是「active 翻转」上：进程被强杀时 CLI 来不及上报 session-end，
+     * 心跳 30s 窗口里 active 仍为 true，翻转永不发生（2026-10-21 resume 首投滞留）。
+     * 重复投递由 CLI 侧按 seq 单调守卫吞掉（sessionChannel.handleIncomingMessage），
+     * 同连接只触发一次，能覆盖唤醒、断线重连、already-running 三条漏投路径。
+     */
+    handleCliAttached(sessionId: string): void {
+        this.messageService.redeliverQueued(sessionId)
+    }
+
     handleSessionAlive(payload: SessionAlivePayload): void {
         // 追踪同步先行（补登/查重键刷新，fire-and-forget；失败不影响激活语义）
         try {
@@ -422,11 +447,9 @@ export class SyncEngine {
         // 阻塞 RPC 失败留空后此前再无补拉信号（模型选择一直默认列表，刷新页面才恢复）。
         // CLI connect 时先重放注册全部 RPC handler 再发首个心跳（apiSession.ts），此点 RPC 必可达；
         // fire-and-forget 幂等：已提取过则 CAS 内容相等即静默，不会形成 refetch↔SSE 循环。
+        // （排队消息补投不在这里：那是「附着」的事实，见 handleCliAttached）
         if (!wasActive && isActive) {
             void this.refreshSDKMetadataBackground(payload.sid)
-            // 待激活 fork 首条消息补投：入队广播落在 CLI 进房之前（web 发送侧先触发 resume
-            // spawn），无补发路径会永久滞留 queued——激活翻转即 CLI 已在房内，此时补发必达
-            this.messageService.redeliverQueued(payload.sid)
         }
     }
 

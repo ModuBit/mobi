@@ -86,7 +86,7 @@ export type SocketServerDeps = {
     /** 会话归属与工作目录（终端 pty 的 cwd = metadata.path）。pty 由 daemon 持有
      *  （ticket-19），active 状态不再参与终端链路 */
     getSession?: (sessionId: string) => { namespace: string; sessionPath: string | null } | null
-} & Partial<Pick<SessionSocketCapabilities, 'onWebappEvent' | 'hasActiveSseConnection' | 'publishUiCommand'>> & {
+} & Partial<Pick<SessionSocketCapabilities, 'onWebappEvent' | 'hasActiveSseConnection' | 'publishUiCommand' | 'onCliAttached'>> & {
     /** 能力签名单源 socket/capabilities.ts（架构评审候选⑥票①）；须惰性的三项在此
      *  写 getter 投影——组装层 socket server 先于 SyncEngine 创建（真环，见文件头），
      *  connection 时解包。factsSink 兼容实体直传（部分测试用） */
@@ -102,6 +102,8 @@ export function createSocketServer(deps: SocketServerDeps): {
     /** 宿主端口 engine（独立 loopback listener：/cli namespace，ticket-21） */
     hostEngine: Engine
     rpcRegistry: RpcRegistry
+    /** 同 session CLI socket 接管仲裁表（组装层据此给 SyncEngine 注入附着探针） */
+    sessionSocketOwners: SessionSocketOwners
 } {
     const corsOrigins = deps.corsOrigins ?? configuration.corsOrigins
     const allowAllOrigins = corsOrigins.includes('*')
@@ -234,6 +236,7 @@ export function createSocketServer(deps: SocketServerDeps): {
             // 惰性形式在 connection 时解包——SyncEngine 在 socket server 之后创建，此时必已就绪
             factsSink: typeof deps.factsSink === 'function' ? deps.factsSink() : deps.factsSink,
             emitCliNewMessage: deps.emitCliNewMessage?.(),
+            onCliAttached: deps.onCliAttached,
             onWebappEvent: deps.onWebappEvent,    // Web端实时事件
             hasActiveSseConnection: deps.hasActiveSseConnection,
             publishUiCommand: deps.publishUiCommand,
@@ -272,5 +275,5 @@ export function createSocketServer(deps: SocketServerDeps): {
         maxTerminalsPerSession: maxTerminals
     }))
 
-    return { io, engine, hostEngine, rpcRegistry }
+    return { io, engine, hostEngine, rpcRegistry, sessionSocketOwners }
 }

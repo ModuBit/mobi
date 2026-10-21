@@ -57,9 +57,12 @@ function makeReviver(options: {
     waitForActive?: () => Promise<boolean>
     /** 模拟缓存淘汰后回源 DB 抛错 */
     lookupThrows?: Error
+    /** CLI socket 附着探针（缺省不注入 = 旧语义「active 即活着」） */
+    isCliAttached?: (sessionId: string) => boolean
 }) {
     const spawned: Array<{ directory: string; options: Record<string, unknown> }> = []
     const activationErrors: Array<{ code: string; detail?: string }> = []
+    const detached: string[] = []
     let waited = 0
     const reviver = new SessionReviver({
         sessionCache: {
@@ -90,8 +93,14 @@ function makeReviver(options: {
             waited += 1
             return options.waitForActive ? options.waitForActive() : true
         },
+        isCliAttached: options.isCliAttached,
+        // 生产实现是 SessionCache.markDetached：内存行同步翻 inactive，这里照做的同时记账
+        markDetached: (sessionId: string) => {
+            detached.push(sessionId)
+            if (options.session?.id === sessionId) options.session.active = false
+        },
     })
-    return { reviver, spawned, activationErrors, waited: () => waited }
+    return { reviver, spawned, activationErrors, detached, waited: () => waited }
 }
 
 describe('SessionReviver — intent 到预算语义的单一映射', () => {
@@ -125,6 +134,54 @@ describe('SessionReviver — intent 到预算语义的单一映射', () => {
             effort: 'high',
             outputStyle: 'Concise',
         })
+    })
+})
+
+describe('SessionReviver — active 是心跳推断，连接事实优先', () => {
+    test('active 但 CLI 未附着（强杀窗口）→ 就地纠正并照常唤醒', async () => {
+        const { reviver, spawned, detached } = makeReviver({
+            session: makeSession({ active: true }),
+            isCliAttached: () => false,
+        })
+
+        const result = await reviver.wake('s1')
+
+        expect(detached).toEqual(['s1'])
+        expect(spawned).toHaveLength(1)
+        expect(result).toEqual({ type: 'success', sessionId: 's1' })
+    })
+
+    test('active 且附着 → 不擦除激活态、不重复 spawn', async () => {
+        const { reviver, spawned, detached } = makeReviver({
+            session: makeSession({ active: true }),
+            isCliAttached: () => true,
+        })
+
+        await reviver.wake('s1')
+
+        expect(spawned).toHaveLength(0)
+        expect(detached).toEqual([])
+    })
+
+    test('手动 revive 同判据：未附着的 active 会话也能被拉起', async () => {
+        const { reviver, spawned } = makeReviver({
+            session: makeSession({ active: true }),
+            isCliAttached: () => false,
+        })
+
+        const result = await reviver.revive('s1', 'default')
+
+        expect(result).toEqual({ type: 'success', sessionId: 's1' })
+        expect(spawned).toHaveLength(1)
+    })
+
+    test('未注入探针（测试/直跑形态）→ 沿用旧语义：active 即视为活着', async () => {
+        const { reviver, spawned, detached } = makeReviver({ session: makeSession({ active: true }) })
+
+        await reviver.wake('s1')
+
+        expect(spawned).toHaveLength(0)
+        expect(detached).toEqual([])
     })
 })
 

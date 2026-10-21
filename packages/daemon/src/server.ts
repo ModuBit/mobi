@@ -217,6 +217,8 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
         agentSessions: () => syncEngine?.agentSessions,
         // CLI 房间 new-message 广播出口（messageService 单一构造点），惰性取用
         emitCliNewMessage: () => syncEngine?.emitCliNewMessage.bind(syncEngine),
+        // CLI 连接附着（socket 已进会话房间、接管旧连接之后）→ 补投仍 queued 的消息
+        onCliAttached: (sessionId: string) => syncEngine?.handleCliAttached(sessionId),
     })
 
     // 执行层显式注入（ticket-15 接口 / ticket-17 本地化 / ticket-20 唯一实现）：
@@ -236,6 +238,9 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
     // daemon 主 namespace 盖章 + executor 初始态（401：machines 行自注册退场——
     // store 层已删，executor 权威状态只在 executorRuntime 内存单例，205 定）
     syncEngine.setDaemonNamespace(parseAccessToken(configuration.cliApiToken)?.namespace ?? 'default')
+    // 附着探针：唤醒判据里「active 是否可信」以 CLI socket 持有者表为准（心跳 30s 窗口里
+    // 进程被强杀时 active 是陈旧事实，会让唤醒与补投降级成 no-op）
+    syncEngine.setCliAttachedProbe((sessionId) => socketServer.sessionSocketOwners.has(sessionId))
     const initialExecutorState: ExecutorState = { status: 'running', pid: process.pid, startedAt: Date.now() }
     writeExecutorState(() => initialExecutorState)
 

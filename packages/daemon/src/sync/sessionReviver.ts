@@ -33,6 +33,7 @@ import type { GovernorAcquireReason } from '../executor/sessionGovernor'
 import type { LocalExecutor } from '../executor/localExecutor'
 import { daemonLogger } from '../logger'
 import type { SessionCache } from './sessionCache'
+import type { Session } from '@mobi/shared/types'
 
 /** 苏醒意图：预算分级的唯一来源（③ 的 intent 定型于此，不再走协议字段） */
 export type ReviveIntent = 'activate' | 'prewarm'
@@ -60,6 +61,14 @@ export type SessionReviverDeps = {
     markActivationError: (sessionId: string, code: string, detail?: string) => void
     /** 等待会话变 active（engine 方法注入，保留测试可打桩面） */
     waitForActive: (sessionId: string, timeoutMs?: number) => Promise<boolean>
+    /**
+     * CLI socket 此刻是否还挂在会话上（连接事实；缺省按「挂着」处理，测试与直跑形态
+     * 不受约束）。心跳只说明 30s 内报过活——进程被强杀时 CLI 来不及上报 session-end，
+     * 这个窗口里 active 是陈旧事实，靠本探针纠正。
+     */
+    isCliAttached?: (sessionId: string) => boolean
+    /** 陈旧 active 的就地纠正（缺省 no-op；生产注入 SessionCache.markDetached） */
+    markDetached?: (sessionId: string) => void
 }
 
 export class SessionReviver {
@@ -67,6 +76,18 @@ export class SessionReviver {
     private readonly wakeInFlight = new Map<string, Promise<ReviveResult>>()
 
     constructor(private readonly deps: SessionReviverDeps) {}
+
+    /**
+     * 「此刻真能收消息吗」的唯一判据：active 只是心跳推断（30s 窗口），CLI socket
+     * 是否还挂在会话上才是连接事实。两者冲突时以连接为准并就地纠正缓存——
+     * 否则唤醒会以为「还活着」直接放行，排队消息与补投都永远等不到触发器。
+     */
+    private isLive(session: Session): boolean {
+        if (!session.active) return false
+        if (this.deps.isCliAttached?.(session.id) ?? true) return true
+        this.deps.markDetached?.(session.id)
+        return false
+    }
 
     /**
      * 休眠会话唤醒（去重 + 自吞异常）：非活跃会话触发 resume spawn。
@@ -91,7 +112,7 @@ export class SessionReviver {
             if (!session) {
                 return { type: 'error', message: 'Session not found', code: 'session_not_found' }
             }
-            if (session.active) {
+            if (this.isLive(session)) {
                 return { type: 'success', sessionId }
             }
             return await this.revive(sessionId, session.namespace, opts)
@@ -116,7 +137,7 @@ export class SessionReviver {
         }
 
         const session = access.session
-        if (session.active) {
+        if (this.isLive(session)) {
             return { type: 'success', sessionId: access.sessionId }
         }
 
