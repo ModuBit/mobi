@@ -62,13 +62,13 @@ export type SessionReviverDeps = {
     /** 等待会话变 active（engine 方法注入，保留测试可打桩面） */
     waitForActive: (sessionId: string, timeoutMs?: number) => Promise<boolean>
     /**
-     * CLI socket 此刻是否还挂在会话上（连接事实；缺省按「挂着」处理，测试与直跑形态
-     * 不受约束）。心跳只说明 30s 内报过活——进程被强杀时 CLI 来不及上报 session-end，
+     * CLI socket 此刻是否还挂在会话上（连接事实；唯一构造者 SyncEngine 注入 socket 层
+     * 持有者探针）。心跳只说明 30s 内报过活——进程被强杀时 CLI 来不及上报 session-end，
      * 这个窗口里 active 是陈旧事实，靠本探针纠正。
      */
-    isCliAttached?: (sessionId: string) => boolean
-    /** 陈旧 active 的就地纠正（缺省 no-op；生产注入 SessionCache.markDetached） */
-    markDetached?: (sessionId: string) => void
+    isCliAttached: (sessionId: string) => boolean
+    /** 陈旧 active 的就地纠正（生产注入 SessionCache.markDetached） */
+    markDetached: (sessionId: string) => void
 }
 
 export class SessionReviver {
@@ -84,8 +84,8 @@ export class SessionReviver {
      */
     private isLive(session: Session): boolean {
         if (!session.active) return false
-        if (this.deps.isCliAttached?.(session.id) ?? true) return true
-        this.deps.markDetached?.(session.id)
+        if (this.deps.isCliAttached(session.id)) return true
+        this.deps.markDetached(session.id)
         return false
     }
 

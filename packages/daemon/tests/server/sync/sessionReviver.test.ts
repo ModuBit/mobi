@@ -57,7 +57,7 @@ function makeReviver(options: {
     waitForActive?: () => Promise<boolean>
     /** 模拟缓存淘汰后回源 DB 抛错 */
     lookupThrows?: Error
-    /** CLI socket 附着探针（缺省不注入 = 旧语义「active 即活着」） */
+    /** CLI socket 附着探针（缺省视为附着 = 旧语义「active 即活着」） */
     isCliAttached?: (sessionId: string) => boolean
 }) {
     const spawned: Array<{ directory: string; options: Record<string, unknown> }> = []
@@ -93,7 +93,7 @@ function makeReviver(options: {
             waited += 1
             return options.waitForActive ? options.waitForActive() : true
         },
-        isCliAttached: options.isCliAttached,
+        isCliAttached: options.isCliAttached ?? (() => true),
         // 生产实现是 SessionCache.markDetached：内存行同步翻 inactive，这里照做的同时记账
         markDetached: (sessionId: string) => {
             detached.push(sessionId)

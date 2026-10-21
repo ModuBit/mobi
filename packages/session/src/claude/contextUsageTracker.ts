@@ -26,7 +26,7 @@ import { extractBreakdown } from './utils/contextBreakdown'
  * 口径调整只能原地逐点对焦（见编排行为测试 contextUsageTracker.test.ts）。
  *
  * interface 只有事件入口 + 注入通道；记忆、代际守卫、窗口优先级全是实现细节。
- * 纯计算（calc/extract/guess）仍在 utils，经 contextUsageCalc.test.ts 单独锁定。
+ * 纯计算（calc/extract）仍在 utils，经 contextUsageCalc.test.ts 单独锁定。
  */
 
 /** 上次真实 turn 的水位记忆（窗口/成本/瞬时 usage/类目细分），上下文重置时整体归零。
@@ -75,12 +75,26 @@ export class ContextUsageTracker {
     private generation = 0
     /**
      * CLI 请求的模型名（system/init.model，与 result.modelUsage key 同源）。
-     * 窗口猜测用它而非 assistant.message.model——网关渠道后者是上游真实名
-     * （如 glm-5.3），与 modelUsage 按请求名查的窗口知识不同源
+     * 只用于 result.modelUsage 的精确匹配（「模型上限」展示）；网关渠道
+     * assistant.message.model 是上游真实名（如 glm-5.3），与 modelUsage key 不同源
      */
     private requestModel: string | undefined
 
     constructor(private readonly channels: ContextUsageChannels) {}
+
+    /**
+     * 上报载荷统一组装：记忆里的可选块（类目细分 / 模型上限 / 压缩触发点）在每个出口
+     * 携带规则一致，此前 5 处各手抄一次——新增字段必漏一处（启动抢跑分支漏过 modelContextTokens）。
+     * breakdown 由调用方显式传入：各路径语义不同（实时与 result 带记忆细分；compact 后作废；
+     * 启动快照只随本次上报、不缓存）。
+     */
+    private buildUsage(usage: ContextUsage, breakdown?: ContextUsageBreakdown): ContextUsage {
+        const payload: ContextUsage = { ...usage }
+        if (breakdown) payload.breakdown = breakdown
+        if (this.memory.lastModelContextTokens > 0) payload.modelContextTokens = this.memory.lastModelContextTokens
+        if (this.memory.lastAutoCompactAtTokens !== undefined) payload.autoCompactAtTokens = this.memory.lastAutoCompactAtTokens
+        return payload
+    }
 
     /** system/init 到达：记录 CLI 请求名。init 先于一切 assistant 到达且每次新 query（含 resume）
      *  都重发，模型切换自动更新——requestModel 只用于 result.modelUsage 的精确匹配（展示字段） */
@@ -101,16 +115,8 @@ export class ContextUsageTracker {
         this.generation++
         // 附带最近一次缓存的类目细分与模型最大窗口：流式期间水位实时上涨，细分随之上报，
         // 否则无 breakdown 的实时上报会把 result 时落的细分整体覆盖掉（Popover 闪烁）
-        const breakdown = this.memory.lastBreakdown
-        const modelContextTokens = this.memory.lastModelContextTokens
         try {
-            this.channels.reportUsage({
-                ...usage,
-                ...(breakdown ? { breakdown } : {}),
-                ...(modelContextTokens > 0 ? { modelContextTokens } : {}),
-                ...(this.memory.lastAutoCompactAtTokens !== undefined
-                    ? { autoCompactAtTokens: this.memory.lastAutoCompactAtTokens } : {}),
-            })
+            this.channels.reportUsage(this.buildUsage(usage, this.memory.lastBreakdown))
         } catch (e) { logger.debug('[remote]: reportContextUsage (assistant) failed', e) }
     }
 
@@ -144,13 +150,7 @@ export class ContextUsageTracker {
         if (r.costUsd !== undefined) this.memory.lastCostUsd = r.costUsd  // 缺字段的 result 不覆写记忆
         if (!r.usage) return  // 无可靠 assistant usage → 保持上一轮读数
         try {
-            this.channels.reportUsage({
-                ...r.usage,
-                ...(this.memory.lastBreakdown ? { breakdown: this.memory.lastBreakdown } : {}),
-                ...(this.memory.lastModelContextTokens > 0 ? { modelContextTokens: this.memory.lastModelContextTokens } : {}),
-                ...(this.memory.lastAutoCompactAtTokens !== undefined
-                    ? { autoCompactAtTokens: this.memory.lastAutoCompactAtTokens } : {}),
-            })
+            this.channels.reportUsage(this.buildUsage(r.usage, this.memory.lastBreakdown))
         } catch (e) {
             logger.debug('[remote]: reportContextUsage failed', e)
         }
@@ -168,13 +168,8 @@ export class ContextUsageTracker {
         if (!usage) return
         try {
             // 模型最大窗口与压缩触发点自记忆附带（compact 上报本体只有总量口径；窗口未变，
-            // 两者都不需重取）
-            this.channels.reportUsage({
-                ...usage,
-                ...(this.memory.lastModelContextTokens > 0 ? { modelContextTokens: this.memory.lastModelContextTokens } : {}),
-                ...(this.memory.lastAutoCompactAtTokens !== undefined
-                    ? { autoCompactAtTokens: this.memory.lastAutoCompactAtTokens } : {}),
-            })
+            // 两者都不需重取）；压缩前细分已在上面作废
+            this.channels.reportUsage(this.buildUsage(usage))
         } catch (e) {
             logger.debug('[remote]: reportContextUsage (compact) failed', e)
         }
@@ -209,29 +204,18 @@ export class ContextUsageTracker {
             const live = this.memory.lastAssistantUsage
                 ? calcContextUsageFromAssistant(this.memory.lastAssistantUsage, summary.rawMaxTokens, this.memory.lastCostUsd)
                 : null
-            if (live) {
-                this.channels.reportUsage({
-                    ...live,
-                    ...(breakdown ? { breakdown } : {}),
-                    ...(this.memory.lastAutoCompactAtTokens !== undefined
-                        ? { autoCompactAtTokens: this.memory.lastAutoCompactAtTokens } : {}),
-                })
-                return
-            }
             // 启动快照不缓存进 lastBreakdown：采样时机注定早于 MCP 就绪（/clear 重启瞬间
             // MCP server 尚未连接完成，CC 类目里没有 MCP tools），缓存会让这份不完整明细
             // 随首 turn 的实时上报持续扩散（总量/明细口径错位），直到首个 result 才自愈。
             // 快照只随本次启动上报发出，首 turn 流式期间实时上报不带明细，result 刷新后恢复
-            if (summary.totalTokens <= 0 && !breakdown) return  // 全空响应不产出 0 水位噪声
-            this.channels.reportUsage({
+            // 全空响应不产出 0 水位噪声（live 分支有真实 usage，不受此限）
+            if (!live && summary.totalTokens <= 0 && !breakdown) return
+            this.channels.reportUsage(this.buildUsage(live ?? {
                 totalTokens: summary.totalTokens,
                 maxTokens: summary.rawMaxTokens,
                 percentage: (summary.totalTokens / summary.rawMaxTokens) * 100,
                 costUsd: 0,
-                ...(breakdown ? { breakdown } : {}),
-                ...(this.memory.lastAutoCompactAtTokens !== undefined
-                    ? { autoCompactAtTokens: this.memory.lastAutoCompactAtTokens } : {}),
-            })
+            }, breakdown))
         } catch (e) {
             logger.debug('[remote]: startup getContextUsage failed', e)
         }

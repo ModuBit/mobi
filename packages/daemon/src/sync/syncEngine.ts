@@ -192,8 +192,8 @@ export class SyncEngine {
             isExecutorReady: () => this.isExecutorReady(),
             markActivationError: (sessionId, code, detail) => this.markForkActivationErrorIfPending(sessionId, code, detail),
             waitForActive: (sessionId, timeoutMs) => this.waitForSessionActive(sessionId, timeoutMs),
-            // 连接事实由 socket 层注入（setCliAttachedProbe）；未接线时按「挂着」处理
-            isCliAttached: (sessionId) => this.cliAttachedProbe ? this.cliAttachedProbe(sessionId) : true,
+            // 连接事实由 socket 层经 setCliAttachedProbe 注入（未接线前按「挂着」处理）
+            isCliAttached: (sessionId) => this.cliAttachedProbe(sessionId),
             markDetached: (sessionId) => this.sessionCache.markDetached(sessionId),
         })
         this.executionAccess = new SessionExecutionAccess(store, this.executor)
@@ -406,12 +406,12 @@ export class SyncEngine {
     }
 
     /**
-     * CLI socket 附着探针（由组装层注入 socket 层的持有者表）。未注入时按「挂着」处理，
-     * 与旧语义一致（缓存 active 即视为可用）。
+     * CLI socket 附着探针（由组装层注入 socket 层的持有者表）。默认「挂着」= 旧语义
+     * （缓存 active 即视为可用），只在组装层接线前成立。
      */
-    private cliAttachedProbe: ((sessionId: string) => boolean) | null = null
+    private cliAttachedProbe: (sessionId: string) => boolean = () => true
 
-    setCliAttachedProbe(fn: ((sessionId: string) => boolean) | null): void {
+    setCliAttachedProbe(fn: (sessionId: string) => boolean): void {
         this.cliAttachedProbe = fn
     }
 

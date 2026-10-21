@@ -745,9 +745,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             }
         }
 
-        /** init 帧：记录 CLI 请求名（模型切换自动更新——tracker 的窗口猜测与 result.modelUsage
-         *  用同源的模型名）+ fork 激活收口（init 返回预生成 id 即 CC 已物化 fork transcript——
-         *  清本地簿记 + 上报 daemon 清除 forkFrom（保留 forkedFrom）） */
+        /** init 帧：记录 CLI 请求名（模型切换自动更新——tracker 用它精确匹配 result.modelUsage
+         *  的主模型条目做「模型上限」展示）+ fork 激活收口（init 返回预生成 id 即 CC 已物化
+         *  fork transcript——清本地簿记 + 上报 daemon 清除 forkFrom（保留 forkedFrom）） */
         const handleInitSignal = (message: SDKMessage): void => {
             if (message.type === 'system' && (message as { subtype?: string }).subtype === 'init') {
                 this.contextTracker.onInit((message as { model?: string }).model)
