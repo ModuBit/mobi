@@ -126,7 +126,7 @@ function forceOffsetHeightOnPrototype(value = SURFACE_H) {
 }
 
 /** 受控宿主：veto=true 时拦住关闭（复现执行中的操作菜单传 noop onClose 的场景） */
-function Host({ veto = false, onClose, children, peek = true, showClose = false }: { veto?: boolean; onClose?: () => void; children?: React.ReactNode; peek?: boolean; showClose?: boolean }) {
+function Host({ veto = false, onClose, onExited, children, peek = true, showClose = false }: { veto?: boolean; onClose?: () => void; onExited?: () => void; children?: React.ReactNode; peek?: boolean; showClose?: boolean }) {
     const [open, setOpen] = useState(true)
     return (
         <BottomSheet
@@ -134,6 +134,7 @@ function Host({ veto = false, onClose, children, peek = true, showClose = false 
             title="测试"
             peek={peek}
             showClose={showClose}
+            onExited={onExited}
             onClose={() => {
                 onClose?.()
                 if (!veto) setOpen(false)
@@ -312,8 +313,34 @@ describe('BottomSheet', () => {
         expect(onClose).not.toHaveBeenCalled()
     })
 
-    it('否决式 onClose（open 保持 true）：sheet 沉降回原位而非卡在屏外', async () => {
+    it('onExited：滑出落定、DOM 卸载后触发一次（菜单导航靠它避开目标页渲染风暴）', async () => {
+        const onExited = vi.fn()
         const onClose = vi.fn()
+        const { rerender } = render(<BottomSheet open onClose={onClose} onExited={onExited} title="测试" />)
+        forceHeight(surface())
+        await waitSettled()
+        expect(onExited).not.toHaveBeenCalled()
+
+        rerender(<BottomSheet open={false} onClose={onClose} onExited={onExited} title="测试" />)
+        await waitFor(() => expect(surface()).toBeNull())
+        expect(onExited).toHaveBeenCalledTimes(1)
+    })
+
+    it('onExited：关闭被否决（沉降回原位）时不触发', async () => {
+        const onExited = vi.fn()
+        const onClose = vi.fn()
+        render(<Host veto onClose={onClose} onExited={onExited} />)
+        forceHeight(surface())
+        await waitSettled()
+
+        window.dispatchEvent(new PopStateEvent('popstate'))
+        expect(onClose).toHaveBeenCalledTimes(1)
+        await waitFor(() => expect(animateCalls.some((call) => call.target === 0)).toBe(true))
+        expect(surface()).not.toBeNull()
+        expect(onExited).not.toHaveBeenCalled()
+    })
+
+    it('否决式 onClose（open 保持 true）：sheet 沉降回原位而非卡在屏外', async () => {        const onClose = vi.fn()
         render(<Host veto onClose={onClose} />)
         forceHeight(surface())
         await waitSettled()

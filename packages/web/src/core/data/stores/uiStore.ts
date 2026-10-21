@@ -84,6 +84,11 @@ interface UiState {
     systemIsDark: boolean
     locale: Locale
     mobileMenuOpen: boolean
+    /**
+     * 菜单内导航的待执行闭包：点会话/导航项时只关菜单，路由提交推迟到 sheet 离场动画
+     * 落定之后（见 useMenuNavigate）。连续点击为覆盖语义——只保留最后一次。
+     */
+    pendingMenuNavigation: (() => void) | null
     // 侧边栏展开/收起（桌面端）
     sidebarExpanded: boolean
     // 重命名
@@ -93,6 +98,10 @@ interface UiState {
     setTheme: (theme: Theme) => void
     setLocale: (locale: Locale) => void
     setMobileMenuOpen: (open: boolean) => void
+    /** 登记一次菜单内导航并关闭菜单（执行时机由底部 sheet 的离场回调决定，见取走方） */
+    requestMenuNavigation: (go: () => void) => void
+    /** 取走待执行的菜单导航（取走即清空，重复调用返回 null） */
+    takeMenuNavigation: () => (() => void) | null
     toggleSidebar: () => void
     startRename: (sessionId: string, currentValue: string) => void
     setRenameValue: (value: string) => void
@@ -101,11 +110,12 @@ interface UiState {
 
 export const useUiStore = create<UiState>()(
     persist(
-        (set) => ({
+        (set, get) => ({
             theme: 'dark',
             systemIsDark: getSystemTheme() === 'dark',
             locale: getSystemLocale(),
             mobileMenuOpen: false,
+            pendingMenuNavigation: null,
             sidebarExpanded: true,
             renamingSessionId: null,
             renameValue: '',
@@ -114,7 +124,17 @@ export const useUiStore = create<UiState>()(
                 i18n.changeLanguage(locale)
                 return set({ locale })
             },
-            setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
+            // 重新打开菜单即作废未执行的导航：待执行闭包只活一次「关 → 离场」窗口，
+            // 离场途中被重新打开（边缘手势）时不能留到下一次关闭才突然跳转
+            setMobileMenuOpen: (open) => set(open
+                ? { mobileMenuOpen: true, pendingMenuNavigation: null }
+                : { mobileMenuOpen: false }),
+            requestMenuNavigation: (go) => set({ mobileMenuOpen: false, pendingMenuNavigation: go }),
+            takeMenuNavigation: () => {
+                const go = get().pendingMenuNavigation
+                if (go) set({ pendingMenuNavigation: null })
+                return go
+            },
             toggleSidebar: () => set((state) => ({ sidebarExpanded: !state.sidebarExpanded })),
             startRename: (sessionId, currentValue) => set({ renamingSessionId: sessionId, renameValue: currentValue }),
             setRenameValue: (value) => set({ renameValue: value }),

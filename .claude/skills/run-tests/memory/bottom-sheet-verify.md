@@ -3,7 +3,7 @@ name: bottom-sheet-verify
 description: 移动端底部 sheet（BottomSheet，2026-10-13 起全量替代旧 MobileDrawer）真机化验证 —— CDP 移动视口 + 合成拖拽采样（跟手/遮罩连续、嵌套层号、内容自滚、关闭路径）
 metadata:
   type: recipe
-  last_verified: 2026-10-13
+  last_verified: 2026-10-21
 ---
 
 # 移动端 sheet 验证（CDP 移动视口）
@@ -264,3 +264,34 @@ const BS = unwrap(await import('/src/ui/shadcn/bottom-sheet/bottom-sheet.tsx?t='
 带 hash 的 dep URL。注意 vite 的 CJS interop——`react`/`react-dom_client` 常常只能从
 `default` 拿到具名导出，所以先 `unwrap` 再取。**合成 TouchEvent 只能验 JS 侧**（谁 preventDefault、
 谁拿到手势），验不了「浏览器原生平移」，所以要断言的是 `defaultPrevented` 这种可观测事实。
+
+## 第七轮（2026-10-21）：菜单切会话「抽屉收到一半卡住」——导航渲染风暴冻住主线程滑出
+
+**现象**：手机 PWA 打开菜单点某个会话，抽屉滑到 ~72% 停住数秒，之后页面才切过去。
+
+**根因（CDP 20x 降速实锤，非真机也能复现）**：滑出是主线程 JS spring（逐帧计算），导航提交后
+目标会话页的首次渲染是同一根线程上的长任务（20x 下实测单帧 **4.5s**）。两者重叠 → 动画只能
+停在冻结那一帧。旧实现用「固定 100ms 起步窗口」让二者重叠，只要渲染风暴长于 100ms 就必冻。
+
+**采样探针（一行不差地照抄就能复现）**：在 5174 会话页打开菜单后 evaluate——
+
+```js
+const t0 = performance.now(); const fr = []
+const tick = () => { const s = document.querySelector('[data-testid="bottom-sheet-surface"]')
+  fr.push({ t: Math.round(performance.now()-t0), y: s ? (getComputedStyle(s).transform.match(/,\s*(-?[\d.]+)\)$/)?.[1] ?? 'none') : 'gone', p: location.pathname })
+  requestAnimationFrame(tick) }
+requestAnimationFrame(tick)
+new PerformanceObserver(l => l.getEntries().forEach(e => console.log(e.startTime, e.duration))).observe({ entryTypes: ['longtask'] })
+// 再对菜单里的会话行 dispatchEvent(new MouseEvent('click', { bubbles: true }))
+```
+
+判读：修前 `y` 停在 ~72% 的那一帧数秒（数字与截图一致），`longtask` 与冻结窗口重合；
+修后 `y` 一路滑到 `gone`，**之后**才出现长任务。
+
+**修法（2026-10-21）**：菜单内导航改为事件驱动——`BottomSheet` 新增 `onExited`（滑出落定、
+DOM 卸载后回调一次），`useMenuNavigate` 把导航闭包登记到 `uiStore.pendingMenuNavigation`，
+`MobileMenuDrawer` 的 `onExited` 里取走，并 `rAF → setTimeout 0`（先画出「抽屉已移除」那一帧，
+再让长任务占主线程；后台标签不跑 rAF，另留 250ms 兜底）。
+**验证阈值**：修后 1x 实测 drawer 330ms 消失、541ms 路由切换；20x 下 360ms 滑完 → 541ms 才起长任务。
+
+**别退回「固定延迟导航」**：任何固定 ms 的起步窗口都压不住变量长度的渲染风暴，只会换个位置冻。

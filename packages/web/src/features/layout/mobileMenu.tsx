@@ -15,6 +15,7 @@
  */
 
 import { theme as antTheme } from 'antd'
+import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { useUiStore } from '@/core/data/stores/uiStore'
@@ -100,8 +101,27 @@ export function MobileMenuDrawer() {
     const restart = useForceUpdate()
     // 刷新/重启 仅 PWA(standalone)有意义:浏览器有自带刷新按钮,PWA 无浏览器 chrome
     const isPwa = usePwaMode()
-    // 菜单内导航统一走 hook：先关抽屉让滑出起步，再延迟提交路由渲染（防动画被渲染风暴饿死）
+    // 菜单内导航统一走 hook：先关抽屉，抽屉离场（DOM 卸载）后再提交路由渲染
     const navigateFromMenu = useMenuNavigate()
+    const takeMenuNavigation = useUiStore((s) => s.takeMenuNavigation)
+
+    /** 抽屉完全离场：此刻才提交路由。
+     *  目标会话页的首次渲染是主线程长任务（真机实测数秒），抢在它前面导航会把还在滑出的
+     * 抽屉冻在半空（见 useMenuNavigate 的模块注释）；再等一帧，让「抽屉已移除」这一帧
+     * 先画出去，随后长任务占用主线程时屏幕上已经是干净的旧页面 */
+    const handleExited = useCallback(() => {
+        const go = takeMenuNavigation()
+        if (!go) return
+        let done = false
+        const run = () => {
+            if (done) return
+            done = true
+            go()
+        }
+        requestAnimationFrame(() => setTimeout(run, 0))
+        // 兜底：后台标签页不跑 rAF，导航不能丢
+        setTimeout(run, 250)
+    }, [takeMenuNavigation])
 
     // 关闭菜单
     const handleClose = () => setMobileMenuOpen(false)
@@ -135,6 +155,7 @@ export function MobileMenuDrawer() {
             title={t('nav.menu')}
             open={mobileMenuOpen}
             onClose={handleClose}
+            onExited={handleExited}
             // 菜单是「一看就要看全」的面板：关掉 peek，打开即到内容高（被裁掉的行不是「还有更多」）
             peek={false}
             // 底部 safe-area 与内容内衬由 BottomSheet 收口（sheet 自带 safe-area paddingBottom）

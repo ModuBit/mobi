@@ -20,66 +20,78 @@ import { renderHook, cleanup } from '@testing-library/react'
 import { useMenuNavigate } from '@/features/layout/useMenuNavigate'
 import { useUiStore } from '@/core/data/stores/uiStore'
 
-describe('useMenuNavigate（抽屉滑出起步后再导航）', () => {
+/** 取走方（MobileMenuDrawer 的 onExited）在抽屉离场后做的事 */
+const flush = () => {
+    const go = useUiStore.getState().takeMenuNavigation()
+    go?.()
+    return go
+}
+
+describe('useMenuNavigate（抽屉离场后再导航）', () => {
     beforeEach(() => {
-        vi.useFakeTimers()
-        useUiStore.setState({ mobileMenuOpen: true })
+        useUiStore.setState({ mobileMenuOpen: true, pendingMenuNavigation: null })
     })
 
     afterEach(() => {
-        vi.useRealTimers()
-        useUiStore.setState({ mobileMenuOpen: false })
+        useUiStore.setState({ mobileMenuOpen: false, pendingMenuNavigation: null })
         cleanup()
     })
 
-    it('调用后立即关闭菜单，但不立刻执行导航闭包', () => {
+    it('调用后立即关闭菜单并登记导航，但不立刻执行', () => {
         const { result } = renderHook(() => useMenuNavigate())
         const go = vi.fn()
 
         result.current(go)
 
         expect(useUiStore.getState().mobileMenuOpen).toBe(false)
+        expect(useUiStore.getState().pendingMenuNavigation).toBe(go)
         expect(go).not.toHaveBeenCalled()
     })
 
-    it('延迟起步窗口后执行导航闭包', () => {
+    it('抽屉离场后取走执行；取走即清空，重复取走为 null', () => {
         const { result } = renderHook(() => useMenuNavigate())
         const go = vi.fn()
 
         result.current(go)
-        vi.advanceTimersByTime(99)
-        expect(go).not.toHaveBeenCalled()
-
-        vi.advanceTimersByTime(1)
+        expect(flush()).toBe(go)
+        expect(go).toHaveBeenCalledTimes(1)
+        expect(flush()).toBeNull()
         expect(go).toHaveBeenCalledTimes(1)
     })
 
-    it('连续调用为单链重启：只执行最后一次的闭包', () => {
+    it('连续调用为覆盖语义：只执行最后一次的闭包', () => {
         const { result } = renderHook(() => useMenuNavigate())
         const first = vi.fn()
         const second = vi.fn()
 
         result.current(first)
-        vi.advanceTimersByTime(60)
         result.current(second)
-        vi.advanceTimersByTime(40)
-        // 第一条的 100ms 到点：已被第二条覆盖，不执行
-        expect(first).not.toHaveBeenCalled()
-        expect(second).not.toHaveBeenCalled()
+        flush()
 
-        vi.advanceTimersByTime(60)
         expect(first).not.toHaveBeenCalled()
         expect(second).toHaveBeenCalledTimes(1)
     })
 
-    it('hook 卸载时取消尚未触发的导航', () => {
+    it('发起组件先卸载也不丢导航（闭包存在 store 里，抽屉离场后才取走）', () => {
         const { result, unmount } = renderHook(() => useMenuNavigate())
         const go = vi.fn()
 
         result.current(go)
         unmount()
-        vi.advanceTimersByTime(500)
 
+        expect(flush()).toBe(go)
+        expect(go).toHaveBeenCalledTimes(1)
+    })
+
+    it('离场途中重新打开菜单：未执行的导航作废（不留给下一次关闭）', () => {
+        const { result } = renderHook(() => useMenuNavigate())
+        const go = vi.fn()
+
+        result.current(go)
+        useUiStore.getState().setMobileMenuOpen(true)
+
+        expect(useUiStore.getState().pendingMenuNavigation).toBeNull()
+        expect(flush()).toBeNull()
         expect(go).not.toHaveBeenCalled()
     })
 })

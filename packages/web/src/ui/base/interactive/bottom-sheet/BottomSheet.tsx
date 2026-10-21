@@ -229,6 +229,12 @@ export interface BottomSheetProps {
     bodyStyle?: CSSProperties
     /** sheet 主体附加类 */
     className?: string
+    /**
+     * 完全离场后的回调：退出动画落定、DOM 已卸载时触发一次（否决/重开不触发）。
+     * 给「关掉浮层之后才该发生的事」用——典型是菜单内导航：等浮层离场再提交路由，
+     * 否则目标页的渲染长任务会冻住还在半空的浮层（见 features/layout/useMenuNavigate）。
+     */
+    onExited?: () => void
     children?: ReactNode
 }
 
@@ -248,6 +254,7 @@ export function BottomSheet({
     closeLabel,
     bodyStyle,
     className,
+    onExited,
     children,
 }: BottomSheetProps) {
     const handleOpenChange = useCallback(
@@ -282,6 +289,7 @@ export function BottomSheet({
                             bodyStyle={bodyStyle}
                             className={className}
                             onClose={onClose}
+                            onExited={onExited}
                             requestCloseRef={requestCloseRef}
                         >
                             {children}
@@ -311,6 +319,7 @@ function Sheet({
     bodyStyle,
     className,
     onClose,
+    onExited,
     requestCloseRef,
     children,
 }: SheetProps) {
@@ -348,6 +357,16 @@ function Sheet({
     const enterDoneRef = useRef(false)
     const onCloseRef = useRef(onClose)
     onCloseRef.current = onClose
+    const onExitedRef = useRef(onExited)
+    onExitedRef.current = onExited
+
+    /** 卸载收尾（三条退场路径的唯一出口）：先摘 DOM，再通知调用方。
+     *  通知放在摘除之后，是为了让消费方能在「浮层已经不在画面上」的前提下接着做事
+     *  （菜单导航依赖这一点，见 onExited 的文档） */
+    const finishExit = useCallback(() => {
+        safeToRemove?.()
+        onExitedRef.current?.()
+    }, [safeToRemove])
 
     /** 真人在场时刻（presence 变化点）：离场途中落在触发按钮上的点按不得再把 sheet 关一次 */
     const presenceChange = useRef({ present: isPresent, at: 0 })
@@ -566,19 +585,19 @@ function Sheet({
             const target = (visible || window.innerHeight) + CLOSED_GAP
             if (reduced) {
                 y.jump(target)
-                deferUnmount(safeToRemove)
+                deferUnmount(finishExit)
                 return undefined
             }
-            const anim = go(target, v ?? undefined, () => safeToRemove())
+            const anim = go(target, v ?? undefined, finishExit)
             return () => anim?.stop()
         }
 
         // 已出屏：直卸载。暂存速度一并清空——本分支不消费速度，残留会被下次父直调关闭
         // 误继承（旧甩动速度 → sheet 暴速滑出）
         takeVelocity()
-        deferUnmount(safeToRemove)
+        deferUnmount(finishExit)
         return undefined
-    }, [closedY, detentY, go, height, isPresent, presence, reduced, safeToRemove, takeVelocity, y])
+    }, [closedY, detentY, finishExit, go, height, isPresent, presence, reduced, takeVelocity, y])
 
     // 视口变化（旋转 / 移动端工具栏收起 / 内容增减）后重测高度，并把 sheet 重新对齐到
     // **当前档**——档位是像素值，内容一变 peekY 就变了，不重定位会停在半截位置
