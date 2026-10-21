@@ -30,6 +30,7 @@ import { MainLayout } from '@/features/layout/MainLayout'
 import { BubbleRenderProvider, type BubbleRenderers } from '@/features/chat/blocks/renderContext'
 import { renderChatBlock } from '@/features/chat/blocks'
 import { ToolCallGroupRenderer } from '@/features/chat/blocks/toolCallGroupBlock'
+import { ApprovalNotificationHost } from '@/features/chat/notificationApproval/ApprovalNotificationHost'
 
 // 注册表值不含组件状态，模块级常量即可：Context value 引用恒定，
 // 不会因外壳重渲而触发下游消费者重渲
@@ -42,6 +43,8 @@ export function MainLayoutHost() {
     return (
         <BubbleRenderProvider value={RENDERERS}>
             <MainLayout />
+            {/* 审批通知卡片：SSE 信箱 → 通知里就地审批（复用 chat 域审批面板，故挂在这一层） */}
+            <ApprovalNotificationHost />
         </BubbleRenderProvider>
     )
 }

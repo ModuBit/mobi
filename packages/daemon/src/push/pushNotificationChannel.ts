@@ -29,15 +29,15 @@ export class PushNotificationChannel implements NotificationChannel {
         _appUrl: string
     ) {}
 
-    async sendPermissionRequest(session: Session): Promise<void> {
+    async sendPermissionRequest(session: Session, requestId?: string | null): Promise<void> {
         if (!session.active) {
             return
         }
 
         const name = getSessionName(session)
-        const request = session.agentState?.requests
-            ? Object.values(session.agentState.requests)[0]
-            : null
+        const requests = session.agentState?.requests ?? null
+        // 优先用通知锚定的那条请求（hub 给的 requestId）；请求可能已被处理，回退到第一条
+        const request = (requestId && requests?.[requestId]) || (requests ? Object.values(requests)[0] : null)
         const toolName = request?.tool ? ` (${request.tool})` : ''
 
         const payload: PushPayload = {
@@ -57,7 +57,8 @@ export class PushNotificationChannel implements NotificationChannel {
             title: payload.title,
             body: payload.body,
             sessionId: session.id,
-            url
+            url,
+            ...(requestId ? { requestId } : {})
         })
         if (delivered) {
             return

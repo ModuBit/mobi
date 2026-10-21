@@ -57,6 +57,8 @@ export class NotificationHub {
     private readonly lastKnownRequests: Map<string, Set<string>> = new Map()
     /** 每个 session 的防抖定时器 */
     private readonly notificationDebounce: Map<string, NodeJS.Timeout> = new Map()
+    /** 每个 session 当前防抖窗口内第一笔新请求的 id：通知卡片据此定位要展示哪条审批 */
+    private readonly pendingRequestId: Map<string, string | null> = new Map()
     /** 每个 session 上次发送 Ready 通知的时间戳，用于冷却控制 */
     private readonly lastReadyNotificationAt: Map<string, number> = new Map()
     private unsubscribeSyncEvents: (() => void) | null = null
@@ -84,6 +86,7 @@ export class NotificationHub {
             clearTimeout(timer)
         }
         this.notificationDebounce.clear()
+        this.pendingRequestId.clear()
         this.lastKnownRequests.clear()
         this.lastReadyNotificationAt.clear()
     }
@@ -127,6 +130,7 @@ export class NotificationHub {
             clearTimeout(existingTimer)
             this.notificationDebounce.delete(sessionId)
         }
+        this.pendingRequestId.delete(sessionId)
         this.lastKnownRequests.delete(sessionId)
         this.lastReadyNotificationAt.delete(sessionId)
     }
@@ -157,10 +161,11 @@ export class NotificationHub {
         const oldRequestIds = this.lastKnownRequests.get(session.id) || new Set()
 
         let hasNewRequests = false
+        let firstNewRequestId: string | null = null
         for (const requestId of newRequestIds) {
             if (!oldRequestIds.has(requestId)) {
                 hasNewRequests = true
-                break
+                firstNewRequestId ??= requestId
             }
         }
 
@@ -173,11 +178,17 @@ export class NotificationHub {
         const existingTimer = this.notificationDebounce.get(session.id)
         if (existingTimer) {
             clearTimeout(existingTimer)
+        } else {
+            // 窗口内第一笔才作为通知卡片的锚点：后续重置定时器不改变已选中的请求，
+            // 否则同一批审批里先到的那条会被后来的顶掉，通知指向的总是最后一条
+            this.pendingRequestId.set(session.id, firstNewRequestId)
         }
 
         const timer = setTimeout(() => {
             this.notificationDebounce.delete(session.id)
-            this.sendPermissionNotification(session.id).catch((error) => {
+            const requestId = this.pendingRequestId.get(session.id) ?? null
+            this.pendingRequestId.delete(session.id)
+            this.sendPermissionNotification(session.id, requestId).catch((error) => {
                 daemonLogger.error('[NotificationHub] Failed to send permission notification:', error)
             })
         }, this.permissionDebounceMs)
@@ -185,13 +196,13 @@ export class NotificationHub {
         this.notificationDebounce.set(session.id, timer)
     }
 
-    private async sendPermissionNotification(sessionId: string): Promise<void> {
+    private async sendPermissionNotification(sessionId: string, requestId: string | null): Promise<void> {
         const session = this.getNotifiableSession(sessionId)
         if (!session) {
             return
         }
 
-        await this.notifyPermission(session)
+        await this.notifyPermission(session, requestId)
     }
 
     /**
@@ -225,10 +236,10 @@ export class NotificationHub {
         }
     }
 
-    private async notifyPermission(session: Session): Promise<void> {
+    private async notifyPermission(session: Session, requestId: string | null): Promise<void> {
         for (const channel of this.channels) {
             try {
-                await channel.sendPermissionRequest(session)
+                await channel.sendPermissionRequest(session, requestId)
             } catch (error) {
                 daemonLogger.error('[NotificationHub] Failed to send permission notification:', error)
             }

@@ -36,6 +36,7 @@ import {
     clearAllAttentionStates,
 } from '@/core/notifications/attentionFeedback'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
+import { useApprovalNotificationStore } from '@/core/data/stores/approvalNotificationStore'
 import { usePromptSuggestionStore, extractPromptSuggestion } from '@/core/data/stores/promptSuggestionStore'
 import { clearAllSessionResources } from '@/core/lib/sessionResources'
 import { ingestUiCommandEvent } from '@/core/data/stores/workspaceStore'
@@ -543,7 +544,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 break
             case 'toast': {
                 if (!event.data) break
-                const { kind, sessionId, title, body, url } = event.data
+                const { kind, sessionId, title, body, url, requestId } = event.data
                 const action = decideToastAction(sessionId, {
                     activeSessionId: parseActiveSessionId(window.location.pathname),
                     isHidden: document.hidden,
@@ -553,6 +554,30 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // 前台 Toast 用递增 key(每条都显示,避免 antd 同 key 互相吞);
                 // 后台系统通知用固定 tag 聚合(见 system-notification 分支),避免堆积触发 Chrome 反垃圾
                 const notifyKey = `${kind}-${sessionId}-${++toastSeq}`
+
+                // 纯文本 toast（ready，以及审批卡片不可用时的降级）：
+                // 点击即完成使命——先收回 toast 再跳转，否则它会压在目标会话上继续倒计时
+                const showPlainToast = () => notificationRef.current.info({
+                    key: notifyKey,
+                    title,
+                    description: body,
+                    duration: 6,
+                    onClick: () => {
+                        notificationRef.current.destroy(notifyKey)
+                        navigateRef.current({ to: url })
+                    },
+                })
+                // 审批类通知交给 ApprovalNotificationHost：卡片里就地渲染审批 UI，
+                // 用户不必先跳进会话。请求本体仍从 session.agentState.requests 读取，
+                // 这里只投递「指向哪条请求」的信箱条目（core 不引 features，见 store 注释）
+                const enqueueApprovalNotification = () => useApprovalNotificationStore.getState().push({
+                    key: notifyKey,
+                    sessionId,
+                    requestId: requestId ?? null,
+                    title,
+                    body,
+                    url,
+                })
 
                 if (action === 'system-notification') {
                     // 场景③ 后台:SW 系统通知（移动端不支持页面层 new Notification），
@@ -568,27 +593,16 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                         data: { url },
                     }).then((ok) => {
                         if (ok) return
-                        notificationRef.current.info({
-                            key: notifyKey,
-                            message: title,
-                            description: body,
-                            duration: 6,
-                            onClick: () => navigateRef.current({ to: url }),
-                        })
+                        if (kind === 'permission') enqueueApprovalNotification()
+                        else showPlainToast()
                     })
                     markUnreadRef.current(sessionId, kind)
                     break
                 }
 
-                // 场景② 前台但不在该 session:antd 页面 Toast(支持 onClick 跳转)+ 角标
-                // 关键:用 notificationRef(antd 原生),不用 nt(useNotify 封装 dispatch 不透传 onClick)
-                notificationRef.current.info({
-                    key: notifyKey,
-                    message: title,
-                    description: body,
-                    duration: 6,
-                    onClick: () => navigateRef.current({ to: url }),
-                })
+                // 场景② 前台但不在该 session:审批类弹可操作卡片,其余弹文本 Toast + 角标
+                if (kind === 'permission') enqueueApprovalNotification()
+                else showPlainToast()
                 markUnreadRef.current(sessionId, kind)
                 break
             }
@@ -623,6 +637,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             clearAllAttentionStates()
             // 清空所有会话的检视面板状态 + 缓存终端（顺带关闭后端 PTY），避免换号残留
             clearAllSessionResources()
+            // 撤销待处理的审批通知卡片（宿主收到空信箱后逐条收起）
+            useApprovalNotificationStore.getState().clearAll()
         }
     }, [authenticated])
 

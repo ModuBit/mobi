@@ -139,6 +139,20 @@ describe('PushNotificationChannel', () => {
         expect(toastKind(conn.calls)).toBe('permission')
     })
 
+    test('sendPermissionRequest 把 requestId 与锚定请求的工具名带进 toast', async () => {
+        const conn = makeConnection('v1', 'visible')
+        const { channel } = setup({ connections: [conn], hasPush: true })
+
+        // r1 是先到的那条；通知锚定 r2 → body 的 tool 名与 data.requestId 都应是 r2
+        await channel.sendPermissionRequest(makeSession({
+            agentState: { requests: { r1: { tool: 'Bash' }, r2: { tool: 'Write' } } },
+        }), 'r2')
+
+        const data = (conn.calls[0] as { data: { body: string; requestId?: string } }).data
+        expect(data.requestId).toBe('r2')
+        expect(data.body).toContain('Write')
+    })
+
     test('session 非活跃时不发任何通知', async () => {
         const conn = makeConnection('v1', 'visible')
         const { channel, sendToNamespace } = setup({ connections: [conn], hasPush: true })

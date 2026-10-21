@@ -35,6 +35,53 @@ function makeReadyEvent(sessionId: string): SyncEvent {
     } as unknown as SyncEvent
 }
 
+describe('NotificationHub 审批通知锚点（requestId 透传）', () => {
+    /** 组装 hub + 可变 session 桩：测试中途改 agentState.requests 模拟连续到达 */
+    function setup(initialRequests: Record<string, unknown>) {
+        let registeredListener: ((e: SyncEvent) => void) | null = null
+        const session = { id: 's1', namespace: 'ns1', active: true, agentState: { requests: initialRequests } }
+        const syncEngine = {
+            subscribe: mock((listener: (e: SyncEvent) => void) => {
+                registeredListener = listener
+                return () => {}
+            }),
+            getSession: mock(() => session),
+        } as never
+        const channel = {
+            sendReady: mock(() => Promise.resolve()),
+            sendPermissionRequest: mock(() => Promise.resolve()),
+        }
+        const hub = new NotificationHub(syncEngine, [channel as never], { permissionDebounceMs: 10 })
+        const emitSessionUpdated = () =>
+            registeredListener!({ type: 'session-updated', namespace: 'ns1', sessionId: 's1' } as SyncEvent)
+        return { hub, channel, session, emitSessionUpdated }
+    }
+
+    test('新审批请求 → sendPermissionRequest 带上触发它的 requestId', async () => {
+        const { hub, channel, session, emitSessionUpdated } = setup({ r1: { tool: 'Bash' } })
+
+        emitSessionUpdated()
+        await new Promise(resolve => setTimeout(resolve, 60))
+
+        expect(channel.sendPermissionRequest).toHaveBeenCalledWith(session, 'r1')
+        hub.stop()
+    })
+
+    test('防抖窗口内再来一笔 → 锚点仍是窗口内第一笔（后来的不顶掉先到的）', async () => {
+        const { hub, channel, session, emitSessionUpdated } = setup({ r1: { tool: 'Bash' } })
+
+        emitSessionUpdated()
+        // 第二笔在窗口内到达：定时器重置，但通知锚点应保持 r1
+        session.agentState.requests = { r1: { tool: 'Bash' }, r2: { tool: 'Write' } }
+        emitSessionUpdated()
+        await new Promise(resolve => setTimeout(resolve, 60))
+
+        expect(channel.sendPermissionRequest).toHaveBeenCalledTimes(1)
+        expect(channel.sendPermissionRequest).toHaveBeenCalledWith(session, 'r1')
+        hub.stop()
+    })
+})
+
 describe('NotificationHub ready 链路（代码层确认）', () => {
     test('message-received(ready) 事件 → 触发 channel.sendReady', async () => {
         let registeredListener: ((e: SyncEvent) => void) | null = null

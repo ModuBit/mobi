@@ -18,7 +18,11 @@ import type { Session } from '../sync/syncEngine'
 
 export type NotificationChannel = {
     sendReady: (session: Session) => Promise<void>
-    sendPermissionRequest: (session: Session) => Promise<void>
+    /**
+     * @param requestId 触发本次通知的那笔审批请求 id（批量到达时为窗口内第一笔）。
+     *   前端通知卡片据此就地渲染审批 UI；请求本体仍从 session.agentState.requests 读取。
+     */
+    sendPermissionRequest: (session: Session, requestId?: string | null) => Promise<void>
 }
 
 export type NotificationHubOptions = {

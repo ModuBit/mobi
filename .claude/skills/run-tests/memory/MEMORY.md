@@ -61,3 +61,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [openui 档位验证](openui-profile-verify.md) — 名录/签名分层对比探针脚本 / regenerate 免重启 / transcript 三层结构与 skill 示例 fence 坑
 - [治理 E2E](governance-e2e.md) — Governor/warm-on-open 真机 recipe：cap=8、pause 态只能逐出造（dormant=stop）、SSE+snapshot-resync 触发 warm、日志双写点坑（daemonLogger→daemon.log / console→pid 文件）、spawn 直登无心跳
 - [能力目录验证](capability-catalog-verify.md) — DEBUG 日志计数 + host-metadata API：per-cwd 缓存/单飞/签名失效/live Query 零探针/后台刷新节流（2026-10-20）
+- [审批通知卡片验证](approval-notification-verify.md) — 通知里就地审批/作答全链路；antd v6 通知内容独立 React 根（须补 QueryClient+Theme 提供者）、只读命令不触发审批、Playwright 兜底占用的 DevTools MCP（2026-10-21）

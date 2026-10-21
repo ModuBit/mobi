@@ -942,7 +942,13 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
             title: z.string(),
             body: z.string(),
             sessionId: z.string(),
-            url: z.string()
+            url: z.string(),
+            /**
+             * 触发本次通知的审批请求 id（kind=permission 时给）。
+             * 前端据此在通知里就地渲染可操作的审批卡片——请求本体仍以 session.agentState.requests
+             * 为唯一事实源，通知只带「指向哪一条」的指针，不复制审批数据。
+             */
+            requestId: z.string().optional()
         })
     }),
     SessionChangedSchema.extend({

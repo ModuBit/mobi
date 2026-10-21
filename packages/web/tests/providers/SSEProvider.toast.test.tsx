@@ -24,6 +24,8 @@ import { ConfigProvider, App as AntdApp } from 'antd'
 const sseListener = vi.hoisted(() => ({ current: null as ((e: any) => void) | null }))
 // antd notification.info spy:捕获 page-toast 调用与 key
 const notifyInfoSpy = vi.hoisted(() => vi.fn())
+// antd notification.destroy spy:验证点击 toast 后立即收回
+const notifyDestroySpy = vi.hoisted(() => vi.fn())
 // showSystemNotification spy(后台分支,默认成功显示)
 const showSysSpy = vi.hoisted(() => vi.fn().mockResolvedValue(true))
 // 可变认证态(测 logout 场景时改为 false)
@@ -75,7 +77,7 @@ vi.mock('antd', async (orig) => {
         App: {
             ...actual.App,
             useApp: () => ({
-                notification: { info: notifyInfoSpy, destroy: vi.fn() },
+                notification: { info: notifyInfoSpy, destroy: notifyDestroySpy },
                 message: { error: vi.fn() },
             }),
         },
@@ -83,6 +85,7 @@ vi.mock('antd', async (orig) => {
 })
 
 import { useNotificationStore } from '@/core/data/stores/notificationStore'
+import { useApprovalNotificationStore } from '@/core/data/stores/approvalNotificationStore'
 import { usePromptSuggestionStore } from '@/core/data/stores/promptSuggestionStore'
 
 async function renderProvider() {
@@ -114,18 +117,47 @@ describe('SSEProvider toast 分支(渲染集成)', () => {
     })
     afterEach(() => cleanup())
 
-    it('连发两条同类 toast,各自独立 key 不互相吞(防 SW replace / antd 同 key 更新)', async () => {
+    it('连发两条同类审批通知 → 信箱条目各自独立 key(防同 key 互相吞)且不直接弹文本 toast', async () => {
+        useApprovalNotificationStore.getState().clearAll()
         await renderProvider()
         expect(sseListener.current).toBeTruthy()
 
-        // 前台 + 非该 session → page-toast 分支(走 antd notification.info)
-        sseListener.current!(toast({ kind: 'permission', sessionId: 's1', title: 't1', body: 'b1', url: '/sessions/s1' }))
-        sseListener.current!(toast({ kind: 'permission', sessionId: 's1', title: 't2', body: 'b2', url: '/sessions/s1' }))
+        // 前台 + 非该 session + 审批类 → 进审批通知信箱（由 ApprovalNotificationHost 渲染卡片）
+        sseListener.current!(toast({ kind: 'permission', sessionId: 's1', title: 't1', body: 'b1', url: '/sessions/s1', requestId: 'r1' }))
+        sseListener.current!(toast({ kind: 'permission', sessionId: 's1', title: 't2', body: 'b2', url: '/sessions/s1', requestId: 'r2' }))
 
-        expect(notifyInfoSpy).toHaveBeenCalledTimes(2)
-        const key1 = notifyInfoSpy.mock.calls[0][0].key
-        const key2 = notifyInfoSpy.mock.calls[1][0].key
-        expect(key1).not.toBe(key2)
+        const items = useApprovalNotificationStore.getState().items
+        expect(items).toHaveLength(2)
+        expect(items[0]!.key).not.toBe(items[1]!.key)
+        expect(items.map(i => i.requestId)).toEqual(['r1', 'r2'])
+        expect(notifyInfoSpy).not.toHaveBeenCalled()
+        useApprovalNotificationStore.getState().clearAll()
+    })
+
+    it('点击文本 toast → 立即收回该条(destroy 自己的 key)并跳转', async () => {
+        await renderProvider()
+        sseListener.current!(toast({ kind: 'ready', sessionId: 's1', title: 't1', body: 'b1', url: '/sessions/s1' }))
+
+        const call = notifyInfoSpy.mock.calls[0][0]
+        call.onClick()
+
+        expect(notifyDestroySpy).toHaveBeenCalledWith(call.key)
+        expect(navigateSpy).toHaveBeenCalledWith({ to: '/sessions/s1' })
+    })
+
+    it('系统通知不可用的降级 toast 同样点击即收回', async () => {
+        showSysSpy.mockResolvedValueOnce(false)
+        await renderProvider()
+        Object.defineProperty(document, 'hidden', { value: true, configurable: true })
+
+        sseListener.current!(toast({ kind: 'ready', sessionId: 's1', title: 't1', body: 'b1', url: '/sessions/s1' }))
+        await vi.waitFor(() => expect(notifyInfoSpy).toHaveBeenCalledTimes(1))
+
+        const call = notifyInfoSpy.mock.calls[0][0]
+        call.onClick()
+
+        expect(notifyDestroySpy).toHaveBeenCalledWith(call.key)
+        expect(navigateSpy).toHaveBeenCalledWith({ to: '/sessions/s1' })
     })
 
     it('reconnected 时 sessions 失效并入 16ms 批处理(messages 不再 invalidate,改 fetchLatest)', async () => {

@@ -486,12 +486,16 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                     {denyFirst ? <CloseOutlined /> : <CheckOutlined />} {mainAction.label}
                                 </Button>
                                 {/* 次要行：其余持久化档 + 允许本次 + 全部允许（default）+ 拒绝（denyFirst 时移除，已在主位）
-                                    移动端 flex:1 等分并排；PC 作为一组 inline 续在主操作后 */}
+                                    移动端 flex:1 等分并排；PC 作为一组 inline 续在主操作后。
+                                    必须允许换行：这组按钮是外层 flex-wrap 行里的**单个**子项，
+                                    自身不换行时会按内容宽度撑开、在窄容器（通知卡片）里被裁掉 */}
                                 <div data-sub-row="secondary" style={{
                                     display: 'flex',
                                     flexDirection: 'row',
+                                    flexWrap: 'wrap',
                                     gap: 8,
                                     alignItems: 'stretch',
+                                    minWidth: 0,
                                 }}>
                                     {secondaryRowActions.map((action, idx) => (
                                         <Button
