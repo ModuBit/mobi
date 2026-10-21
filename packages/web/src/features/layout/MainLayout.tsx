@@ -104,6 +104,8 @@ export function MainLayout() {
                         minWidth: 0,
                         borderRadius: !isMobile && sidebarExpanded ? 'var(--radius-panel) 0 0 var(--radius-panel)' : undefined,
                         borderLeft: !isMobile && sidebarExpanded ? `1px solid ${token.colorBorder}` : undefined,
+                        /* 内容区与顶/底之间留 4px 呼吸：圆角与描边才不贴着窗口边缘（移动端全屏，不留） */
+                        marginBlock: !isMobile && sidebarExpanded ? 4 : undefined,
                         background: token.colorBgLayout,
                     }}>
                         {/* 页面级懒加载 chunk 的内层边界：跳转时只内容区出 loading，
