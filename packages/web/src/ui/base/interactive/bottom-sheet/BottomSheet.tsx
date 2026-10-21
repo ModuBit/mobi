@@ -106,6 +106,25 @@ const deferUnmount = (safeToRemove: () => void) => {
     queueMicrotask(safeToRemove)
 }
 
+/** onExited 的兜底时限（ms）：后台标签页不跑 rAF，回调不能因此丢掉 */
+const EXITED_FALLBACK_MS = 250
+
+/**
+ * 「已从 DOM 移除」之后才回调：safeToRemove 只是给 AnimatePresence 排一次 React 更新，
+ * 同一同步块里元素还在文档里。下一帧（commit 已应用并画出去）才算真正离场——消费方按
+ * onExited 的文档做测量、滚动复位或抢跑主线程工作时，读到的必须是「浮层已不在」的世界。
+ */
+function onNextPaint(callback: () => void): void {
+    let done = false
+    const run = () => {
+        if (done) return
+        done = true
+        callback()
+    }
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(run, 0))
+    setTimeout(run, EXITED_FALLBACK_MS)
+}
+
 /** 手势返回 / 下拉关闭无真实 DOM 事件，构造最小事件对象，避免上层 onClose 读
  *  stopPropagation/preventDefault 时 TypeError（与旧底部抽屉一致） */
 const createSyntheticCloseEvent = () =>
@@ -230,9 +249,10 @@ export interface BottomSheetProps {
     /** sheet 主体附加类 */
     className?: string
     /**
-     * 完全离场后的回调：退出动画落定、DOM 已卸载时触发一次（否决/重开不触发）。
-     * 给「关掉浮层之后才该发生的事」用——典型是菜单内导航：等浮层离场再提交路由，
-     * 否则目标页的渲染长任务会冻住还在半空的浮层（见 features/layout/useMenuNavigate）。
+     * 完全离场后的回调：退出动画落定、DOM 已卸载且那一帧已画出去之后触发一次
+     * （否决/重开不触发）。给「关掉浮层之后才该发生的事」用——典型是菜单内导航：
+     * 等浮层离场再提交路由，否则目标页的渲染长任务会冻住还在半空的浮层
+     * （见 features/layout/useMenuNavigate）。回调已自带帧对齐与兜底，消费方不要再包定时器。
      */
     onExited?: () => void
     children?: ReactNode
@@ -360,12 +380,11 @@ function Sheet({
     const onExitedRef = useRef(onExited)
     onExitedRef.current = onExited
 
-    /** 卸载收尾（三条退场路径的唯一出口）：先摘 DOM，再通知调用方。
-     *  通知放在摘除之后，是为了让消费方能在「浮层已经不在画面上」的前提下接着做事
-     *  （菜单导航依赖这一点，见 onExited 的文档） */
+    /** 卸载收尾（三条退场路径的唯一出口）：先摘 DOM，**下一帧**再通知调用方。
+     *  时序承诺由组件自己兑现，消费方不需要再补 rAF/兜底计时（见 onExited 的文档） */
     const finishExit = useCallback(() => {
         safeToRemove?.()
-        onExitedRef.current?.()
+        onNextPaint(() => onExitedRef.current?.())
     }, [safeToRemove])
 
     /** 真人在场时刻（presence 变化点）：离场途中落在触发按钮上的点按不得再把 sheet 关一次 */

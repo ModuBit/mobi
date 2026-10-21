@@ -322,8 +322,9 @@ describe('BottomSheet', () => {
         expect(onExited).not.toHaveBeenCalled()
 
         rerender(<BottomSheet open={false} onClose={onClose} onExited={onExited} title="测试" />)
-        await waitFor(() => expect(surface()).toBeNull())
-        expect(onExited).toHaveBeenCalledTimes(1)
+        // onExited 承诺「DOM 已卸载且那一帧已画出去」：回调到达时表面必须早就不在了
+        await waitFor(() => expect(onExited).toHaveBeenCalledTimes(1))
+        expect(surface()).toBeNull()
     })
 
     it('onExited：关闭被否决（沉降回原位）时不触发', async () => {
@@ -340,7 +341,8 @@ describe('BottomSheet', () => {
         expect(onExited).not.toHaveBeenCalled()
     })
 
-    it('否决式 onClose（open 保持 true）：sheet 沉降回原位而非卡在屏外', async () => {        const onClose = vi.fn()
+    it('否决式 onClose（open 保持 true）：sheet 沉降回原位而非卡在屏外', async () => {
+        const onClose = vi.fn()
         render(<Host veto onClose={onClose} />)
         forceHeight(surface())
         await waitSettled()

@@ -15,7 +15,7 @@
  */
 
 import { theme as antTheme } from 'antd'
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { useUiStore } from '@/core/data/stores/uiStore'
@@ -104,24 +104,24 @@ export function MobileMenuDrawer() {
     // 菜单内导航统一走 hook：先关抽屉，抽屉离场（DOM 卸载）后再提交路由渲染
     const navigateFromMenu = useMenuNavigate()
     const takeMenuNavigation = useUiStore((s) => s.takeMenuNavigation)
+    const setMenuSheetPresent = useUiStore((s) => s.setMenuSheetPresent)
 
-    /** 抽屉完全离场：此刻才提交路由。
+    // sheet 在场标记：开后置真；关闭时**不清**——滑出动画期间 sheet 仍在场，收尾归 onExited。
+    // 它决定「登记导航时还有没有离场事件可等」（见 requestMenuNavigation）
+    useEffect(() => {
+        if (mobileMenuOpen) setMenuSheetPresent(true)
+    }, [mobileMenuOpen, setMenuSheetPresent])
+    // 布局卸载（如切到桌面宽度）时不留「在场」假象：否则下一次导航会干等一个永不触发的离场
+    useEffect(() => () => setMenuSheetPresent(false), [setMenuSheetPresent])
+
+    /** 抽屉完全离场（组件保证已从 DOM 移除、那一帧也已画出去）：此刻才提交路由。
      *  目标会话页的首次渲染是主线程长任务（真机实测数秒），抢在它前面导航会把还在滑出的
-     * 抽屉冻在半空（见 useMenuNavigate 的模块注释）；再等一帧，让「抽屉已移除」这一帧
-     * 先画出去，随后长任务占用主线程时屏幕上已经是干净的旧页面 */
+     *  抽屉冻在半空（见 useMenuNavigate 的模块注释）。帧对齐与兜底由 BottomSheet 兑现，
+     *  这里只管把登记的闭包取走执行 */
     const handleExited = useCallback(() => {
-        const go = takeMenuNavigation()
-        if (!go) return
-        let done = false
-        const run = () => {
-            if (done) return
-            done = true
-            go()
-        }
-        requestAnimationFrame(() => setTimeout(run, 0))
-        // 兜底：后台标签页不跑 rAF，导航不能丢
-        setTimeout(run, 250)
-    }, [takeMenuNavigation])
+        setMenuSheetPresent(false)
+        takeMenuNavigation()?.()
+    }, [setMenuSheetPresent, takeMenuNavigation])
 
     // 关闭菜单
     const handleClose = () => setMobileMenuOpen(false)
@@ -132,7 +132,7 @@ export function MobileMenuDrawer() {
         api.auth.logout().catch(() => {}).finally(() => logout())
     }
 
-    // 选择菜单项：映射路径走 hook（关抽屉 → 滑出起步后导航）；未映射 key
+    // 选择菜单项：映射路径走 hook（关抽屉 → 抽屉离场后再导航）；未映射 key
     // （当前 mobileNavItems 全覆盖，防御未来新增非导航项）仍须关闭抽屉
     const handleSelect = (key: string) => {
         const path = navPathMap[key]

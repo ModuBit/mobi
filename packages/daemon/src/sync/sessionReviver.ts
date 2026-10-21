@@ -125,7 +125,11 @@ export class SessionReviver {
         const intent: ReviveIntent = opts.intent ?? 'activate'
         const existing = this.inFlight.get(sessionId)
         if (existing && !(existing.intent === 'prewarm' && intent === 'activate')) {
-            return existing.promise
+            // 并入在途条目同样要回答「这次调用能不能碰这个会话」：reviveInner 的归属校验
+            // 只跑了**发起方**那一次，而发起方常常是内部预热/唤醒（无 namespace）。
+            // 并入方带 namespace 时自己补一次，否则 access_denied 在这条路径上永远不返回
+            const denial = this.accessDenial(sessionId, opts.namespace)
+            return denial ? Promise.resolve(denial) : existing.promise
         }
 
         const entry: InFlightRevive = {
@@ -140,6 +144,24 @@ export class SessionReviver {
         }
         void entry.promise.then(settle, settle)
         return entry.promise
+    }
+
+    /**
+     * 并入在途条目时的归属校验：只在调用方带 namespace 时做，通过返回 null。
+     * 判据与 reviveInner 完全一致（同一个 resolveSession），区别只是不消费解析出的
+     * session/targetId——并入方要的只是「能否访问」这个答案。
+     */
+    private accessDenial(sessionId: string, namespace?: string): ReviveResult | null {
+        if (namespace === undefined) return null
+        try {
+            const resolved = this.resolveSession(sessionId, namespace)
+            return resolved.ok ? null : resolved.result
+        } catch (error) {
+            // 与 reviveInner 同一契约：本入口永不 reject
+            const message = error instanceof Error ? error.message : String(error)
+            daemonLogger.warn(`[dormancy] reviveSession access check failed (session=${sessionId}): ${message}`)
+            return { type: 'error', message, code: 'resume_failed' }
+        }
     }
 
     private async reviveInner(sessionId: string, opts: ReviveOptions & { intent: ReviveIntent }): Promise<ReviveResult> {

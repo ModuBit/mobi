@@ -289,9 +289,12 @@ new PerformanceObserver(l => l.getEntries().forEach(e => console.log(e.startTime
 修后 `y` 一路滑到 `gone`，**之后**才出现长任务。
 
 **修法（2026-10-21）**：菜单内导航改为事件驱动——`BottomSheet` 新增 `onExited`（滑出落定、
-DOM 卸载后回调一次），`useMenuNavigate` 把导航闭包登记到 `uiStore.pendingMenuNavigation`，
-`MobileMenuDrawer` 的 `onExited` 里取走，并 `rAF → setTimeout 0`（先画出「抽屉已移除」那一帧，
-再让长任务占主线程；后台标签不跑 rAF，另留 250ms 兜底）。
+DOM 卸载**且那一帧画出去之后**回调一次；帧对齐与后台标签兜底都由组件内部 `onNextPaint` 兑现，
+消费方不要再包定时器），`useMenuNavigate` 把导航闭包登记到 `uiStore.pendingMenuNavigation`，
+`MobileMenuDrawer` 在 `onExited` 里取走执行。
+**还要挡住反向洞**：抽屉早就关完才回来的导航（异步恢复/删除落定后）没有离场事件可等——
+`uiStore.menuSheetPresent`（MobileMenuDrawer 维护）为假时 `requestMenuNavigation` 返回 false，
+hook 当场执行。
 **验证阈值**：修后 1x 实测 drawer 330ms 消失、541ms 路由切换；20x 下 360ms 滑完 → 541ms 才起长任务。
 
 **别退回「固定延迟导航」**：任何固定 ms 的起步窗口都压不住变量长度的渲染风暴，只会换个位置冻。

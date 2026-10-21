@@ -200,6 +200,27 @@ describe('SessionReviver — 单入口在途闸（手动恢复 / 发消息唤醒
 
         expect(spawned).toHaveLength(2)
     })
+
+    test('并入在途条目也要验归属：无 namespace 的调用在途时，带 namespace 的并入方拿到 access_denied', async () => {
+        // 内部唤醒/预热（无 namespace）先发起，reviveInner 不会做归属校验；
+        // 随后带 namespace 的 web 请求并入同一 Promise——校验必须由并入方自己补一次
+        let releaseGate: () => void = () => {}
+        const gate = new Promise<void>((resolve) => { releaseGate = resolve })
+        const { reviver, spawned } = makeReviver({
+            session: makeSession(),
+            spawnGate: gate,
+            accessDenied: true,
+        })
+
+        const internal = reviver.revive('s1')
+        const joined = reviver.revive('s1', { namespace: 'other' })
+
+        await expect(joined).resolves.toEqual({ type: 'error', message: 'Session access denied', code: 'access_denied' })
+        releaseGate()
+        await expect(internal).resolves.toEqual({ type: 'success', sessionId: 's1' })
+        // 在途编排只起一次（并入没有额外 spawn）
+        expect(spawned).toHaveLength(1)
+    })
 })
 
 describe('SessionReviver — active 是心跳推断，连接事实优先', () => {

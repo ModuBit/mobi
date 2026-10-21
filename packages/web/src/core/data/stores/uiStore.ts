@@ -89,6 +89,12 @@ interface UiState {
      * 落定之后（见 useMenuNavigate）。连续点击为覆盖语义——只保留最后一次。
      */
     pendingMenuNavigation: (() => void) | null
+    /**
+     * 菜单 sheet 是否在场（含滑出动画期），由 MobileMenuDrawer 维护——「有没有离场事件可等」
+     * 是它才知道的 UI 事实：菜单早关完了才回来的导航（异步恢复/删除落定后）不该干等一个
+     * 永远不会到来的 onExited。
+     */
+    menuSheetPresent: boolean
     // 侧边栏展开/收起（桌面端）
     sidebarExpanded: boolean
     // 重命名
@@ -98,10 +104,13 @@ interface UiState {
     setTheme: (theme: Theme) => void
     setLocale: (locale: Locale) => void
     setMobileMenuOpen: (open: boolean) => void
-    /** 登记一次菜单内导航并关闭菜单（执行时机由底部 sheet 的离场回调决定，见取走方） */
-    requestMenuNavigation: (go: () => void) => void
+    /** 登记一次菜单内导航并关闭菜单。返回 true = 等抽屉离场回调取走；false = 没有在场
+     *  的抽屉（不存在「离场」这回事），调用方应立即执行 */
+    requestMenuNavigation: (go: () => void) => boolean
     /** 取走待执行的菜单导航（取走即清空，重复调用返回 null） */
     takeMenuNavigation: () => (() => void) | null
+    /** 菜单 sheet 在场状态（含滑出动画期），由 MobileMenuDrawer 维护 */
+    setMenuSheetPresent: (present: boolean) => void
     toggleSidebar: () => void
     startRename: (sessionId: string, currentValue: string) => void
     setRenameValue: (value: string) => void
@@ -116,6 +125,7 @@ export const useUiStore = create<UiState>()(
             locale: getSystemLocale(),
             mobileMenuOpen: false,
             pendingMenuNavigation: null,
+            menuSheetPresent: false,
             sidebarExpanded: true,
             renamingSessionId: null,
             renameValue: '',
@@ -129,11 +139,22 @@ export const useUiStore = create<UiState>()(
             setMobileMenuOpen: (open) => set(open
                 ? { mobileMenuOpen: true, pendingMenuNavigation: null }
                 : { mobileMenuOpen: false }),
-            requestMenuNavigation: (go) => set({ mobileMenuOpen: false, pendingMenuNavigation: go }),
+            requestMenuNavigation: (go) => {
+                if (!get().menuSheetPresent) {
+                    // 抽屉已彻底关掉：登记下来的闭包没人取走，直接当场执行
+                    if (get().mobileMenuOpen) set({ mobileMenuOpen: false })
+                    return false
+                }
+                set({ mobileMenuOpen: false, pendingMenuNavigation: go })
+                return true
+            },
             takeMenuNavigation: () => {
                 const go = get().pendingMenuNavigation
                 if (go) set({ pendingMenuNavigation: null })
                 return go
+            },
+            setMenuSheetPresent: (present) => {
+                if (get().menuSheetPresent !== present) set({ menuSheetPresent: present })
             },
             toggleSidebar: () => set((state) => ({ sidebarExpanded: !state.sidebarExpanded })),
             startRename: (sessionId, currentValue) => set({ renamingSessionId: sessionId, renameValue: currentValue }),

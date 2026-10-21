@@ -29,11 +29,12 @@ const flush = () => {
 
 describe('useMenuNavigate（抽屉离场后再导航）', () => {
     beforeEach(() => {
-        useUiStore.setState({ mobileMenuOpen: true, pendingMenuNavigation: null })
+        // menuSheetPresent = 抽屉在场（打开或正在滑出）：这是「有离场事件可等」的前提
+        useUiStore.setState({ mobileMenuOpen: true, pendingMenuNavigation: null, menuSheetPresent: true })
     })
 
     afterEach(() => {
-        useUiStore.setState({ mobileMenuOpen: false, pendingMenuNavigation: null })
+        useUiStore.setState({ mobileMenuOpen: false, pendingMenuNavigation: null, menuSheetPresent: false })
         cleanup()
     })
 
@@ -93,5 +94,17 @@ describe('useMenuNavigate（抽屉离场后再导航）', () => {
         expect(useUiStore.getState().pendingMenuNavigation).toBeNull()
         expect(flush()).toBeNull()
         expect(go).not.toHaveBeenCalled()
+    })
+
+    it('抽屉早已关完（无可等的离场）：立即执行，不挂在 pending 上', () => {
+        // 异步恢复 / 删除落定后才回来导航：菜单在这期间已经关完，onExited 不会再触发
+        useUiStore.setState({ mobileMenuOpen: false, menuSheetPresent: false })
+        const { result } = renderHook(() => useMenuNavigate())
+        const go = vi.fn()
+
+        result.current(go)
+
+        expect(go).toHaveBeenCalledTimes(1)
+        expect(useUiStore.getState().pendingMenuNavigation).toBeNull()
     })
 })

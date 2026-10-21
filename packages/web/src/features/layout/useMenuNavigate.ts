@@ -34,11 +34,15 @@ import { useUiStore } from '@/core/data/stores/uiStore'
  * params 的编译期校验保留在调用点，本 hook 不模仿 navigate 签名、无类型断言。
  * 连续调用为覆盖语义（只保留最后一次闭包）；闭包存在 store 里而不是 hook 实例上，
  * 因为它要在发起它的组件（菜单内容）卸载之后才执行。
+ *
+ * 抽屉**早就关完了**才回来的导航（异步恢复 / 删除落定后）没有离场事件可等——
+ * `requestMenuNavigation` 会返回 false，这里当场执行，不能把闭包挂在一个永远不会触发的
+ * onExited 上（旧实现的定时器与抽屉状态无关，天然没这个洞）。
  */
 export function useMenuNavigate() {
     const requestMenuNavigation = useUiStore((s) => s.requestMenuNavigation)
 
     return useCallback((go: () => void) => {
-        requestMenuNavigation(go)
+        if (!requestMenuNavigation(go)) go()
     }, [requestMenuNavigation])
 }

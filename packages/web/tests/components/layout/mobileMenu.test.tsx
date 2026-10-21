@@ -32,7 +32,18 @@ vi.mock('@tanstack/react-router', () => ({
 // uiStore:setMobileMenuOpen 用 spy(no-op 不改 state),保持 drawer 开着便于连续查询
 const setMobileMenuOpen = vi.fn()
 vi.mock('@/core/data/stores/uiStore', () => ({
-    useUiStore: () => ({ mobileMenuOpen: true, setMobileMenuOpen }),
+    // 工厂被提升到文件顶部，顶层变量引用会在初始化前求值——state 必须在调用时才构造。
+    // 需要实现选择器语义：组件同时有用选择器与整对象两种读法。
+    // 菜单导航的离场取走与在场标记本文件不覆盖，给稳定 stub 即可
+    useUiStore: (selector?: (s: Record<string, unknown>) => unknown) => {
+        const state = {
+            mobileMenuOpen: true,
+            setMobileMenuOpen,
+            takeMenuNavigation: () => null,
+            setMenuSheetPresent: () => {},
+        }
+        return selector ? selector(state) : state
+    },
 }))
 
 vi.mock('@/core/data/stores/authStore', () => ({
