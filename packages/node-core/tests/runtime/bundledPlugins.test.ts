@@ -26,6 +26,7 @@ import {
     ALL_BUNDLED_PLUGIN_NAMES,
     BUNDLED_PLUGIN_MANIFEST_FILES,
     MOBI_PLUGIN_MANIFEST,
+    MOBI_HOOKS_MANIFEST,
     MEMORY_HINDSIGHT_PLUGIN_MANIFEST,
     MEMORY_HINDSIGHT_HOOKS,
     MEMORY_HINDSIGHT_MCP,
@@ -49,6 +50,12 @@ describe('bundledPlugins（恒挂载 mobi 聚合 + 按需 memory-hindsight）', 
         expect(existsSync(manifestPath)).toBe(true);
         expect(readFileSync(manifestPath, 'utf-8').trim()).toBe(MOBI_PLUGIN_MANIFEST);
         expect(JSON.parse(MOBI_PLUGIN_MANIFEST).name).toBe('mobi');
+    });
+
+    it('mobi hooks/hooks.json 与 TS 常量单源一致（同上双落点；此文件即 mods modules 注册点，漂移 = tap 全哑）', () => {
+        const hooksPath = join(projectPath(), 'plugins', 'mobi', 'hooks', 'hooks.json');
+        expect(existsSync(hooksPath)).toBe(true);
+        expect(readFileSync(hooksPath, 'utf-8').trim()).toBe(MOBI_HOOKS_MANIFEST);
     });
 
     it('memory-hindsight 三份清单/接线文件与 TS 常量一致，且 name/harness 形状正确', () => {

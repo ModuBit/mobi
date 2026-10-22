@@ -51,17 +51,21 @@ const RawJSONLinesBaseSchema = z.object({
 });
 
 /**
- * attachment 载荷开放枚举（mods-goal-channel 票 02）：按 name（载荷自身的 type 字段）
+ * attachment 载荷注册白名单（mods-goal-channel 票 02）：按 name（载荷自身的 type 字段）
  * 经 shared 校验注册表（TRANSCRIPT_TAP_ATTACHMENT_VALIDATORS）分发校验——本文件
- * 零业务语义，坏载荷校验失败走管道既有静默跳过；未注册 name 原样放行（原始行
- * 逐字节透传语义，消费端自行解释）。已注册类型的额外字段仅被校验视角 strip，
- * 不影响原始行透传（union 层 .loose() + unknown 载荷逐字节保留）。
+ * 零业务语义，坏载荷校验失败走管道既有静默跳过；**未注册 name 也静默跳过**
+ * （注册即「持久化 + 广播」白名单：tap 只认注册类型，未注册行本就无人消费，
+ * 放行会让未知类型从「管道跳过」变「落库 + 全端广播」，广播面无界）。
+ * 已注册类型的额外字段仅被校验视角 strip，不影响原始行透传
+ * （union 层 .loose() + unknown 载荷逐字节保留）。
  */
 const AttachmentPayloadSchema = z.unknown().superRefine((val, ctx) => {
   if (!val || typeof val !== 'object') return;
   const name = (val as { type?: unknown }).type;
-  if (typeof name === 'string' && TRANSCRIPT_TAP_ATTACHMENT_VALIDATORS[name]?.(val) === false) {
-    ctx.addIssue({ code: 'custom', message: `invalid ${name} payload` });
+  if (typeof name !== 'string') return;
+  const validator = TRANSCRIPT_TAP_ATTACHMENT_VALIDATORS[name];
+  if (!validator || validator(val) === false) {
+    ctx.addIssue({ code: 'custom', message: `unregistered or invalid attachment payload: ${name}` });
   }
 });
 
@@ -119,7 +123,7 @@ export const RawJSONLinesSchema = z.discriminatedUnion("type", [
   }).loose(),
 
   // transcript attachment 行（Claude Code 每 turn 落盘的 goal_status 等）：
-  // 载荷开放枚举见 AttachmentPayloadSchema——原始行逐字节透传，管道不做 goal 语义转换
+  // 载荷注册白名单见 AttachmentPayloadSchema——原始行逐字节透传，管道不做 goal 语义转换
   RawJSONLinesBaseSchema.extend({
     type: z.literal("attachment"),
     uuid: z.string(),

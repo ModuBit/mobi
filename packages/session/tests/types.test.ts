@@ -105,13 +105,13 @@ describe('RawJSONLinesSchema attachment 行（mods-goal-channel 票 02）', () =
         }
     })
 
-    it('未知 name 的 attachment 不崩（开放枚举：原样放行）', () => {
+    it('未知 name 的 attachment 静默跳过（code-review 收口：注册即「持久化+广播」白名单，防广播面无界）', () => {
         const r = RawJSONLinesSchema.safeParse({
             type: 'attachment',
             uuid: 'a-2',
             attachment: { type: 'future_attachment', foo: 'bar' },
         })
-        expect(r.success).toBe(true)
+        expect(r.success).toBe(false)
     })
 
     it('goal_status 坏载荷（缺 met/condition）按静默跳过语义校验失败', () => {

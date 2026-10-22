@@ -57,6 +57,9 @@ export function buildBridgeSocketPath(): string {
     return join(dir, `s-${randomUUID()}.sock`);
 }
 
+/** 信封体积上限：信封只含元数据（几字节），64KB 足够余量，超限即恶意/异常流量 */
+const MAX_BODY_BYTES = 64 * 1024;
+
 /**
  * 启动 bridge listener。会话进程内唯一实例；失败由调用方兜底（warn 后无桥运行，
  * goal 观测链路故障绝不影响会话本身）。
@@ -64,14 +67,26 @@ export function buildBridgeSocketPath(): string {
 export function startBridgeListener(opts?: { socketPath?: string }): Promise<BridgeListener> {
     const socketPath = opts?.socketPath ?? buildBridgeSocketPath();
     const subscribers = new Map<string, Set<BridgeSubscriber>>();
+    // 活跃连接跟踪：server.close 只停监听，keep-alive 连接会挂住回调——stop 时全部销毁
+    const connections = new Set<import('node:net').Socket>();
 
     const server: Server = createServer((req, res) => {
+        connections.add(req.socket);
+        req.socket.on('close', () => connections.delete(req.socket));
         let body = '';
+        let oversized = false;
         req.on('data', (chunk: Buffer) => {
             body += chunk.toString('utf-8');
+            if (body.length > MAX_BODY_BYTES && !oversized) {
+                oversized = true;
+                logger.warn('[BRIDGE] oversized body, destroying connection');
+                req.destroy();
+            }
         });
         req.on('end', () => {
-            res.writeHead(204).end();
+            if (oversized) return;
+            // connection: close：mod 端 fetch 一次性报文，不留 keep-alive 挂住 stop
+            res.writeHead(204, { connection: 'close' }).end();
             dispatchEnvelope(subscribers, body);
         });
         // mod 侧 fire-and-forget，但防御性兜底：慢/挂死连接不占住 server
@@ -104,10 +119,12 @@ export function startBridgeListener(opts?: { socketPath?: string }): Promise<Bri
                 },
                 stop() {
                     return new Promise((resolveStop) => {
-                        server.close(() => {
-                            rmSync(socketPath, { force: true });
-                            resolveStop();
-                        });
+                        // 先销毁全部 keep-alive 连接，server.close 的回调才能及时触发；
+                        // socket 文件无条件清理（回调丢失时不残留）
+                        for (const socket of connections) socket.destroy();
+                        connections.clear();
+                        server.close(() => resolveStop());
+                        rmSync(socketPath, { force: true });
                     });
                 },
             });

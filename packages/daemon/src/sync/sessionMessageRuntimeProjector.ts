@@ -282,6 +282,15 @@ export class SessionMessageRuntimeProjector {
             delete existingRuntimeState.todos
         }
 
+        // 无变化短路：setRuntimeState 是全量替换、无 changed 检测（与 mergeRuntimeState
+        // 不同）——投影未产生任何差异时照常写库会触发下游 publications 全量广播
+        if (
+            JSON.stringify(existingRuntimeState) ===
+            JSON.stringify((existingSession.runtimeState as RuntimeState | undefined) ?? {})
+        ) {
+            return []
+        }
+
         const publications: RuntimeState[] = []
         const updated = this.store.sessions.setRuntimeState(
             sessionId,

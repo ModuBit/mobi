@@ -43,7 +43,8 @@ export const TRANSCRIPT_TAP_SESSION_APPEND_RULES: readonly TranscriptTapSessionA
  * attachment 载荷校验注册表（按类型名）：管道侧的 generic 载荷 schema
  * （session claude/types 的 AttachmentPayloadSchema）据此分发校验——新 attachment
  * 消费者在此追加条目即全链路（tap 识别 + 载荷校验）跟上，管道 schema 零特判、
- * 保持零业务语义。未注册的类型名原样放行（原始行逐字节透传语义，消费端自行解释）。
+ * 保持零业务语义。未注册的类型名同样静默跳过（注册即「持久化 + 广播」白名单：
+ * tap 只认注册类型，未注册行无人消费，放行只会无界扩大广播面）。
  */
 export const TRANSCRIPT_TAP_ATTACHMENT_VALIDATORS: Readonly<Record<string, (value: unknown) => boolean>> = {
     goal_status: (value) => parseGoalStatusAttachment(value) !== null,

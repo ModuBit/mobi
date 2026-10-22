@@ -239,13 +239,14 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     // 事件信号推过来。必须在任何 claude 子进程 spawn 前启动（env 要先就位）；
     // 失败不阻塞会话——goal 观测链路故障绝不影响落盘与正常对话（spec 可靠性边界）
     let bridgeListener: BridgeListener | null = null;
+    let stopGoalTap: (() => void) | null = null;
     try {
         bridgeListener = await startBridgeListener();
         // session 进程级 env：local（claudeLocal 展开 process.env）与 remote
         //（sdkOptions.env 展开 process.env）两条 spawn 路径都由此继承
         process.env[MOBI_BRIDGE_SOCK_ENV] = bridgeListener.socketPath;
         // goal 订阅者：信号 → transcript 尾部读原始行 → 与 query 消息同一管道透传
-        registerGoalTapSubscriber(bridgeListener, {
+        stopGoalTap = registerGoalTapSubscriber(bridgeListener, {
             resolveTranscriptPath: () => {
                 const sessionId = currentSessionRef.current?.sessionId;
                 return sessionId ? join(getProjectPath(workingDirectory), `${sessionId}.jsonl`) : null;
@@ -273,6 +274,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             if (hookSettingsPath) {
                 cleanupHookSettingsFile(hookSettingsPath, 'generateHookSettings');
             }
+            stopGoalTap?.();
             void bridgeListener?.stop();
         }
     });

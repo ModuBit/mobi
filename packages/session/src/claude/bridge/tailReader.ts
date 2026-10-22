@@ -116,7 +116,7 @@ async function scanOnce(filePath: string, opts?: TailScanOptions): Promise<{ sca
             // 命中即停：本块（连同已收块）内出现命中行则不再向前扩窗。
             // 扩窗兜底路径每块全量重拼重解码——常态（行在 EOF 附近）首块即停，无此开销
             if (hitTest) {
-                const lines = splitLines(Buffer.concat(chunks), /* truncated */ position > 0);
+                const lines = splitLines(Buffer.concat(chunks), !(await isFirstSegmentComplete(fd, position)));
                 if (lines.some(hitTest)) {
                     found = true;
                     break;
@@ -126,7 +126,7 @@ async function scanOnce(filePath: string, opts?: TailScanOptions): Promise<{ sca
         // 有命中判定却扫到窗口上限/文件头都没命中 = 耗尽（订阅者据此决定重试/放弃）
         const exhausted = hitTest !== undefined && !found;
 
-        const truncated = end > 0;
+        const truncated = !(await isFirstSegmentComplete(fd, end));
         const lines = splitLines(Buffer.concat(chunks), truncated);
 
         // 截断/重写防护：扫完再 stat 一次，指纹变化 → 丢弃本轮
@@ -139,6 +139,18 @@ async function scanOnce(filePath: string, opts?: TailScanOptions): Promise<{ sca
     } finally {
         await fd.close();
     }
+}
+
+/**
+ * 窗口起点前一字节是否 \n（或起点即文件头/读不到）：是则首段是完整行，
+ * 不按「跨块半行」丢弃——position > 0 只是半行的代理判据，窗口起点恰逢行边界时
+ * 会误丢一条完整行（hitTest 提前命中还会把误丢放大为永久丢失）。
+ */
+async function isFirstSegmentComplete(fd: FileHandle, position: number): Promise<boolean> {
+    if (position === 0) return true;
+    const buf = Buffer.alloc(1);
+    const { bytesRead } = await fd.read(buf, 0, 1, position - 1);
+    return bytesRead === 0 || buf[0] === 0x0a;
 }
 
 /**

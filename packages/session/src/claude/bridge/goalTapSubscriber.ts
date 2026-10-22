@@ -52,26 +52,49 @@ const RETRY_DELAYS_MS = [100, 150, 200];
  * 尾窗（seenUuids 去重幂等），把晚落盘/丢信号的 goal 行补出来。 */
 const COMPENSATE_DELAY_MS = 1500;
 
+/** 补偿扫描信号 uuid 前缀（无对应 transcript 行，仅作「扫一遍尾窗」的触发器） */
+const COMPENSATE_UUID_PREFIX = 'compensate-';
+
 /** 去重集合容量上限（goal 行每 turn 一条，防 rewind/compact 重写极端场景无界增长） */
 const MAX_SEEN_UUIDS = 2000;
 
-export function registerGoalTapSubscriber(bridge: BridgeListener, opts: GoalTapSubscriberOptions): void {
+/**
+ * 注册订阅者，返回停用函数（会话清理时调用：停收新信号 + 清补偿定时器，
+ * 否则闭包持有 opts/seenUuids 多驻留一个防抖周期，并对已关闭通道触发扫描/透传）。
+ */
+export function registerGoalTapSubscriber(bridge: BridgeListener, opts: GoalTapSubscriberOptions): () => void {
     const seenUuids = new Set<string>();
     let compensateTimer: ReturnType<typeof setTimeout> | null = null;
+    // 信号串行化：重扫共享 seenUuids 与文件窗口，并发穿插会让「目标行已透传」判定失真
+    let queue: Promise<void> = Promise.resolve();
+    let stopped = false;
+
     bridge.subscribe('session.append', (payload) => {
+        if (stopped) return;
         const signal = payload as SessionAppendSignal;
         if (!signal?.uuid) {
             logger.debug('[BRIDGE_GOAL] signal without uuid, ignored');
             return;
         }
-        void handleSignal(signal, opts, seenUuids);
+        queue = queue.then(() => (stopped ? undefined : handleSignal(signal, opts, seenUuids))).catch(() => {});
         // 信号后置补偿：同一波信号只排一次（防抖），扫到未见 goal 行即透传
         if (compensateTimer) clearTimeout(compensateTimer);
         compensateTimer = setTimeout(() => {
             compensateTimer = null;
-            void handleSignal({ uuid: `compensate-${Date.now()}` }, opts, seenUuids, true);
+            if (stopped) return;
+            queue = queue
+                .then(() => (stopped ? undefined : handleSignal({ uuid: `${COMPENSATE_UUID_PREFIX}${Date.now()}` }, opts, seenUuids, true)))
+                .catch(() => {});
         }, COMPENSATE_DELAY_MS);
     });
+
+    return () => {
+        stopped = true;
+        if (compensateTimer) {
+            clearTimeout(compensateTimer);
+            compensateTimer = null;
+        }
+    };
 }
 
 async function handleSignal(
@@ -80,29 +103,32 @@ async function handleSignal(
     seenUuids: Set<string>,
     quiet = false,
 ): Promise<void> {
+    const signalUuid = signal.uuid;
+    if (!signalUuid) return; // 注册侧已过滤无 uuid 的信号，此处防御兜底
     const filePath = opts.resolveTranscriptPath();
     if (!filePath) {
-        if (!quiet) logger.warn(`[BRIDGE_GOAL] transcript path unavailable, dropping signal uuid=${signal.uuid}`);
+        if (!quiet) logger.warn(`[BRIDGE_GOAL] transcript path unavailable, dropping signal uuid=${signalUuid}`);
         return;
     }
 
+    const isCompensate = signalUuid.startsWith(COMPENSATE_UUID_PREFIX);
     for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
         if (attempt > 0) {
             await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt - 1]));
         }
         let scan;
         try {
-            scan = await scanTailLines(filePath, {
-                hitTest: (line) =>
-                    TRANSCRIPT_TAP_SESSION_APPEND_RULES.some((rule) => rule.name === undefined || line.includes(rule.name)),
-            });
+            scan = await scanTailLines(filePath, { hitTest: mayMatchAnyRule });
         } catch (e) {
             // 读取失败（权限/非常规文件等）：持久性错误，重试无意义，放弃并 warn
-            logger.warn(`[BRIDGE_GOAL] tail scan failed, giving up: uuid=${signal.uuid} file=${filePath}`, e);
+            logger.warn(`[BRIDGE_GOAL] tail scan failed, giving up: uuid=${signalUuid} file=${filePath}`, e);
             return;
         }
         const forwarded = forwardGoalLines(scan.lines, opts, seenUuids);
-        if (forwarded > 0) {
+        // 终止判定：补偿信号扫不到新行即稳态；真实信号以「目标行已透传」为准——
+        // 信号 uuid 即 transcript 行 uuid（mods 契约）。误透传别的未见行不算达成，
+        // 否则落盘慢的目标行被跳过后只能靠补偿兜底，聊天流可能达成/进行中倒序
+        if (isCompensate ? forwarded === 0 : seenUuids.has(signalUuid)) {
             return;
         }
     }
@@ -110,8 +136,13 @@ async function handleSignal(
     // 窗口耗尽仍找不到：放弃并 warn（带 uuid 供与 transcript 行对账）。
     // 补偿扫描是尽力而为，找不到未见行属常态，静默
     if (!quiet) {
-        logger.warn(`[BRIDGE_GOAL] goal_status line not found within tail window after retries, giving up: uuid=${signal.uuid} file=${filePath}`);
+        logger.warn(`[BRIDGE_GOAL] goal_status line not found within tail window after retries, giving up: uuid=${signalUuid} file=${filePath}`);
     }
+}
+
+/** 廉价子串门卫（parse 前预筛）：hitTest 与透传循环共用的唯一实现（防两处判别式漂移） */
+function mayMatchAnyRule(line: string): boolean {
+    return TRANSCRIPT_TAP_SESSION_APPEND_RULES.some((rule) => rule.name === undefined || line.includes(rule.name));
 }
 
 /** attachment 行变体（uuid 必有，供匹配后收窄） */
@@ -137,12 +168,7 @@ function matchesTapRules(row: RawJSONLines): row is AttachmentRow {
 function forwardGoalLines(lines: string[], opts: GoalTapSubscriberOptions, seenUuids: Set<string>): number {
     let forwarded = 0;
     for (const line of lines) {
-        // 廉价门卫（与 hitTest 同一判别式）：非候选行免 parse + Zod——窗口内绝大多数行
-        //（消息洪峰下每轮重试 + 补偿扫描都过这里）。无 name 的通配规则不设门卫
-        const mayMatch = TRANSCRIPT_TAP_SESSION_APPEND_RULES.some(
-            (rule) => rule.name === undefined || line.includes(rule.name),
-        );
-        if (!mayMatch) continue;
+        if (!mayMatchAnyRule(line)) continue; // 廉价门卫：非候选行免 parse + Zod
         let parsed: unknown;
         try {
             parsed = JSON.parse(line);
