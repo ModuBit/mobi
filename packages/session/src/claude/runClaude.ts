@@ -48,8 +48,10 @@ import { normalizeContinueArg } from './utils/normalizeContinueArg';
 import { registerRewindHandlers } from './utils/rewindHandlers';
 import { applyOutputStyleSwitch } from './utils/outputStyleSwitch';
 import { resolveForkActivation } from './utils/forkActivation';
+import { join } from 'node:path';
 import { MOBI_BRIDGE_SOCK_ENV, startBridgeListener, type BridgeListener } from './bridge/bridgeListener';
 import { registerGoalTapSubscriber } from './bridge/goalTapSubscriber';
+import { getProjectPath } from './utils/path';
 import type { Settings } from '@anthropic-ai/claude-agent-sdk';
 
 export interface StartOptions {
@@ -242,7 +244,14 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         // session 进程级 env：local（claudeLocal 展开 process.env）与 remote
         //（sdkOptions.env 展开 process.env）两条 spawn 路径都由此继承
         process.env[MOBI_BRIDGE_SOCK_ENV] = bridgeListener.socketPath;
-        registerGoalTapSubscriber(bridgeListener);
+        // goal 订阅者：信号 → transcript 尾部读原始行 → 与 query 消息同一管道透传
+        registerGoalTapSubscriber(bridgeListener, {
+            resolveTranscriptPath: () => {
+                const sessionId = currentSessionRef.current?.sessionId;
+                return sessionId ? join(getProjectPath(workingDirectory), `${sessionId}.jsonl`) : null;
+            },
+            sendMessage: (message) => apiSession.sendClaudeSessionMessage(message),
+        });
         logger.debug(`[START] Bridge listener ready at ${bridgeListener.socketPath}`);
     } catch (e) {
         logger.warn('[START] Bridge listener failed to start, mod signals unavailable', e);

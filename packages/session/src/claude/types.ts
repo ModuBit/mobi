@@ -49,6 +49,35 @@ const RawJSONLinesBaseSchema = z.object({
   timestamp: z.string().optional(),
 });
 
+/** transcript 中 attachment.goal_status 的结构（Claude Code 每 turn 落盘） */
+export const GoalStatusAttachmentSchema = z.object({
+  type: z.literal("goal_status"),
+  met: z.boolean(),
+  condition: z.string(),
+  reason: z.string().optional(),
+  iterations: z.number().optional(),
+  durationMs: z.number().optional(),
+  tokens: z.number().optional(),
+  sentinel: z.boolean().optional(),
+});
+export type GoalStatusAttachment = z.infer<typeof GoalStatusAttachmentSchema>;
+
+/**
+ * attachment 载荷开放枚举（mods-goal-channel 票 02）：按 name（载荷自身的 type 字段）
+ * 注册校验 schema——已注册的 name（首个 goal_status）按注册 schema 校验，坏载荷校验失败
+ * 走管道既有静默跳过；未注册 name 原样放行（原始行逐字节透传语义，消费端自行解释）。
+ */
+const AttachmentPayloadSchema = z.unknown().superRefine((val, ctx) => {
+  if (!val || typeof val !== 'object') return;
+  const name = (val as { type?: unknown }).type;
+  if (name === 'goal_status') {
+    const result = GoalStatusAttachmentSchema.safeParse(val);
+    if (!result.success) {
+      ctx.addIssue({ code: 'custom', message: `invalid goal_status payload: ${result.error.message}` });
+    }
+  }
+});
+
 // Main schema with validation for the fields used in the app
 // Each variant 使用 .loose() 保留未显式定义的 SDK 字段
 export const RawJSONLinesSchema = z.discriminatedUnion("type", [
@@ -90,7 +119,7 @@ export const RawJSONLinesSchema = z.discriminatedUnion("type", [
     durationMs: z.number().optional(),
   }).loose(),
 
-  // Goal progress — CLI 自产合成消息（每 turn 一次），进聊天流作标注
+  // Goal progress — CLI 自产合成消息（每 turn 一次），进聊天流作标注（旧链路，票 05 退役）
   RawJSONLinesBaseSchema.extend({
     type: z.literal("goal_progress"),
     uuid: z.string(),
@@ -101,22 +130,17 @@ export const RawJSONLinesSchema = z.discriminatedUnion("type", [
     durationMs: z.number().optional(),
     tokens: z.number().optional(),
   }).loose(),
+
+  // transcript attachment 行（Claude Code 每 turn 落盘的 goal_status 等）：
+  // 载荷开放枚举见 AttachmentPayloadSchema——原始行逐字节透传，管道不做 goal 语义转换
+  RawJSONLinesBaseSchema.extend({
+    type: z.literal("attachment"),
+    uuid: z.string(),
+    attachment: AttachmentPayloadSchema,
+  }).loose(),
 ]);
 
 export type RawJSONLines = z.infer<typeof RawJSONLinesSchema>;
-
-/** transcript 中 attachment.goal_status 的结构（Claude Code 每 turn 落盘） */
-export const GoalStatusAttachmentSchema = z.object({
-  type: z.literal("goal_status"),
-  met: z.boolean(),
-  condition: z.string(),
-  reason: z.string().optional(),
-  iterations: z.number().optional(),
-  durationMs: z.number().optional(),
-  tokens: z.number().optional(),
-  sentinel: z.boolean().optional(),
-});
-export type GoalStatusAttachment = z.infer<typeof GoalStatusAttachmentSchema>;
 
 // ============ 会话模式相关类型（从 loop.ts 抽出，消除循环依赖）============
 // 抽出原因：session/claudeRemote/claudeRemoteLauncher/permissionHandler/runClaude

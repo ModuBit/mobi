@@ -92,3 +92,40 @@ describe('GoalStatusAttachmentSchema', () => {
         expect(r.success).toBe(false)
     })
 })
+
+describe('RawJSONLinesSchema attachment 行（mods-goal-channel 票 02）', () => {
+    const goalLine = {
+        type: 'attachment',
+        uuid: 'a-1',
+        timestamp: '2026-10-22T00:00:00Z',
+        attachment: { type: 'goal_status', met: false, condition: '测试通过', iterations: 1, sentinel: true },
+    }
+
+    it('接受合法 attachment.goal_status 行（原始行透传语义，额外字段保留）', () => {
+        const r = RawJSONLinesSchema.safeParse(goalLine)
+        expect(r.success).toBe(true)
+        if (r.success) {
+            expect(r.data.type).toBe('attachment')
+            expect(r.data.uuid).toBe('a-1')
+            expect(r.data.attachment).toEqual(goalLine.attachment)
+        }
+    })
+
+    it('未知 name 的 attachment 不崩（开放枚举：原样放行）', () => {
+        const r = RawJSONLinesSchema.safeParse({
+            type: 'attachment',
+            uuid: 'a-2',
+            attachment: { type: 'future_attachment', foo: 'bar' },
+        })
+        expect(r.success).toBe(true)
+    })
+
+    it('goal_status 坏载荷（缺 met/condition）按静默跳过语义校验失败', () => {
+        const r = RawJSONLinesSchema.safeParse({
+            type: 'attachment',
+            uuid: 'a-3',
+            attachment: { type: 'goal_status', reason: 'broken' },
+        })
+        expect(r.success).toBe(false)
+    })
+})
