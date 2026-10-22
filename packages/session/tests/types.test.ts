@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { RawJSONLinesSchema, GoalStatusAttachmentSchema } from '../src/claude/types'
+import { RawJSONLinesSchema } from '../src/claude/types'
 
 describe('RawJSONLinesSchema goal_progress', () => {
     it('解析 goal_progress 消息', () => {
@@ -58,36 +58,30 @@ describe('RawJSONLinesSchema goal_progress', () => {
     })
 })
 
-describe('GoalStatusAttachmentSchema', () => {
-    it('解析 transcript goal_status attachment', () => {
-        const r = GoalStatusAttachmentSchema.safeParse({
-            type: 'goal_status',
-            met: true,
-            condition: 'x',
-            reason: 'done',
-            iterations: 4,
+describe('goal_status 载荷校验（shared GoalStatusSchema 口径，sentinel/type 仅校验视角 strip）', () => {
+    it('解析 transcript goal_status attachment 行', () => {
+        const r = RawJSONLinesSchema.safeParse({
+            type: 'attachment',
+            uuid: 'g-1',
+            attachment: { type: 'goal_status', met: true, condition: 'x', reason: 'done', iterations: 4 },
         })
         expect(r.success).toBe(true)
     })
 
-    it('支持可选 sentinel 字段', () => {
-        const r = GoalStatusAttachmentSchema.safeParse({
-            type: 'goal_status',
-            met: false,
-            condition: 'x',
-            sentinel: true,
-        })
+    it('可选 sentinel 字段合法（载荷 unknown 透传，行原样保留）', () => {
+        const payload = { type: 'goal_status', met: false, condition: 'x', sentinel: true }
+        const r = RawJSONLinesSchema.safeParse({ type: 'attachment', uuid: 'g-1', attachment: payload })
         expect(r.success).toBe(true)
         if (r.success) {
-            expect(r.data.sentinel).toBe(true)
+            expect(r.data.type === 'attachment' && r.data.attachment).toBe(payload)
         }
     })
 
-    it('type 不匹配时失败', () => {
-        const r = GoalStatusAttachmentSchema.safeParse({
-            type: 'other',
-            met: true,
-            condition: 'x',
+    it('缺 condition 的坏载荷拒绝（管道静默跳过）', () => {
+        const r = RawJSONLinesSchema.safeParse({
+            type: 'attachment',
+            uuid: 'g-1',
+            attachment: { type: 'goal_status', met: true },
         })
         expect(r.success).toBe(false)
     })

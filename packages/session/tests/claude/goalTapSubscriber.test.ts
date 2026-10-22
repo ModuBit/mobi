@@ -114,6 +114,21 @@ describe('goalTapSubscriber（bridge 信号 → 原始行透传）', () => {
         expect(sendMessage).toHaveBeenCalledTimes(1);
     });
 
+    it('非 goal 的 attachment 行（hitTest 误命中）不透传：行匹配由 shared 契约推导', async () => {
+        const OTHER_LINE = JSON.stringify({
+            type: 'attachment', uuid: 'o-1', timestamp: '2026-10-22T00:00:00Z',
+            attachment: { type: 'future_thing', note: 'text mentions goal_status' },
+        });
+        const file = await makeTranscript([OTHER_LINE]);
+        bridge = await startBridgeListener({ socketPath: `/tmp/mobi-goal-tap-${randomUUID().slice(0, 8)}.sock` });
+        const sendMessage = vi.fn();
+        registerGoalTapSubscriber(bridge, { resolveTranscriptPath: () => file, sendMessage });
+
+        await postSignal('o-1');
+        await new Promise((r) => setTimeout(r, 600));
+        expect(sendMessage).not.toHaveBeenCalled();
+    });
+
     it('窗口耗尽无 goal 行：不透传不崩（放弃 + warn 场景）', async () => {
         const file = await makeTranscript(['{"type":"user","uuid":"u-0"}', '{"type":"user","uuid":"u-1"}']);
         bridge = await startBridgeListener({ socketPath: `/tmp/mobi-goal-tap-${randomUUID().slice(0, 8)}.sock` });

@@ -20,7 +20,7 @@
 // goal 呈现逻辑收敛在 daemon 派生 + web 渲染，session 零语义。
 
 import { unwrapRoleWrappedRecordEnvelope } from '@mobi/shared/messages'
-import { GoalStatusSchema, type GoalStatus } from '@mobi/shared/schemas'
+import { parseGoalStatusAttachment, type GoalStatus } from '@mobi/shared/schemas'
 
 /** goal 投影产出：goalStatus 缺省 = 达成清空（调用方删字段，达成态不驻留吊顶） */
 export interface GoalStatusProjection {
@@ -44,10 +44,9 @@ export function extractGoalStatusFromMessageContent(content: unknown): GoalStatu
     const attachment = data.attachment as { type?: unknown } | null
     if (!attachment || typeof attachment !== 'object' || attachment.type !== 'goal_status') return null
 
-    const parsed = GoalStatusSchema.safeParse(attachment)
-    if (!parsed.success) return null
-
     // met:true → 清空投影（无 goalStatus 键）；进行中 → 完整 GoalStatus（sentinel
-    // 由 schema strip，不进 runtimeState）
-    return parsed.data.met ? {} : { goalStatus: parsed.data }
+    // 由 schema strip，不进 runtimeState）。载荷口径 shared 单源（web 标注同口径）
+    const goal = parseGoalStatusAttachment(attachment)
+    if (!goal) return null
+    return goal.met ? {} : { goalStatus: goal }
 }

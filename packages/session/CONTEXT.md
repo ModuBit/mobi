@@ -89,3 +89,13 @@ local 模式下接收 Claude 子进程 SessionStart hook 的本地 HTTP server�
 
 **mobi MCP Server**:
 承载 `change_title` 等面向模型的工具的 MCP server；local 模式为 HTTP transport，remote 模式为 SDK 进程内 server。
+
+### goal 观测链（mods-goal-channel）
+
+**Transcript Tap（mod 侧 tap）**：
+mod（CC function hooks）侧的 transcript 观测契约——`session.append` 事件按 shared 契约单源（`TRANSCRIPT_TAP_SESSION_APPEND_RULES`，与 cli 插件资产 config.mjs 测试锁定等值）过滤后，把仅元数据信封 fire-and-forget 推给 per-session 信号桥。行本体永不过 tap——信号只当「去读尾部」的铃，载荷由尾扫从 transcript 读出。
+_Avoid_: 在 tap 里转换行内容（session 零 goal 语义）、把 tap 信号当可靠通道（mod 出口丢信号由消费端补偿扫描兜底）、在 hooks 模块里用 process/node:fs（沙箱禁用）
+
+**信号桥（Bridge）**：
+per-session 的 HTTP-over-UDS listener（socketPath 经 `MOBI_BRIDGE_SOCK` env 注入 claude 子进程），信封 `{type, payload}` 按 type 分发给进程内订阅者。会话进程内唯一实例；启动失败 warn 后无桥运行——观测链路故障绝不影响会话本身。
+_Avoid_: 往信封塞行内容（桥只传元数据信号）、多会话共享 socket、订阅者异常外溢（分发处吞掉并 warn）

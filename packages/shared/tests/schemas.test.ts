@@ -31,6 +31,7 @@ import {
     PermissionUpdateSchema,
     AgentStateRequestSchema,
     GoalStatusSchema,
+    parseGoalStatusAttachment,
 } from '../src/schemas'
 
 describe('PermissionModeSchema', () => {
@@ -767,5 +768,27 @@ describe('Snapshot Delta 协议（.scratch/snapshot-delta spec，CLI→hub 与 h
         expect(SnapshotDeltaFrameSchema.safeParse({
             localId: 'uuid-1', rev: 1, baseRev: null, deltas: [],
         }).success).toBe(false)
+    })
+})
+
+describe('parseGoalStatusAttachment', () => {
+    it('解析合法载荷，sentinel/type 等未知字段被 strip', () => {
+        const goal = parseGoalStatusAttachment({
+            type: 'goal_status', met: false, condition: 'x', sentinel: true, extra: 1,
+        })
+        expect(goal).toEqual({ met: false, condition: 'x' })
+    })
+
+    it('全可选字段齐备时完整保留', () => {
+        const goal = parseGoalStatusAttachment({
+            met: true, condition: 'x', reason: 'r', iterations: 2, durationMs: 100, tokens: 5,
+        })
+        expect(goal).toEqual({ met: true, condition: 'x', reason: 'r', iterations: 2, durationMs: 100, tokens: 5 })
+    })
+
+    it('坏载荷返回 null（缺 condition / met 非布尔）', () => {
+        expect(parseGoalStatusAttachment({ met: true })).toBeNull()
+        expect(parseGoalStatusAttachment({ met: 'yes', condition: 'x' })).toBeNull()
+        expect(parseGoalStatusAttachment(null)).toBeNull()
     })
 })

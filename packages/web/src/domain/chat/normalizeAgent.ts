@@ -15,7 +15,7 @@
  */
 
 import type { AgentEvent, AgentMetrics, NormalizedAgentContent, NormalizedMessage, StructuredPatch, SystemNoticeLevel, ToolResult, ToolResultPermission, MessageMeta } from './types'
-import { asNumber, asString, classifyError, getField, isAbortedTerminalReason, isObject, type ErrorInput, type NormalizedErrorEvent, type StopKind } from '@mobi/shared'
+import { asNumber, asString, classifyError, getField, isAbortedTerminalReason, isObject, parseGoalStatusAttachment, type ErrorInput, type GoalStatus, type NormalizedErrorEvent, type StopKind } from '@mobi/shared'
 import { isClaudeChatVisibleMessage } from '@mobi/shared/messageClassification'
 import { calcCacheHitRate } from '@/core/lib/cacheHitRate'
 
@@ -506,36 +506,43 @@ const handleInformationalOutput: OutputHandler = (data, ctx) => {
     })
 }
 
-/** goal 状态字段 → goal-progress event。两个来源共用（渲染零差异）：
- *  ① 旧链路 CLI 合成的 goal_progress 消息（历史库存量，字段在顶层）
- *  ② transcript attachment.goal_status 原始行（mods-goal-channel 票 04，字段在 attachment 下） */
-const toGoalProgressEvent = (
-    fields: Record<string, unknown>,
-    ctx: Parameters<OutputHandler>[1],
-) => {
+/** goal 状态 → goal-progress event（渲染零差异）。字段口径 shared 单源
+ *  （GoalStatusSchema / parseGoalStatusAttachment），daemon 投影同口径。 */
+const toGoalProgressEvent = (goal: GoalStatus, ctx: Parameters<OutputHandler>[1]) => {
     return createEventMessage(ctx, {
         type: 'goal-progress',
-        met: fields.met === true,
-        condition: asString(fields.condition) ?? '',
-        ...(fields.reason !== undefined && fields.reason !== null && { reason: asString(fields.reason) }),
-        ...(typeof fields.iterations === 'number' && { iterations: fields.iterations }),
-        ...(typeof fields.durationMs === 'number' && { durationMs: fields.durationMs }),
-        ...(typeof fields.tokens === 'number' && { tokens: fields.tokens }),
+        met: goal.met,
+        condition: goal.condition,
+        ...(goal.reason !== undefined && { reason: goal.reason }),
+        ...(goal.iterations !== undefined && { iterations: goal.iterations }),
+        ...(goal.durationMs !== undefined && { durationMs: goal.durationMs }),
+        ...(goal.tokens !== undefined && { tokens: goal.tokens }),
     })
 }
 
-/** 处理 goal_progress 消息（旧链路 CLI 自产合成消息，data.type 直接为 goal_progress，无 subtype） */
+/** 处理 goal_progress 消息（旧链路 CLI 自产合成消息，历史库存兼容）：
+ *  字段在顶层且可能缺省，宽松归一（met 非 true 即 false / condition 缺省空串）后
+ *  共用同一出口。冻结语义——存量随历史会话老化，不随 schema 演进加字段，消化完可整块删 */
 const handleGoalProgressOutput: OutputHandler = (data, ctx) => {
-    return toGoalProgressEvent(data, ctx)
+    const reason = asString(data.reason)
+    return toGoalProgressEvent({
+        met: data.met === true,
+        condition: asString(data.condition) ?? '',
+        ...(reason !== null && { reason }),
+        ...(typeof data.iterations === 'number' && { iterations: data.iterations }),
+        ...(typeof data.durationMs === 'number' && { durationMs: data.durationMs }),
+        ...(typeof data.tokens === 'number' && { tokens: data.tokens }),
+    }, ctx)
 }
 
 /** 处理 attachment 行（transcript 原始行透传，mods-goal-channel 票 04）：
- *  goal_status → goal-progress event（达成轮 ✓ 绿语义不变）；未知 name 的
- *  attachment 不渲染（返回 null） */
+ *  goal_status 走 shared 严格解析（上游管道已按注册 schema 校验过一遍，此处失败
+ *  即坏行，返回 null 不渲染）；未知 name 的 attachment 不渲染 */
 const handleAttachmentOutput: OutputHandler = (data, ctx) => {
     const attachment = isObject(data.attachment) ? data.attachment : null
     if (!attachment || attachment.type !== 'goal_status') return null
-    return toGoalProgressEvent(attachment, ctx)
+    const goal = parseGoalStatusAttachment(attachment)
+    return goal ? toGoalProgressEvent(goal, ctx) : null
 }
 
 /** 处理 system:task_progress 消息 */

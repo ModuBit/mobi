@@ -18,7 +18,10 @@
 // 收到 goal_status 信号 → 尾部窗口反向分块扫读出原始行 → 逐字节透传进与
 // claude query 消息同一条管道。session 对 goal 零语义转换、不合成消息、
 // 不报专用 RPC；uuid 只作去重（重扫/重写后重复出现的行由此兜住）。
+// 认行规则来自 shared 契约单源（与 mod 生产端 config.mjs 等值，cli 测试锁定），
+// 规则演进只改 shared——此处与生产端的字面量双写已收口。
 
+import { TRANSCRIPT_TAP_SESSION_APPEND_RULES } from '@mobi/shared';
 import { logger } from '@mobi/node-core/logger';
 import type { BridgeListener } from './bridgeListener';
 import { scanTailLines } from './tailReader';
@@ -90,7 +93,8 @@ async function handleSignal(
         let scan;
         try {
             scan = await scanTailLines(filePath, {
-                hitTest: (line) => line.includes('"goal_status"'),
+                hitTest: (line) =>
+                    TRANSCRIPT_TAP_SESSION_APPEND_RULES.some((rule) => rule.name === undefined || line.includes(rule.name)),
             });
         } catch (e) {
             // 读取失败（权限/非常规文件等）：持久性错误，重试无意义，放弃并 warn
@@ -108,6 +112,22 @@ async function handleSignal(
     if (!quiet) {
         logger.warn(`[BRIDGE_GOAL] goal_status line not found within tail window after retries, giving up: uuid=${signal.uuid} file=${filePath}`);
     }
+}
+
+/** attachment 行变体（uuid 必有，供匹配后收窄） */
+type AttachmentRow = Extract<RawJSONLines, { type: 'attachment' }>;
+
+/**
+ * 行匹配（由 shared tap 契约单源推导）：door 与 transcript 行 type 同名
+ * （票 06 实锤形状），attachment door 的类型名在 attachment.type。
+ */
+function matchesTapRules(row: RawJSONLines): row is AttachmentRow {
+    return TRANSCRIPT_TAP_SESSION_APPEND_RULES.some((rule) => {
+        if (rule.door !== undefined && row.type !== rule.door) return false;
+        if (rule.name === undefined) return true;
+        const payloadType = row.attachment ? (row.attachment as { type?: unknown }).type : undefined;
+        return payloadType === rule.name;
+    });
 }
 
 /**
@@ -129,7 +149,7 @@ function forwardGoalLines(lines: string[], opts: GoalTapSubscriberOptions, seenU
             logger.warn(`[BRIDGE_GOAL] goal_status line failed schema validation, skipped: uuid=${uuid}`, result.error.message);
             continue;
         }
-        if (result.data.type !== 'attachment') {
+        if (!matchesTapRules(result.data)) {
             // hitTest 误命中的普通行（如 assistant 文本提到 goal_status）：非目标，静默跳过
             continue;
         }

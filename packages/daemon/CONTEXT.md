@@ -92,6 +92,12 @@ _Avoid_: 在 Socket handler 内内联落库规则（规则必须有主）、把�
 消息行离开 daemon 供 web 消费时，按工具策略对 tool_result 重内容做的展示层瘦身——文件类工具结果替换为占位、其余工具截断，Task 族与失败结果豁免。消息行在存储中始终是完整事实层；剥离只作用于消费边界、不可变命中才拷贝，不改存储事实，可随时调整或回退。
 _Avoid_: 数据删除（存储未动）、脱敏（目的不是安全）、内容裁剪（不指明发生在消费边界）
 
+### goal 投影
+
+**goal 投影（Goal 投影）**：
+消息受理点从 attachment.goal_status 原始行派生 runtimeState.goalStatus 的投影——进行中（met:false）写入完整 GoalStatus，达成（met:true）删字段不驻留（吊顶即清）。载荷口径 shared 单源（parseGoalStatusAttachment / GoalStatusSchema，web 聊天流标注同口径）；呈现收敛在 daemon 派生 + web 渲染，session 零 goal 语义（原始行透传自 mods-goal-channel 通道）。
+_Avoid_: 在 session 侧做 goal 语义转换、让达成态驻留 goalStatus（吊顶永挂）、字段口径在 web 另写一套
+
 ### 本机执行
 
 **会话执行访问**:

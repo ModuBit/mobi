@@ -629,6 +629,16 @@ export const GoalStatusSchema = z.object({
 export type GoalStatus = z.infer<typeof GoalStatusSchema>
 
 /**
+ * transcript goal_status 载荷的解析单源（strict）：daemon 投影与 web 聊天流标注共用，
+ * 防止字段口径双写漂移。未知字段（sentinel / type 等）被 zod strip——sentinel 不进
+ * runtimeState 依赖此语义。解析失败返回 null（坏行静默跳过语义）。
+ */
+export function parseGoalStatusAttachment(value: unknown): GoalStatus | null {
+    const result = GoalStatusSchema.safeParse(value)
+    return result.success ? result.data : null
+}
+
+/**
  * 会话恢复时的 prompt cache 状态（SDK 0.3.268 SessionStart hook input，仅 resume/fork 且
  * prompt_cache_likely_expired=true 时上报）。首 turn result 到达后 CLI 清空——过期提示只在
  * 「恢复后首轮前」有意义，常驻会误导。

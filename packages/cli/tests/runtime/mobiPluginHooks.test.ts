@@ -23,6 +23,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { matchesAppendRule } from '../../plugins/mobi/hooks/register.js';
 import { sessionAppendRules } from '../../plugins/mobi/hooks/config.mjs';
+import { TRANSCRIPT_TAP_SESSION_APPEND_RULES } from '@mobi/shared';
 
 async function loadRegister() {
     vi.resetModules();
@@ -53,8 +54,8 @@ describe('transcript tap (mod hooks module)', () => {
         expect(matchesAppendRule({}, GOAL_EVENT)).toBe(true);
     });
 
-    it('config.mjs 规则单源：当前仅推 door=attachment && name=goal_status（票 01 验收项）', () => {
-        expect(sessionAppendRules).toEqual([{ door: 'attachment', name: 'goal_status' }]);
+    it('config.mjs 与 shared 契约单源等值：生产端过滤 = 消费端认行（漂移即测试失败）', () => {
+        expect(sessionAppendRules).toEqual(TRANSCRIPT_TAP_SESSION_APPEND_RULES);
     });
 
     it('register：恒注册 session.append（matcher 带 door 预筛；bridge 可用性在 hook 内解析）', async () => {
