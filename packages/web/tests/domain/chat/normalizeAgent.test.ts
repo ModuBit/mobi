@@ -636,6 +636,93 @@ describe('normalizeAgentRecord', () => {
         })
     })
 
+    describe('handleAttachmentOutput (attachment.goal_status 原始行, mods-goal-channel 票 04)', () => {
+        it('goal_status 原始行 → 与旧合成消息同一 goal-progress event（含可选字段与 sentinel strip）', () => {
+            const result = normalizeAgentRecord(
+                baseParams.messageId,
+                baseParams.localId,
+                baseParams.createdAt,
+                {
+                    type: 'output',
+                    data: {
+                        type: 'attachment',
+                        uuid: 'g-1',
+                        attachment: {
+                            type: 'goal_status',
+                            met: true,
+                            condition: 'All tests must pass',
+                            reason: 'Goal achieved',
+                            iterations: 3,
+                            sentinel: true,
+                        },
+                    },
+                }
+            )
+
+            expect(result).not.toBeNull()
+            expect(result?.role).toBe('event')
+            if (result && 'type' in result.content) {
+                expect(result.content).toMatchObject({
+                    type: 'goal-progress',
+                    met: true,
+                    condition: 'All tests must pass',
+                    reason: 'Goal achieved',
+                    iterations: 3,
+                })
+                // sentinel 是 transcript 行专属字段，不进渲染 event
+                expect(result.content).not.toHaveProperty('sentinel')
+            }
+        })
+
+        it('sentinel 设定行（met:false）同样产出标注 event', () => {
+            const result = normalizeAgentRecord(
+                baseParams.messageId,
+                baseParams.localId,
+                baseParams.createdAt,
+                {
+                    type: 'output',
+                    data: {
+                        type: 'attachment',
+                        uuid: 'g-2',
+                        attachment: { type: 'goal_status', met: false, condition: '未达成', sentinel: true },
+                    },
+                }
+            )
+
+            expect(result).not.toBeNull()
+            if (result && 'type' in result.content) {
+                expect(result.content).toMatchObject({ type: 'goal-progress', met: false, condition: '未达成' })
+            }
+        })
+
+        it('未知 name 的 attachment 行不渲染（返回 null）', () => {
+            const result = normalizeAgentRecord(
+                baseParams.messageId,
+                baseParams.localId,
+                baseParams.createdAt,
+                {
+                    type: 'output',
+                    data: {
+                        type: 'attachment',
+                        uuid: 'g-3',
+                        attachment: { type: 'future_attachment', foo: 'bar' },
+                    },
+                }
+            )
+            expect(result).toBeNull()
+        })
+
+        it('attachment 缺失载荷不崩（返回 null）', () => {
+            const result = normalizeAgentRecord(
+                baseParams.messageId,
+                baseParams.localId,
+                baseParams.createdAt,
+                { type: 'output', data: { type: 'attachment', uuid: 'g-4' } }
+            )
+            expect(result).toBeNull()
+        })
+    })
+
     it('should handle system:api_retry', () => {
         const result = normalizeAgentRecord(
             baseParams.messageId,

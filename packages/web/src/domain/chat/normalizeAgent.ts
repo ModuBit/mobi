@@ -506,17 +506,36 @@ const handleInformationalOutput: OutputHandler = (data, ctx) => {
     })
 }
 
-/** 处理 goal_progress 消息（CLI 自产合成消息，data.type 直接为 goal_progress，无 subtype） */
-const handleGoalProgressOutput: OutputHandler = (data, ctx) => {
+/** goal 状态字段 → goal-progress event。两个来源共用（渲染零差异）：
+ *  ① 旧链路 CLI 合成的 goal_progress 消息（历史库存量，字段在顶层）
+ *  ② transcript attachment.goal_status 原始行（mods-goal-channel 票 04，字段在 attachment 下） */
+const toGoalProgressEvent = (
+    fields: Record<string, unknown>,
+    ctx: Parameters<OutputHandler>[1],
+) => {
     return createEventMessage(ctx, {
         type: 'goal-progress',
-        met: data.met === true,
-        condition: asString(data.condition) ?? '',
-        ...(data.reason !== undefined && data.reason !== null && { reason: asString(data.reason) }),
-        ...(typeof data.iterations === 'number' && { iterations: data.iterations }),
-        ...(typeof data.durationMs === 'number' && { durationMs: data.durationMs }),
-        ...(typeof data.tokens === 'number' && { tokens: data.tokens }),
+        met: fields.met === true,
+        condition: asString(fields.condition) ?? '',
+        ...(fields.reason !== undefined && fields.reason !== null && { reason: asString(fields.reason) }),
+        ...(typeof fields.iterations === 'number' && { iterations: fields.iterations }),
+        ...(typeof fields.durationMs === 'number' && { durationMs: fields.durationMs }),
+        ...(typeof fields.tokens === 'number' && { tokens: fields.tokens }),
     })
+}
+
+/** 处理 goal_progress 消息（旧链路 CLI 自产合成消息，data.type 直接为 goal_progress，无 subtype） */
+const handleGoalProgressOutput: OutputHandler = (data, ctx) => {
+    return toGoalProgressEvent(data, ctx)
+}
+
+/** 处理 attachment 行（transcript 原始行透传，mods-goal-channel 票 04）：
+ *  goal_status → goal-progress event（达成轮 ✓ 绿语义不变）；未知 name 的
+ *  attachment 不渲染（返回 null） */
+const handleAttachmentOutput: OutputHandler = (data, ctx) => {
+    const attachment = isObject(data.attachment) ? data.attachment : null
+    if (!attachment || attachment.type !== 'goal_status') return null
+    return toGoalProgressEvent(attachment, ctx)
 }
 
 /** 处理 system:task_progress 消息 */
@@ -727,6 +746,7 @@ const outputHandlers = new Map<string, OutputHandler>([
     ['system:compact_boundary', handleCompactBoundaryOutput],
     ['system:informational', handleInformationalOutput],
     ['goal_progress', handleGoalProgressOutput],
+    ['attachment', handleAttachmentOutput],
     ['system:task_progress', handleTaskProgressOutput],
     ['system:task_notification', handleTaskNotificationOutput],
     ['system:task_started', handleBgTaskStartedOutput],
