@@ -44,11 +44,17 @@ export interface GoalTapSubscriberOptions {
  */
 const RETRY_DELAYS_MS = [100, 150, 200];
 
+/** 补偿扫描延迟（信号防抖窗口）：mod 出口 fire-and-forget 在行洪峰下可能丢个别
+ * 信号（达成行丢失 = 吊顶永挂），且信号本身在落盘前触发——信号过后延迟扫一次
+ * 尾窗（seenUuids 去重幂等），把晚落盘/丢信号的 goal 行补出来。 */
+const COMPENSATE_DELAY_MS = 1500;
+
 /** 去重集合容量上限（goal 行每 turn 一条，防 rewind/compact 重写极端场景无界增长） */
 const MAX_SEEN_UUIDS = 2000;
 
 export function registerGoalTapSubscriber(bridge: BridgeListener, opts: GoalTapSubscriberOptions): void {
     const seenUuids = new Set<string>();
+    let compensateTimer: ReturnType<typeof setTimeout> | null = null;
     bridge.subscribe('session.append', (payload) => {
         const signal = payload as SessionAppendSignal;
         if (!signal?.uuid) {
@@ -56,13 +62,24 @@ export function registerGoalTapSubscriber(bridge: BridgeListener, opts: GoalTapS
             return;
         }
         void handleSignal(signal, opts, seenUuids);
+        // 信号后置补偿：同一波信号只排一次（防抖），扫到未见 goal 行即透传
+        if (compensateTimer) clearTimeout(compensateTimer);
+        compensateTimer = setTimeout(() => {
+            compensateTimer = null;
+            void handleSignal({ uuid: `compensate-${Date.now()}` }, opts, seenUuids, true);
+        }, COMPENSATE_DELAY_MS);
     });
 }
 
-async function handleSignal(signal: SessionAppendSignal, opts: GoalTapSubscriberOptions, seenUuids: Set<string>): Promise<void> {
+async function handleSignal(
+    signal: SessionAppendSignal,
+    opts: GoalTapSubscriberOptions,
+    seenUuids: Set<string>,
+    quiet = false,
+): Promise<void> {
     const filePath = opts.resolveTranscriptPath();
     if (!filePath) {
-        logger.warn(`[BRIDGE_GOAL] transcript path unavailable, dropping signal uuid=${signal.uuid}`);
+        if (!quiet) logger.warn(`[BRIDGE_GOAL] transcript path unavailable, dropping signal uuid=${signal.uuid}`);
         return;
     }
 
@@ -86,8 +103,11 @@ async function handleSignal(signal: SessionAppendSignal, opts: GoalTapSubscriber
         }
     }
 
-    // 窗口耗尽仍找不到：放弃并 warn（带 uuid 供与 transcript 行对账）
-    logger.warn(`[BRIDGE_GOAL] goal_status line not found within tail window after retries, giving up: uuid=${signal.uuid} file=${filePath}`);
+    // 窗口耗尽仍找不到：放弃并 warn（带 uuid 供与 transcript 行对账）。
+    // 补偿扫描是尽力而为，找不到未见行属常态，静默
+    if (!quiet) {
+        logger.warn(`[BRIDGE_GOAL] goal_status line not found within tail window after retries, giving up: uuid=${signal.uuid} file=${filePath}`);
+    }
 }
 
 /**
@@ -104,9 +124,13 @@ function forwardGoalLines(lines: string[], opts: GoalTapSubscriberOptions, seenU
             continue; // 非 JSON 行（半行兜底已由读取器丢弃，此处理论不可达）
         }
         const result = RawJSONLinesSchema.safeParse(parsed);
-        if (!result.success || result.data.type !== 'attachment') {
+        if (!result.success) {
             const uuid = (parsed as { uuid?: string }).uuid ?? 'unknown';
-            logger.warn(`[BRIDGE_GOAL] goal_status line failed schema validation, skipped: uuid=${uuid}`, result.success ? undefined : result.error.message);
+            logger.warn(`[BRIDGE_GOAL] goal_status line failed schema validation, skipped: uuid=${uuid}`, result.error.message);
+            continue;
+        }
+        if (result.data.type !== 'attachment') {
+            // hitTest 误命中的普通行（如 assistant 文本提到 goal_status）：非目标，静默跳过
             continue;
         }
         const message = result.data;

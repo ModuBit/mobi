@@ -45,13 +45,15 @@ export const PLUGIN_ASSET_PREFIX = 'plugins/';
 export const VISUALIZE_SKILL_REL_PATH = 'plugins/mobi/skills/visualize/SKILL.md';
 
 /**
- * mobi 插件清单内容（repo 内同名文件与本常量的一致性由 bundledPlugins.test 锁定）
- * hooks 指向 transcript tap（mods function hooks，spec mods-goal-channel 基建①）
+ * mobi 插件清单内容（repo 内同名文件与本常量的一致性由 bundledPlugins.test 锁定）。
+ * **禁止加 "hooks" 键**：hooks/hooks.json 是 mods function hooks 的 modules 声明
+ * （由 CC 的 mods 通道按约定发现），classic plugin hooks 声明会让 CC 改走
+ * classic 通道解析该文件（{"hooks":{...}} 形状不匹配）→ mods 静默不加载
+ * （2026-10-22 E2E 实锤：带 hooks 键则 register 永不被调用，G15 探针链）。
  */
 export const MOBI_PLUGIN_MANIFEST = JSON.stringify({
     name: 'mobi',
     description: 'Mobi built-in skills: conversation-visible artifacts (charts, media, single-file HTML pages) via :mobi-artifact; full openui-lang component catalog for interactive UI blocks',
-    hooks: './hooks/hooks.json',
 }, null, 4);
 
 /** mobi transcript tap 接线（mods 声明 modules 形态，与 classic hooks 的 hooks.json 区分） */
@@ -59,13 +61,9 @@ export const MOBI_HOOKS_MANIFEST = JSON.stringify({
     description: 'Mobi transcript tap: forwards session.append event signals (metadata only) to the mobi session bridge',
     modules: ['./register.js'],
 }, null, 4);
-
-/** transcript tap 生产端过滤规则（随包分发、所有会话一致；调整监听面只改此配置） */
-export const MOBI_HOOKS_CONFIG = JSON.stringify({
-    'session.append': [
-        { door: 'attachment', name: 'goal_status' },
-    ],
-}, null, 4);
+// 过滤规则文件 hooks/config.mjs 是代码形态资产（mods 沙箱禁止 hooks 模块读 .json
+// 与 node:fs，只允许 import 自家 .js/.mjs——见该文件头注释），走 embedded assets
+// 与 register.js 同链路分发，不走本清单常量写盘。
 
 /** memory-hindsight 插件清单（vendored runtime 的接入壳，上游形态见 VENDOR-NOTES.md） */
 export const MEMORY_HINDSIGHT_PLUGIN_MANIFEST = JSON.stringify({
@@ -113,7 +111,6 @@ export const BUNDLED_PLUGIN_MANIFEST_FILES: Record<BundledPluginName, Record<str
     mobi: {
         '.claude-plugin/plugin.json': MOBI_PLUGIN_MANIFEST,
         'hooks/hooks.json': MOBI_HOOKS_MANIFEST,
-        'hooks/config.json': MOBI_HOOKS_CONFIG,
     },
     'memory-hindsight': {
         '.claude-plugin/plugin.json': MEMORY_HINDSIGHT_PLUGIN_MANIFEST,
@@ -135,6 +132,7 @@ export const MOBI_PLUGIN_ASSET_REL_PATHS = [
     'skills/openui/references/signatures.md',
     'skills/openui/references/app-details.md',
     'hooks/register.js',
+    'hooks/config.mjs',
 ] as const;
 
 /**
