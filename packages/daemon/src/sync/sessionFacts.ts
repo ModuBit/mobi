@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, SessionEndReason, SessionGovernanceSnapshot, SessionPauseTrigger } from '@mobi/shared/types'
+import type { CacheStatus, ContextUsage, EffortLevel, PermissionMode, SessionEndReason, SessionGovernanceSnapshot, SessionPauseTrigger } from '@mobi/shared/types'
 
 /**
  * CLI 会话「事实上报」管线（深化候选③）：CLI 运行时持续上报会话实时状态
@@ -52,12 +52,6 @@ export type ContextUsagePayload = {
     contextUsage: ContextUsage | null
 }
 
-export type GoalStatusPayload = {
-    sid: string
-    /** null 表示清空（达成 10s 后 / 手动清理） */
-    goalStatus: GoalStatus | null
-}
-
 export type RunStartedPayload = {
     sid: string
     /** 轮次起点（epoch ms，CLI running 翻转 false→true 时上报） */
@@ -89,7 +83,6 @@ export type SessionFactsSink = {
     handleSessionAlive?: (payload: SessionAlivePayload) => void
     handleSessionEnd?: (payload: SessionEndPayload) => void
     handleContextUsage?: (payload: ContextUsagePayload) => void
-    handleGoalStatus?: (payload: GoalStatusPayload) => void
     handleRunStarted?: (payload: RunStartedPayload) => void
     handleCacheStatus?: (payload: CacheStatusPayload) => void
     /** 不落库的「此刻」事实，只喂 SessionReceiveReadiness（见该模块说明） */

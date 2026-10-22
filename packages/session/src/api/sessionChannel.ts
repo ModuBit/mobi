@@ -36,7 +36,6 @@ import type {
     ContextUsage,
     CrossSessionOrigin,
     DecryptedMessage,
-    GoalStatus,
     MessageFact,
     SnapshotDeltaFrame,
     TurnOrigin,
@@ -93,8 +92,6 @@ export type SessionChannelReport =
     | { kind: 'run-started'; runStartedAt: number }
     /** 「此刻能不能收消息」的事实（状态翻转才报；写端在 inboundChannel） */
     | { kind: 'receive-readiness'; canReceive: boolean }
-    /** goal 状态（null = 清空） */
-    | { kind: 'goal-status'; goalStatus: GoalStatus | null }
     /** prompt cache 状态（null = 清空，首个 result 帧统一清） */
     | { kind: 'cache-status'; cacheStatus: CacheStatus | null }
 
@@ -667,9 +664,6 @@ export class SessionChannel {
                 return
             case 'receive-readiness':
                 this.transport.emit('receive-readiness', { sid: this.sessionId, canReceive: event.canReceive })
-                return
-            case 'goal-status':
-                this.transport.emit('goal-status', { sid: this.sessionId, goalStatus: event.goalStatus })
                 return
             case 'cache-status':
                 this.transport.emit('cache-status', { sid: this.sessionId, cacheStatus: event.cacheStatus })

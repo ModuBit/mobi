@@ -16,7 +16,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createSessionScanner } from '@/claude/utils/sessionScanner'
-import { RawJSONLines, GoalStatusAttachment } from '@/claude/types'
+import { RawJSONLines } from '@/claude/types'
 import { mkdir, writeFile, appendFile, rm, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -169,9 +169,10 @@ describe('sessionScanner', () => {
     }
   })
 
-  // ---- goal_status attachment 提取（Task 3）----
+  // ---- attachment 行进消息流（mods-goal-channel 票 02/05：scanner 对 goal 零职责，
+  // goal_status 原始行按票 02 schema 扩展走消息流透传）----
 
-  it('extracts goal_status attachment via onAttachmentStatus and keeps it out of onMessage', async () => {
+  it('delivers attachment.goal_status lines through onMessage (passthrough semantics)', async () => {
     const sessionId = 'aaa-111-goal-extract'
     const sessionFile = join(projectDir, `${sessionId}.jsonl`)
     const assistantLine = JSON.stringify({
@@ -181,56 +182,29 @@ describe('sessionScanner', () => {
     })
     const goalLine = JSON.stringify({
       type: 'attachment',
+      uuid: 'goal-aaa-1',
       attachment: { type: 'goal_status', met: false, condition: 'x', iterations: 1 },
     })
     await writeFile(sessionFile, assistantLine + '\n' + goalLine + '\n')
 
     const msgs: RawJSONLines[] = []
-    const statuses: GoalStatusAttachment[] = []
     scanner = await createSessionScanner({
       sessionId: null,
       workingDirectory: testDir,
       onMessage: (m) => msgs.push(m),
-      onAttachmentStatus: (s) => statuses.push(s),
     })
 
     scanner.onNewSession(sessionId)
     await new Promise((r) => setTimeout(r, 250))
 
-    // onMessage 收到 assistant,但不应收到 attachment(goal_status 不是消息)
-    expect(msgs).toHaveLength(1)
+    // attachment.goal_status 行进消息流（原始行透传，goal 派生在 daemon 受理点）
+    expect(msgs).toHaveLength(2)
     expect(msgs[0].type).toBe('assistant')
-    // onAttachmentStatus 收到一次 goal_status
-    expect(statuses).toHaveLength(1)
-    expect(statuses[0].met).toBe(false)
-    expect(statuses[0].condition).toBe('x')
+    expect(msgs[1].type).toBe('attachment')
+    expect(msgs[1].uuid).toBe('goal-aaa-1')
   })
 
-  it('works with only onAttachmentStatus (remote mode, no onMessage)', async () => {
-    const sessionId = 'bbb-222-remote-only'
-    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
-    const goalLine = JSON.stringify({
-      type: 'attachment',
-      attachment: { type: 'goal_status', met: true, condition: 'done', iterations: 2 },
-    })
-    await writeFile(sessionFile, goalLine + '\n')
-
-    const statuses: GoalStatusAttachment[] = []
-    // 只传 onAttachmentStatus,不传 onMessage —— 不应报错
-    scanner = await createSessionScanner({
-      sessionId: null,
-      workingDirectory: testDir,
-      onAttachmentStatus: (s) => statuses.push(s),
-    })
-
-    scanner.onNewSession(sessionId)
-    await new Promise((r) => setTimeout(r, 250))
-    expect(statuses).toHaveLength(1)
-    expect(statuses[0].met).toBe(true)
-    expect(statuses[0].condition).toBe('done')
-  })
-
-  it('does not replay historical goal_status after initialize', async () => {
+  it('does not replay historical attachment lines after initialize; new lines are delivered', async () => {
     const sessionId = 'ccc-333-no-replay'
     const sessionFile = join(projectDir, `${sessionId}.jsonl`)
     const assistantLine = JSON.stringify({
@@ -240,33 +214,34 @@ describe('sessionScanner', () => {
     })
     const oldGoalLine = JSON.stringify({
       type: 'attachment',
+      uuid: 'goal-old',
       attachment: { type: 'goal_status', met: false, condition: 'old', iterations: 1 },
     })
-    // 预写:assistant + 历史 goal_status
+    // 预写:assistant + 历史 attachment 行
     await writeFile(sessionFile, assistantLine + '\n' + oldGoalLine + '\n')
 
-    const statuses: GoalStatusAttachment[] = []
+    const msgs: RawJSONLines[] = []
     // 用已有 sessionId 创建 → initialize 读取全量、seed 消息 key、cursor 置末尾
-    // 历史 goal_status 应被丢弃(不回放)
+    // 历史 attachment 行应被丢弃(不回放)
     scanner = await createSessionScanner({
       sessionId,
       workingDirectory: testDir,
-      onAttachmentStatus: (s) => statuses.push(s),
+      onMessage: (m) => msgs.push(m),
     })
 
-    // initialize 后首次 scan 不应回放历史 goal_status
     await new Promise((r) => setTimeout(r, 300))
-    expect(statuses).toHaveLength(0)
+    expect(msgs).toHaveLength(0)
 
-    // 追加新 goal_status → 应被交付
+    // 追加新 attachment 行 → 进消息流
     const newGoalLine = JSON.stringify({
       type: 'attachment',
+      uuid: 'goal-new',
       attachment: { type: 'goal_status', met: true, condition: 'new', iterations: 2 },
     })
     await appendFile(sessionFile, newGoalLine + '\n')
     await new Promise((r) => setTimeout(r, 350))
-    expect(statuses).toHaveLength(1)
-    expect(statuses[0].condition).toBe('new')
-    expect(statuses[0].met).toBe(true)
+    expect(msgs).toHaveLength(1)
+    expect(msgs[0].type).toBe('attachment')
+    expect(msgs[0].uuid).toBe('goal-new')
   })
 })

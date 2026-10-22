@@ -657,6 +657,16 @@ export async function sdkOutputLoop(
                     } as unknown as SDKMessage);
                 }
             }
+
+            // transcript tap mod 注入核对（mods-goal-channel 票 05 可观测性）：goal 信号链路
+            // 依赖 mobi 内置 plugin 的 hooks 模块在 claude 进程内运行——plugins 列表缺 mobi
+            //（注入失败/CLI 过旧）时 goal 观测静默失效，warn 一次（含会话标识）供排查。
+            // 每 launch 一次（query 重启重新 init），per-launch 幂等足够
+            const loadedPlugins = (systemInit as { plugins?: unknown }).plugins;
+            if (Array.isArray(loadedPlugins)
+                && !loadedPlugins.some((p) => typeof p === 'string' && p.includes('mobi'))) {
+                logger.warn(`[sdkOutputLoop] mobi plugin not in loaded plugins, transcript tap unavailable (goal signals disabled): session=${systemInit.session_id ?? 'unknown'} plugins=${JSON.stringify(loadedPlugins)}`);
+            }
         }
 
         // 处理 system/status：压缩开始信号（status:'compacting'），统一手动/自动两条路径的

@@ -34,7 +34,6 @@ import type {
     CrossSessionOrigin,
     DecryptedMessage,
     EffortLevel,
-    GoalStatus,
     MessageFact,
     SnapshotDeltaFrame,
     TurnOrigin,
@@ -333,14 +332,6 @@ export class ApiSessionClient extends EventEmitter {
      */
     reportReceiveReadiness(canReceive: boolean): void {
         this.channel.report({ kind: 'receive-readiness', canReceive })
-    }
-
-    /**
-     * 上报 goal 状态（daemon 落库到 runtimeState.goalStatus + SSE 推 web）。
-     * goalStatus 为 null 表示清空（达成 10s 后自动清空 / 手动清理）。
-     */
-    reportGoalStatus(goalStatus: GoalStatus | null): void {
-        this.channel.report({ kind: 'goal-status', goalStatus })
     }
 
     /**

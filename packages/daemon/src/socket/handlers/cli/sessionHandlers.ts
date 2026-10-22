@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { CacheStatusSchema, ContextUsageSchema, GoalStatusSchema, SessionEndReasonSchema, SessionGovernanceSnapshotSchema, SessionPauseTriggerSchema, SnapshotDeltaFrameSchema, type ClientToServerEvents, type SDKMetadata } from '@mobi/shared'
+import { CacheStatusSchema, ContextUsageSchema, SessionEndReasonSchema, SessionGovernanceSnapshotSchema, SessionPauseTriggerSchema, SnapshotDeltaFrameSchema, type ClientToServerEvents, type SDKMetadata } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { daemonLogger } from '../../../logger'
@@ -355,7 +355,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     // ===== 会话事实上报（深化候选③）：公共前置收口 =====
     // 载荷 schema 表：统一 Zod 校验（此前各 handler 手写 typeof / Zod / isFinite 三种风格并存）。
     // session-alive / session-end / run-started 只严格校验鉴权与关键标量字段（历史行为：
-    // 其余字段透传，CLI 是其值权威）；context-usage / goal-status 的非空载荷必须是合法
+    // 其余字段透传，CLI 是其值权威）；context-usage 的非空载荷必须是合法
     // schema（防 malformed 落库 + SSE 推 web 崩溃）
     const factSchemas = {
         'session-alive': z.object({
@@ -366,7 +366,6 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             governance: SessionGovernanceSnapshotSchema.optional(),
         }).passthrough(),
         'context-usage': z.object({ sid: z.string(), contextUsage: ContextUsageSchema.nullable() }),
-        'goal-status': z.object({ sid: z.string(), goalStatus: GoalStatusSchema.nullable() }),
         'cache-status': z.object({ sid: z.string(), cacheStatus: CacheStatusSchema.nullable() }),
         'run-started': z.object({ sid: z.string(), runStartedAt: z.number().finite().positive() }).passthrough(),
         // 两个字段都是判据本身，缺一不可（不是「其余字段透传」那一类）
@@ -412,7 +411,6 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
 
     socket.on('session-alive', (raw) => validateAndForward(factSchemas['session-alive'], raw, (data) => factsSink?.handleSessionAlive?.(data)))
     socket.on('context-usage', (raw) => validateAndForward(factSchemas['context-usage'], raw, (data) => factsSink?.handleContextUsage?.(data)))
-    socket.on('goal-status', (raw) => validateAndForward(factSchemas['goal-status'], raw, (data) => factsSink?.handleGoalStatus?.(data)))
     socket.on('cache-status', (raw) => validateAndForward(factSchemas['cache-status'], raw, (data) => factsSink?.handleCacheStatus?.(data)))
     socket.on('run-started', (raw) => validateAndForward(factSchemas['run-started'], raw, (data) => factsSink?.handleRunStarted?.(data)))
     socket.on('receive-readiness', (raw) => validateAndForward(factSchemas['receive-readiness'], raw, (data) => factsSink?.handleReceiveReadiness?.(data)))

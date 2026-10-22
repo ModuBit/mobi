@@ -210,7 +210,6 @@ export class SyncEngine {
                 this.receiveReadiness.clear(payload.sid)
             },
             handleContextUsage: (payload) => this.sessionCache.handleContextUsage(payload),
-            handleGoalStatus: (payload) => this.sessionCache.handleGoalStatus(payload),
             handleRunStarted: (payload) => this.sessionCache.handleRunStarted(payload),
             handleCacheStatus: (payload) => this.sessionCache.handleCacheStatus(payload),
             handleReceiveReadiness: (payload) => this.receiveReadiness.set(payload.sid, payload.canReceive),

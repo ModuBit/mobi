@@ -57,9 +57,10 @@ export async function claudeLocalLauncher(
     const scannerSessionId = session.sessionId ?? extractSessionIdFromArgs(session.claudeArgs);
     logger.debug(`[LocalLauncher] Creating scanner: sessionId=${scannerSessionId}, path=${session.path}`);
 
-    // 观测三件套工厂（架构评审候选⑦）：goal/turnDiff 构造单源；
+    // 观测工厂（架构评审候选⑦）：turnDiff 构造单源（goal 处理器已退役，
+    // mods-goal-channel 票 05——派生收口 daemon 受理点）；
     // local 侧 turnDiff 直发（不参与 FIFO 时间线）
-    const { goalHandler, turnDiffReporter } = createSessionObservability(
+    const { turnDiffReporter } = createSessionObservability(
         session.client,
         (m) => session.client.sendClaudeSessionMessage(m),
         session.path,
@@ -85,7 +86,6 @@ export async function claudeLocalLauncher(
                 }
             }
         },
-        onAttachmentStatus: (status) => goalHandler.handle(status),
     });
 
     const handleSessionFound = (sessionId: string) => {
@@ -145,7 +145,6 @@ export async function claudeLocalLauncher(
             processCleanupRef.current = null;
         }
         session.removeSessionFoundCallback(handleSessionFound);
-        goalHandler.dispose();
         await scanner.cleanup();
     }
 }

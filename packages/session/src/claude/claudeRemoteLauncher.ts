@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { join } from "node:path";
+
 import { randomUUID } from "node:crypto";
 import { Session } from "./session";
 import { claudeRemote, commandLifecycleToFact, isReplayUserMessage, type TurnTrackingState, type RemoteRoundParams, type MessageSource, type RemoteSessionEvents } from "./claudeRemote";
@@ -39,7 +39,7 @@ import { InboundChannel } from "./utils/inboundChannel";
 import { ContextUsageTracker } from "./contextUsageTracker";
 import { EnhancedMode, type QueryControlRef } from "./types";
 import type { RawJSONLines } from "./types";
-import { createSessionScanner, readSessionLog } from "./utils/sessionScanner";
+import { createSessionScanner } from "./utils/sessionScanner";
 import { createNativeAttachReporter } from "./utils/nativeAttachReporter";
 import { RESTART_EXIT_SENTINEL } from "./utils/queryRestart";
 import { reportRewindCompletion } from "./utils/rewindReport";
@@ -48,7 +48,6 @@ import { verifyForkAnchorExists, omitForkFrom, withForkError, forkActivationFail
 import type { ApiSessionClient } from "../api/apiSession";
 import type { ForkErrorCode } from "@mobi/shared";
 import { createSessionObservability } from "./sessionObservability";
-import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
 import type { LauncherDormancyFacts } from "./utils/dormancyGate";
 import type { LiveCapabilityGetter } from '@mobi/node-core/handlers/commands';
@@ -523,10 +522,11 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             onSwitch: () => this.handleSwitchRequest()
         });
 
-        // 观测三件套工厂（架构评审候选⑦）：goal/turnDiff 构造单源；
+        // 观测工厂（架构评审候选⑦）：turnDiff 构造单源（goal 处理器已退役，
+        // mods-goal-channel 票 05——派生收口 daemon 受理点）；
         // remote 侧 turnDiff 经转换链入列（FIFO，合成卡片排在 result 与延迟中的
         // assistant 消息之后）——发送 adapter 是双模唯一差异点
-        const { goalHandler, turnDiffReporter } = createSessionObservability(
+        const { turnDiffReporter } = createSessionObservability(
             session.client,
             (m) => stream.queue.enqueue(m),
             session.path,
@@ -540,23 +540,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         let scanner: Awaited<ReturnType<typeof createSessionScanner>> | null = null;
         // pending promise 跟踪：防止 start() 完成前的重复启动竞争 + cleanup 时序问题
         let scannerPromise: Promise<Awaited<ReturnType<typeof createSessionScanner>>> | null = null;
-
-        // 启动恢复：读 transcript 最后一条 goal_status，仅恢复未达成的 active goal
-        const restoreGoalStatus = async (sessionId: string) => {
-            try {
-                const file = join(getProjectPath(session.path), `${sessionId}.jsonl`);
-                const { goalStatuses } = await readSessionLog(file, 0);
-                const last = goalStatuses[goalStatuses.length - 1];
-                if (last && !last.met) {
-                    // 仅恢复未达成的 active goal；met:true 不恢复(已达成,等下次 active)
-                    // 用 restore(只 RPC)而非 handle(双发)——恢复时不发 goal_progress 聊天消息，
-                    // 避免每次重连/会话切换都往历史注入一条合成消息
-                    goalHandler.restore(last);
-                }
-            } catch (e) {
-                logger.debug('[remote]: restoreGoalStatus failed', e);
-            }
-        };
 
         // 注册 stop-task RPC 处理器，用于远程停止后台任务
         session.client.rpcHandlerManager.registerHandler('stop-task', async (params) => {
@@ -1119,20 +1102,19 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             // attach：native session 变化（首启/新会话/compact 切换）→ daemon 补写空缺行
                             reportNativeAttach(sessionId);
                             if (!scannerPromise) {
-                                // 首次：启动 scanner(只传 onAttachmentStatus,不传 onMessage——
-                                // remote 模式 SDK 消息流已送聊天消息,scanner 送消息会重复)
+                                // 首次：启动 scanner(不传 onMessage——remote 模式 SDK 消息流已送
+                                // 聊天消息,scanner 送消息会重复)。goal 观测已走 bridge 通道
+                                //（mods-goal-channel），scanner 仅保留消息流职责
                                 scannerPromise = createSessionScanner({
                                     sessionId,
                                     workingDirectory: session.path,
-                                    onAttachmentStatus: (status) => goalHandler.handle(status),
                                 });
                                 scannerPromise
-                                    .then((s) => { scanner = s; restoreGoalStatus(sessionId); })
+                                    .then((s) => { scanner = s; })
                                     .catch((e) => { scannerPromise = null; logger.debug('[remote]: scanner start failed', e); });
                             } else if (scanner) {
-                                // 后续 session 切换(fork/compact)：切监听文件 + 恢复 goal 状态
+                                // 后续 session 切换(fork/compact)：切监听文件
                                 scanner.onNewSession(sessionId);
-                                restoreGoalStatus(sessionId);
                             }
                         },
                         onRunningChange: session.onRunningChange,
@@ -1264,8 +1246,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 }
             }
         } finally {
-            // scanner 与 goalHandler 跟 launcher 生命周期一致(跨 turn 复用,仅销毁时清理)
-            goalHandler.dispose();
+            // scanner 跟 launcher 生命周期一致(跨 turn 复用,仅销毁时清理)
             // 等待 pending scanner 创建完成再 cleanup,防止 launcher 在 start() 完成前退出致孤儿 watcher
             // scannerPromise 仅在回调闭包内赋值，TS CFA 不跟踪闭包赋值会窄化为 null，需 as 恢复联合类型
             const pendingScanner = scannerPromise as Promise<Awaited<ReturnType<typeof createSessionScanner>>> | null;

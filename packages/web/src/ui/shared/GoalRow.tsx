@@ -28,7 +28,7 @@ import { useTranslation } from 'react-i18next'
 /**
  * goal 状态行（composer 上方独占整行）。
  *
- * 仅 active 态存在：达成(met:true)后 cli 立即 reportGoalStatus(null) → goalStatus=null →
+ * 仅 active 态存在：达成(met:true)后 daemon 受理点派生清空 goalStatus →
  * 整行不渲染。图标用 lucide `Goal` 的默认墨色（tertiary），不再保留早期徽标时代的
  * 品牌蓝强调——行的存在本身就是强调，图标只做语义标识。
  *

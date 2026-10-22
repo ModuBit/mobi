@@ -16,8 +16,8 @@
 
 /**
  * 轮次变更合成器（ADR 0008 / turn-archive B）：result 消息处理点后置任务——
- * 合成 turn-diff 自定义事件消息入流（local / remote 两模式共用，模式同
- * GoalStatusHandler），journal 口径命中时封口归档。
+ * 合成 turn-diff 自定义事件消息入流（local / remote 两模式共用），journal
+ * 口径命中时封口归档。
  *
  * 口径：「归因」与「投影」分层（turn-archive B 后快照链退场）——
  * - 归因层（主源）：turn 内 journal 累积（本会话 Edit 族工具的内容对）。会话私有，

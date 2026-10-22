@@ -80,14 +80,13 @@ beforeEach(() => {
 })
 
 describe('SessionChannel：report 单一出口的 wire 映射（协议不变锁）', () => {
-    it('六类 report 各映射回既有 socket 事件名与负载形状', () => {
+    it('五类 report 各映射回既有 socket 事件名与负载形状', () => {
         const { channel, emitted } = makeHarness()
 
         channel.report({ kind: 'facts', facts: [{ kind: 'pushed', localIds: ['a'], at: 1 }] })
         channel.report({ kind: 'context-usage', contextUsage: { used: 10 } as never })
         channel.report({ kind: 'run-started', runStartedAt: 123 })
         channel.report({ kind: 'receive-readiness', canReceive: true })
-        channel.report({ kind: 'goal-status', goalStatus: null })
         channel.report({ kind: 'cache-status', cacheStatus: null })
 
         expect(emitted).toEqual([
@@ -95,7 +94,6 @@ describe('SessionChannel：report 单一出口的 wire 映射（协议不变锁�
             { event: 'context-usage', payload: { sid: 'session-1', contextUsage: { used: 10 } } },
             { event: 'run-started', payload: { sid: 'session-1', runStartedAt: 123 } },
             { event: 'receive-readiness', payload: { sid: 'session-1', canReceive: true } },
-            { event: 'goal-status', payload: { sid: 'session-1', goalStatus: null } },
             { event: 'cache-status', payload: { sid: 'session-1', cacheStatus: null } },
         ])
     })
