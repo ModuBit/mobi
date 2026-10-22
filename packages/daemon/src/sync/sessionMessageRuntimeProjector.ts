@@ -41,6 +41,7 @@ import {
     extractTeamSystemDeltasFromMessageContent,
 } from './teams'
 import { extractTodoWriteTodosFromMessageContent } from './todos'
+import { extractGoalStatusFromMessageContent } from './goalStatusProjection'
 
 export type SessionMessageRuntimeProjectionInput = {
     sessionId: string
@@ -98,6 +99,9 @@ export class SessionMessageRuntimeProjector {
         const todos = extractTodoWriteTodosFromMessageContent(content)
         const taskDeltas = extractTaskDeltasFromMessageContent(content, this.pendingTaskMap)
         const teamDelta = extractTeamStateFromMessageContent(content)
+        // goal 派生（mods-goal-channel 票 03）：attachment.goal_status 原始行 →
+        // runtimeState.goalStatus（进行中写入 / 达成清空）；非该类型行零开销短路
+        const goalProjection = extractGoalStatusFromMessageContent(content)
 
         // 前台任务清单投影（foreground-tasks spec）：Agent tool_use 入 / tool_result 出 /
         // 轮次 result 孤儿清扫。增量与清扫语义（含「无变化返回 null」）都在 apply 内收口。
@@ -174,11 +178,21 @@ export class SessionMessageRuntimeProjector {
             && !teamSystemDelta
             && !teamCompletionDelta
             && foregroundChanged === null
+            && !goalProjection
         ) {
             return []
         }
 
         if (todos) existingRuntimeState.todos = todos
+
+        // goal 投影：达成（空投影）删字段不驻留；进行中写入完整 GoalStatus
+        if (goalProjection) {
+            if (goalProjection.goalStatus) {
+                existingRuntimeState.goalStatus = goalProjection.goalStatus
+            } else {
+                delete existingRuntimeState.goalStatus
+            }
+        }
 
         // team 必须先更新，下方新建 task 才能标记正确的 teamName。
         if (teamDelta) {

@@ -447,4 +447,52 @@ describe('SessionMessageRuntimeProjector', () => {
         expect(storedRuntimeState()?.foregroundTasks).toBeUndefined()
         expect(storedRuntimeState()?.backgroundTasks?.[0]?.taskId).toBe('bt-move')
     })
+
+    describe('goal 派生（mods-goal-channel 票 03）', () => {
+        function makeGoalContent(attachment: Record<string, unknown>): unknown {
+            return {
+                role: 'agent',
+                content: {
+                    type: 'output',
+                    data: { type: 'attachment', uuid: 'g-x', attachment },
+                },
+            }
+        }
+
+        test('受理 goal_status 行（met:false）→ runtimeState.goalStatus 写入（sentinel 被 strip）', () => {
+            const publications = project(makeGoalContent({
+                type: 'goal_status', met: false, condition: '所有测试通过', iterations: 2, sentinel: true,
+            }))
+
+            expect(publications).toHaveLength(1)
+            expect(publications[0]?.goalStatus).toEqual({
+                met: false, condition: '所有测试通过', iterations: 2,
+            })
+            expect(storedRuntimeState()?.goalStatus).toEqual({
+                met: false, condition: '所有测试通过', iterations: 2,
+            })
+        })
+
+        test('受理 goal_status 行（met:true）→ runtimeState.goalStatus 置空（达成态不驻留）', () => {
+            project(makeGoalContent({ type: 'goal_status', met: false, condition: '未达成' }))
+            expect(storedRuntimeState()?.goalStatus).toMatchObject({ met: false })
+
+            const publications = project(makeGoalContent({ type: 'goal_status', met: true, condition: '达成' }))
+            expect(publications).toHaveLength(1)
+            expect(publications[0]?.goalStatus).toBeUndefined()
+            expect(storedRuntimeState()?.goalStatus).toBeUndefined()
+        })
+
+        test('非 goal 类型的行零投影（不产出 publication 不写库）', () => {
+            const publications = project(makeAssistantContent([
+                { type: 'text', text: '普通消息' },
+            ]))
+            expect(publications).toHaveLength(0)
+        })
+
+        test('goal 行坏载荷（缺 met/condition）不投影不崩', () => {
+            const publications = project(makeGoalContent({ type: 'goal_status', reason: 'broken' }))
+            expect(publications).toHaveLength(0)
+        })
+    })
 })
