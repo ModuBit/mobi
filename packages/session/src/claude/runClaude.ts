@@ -48,6 +48,8 @@ import { normalizeContinueArg } from './utils/normalizeContinueArg';
 import { registerRewindHandlers } from './utils/rewindHandlers';
 import { applyOutputStyleSwitch } from './utils/outputStyleSwitch';
 import { resolveForkActivation } from './utils/forkActivation';
+import { MOBI_BRIDGE_SOCK_ENV, startBridgeListener, type BridgeListener } from './bridge/bridgeListener';
+import { registerGoalTapSubscriber } from './bridge/goalTapSubscriber';
 import type { Settings } from '@anthropic-ai/claude-agent-sdk';
 
 export interface StartOptions {
@@ -230,6 +232,23 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     logger.infoDeveloper(`Session: ${sessionInfo.id}`);
     logger.infoDeveloper(`Logs: ${logPath}`);
 
+    // —— bridge（CLI→session 通用 IPC，spec mods-goal-channel 基建②）——
+    // per-session UDS HTTP 通道，mod（transcript tap）经 spawn env 获知 socket 地址把
+    // 事件信号推过来。必须在任何 claude 子进程 spawn 前启动（env 要先就位）；
+    // 失败不阻塞会话——goal 观测链路故障绝不影响落盘与正常对话（spec 可靠性边界）
+    let bridgeListener: BridgeListener | null = null;
+    try {
+        bridgeListener = await startBridgeListener();
+        // session 进程级 env：local（claudeLocal 展开 process.env）与 remote
+        //（sdkOptions.env 展开 process.env）两条 spawn 路径都由此继承
+        process.env[MOBI_BRIDGE_SOCK_ENV] = bridgeListener.socketPath;
+        registerGoalTapSubscriber(bridgeListener);
+        logger.debug(`[START] Bridge listener ready at ${bridgeListener.socketPath}`);
+    } catch (e) {
+        logger.warn('[START] Bridge listener failed to start, mod signals unavailable', e);
+        bridgeListener = null;
+    }
+
     const lifecycle = createSessionLifecycle({
         apiSession,
         logTag: 'claude',
@@ -245,6 +264,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             if (hookSettingsPath) {
                 cleanupHookSettingsFile(hookSettingsPath, 'generateHookSettings');
             }
+            void bridgeListener?.stop();
         }
     });
 

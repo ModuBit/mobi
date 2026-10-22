@@ -1,0 +1,8 @@
+{
+    "session.append": [
+        {
+            "door": "attachment",
+            "name": "goal_status"
+        }
+    ]
+}

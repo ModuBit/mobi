@@ -1,0 +1,6 @@
+{
+    "description": "Mobi transcript tap: forwards session.append event signals (metadata only) to the mobi session bridge",
+    "modules": [
+        "./register.js"
+    ]
+}

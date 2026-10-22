@@ -1,4 +1,5 @@
 {
     "name": "mobi",
-    "description": "Mobi built-in skills: conversation-visible artifacts (charts, media, single-file HTML pages) via :mobi-artifact; full openui-lang component catalog for interactive UI blocks"
+    "description": "Mobi built-in skills: conversation-visible artifacts (charts, media, single-file HTML pages) via :mobi-artifact; full openui-lang component catalog for interactive UI blocks",
+    "hooks": "./hooks/hooks.json"
 }

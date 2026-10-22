@@ -30,6 +30,7 @@ import openuiSkillMd from '../../plugins/mobi/skills/openui/SKILL.md' with { typ
 import openuiExamplesMd from '../../plugins/mobi/skills/openui/references/examples.md' with { type: 'file' };
 import openuiSignaturesMd from '../../plugins/mobi/skills/openui/references/signatures.md' with { type: 'file' };
 import openuiAppDetailsMd from '../../plugins/mobi/skills/openui/references/app-details.md' with { type: 'file' };
+import mobiTapRegisterJs from '../../plugins/mobi/hooks/register.js' with { type: 'file' };
 import hindsightClaudeHook from '../../plugins/memory-hindsight/dist/claude-hook.js' with { type: 'file' };
 import hindsightClaudeSessionStartHook from '../../plugins/memory-hindsight/dist/claude-sessionstart-hook.js' with { type: 'file' };
 import hindsightClaudeStopHook from '../../plugins/memory-hindsight/dist/claude-stop-hook.js' with { type: 'file' };
@@ -64,6 +65,9 @@ const COMMON_ASSETS: EmbeddedAsset[] = [
     asset('plugins/mobi/skills/openui/references/examples.md', openuiExamplesMd),
     asset('plugins/mobi/skills/openui/references/signatures.md', openuiSignaturesMd),
     asset('plugins/mobi/skills/openui/references/app-details.md', openuiAppDetailsMd),
+    // transcript tap hooks 模块（mods-goal-channel 基建①）；hooks.json/config.json
+    // 是 .json，由 syncPluginAssets 从 BUNDLED_PLUGIN_MANIFEST_FILES 常量写盘
+    asset('plugins/mobi/hooks/register.js', mobiTapRegisterJs),
     asset('plugins/memory-hindsight/dist/claude-hook.js', hindsightClaudeHook),
     asset('plugins/memory-hindsight/dist/claude-sessionstart-hook.js', hindsightClaudeSessionStartHook),
     asset('plugins/memory-hindsight/dist/claude-stop-hook.js', hindsightClaudeStopHook),
