@@ -31,12 +31,13 @@ export interface I18nText {
     params?: Record<string, unknown>
 }
 
-/** 事件渲染行：segments 内联拼接（I18nText 待 t()）；mono = var(--font-mono) 行；spaced = 行顶留 2px；timeSuffix = 行尾时间戳（marginLeft 8） */
+/** 事件渲染行：segments 内联拼接（I18nText 待 t()）；mono = var(--font-mono) 行；spaced = 行顶留 2px；timeSuffix = 行尾时间戳（marginLeft 8）；icon = 行首语义图标名（呈现端映射 lucide，如 'goal' → <Goal />，domain 零 React 故只传名） */
 export interface EventLine {
     segments: Array<string | I18nText>
     mono?: boolean
     spaced?: boolean
     timeSuffix?: string
+    icon?: string
 }
 
 /** turn-result 事件的载荷类型（展开详情 UI 由 TurnResultMeta 消费） */
@@ -176,8 +177,11 @@ export function formatEvent(event: { type: string; [key: string]: unknown }, cre
             return {
                 kind: 'lines',
                 lines: [{
+                    // 图标载体是行首语义名（EventText 映射 lucide Goal），两态共用——
+                    // 达成/进行中由整行颜色区分（reducer display.color，AgentEventBlock 落色）
+                    icon: 'goal',
                     segments: [
-                        met ? '✓ goal 达成' : '◎ goal active',
+                        met ? 'goal 达成' : 'goal active',
                         ...(condition ? [` · ${condition}`] : []),
                         ...(stats.length > 0 ? [` · ${stats.join(' · ')}`] : []),
                     ],

@@ -23,8 +23,14 @@
 
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Goal } from 'lucide-react'
 import type { FormattedEvent } from '@/domain/chat'
 import { TurnResultMeta } from './TurnResultMeta'
+
+/** 行首语义图标名 → lucide 组件（domain 零 React 只传名；未知名不渲染） */
+const LINE_ICONS: Record<string, ReactNode> = {
+    goal: <Goal size={12} />,
+}
 
 export function EventText({ formatted, actions }: { formatted: FormattedEvent; actions?: ReactNode }) {
     const { t } = useTranslation()
@@ -36,21 +42,26 @@ export function EventText({ formatted, actions }: { formatted: FormattedEvent; a
 
     return (
         <>
-            {formatted.lines.map((line, i) => (
-                <div
-                    key={i}
-                    style={{
-                        ...(line.mono ? { fontFamily: 'var(--font-mono)' } : {}),
-                        ...(line.spaced ? { marginTop: 2 } : {}),
-                    }}
-                >
-                    {/* 片段逐 span 包裹（延续旧渲染结构）：语义片段是可寻址文本单元 */}
-                    {line.segments.map((seg, j) => (
-                        <span key={j}>{typeof seg === 'string' ? seg : t(seg.key, seg.params)}</span>
-                    ))}
-                    {line.timeSuffix !== undefined && <span style={{ marginLeft: 8 }}>{line.timeSuffix}</span>}
-                </div>
-            ))}
+            {formatted.lines.map((line, i) => {
+                const icon = line.icon !== undefined ? LINE_ICONS[line.icon] : undefined
+                return (
+                    <div
+                        key={i}
+                        style={{
+                            ...(icon !== undefined ? { display: 'flex', alignItems: 'center', gap: 4 } : {}),
+                            ...(line.mono ? { fontFamily: 'var(--font-mono)' } : {}),
+                            ...(line.spaced ? { marginTop: 2 } : {}),
+                        }}
+                    >
+                        {icon}
+                        {/* 片段逐 span 包裹（延续旧渲染结构）：语义片段是可寻址文本单元 */}
+                        {line.segments.map((seg, j) => (
+                            <span key={j}>{typeof seg === 'string' ? seg : t(seg.key, seg.params)}</span>
+                        ))}
+                        {line.timeSuffix !== undefined && <span style={{ marginLeft: 8 }}>{line.timeSuffix}</span>}
+                    </div>
+                )
+            })}
         </>
     )
 }

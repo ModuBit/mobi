@@ -204,7 +204,7 @@ describe('formatEvent compact / microcompact', () => {
 describe('formatEvent goal-progress', () => {
     afterEach(cleanup)
 
-    it('met=false 渲染 ◎ goal active + condition + 统计', () => {
+    it('met=false 渲染 goal active（行首 Goal 图标）+ condition + 统计', () => {
         renderEvent({
             type: 'goal-progress',
             met: false,
@@ -214,7 +214,7 @@ describe('formatEvent goal-progress', () => {
             tokens: 1234,
         })
         // 状态文案
-        expect(screen.getByText('◎ goal active')).toBeInTheDocument()
+        expect(screen.getByText('goal active')).toBeInTheDocument()
         // condition 文本
         expect(screen.getByText(/所有测试通过/)).toBeInTheDocument()
         // 统计：3 turns · 45.0s · 1.2k tokens
@@ -223,13 +223,13 @@ describe('formatEvent goal-progress', () => {
         expect(screen.getByText(/1\.2k tokens/)).toBeInTheDocument()
     })
 
-    it('met=true 渲染 ✓ goal 达成', () => {
+    it('met=true 渲染 goal 达成（行首 Goal 图标）', () => {
         renderEvent({
             type: 'goal-progress',
             met: true,
             condition: 'lint 零警告',
         })
-        expect(screen.getByText('✓ goal 达成')).toBeInTheDocument()
+        expect(screen.getByText('goal 达成')).toBeInTheDocument()
         expect(screen.getByText(/lint 零警告/)).toBeInTheDocument()
         // 无统计字段时不渲染 stats 段
         expect(screen.queryByText(/turns/)).not.toBeInTheDocument()
@@ -241,7 +241,7 @@ describe('formatEvent goal-progress', () => {
             met: false,
             condition: 'build 成功',
         })
-        expect(screen.getByText('◎ goal active')).toBeInTheDocument()
+        expect(screen.getByText('goal active')).toBeInTheDocument()
         expect(screen.queryByText(/turns/)).not.toBeInTheDocument()
         expect(screen.queryByText(/tokens/)).not.toBeInTheDocument()
     })
