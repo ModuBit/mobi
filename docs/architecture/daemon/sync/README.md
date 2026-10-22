@@ -251,6 +251,7 @@ packages/daemon/src/sync/
 ├── workspaceCache.ts     # 工作区缓存（CRUD + workspace-* 事件）
 ├── messageService.ts   # 消息服务
 ├── sessionMessageRuntimeProjector.ts # 持久化消息 → runtimeState 投影
+├── goalStatusProjection.ts # goal_status 原始行 → runtimeState.goalStatus 写/删投影（mods-goal-channel）
 ├── sessionMessageFactsProcessor.ts # CLI 消息事实 → 持久化 + 领域 publication
 ├── rpcGateway.ts       # RPC 网关
 ├── aliveTime.ts        # 活跃时间计算

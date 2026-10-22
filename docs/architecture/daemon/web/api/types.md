@@ -481,7 +481,7 @@ interface RuntimeState {
     permissionMode?: PermissionMode // CLI keep-alive 上报落库，daemon 重启后 resume 回放
     outputStyle?: string
     contextUsage?: ContextUsage // 上下文用量快照（CLI 事件驱动上报，见 ContextUsage）
-    goalStatus?: GoalStatus | null // 当前/最近一次 /goal 状态；null 表示清空
+    goalStatus?: GoalStatus | null // 当前/最近一次 /goal 状态；由 daemon 受理点从 goal_status 原始行投影（goalStatusProjection，met:true 即删）；null 表示清空/手动清理
     runStartedAt?: number // 当前轮次起点（CLI running 翻转 false→true 时上报，StatusBar 计时权威来源）
     cacheStatus?: CacheStatus // 会话恢复（resume/fork）时 prompt cache 过期状态；首 turn result 后 CLI 清空
 }

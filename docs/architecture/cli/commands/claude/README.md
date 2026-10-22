@@ -368,6 +368,10 @@ packages/cli/src/
 │   ├── model.ts                          # 模型名称规范化
 │   ├── registerKillSessionHandler.ts     # 注册 kill-session RPC
 │   ├── types.ts                          # 类型定义
+│   ├── bridge/                           # transcript tap 信号桥（mods-goal-channel）
+│   │   ├── bridgeListener.ts             # per-session HTTP-over-UDS listener（信封按 type 分发）
+│   │   ├── tailReader.ts                 # transcript 尾部反向分块扫（64KB 首块/256KB 封顶）
+│   │   └── goalTapSubscriber.ts          # goal_status 信号订阅：尾扫读原始行透传 + 补偿扫描
 │   ├── sdk/
 │   │   ├── index.ts                      # SDK 重导出 + 工具函数
 │   │   ├── types.ts                      # PermissionResult 等类型
@@ -377,7 +381,7 @@ packages/cli/src/
 │   └── utils/
 │       ├── capabilityDiscovery.ts         # 会话 Query 三方法能力面发现（onQueryReady 后拉取落 metadata）
 │       ├── permissionHandler.ts          # 工具权限审批处理器（506 行）
-│       ├── sessionScanner.ts             # Local 模式 JSONL 监听（243 行）
+│       ├── sessionScanner.ts             # Local 模式 JSONL 读取（attachment/goal_progress 行按 schema 透传，273 行）
 │       ├── OutgoingMessageQueue.ts       # 有序消息发送队列（207 行）
 │       ├── startMobiMcpServer.ts        # MCP Server（local 模式 HTTP transport 壳）
 │       ├── startHookServer.ts            # Hook HTTP Server（local 模式）

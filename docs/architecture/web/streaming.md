@@ -65,7 +65,7 @@ snapshot 和 full 是同一条消息的两个阶段，id 各不同：
 
 - **transcript `.jsonl` 本身就是 block-per-line**——一行一个 block、各自 uuid、共享 `message.id`，与 SDK emit 的碎片 uuid 一一对应。⇒ assembler 输出的 message 级行（uuid=末碎片）**不是** transcript 形态，"对齐 .jsonl"不成立；有无 assembler，resume 去重都成立（无：live 与重放同 uuid 对同 uuid；有：重放碎片再合并回同 key）
 - ⇒ assembler **不是 DB/transcript 一致性的必需品**，其真实价值只在 web 消费层（snapshot↔full 1:1 替换 + 消息级渲染的 parentUuid 链）
-- **uuid 语义**：block 内部无 uuid（uuid 是行级字段；tool_use 的 `id` 是另一套调用级标识，不受合并影响）；合并丢弃的中间碎片 uuid 无任何下游消费者（daemon 去重只看合并行 uuid = 末碎片；前端配对用 tool_use.id / messageId+type）；remote 模式 scanner 不送 transcript 消息（`claudeRemoteLauncher` 只提 goal_status），SDK 消息流是 daemon 行的唯一来源
+- **uuid 语义**：block 内部无 uuid（uuid 是行级字段；tool_use 的 `id` 是另一套调用级标识，不受合并影响）；合并丢弃的中间碎片 uuid 无任何下游消费者（daemon 去重只看合并行 uuid = 末碎片；前端配对用 tool_use.id / messageId+type）；remote 模式 launcher 不再单独提取 goal_status（旧链路已随 mods-goal-channel 退役）；goal_status 行统一由 mod tap → bridge → 尾扫透传进同一消息管道，SDK 消息流是 daemon 行的唯一来源
 - **已知边界**：abort 中断时 live flush 的合并键（已见碎片的末 uuid）可能与 `.jsonl` 最终末行 uuid 不一致 → resume 重放合并出不同 key → 重复行。`onAbortFlush`/`consumePendingFull`/`markFullDelivered` 守此边界
 - **flush 时机安全性（2026-08-26 论证钉死）**：assembler 的"下一条非 assistant 消息边界"flush **不存在无限等待**——一条 message 进 pending 后归宿穷尽：①还有工具调用 → user(tool_result) 触发（延迟上界=工具时长）；②turn 结束/出错 → result 触发（毫秒级）；③query 中止 → snapshot 补全替代 flush；④迭代结束 → `flushAll()` 兜底。agent loop 结构保证不存在"消息生成完、无后续消息、query 也不结束"的状态。理论残留：SDK 若在同 message 的 block 碎片之间插入非 assistant 消息 → 同 message 双 flush（内容拆半、同 message.id 两条）——窗口极小且是**既有**理论风险（Map 重新累积优雅，但挡不住同 id 双 flush）；若要根治需先实证 SDK 双通道交错顺序后改 message_stop 主动 flush（跨通道时序无契约，暂不动）。等 flush 期间内容不卡：snapshot 通道已实时渲染，flush 只影响落库时刻
 - 删除 assembler 的完整评估（web 能否消费 block 级行）与信封「投影税」讨论捆绑：pending #56

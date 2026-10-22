@@ -54,7 +54,6 @@ CLI 连接后，通过事件与 daemon 交互。事件按职责分为六组：
 | `session-alive` | CLI → daemon | 会话心跳，保活状态，携带运行时字段（`running`、`mode`、`permissionMode`、`model`、`effort`） |
 | `session-end` | CLI → daemon | 会话结束，触发清理；**ack 制**——daemon 处理完回 ack，CLI 确认落达再关 socket（防 close 竞态丢失） |
 | `context-usage` | CLI → daemon | 上下文用量事件驱动上报（启动采样/result 采样走 SDK `getContextUsage({detail:'summary'})` 零 LLM + assistant usage 派生），落库到 `runtimeState.contextUsage` 并广播给 Web |
-| `goal-status` | CLI → daemon | 上报 `/goal` 状态（scanner 从 transcript `attachment.goal_status` 提取后双发：RPC 落库 `runtimeState.goalStatus` + `goal_progress` 消息进聊天流），`goalStatus:null` 表示清空（达成 10s 后 / 手动清理） |
 | `run-started` | CLI → daemon | 轮次起点上报（`running` 翻转 false→true 时），落库 `runtimeState.runStartedAt` 并广播给 Web；StatusBar 计时的权威来源（不随 Web 消息窗口化丢失） |
 | `cache-status` | CLI → daemon | 会话恢复（resume/fork）时 prompt cache 过期状态（SessionStart hook 信号），落库 `runtimeState.cacheStatus` 并广播给 Web；`cacheStatus:null` 表示清空（首 turn result 到达后 CLI 清除） |
 | `receive-readiness` | CLI → daemon | 「本会话此刻能不能收消息」的翻转上报（sink 接通 `true` / **接通过之后**收尾断开 `false`；从未接通的一轮不上报，因为 `false` 在 daemon 侧读作「它曾经连上过、连接没了」）。**不落库、不广播**——只在 daemon 进程内喂 `SessionReceiveReadiness`（供「建完即可用」等待与投递失败成因解释），随会话进程生灭且会反复翻转 |

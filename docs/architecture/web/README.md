@@ -301,7 +301,7 @@ packages/web/src/
 │   │   ├── theme/              pierreTheme / useThemeLocaleToggle
 │   │   └── sandbox/            SandboxHtmlFrame / sandboxAppHost
 │   ├── shared/                 多域共享的业务呈现件（平铺）
-│   │                           ContextRing / ContextBreakdown / StatusBar / GoalBadge / ToolRowItems /
+│   │                           ContextRing / ContextBreakdown / StatusBar / GoalRow / ToolRowItems /
 │   │                           QuoteListCard / ArtifactDirectiveComponents + ArtifactInlineViews / CopyButton /
 │   │                           CommentField / SketchEditBadge / present / WorkspaceFormModal / ActionLink …
 │   └── openui/  pixel-avatar/  shadcn/   ← 组件体系目录（pixel-avatar 含 sprites/ hooks/）
