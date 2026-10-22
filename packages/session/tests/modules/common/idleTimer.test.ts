@@ -107,6 +107,32 @@ describe('IdleTimer', () => {
         expect(callbacks.onDisconnectTimeout).not.toHaveBeenCalled()
     })
 
+    it('到点落在断开窗口内：本次不排程，重连后立即补发（不吞掉空闲进度）', () => {
+        // 2026-10-22 长跑会话「永不自动休眠」排查：到点回调在断开期只记一行 INFO 就放弃，
+        // 补发责任在 onReconnect——这条锁住「断开期跨过整个空闲期，重连后立刻到点」
+        const { timer, callbacks } = makeTimer()
+        timer.start()
+
+        timer.onDisconnect()
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS + 1_000) // 空闲期整个走完（断开计时也在期间到点）
+        expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
+
+        timer.onReconnect()
+        vi.advanceTimersByTime(1)
+        expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1)
+    })
+
+    it('长空闲期分片自检：跨多个切片仍精确到点，不提前', () => {
+        // 24h 不押在一发长定时器上（MAX_IDLE_TICK_MS 分片），但到点精度不变
+        const { timer, callbacks } = makeTimer()
+        timer.start()
+
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS - 1)
+        expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
+        vi.advanceTimersByTime(1)
+        expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1)
+    })
+
     it('重连后真实活动（reset）重新等完整空闲期', () => {
         const { timer, callbacks } = makeTimer()
         timer.start()

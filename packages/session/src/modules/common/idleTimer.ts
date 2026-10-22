@@ -31,6 +31,18 @@ import { logger } from '@mobi/node-core/logger';
 /** 阻塞复查默认周期 */
 export const DEFAULT_RECHECK_MS = 30_000;
 
+/**
+ * 空闲自检切片上限（毫秒）：长空闲期（生产默认 24h）不押在一发长定时器上。
+ * 分片重排把「一次 24h setTimeout」变成「每分钟核对一次已过时长」——定时器一旦静默
+ * 丢失（被误清、系统睡眠/时钟跳变、运行时丢弃），下一拍即按 lastActivityAt 补回；
+ * 代价是每分钟一次空转。就绪判据与到点语义不变：只有真正到点才过休眠 gate。
+ *
+ * 2026-10-22 事故背景：多个长跑会话空闲数天不休眠，且 IdleTimer 全程只有 debug
+ * 日志（生产不落盘），既看不到「没启动」还是「定时器丢了」——分片 + INFO 落盘
+ * 同时补齐自愈与观测两面。
+ */
+const MAX_IDLE_TICK_MS = 60_000;
+
 export interface IdleTimerOptions {
     /** 实例名（日志/遥测维度；缺省 'idle'——向后兼容会话实例的既有构造） */
     name?: string;
@@ -113,7 +125,9 @@ export class IdleTimer {
         this.state = 'running';
         this.lastActivityAt = Date.now();
         this.scheduleIdleTimers();
-        logger.debug('[IdleTimer] Started');
+        // INFO 落盘（生产不落 debug）：进程生命周期里只此一条——没有它就无法区分
+        // 「空闲计时从未启动」与「启动了但一直没到点」
+        logger.info(`[IdleTimer] started (idleTimeout=${this.resolveIdleTimeoutMs()}ms, disconnectTimeout=${this.disconnectTimeoutMs}ms)`);
     }
 
     /**
@@ -247,21 +261,40 @@ export class IdleTimer {
         // 时间戳基准：按「距上次真实活动已过多久」折算剩余时间。
         // 断开窗口（onDisconnect 清计时器 → onReconnect 重排）不重置进度，
         // 已超期则 delay 折算为 0、立即到点（照常过休眠 gate）
-        const idleTimeoutMs = typeof this.idleTimeoutMs === 'function' ? this.idleTimeoutMs() : this.idleTimeoutMs;
+        const idleTimeoutMs = this.resolveIdleTimeoutMs();
         const remainingMs = Math.max(0, idleTimeoutMs - (Date.now() - this.lastActivityAt));
+
+        // 长空闲期分片：先睡一个切片再重新核对（见 MAX_IDLE_TICK_MS）
+        if (remainingMs > MAX_IDLE_TICK_MS) {
+            this.idleTimer = setTimeout(() => {
+                this.idleTimer = null;
+                this.scheduleIdleTimers();
+            }, MAX_IDLE_TICK_MS);
+            return;
+        }
 
         // 超时计时器
         this.idleTimer = setTimeout(() => {
-            if (this.isDisconnected) return;
+            if (this.isDisconnected) {
+                // 到点落在断开窗口内：不在这里排程，等 onReconnect 按 lastActivityAt 折算补发。
+                // INFO 落盘——这条是「为什么没休眠」的现场证据，此前是静默返回
+                logger.info('[IdleTimer] idle deadline reached while disconnected, waiting for reconnect');
+                return;
+            }
             // 休眠 gate：阻塞则进入复查状态，等阻塞事务解除（周期复查通过）再退出
             if (this.onIdleTimeoutBlockedRecheck && !this.onIdleTimeoutBlockedRecheck()) {
-                logger.debug('[IdleTimer] Idle timeout blocked by dormancy gate, entering recheck');
+                logger.info('[IdleTimer] idle deadline blocked by dormancy gate, entering recheck');
                 this.enterBlocked();
                 return;
             }
-            logger.debug('[IdleTimer] Idle timeout reached');
+            logger.info(`[IdleTimer] idle deadline reached (idle for ${Date.now() - this.lastActivityAt}ms), exiting`);
             this.onIdleTimeout();
         }, remainingMs);
+    }
+
+    /** 空闲超时值（支持动态读取，每次排程求值的单一入口） */
+    private resolveIdleTimeoutMs(): number {
+        return typeof this.idleTimeoutMs === 'function' ? this.idleTimeoutMs() : this.idleTimeoutMs;
     }
 
     /**
@@ -325,7 +358,7 @@ export class IdleTimer {
                 this.scheduleBlockedRecheck();
                 return;
             }
-            logger.debug('[IdleTimer] Blocked recheck passed, exiting');
+            logger.info('[IdleTimer] blocked recheck passed, exiting');
             this.onIdleTimeout();
         }, this.recheckIntervalMs);
     }
