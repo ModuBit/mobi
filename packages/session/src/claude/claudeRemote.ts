@@ -50,7 +50,7 @@ import type { PermissionResult } from "@mobi/node-core/claudeSdk/types";
 import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKUIHints } from "@mobi/shared";
 import { isAbortedTerminalReason, type CommandLifecycleState } from "@mobi/shared";
-import { buildBundledPluginOptions } from "@mobi/node-core/runtime/bundledPlugins";
+import { BUNDLED_PLUGINS, buildBundledPluginOptions } from "@mobi/node-core/runtime/bundledPlugins";
 import { getClaudeExecutablePath } from "@mobi/node-core/claudeSdk/claudeExecutable";
 import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "../modules/sandbox/sandboxManager";
 import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotSender'
@@ -658,20 +658,23 @@ export async function sdkOutputLoop(
                 }
             }
 
-            // transcript tap mod 注入核对（mods-goal-channel 票 05 可观测性）：goal 信号链路
-            // 依赖 mobi 内置 plugin 的 hooks 模块在 claude 进程内运行——plugins 列表缺 mobi
-            //（注入失败/CLI 过旧）时 goal 观测静默失效，warn 一次（含会话标识）供排查。
-            // 每 launch 一次（query 重启重新 init），per-launch 幂等足够。
-            // 列表元素是对象（{name, path, source}，init 实测形状），兼容字符串形态
+            // bundled plugin 注入核对（mods-goal-channel 票 05 可观测性）：tap 信号链路
+            // 依赖 bundled plugin 的 hooks 模块在 claude 进程内运行——plugins 列表缺任一
+            // 必装 plugin（注入失败/CLI 过旧）时对应观测静默失效，warn 一次（含会话标识）
+            // 供排查。每 launch 一次（query 重启重新 init），per-launch 幂等足够。
+            // 列表元素是对象（{name, path, source}，init 实测形状），兼容字符串形态；
+            // 名单单源 = node-core BUNDLED_PLUGINS（仅必装；optional 缺席合法），新增
+            // bundled 插件零新增代码
             const loadedPlugins = (systemInit as { plugins?: unknown }).plugins;
             if (Array.isArray(loadedPlugins)) {
-                const hasMobi = loadedPlugins.some((p) => {
-                    if (typeof p === 'string') return p.includes('mobi');
-                    if (p && typeof p === 'object') return (p as { name?: unknown }).name === 'mobi';
-                    return false;
-                });
-                if (!hasMobi) {
-                    logger.warn(`[sdkOutputLoop] mobi plugin not in loaded plugins, transcript tap unavailable (goal signals disabled): session=${systemInit.session_id ?? 'unknown'} plugins=${JSON.stringify(loadedPlugins)}`);
+                const loadedNames = loadedPlugins.map((p) =>
+                    typeof p === 'string' ? p : (p as { name?: unknown } | null)?.name,
+                );
+                const missing = BUNDLED_PLUGINS.filter(
+                    (name) => !loadedNames.some((n) => typeof n === 'string' && n.includes(name)),
+                );
+                if (missing.length > 0) {
+                    logger.warn(`[sdkOutputLoop] bundled plugins missing from loaded plugins, transcript tap unavailable: missing=${missing.join(',')} session=${systemInit.session_id ?? 'unknown'} plugins=${JSON.stringify(loadedPlugins)}`);
                 }
             }
         }

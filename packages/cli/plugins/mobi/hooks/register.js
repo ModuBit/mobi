@@ -46,14 +46,16 @@ let cachedSock;
 
 /** 解析并推送单条信号（fire-and-forget 调用，任何失败静默） */
 function pushSignal($, e) {
+    // 规则判定同步前置：海量非命中行在 env 解析前即返回（worker 负载敏感，见缓存注释）
+    if (!rules.some((rule) => matchesAppendRule(rule, e))) return;
     const sock = cachedSock !== undefined ? Promise.resolve(cachedSock) : $.env.get("MOBI_BRIDGE_SOCK").then((sockPath) => {
-        cachedSock = sockPath;
+        // 仅缓存真值：bridge env 未注入的会话（命中行才走到这）不把 undefined 钉进缓存
+        if (sockPath) cachedSock = sockPath;
         return sockPath;
     });
     return sock
         .then((sockPath) => {
             if (!sockPath) return;
-            if (!rules.some((rule) => matchesAppendRule(rule, e))) return;
             return $.http.fetch('http://mobi-bridge/session-append', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },

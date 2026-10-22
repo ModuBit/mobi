@@ -137,6 +137,12 @@ function matchesTapRules(row: RawJSONLines): row is AttachmentRow {
 function forwardGoalLines(lines: string[], opts: GoalTapSubscriberOptions, seenUuids: Set<string>): number {
     let forwarded = 0;
     for (const line of lines) {
+        // 廉价门卫（与 hitTest 同一判别式）：非候选行免 parse + Zod——窗口内绝大多数行
+        //（消息洪峰下每轮重试 + 补偿扫描都过这里）。无 name 的通配规则不设门卫
+        const mayMatch = TRANSCRIPT_TAP_SESSION_APPEND_RULES.some(
+            (rule) => rule.name === undefined || line.includes(rule.name),
+        );
+        if (!mayMatch) continue;
         let parsed: unknown;
         try {
             parsed = JSON.parse(line);

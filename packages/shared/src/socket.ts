@@ -427,8 +427,6 @@ export interface ClientToServerEvents {
     /** CLI 事件驱动上报上下文用量（daemon 落库到 runtimeState.contextUsage + SSE 推 web）。
      * contextUsage 为 null 表示清空（/clear 后新会话从 0 开始，用量线隐藏直到下次真实 turn） */
     'context-usage': (data: { sid: string; contextUsage: ContextUsage | null }) => void
-    /** CLI 事件驱动上报 goal 状态（daemon 落库到 runtimeState.goalStatus + SSE 推 web）。
-     * goalStatus 为 null 表示清空（达成 10s 后 / 手动清理）。 */
     /** CLI 轮次起点上报（running 翻转 false→true 时，daemon 落库到 runtimeState.runStartedAt + SSE 推 web）。
      * StatusBar 计时的权威来源——不随 web 消息窗口化丢失（docs/pending.md #55） */
     'run-started': (data: { sid: string; runStartedAt: number }) => void

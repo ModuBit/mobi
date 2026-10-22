@@ -15,7 +15,8 @@
     "./upload": "./src/upload.ts",
     "./exitLogger": "./src/exitLogger.ts",
     "./logger": "./src/logger.ts",
-    "./hostProtocol": "./src/hostProtocol.ts"
+    "./hostProtocol": "./src/hostProtocol.ts",
+    "./transcriptTap": "./src/transcriptTap.ts"
   },
   "scripts": {
     "test": "vitest run",

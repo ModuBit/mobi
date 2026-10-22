@@ -21,6 +21,8 @@
 // 的物理资产（开发态源目录即挂载点，无法生成），与常量的等值由 cli 测试锁定
 // （mobiPluginHooks.test.ts）——漂移从「测试才能发现」变「测试必失败」。
 
+import { parseGoalStatusAttachment } from './schemas'
+
 /** session.append 事件的 tap 订阅规则（字段缺省 = 通配） */
 export interface TranscriptTapSessionAppendRule {
     /** 事件的 door（行进入会话的路由，如 attachment） */
@@ -36,3 +38,13 @@ export interface TranscriptTapSessionAppendRule {
 export const TRANSCRIPT_TAP_SESSION_APPEND_RULES: readonly TranscriptTapSessionAppendRule[] = [
     { door: 'attachment', name: 'goal_status' },
 ]
+
+/**
+ * attachment 载荷校验注册表（按类型名）：管道侧的 generic 载荷 schema
+ * （session claude/types 的 AttachmentPayloadSchema）据此分发校验——新 attachment
+ * 消费者在此追加条目即全链路（tap 识别 + 载荷校验）跟上，管道 schema 零特判、
+ * 保持零业务语义。未注册的类型名原样放行（原始行逐字节透传语义，消费端自行解释）。
+ */
+export const TRANSCRIPT_TAP_ATTACHMENT_VALIDATORS: Readonly<Record<string, (value: unknown) => boolean>> = {
+    goal_status: (value) => parseGoalStatusAttachment(value) !== null,
+}

@@ -25,7 +25,8 @@ import type { ClaudePermissionMode, EffortLevel } from "@mobi/shared/types";
 
 // UsageSchema 已下沉 @mobi/shared/schemas（ticket-12，node-core api/types 共用），此处 re-export 保调用方零改动
 export { UsageSchema } from '@mobi/shared/schemas'
-import { UsageSchema, parseGoalStatusAttachment } from '@mobi/shared/schemas'
+import { UsageSchema } from '@mobi/shared/schemas'
+import { TRANSCRIPT_TAP_ATTACHMENT_VALIDATORS } from '@mobi/shared/transcriptTap'
 
 const RawMessageSchema = z.object({
   role: z.string().optional(),
@@ -51,19 +52,16 @@ const RawJSONLinesBaseSchema = z.object({
 
 /**
  * attachment 载荷开放枚举（mods-goal-channel 票 02）：按 name（载荷自身的 type 字段）
- * 注册校验 schema——已注册的 name（首个 goal_status）按注册 schema 校验，坏载荷校验失败
- * 走管道既有静默跳过；未注册 name 原样放行（原始行逐字节透传语义，消费端自行解释）。
- * goal_status 载荷口径走 shared 单源（parseGoalStatusAttachment / GoalStatusSchema，
- * 与 daemon 投影、web 标注同口径）；sentinel/type 等额外字段仅被校验视角 strip，
+ * 经 shared 校验注册表（TRANSCRIPT_TAP_ATTACHMENT_VALIDATORS）分发校验——本文件
+ * 零业务语义，坏载荷校验失败走管道既有静默跳过；未注册 name 原样放行（原始行
+ * 逐字节透传语义，消费端自行解释）。已注册类型的额外字段仅被校验视角 strip，
  * 不影响原始行透传（union 层 .loose() + unknown 载荷逐字节保留）。
  */
 const AttachmentPayloadSchema = z.unknown().superRefine((val, ctx) => {
   if (!val || typeof val !== 'object') return;
   const name = (val as { type?: unknown }).type;
-  if (name === 'goal_status') {
-    if (parseGoalStatusAttachment(val) === null) {
-      ctx.addIssue({ code: 'custom', message: 'invalid goal_status payload' });
-    }
+  if (typeof name === 'string' && TRANSCRIPT_TAP_ATTACHMENT_VALIDATORS[name]?.(val) === false) {
+    ctx.addIssue({ code: 'custom', message: `invalid ${name} payload` });
   }
 });
 
