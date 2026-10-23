@@ -108,7 +108,11 @@ describe('forked skill tap (mod hooks module)', () => {
         const { register } = await loadRegister();
         const { on } = setup();
         register(on);
-        expect(on).toHaveBeenCalledWith('session.append', { door: ['response', 'tool-result'] }, expect.any(Function));
+        expect(on).toHaveBeenCalledWith(
+            'session.append',
+            { door: ['response', 'tool-result'], agentId: expect.any(RegExp) },
+            expect.any(Function),
+        );
     });
 
     it('fork 行 + 非 text：推信封（type/skill/uuid/door/message/from）', async () => {

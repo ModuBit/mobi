@@ -210,6 +210,8 @@ function onAppend($, e, next) {
 }
 
 export const register = (on) => {
-    // matcher 收缩触发面：非白名单 door 在引擎侧就被挡掉，不进 hook、不进 worker
-    on('session.append', { door: [...appendDoors] }, onAppend);
+    // matcher 收缩触发面（引擎侧拦截，不进 hook、不进 worker）：door 白名单挡掉
+    // attachment 等噪音；agentId 正则挡掉主循环行——只有 fork / 子代理的行才可能命中。
+    // 正则匹配与「key 缺失不匹配」的引擎语义叠加，主循环行连 hook 调用都不产生
+    on('session.append', { door: [...appendDoors], agentId: /.+/ }, onAppend);
 };
