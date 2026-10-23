@@ -19,12 +19,13 @@ import { isBunCompiled, projectPath, runtimePath } from '../projectPath';
 import type { SdkPluginConfig } from '@anthropic-ai/claude-agent-sdk';
 
 /**
- * 恒挂载内置插件（单插件 `mobi` 聚合全部内置 skill——无独立分发诉求，
- * 聚合到单一命名空间：slash 即 `/mobi:<skill>`）。
- * 插件目录 `packages/cli/plugins/mobi/`，经 embedded assets 随二进制分发，
+ * 恒挂载内置插件（`mobi` 聚合全部内置 skill——无独立分发诉求，聚合到单一命名空间：
+ * slash 即 `/mobi:<skill>`；`mobi-forked-tap` 是独立 mod，观测 forked /code-review
+ * 的执行行——独立 worker 隔离故障，CLI 行为变化时摘除即完全回退）。
+ * 插件目录 `packages/cli/plugins/<name>/`，经 embedded assets 随二进制分发，
  * 启动时由 ensureRuntimeAssets 幂等释放到 runtime 目录。
  */
-export const BUNDLED_PLUGINS = ['mobi'] as const;
+export const BUNDLED_PLUGINS = ['mobi', 'mobi-forked-tap'] as const;
 
 /**
  * 按需挂载内置插件：分发/解包与恒挂载插件同链路，**挂载与否由 spawn 裁决点按
@@ -64,6 +65,18 @@ export const MOBI_HOOKS_MANIFEST = JSON.stringify({
 // 过滤规则文件 hooks/config.mjs 是代码形态资产（mods 沙箱禁止 hooks 模块读 .json
 // 与 node:fs，只允许 import 自家 .js/.mjs——见该文件头注释），走 embedded assets
 // 与 register.js 同链路分发，不走本清单常量写盘。
+
+/** forked skill tap 插件清单（独立 mod；同样**禁止加 "hooks" 键**，理由见上） */
+export const MOBI_FORKED_TAP_PLUGIN_MANIFEST = JSON.stringify({
+    name: 'mobi-forked-tap',
+    description: 'Mobi forked-skill tap: forwards forked /code-review non-text rows to the mobi session bridge so intermediate steps reach the chat stream live',
+}, null, 4);
+
+/** forked skill tap 接线（mods 声明 modules 形态） */
+export const MOBI_FORKED_TAP_HOOKS_MANIFEST = JSON.stringify({
+    description: 'Mobi forked-skill tap: forwards session.append rows of forked /code-review (thinking, tool_use, tool_result) to the mobi session bridge',
+    modules: ['./register.js'],
+}, null, 4);
 
 /** memory-hindsight 插件清单（vendored runtime 的接入壳，上游形态见 VENDOR-NOTES.md） */
 export const MEMORY_HINDSIGHT_PLUGIN_MANIFEST = JSON.stringify({
@@ -112,6 +125,10 @@ export const BUNDLED_PLUGIN_MANIFEST_FILES: Record<BundledPluginName, Record<str
         '.claude-plugin/plugin.json': MOBI_PLUGIN_MANIFEST,
         'hooks/hooks.json': MOBI_HOOKS_MANIFEST,
     },
+    'mobi-forked-tap': {
+        '.claude-plugin/plugin.json': MOBI_FORKED_TAP_PLUGIN_MANIFEST,
+        'hooks/hooks.json': MOBI_FORKED_TAP_HOOKS_MANIFEST,
+    },
     'memory-hindsight': {
         '.claude-plugin/plugin.json': MEMORY_HINDSIGHT_PLUGIN_MANIFEST,
         'hooks/hooks.json': MEMORY_HINDSIGHT_HOOKS,
@@ -136,16 +153,26 @@ export const MOBI_PLUGIN_ASSET_REL_PATHS = [
 ] as const;
 
 /**
- * 插件解包探针：各插件全部清单文件 + mobi 内置资产集的 runtime 相对路径。清单在
+ * mobi-forked-tap 插件全部资产的 runtime 相对路径（hooks 模块与配置同属 mods
+ * 代码资产，随 embedded assets 分发；增删文件须同步此清单，进探针触发重释放）。
+ */
+export const MOBI_FORKED_TAP_ASSET_REL_PATHS = [
+    'hooks/register.js',
+    'hooks/config.mjs',
+] as const;
+
+/**
+ * 插件解包探针：各插件全部清单文件 + 各插件内置资产集的 runtime 相对路径。清单在
  * syncPluginAssets 的最后一步写盘、资产在循环中写盘——全部存在即「上一轮全量释放
- * 完成」。资产集进探针是刻意的：**增删 skill 文件必须触发重释放**（新文件要落地、
- * 改名文件要补齐），纯内容更新（同文件集）仍走版本 marker。
+ * 完成」。资产集进探针是刻意的：**增删 skill/hook 文件必须触发重释放**（新文件要
+ * 落地、改名文件要补齐），纯内容更新（同文件集）仍走版本 marker。
  */
 export function bundledPluginProbeRelPaths(): string[] {
     return [
         ...ALL_BUNDLED_PLUGIN_NAMES.flatMap((name) =>
             Object.keys(BUNDLED_PLUGIN_MANIFEST_FILES[name]).map((rel) => `${PLUGIN_ASSET_PREFIX}${name}/${rel}`)),
         ...MOBI_PLUGIN_ASSET_REL_PATHS.map((rel) => `${PLUGIN_ASSET_PREFIX}mobi/${rel}`),
+        ...MOBI_FORKED_TAP_ASSET_REL_PATHS.map((rel) => `${PLUGIN_ASSET_PREFIX}mobi-forked-tap/${rel}`),
     ];
 }
 

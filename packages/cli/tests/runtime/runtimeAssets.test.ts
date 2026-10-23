@@ -19,7 +19,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync, u
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { syncPluginAssets } from '@/runtime/assets';
-import { bundledPluginProbeRelPaths, MEMORY_HINDSIGHT_VENDORED_REL_PATHS, MOBI_PLUGIN_ASSET_REL_PATHS, VISUALIZE_SKILL_REL_PATH } from '@mobi/node-core/runtime/bundledPlugins';
+import { bundledPluginProbeRelPaths, MEMORY_HINDSIGHT_VENDORED_REL_PATHS, MOBI_FORKED_TAP_ASSET_REL_PATHS, MOBI_PLUGIN_ASSET_REL_PATHS, VISUALIZE_SKILL_REL_PATH } from '@mobi/node-core/runtime/bundledPlugins';
 import type { EmbeddedAsset } from '#embedded-assets';
 import { projectPath } from '@mobi/node-core/projectPath';
 
@@ -41,12 +41,18 @@ describe('syncPluginAssets（runtime 解包 · inline-artifacts ticket 05）', (
     sourcePath: join(projectPath(), 'plugins', 'mobi', 'skills', 'visualize', 'SKILL.md'),
   });
 
-  // 探针含 mobi 全部内置资产（SKILL.md + references）：测试驱动需给全套才能到「已解包」态
-  const fullMobiAssets = (): EmbeddedAsset[] =>
-    MOBI_PLUGIN_ASSET_REL_PATHS.map((rel) => ({
+  // 探针含全部插件的内置资产（mobi 的 SKILL.md + references、forked tap 的 hooks 模块）：
+  // 测试驱动需给全套才能到「已解包」态
+  const fullMobiAssets = (): EmbeddedAsset[] => [
+    ...MOBI_PLUGIN_ASSET_REL_PATHS.map((rel) => ({
       relativePath: `plugins/mobi/${rel}`,
       sourcePath: join(projectPath(), 'plugins', 'mobi', rel),
-    }));
+    })),
+    ...MOBI_FORKED_TAP_ASSET_REL_PATHS.map((rel) => ({
+      relativePath: `plugins/mobi-forked-tap/${rel}`,
+      sourcePath: join(projectPath(), 'plugins', 'mobi-forked-tap', rel),
+    })),
+  ];
 
   it('首次释放：SKILL.md 落到 runtime root 的同名相对路径，内容一致', async () => {
     await syncPluginAssets(runtimeRoot, fullMobiAssets());
@@ -119,6 +125,12 @@ describe('vendored 资产清单对齐（embeddedAssets ↔ 常量）', () => {
     const src = readFileSync(join(projectPath(), 'src', 'runtime', 'embeddedAssets.bun.ts'), 'utf-8');
     const embedded = [...src.matchAll(/asset\('(plugins\/mobi\/[^']+)'/g)].map((m) => m[1]!);
     expect([...embedded].sort()).toEqual(MOBI_PLUGIN_ASSET_REL_PATHS.map((rel) => `plugins/mobi/${rel}`).sort());
+  });
+
+  it('embedded asset() 首参的 mobi-forked-tap 路径集合与常量一致（hook 增删文件漏改即红）', () => {
+    const src = readFileSync(join(projectPath(), 'src', 'runtime', 'embeddedAssets.bun.ts'), 'utf-8');
+    const embedded = [...src.matchAll(/asset\('(plugins\/mobi-forked-tap\/[^']+)'/g)].map((m) => m[1]!);
+    expect([...embedded].sort()).toEqual(MOBI_FORKED_TAP_ASSET_REL_PATHS.map((rel) => `plugins/mobi-forked-tap/${rel}`).sort());
   });
 });
 

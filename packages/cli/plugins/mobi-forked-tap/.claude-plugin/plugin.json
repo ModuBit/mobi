@@ -1,0 +1,4 @@
+{
+    "name": "mobi-forked-tap",
+    "description": "Mobi forked-skill tap: forwards forked /code-review non-text rows to the mobi session bridge so intermediate steps reach the chat stream live"
+}

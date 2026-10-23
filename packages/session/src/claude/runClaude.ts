@@ -51,6 +51,7 @@ import { resolveForkActivation } from './utils/forkActivation';
 import { join } from 'node:path';
 import { MOBI_BRIDGE_SOCK_ENV, startBridgeListener, type BridgeListener } from './bridge/bridgeListener';
 import { registerGoalTapSubscriber } from './bridge/goalTapSubscriber';
+import { registerForkedSkillTapSubscriber } from './bridge/forkedSkillTapSubscriber';
 import { getProjectPath } from './utils/path';
 import type { Settings } from '@anthropic-ai/claude-agent-sdk';
 
@@ -240,6 +241,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     // 失败不阻塞会话——goal 观测链路故障绝不影响落盘与正常对话（spec 可靠性边界）
     let bridgeListener: BridgeListener | null = null;
     let stopGoalTap: (() => void) | null = null;
+    let stopForkedSkillTap: (() => void) | null = null;
     try {
         bridgeListener = await startBridgeListener();
         // session 进程级 env：local（claudeLocal 展开 process.env）与 remote
@@ -251,6 +253,12 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
                 const sessionId = currentSessionRef.current?.sessionId;
                 return sessionId ? join(getProjectPath(workingDirectory), `${sessionId}.jsonl`) : null;
             },
+            sendMessage: (message) => apiSession.sendClaudeSessionMessage(message),
+        });
+        // forked skill tap 订阅者：fork 的过程行拼成主对话行，与 query 消息同一管道
+        //（daemon/web 不感知 fork；流侧按 uuid 去重的状态见 forkedSkillTapState）
+        stopForkedSkillTap = registerForkedSkillTapSubscriber(bridgeListener, {
+            resolveSessionId: () => currentSessionRef.current?.sessionId ?? null,
             sendMessage: (message) => apiSession.sendClaudeSessionMessage(message),
         });
         logger.debug(`[START] Bridge listener ready at ${bridgeListener.socketPath}`);
@@ -275,6 +283,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
                 cleanupHookSettingsFile(hookSettingsPath, 'generateHookSettings');
             }
             stopGoalTap?.();
+            stopForkedSkillTap?.();
             void bridgeListener?.stop();
         }
     });

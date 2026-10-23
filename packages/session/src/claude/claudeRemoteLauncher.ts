@@ -33,6 +33,7 @@ import { formatClaudeMessageForInk } from "../ui/messageFormatterInk";
 import { logger } from "@mobi/node-core/logger";
 import { applyContextReset } from "./utils/contextReset";
 import { SessionStreamRuntime } from "./claudeSessionRuntime";
+import { shouldSuppressSessionStreamMessage } from "./bridge/forkedSkillTapState";
 import { applySessionIdBinding } from "./utils/sessionIdBinding";
 import { CompactStartGate } from "./utils/compactLifecycle";
 import { InboundChannel } from "./utils/inboundChannel";
@@ -847,6 +848,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
         /** SDK 消息唯一入口：拦截 → 观测 → 转换 → 分发 的装配序 */
         const onMessage = (message: SDKMessage): void => {
+            // forked skill tap：内容已由实时行接管 → 流末尾的批量重放丢弃
+            //（uuid 相同；code-review fork 的纯 text 与主循环最终答复重复而 uuid 不同）
+            if (shouldSuppressSessionStreamMessage(message)) return;
             if (interceptReplayAck(message)) return
             if (interceptLifecycleFact(message)) return
             trackBackgroundTasks(message)

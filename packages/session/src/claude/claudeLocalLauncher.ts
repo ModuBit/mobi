@@ -20,6 +20,7 @@ import { Session } from "./session";
 import { createSessionScanner } from "./utils/sessionScanner";
 import { buildAppendSystemPrompt } from "./utils/systemPrompt";
 import { buildBundledPluginOptions } from "@mobi/node-core/runtime/bundledPlugins";
+import { shouldSuppressSessionStreamMessage } from "./bridge/forkedSkillTapState";
 import { BaseLocalLauncher } from "../modules/common/launcher/BaseLocalLauncher";
 import { logger } from "@mobi/node-core/logger";
 import type { EnhancedMode } from "./types";
@@ -71,6 +72,9 @@ export async function claudeLocalLauncher(
         sessionId: scannerSessionId,
         workingDirectory: session.path,
         onMessage: (message) => {
+            // forked skill tap：实时行已接管的内容，scanner 的批量重放丢弃
+            //（local 的 scanner 与 remote 的 SDK 流入同一去重口径——规则单源在 shared）
+            if (shouldSuppressSessionStreamMessage(message)) return;
             // Block SDK summary messages - we generate our own
             // summary 是session title，自己生成，参见 @cli/src/claude/utils/startMobiMcpServer.ts
             if (message.type !== 'summary') {

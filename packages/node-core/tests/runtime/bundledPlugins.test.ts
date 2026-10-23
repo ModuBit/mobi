@@ -27,22 +27,25 @@ import {
     BUNDLED_PLUGIN_MANIFEST_FILES,
     MOBI_PLUGIN_MANIFEST,
     MOBI_HOOKS_MANIFEST,
+    MOBI_FORKED_TAP_PLUGIN_MANIFEST,
+    MOBI_FORKED_TAP_HOOKS_MANIFEST,
     MEMORY_HINDSIGHT_PLUGIN_MANIFEST,
     MEMORY_HINDSIGHT_HOOKS,
     MEMORY_HINDSIGHT_MCP,
     MEMORY_HINDSIGHT_VENDORED_REL_PATHS,
     MOBI_PLUGIN_ASSET_REL_PATHS,
+    MOBI_FORKED_TAP_ASSET_REL_PATHS,
     PLUGIN_ASSET_PREFIX,
     VISUALIZE_SKILL_REL_PATH,
     bundledPluginProbeRelPaths,
 } from '@/runtime/bundledPlugins';
 import { projectPath } from '@/projectPath';
 
-describe('bundledPlugins（恒挂载 mobi 聚合 + 按需 memory-hindsight）', () => {
-    it('恒挂载清单只有 mobi；按需清单只有 memory-hindsight（挂载裁决在 spawn 装配，票 02）', () => {
-        expect([...BUNDLED_PLUGINS]).toEqual(['mobi']);
+describe('bundledPlugins（恒挂载 mobi 聚合 + forked tap + 按需 memory-hindsight）', () => {
+    it('恒挂载清单为 mobi 与 mobi-forked-tap；按需清单只有 memory-hindsight（挂载裁决在 spawn 装配，票 02）', () => {
+        expect([...BUNDLED_PLUGINS]).toEqual(['mobi', 'mobi-forked-tap']);
         expect([...OPTIONAL_BUNDLED_PLUGINS]).toEqual(['memory-hindsight']);
-        expect([...ALL_BUNDLED_PLUGIN_NAMES]).toEqual(['mobi', 'memory-hindsight']);
+        expect([...ALL_BUNDLED_PLUGIN_NAMES]).toEqual(['mobi', 'mobi-forked-tap', 'memory-hindsight']);
     });
 
     it('mobi 插件清单文件与 TS 常量单源一致（repo 文件 dev 直挂、常量编译态写盘，双落点防漂移）', () => {
@@ -56,6 +59,14 @@ describe('bundledPlugins（恒挂载 mobi 聚合 + 按需 memory-hindsight）', 
         const hooksPath = join(projectPath(), 'plugins', 'mobi', 'hooks', 'hooks.json');
         expect(existsSync(hooksPath)).toBe(true);
         expect(readFileSync(hooksPath, 'utf-8').trim()).toBe(MOBI_HOOKS_MANIFEST);
+    });
+
+    it('mobi-forked-tap 清单与 hooks 声明和 TS 常量一致（独立 plugin：卸载即完全回退）', () => {
+        const pluginDir = join(projectPath(), 'plugins', 'mobi-forked-tap');
+        expect(readFileSync(join(pluginDir, '.claude-plugin', 'plugin.json'), 'utf-8').trim()).toBe(MOBI_FORKED_TAP_PLUGIN_MANIFEST);
+        expect(readFileSync(join(pluginDir, 'hooks', 'hooks.json'), 'utf-8').trim()).toBe(MOBI_FORKED_TAP_HOOKS_MANIFEST);
+        // 与 goal tap 同理：禁止 "hooks" 键（classic 通道会吞掉 mods 加载）
+        expect(JSON.parse(MOBI_FORKED_TAP_PLUGIN_MANIFEST).hooks).toBeUndefined();
     });
 
     it('memory-hindsight 三份清单/接线文件与 TS 常量一致，且 name/harness 形状正确', () => {
@@ -88,6 +99,8 @@ describe('bundledPlugins（恒挂载 mobi 聚合 + 按需 memory-hindsight）', 
         // 仓库源目录里的 SKILL.md 真实存在（防清单与源目录脱节）
         expect(existsSync(join(pluginPath, 'skills', 'visualize', 'SKILL.md'))).toBe(true);
         expect(bundledPluginPath('memory-hindsight')).toBe(join(projectPath(), 'plugins', 'memory-hindsight'));
+        // forked tap 的 hooks 模块真实存在（防清单与源目录脱节）
+        expect(existsSync(join(bundledPluginPath('mobi-forked-tap'), 'hooks', 'register.js'))).toBe(true);
     });
 
     it('SDK options 默认只携带恒挂载插件（无记忆 env 信号时不挂按需插件）', () => {
@@ -98,8 +111,10 @@ describe('bundledPlugins（恒挂载 mobi 聚合 + 按需 memory-hindsight）', 
             const options = buildBundledPluginOptions();
             expect(options).toEqual([
                 { type: 'local', path: bundledPluginPath('mobi') },
+                { type: 'local', path: bundledPluginPath('mobi-forked-tap') },
             ]);
             expect(options[0].path).toContain('plugins/mobi');
+            expect(options[1].path).toContain('plugins/mobi-forked-tap');
         } finally {
             vi.unstubAllEnvs()
         }
@@ -116,6 +131,7 @@ describe('bundledPlugins（恒挂载 mobi 聚合 + 按需 memory-hindsight）', 
             const options = buildBundledPluginOptions();
             expect(options.map((o) => o.path)).toEqual([
                 bundledPluginPath('mobi'),
+                bundledPluginPath('mobi-forked-tap'),
                 bundledPluginPath('memory-hindsight'),
             ]);
         } finally {
@@ -141,10 +157,14 @@ describe('bundledPlugins（恒挂载 mobi 聚合 + 按需 memory-hindsight）', 
         expect(probes).toContain(`${PLUGIN_ASSET_PREFIX}mobi/skills/openui/SKILL.md`);
         expect(probes).toContain(`${PLUGIN_ASSET_PREFIX}mobi/skills/openui/references/signatures.md`);
         expect(probes).toContain(`${PLUGIN_ASSET_PREFIX}memory-hindsight/.mcp.json`);
-        // 探针 = 全部清单文件 + mobi 内置资产集（增删自愈）
+        // forked tap 的 hooks 资产也进探针（增删自愈）
+        expect(probes).toContain(`${PLUGIN_ASSET_PREFIX}mobi-forked-tap/hooks/register.js`);
+        expect(probes).toContain(`${PLUGIN_ASSET_PREFIX}mobi-forked-tap/hooks/config.mjs`);
+        // 探针 = 全部清单文件 + 各插件内置资产集（增删自愈）
         expect(probes).toHaveLength(
             ALL_BUNDLED_PLUGIN_NAMES.reduce((n, name) => n + Object.keys(BUNDLED_PLUGIN_MANIFEST_FILES[name]).length, 0)
-                + MOBI_PLUGIN_ASSET_REL_PATHS.length,
+                + MOBI_PLUGIN_ASSET_REL_PATHS.length
+                + MOBI_FORKED_TAP_ASSET_REL_PATHS.length,
         );
     });
 

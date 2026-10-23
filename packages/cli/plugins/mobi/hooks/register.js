@@ -22,7 +22,7 @@
 // spawn 注入 env 必须走 $.env.get（名字须字符串字面量，校验器据此点名）；
 // 只允许相对路径 import 自家代码文件与 "claude-code"。
 
-import { sessionAppendRules } from './config.mjs';
+import { bridgeEnvelopeType, sessionAppendRules } from './config.mjs';
 
 /** bridge 注入 env（session 侧 spawn claude 时写入；与 bridgeListener 常量同值）。
  * 注意：$.env.get 的名字参数必须是字符串字面量（校验器据此点名），常量仅作文档。 */
@@ -60,7 +60,7 @@ function pushSignal($, e) {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({
-                    type: 'session.append',
+                    type: bridgeEnvelopeType,
                     payload: { door: e.door, name: e.message?.name, uuid: e.uuid },
                 }),
                 socketPath: sockPath,

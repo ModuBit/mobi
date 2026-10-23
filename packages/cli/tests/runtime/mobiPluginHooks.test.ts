@@ -22,8 +22,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { matchesAppendRule } from '../../plugins/mobi/hooks/register.js';
-import { sessionAppendRules } from '../../plugins/mobi/hooks/config.mjs';
-import { TRANSCRIPT_TAP_SESSION_APPEND_RULES } from '@mobi/shared';
+import { bridgeEnvelopeType, sessionAppendRules } from '../../plugins/mobi/hooks/config.mjs';
+import { TRANSCRIPT_TAP_GOAL_ENVELOPE_TYPE, TRANSCRIPT_TAP_SESSION_APPEND_RULES } from '@mobi/shared';
 
 async function loadRegister() {
     vi.resetModules();
@@ -58,6 +58,11 @@ describe('transcript tap (mod hooks module)', () => {
         expect(sessionAppendRules).toEqual(TRANSCRIPT_TAP_SESSION_APPEND_RULES);
     });
 
+    it('config.mjs 与 shared 契约单源等值：信封 type 一致且为 goal.append', () => {
+        expect(bridgeEnvelopeType).toBe(TRANSCRIPT_TAP_GOAL_ENVELOPE_TYPE);
+        expect(bridgeEnvelopeType).toBe('goal.append');
+    });
+
     it('register：恒注册 session.append（matcher 带 door 预筛；bridge 可用性在 hook 内解析）', async () => {
         const { register } = await loadRegister();
         const { on } = setup(undefined);
@@ -81,7 +86,7 @@ describe('transcript tap (mod hooks module)', () => {
         expect(init.method).toBe('POST');
         expect(init.socketPath).toBe('/tmp/bridge.sock');
         expect(JSON.parse(init.body)).toEqual({
-            type: 'session.append',
+            type: 'goal.append',
             payload: { door: 'attachment', name: 'goal_status', uuid: 'u-1' },
         });
         // 放行不依赖出口结果

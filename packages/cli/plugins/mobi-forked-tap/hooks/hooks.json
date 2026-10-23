@@ -1,0 +1,6 @@
+{
+    "description": "Mobi forked-skill tap: forwards session.append rows of forked /code-review (thinking, tool_use, tool_result) to the mobi session bridge",
+    "modules": [
+        "./register.js"
+    ]
+}

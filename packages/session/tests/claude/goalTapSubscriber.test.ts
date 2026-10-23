@@ -47,7 +47,7 @@ function postSignal(uuid: string): Promise<void> {
             res.on('end', () => resolve());
         });
         req.on('error', reject);
-        req.end(JSON.stringify({ type: 'session.append', payload: { door: 'attachment', name: 'goal_status', uuid }, from: 'mobi' }));
+        req.end(JSON.stringify({ type: 'goal.append', payload: { door: 'attachment', name: 'goal_status', uuid }, from: 'mobi' }));
     });
 }
 

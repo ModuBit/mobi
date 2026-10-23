@@ -57,8 +57,9 @@ export function buildBridgeSocketPath(): string {
     return join(dir, `s-${randomUUID()}.sock`);
 }
 
-/** 信封体积上限：信封只含元数据（几字节），64KB 足够余量，超限即恶意/异常流量 */
-const MAX_BODY_BYTES = 64 * 1024;
+/** 信封体积上限：通道复用后承载 fork 行的原始 message（含 tool_result 正文），
+ * 6MiB 为硬闸（mod 侧 $.http.fetch body 上限 4MiB，留余量），超限即恶意/异常流量 */
+const MAX_BODY_BYTES = 6 * 1024 * 1024;
 
 /**
  * 启动 bridge listener。会话进程内唯一实例；失败由调用方兜底（warn 后无桥运行，
@@ -73,21 +74,27 @@ export function startBridgeListener(opts?: { socketPath?: string }): Promise<Bri
     const server: Server = createServer((req, res) => {
         connections.add(req.socket);
         req.socket.on('close', () => connections.delete(req.socket));
-        let body = '';
+        // Buffer 累积后一次解码：大 body 的字符串逐块拼接近 O(n²)，且按字节判闸更准确
+        const chunks: Buffer[] = [];
+        let bodyBytes = 0;
         let oversized = false;
         req.on('data', (chunk: Buffer) => {
-            body += chunk.toString('utf-8');
-            if (body.length > MAX_BODY_BYTES && !oversized) {
-                oversized = true;
-                logger.warn('[BRIDGE] oversized body, destroying connection');
+            bodyBytes += chunk.length;
+            if (bodyBytes > MAX_BODY_BYTES) {
+                if (!oversized) {
+                    oversized = true;
+                    logger.warn(`[BRIDGE] oversized body (>${MAX_BODY_BYTES} bytes), destroying connection`);
+                }
                 req.destroy();
+                return;
             }
+            chunks.push(chunk);
         });
         req.on('end', () => {
             if (oversized) return;
             // connection: close：mod 端 fetch 一次性报文，不留 keep-alive 挂住 stop
             res.writeHead(204, { connection: 'close' }).end();
-            dispatchEnvelope(subscribers, body);
+            dispatchEnvelope(subscribers, Buffer.concat(chunks).toString('utf-8'));
         });
         // mod 侧 fire-and-forget，但防御性兜底：慢/挂死连接不占住 server
         req.setTimeout(5000, () => {

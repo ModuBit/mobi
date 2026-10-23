@@ -21,7 +21,7 @@
 // 认行规则来自 shared 契约单源（与 mod 生产端 config.mjs 等值，cli 测试锁定），
 // 规则演进只改 shared——此处与生产端的字面量双写已收口。
 
-import { TRANSCRIPT_TAP_SESSION_APPEND_RULES } from '@mobi/shared';
+import { TRANSCRIPT_TAP_GOAL_ENVELOPE_TYPE, TRANSCRIPT_TAP_SESSION_APPEND_RULES } from '@mobi/shared';
 import { logger } from '@mobi/node-core/logger';
 import type { BridgeListener } from './bridgeListener';
 import { scanTailLines } from './tailReader';
@@ -69,7 +69,7 @@ export function registerGoalTapSubscriber(bridge: BridgeListener, opts: GoalTapS
     let queue: Promise<void> = Promise.resolve();
     let stopped = false;
 
-    bridge.subscribe('session.append', (payload) => {
+    bridge.subscribe(TRANSCRIPT_TAP_GOAL_ENVELOPE_TYPE, (payload) => {
         if (stopped) return;
         const signal = payload as SessionAppendSignal;
         if (!signal?.uuid) {

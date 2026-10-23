@@ -23,6 +23,14 @@
 
 import { parseGoalStatusAttachment } from './schemas'
 
+/**
+ * goal tap 推往 bridge 的信封 type，统一 `<来源>.<事件>` 命名。
+ * 通道按 type 精确路由，禁止与 mods 事件同名（否则「goal 订阅者收到 fork 事件」
+ * 这类跨源串台只能靠订阅者自己兜）。
+ * 生产端 config.mjs 是 mods 沙箱零 import 的物理资产，与常量的等值由 cli 测试锁定。
+ */
+export const TRANSCRIPT_TAP_GOAL_ENVELOPE_TYPE = 'goal.append'
+
 /** session.append 事件的 tap 订阅规则（字段缺省 = 通配） */
 export interface TranscriptTapSessionAppendRule {
     /** 事件的 door（行进入会话的路由，如 attachment） */

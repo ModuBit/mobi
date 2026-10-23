@@ -111,6 +111,28 @@ describe('bridgeListener', () => {
         expect(subscriber).not.toHaveBeenCalled();
     });
 
+    it('体积闸：200KB 信封正常投递（旧 64KB 闸已放开），超 6MiB 断开且不影响后续请求', async () => {
+        socketPath = testSocketPath();
+        const bridge = await startBridgeListener({ socketPath });
+        stop = () => bridge.stop();
+
+        const subscriber = vi.fn();
+        bridge.subscribe('goal.append', subscriber);
+
+        const largeButOk = JSON.stringify({ type: 'goal.append', payload: { blob: 'x'.repeat(200 * 1024) } });
+        expect(await post(largeButOk)).toBe(204);
+        expect(subscriber).toHaveBeenCalledTimes(1);
+
+        const tooLarge = JSON.stringify({ type: 'goal.append', payload: { blob: 'x'.repeat(6 * 1024 * 1024 + 1024) } });
+        await expect(post(tooLarge)).rejects.toThrow();
+        await new Promise((r) => setTimeout(r, 50));
+        expect(subscriber).toHaveBeenCalledTimes(1);
+
+        // 服务不受超大报文影响
+        expect(await post(JSON.stringify({ type: 'goal.append', payload: { uuid: 'u-3' } }))).toBe(204);
+        expect(subscriber).toHaveBeenCalledTimes(2);
+    });
+
     it('stop 后 socket 文件清理且服务不再受理', async () => {
         socketPath = testSocketPath();
         const bridge = await startBridgeListener({ socketPath });

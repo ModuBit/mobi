@@ -32,6 +32,8 @@ import openuiSignaturesMd from '../../plugins/mobi/skills/openui/references/sign
 import openuiAppDetailsMd from '../../plugins/mobi/skills/openui/references/app-details.md' with { type: 'file' };
 import mobiTapRegisterJs from '../../plugins/mobi/hooks/register.js' with { type: 'file' };
 import mobiTapConfigMjs from '../../plugins/mobi/hooks/config.mjs' with { type: 'file' };
+import forkedTapRegisterJs from '../../plugins/mobi-forked-tap/hooks/register.js' with { type: 'file' };
+import forkedTapConfigMjs from '../../plugins/mobi-forked-tap/hooks/config.mjs' with { type: 'file' };
 import hindsightClaudeHook from '../../plugins/memory-hindsight/dist/claude-hook.js' with { type: 'file' };
 import hindsightClaudeSessionStartHook from '../../plugins/memory-hindsight/dist/claude-sessionstart-hook.js' with { type: 'file' };
 import hindsightClaudeStopHook from '../../plugins/memory-hindsight/dist/claude-stop-hook.js' with { type: 'file' };
@@ -70,6 +72,10 @@ const COMMON_ASSETS: EmbeddedAsset[] = [
     // 是 .json，由 syncPluginAssets 从 BUNDLED_PLUGIN_MANIFEST_FILES 常量写盘
     asset('plugins/mobi/hooks/register.js', mobiTapRegisterJs),
     asset('plugins/mobi/hooks/config.mjs', mobiTapConfigMjs),
+    // forked skill tap（独立 plugin，spec forked-code-review-tap）；路径集与
+    // MOBI_FORKED_TAP_ASSET_REL_PATHS 对齐
+    asset('plugins/mobi-forked-tap/hooks/register.js', forkedTapRegisterJs),
+    asset('plugins/mobi-forked-tap/hooks/config.mjs', forkedTapConfigMjs),
     asset('plugins/memory-hindsight/dist/claude-hook.js', hindsightClaudeHook),
     asset('plugins/memory-hindsight/dist/claude-sessionstart-hook.js', hindsightClaudeSessionStartHook),
     asset('plugins/memory-hindsight/dist/claude-stop-hook.js', hindsightClaudeStopHook),

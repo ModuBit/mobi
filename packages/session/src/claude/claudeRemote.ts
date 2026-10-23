@@ -671,7 +671,8 @@ export async function sdkOutputLoop(
                     typeof p === 'string' ? p : (p as { name?: unknown } | null)?.name,
                 );
                 const missing = BUNDLED_PLUGINS.filter(
-                    (name) => !loadedNames.some((n) => typeof n === 'string' && n.includes(name)),
+                    // 精确匹配：`includes` 会让 'mobi' 被 'mobi-forked-tap' 误判为已加载
+                    (name) => !loadedNames.some((n) => n === name),
                 );
                 if (missing.length > 0) {
                     logger.warn(`[sdkOutputLoop] bundled plugins missing from loaded plugins, transcript tap unavailable: missing=${missing.join(',')} session=${systemInit.session_id ?? 'unknown'} plugins=${JSON.stringify(loadedPlugins)}`);

@@ -19,6 +19,10 @@
 // 字段缺省 = 通配。mods 沙箱禁止 hooks 模块读任意文件（node:fs / JSON import
 // 均不允许），故规则文件以 .mjs 模块形态分发（官方校验器认可的自家文件 import）。
 
+/** 推往 bridge 的信封 type（`<来源>.<事件>` 命名）。与 shared 契约单源
+ *  （TRANSCRIPT_TAP_GOAL_ENVELOPE_TYPE）等值由 cli 测试锁定——改 type 两处同步。 */
+export const bridgeEnvelopeType = 'goal.append';
+
 /** session.append 事件的推送规则：命中任一规则即把信号推过桥。
  *  与 shared 契约单源（TRANSCRIPT_TAP_SESSION_APPEND_RULES）等值由 cli 测试锁定
  *  （mobiPluginHooks.test.ts）——改规则两处同步。 */
