@@ -27,7 +27,6 @@
 
 import {
     FORKED_SKILL_TAP_ENVELOPE_TYPE,
-    FORKED_SKILL_TAP_SKILL,
     ForkedSkillAppendPayloadSchema,
     type ForkedSkillAppendPayload,
 } from '@mobi/shared';
@@ -60,10 +59,7 @@ export function registerForkedSkillTapSubscriber(
             logger.debug('[BRIDGE_FORKED_TAP] invalid payload dropped', parsed.error.message);
             return;
         }
-        const signal = parsed.data;
-        // 单源校验后仍防御：会话侧不重新识别 fork，只认 mod 推来的 skill
-        if (signal.skill !== FORKED_SKILL_TAP_SKILL) return;
-        forwardRow(signal, opts, stopped);
+        forwardRow(parsed.data, opts);
     });
 
     return () => {
@@ -72,21 +68,13 @@ export function registerForkedSkillTapSubscriber(
 }
 
 /** 拼主对话行并入管道；行形状不过 schema 校验即静默跳过（坏载荷不影响通道） */
-function forwardRow(
-    signal: ForkedSkillAppendPayload,
-    opts: ForkedSkillTapSubscriberOptions,
-    stopped: boolean,
-): void {
-    if (stopped) return;
+function forwardRow(signal: ForkedSkillAppendPayload, opts: ForkedSkillTapSubscriberOptions): void {
     // 重复信号（mod 重试 / 通道重投）：实时行只落一次
     if (hasLiveRowUuid(signal.uuid)) return;
     const sessionId = opts.resolveSessionId();
     if (!sessionId) {
         logger.debug(`[BRIDGE_FORKED_TAP] session id unavailable, dropping row uuid=${signal.uuid}`);
         return;
-    }
-    if (signal.truncated) {
-        logger.debug(`[BRIDGE_FORKED_TAP] truncated message forwarded uuid=${signal.uuid}`);
     }
     const row = {
         type: (signal.message as { type?: unknown }).type,

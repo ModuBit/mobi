@@ -43,9 +43,7 @@ type Hook = ($: unknown, e: unknown, next: (e: unknown) => unknown) => unknown;
 function setup(opts: { env?: string; agents?: unknown[] | (() => Promise<unknown[]>); fetchImpl?: ReturnType<typeof vi.fn> } = {}) {
     const fetchImpl = opts.fetchImpl ?? vi.fn(() => Promise.resolve({ status: 204, ok: true, headers: {}, text: '' }));
     const handlers: Record<string, Hook[]> = {};
-    const matchers: Record<string, unknown> = {};
     const on = vi.fn((event: string, matcherOrHook: unknown, maybeHook?: Hook) => {
-        matchers[event] = maybeHook ? matcherOrHook : undefined;
         (handlers[event] ??= []).push((maybeHook ?? matcherOrHook) as Hook);
     });
     const list = vi.fn(typeof opts.agents === 'function' ? opts.agents : async () => opts.agents ?? []);
@@ -55,7 +53,7 @@ function setup(opts: { env?: string; agents?: unknown[] | (() => Promise<unknown
         agent: { list },
         clock: { sleep: vi.fn(async () => {}) },
     };
-    return { fetchImpl, on, handlers, matchers, list, $ };
+    return { fetchImpl, on, handlers, list, $ };
 }
 
 /** fork 行的非 text 事件（thinking） */
@@ -69,6 +67,9 @@ function forkEvent(overrides: Record<string, unknown> = {}) {
         ...overrides,
     };
 }
+
+/** 等后台判定/推送链跑完（模块内无定时器，30ms 足够） */
+const flush = () => new Promise((r) => setTimeout(r, 30));
 
 function dispatch(handlers: Record<string, Hook[]>, $: unknown, e: unknown) {
     const next = vi.fn((value: unknown) => value);
@@ -100,16 +101,15 @@ describe('forked skill tap (mod hooks module)', () => {
 
     it('register：监听 session.append 且 matcher 预筛两个 door', async () => {
         const { register } = await loadRegister();
-        const { on, matchers } = setup();
-        register(on, {});
+        const { on } = setup();
+        register(on);
         expect(on).toHaveBeenCalledWith('session.append', { door: ['response', 'tool-result'] }, expect.any(Function));
-        expect(matchers['session.append']).toEqual({ door: ['response', 'tool-result'] });
     });
 
     it('fork 行 + 非 text：推信封（type/skill/uuid/door/message/from）', async () => {
         const { register } = await loadRegister();
         const { fetchImpl, on, handlers, $ } = setup({ env: '/tmp/bridge.sock', agents: [{ id: 'a-1', description: '/code-review' }] });
-        register(on, {});
+        register(on);
 
         const event = forkEvent();
         const next = dispatch(handlers, $, event);
@@ -131,9 +131,9 @@ describe('forked skill tap (mod hooks module)', () => {
     it('普通 Task 子代理（自然语言描述）：不推', async () => {
         const { register } = await loadRegister();
         const { fetchImpl, on, handlers, $ } = setup({ env: '/tmp/bridge.sock', agents: [{ id: 'a-1', description: 'Review the recent diff' }] });
-        register(on, {});
+        register(on);
         dispatch(handlers, $, forkEvent());
-        await new Promise((r) => setTimeout(r, 30));
+        await flush();
         expect(fetchImpl).not.toHaveBeenCalled();
     });
 
@@ -143,10 +143,10 @@ describe('forked skill tap (mod hooks module)', () => {
             env: '/tmp/bridge.sock',
             agents: () => Promise.reject(new Error('list unavailable')),
         });
-        register(on, {});
+        register(on);
         const next = dispatch(handlers, $, forkEvent());
         expect(next).toHaveBeenCalled();
-        await new Promise((r) => setTimeout(r, 30));
+        await flush();
         expect(fetchImpl).not.toHaveBeenCalled();
     });
 
@@ -160,7 +160,7 @@ describe('forked skill tap (mod hooks module)', () => {
                 return calls === 1 ? [] : [{ id: 'a-1', description: '/code-review' }];
             },
         });
-        register(on, {});
+        register(on);
         dispatch(handlers, $, forkEvent());
         await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
         expect($.clock.sleep).toHaveBeenCalled();
@@ -169,29 +169,29 @@ describe('forked skill tap (mod hooks module)', () => {
     it('message 类型不在 assistant/user 白名单：不推', async () => {
         const { register } = await loadRegister();
         const { fetchImpl, on, handlers, $ } = setup({ env: '/tmp/bridge.sock', agents: [{ id: 'a-1', description: '/code-review' }] });
-        register(on, {});
+        register(on);
         dispatch(handlers, $, forkEvent({ message: { content: [{ type: 'thinking', thinking: '…' }] } }));
-        await new Promise((r) => setTimeout(r, 30));
+        await flush();
         expect(fetchImpl).not.toHaveBeenCalled();
     });
 
     it('纯 text 行：不推（text 由主循环最终答复承载）', async () => {
         const { register } = await loadRegister();
         const { fetchImpl, on, handlers, $ } = setup({ env: '/tmp/bridge.sock', agents: [{ id: 'a-1', description: '/code-review' }] });
-        register(on, {});
+        register(on);
         dispatch(handlers, $, forkEvent({ message: { type: 'assistant', role: 'assistant', content: [{ type: 'text', text: '最终答复' }] } }));
-        await new Promise((r) => setTimeout(r, 30));
+        await flush();
         expect(fetchImpl).not.toHaveBeenCalled();
     });
 
     it('主循环行（无 agentId）：不推', async () => {
         const { register } = await loadRegister();
         const { fetchImpl, on, handlers, $ } = setup({ env: '/tmp/bridge.sock', agents: [{ id: 'a-1', description: '/code-review' }] });
-        register(on, {});
+        register(on);
         const event = forkEvent();
         delete (event as { agentId?: string }).agentId;
         dispatch(handlers, $, event);
-        await new Promise((r) => setTimeout(r, 30));
+        await flush();
         expect(fetchImpl).not.toHaveBeenCalled();
     });
 
@@ -200,7 +200,7 @@ describe('forked skill tap (mod hooks module)', () => {
         let resolveList!: (value: unknown[]) => void;
         const pendingList = new Promise<unknown[]>((resolve) => { resolveList = resolve; });
         const { fetchImpl, on, handlers, $ } = setup({ env: '/tmp/bridge.sock', agents: () => pendingList });
-        register(on, {});
+        register(on);
 
         // 同一 agent 的三行在判定完成前连续到达（含 tool-result 与 thinking）
         dispatch(handlers, $, forkEvent({ uuid: 'u-1' }));
@@ -219,17 +219,17 @@ describe('forked skill tap (mod hooks module)', () => {
         let resolveList!: (value: unknown[]) => void;
         const pendingList = new Promise<unknown[]>((resolve) => { resolveList = resolve; });
         const { fetchImpl, on, handlers, $ } = setup({ env: '/tmp/bridge.sock', agents: () => pendingList });
-        register(on, {});
+        register(on);
         dispatch(handlers, $, forkEvent({ uuid: 'u-1' }));
         resolveList([{ id: 'a-1', description: 'Investigate the bug' }]);
-        await new Promise((r) => setTimeout(r, 30));
+        await flush();
         expect(fetchImpl).not.toHaveBeenCalled();
     });
 
     it('超大工具结果：截断后推送并标记 truncated，结构仍完整', async () => {
         const { register } = await loadRegister();
         const { fetchImpl, on, handlers, $ } = setup({ env: '/tmp/bridge.sock', agents: [{ id: 'a-1', description: '/code-review' }] });
-        register(on, {});
+        register(on);
         dispatch(handlers, $, forkEvent({
             door: 'tool-result',
             message: {
@@ -249,9 +249,9 @@ describe('forked skill tap (mod hooks module)', () => {
     it('bridge env 未注入：判定照常但空转不 fetch，next 放行', async () => {
         const { register } = await loadRegister();
         const { fetchImpl, on, handlers, $ } = setup({ env: undefined, agents: [{ id: 'a-1', description: '/code-review' }] });
-        register(on, {});
+        register(on);
         const next = dispatch(handlers, $, forkEvent());
-        await new Promise((r) => setTimeout(r, 30));
+        await flush();
         expect(fetchImpl).not.toHaveBeenCalled();
         expect(next).toHaveBeenCalled();
     });
@@ -260,10 +260,10 @@ describe('forked skill tap (mod hooks module)', () => {
         const { register } = await loadRegister();
         const fetchImpl = vi.fn(() => Promise.reject(new Error('ECONNREFUSED')));
         const { on, handlers, $ } = setup({ env: '/tmp/bridge.sock', agents: [{ id: 'a-1', description: '/code-review' }], fetchImpl });
-        register(on, {});
+        register(on);
         const next = dispatch(handlers, $, forkEvent());
         expect(next).toHaveBeenCalled();
-        await new Promise((r) => setTimeout(r, 30));
+        await flush();
         expect(fetchImpl).toHaveBeenCalledTimes(1);
     });
 

@@ -23,22 +23,19 @@
 // 会话级状态（与 MOBI_BRIDGE_SOCK 的 process.env 注入同一前提）。
 
 import { shouldSuppressStreamMessage, type StreamMessageShape } from '@mobi/shared';
+import { BoundedUuidSet } from './boundedUuidSet';
 
 /** 去重集合容量上限（fork 行一次几十条；沿用 goal 的 2000，防长会话无界增长） */
 const MAX_SEEN_UUIDS = 2000;
 
-const seenUuids = new Set<string>();
+const seenUuids = new BoundedUuidSet(MAX_SEEN_UUIDS);
 
 /** 记录一条已由实时行消费的 uuid（订阅者拼行成功后调用） */
 export function rememberLiveRowUuid(uuid: string): void {
     seenUuids.add(uuid);
-    if (seenUuids.size > MAX_SEEN_UUIDS) {
-        const oldest = seenUuids.values().next().value;
-        if (oldest !== undefined) seenUuids.delete(oldest);
-    }
 }
 
-/** 当前会话是否已消费该 uuid（测试与排障用） */
+/** 该 uuid 是否已由实时行消费（流侧抑制判定；测试与排障也用） */
 export function hasLiveRowUuid(uuid: string): boolean {
     return seenUuids.has(uuid);
 }

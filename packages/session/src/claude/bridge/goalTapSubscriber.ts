@@ -24,6 +24,7 @@
 import { TRANSCRIPT_TAP_GOAL_ENVELOPE_TYPE, TRANSCRIPT_TAP_SESSION_APPEND_RULES } from '@mobi/shared';
 import { logger } from '@mobi/node-core/logger';
 import type { BridgeListener } from './bridgeListener';
+import { BoundedUuidSet } from './boundedUuidSet';
 import { scanTailLines } from './tailReader';
 import { RawJSONLinesSchema, type RawJSONLines } from '../types';
 
@@ -63,7 +64,7 @@ const MAX_SEEN_UUIDS = 2000;
  * 否则闭包持有 opts/seenUuids 多驻留一个防抖周期，并对已关闭通道触发扫描/透传）。
  */
 export function registerGoalTapSubscriber(bridge: BridgeListener, opts: GoalTapSubscriberOptions): () => void {
-    const seenUuids = new Set<string>();
+    const seenUuids = new BoundedUuidSet(MAX_SEEN_UUIDS);
     let compensateTimer: ReturnType<typeof setTimeout> | null = null;
     // 信号串行化：重扫共享 seenUuids 与文件窗口，并发穿插会让「目标行已透传」判定失真
     let queue: Promise<void> = Promise.resolve();
@@ -100,7 +101,7 @@ export function registerGoalTapSubscriber(bridge: BridgeListener, opts: GoalTapS
 async function handleSignal(
     signal: SessionAppendSignal,
     opts: GoalTapSubscriberOptions,
-    seenUuids: Set<string>,
+    seenUuids: BoundedUuidSet,
     quiet = false,
 ): Promise<void> {
     const signalUuid = signal.uuid;
@@ -165,7 +166,7 @@ function matchesTapRules(row: RawJSONLines): row is AttachmentRow {
  * 解析窗口行并透传 goal_status 原始行，返回透传条数。
  * 坏行（JSON/ schema 不过）warn 带 uuid 后跳过——与管道既有静默跳过语义一致，不中断。
  */
-function forwardGoalLines(lines: string[], opts: GoalTapSubscriberOptions, seenUuids: Set<string>): number {
+function forwardGoalLines(lines: string[], opts: GoalTapSubscriberOptions, seenUuids: BoundedUuidSet): number {
     let forwarded = 0;
     for (const line of lines) {
         if (!mayMatchAnyRule(line)) continue; // 廉价门卫：非候选行免 parse + Zod
@@ -189,7 +190,7 @@ function forwardGoalLines(lines: string[], opts: GoalTapSubscriberOptions, seenU
         if (seenUuids.has(message.uuid)) {
             continue;
         }
-        rememberUuid(seenUuids, message.uuid);
+        seenUuids.add(message.uuid);
         // 原始行逐字节透传：无字段转换、无合成、无专用出口
         opts.sendMessage(message);
         forwarded += 1;
@@ -197,12 +198,3 @@ function forwardGoalLines(lines: string[], opts: GoalTapSubscriberOptions, seenU
     return forwarded;
 }
 
-function rememberUuid(seenUuids: Set<string>, uuid: string): void {
-    seenUuids.add(uuid);
-    if (seenUuids.size > MAX_SEEN_UUIDS) {
-        const oldest = seenUuids.values().next().value;
-        if (oldest !== undefined) {
-            seenUuids.delete(oldest);
-        }
-    }
-}

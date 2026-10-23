@@ -21,6 +21,7 @@
 // mod 生产端是 mods 沙箱零 import 的物理资产，与本文件常量的等值由 cli 测试锁定。
 
 import { z } from 'zod'
+import { isObject } from './utils'
 
 /** 信封 type：fork 行实时上报（bridge 按 type 精确路由） */
 export const FORKED_SKILL_TAP_ENVELOPE_TYPE = 'forked-skill.append'
@@ -29,7 +30,7 @@ export const FORKED_SKILL_TAP_ENVELOPE_TYPE = 'forked-skill.append'
 export const FORKED_SKILL_TAP_SKILL = 'code-review'
 
 /** CLI 给 forked command 行的 parent_tool_use_id 前缀；code-review 的完整值 */
-export const FORKED_COMMAND_PARENT_PREFIX = 'forked-command-'
+const FORKED_COMMAND_PARENT_PREFIX = 'forked-command-'
 export const CODE_REVIEW_FORK_PARENT_ID = `${FORKED_COMMAND_PARENT_PREFIX}${FORKED_SKILL_TAP_SKILL}`
 
 /** 监听的行门（door = 行进入会话的路由）：只推模型响应与工具结果，attachment 等噪音不进 hook */
@@ -61,7 +62,7 @@ export interface StreamMessageShape {
 
 /** 从任意形态的 message 取出 content（非对象 / 缺失 → undefined） */
 function messageContent(message: unknown): unknown {
-    return message && typeof message === 'object' ? (message as { content?: unknown }).content : undefined
+    return isObject(message) ? message.content : undefined
 }
 
 /** content 是否全部为 text block（字符串视为 text；空数组不算——空消息无意义） */

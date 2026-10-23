@@ -33,8 +33,7 @@ import {
     MEMORY_HINDSIGHT_HOOKS,
     MEMORY_HINDSIGHT_MCP,
     MEMORY_HINDSIGHT_VENDORED_REL_PATHS,
-    MOBI_PLUGIN_ASSET_REL_PATHS,
-    MOBI_FORKED_TAP_ASSET_REL_PATHS,
+    BUNDLED_PLUGIN_ASSET_REL_PATHS,
     PLUGIN_ASSET_PREFIX,
     VISUALIZE_SKILL_REL_PATH,
     bundledPluginProbeRelPaths,
@@ -163,8 +162,7 @@ describe('bundledPlugins（恒挂载 mobi 聚合 + forked tap + 按需 memory-hi
         // 探针 = 全部清单文件 + 各插件内置资产集（增删自愈）
         expect(probes).toHaveLength(
             ALL_BUNDLED_PLUGIN_NAMES.reduce((n, name) => n + Object.keys(BUNDLED_PLUGIN_MANIFEST_FILES[name]).length, 0)
-                + MOBI_PLUGIN_ASSET_REL_PATHS.length
-                + MOBI_FORKED_TAP_ASSET_REL_PATHS.length,
+                + Object.values(BUNDLED_PLUGIN_ASSET_REL_PATHS).reduce((n, rels) => n + (rels?.length ?? 0), 0),
         );
     });
 

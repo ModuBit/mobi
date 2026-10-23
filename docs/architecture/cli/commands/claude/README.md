@@ -373,7 +373,8 @@ packages/cli/src/
 │   │   ├── tailReader.ts                 # transcript 尾部反向分块扫（64KB 首块/256KB 封顶）
 │   │   ├── goalTapSubscriber.ts          # goal_status 信号订阅：尾扫读原始行透传 + 补偿扫描（goal.append）
 │   │   ├── forkedSkillTapSubscriber.ts   # forked /code-review 行装配为主对话行入流（forked-skill.append）
-│   │   └── forkedSkillTapState.ts        # 会话级已消费 uuid 集合（SDK 流末尾重放的抑制判定）
+│   │   ├── forkedSkillTapState.ts        # 会话级已消费 uuid 集合（SDK 流末尾重放的抑制判定）
+│   │   └── boundedUuidSet.ts             # 有容量上限的 uuid 集合（两个订阅者的去重共用）
 │   ├── sdk/
 │   │   ├── index.ts                      # SDK 重导出 + 工具函数
 │   │   ├── types.ts                      # PermissionResult 等类型

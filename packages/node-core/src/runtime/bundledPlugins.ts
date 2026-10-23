@@ -137,29 +137,27 @@ export const BUNDLED_PLUGIN_MANIFEST_FILES: Record<BundledPluginName, Record<str
 };
 
 /**
- * mobi 插件全部内置资产的 runtime 相对路径（skill 文件集单源；升级增删 skill 文件
+ * 各插件内置资产的 runtime 相对路径（skill 文件集与 hooks 代码资产单源；升级增删文件
  * 必须同步此清单——cli 的 embeddedAssets 路径集与测试据此对齐）。进探针：资产集
  * 增删自动触发重释放，否则新文件在存量 runtime 永不落地（2026-10-19 openui
  * skill v2 拆 references 实锤：版本未 bump、探针不含新文件 → 部署即断）。
+ * 一个插件一条，探针与测试按此表遍历——新增插件不必再改探针与断言。
  */
-export const MOBI_PLUGIN_ASSET_REL_PATHS = [
-    'skills/visualize/SKILL.md',
-    'skills/openui/SKILL.md',
-    'skills/openui/references/examples.md',
-    'skills/openui/references/signatures.md',
-    'skills/openui/references/app-details.md',
-    'hooks/register.js',
-    'hooks/config.mjs',
-] as const;
-
-/**
- * mobi-forked-tap 插件全部资产的 runtime 相对路径（hooks 模块与配置同属 mods
- * 代码资产，随 embedded assets 分发；增删文件须同步此清单，进探针触发重释放）。
- */
-export const MOBI_FORKED_TAP_ASSET_REL_PATHS = [
-    'hooks/register.js',
-    'hooks/config.mjs',
-] as const;
+export const BUNDLED_PLUGIN_ASSET_REL_PATHS: Partial<Record<BundledPluginName, readonly string[]>> = {
+    mobi: [
+        'skills/visualize/SKILL.md',
+        'skills/openui/SKILL.md',
+        'skills/openui/references/examples.md',
+        'skills/openui/references/signatures.md',
+        'skills/openui/references/app-details.md',
+        'hooks/register.js',
+        'hooks/config.mjs',
+    ],
+    'mobi-forked-tap': [
+        'hooks/register.js',
+        'hooks/config.mjs',
+    ],
+};
 
 /**
  * 插件解包探针：各插件全部清单文件 + 各插件内置资产集的 runtime 相对路径。清单在
@@ -171,8 +169,8 @@ export function bundledPluginProbeRelPaths(): string[] {
     return [
         ...ALL_BUNDLED_PLUGIN_NAMES.flatMap((name) =>
             Object.keys(BUNDLED_PLUGIN_MANIFEST_FILES[name]).map((rel) => `${PLUGIN_ASSET_PREFIX}${name}/${rel}`)),
-        ...MOBI_PLUGIN_ASSET_REL_PATHS.map((rel) => `${PLUGIN_ASSET_PREFIX}mobi/${rel}`),
-        ...MOBI_FORKED_TAP_ASSET_REL_PATHS.map((rel) => `${PLUGIN_ASSET_PREFIX}mobi-forked-tap/${rel}`),
+        ...Object.entries(BUNDLED_PLUGIN_ASSET_REL_PATHS).flatMap(([name, rels]) =>
+            (rels ?? []).map((rel) => `${PLUGIN_ASSET_PREFIX}${name}/${rel}`)),
     ];
 }
 

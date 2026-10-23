@@ -78,6 +78,13 @@ export function startBridgeListener(opts?: { socketPath?: string }): Promise<Bri
         const chunks: Buffer[] = [];
         let bodyBytes = 0;
         let oversized = false;
+        // 声明体积已超限：不必读 body 即可拒绝（省掉整段缓冲与后续拷贝）
+        const declaredBytes = Number(req.headers['content-length']);
+        if (Number.isFinite(declaredBytes) && declaredBytes > MAX_BODY_BYTES) {
+            logger.warn(`[BRIDGE] declared body ${declaredBytes} bytes exceeds limit (${MAX_BODY_BYTES}), destroying connection`);
+            req.destroy();
+            return;
+        }
         req.on('data', (chunk: Buffer) => {
             bodyBytes += chunk.length;
             if (bodyBytes > MAX_BODY_BYTES) {
@@ -94,7 +101,7 @@ export function startBridgeListener(opts?: { socketPath?: string }): Promise<Bri
             if (oversized) return;
             // connection: close：mod 端 fetch 一次性报文，不留 keep-alive 挂住 stop
             res.writeHead(204, { connection: 'close' }).end();
-            dispatchEnvelope(subscribers, Buffer.concat(chunks).toString('utf-8'));
+            dispatchEnvelope(subscribers, Buffer.concat(chunks, bodyBytes).toString('utf-8'));
         });
         // mod 侧 fire-and-forget，但防御性兜底：慢/挂死连接不占住 server
         req.setTimeout(5000, () => {
