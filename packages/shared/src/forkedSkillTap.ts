@@ -75,12 +75,17 @@ function isTextOnlyContent(content: unknown): boolean {
 /**
  * SDK 流消息是否应被抑制（该内容已由实时行接管，流末尾的批量重放只会有害）：
  * 1. uuid 已在实时行集合中 → 丢弃（实测流末尾 fork 消息与事件的 uuid 完全一致）
- * 2. code-review fork 的纯 text 消息 → 丢弃（该行与主循环最终答复重复，uuid 却不同）
+ * 2. code-review fork 的纯 text 消息 → 丢弃（该行与主循环最终答复重复，uuid 却不同）。
+ *    该规则以「本会话确实消费过实时行」为前提（seenUuids 非空）：mods 未启用 / 插件
+ *    加载失败 / hook worker 崩溃时实时链路一条行都不产生，此时保持现状（fork 文本
+ *    结束后一次性出现），不能把唯一的内容来源也吞掉。
  * 其他 forked skill 与普通子代理不受影响。
  */
 export function shouldSuppressStreamMessage(message: StreamMessageShape, seenUuids: ReadonlySet<string>): boolean {
     if (message.uuid && seenUuids.has(message.uuid)) return true
-    if (message.parent_tool_use_id === CODE_REVIEW_FORK_PARENT_ID && isTextOnlyContent(messageContent(message.message))) {
+    if (seenUuids.size > 0
+        && message.parent_tool_use_id === CODE_REVIEW_FORK_PARENT_ID
+        && isTextOnlyContent(messageContent(message.message))) {
         return true
     }
     return false

@@ -352,11 +352,15 @@ flowchart TB
 
 ## 代码结构
 
+会话宿主体现在 `@mobi/session` 包（ticket-13 起从 cli 迁出）；ApiClient 与 RPC 处理器在 `@mobi/node-core`。
+
 ```
 packages/cli/src/
-├── commands/
-│   ├── claude.ts                         # 命令入口，参数解析、降级策略
-│   └── claudeArgs.ts                     # 参数解析纯函数 parseStartOptions()
+└── commands/
+    ├── claude.ts                         # 命令入口，参数解析、降级策略
+    └── claudeArgs.ts                     # 参数解析纯函数 parseStartOptions()
+
+packages/session/src/
 ├── claude/
 │   ├── runClaude.ts                      # 核心启动流程，组件编排
 │   ├── loop.ts                           # 模式循环入口
@@ -406,9 +410,13 @@ packages/cli/src/
 │   ├── launcher/BaseLocalLauncher.ts     # Local 启动器基类
 │   └── remote/RemoteLauncherBase.ts     # Remote 启动器基类
 └── api/
-    ├── api.ts                            # ApiClient（HTTP）
     ├── apiSession.ts                     # ApiSessionClient（Socket.IO）
-    └── rpc/RpcHandlerManager.ts          # RPC 处理器管理
+    ├── sessionChannel.ts                 # 会话通道（消息落库/广播的会话侧入口）
+    └── sessionTransport.ts               # 传输层装配
+
+packages/node-core/src/
+├── api/api.ts                            # ApiClient（HTTP）
+└── rpc/RpcHandlerManager.ts              # RPC 处理器管理
 ```
 
 ## 环境变量

@@ -89,8 +89,10 @@ function forwardRow(signal: ForkedSkillAppendPayload, opts: ForkedSkillTapSubscr
         logger.debug(`[BRIDGE_FORKED_TAP] row failed schema validation, dropped uuid=${signal.uuid}`, parsed.error.message);
         return;
     }
-    // 发送原始行而非 schema 解析产物：解析会 strip 未显式声明的字段（message.type 等），
-    // 而目标行应与 transcript 行同形，不做字段裁剪
+    // 发送组装好的 row 而非 RawJSONLinesSchema 的解析产物：该 schema 会 strip 未显式
+    // 声明的字段，而目标行应与 transcript 行同形，不做字段裁剪。
+    // 注意前提：row.message 来自 ForkedSkillAppendPayloadSchema，其 message 是 `.loose()`
+    // ——去掉 loose 会剥掉 message.type，row.type 变 undefined，判别联合校验全数失败
     // 先发送再记入去重集合：同步抛出时不把「没送达的行」也标记成已消费，
     // 否则流侧会把该行一并抑制（宁可流侧兜底一次，不丢内容）
     try {

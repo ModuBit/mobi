@@ -63,7 +63,7 @@ const COMMON_ASSETS: EmbeddedAsset[] = [
     // 内置插件（各平台共用，故放 COMMON）；清单文件由 syncPluginAssets 从常量写盘。
     // memory-hindsight vendored 资产清单与 MEMORY_HINDSIGHT_VENDORED_REL_PATHS 保持一致
     asset('plugins/mobi/skills/visualize/SKILL.md', visualizeSkillMd),
-    // openui skill 索引+references（2026-10-19 拆分）；路径集与 MOBI_PLUGIN_ASSET_REL_PATHS 对齐
+    // openui skill 索引+references（2026-10-19 拆分）；路径集与 BUNDLED_PLUGIN_ASSET_REL_PATHS.mobi 对齐
     asset('plugins/mobi/skills/openui/SKILL.md', openuiSkillMd),
     asset('plugins/mobi/skills/openui/references/examples.md', openuiExamplesMd),
     asset('plugins/mobi/skills/openui/references/signatures.md', openuiSignaturesMd),
@@ -73,7 +73,7 @@ const COMMON_ASSETS: EmbeddedAsset[] = [
     asset('plugins/mobi/hooks/register.js', mobiTapRegisterJs),
     asset('plugins/mobi/hooks/config.mjs', mobiTapConfigMjs),
     // forked skill tap（独立 plugin，spec forked-code-review-tap）；路径集与
-    // MOBI_FORKED_TAP_ASSET_REL_PATHS 对齐
+    // BUNDLED_PLUGIN_ASSET_REL_PATHS['mobi-forked-tap'] 对齐
     asset('plugins/mobi-forked-tap/hooks/register.js', forkedTapRegisterJs),
     asset('plugins/mobi-forked-tap/hooks/config.mjs', forkedTapConfigMjs),
     asset('plugins/memory-hindsight/dist/claude-hook.js', hindsightClaudeHook),

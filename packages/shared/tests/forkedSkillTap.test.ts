@@ -41,7 +41,15 @@ describe('shouldSuppressStreamMessage', () => {
 
     it('code-review fork 的纯 text 行 → 抑制（与主循环最终答复重复）', () => {
         const message = { uuid: 'u-3', parent_tool_use_id: CODE_REVIEW, message: textMessage('最终答复') };
-        expect(shouldSuppressStreamMessage(message, new Set())).toBe(true);
+        // 前提：本会话确实消费过实时行（否则见下一条用例）
+        expect(shouldSuppressStreamMessage(message, new Set(['live-1']))).toBe(true);
+    });
+
+    it('实时链路未生效（集合为空）→ fork 文本放行，保留「结束后一次性出现」的退路', () => {
+        // mods 未启用 / 插件加载失败 / hook worker 崩溃：实时行一条不产生，
+        // 此时 fork 文本是唯一内容来源，不能被吞掉
+        const message = { uuid: 'u-3b', parent_tool_use_id: CODE_REVIEW, message: textMessage('最终答复') };
+        expect(shouldSuppressStreamMessage(message, new Set())).toBe(false);
     });
 
     it('code-review fork 的含非 text 行 → 放行（工具调用/思考需按正常路径处理）', () => {

@@ -40,7 +40,7 @@ async function loadRegister() {
 
 type Hook = ($: unknown, e: unknown, next: (e: unknown) => unknown) => unknown;
 
-function setup(opts: { env?: string; agents?: unknown[] | (() => Promise<unknown[]>); fetchImpl?: ReturnType<typeof vi.fn> } = {}) {
+function setup(opts: { env?: string; envImpl?: () => Promise<string | undefined>; agents?: unknown[] | (() => Promise<unknown[]>); fetchImpl?: ReturnType<typeof vi.fn> } = {}) {
     const fetchImpl = opts.fetchImpl ?? vi.fn(() => Promise.resolve({ status: 204, ok: true, headers: {}, text: '' }));
     const handlers: Record<string, Hook[]> = {};
     const on = vi.fn((event: string, matcherOrHook: unknown, maybeHook?: Hook) => {
@@ -48,7 +48,12 @@ function setup(opts: { env?: string; agents?: unknown[] | (() => Promise<unknown
     });
     const list = vi.fn(typeof opts.agents === 'function' ? opts.agents : async () => opts.agents ?? []);
     const $ = {
-        env: { get: vi.fn(async (name: string) => (name === 'MOBI_BRIDGE_SOCK' ? opts.env : undefined)) },
+        env: {
+            get: vi.fn(async (name: string) => {
+                if (name !== 'MOBI_BRIDGE_SOCK') return undefined;
+                return opts.envImpl ? opts.envImpl() : opts.env;
+            }),
+        },
         http: { fetch: fetchImpl },
         agent: { list },
         clock: { sleep: vi.fn(async () => {}) },
@@ -267,6 +272,42 @@ describe('forked skill tap (mod hooks module)', () => {
         expect(fetchImpl).toHaveBeenCalledTimes(1);
     });
 
+    it('混合 thinking + text：推的内容去掉 text block（避免与主循环最终答复重复）', async () => {
+        const { register } = await loadRegister();
+        const { fetchImpl, on, handlers, $ } = setup({ env: '/tmp/bridge.sock', agents: [{ id: 'a-1', description: '/code-review' }] });
+        register(on);
+        dispatch(handlers, $, forkEvent({
+            message: {
+                type: 'assistant',
+                role: 'assistant',
+                content: [{ type: 'thinking', thinking: '……' }, { type: 'text', text: '最终答复' }],
+            },
+        }));
+
+        await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+        const payload = sentPayload(fetchImpl).payload as { message: { content: Array<{ type: string }> } };
+        expect(payload.message.content.map((block) => block.type)).toEqual(['thinking']);
+    });
+
+    it('bridge env 瞬时失败不钉缓存：后续行仍会上桥', async () => {
+        const { register } = await loadRegister();
+        let calls = 0;
+        const { fetchImpl, on, handlers, $ } = setup({
+            envImpl: async () => {
+                calls += 1;
+                if (calls === 1) throw new Error('env not ready');
+                return '/tmp/bridge.sock';
+            },
+            agents: [{ id: 'a-1', description: '/code-review' }],
+        });
+        register(on);
+        dispatch(handlers, $, forkEvent({ uuid: 'u-1' }));
+        dispatch(handlers, $, forkEvent({ uuid: 'u-2' }));
+
+        await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+        expect(sentPayload(fetchImpl).payload.uuid).toBe('u-2');
+    });
+
     it('fitMessage：未超限原样返回；超限截断保留 block 结构', async () => {
         const { fitMessage } = await loadRegister();
         const small = { type: 'assistant', content: [{ type: 'text', text: 'hi' }] };
@@ -277,5 +318,19 @@ describe('forked skill tap (mod hooks module)', () => {
         expect(fitted.truncated).toBe(true);
         expect(JSON.stringify(fitted.message).length).toBeLessThanOrEqual(2048);
         expect((fitted.message.content as Array<{ type: string }>)[0].type).toBe('tool_result');
+    });
+
+    it('fitMessage：多串中等长度超限时保留全部 block（不掉进前 20 块的兜底）', async () => {
+        const { fitMessage } = await loadRegister();
+        const blocks = Array.from({ length: 30 }, () => ({
+            type: 'tool_result',
+            tool_use_id: 't',
+            content: 'z'.repeat(10_000),
+        }));
+        const fitted = fitMessage({ type: 'user', content: blocks });
+
+        expect(fitted.truncated).toBe(true);
+        expect((fitted.message.content as unknown[]).length).toBe(30);
+        expect(JSON.stringify(fitted.message).length).toBeLessThanOrEqual(256 * 1024);
     });
 });

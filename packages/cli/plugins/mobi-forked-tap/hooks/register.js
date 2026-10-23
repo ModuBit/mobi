@@ -73,16 +73,28 @@ function serializedLength(value) {
 }
 
 /**
- * 单条 message 限长：超限时按超限比例一次性收紧每个字符串的上限（至少 256 字符），
- * 仍超（字符串不大但 block 数量爆炸）则只留前 20 个 block。
+ * 去掉 text block：fork 的文本与主循环最终答复重复（实测同内容不同 uuid，主循环那条
+ * 不会被抑制），实时行只承载非 text 的过程内容。
+ */
+function stripTextBlocks(message) {
+    if (!Array.isArray(message.content)) return message;
+    return { ...message, content: message.content.filter((block) => block?.type !== 'text') };
+}
+
+/**
+ * 单条 message 限长：起点按超限倍数反推「每串上限」，再逐档减半兜底；仍超（字符串不大
+ * 但 block 数量爆炸）则只留前 20 个 block。
  * 返回原始 message（未超限）或结构完整的截断副本 + truncated 标记。
  */
 export function fitMessage(message, limit = maxMessageChars) {
     const size = serializedLength(message);
     if (size <= limit) return { message, truncated: false };
-    const cap = Math.max(256, Math.floor((64 * 1024 * limit) / size));
-    const capped = { ...message, content: capStrings(message.content, cap) };
-    if (serializedLength(capped) <= limit) return { message: capped, truncated: true };
+    // 多串中等长度时一次就能压到量级；上限 64KB 与旧实现一致——单条超大串保留更多前缀
+    let cap = Math.min(64 * 1024, Math.max(256, Math.floor(limit / Math.ceil(size / limit))));
+    for (; cap >= 256; cap = Math.floor(cap / 2)) {
+        const candidate = { ...message, content: capStrings(message.content, cap) };
+        if (serializedLength(candidate) <= limit) return { message: candidate, truncated: true };
+    }
     const content = Array.isArray(message.content) ? message.content.slice(0, 20) : message.content;
     return { message: { ...message, content: capStrings(content, 256) }, truncated: true };
 }
@@ -148,16 +160,22 @@ function enqueue($, e) {
     if (state.target) schedule($, e);
 }
 
-/** bridge socket：env 在 spawn 时注入、进程内恒定，连「未注入」也缓存（避免每行重查） */
+/** bridge socket：成功取到的路径缓存（进程内恒定）；未注入 / 读取失败不钉缓存，
+ *  否则一次瞬时失败会让整个会话的 fork 行永久静默丢弃（与 mobi 插件同一前提） */
 let sockPromise;
 
 function resolveSock($) {
-    if (!sockPromise) {
-        sockPromise = $.env
-            .get('MOBI_BRIDGE_SOCK')
-            .then((sock) => sock || undefined)
-            .catch(() => undefined);
-    }
+    if (sockPromise) return sockPromise;
+    sockPromise = $.env
+        .get('MOBI_BRIDGE_SOCK')
+        .then((sock) => {
+            if (!sock) sockPromise = undefined;
+            return sock || undefined;
+        })
+        .catch(() => {
+            sockPromise = undefined;
+            return undefined;
+        });
     return sockPromise;
 }
 
@@ -169,7 +187,7 @@ function schedule($, e) {
 function pushOne($, e) {
     return resolveSock($).then((sockPath) => {
         if (!sockPath) return;
-        const fitted = fitMessage(e.message);
+        const fitted = fitMessage(stripTextBlocks(e.message));
         const payload = { skill: targetSkill, uuid: e.uuid, door: e.door, message: fitted.message };
         if (fitted.truncated) payload.truncated = true;
         return $.http.fetch('http://mobi-bridge/forked-skill-append', {
