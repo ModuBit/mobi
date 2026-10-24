@@ -39,6 +39,7 @@ vi.mock('react-i18next', () => ({
                 'session.contextUsage.remaining': '剩余',
                 'session.contextUsage.modelLimit': '模型上限',
                 'session.contextUsage.autoCompact': '自动压缩',
+                'session.contextUsage.compact': '立即压缩',
                 'session.contextUsage.cost': '累计成本',
                 'session.contextUsage.input': '输入',
                 'session.contextUsage.output': '输出',
@@ -88,10 +89,12 @@ describe('resolveRingTone', () => {
     })
 
     // 无压缩阈值 → 回落到窗口百分比（与旧口径同义）
-    it('无阈值时按窗口百分比三档：<60 idle / 60–85 warn / ≥85 danger', () => {
+    it('无阈值时按窗口百分比四档：<50 idle / 50–70 notice / 70–85 warn / ≥85 danger', () => {
         expect(resolveRingTone(make(0))).toEqual({ pct: 0, tone: 'idle', limitUsage: 0 })
-        expect(resolveRingTone(make(59_400)).tone).toBe('idle')
-        expect(resolveRingTone(make(59_500)).tone).toBe('warn') // 59.5 → 四舍五入 60
+        expect(resolveRingTone(make(49_400)).tone).toBe('idle')
+        expect(resolveRingTone(make(49_500)).tone).toBe('notice') // 49.5 → 四舍五入 50
+        expect(resolveRingTone(make(69_400)).tone).toBe('notice')
+        expect(resolveRingTone(make(69_500)).tone).toBe('warn') // 69.5 → 四舍五入 70
         expect(resolveRingTone(make(84_400)).tone).toBe('warn')
         expect(resolveRingTone(make(85_000))).toEqual({ pct: 85, tone: 'danger', limitUsage: 85 })
     })
@@ -101,7 +104,8 @@ describe('resolveRingTone', () => {
         // 1m 窗口 / 350k 阈值：315k = 31.5% 窗口，但已到 90% 阈值 → danger
         expect(resolveRingTone(make(315_000, 1_000_000, { autoCompactAtTokens: 350_000 })))
             .toEqual({ pct: 32, tone: 'danger', limitUsage: 90 })
-        expect(resolveRingTone(make(200_000, 1_000_000, { autoCompactAtTokens: 350_000 })).tone).toBe('idle')
+        // 200k = 57% 阈值 → notice（过半但还从容），262.5k = 75% → warn
+        expect(resolveRingTone(make(200_000, 1_000_000, { autoCompactAtTokens: 350_000 })).tone).toBe('notice')
         expect(resolveRingTone(make(262_500, 1_000_000, { autoCompactAtTokens: 350_000 })).tone).toBe('warn')
     })
 
@@ -193,6 +197,37 @@ describe('ContextRing', () => {
         const base = makeUsage({ totalTokens: 315_000, maxTokens: 1_000_000, percentage: 31.5 })
         // 1m 窗口 / 350k 阈值：315k 只占窗口 31.5%，但已到阈值 90%
         expect(arcStroke({ ...base, autoCompactAtTokens: 350_000 })).not.toBe(arcStroke(base))
+    })
+
+    it('压缩按钮：低水位不展示，≥60% 出现，点击回调并收起面板', async () => {
+        const onCompact = vi.fn()
+        // 13% → idle：不渲染
+        render(<ContextRing usage={makeUsage()} onCompact={onCompact} />)
+        fireEvent.click(screen.getByRole('button', { name: '13%' }))
+        await waitFor(() => expect(document.body.textContent).toContain('累计成本'))
+        expect(screen.queryByRole('button', { name: '立即压缩' })).toBeNull()
+        cleanup()
+
+        // 60% → 按钮门槛（环身仍是 notice 石青）：出现；点击回调并收起
+        render(<ContextRing usage={makeUsage({ totalTokens: 60_000, maxTokens: 100_000, percentage: 60 })} onCompact={onCompact} />)
+        fireEvent.click(screen.getByRole('button', { name: '60%' }))
+        fireEvent.click(await screen.findByRole('button', { name: '立即压缩' }))
+        expect(onCompact).toHaveBeenCalledTimes(1)
+        await waitFor(() => expect(screen.queryByText('累计成本')).toBeNull())
+    })
+
+    it('压缩按钮：running 中置灰；未注入 onCompact 时不渲染', async () => {
+        render(<ContextRing usage={makeUsage({ totalTokens: 60_000, maxTokens: 100_000, percentage: 60 })} onCompact={vi.fn()} compactDisabled />)
+        fireEvent.click(screen.getByRole('button', { name: '60%' }))
+        const btn = await screen.findByRole('button', { name: '立即压缩' })
+        expect((btn as HTMLButtonElement).disabled).toBe(true)
+        cleanup()
+
+        // 未提供回调 → 即使高水位也没有动作可执行
+        render(<ContextRing usage={makeUsage({ totalTokens: 60_000, maxTokens: 100_000, percentage: 60 })} />)
+        fireEvent.click(screen.getByRole('button', { name: '60%' }))
+        await waitFor(() => expect(document.body.textContent).toContain('累计成本'))
+        expect(screen.queryByRole('button', { name: '立即压缩' })).toBeNull()
     })
 
     it('有细分数据也不渲染瞬时请求细分组（输入/输出/缓存读/缓存写/命中率整组移除）', async () => {

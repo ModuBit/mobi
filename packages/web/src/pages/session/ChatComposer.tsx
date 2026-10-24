@@ -138,6 +138,10 @@ interface ChatComposerProps {
     switchPending?: boolean
     /** 上下文用量（来自 session.runtimeState.contextUsage）；无值时不渲染水位圆环 */
     contextUsage?: ContextUsage | null
+    /** 水位圆环 Popover 内的「立即压缩」（仅 ≥60% 有效上限时展示） */
+    onCompact?: () => void
+    /** 会话运行中：压缩按钮置灰 */
+    compactDisabled?: boolean
     /** goal 状态（来自 session.runtimeState.goalStatus；无值时状态行不渲染） */
     goal?: GoalStatus | null
     /**
@@ -254,6 +258,8 @@ export function ChatComposer(props: ChatComposerProps) {
         onSwitchToRemote,
         switchPending = false,
         contextUsage,
+        onCompact,
+        compactDisabled = false,
         goal,
         draftRequest,
         ref,
@@ -895,7 +901,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                     // 上下文水位圆环（仅 PC；移动端挂 ChatPane header，避免挤占底部空间）
                                     ...(!isMobile && contextUsage ? [{
                                         key: 'contextRing',
-                                        content: <ContextRing usage={contextUsage} />,
+                                        content: <ContextRing usage={contextUsage} onCompact={onCompact} compactDisabled={compactDisabled} />,
                                     }] : []),
                                 ]}
                                 />

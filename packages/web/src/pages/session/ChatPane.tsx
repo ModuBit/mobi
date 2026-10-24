@@ -30,6 +30,9 @@ import { SidebarToggle } from '@/features/layout/SidebarToggle'
 import { PixelAvatar } from '@/ui/pixel-avatar/PixelAvatar'
 import { EdgeSwipeBack } from '@/ui/base/interactive/EdgeSwipeBack'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
+import { emptySegments } from '@/domain/chat/composerSegments'
+import { COMPACT_COMMAND } from '@/domain/chat/presentation'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 import type { AgentStatus } from '@/ui/pixel-avatar/types'
@@ -62,6 +65,9 @@ export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatP
     const isMobile = useIsMobile()
     const expanded = useWorkspaceStore((s) => s.getSession(sessionId).expanded)
     const setExpanded = useWorkspaceStore((s) => s.setExpanded)
+    // 移动端水位环挂在 header、不经过 composer：压缩动作就地走同一条发送管线
+    const running = session.running ?? false
+    const compactSend = useSendMessage(sessionId, running)
 
     const showExpand = !expanded
 
@@ -91,7 +97,13 @@ export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatP
         <>
             {/* 移动端水位圆环（PC 挂 composer 工具栏）——参照 codex/chatgpt 双端分流 */}
             {isMobile && session.runtimeState?.contextUsage ? (
-                <ContextRing usage={session.runtimeState.contextUsage} size={22} placement="bottomRight" />
+                <ContextRing
+                    usage={session.runtimeState.contextUsage}
+                    size={22}
+                    placement="bottomRight"
+                    onCompact={() => compactSend.mutate({ ...emptySegments(), text: COMPACT_COMMAND })}
+                    compactDisabled={running}
+                />
             ) : null}
             {showExpand && (
                 <AppTooltip title={t('session.inspector.expand')}>

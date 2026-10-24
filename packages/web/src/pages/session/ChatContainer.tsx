@@ -1779,6 +1779,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 workingDir={session?.metadata?.path}
                 effort={session?.runtimeState?.effort}
                 contextUsage={session?.runtimeState?.contextUsage ?? null}
+                onCompact={() => handleSend({ ...emptySegments(), text: COMPACT_COMMAND })}
+                compactDisabled={session?.running ?? false}
                 goal={session?.runtimeState?.goalStatus ?? null}
                 onEffortChange={handleEffortChange}
                 onPermissionModeChange={handlePermissionModeChange}

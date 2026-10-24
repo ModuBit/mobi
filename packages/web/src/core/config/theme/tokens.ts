@@ -119,6 +119,37 @@ export const CHART_DARK: readonly string[] = ['#f6f6f8', '#6cc06f', '#e5925f', '
 
 type SemanticKey = 'success' | 'warning' | 'danger'
 
+/* ==================== 上下文水位环 ==================== */
+
+/** 水位环四档语义（组件按百分比分档后取色） */
+export type ContextRingTone = 'idle' | 'notice' | 'warn' | 'danger'
+
+/**
+ * 水位环四档色（双档成对，全部由既有色派生，不引入新的色彩来源）：
+ * - `notice` 用图表石青——light 向画布混 30%（#7c94ab，对画布对比 2.77）、dark 直取图表
+ *   dark 档。60% 只是「过半」，不该示警
+ * - `warn` 用语义 warning 先向 inkTertiary 混 35% 降彩度（满饱和赤陶彩度 135，与 danger
+ *   砖红持平，2.5px 细环上过重），再向画布混 15% 提亮一档（#ba8272）
+ * - `danger` light 向画布混 15% 提亮（#be4f50）；dark 保持语义种子（暗底需要亮度）
+ * - `idle` 直取中性阶
+ */
+const RING_CLAY_LIGHT = mix(SEMANTIC_LIGHT.warning, NEUTRAL_LIGHT.inkTertiary, 0.35)
+
+export const CONTEXT_RING_TONES: Record<'light' | 'dark', Record<ContextRingTone, string>> = {
+    light: {
+        idle: NEUTRAL_LIGHT.inkTertiary,
+        notice: mix(CHART_LIGHT[4], NEUTRAL_LIGHT.canvas, 0.3), // CHART_LIGHT[4] = 石青
+        warn: mix(RING_CLAY_LIGHT, NEUTRAL_LIGHT.canvas, 0.15),
+        danger: mix(SEMANTIC_LIGHT.danger, NEUTRAL_LIGHT.canvas, 0.15),
+    },
+    dark: {
+        idle: NEUTRAL_DARK.inkTertiary,
+        notice: CHART_DARK[4], // 石青 dark 档
+        warn: SEMANTIC_DARK.warning,
+        danger: SEMANTIC_DARK.danger,
+    },
+}
+
 /** #rrggbb → [r, g, b] */
 function hexToRgb(hex: string): [number, number, number] {
     return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
