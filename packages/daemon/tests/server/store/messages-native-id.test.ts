@@ -30,6 +30,34 @@ function makeDb(): Database {
 /** webapp 用户消息内容（排队轨道来源；metadata 断言不依赖排队语义，仅保持真实信封） */
 const WEBAPP_USER = { role: 'user', content: { type: 'text', text: 'hi' }, meta: { sentFrom: 'webapp' } }
 
+describe('addMessage id 分配（跨会话 localId 复用兜底）', () => {
+    let db: Database
+    beforeEach(() => { db = makeDb() })
+
+    test('跨会话复用同一 localId：两行均成功入库，第二行 id 退化为随机且 local_id 保留', () => {
+        // localId 的唯一性契约是会话内（UNIQUE(session_id, local_id)）；
+        // API 调用方跨会话复用同一 localId 不应撞 messages.id 全局主键 500
+        const first = addMessage(db, 's1', WEBAPP_USER, 'shared-loc')
+        expect(first.id).toBe('shared-loc')
+
+        const second = addMessage(db, 's2', WEBAPP_USER, 'shared-loc')
+        expect(second.id).not.toBe('shared-loc')
+        expect(second.localId).toBe('shared-loc')
+
+        // 两会话各自能按 local_id 命中自己的行
+        expect(getMessages(db, 's1')).toHaveLength(1)
+        expect(getMessages(db, 's2')).toHaveLength(1)
+        expect(getMessages(db, 's2')[0]?.localId).toBe('shared-loc')
+    })
+
+    test('同会话复用 localId 仍走 merge 幂等（不产生第二行）', () => {
+        addMessage(db, 's1', WEBAPP_USER, 'loc-m')
+        const again = addMessage(db, 's1', WEBAPP_USER, 'loc-m')
+        expect(again.id).toBe('loc-m')
+        expect(getMessages(db, 's1')).toHaveLength(1)
+    })
+})
+
 describe('addMessage metadata', () => {
     let db: Database
     beforeEach(() => { db = makeDb() })

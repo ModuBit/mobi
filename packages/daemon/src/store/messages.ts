@@ -186,7 +186,14 @@ export function addMessage(
     ).get(sessionId) as { nextSeq: number }
     const msgSeq = msgSeqRow.nextSeq
 
-    const id = localId ?? randomUUID()
+    // id 分配：优先沿用 localId 保持行 id 稳定（Web 乐观回显按 id === localId 合并）。
+    // 但 localId 的唯一性契约是会话内（UNIQUE(session_id, local_id)）——同会话复用已被
+    // 上方 merge 分支消化，走到这里仍撞全局主键的必然是跨会话复用，此时退化为随机 id，
+    // localId 仍写入 local_id 列保留绑定语义，不再炸 UNIQUE constraint 500
+    let id = localId ?? randomUUID()
+    if (localId && db.prepare('SELECT 1 FROM messages WHERE id = ? LIMIT 1').get(localId)) {
+        id = randomUUID()
+    }
     const json = JSON.stringify(content)
     const isSidechain = extractIsSidechain(content) ? 1 : 0
     const parentToolUseId = extractParentToolUseId(content)
