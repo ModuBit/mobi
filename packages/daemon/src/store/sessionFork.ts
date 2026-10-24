@@ -192,10 +192,13 @@ function createFork(db: Database, parentSessionId: string, anchorNativeId: strin
  * 扩到 turn 的 result 行）→ 溯源自定义消息追加在复制行之后（seq = 复制行数 + 1，
  * 时间线最新位置——溯源「fork 自会话 x」紧跟被复制的内容，而非置顶最前）。
  *
- * 复制行语义（spec §5.1）：
+ * 复制行语义（spec §5.1，rewind-remediation 票 02 修订）：
  * - id 重新生成（messages.id 全局唯一）、session_id 改写为 fork 行
  * - lifecycle/lifecycle_at 重置中性值 null（避免 fork 会话的 ack 推进误命中 parent 时代的排队状态）
- * - metadata（nativeId/nativeSessionId 等 native 事实）原样保留——链溯源与 rewind 锚点依据
+ * - metadata 的 nativeId 保留（rewind 锚点依据：fork 复制时 uuid 原样，新 transcript 内可达）；
+ *   nativeSessionId **剥离**——激活 attach 时补写 fork 链 id。原样保留 parent 链 id 会让 web
+ *   链判据（canRewindMessage / collectChainHeadUserRowIds 按 nativeSessionId 归链）把激活后
+ *   第一条新用户消息误判成链首，rewind 入口隐藏（spec §3 vs §5.1 矛盾的实锤根因）
  * - local_id 保留（UNIQUE 限 session 内，fork 链上 uuid 依然有效，spec §3）
  * - category / is_sidechain / parent_tool_use_id 原样（侧链嵌套引用随整 turn 切割保持闭合）
  */
@@ -306,6 +309,13 @@ function insertForkAtAnchor(db: Database, params: InsertForkAtAnchorParams): Ins
         `)
         let seq = 1
         for (const row of rows) {
+            // metadata 剥离 parent 链 nativeSessionId（nativeId 保留）：激活 attach 补写 fork 链 id
+            let metadata = row.metadata
+            const parsedRowMetadata = safeJsonParse(row.metadata)
+            if (isObject(parsedRowMetadata) && 'nativeSessionId' in parsedRowMetadata) {
+                const { nativeSessionId: _parentChain, ...rest } = parsedRowMetadata
+                metadata = JSON.stringify(rest)
+            }
             insert.run({
                 id: randomUUID(),
                 session_id: forkSessionId,
@@ -313,7 +323,7 @@ function insertForkAtAnchor(db: Database, params: InsertForkAtAnchorParams): Ins
                 created_at: now,
                 seq,
                 local_id: row.local_id,
-                metadata: row.metadata,
+                metadata,
                 is_sidechain: row.is_sidechain,
                 parent_tool_use_id: row.parent_tool_use_id,
                 category: row.category,

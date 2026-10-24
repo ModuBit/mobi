@@ -374,29 +374,67 @@ export function markMessagesAcked(
 
 /** attach 补写：该会话所有缺 nativeSessionId 的行补上新 session id。幂等（重复上报无行可补）。
  *  含误补旧行（/clear 前消息）——设计如此：deploy 后存量自愈靠它，误判可 rewind 的行由 CLI 预检拒绝。
- *  返回补写后的行（供事实处理 module 发布消息更新，Web 端刷新 rewind 判据）。 */
+ *  另做 fork 链收编（rewind-remediation 票 02）：fork 会话复制行历史上带 parent 链 id（spec §5.1
+ *  旧语义），激活换链后 web 链判据按 nativeSessionId 归链——残留 parent 链 id 会把激活后第一条
+ *  新用户消息误判成链首（rewind 入口隐藏）。attach 是「会话链 id 建立」的唯一时点，把仍带
+ *  parent 链 id 的行一并收编到新链（幂等；sessions 表不可达时跳过——模块级裸表测试场景）。
+ *  返回补写+收编后的行（供事实处理 module 发布消息更新，Web 端刷新 rewind 判据）。 */
 export function attachNativeSessionId(
     db: Database,
     sessionId: string,
     nativeSessionId: string,
 ): StoredMessage[] {
     const run = db.transaction((): StoredMessage[] => {
+        const changed = new Map<string, StoredMessage>()
         const rows = db.prepare(`
             SELECT * FROM messages
             WHERE session_id = ? AND json_extract(COALESCE(metadata, '{}'), '$.nativeSessionId') IS NULL
         `).all(sessionId) as DbMessageRow[]
-        if (rows.length === 0) return []
         const stmt = db.prepare(
             `UPDATE messages SET metadata = json_set(COALESCE(metadata, '{}'), '$.nativeSessionId', ?) WHERE id = ?`
         )
-        return rows.map(row => {
+        for (const row of rows) {
             stmt.run(nativeSessionId, row.id)
             // 事务内行未被并发修改，TS 侧合并 overlay 避免二次回读
             const merged = { ...parseMetadata(row.metadata), nativeSessionId }
-            return { ...toStoredMessage(row), metadata: merged }
-        })
+            changed.set(row.id, { ...toStoredMessage(row), metadata: merged })
+        }
+
+        // fork 链收编：会话 metadata.forkFrom.parentNativeId 命中的行改写为新链 id
+        const parentNativeId = readForkParentNativeId(db, sessionId)
+        if (parentNativeId && parentNativeId !== nativeSessionId) {
+            const legacy = db.prepare(`
+                SELECT * FROM messages
+                WHERE session_id = ? AND json_extract(COALESCE(metadata, '{}'), '$.nativeSessionId') = ?
+            `).all(sessionId, parentNativeId) as DbMessageRow[]
+            for (const row of legacy) {
+                stmt.run(nativeSessionId, row.id)
+                const merged = { ...parseMetadata(row.metadata), nativeSessionId }
+                changed.set(row.id, { ...toStoredMessage(row), metadata: merged })
+            }
+        }
+
+        return [...changed.values()]
     })
     return run()
+}
+
+/** fork 会话的 parent 链 id（sessions.metadata.forkFrom.parentNativeId）；非 fork 会话 / 表不可达 → null */
+function readForkParentNativeId(db: Database, sessionId: string): string | null {
+    try {
+        const row = db.prepare('SELECT metadata FROM sessions WHERE id = ?').get(sessionId) as
+            | { metadata: string | null }
+            | undefined
+        const metadata = safeJsonParse(row?.metadata ?? null)
+        const forkFrom = isObject(metadata)
+            ? (metadata as { forkFrom?: { parentNativeId?: unknown } }).forkFrom
+            : undefined
+        const parentNativeId = forkFrom?.parentNativeId
+        return typeof parentNativeId === 'string' && parentNativeId.length > 0 ? parentNativeId : null
+    } catch {
+        // 模块级裸表测试（无 sessions 表）——跳过收编，语义退回纯补写
+        return null
+    }
 }
 
 /** 软删除：seq >= fromSeq 且未删的行打 deleted_at（rewind 截断；行保留兜底可找回）。

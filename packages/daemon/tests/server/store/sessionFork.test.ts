@@ -312,7 +312,7 @@ describe('sessionFork.createFork：建行 + turn 复制 + 溯源消息', () => {
         expect(forkRow.tag).not.toBe(store.sessions.getSession(parent.id)!.tag)
     })
 
-    test('复制行：session_id 改写、local_id 保留、native 事实原样保留（rewind 锚点可用）', () => {
+    test('复制行：session_id 改写、local_id 保留、nativeId 保留但剥离 parent 链 nativeSessionId', () => {
         const { store, parent } = makeParent()
         seedStandardTranscript(store, parent.id)
 
@@ -324,8 +324,35 @@ describe('sessionFork.createFork：建行 + turn 复制 + 溯源消息', () => {
         }
         // user 行 local_id 保留（fork 链上 uuid 有效，去重无冲突）
         expect(forkMessages[0].localId).toBe('l2')
-        // 锚点行 native 事实原样保留（nativeSessionId = parent 链值）
-        expect(forkMessages[2].metadata).toEqual({ nativeId: 'anchor-native', nativeSessionId: 'parent-native-1' })
+        // 锚点行 nativeId 保留（rewind 锚点依据）；nativeSessionId 剥离——激活 attach
+        // 补写 fork 链 id（rewind-remediation 票 02：复制行带 parent 链 id 会让 web 链判据
+        // 把激活后第一条新用户消息误判成链首，rewind 入口隐藏）
+        expect(forkMessages[2].metadata).toEqual({ nativeId: 'anchor-native' })
+    })
+
+    test('激活 attach 收编：复制行补写 fork 链 id，存量带 parent 链 id 的行收编自愈，幂等', () => {
+        const { store, parent } = makeParent()
+        seedStandardTranscript(store, parent.id)
+        const result = forkStandard(store, parent)
+        const forkId = result.sessionId
+        const forkNative = (store.sessions.getSession(forkId)!.metadata as Record<string, unknown>).nativeSessionId as string
+
+        // 存量形态模拟：旧版（spec §5.1 旧语义）复制行带 parent 链 id
+        store.messages.addMessage(forkId, userMsg('存量复制行'), 'legacy-1', 'persistent', {
+            nativeId: 'legacy-native', nativeSessionId: 'parent-native-1',
+        })
+
+        const attached = store.messages.attachNativeSessionId(forkId, forkNative)
+
+        // 全部行统一收编到 fork 链：复制行（此前 NULL）、存量行（此前 parent 链 id）、溯源行
+        const after = store.messages.getMessages(forkId, 200)
+        expect(after.every(m => m.metadata?.nativeSessionId === forkNative)).toBe(true)
+        // 收编行随返回发布（web 刷新链判据）
+        const adopted = attached.find(m => m.metadata?.nativeId === 'legacy-native')
+        expect(adopted?.metadata?.nativeSessionId).toBe(forkNative)
+
+        // 幂等：重复 attach 无行可补/可收编
+        expect(store.messages.attachNativeSessionId(forkId, forkNative)).toHaveLength(0)
     })
 
     test('lifecycle 重置中性值：已推进（pushed）的复制行 lifecycle/lifecycleAt 置 null', () => {
