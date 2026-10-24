@@ -22,7 +22,6 @@ import type { ContextUsage } from '@mobi/shared'
 import { CONTEXT_RING_TONES, type ContextRingTone } from '@/core/config/theme/tokens'
 import { formatTokens } from '@/core/lib/formatTokens'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
-import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { ContextBreakdown } from '@/ui/shared/ContextBreakdown'
 import { Popover } from '@/ui/base/interactive/popover/Popover'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
@@ -121,10 +120,9 @@ const COMPACT_SHOW_MIN = 60
 export function ContextRing({ usage, size = 20, placement = 'top', onCompact, compactDisabled = false }: ContextRingProps) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
-    // 环色档位值按主题取（与 ContextBreakdown 同款判定：uiStore 是主题单一来源）
-    const isDark = useUiStore((state) => resolveTheme(state.theme, state.systemIsDark) === 'dark')
     const { pct, tone, limitUsage } = resolveRingTone(usage)
-    const color = CONTEXT_RING_TONES[isDark ? 'dark' : 'light'][tone]
+    // 色值双档共用一组（见 tokens.ts 的 CONTEXT_RING_TONES），与主题无关
+    const color = CONTEXT_RING_TONES[tone]
     const showCompact = onCompact !== undefined && Math.round(limitUsage) >= COMPACT_SHOW_MIN
     const remaining = Math.max(0, usage.maxTokens - usage.totalTokens)
     const tick = compactTick(usage.maxTokens, usage.autoCompactAtTokens)

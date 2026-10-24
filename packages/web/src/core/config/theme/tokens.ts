@@ -125,29 +125,18 @@ type SemanticKey = 'success' | 'warning' | 'danger'
 export type ContextRingTone = 'idle' | 'notice' | 'warn' | 'danger'
 
 /**
- * 水位环四档色（双档成对，全部由既有色派生，不引入新的色彩来源）：
- * - `notice` 用图表石青——light 向画布混 30%（#7c94ab，对画布对比 2.77）、dark 直取图表
- *   dark 档。60% 只是「过半」，不该示警
- * - `warn` 用语义 warning 先向 inkTertiary 混 35% 降彩度（满饱和赤陶彩度 135，与 danger
- *   砖红持平，2.5px 细环上过重），再向画布混 15% 提亮一档（#ba8272）
- * - `danger` light 向画布混 15% 提亮（#be4f50）；dark 保持语义种子（暗底需要亮度）
- * - `idle` 直取中性阶
+ * 水位环四档色。**双档共用一组**（产品定稿：浅色主题也用 dark 档这组更亮、彩度更低的色，
+ * 不按主题分叉）：
+ * - `notice` 取图表石青 dark 档：60% 只是「过半」，不该示警
+ * - `warn` 取语义 warning dark 档：满饱和的浅色赤陶（彩度 135，与 danger 砖红持平）
+ *   在 2.5px 细环上过重
+ * - `idle` / `danger` 取中性阶与语义 danger 的 dark 档
  */
-const RING_CLAY_LIGHT = mix(SEMANTIC_LIGHT.warning, NEUTRAL_LIGHT.inkTertiary, 0.35)
-
-export const CONTEXT_RING_TONES: Record<'light' | 'dark', Record<ContextRingTone, string>> = {
-    light: {
-        idle: NEUTRAL_LIGHT.inkTertiary,
-        notice: mix(CHART_LIGHT[4], NEUTRAL_LIGHT.canvas, 0.3), // CHART_LIGHT[4] = 石青
-        warn: mix(RING_CLAY_LIGHT, NEUTRAL_LIGHT.canvas, 0.15),
-        danger: mix(SEMANTIC_LIGHT.danger, NEUTRAL_LIGHT.canvas, 0.15),
-    },
-    dark: {
-        idle: NEUTRAL_DARK.inkTertiary,
-        notice: CHART_DARK[4], // 石青 dark 档
-        warn: SEMANTIC_DARK.warning,
-        danger: SEMANTIC_DARK.danger,
-    },
+export const CONTEXT_RING_TONES: Record<ContextRingTone, string> = {
+    idle: NEUTRAL_DARK.inkTertiary,
+    notice: CHART_DARK[4], // 石青
+    warn: SEMANTIC_DARK.warning,
+    danger: SEMANTIC_DARK.danger,
 }
 
 /** #rrggbb → [r, g, b] */
