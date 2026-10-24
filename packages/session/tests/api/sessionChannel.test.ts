@@ -105,6 +105,42 @@ describe('SessionChannel：report 单一出口的 wire 映射（协议不变锁�
     })
 })
 
+describe('SessionChannel：sendClaudeSessionMessage 的 native 锚 claim', () => {
+    it('SDK uuid 行 claim metadata.nativeId（fork/rewind 锚）', () => {
+        const { channel, emitted } = makeHarness()
+        channel.sendClaudeSessionMessage({
+            type: 'assistant',
+            uuid: 'uuid-real',
+            session_id: 'ses-1',
+            message: { role: 'assistant', content: [] },
+        } as never)
+        const payload = emitted.find(e => e.event === 'session-message')?.payload as {
+            metadata?: { nativeId?: string }
+            localId?: string
+        }
+        expect(payload.metadata?.nativeId).toBe('uuid-real')
+        expect(payload.localId).toBe('uuid-real')
+    })
+
+    it('mobiSyntheticUuid 行不 claim metadata.nativeId（uuid 非 transcript 锚，谎报会让 Web 把它当 fork 落点）', () => {
+        const { channel, emitted } = makeHarness()
+        channel.sendClaudeSessionMessage({
+            type: 'assistant',
+            uuid: 'uuid-synthetic',
+            session_id: 'ses-1',
+            mobiSyntheticUuid: true,
+            message: { role: 'assistant', content: [{ type: 'text', text: 'abort 补全' }] },
+        } as never)
+        const payload = emitted.find(e => e.event === 'session-message')?.payload as {
+            metadata?: { nativeId?: string } | null
+            localId?: string
+        }
+        // localId 仍用该 uuid 供 daemon 去重；native 锚不 claim
+        expect(payload.localId).toBe('uuid-synthetic')
+        expect(payload.metadata?.nativeId).toBeUndefined()
+    })
+})
+
 describe('SessionChannel：入站分流', () => {
     it('new-message 用户消息经 onUserMessage 接收；非用户内容冒泡 onMessage', () => {
         const { channel, onMessage } = makeHarness()

@@ -496,8 +496,14 @@ export class SessionChannel {
             // 使用 Claude Code 的 uuid 作为 localId，供 daemon DB 去重
             // resume 场景下同一消息的 uuid 保持不变，daemon 可通过 localId 避免重复存储
             localId: body.uuid,
-            // SDK 消息自带 uuid 与 session id，一并写入 metadata（rewind 锚点）
-            metadata: { nativeId: body.uuid, nativeSessionId: body.session_id || undefined },
+            // SDK 消息自带 uuid 与 session id，一并写入 metadata（rewind/fork 锚点）。
+            // mobi 合成 uuid（mobiSyntheticUuid：流式 abort 补全 / 中断 tool_result / 缺 uuid
+            // 兜底）不在 transcript 里——谎报 nativeId 会让 Web 把它当 fork 落点（daemon
+            // forkSession 锚点校验必失败）。localId 仍用该 uuid 供去重；nativeSessionId
+            // 由 daemon 受理点 enrich / attach 兜底补链
+            metadata: (body as { mobiSyntheticUuid?: unknown }).mobiSyntheticUuid === true
+                ? undefined
+                : { nativeId: body.uuid, nativeSessionId: body.session_id || undefined },
             category,
         })
 

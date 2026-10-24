@@ -462,6 +462,30 @@ describe('SDKToLogConverter', () => {
         })
     })
 
+    describe('mobiSyntheticUuid 标记（合成 uuid 非 transcript native 锚）', () => {
+        it('convertSnapshot 生成的行带 mobiSyntheticUuid（uuid 为 mobi 随机生成）', () => {
+            const raw = converter.convertSnapshot([{ type: 'text', text: '半截' }])
+            expect((raw as { mobiSyntheticUuid?: unknown }).mobiSyntheticUuid).toBe(true)
+        })
+
+        it('generateInterruptedToolResult 生成的行带 mobiSyntheticUuid', () => {
+            const raw = converter.generateInterruptedToolResult('toolu_1')
+            expect((raw as { mobiSyntheticUuid?: unknown }).mobiSyntheticUuid).toBe(true)
+        })
+
+        it('SDK 自带 uuid 的行不带标记（真 native 锚）', () => {
+            const raw = converter.convert(createAssistantMessage([{ type: 'text', text: 'hi' }]))
+            expect((raw as { mobiSyntheticUuid?: unknown }).mobiSyntheticUuid).toBeUndefined()
+        })
+
+        it('SDK 消息缺 uuid 走随机兜底的行带标记', () => {
+            const noUuid = { ...createAssistantMessage([{ type: 'text', text: 'hi' }]) }
+            delete (noUuid as { uuid?: unknown }).uuid
+            const raw = converter.convert(noUuid)
+            expect((raw as { mobiSyntheticUuid?: unknown }).mobiSyntheticUuid).toBe(true)
+        })
+    })
+
     describe('prompt_suggestion', () => {
         it('透传 prompt_suggestion 消息, 保留 type 与 suggestion', () => {
             const sdkMsg: SDKPromptSuggestionMessage = {

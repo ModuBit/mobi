@@ -102,8 +102,21 @@ export class SDKToLogConverter {
         this.context.parentUuid = null
     }
 
-    /** 构造所有 RawJSONLines 共用的基础字段 */
-    private buildBaseFields(uuid: string, parentUuid: string | null, isSidechain: boolean, parentToolUseId?: string) {
+    /**
+     * 构造所有 RawJSONLines 共用的基础字段。
+     *
+     * syntheticUuid：该行的 uuid 是 mobi 随机生成的去重键而非 SDK/transcript native 锚
+     * （流式 abort 补全、中断 tool_result、SDK 消息缺 uuid 的兜底）。标记后由
+     * sendClaudeSessionMessage 咽喉点识别——不 claim metadata.nativeId，否则 Web 会把
+     * 谎报的锚点当 fork 落点（daemon forkSession 锚点校验必失败）。
+     */
+    private buildBaseFields(
+        uuid: string,
+        parentUuid: string | null,
+        isSidechain: boolean,
+        parentToolUseId?: string,
+        syntheticUuid = false,
+    ) {
         return {
             parentUuid,
             isSidechain,
@@ -115,6 +128,7 @@ export class SDKToLogConverter {
             gitBranch: this.context.gitBranch,
             uuid,
             timestamp: new Date().toISOString(),
+            ...(syntheticUuid ? { mobiSyntheticUuid: true as const } : {}),
         }
     }
 
@@ -123,10 +137,11 @@ export class SDKToLogConverter {
      */
     convert(sdkMessage: SDKMessage): RawJSONLines | null {
         // SDKMessage 联合中大部分成员有 uuid，但 SDKUserMessage.uuid 可选、少数成员无此字段
-        // 用 in 守卫安全访问
-        const uuid = ('uuid' in sdkMessage && typeof sdkMessage.uuid === 'string')
+        // 用 in 守卫安全访问；缺 uuid 走随机兜底时标记 synthetic（该 uuid 非 native 锚）
+        const sdkUuid = ('uuid' in sdkMessage && typeof sdkMessage.uuid === 'string')
             ? sdkMessage.uuid
-            : randomUUID()
+            : null
+        const uuid = sdkUuid ?? randomUUID()
         let parentUuid = this.lastUuid;
         let isSidechain = false;
         let parentToolUseId: string | undefined;
@@ -137,7 +152,7 @@ export class SDKToLogConverter {
             parentUuid = this.sidechainLastUUID.get(parentToolUseId) ?? null;
             this.sidechainLastUUID.set(parentToolUseId, uuid);
         }
-        const baseFields = this.buildBaseFields(uuid, parentUuid, isSidechain, parentToolUseId)
+        const baseFields = this.buildBaseFields(uuid, parentUuid, isSidechain, parentToolUseId, sdkUuid === null)
 
         let logMessage: RawJSONLines | null
 
@@ -262,7 +277,7 @@ export class SDKToLogConverter {
             : this.lastUuid
 
         return {
-            ...this.buildBaseFields(uuid, parentUuid, !!parentToolUseId, parentToolUseId),
+            ...this.buildBaseFields(uuid, parentUuid, !!parentToolUseId, parentToolUseId, true),
             type: 'assistant',
             message: {
                 role: 'assistant',
@@ -294,7 +309,7 @@ export class SDKToLogConverter {
 
         // message.content 为 unknown，permissions 字段是业务侧附加元数据，不影响 schema loose 校验
         const logMessage = {
-            ...this.buildBaseFields(uuid, parentUuid, isSidechain, parentToolUseId ?? undefined),
+            ...this.buildBaseFields(uuid, parentUuid, isSidechain, parentToolUseId ?? undefined, true),
             type: 'user' as const,
             message: {
                 role: 'user',
