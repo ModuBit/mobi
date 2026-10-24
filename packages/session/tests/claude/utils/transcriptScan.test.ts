@@ -24,9 +24,14 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 
 const mocked = vi.mocked(getSessionMessages)
 
+/** user entry 基座（六字段骨架唯一来源，变体只换 message.content） */
+function userEntry(uuid: string, content: unknown) {
+    return { type: 'user', uuid, session_id: 'sess', message: { content }, parent_tool_use_id: null, parent_agent_id: null }
+}
+
 /** 最小 user entry（content 字符串形态） */
 function userMsg(uuid: string, text: string) {
-    return { type: 'user', uuid, session_id: 'sess', message: { content: text }, parent_tool_use_id: null, parent_agent_id: null }
+    return userEntry(uuid, text)
 }
 
 /** 最小 assistant entry（占位） */
@@ -36,18 +41,12 @@ function assistantMsg(uuid: string) {
 
 /** 工具结果载体 user entry（归因到所属轮，不计入轮数） */
 function toolResultMsg(uuid: string) {
-    return {
-        type: 'user', uuid, session_id: 'sess', parent_tool_use_id: null, parent_agent_id: null,
-        message: { content: [{ type: 'tool_result', content: 'ok' }] },
-    }
+    return userEntry(uuid, [{ type: 'tool_result', content: 'ok' }])
 }
 
 /** 中断标记 user entry（真实形态：text blocks 数组，F2 事故 transcript 实录） */
 function interruptMarker(uuid: string) {
-    return {
-        type: 'user', uuid, session_id: 'sess', parent_tool_use_id: null, parent_agent_id: null,
-        message: { content: [{ type: 'text', text: '[Request interrupted by user]' }] },
-    }
+    return userEntry(uuid, [{ type: 'text', text: '[Request interrupted by user]' }])
 }
 
 /** 真实事故形态（2026-09-29，9b4b2bbe）：跨会话入站消息以 user entry 落 transcript，
@@ -122,10 +121,7 @@ describe('analyzeDropRange（rewind 丢弃区间分析：轮数 + 跨会话归�
     it('跨会话条目 text blocks 数组形态同样命中', async () => {
         mocked.mockResolvedValueOnce([
             userMsg('anchor', '回退到这里'),
-            {
-                type: 'user', uuid: 'cs-blocks', session_id: 'sess', parent_tool_use_id: null, parent_agent_id: null,
-                message: { content: [{ type: 'text', text: '<cross-session-message from-name="x">yo</cross-session-message>' }] },
-            },
+            userEntry('cs-blocks', [{ type: 'text', text: '<cross-session-message from-name="x">yo</cross-session-message>' }]),
         ] as never)
 
         await expect(analyzeDropRange('sess', '/dir', 'anchor')).resolves.toEqual({

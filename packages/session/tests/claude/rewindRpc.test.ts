@@ -358,6 +358,18 @@ describe('rewind RPC handlers', () => {
             expect(session.restart.current()).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: false })
         })
 
+        it('复检区间含跨会话条目且单轮量级 → 拒绝（与 dry-run 对称，直连 API 绕过预检的窗口内变化拦住）', async () => {
+            mockedFindAnchor.mockResolvedValue('a1')
+            mockedAnalyzeDropRange.mockResolvedValue({ droppedTurns: 1, crossSessionEntry: 'cs-1' })
+            const { handlers, session } = setup()
+
+            const result = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean; reason: string }
+
+            expect(result.accepted).toBe(false)
+            expect(result.reason).toContain('cross-session')
+            expect(session.restart.current()).toBeNull()
+        })
+
         it('闸门通过（restoreFiles true + rewindFiles 成功）→ accepted 且 filesRestored true', async () => {
             mockedFindAnchor.mockResolvedValue('a1')
             const rewindFiles = vi.fn().mockResolvedValue({ canRewind: true, filesChanged: ['a.txt'] })

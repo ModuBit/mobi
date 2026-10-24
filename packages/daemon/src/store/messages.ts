@@ -17,9 +17,10 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
-import { isObject, isQueueableUserSubmission, normalizeUserContent, unwrapRoleWrappedRecordEnvelope, type CommandLifecycleState, type MessageCategory, type MessageLifecycle, type NativeMessageMetadata } from '@mobi/shared'
+import { isObject, isQueueableUserSubmission, normalizeUserContent, unwrapRoleWrappedRecordEnvelope, type CommandLifecycleState, type ForkFromMetadata, type MessageCategory, type MessageLifecycle, type NativeMessageMetadata } from '@mobi/shared'
 
 import type { StoredMessage } from './types'
+import { getSession } from './sessions'
 import { safeJsonParse } from './json'
 
 type DbMessageRow = {
@@ -190,10 +191,9 @@ export function addMessage(
     // 但 localId 的唯一性契约是会话内（UNIQUE(session_id, local_id)）——同会话复用已被
     // 上方 merge 分支消化，走到这里仍撞全局主键的必然是跨会话复用，此时退化为随机 id，
     // localId 仍写入 local_id 列保留绑定语义，不再炸 UNIQUE constraint 500
-    let id = localId ?? randomUUID()
-    if (localId && db.prepare('SELECT 1 FROM messages WHERE id = ? LIMIT 1').get(localId)) {
-        id = randomUUID()
-    }
+    const id = localId && db.prepare('SELECT 1 FROM messages WHERE id = ? LIMIT 1').get(localId)
+        ? randomUUID()
+        : localId ?? randomUUID()
     const json = JSON.stringify(content)
     const isSidechain = extractIsSidechain(content) ? 1 : 0
     const parentToolUseId = extractParentToolUseId(content)
@@ -393,32 +393,33 @@ export function attachNativeSessionId(
 ): StoredMessage[] {
     const run = db.transaction((): StoredMessage[] => {
         const changed = new Map<string, StoredMessage>()
-        const rows = db.prepare(`
-            SELECT * FROM messages
-            WHERE session_id = ? AND json_extract(COALESCE(metadata, '{}'), '$.nativeSessionId') IS NULL
-        `).all(sessionId) as DbMessageRow[]
         const stmt = db.prepare(
             `UPDATE messages SET metadata = json_set(COALESCE(metadata, '{}'), '$.nativeSessionId', ?) WHERE id = ?`
         )
-        for (const row of rows) {
-            stmt.run(nativeSessionId, row.id)
-            // 事务内行未被并发修改，TS 侧合并 overlay 避免二次回读
-            const merged = { ...parseMetadata(row.metadata), nativeSessionId }
-            changed.set(row.id, { ...toStoredMessage(row), metadata: merged })
-        }
-
-        // fork 链收编：会话 metadata.forkFrom.parentNativeId 命中的行改写为新链 id
-        const parentNativeId = readForkParentNativeId(db, sessionId)
-        if (parentNativeId && parentNativeId !== nativeSessionId) {
-            const legacy = db.prepare(`
-                SELECT * FROM messages
-                WHERE session_id = ? AND json_extract(COALESCE(metadata, '{}'), '$.nativeSessionId') = ?
-            `).all(sessionId, parentNativeId) as DbMessageRow[]
-            for (const row of legacy) {
+        // 改写一批行到新链 id 并入 changed（补写与收编两条来源共用）：事务内行未被并发修改，
+        // TS 侧合并 overlay 避免二次回读
+        const adopt = (rows: DbMessageRow[]): void => {
+            for (const row of rows) {
                 stmt.run(nativeSessionId, row.id)
                 const merged = { ...parseMetadata(row.metadata), nativeSessionId }
                 changed.set(row.id, { ...toStoredMessage(row), metadata: merged })
             }
+        }
+
+        // 补写：缺链 id 的行
+        adopt(db.prepare(`
+            SELECT * FROM messages
+            WHERE session_id = ? AND json_extract(COALESCE(metadata, '{}'), '$.nativeSessionId') IS NULL
+        `).all(sessionId) as DbMessageRow[])
+
+        // fork 链收编：仍带 parent 链 id 的存量复制行改写为新链 id
+        //（sessions.metadata.forkFrom.parentNativeId 溯源收口，非启发式猜）
+        const parentNativeId = readForkParentNativeId(db, sessionId)
+        if (parentNativeId && parentNativeId !== nativeSessionId) {
+            adopt(db.prepare(`
+                SELECT * FROM messages
+                WHERE session_id = ? AND json_extract(COALESCE(metadata, '{}'), '$.nativeSessionId') = ?
+            `).all(sessionId, parentNativeId) as DbMessageRow[])
         }
 
         return [...changed.values()]
@@ -426,22 +427,22 @@ export function attachNativeSessionId(
     return run()
 }
 
-/** fork 会话的 parent 链 id（sessions.metadata.forkFrom.parentNativeId）；非 fork 会话 / 表不可达 → null */
+/** fork 会话的 parent 链 id（sessions.metadata.forkFrom.parentNativeId）；非 fork 会话 → null。
+ *  复用 sessions store 的读取口径（getSession：列结构 + metadata 解析单一来源）。 */
 function readForkParentNativeId(db: Database, sessionId: string): string | null {
+    let forkFrom: ForkFromMetadata | undefined
     try {
-        const row = db.prepare('SELECT metadata FROM sessions WHERE id = ?').get(sessionId) as
-            | { metadata: string | null }
-            | undefined
-        const metadata = safeJsonParse(row?.metadata ?? null)
-        const forkFrom = isObject(metadata)
-            ? (metadata as { forkFrom?: { parentNativeId?: unknown } }).forkFrom
-            : undefined
-        const parentNativeId = forkFrom?.parentNativeId
-        return typeof parentNativeId === 'string' && parentNativeId.length > 0 ? parentNativeId : null
-    } catch {
-        // 模块级裸表测试（无 sessions 表）——跳过收编，语义退回纯补写
+        const session = getSession(db, sessionId)
+        const metadata = session?.metadata
+        forkFrom = isObject(metadata) ? (metadata as { forkFrom?: ForkFromMetadata }).forkFrom : undefined
+    } catch (e) {
+        // 模块级裸表测试（无 sessions 表）——跳过收编，语义退回纯补写；
+        // 其余错误（db locked / IO 等，生产环境）如实上抛，不让收编静默失效
+        if (!(e instanceof Error) || !e.message.includes('no such table')) throw e
         return null
     }
+    const parentNativeId = forkFrom?.parentNativeId
+    return typeof parentNativeId === 'string' && parentNativeId.length > 0 ? parentNativeId : null
 }
 
 /** 软删除：seq >= fromSeq 且未删的行打 deleted_at（rewind 截断；行保留兜底可找回）。

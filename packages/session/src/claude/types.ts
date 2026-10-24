@@ -48,6 +48,11 @@ const RawJSONLinesBaseSchema = z.object({
   version: z.string().optional(),
   gitBranch: z.string().optional(),
   timestamp: z.string().optional(),
+  /** mobi 合成标记：uuid 是 mobi 随机生成的去重键而非 SDK/transcript native 锚
+   *  （流式 abort 补全 / 中断 tool_result / SDK 消息缺 uuid 兜底）。发送端咽喉点
+   *  （sendClaudeSessionMessage）据此不 claim metadata.nativeId——谎报会让 Web 把
+   *  合成行当 fork/rewind 锚点（daemon 校验必失败）。声明于此获得类型级单一事实源。 */
+  mobiSyntheticUuid: z.boolean().optional(),
 });
 
 /**

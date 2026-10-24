@@ -501,7 +501,7 @@ export class SessionChannel {
             // 兜底）不在 transcript 里——谎报 nativeId 会让 Web 把它当 fork 落点（daemon
             // forkSession 锚点校验必失败）。localId 仍用该 uuid 供去重；nativeSessionId
             // 由 daemon 受理点 enrich / attach 兜底补链
-            metadata: (body as { mobiSyntheticUuid?: unknown }).mobiSyntheticUuid === true
+            metadata: body.mobiSyntheticUuid === true
                 ? undefined
                 : { nativeId: body.uuid, nativeSessionId: body.session_id || undefined },
             category,

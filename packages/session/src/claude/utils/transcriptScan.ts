@@ -98,10 +98,10 @@ function isCrossSessionEntry(entry: SessionMessage): boolean {
 
 /** user entry 是否为「轮 prompt」（一个新 turn 的起点）——丢弃区间轮数的计数单位。
  *  归因到所属轮、不算新 turn 的载体：tool_result 载体（数组含 tool_result block）、
- *  合成中断标记、跨会话入站消息（CC 轮内吸收，SDK 归因校验视其为所属轮的一部分）。 */
+ *  合成中断标记。跨会话入站消息的归口在调用方（analyzeDropRange 先行 continue），
+ *  本谓词不再复检。 */
 function isTurnPromptEntry(entry: SessionMessage): boolean {
     if (entry.type !== 'user') return false
-    if (isCrossSessionEntry(entry)) return false
     const content = (entry.message as { content?: unknown } | null | undefined)?.content
     if (typeof content === 'string') return !INTERRUPT_MARKER_RE.test(content)
     if (Array.isArray(content)) {
