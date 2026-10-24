@@ -99,7 +99,10 @@ function isCrossSessionEntry(entry: SessionMessage): boolean {
 /** user entry 是否为「轮 prompt」（一个新 turn 的起点）——丢弃区间轮数的计数单位。
  *  归因到所属轮、不算新 turn 的载体：tool_result 载体（数组含 tool_result block）、
  *  合成中断标记。跨会话入站消息的归口在调用方（analyzeDropRange 先行 continue），
- *  本谓词不再复检。 */
+ *  本谓词不再复检。
+ *  计数偏差方向的不对称代价：低估（漏计真实轮）→ 单轮误判错误携带守卫 → CLI
+ *  deterministic 拒绝、rewind 必失败；高估 → 多轮误判省略守卫 → 丢防呆但回退成功。
+ *  故无 text block 的非载体形态（如仅图片的截图轮）按 prompt 计。 */
 function isTurnPromptEntry(entry: SessionMessage): boolean {
     if (entry.type !== 'user') return false
     const content = (entry.message as { content?: unknown } | null | undefined)?.content
@@ -107,11 +110,12 @@ function isTurnPromptEntry(entry: SessionMessage): boolean {
     if (Array.isArray(content)) {
         // tool_result 载体归因到发起 tool_use 的轮
         if (content.some((b) => (b as { type?: unknown } | null)?.type === 'tool_result')) return false
-        const text = content
-            .filter((b) => (b as { type?: unknown } | null)?.type === 'text')
-            .map((b) => (b as { text?: unknown }).text)
-            .join(' ')
-        return text.length > 0 && !INTERRUPT_MARKER_RE.test(text)
+        // 中断标记按 block 逐个比对（标记块未必在数组首位，join 后 ^ 锚会失配）
+        return !content.some((b) => {
+            if ((b as { type?: unknown } | null)?.type !== 'text') return false
+            const text = (b as { text?: unknown }).text
+            return typeof text === 'string' && INTERRUPT_MARKER_RE.test(text)
+        })
     }
     return false
 }
@@ -144,9 +148,14 @@ export async function analyzeDropRange(
     let pastAnchor = false
     let droppedTurns = 0
     let crossSessionEntry: string | null = null
+    // 是否完整扫到 transcript 末尾（空页 / 末页不满）；页数耗尽时计数被截断
+    let complete = false
     for (let page = 0; page < MAX_PAGES; page++) {
         const messages = await getSessionMessages(sessionId, { dir, limit: PAGE_SIZE, offset: page * PAGE_SIZE })
-        if (messages.length === 0) break
+        if (messages.length === 0) {
+            complete = true
+            break
+        }
         for (const entry of messages) {
             if (!pastAnchor) {
                 if (entry.uuid === anchorUuid) pastAnchor = true
@@ -158,7 +167,16 @@ export async function analyzeDropRange(
             }
             if (isTurnPromptEntry(entry)) droppedTurns++
         }
-        if (messages.length < PAGE_SIZE) break
+        if (messages.length < PAGE_SIZE) {
+            complete = true
+            break
+        }
+    }
+    // 页数耗尽仍未到末尾：区间超出扫描窗口，轮数是截断值——不可作守卫判定依据，
+    // 返回 null 让调用方走「分析不可得」分支（对齐 scanTranscriptForUuid 的 exceed 告警）
+    if (!complete) {
+        logger.warn(`[transcriptScan] analyzeDropRange exceeded MAX_PAGES (${MAX_PAGES}) after anchor ${anchorUuid}`)
+        return null
     }
     return pastAnchor ? { droppedTurns, crossSessionEntry } : null
 }

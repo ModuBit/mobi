@@ -34,6 +34,12 @@ describe('addMessage id 分配（跨会话 localId 复用兜底）', () => {
     let db: Database
     beforeEach(() => { db = makeDb() })
 
+    test('空串 localId 与缺失同义：id 退化随机、local_id 不落空串（API 直调可传 ""）', () => {
+        const msg = addMessage(db, 's1', WEBAPP_USER, '')
+        expect(msg.id).not.toBe('')
+        expect(msg.localId ?? null).toBeNull()
+    })
+
     test('跨会话复用同一 localId：两行均成功入库，第二行 id 退化为随机且 local_id 保留', () => {
         // localId 的唯一性契约是会话内（UNIQUE(session_id, local_id)）；
         // API 调用方跨会话复用同一 localId 不应撞 messages.id 全局主键 500

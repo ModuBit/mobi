@@ -22,11 +22,10 @@ import { FolderGit2, MessageSquare, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { truncateRewindPreview } from '@/domain/chat/rewind'
 
-/** dry-run 预检结果（daemon POST /api/sessions/:id/rewind/dry-run 响应体） */
-export type RewindDryRunResult = {
-    canRewind: boolean
-    canRestoreFiles: boolean
-}
+/** dry-run 预检结果（单一事实源在 core/data/api/client.ts 的 RewindDryRunResult，
+ *  此处再导出保持既有消费方 import 路径不变） */
+import type { RewindDryRunResult } from '@/core/data/api/client'
+export type { RewindDryRunResult }
 
 export interface RewindConfirmViewProps {
     /** 回退目标消息原文（预览用；null = 无原文不渲染预览卡片） */

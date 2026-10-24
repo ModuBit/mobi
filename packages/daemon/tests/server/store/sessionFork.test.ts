@@ -355,6 +355,35 @@ describe('sessionFork.createFork：建行 + turn 复制 + 溯源消息', () => {
         expect(store.messages.attachNativeSessionId(forkId, forkNative)).toHaveLength(0)
     })
 
+    test('多级 fork 存量收编：孙会话复制行带祖父链 id（forkFrom 直接 parent 之外）同样收编', () => {
+        const { store, parent } = makeParent()
+        seedStandardTranscript(store, parent.id)
+        const fork1 = forkStandard(store, parent)
+        const fork1Native = (store.sessions.getSession(fork1.sessionId)!.metadata as Record<string, unknown>).nativeSessionId as string
+
+        // 孙会话：现行链路禁止 fork-of-fork，此处模拟旧语义时代的存量形态——手工建行
+        // 并写 forkFrom（parent = fork1），其复制行带的是祖父链 id（parent-native-1）
+        const grand = store.sessions.getOrCreateSession(
+            'fork-grand', { path: '/tmp/proj', host: 'h-1', nativeSessionId: 'grand-native' }, null, 'default',
+            { model: 'opus', effort: 'high', outputStyle: 'default', permissionMode: 'default' },
+        )
+        store.sessions.updateSessionMetadata(grand.id, {
+            nativeSessionId: 'grand-native',
+            forkFrom: { parentSessionId: fork1.sessionId, parentNativeId: fork1Native, anchorNativeId: 'anchor-native' },
+        }, grand.metadataVersion, 'default')
+        store.messages.addMessage(grand.id, userMsg('孙会话存量复制行'), 'g-1', 'persistent', {
+            nativeId: 'g-native', nativeSessionId: 'parent-native-1',
+        })
+
+        const attached = store.messages.attachNativeSessionId(grand.id, 'grand-native')
+
+        // 祖父链 id 命中祖先上溯，收编到孙会话新链
+        const after = store.messages.getMessages(grand.id, 200)
+        expect(after.every(m => m.metadata?.nativeSessionId === 'grand-native')).toBe(true)
+        const adopted = attached.find(m => m.metadata?.nativeId === 'g-native')
+        expect(adopted?.metadata?.nativeSessionId).toBe('grand-native')
+    })
+
     test('lifecycle 重置中性值：已推进（pushed）的复制行 lifecycle/lifecycleAt 置 null', () => {
         const { store, parent } = makeParent()
         seedStandardTranscript(store, parent.id)

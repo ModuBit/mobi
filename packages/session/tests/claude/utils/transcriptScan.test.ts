@@ -105,6 +105,42 @@ describe('analyzeDropRange（rewind 丢弃区间分析：轮数 + 跨会话归�
         })
     })
 
+    it('仅图片的截图轮（无 text block、非载体）→ 计入轮数（低估会让单轮误判携带守卫，CLI 必拒）', async () => {
+        mocked.mockResolvedValueOnce([
+            assistantMsg('a1'),
+            userMsg('target', '回退我'),
+            userEntry('img-turn', [{ type: 'image', source: { type: 'base64' } }]),
+        ] as never)
+
+        await expect(analyzeDropRange('sess', '/dir', 'a1')).resolves.toEqual({
+            droppedTurns: 2,
+            crossSessionEntry: null,
+        })
+    })
+
+    it('中断标记 text block 不在数组首位 → 仍识别为标记不计轮（join 后 ^ 锚失配的坑）', async () => {
+        mocked.mockResolvedValueOnce([
+            assistantMsg('a1'),
+            userEntry('mk-late', [
+                { type: 'text', text: '前置说明' },
+                { type: 'text', text: '[Request cancelled by user]' },
+            ]),
+        ] as never)
+
+        await expect(analyzeDropRange('sess', '/dir', 'a1')).resolves.toEqual({
+            droppedTurns: 0,
+            crossSessionEntry: null,
+        })
+    })
+
+    it('区间超出扫描窗口（MAX_PAGES 耗尽仍未到末页）→ 返回 null，不用截断计数作判定依据', async () => {
+        // 每页恒满 PAGE_SIZE：永不出现「末页不满」，页数耗尽 → 截断
+        mocked.mockImplementation(async (_sid: string, opts: { limit: number }) =>
+            Array.from({ length: opts.limit }, (_, i) => userMsg(`u-${opts.offset}-${i}`, 'x')) as never)
+
+        await expect(analyzeDropRange('sess', '/dir', 'u-0-0')).resolves.toBeNull()
+    })
+
     it('区间含跨会话条目 → 不计入轮数但 crossSessionEntry 返回其 uuid（守卫单轮路径据此预检拒绝）', async () => {
         mocked.mockResolvedValueOnce([
             assistantMsg('a1'),

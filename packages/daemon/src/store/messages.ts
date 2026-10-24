@@ -142,6 +142,10 @@ export function addMessage(
 ): StoredMessage {
     const now = Date.now()
 
+    // 空串 localId 与缺失同义（API 直调方可传 ''）——统一归一为 null，
+    // 防 id 分支退化成 '' 撞全局主键 / local_id 落入空串歧义
+    if (localId === '') localId = null
+
     if (localId) {
         const existing = db.prepare(
             'SELECT * FROM messages WHERE session_id = ? AND local_id = ? LIMIT 1'
@@ -412,14 +416,16 @@ export function attachNativeSessionId(
             WHERE session_id = ? AND json_extract(COALESCE(metadata, '{}'), '$.nativeSessionId') IS NULL
         `).all(sessionId) as DbMessageRow[])
 
-        // fork 链收编：仍带 parent 链 id 的存量复制行改写为新链 id
-        //（sessions.metadata.forkFrom.parentNativeId 溯源收口，非启发式猜）
-        const parentNativeId = readForkParentNativeId(db, sessionId)
-        if (parentNativeId && parentNativeId !== nativeSessionId) {
+        // fork 链收编：仍带任一祖先链 id 的存量复制行改写为新链 id（沿 forkFrom 逐级
+        // 上溯溯源收口，非启发式猜——存量多级 fork 的孙会话复制行带的是祖父链 id，
+        // 只看直接 parent 会漏收编）
+        const ancestorIds = readForkAncestorNativeIds(db, sessionId)
+            .filter((id) => id !== nativeSessionId)
+        if (ancestorIds.length > 0) {
             adopt(db.prepare(`
                 SELECT * FROM messages
-                WHERE session_id = ? AND json_extract(COALESCE(metadata, '{}'), '$.nativeSessionId') = ?
-            `).all(sessionId, parentNativeId) as DbMessageRow[])
+                WHERE session_id = ? AND json_extract(COALESCE(metadata, '{}'), '$.nativeSessionId') IN (${ancestorIds.map(() => '?').join(',')})
+            `).all(sessionId, ...ancestorIds) as DbMessageRow[])
         }
 
         return [...changed.values()]
@@ -427,22 +433,31 @@ export function attachNativeSessionId(
     return run()
 }
 
-/** fork 会话的 parent 链 id（sessions.metadata.forkFrom.parentNativeId）；非 fork 会话 → null。
- *  复用 sessions store 的读取口径（getSession：列结构 + metadata 解析单一来源）。 */
-function readForkParentNativeId(db: Database, sessionId: string): string | null {
-    let forkFrom: ForkFromMetadata | undefined
+/** fork 会话的全部祖先链 id（沿 sessions.metadata.forkFrom 逐级上溯，含直接 parent 的
+ *  nativeSessionId）；非 fork 会话 → 空数组。复用 sessions store 的读取口径（getSession：
+ *  列结构 + metadata 解析单一来源）。环状脏数据（A fork B、B fork A）由 visited 防护截断。 */
+function readForkAncestorNativeIds(db: Database, sessionId: string): string[] {
+    const ids: string[] = []
+    const visited = new Set<string>([sessionId])
+    let current: string | null = sessionId
     try {
-        const session = getSession(db, sessionId)
-        const metadata = session?.metadata
-        forkFrom = isObject(metadata) ? (metadata as { forkFrom?: ForkFromMetadata }).forkFrom : undefined
+        while (current !== null) {
+            const session = getSession(db, current)
+            const metadata = session?.metadata
+            const forkFrom = isObject(metadata) ? (metadata as { forkFrom?: ForkFromMetadata }).forkFrom : undefined
+            const parentSessionId = forkFrom?.parentSessionId
+            if (!forkFrom || typeof parentSessionId !== 'string' || visited.has(parentSessionId)) break
+            ids.push(forkFrom.parentNativeId)
+            visited.add(parentSessionId)
+            current = parentSessionId
+        }
+        return ids
     } catch (e) {
         // 模块级裸表测试（无 sessions 表）——跳过收编，语义退回纯补写；
         // 其余错误（db locked / IO 等，生产环境）如实上抛，不让收编静默失效
         if (!(e instanceof Error) || !e.message.includes('no such table')) throw e
-        return null
+        return []
     }
-    const parentNativeId = forkFrom?.parentNativeId
-    return typeof parentNativeId === 'string' && parentNativeId.length > 0 ? parentNativeId : null
 }
 
 /** 软删除：seq >= fromSeq 且未删的行打 deleted_at（rewind 截断；行保留兜底可找回）。

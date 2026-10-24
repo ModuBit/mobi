@@ -136,6 +136,17 @@ describe('rewind RPC handlers', () => {
             expect(result).toEqual({ canRewind: true, canRestoreFiles: true, droppedTurns: 3 })
         })
 
+        it('分析不可得（超页 / 窗口内 transcript 变化）→ droppedTurns 缺省透出，不当 0 轮解读', async () => {
+            mockedFindAnchor.mockResolvedValue('a1')
+            mockedAnalyzeDropRange.mockResolvedValue(null)
+            const { handlers } = setup({ rewindFiles: vi.fn().mockResolvedValue({ canRewind: true }) })
+
+            const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; droppedTurns?: number }
+
+            expect(result.canRewind).toBe(true)
+            expect(result.droppedTurns).toBeUndefined()
+        })
+
         it('rewindFiles dryRun canRewind false → canRestoreFiles false（动态降级）', async () => {
             mockedFindAnchor.mockResolvedValue('a1')
             const { handlers } = setup({ rewindFiles: vi.fn().mockResolvedValue({ canRewind: false, error: 'checkpoint window exceeded' }) })
@@ -368,6 +379,17 @@ describe('rewind RPC handlers', () => {
             expect(result.accepted).toBe(false)
             expect(result.reason).toContain('cross-session')
             expect(session.restart.current()).toBeNull()
+        })
+
+        it('分析不可得 → 保守携带守卫（单轮照常校验成功；多轮 CLI 拒绝走 refusal recovery，不静默丢跨会话消息）', async () => {
+            mockedFindAnchor.mockResolvedValue('a1')
+            mockedAnalyzeDropRange.mockResolvedValue(null)
+            const { handlers, session } = setup()
+
+            const result = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean }
+
+            expect(result.accepted).toBe(true)
+            expect(session.restart.current()).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: false, dropsTurn: 'u1' })
         })
 
         it('闸门通过（restoreFiles true + rewindFiles 成功）→ accepted 且 filesRestored true', async () => {
