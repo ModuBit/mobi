@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import { randomUUID } from 'node:crypto'
+
 import { buildUiAnchorMeta, isMobiDelivered, normalizeUserContent, toCrossSessionMeta } from '@mobi/shared'
 import type { CrossSessionOrigin, UiMessageOrigin } from '@mobi/shared'
 import type { DecryptedMessage } from '@mobi/shared/types'
@@ -172,7 +174,10 @@ export class MessageService {
             }
         }
 
-        const msg = this.store.messages.addMessage(sessionId, content, payload.localId ?? undefined)
+        // localId 兜底（rewind-remediation 票 03）：nativeId 回绑按 localId 配对——API 直调方
+        // （curl / agent）不带 localId 时若无兜底，该消息永不可 rewind。受理点是绑定语义的
+        // 唯一所有者，不要求各调用方补传；web 前端恒带 localId，零感知
+        const msg = this.store.messages.addMessage(sessionId, content, payload.localId ?? randomUUID())
         const message = toDecryptedMessage(msg)
 
         // 跨会话投递已经由 push-agent-message RPC 把消息推进目标 CLI 的 input stream，

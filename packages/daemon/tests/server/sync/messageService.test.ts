@@ -308,3 +308,38 @@ describe('MessageService 出口剥离 tool_result 重内容', () => {
         expect(JSON.stringify(original)).toContain(BIG)
     })
 })
+
+/** sendMessage 落库断言用最小替身：捕获 addMessage 入参并回放一条已落库行 */
+function makeSendService() {
+    const added: { sessionId: string; localId: string | undefined }[] = []
+    const stored = msg(1, { lifecycle: null })
+    const store = {
+        messages: {
+            addMessage: (sid: string, _content: unknown, localId?: string) => {
+                added.push({ sessionId: sid, localId })
+                return { ...stored, localId: localId ?? null }
+            },
+        },
+    }
+    const io = { of: () => ({ to: () => ({ emit: () => {}, except: () => ({ emit: () => {} }) }) }) }
+    const published: unknown[] = []
+    const publisher = { emit: (e: unknown) => published.push(e) }
+    const service = new MessageService(store as never, io as never, publisher as never)
+    return { service, added, published }
+}
+
+describe('MessageService.sendMessage：localId 兜底（rewind-remediation 票 03）', () => {
+    test('不带 localId → 落库前生成兜底 uuid（nativeId 回绑按 localId 配对，缺失则永不可 rewind）', async () => {
+        const { service, added } = makeSendService()
+        await service.sendMessage('s1', { content: 'hi' })
+        expect(added).toHaveLength(1)
+        expect(added[0].localId).toEqual(expect.any(String))
+        expect(added[0].localId!.length).toBeGreaterThanOrEqual(32)
+    })
+
+    test('带 localId → 原样保留（web 前端回显合并依赖它）', async () => {
+        const { service, added } = makeSendService()
+        await service.sendMessage('s1', { content: 'hi', localId: 'loc-1' })
+        expect(added[0].localId).toBe('loc-1')
+    })
+})
