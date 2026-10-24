@@ -24,17 +24,17 @@ vi.mock('../../src/claude/utils/rewindAnchor', () => ({
     findRewindAnchor: vi.fn(),
 }))
 vi.mock('../../src/claude/utils/transcriptScan', () => ({
-    findCrossSessionEntryAfter: vi.fn(),
+    analyzeDropRange: vi.fn(),
 }))
 vi.mock('@mobi/node-core/logger', () => ({
     logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
 }))
 
 import { findRewindAnchor } from '../../src/claude/utils/rewindAnchor'
-import { findCrossSessionEntryAfter } from '../../src/claude/utils/transcriptScan'
+import { analyzeDropRange } from '../../src/claude/utils/transcriptScan'
 
 const mockedFindAnchor = vi.mocked(findRewindAnchor)
-const mockedCrossSession = vi.mocked(findCrossSessionEntryAfter)
+const mockedAnalyzeDropRange = vi.mocked(analyzeDropRange)
 
 /** 装配 handler 并返回捕获的处理函数表 */
 function setup(opts: {
@@ -87,7 +87,9 @@ function setup(opts: {
 describe('rewind RPC handlers', () => {
     beforeEach(() => {
         mockedFindAnchor.mockReset()
-        mockedCrossSession.mockReset()
+        // 默认单轮区间（带守卫）：多数用例的基线形态
+        mockedAnalyzeDropRange.mockReset()
+        mockedAnalyzeDropRange.mockResolvedValue({ droppedTurns: 1, crossSessionEntry: null })
     })
 
     describe('rewind-dry-run', () => {
@@ -111,15 +113,27 @@ describe('rewind RPC handlers', () => {
             expect(mockedFindAnchor).not.toHaveBeenCalled()
         })
 
-        it('锚点存在 + rewindFiles dryRun canRewind true → 双 true', async () => {
+        it('锚点存在 + rewindFiles dryRun canRewind true → 双 true + droppedTurns 透出', async () => {
             mockedFindAnchor.mockResolvedValue('a1')
             const rewindFiles = vi.fn().mockResolvedValue({ canRewind: true })
             const { handlers } = setup({ rewindFiles })
 
             const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; canRestoreFiles: boolean }
 
-            expect(result).toEqual({ canRewind: true, canRestoreFiles: true })
+            expect(result).toEqual({ canRewind: true, canRestoreFiles: true, droppedTurns: 1 })
             expect(rewindFiles).toHaveBeenCalledWith('u1', { dryRun: true })
+            // 区间分析以保留锚为起点（锚后才是丢弃区间）
+            expect(mockedAnalyzeDropRange).toHaveBeenCalledWith('native-sess-1', '/work/dir', 'a1')
+        })
+
+        it('多轮区间 → canRewind true 且 droppedTurns 如实透出（多轮可回退）', async () => {
+            mockedFindAnchor.mockResolvedValue('a1')
+            mockedAnalyzeDropRange.mockResolvedValue({ droppedTurns: 3, crossSessionEntry: null })
+            const { handlers } = setup({ rewindFiles: vi.fn().mockResolvedValue({ canRewind: true }) })
+
+            const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; droppedTurns: number }
+
+            expect(result).toEqual({ canRewind: true, canRestoreFiles: true, droppedTurns: 3 })
         })
 
         it('rewindFiles dryRun canRewind false → canRestoreFiles false（动态降级）', async () => {
@@ -159,28 +173,40 @@ describe('rewind RPC handlers', () => {
             expect(mockedFindAnchor).not.toHaveBeenCalled()
         })
 
-        it('丢弃区间含跨会话条目 → canRewind false（SDK --resume-drops-turn 必拒，提前拒绝）', async () => {
+        it('丢弃区间含跨会话条目且区间单轮 → canRewind false（守卫路径 SDK 必拒，提前拒绝）', async () => {
             mockedFindAnchor.mockResolvedValue('a1')
-            mockedCrossSession.mockResolvedValue('cs-1')
+            mockedAnalyzeDropRange.mockResolvedValue({ droppedTurns: 1, crossSessionEntry: 'cs-1' })
             const { handlers } = setup()
 
             const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; reason?: string }
 
             expect(result.canRewind).toBe(false)
             expect(result.reason).toContain('cross-session')
-            // 区间归因预检以保留锚为起点（锚后才是丢弃区间）
-            expect(mockedCrossSession).toHaveBeenCalledWith('native-sess-1', '/work/dir', 'a1')
+            // 区间分析以保留锚为起点（锚后才是丢弃区间）
+            expect(mockedAnalyzeDropRange).toHaveBeenCalledWith('native-sess-1', '/work/dir', 'a1')
+        })
+
+        it('丢弃区间含跨会话条目但跨多轮 → 放行（省略守卫，截断照常成功）', async () => {
+            mockedFindAnchor.mockResolvedValue('a1')
+            mockedAnalyzeDropRange.mockResolvedValue({ droppedTurns: 2, crossSessionEntry: 'cs-1' })
+            const rewindFiles = vi.fn().mockResolvedValue({ canRewind: true })
+            const { handlers } = setup({ rewindFiles })
+
+            const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; droppedTurns: number }
+
+            expect(result.canRewind).toBe(true)
+            expect(result.droppedTurns).toBe(2)
         })
 
         it('丢弃区间无跨会话条目 → 放行进入 rewindFiles dryRun', async () => {
             mockedFindAnchor.mockResolvedValue('a1')
-            mockedCrossSession.mockResolvedValue(null)
+            mockedAnalyzeDropRange.mockResolvedValue({ droppedTurns: 1, crossSessionEntry: null })
             const rewindFiles = vi.fn().mockResolvedValue({ canRewind: true })
             const { handlers } = setup({ rewindFiles })
 
             const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; canRestoreFiles: boolean }
 
-            expect(result).toEqual({ canRewind: true, canRestoreFiles: true })
+            expect(result).toEqual({ canRewind: true, canRestoreFiles: true, droppedTurns: 1 })
         })
     })
 
@@ -214,7 +240,7 @@ describe('rewind RPC handlers', () => {
             // 第一个请求正常完成
             releaseRestore!()
             expect(await first).toEqual({ accepted: true })
-            expect(session.restart.current()).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: true })
+            expect(session.restart.current()).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: true, dropsTurn: 'u1' })
             expect(session.restart.busy).toBe(true)
         })
 
@@ -229,7 +255,7 @@ describe('rewind RPC handlers', () => {
             // 第二次：同样的请求可重新走完整流程并受理
             const second = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean }
             expect(second.accepted).toBe(true)
-            expect(session.restart.current()).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: false })
+            expect(session.restart.current()).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: false, dropsTurn: 'u1' })
         })
 
         it('队列非空 → 拒绝且不清队列', async () => {
@@ -311,13 +337,25 @@ describe('rewind RPC handlers', () => {
             const result = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean }
 
             expect(result.accepted).toBe(true)
-            // restart 请求（launcher 下轮消费）：文件未回滚
-            expect(session.restart.current()).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: false })
+            // restart 请求（launcher 下轮消费）：文件未回滚；单轮区间携带守卫 dropsTurn
+            expect(session.restart.current()).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: false, dropsTurn: 'u1' })
             // 哨兵以 isolate 入队（清队已在闸门前保证空队列）：下次 collect 单独取出，供 launcher nextMessage 识别退出
             expect(messageQueue.size()).toBe(1)
             const batch = await messageQueue.waitForMessagesAndGetAsString()
             expect(batch?.isolate).toBe(true)
             expect(batch?.message).toBe(RESTART_EXIT_SENTINEL)
+        })
+
+        it('多轮区间 → restart 请求省略 dropsTurn（未校验截断，SDK 不会拒绝）', async () => {
+            mockedFindAnchor.mockResolvedValue('a1')
+            mockedAnalyzeDropRange.mockResolvedValue({ droppedTurns: 2, crossSessionEntry: null })
+            const { handlers, session } = setup()
+
+            const result = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean }
+
+            expect(result.accepted).toBe(true)
+            // dropsTurn 键不存在（undefined 不落 restart 请求）——options 装配自然省略
+            expect(session.restart.current()).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: false })
         })
 
         it('闸门通过（restoreFiles true + rewindFiles 成功）→ accepted 且 filesRestored true', async () => {
@@ -330,7 +368,7 @@ describe('rewind RPC handlers', () => {
             expect(result.accepted).toBe(true)
             // 文件回滚先于截断（截断前 checkpoint 才有效），结果携带进 restart 请求供终态回报
             expect(rewindFiles).toHaveBeenCalledWith('u1')
-            expect(session.restart.current()).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: true })
+            expect(session.restart.current()).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: true, dropsTurn: 'u1' })
         })
     })
 })

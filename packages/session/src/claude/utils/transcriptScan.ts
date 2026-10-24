@@ -74,6 +74,11 @@ export async function scanTranscriptForUuid(
 /** 跨会话入站消息在 transcript 里的标记前缀（CC 原生 SendMessage 写入的 user entry 载体） */
 const CROSS_SESSION_MARKER = '<cross-session-message'
 
+/** CC 合成中断标记的已知前缀（归因到被中断的轮，不算新 turn prompt；真实形态实录：
+ *  text blocks 数组 "[Request interrupted by user]"、字符串 "[Request interrupted by
+ *  user for tool use]" 等，正则覆盖 interrupted/cancelled 变体） */
+const INTERRUPT_MARKER_RE = /^\[Request (?:interrupted|cancelled)/
+
 /**
  * user entry 是否为跨会话入站消息（content 字符串 / text blocks 两种形态都覆盖；
  * 非字符串 content 一律按「不是」——宽松消费，误判代价由 SDK 归因校验兜底）。
@@ -91,33 +96,69 @@ function isCrossSessionEntry(entry: SessionMessage): boolean {
     return false
 }
 
+/** user entry 是否为「轮 prompt」（一个新 turn 的起点）——丢弃区间轮数的计数单位。
+ *  归因到所属轮、不算新 turn 的载体：tool_result 载体（数组含 tool_result block）、
+ *  合成中断标记、跨会话入站消息（CC 轮内吸收，SDK 归因校验视其为所属轮的一部分）。 */
+function isTurnPromptEntry(entry: SessionMessage): boolean {
+    if (entry.type !== 'user') return false
+    if (isCrossSessionEntry(entry)) return false
+    const content = (entry.message as { content?: unknown } | null | undefined)?.content
+    if (typeof content === 'string') return !INTERRUPT_MARKER_RE.test(content)
+    if (Array.isArray(content)) {
+        // tool_result 载体归因到发起 tool_use 的轮
+        if (content.some((b) => (b as { type?: unknown } | null)?.type === 'tool_result')) return false
+        const text = content
+            .filter((b) => (b as { type?: unknown } | null)?.type === 'text')
+            .map((b) => (b as { text?: unknown }).text)
+            .join(' ')
+        return text.length > 0 && !INTERRUPT_MARKER_RE.test(text)
+    }
+    return false
+}
+
+/** rewind 丢弃区间分析结果（锚点之后到 transcript 末尾） */
+export interface DropRangeAnalysis {
+    /** 区间内「轮 prompt」user entry 数——恰为 1 时 rewind 才携带 resumeDropsTurn 守卫
+     *  （CLI 只接受丢弃区间恰好等于声明的一轮，多轮必拒；跨多轮省略守卫走未校验截断） */
+    droppedTurns: number
+    /** 区间内首条跨会话入站 user entry 的 uuid；无则 null（单轮守卫路径据此预检拒绝） */
+    crossSessionEntry: string | null
+}
+
 /**
- * rewind 丢弃区间（afterUuid 之后到 transcript 末尾）的跨会话归因预检：
- * 返回区间内首条跨会话 user entry 的 uuid，无则 null。
+ * rewind 丢弃区间分析（anchorUuid 之后到 transcript 末尾）：一次遍历同时产出
+ * 区间轮数与跨会话归因，供 rewind dry-run / 执行侧决定是否携带 resumeDropsTurn 守卫。
  *
- * 为何需要：SDK `--resume-drops-turn` 要求丢弃区间内所有条目归因到声明的 turn，
- * 跨会话入站消息（其他会话经 UDS 直连写入的 user entry）无法归因 → 整个 resume
- * 被拒（2026-09-29 实踩：rewind 报「成功」实际两次都被拒）。在 dry-run 预检掉，
- * 免掉「点了确认必失败」的体验断点；锚点不存在（transcript 已变）返回 null 放行，
- * 执行阶段的 SDK 校验兜底。
+ * 为何需要轮数：SDK `--resume-drops-turn` 要求丢弃区间内所有条目归因到声明的一轮，
+ * 区间跨多轮（中断后队列照跑 / 回退更早消息）→ CLI deterministic 拒绝；省略守卫
+ * 则退化为未校验截断（SDK 官方语义：Omit to keep the unvalidated truncation behavior），
+ * 同 id 同文件、多轮回退照常成功。
+ *
+ * 锚点不存在（transcript 已变）返回 null：调用方保守省略守卫，SDK 兜底。
  */
-export async function findCrossSessionEntryAfter(
+export async function analyzeDropRange(
     sessionId: string,
     dir: string,
-    afterUuid: string,
-): Promise<string | null> {
+    anchorUuid: string,
+): Promise<DropRangeAnalysis | null> {
     let pastAnchor = false
+    let droppedTurns = 0
+    let crossSessionEntry: string | null = null
     for (let page = 0; page < MAX_PAGES; page++) {
         const messages = await getSessionMessages(sessionId, { dir, limit: PAGE_SIZE, offset: page * PAGE_SIZE })
-        if (messages.length === 0) return null
+        if (messages.length === 0) break
         for (const entry of messages) {
             if (!pastAnchor) {
-                if (entry.uuid === afterUuid) pastAnchor = true
+                if (entry.uuid === anchorUuid) pastAnchor = true
                 continue
             }
-            if (isCrossSessionEntry(entry)) return entry.uuid
+            if (isCrossSessionEntry(entry)) {
+                crossSessionEntry ??= entry.uuid
+                continue
+            }
+            if (isTurnPromptEntry(entry)) droppedTurns++
         }
-        if (messages.length < PAGE_SIZE) return null
+        if (messages.length < PAGE_SIZE) break
     }
-    return null
+    return pastAnchor ? { droppedTurns, crossSessionEntry } : null
 }

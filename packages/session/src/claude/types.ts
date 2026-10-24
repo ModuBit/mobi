@@ -163,12 +163,15 @@ export type QueryControlRef = {
 export type PendingRewind = {
   /** rewind 目标用户消息的 native uuid（transcript 锚点） */
   nativeId: string
-  /** resumeSessionAt 保留锚（锚点前最近一条 assistant entry uuid），截断重启用 */
+  /** resumeSessionAt 保留锚（锚点前最近一条 user/assistant entry uuid），截断重启用 */
   resumeAt: string
   /** 文件是否已在受理阶段回滚成功（截断前执行——截断后 checkpoint 作废，PoC poc8 实测） */
   filesRestored: boolean
   /** 被安全护栏跳过的文件数（spec E2）；来自 rewindFiles 结果 */
   skippedLinks?: number
+  /** resumeDropsTurn 守卫（= 目标消息 uuid）：仅丢弃区间恰好单轮时携带——CLI 守卫只接受
+   *  区间归因到声明的一轮，跨多轮必拒，此时省略走未校验截断（rewind-remediation 票 01） */
+  dropsTurn?: string
 }
 
 export interface EnhancedMode {

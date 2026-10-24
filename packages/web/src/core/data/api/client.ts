@@ -148,9 +148,10 @@ export function createMobiApi() {
             stopTask: (sessionId: string, taskId: string) =>
                 client.post(`/api/sessions/${sessionId}/stop-task`, { taskId }),
             // rewind 预检：校验 transcript 锚点存在性 + 文件快照可恢复性（结果驱动确认弹窗三形态）；
-            // reason 为 CLI 拒绝原因（链首 /clear 引导等，经 rewindRejectReasonKey 映射文案）
+            // reason 为 CLI 拒绝原因（链首 /clear 引导等，经 rewindRejectReasonKey 映射文案）；
+            // droppedTurns 为丢弃区间轮数（可观测性透出，多轮区间在 CLI 侧省略守卫照常回退）
             rewindDryRun: (sessionId: string, nativeId: string) =>
-                client.post<{ canRewind: boolean; canRestoreFiles: boolean; reason?: string }>(
+                client.post<{ canRewind: boolean; canRestoreFiles: boolean; reason?: string; droppedTurns?: number }>(
                     `/api/sessions/${sessionId}/rewind/dry-run`,
                     { nativeId },
                 ),

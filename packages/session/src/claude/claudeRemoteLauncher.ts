@@ -941,10 +941,11 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         pluginErrorDedup: this.pluginErrorDedup,
                         // rewind 截断轮计划（深化候选④票①：四件套同生共死收成子对象）：
                         // 保留锚语义是「加载到该条（含）为止」，锚点用户消息及其后全部丢弃；
-                        // 配对护栏 dropsTurn（spec E1）供 SDK fork 校验截断区间只含目标 turn
+                        // 守卫 dropsTurn（spec E1）仅在丢弃区间恰好单轮时携带（受理侧区间
+                        // 分析决定，rewind-remediation 票 01）——多轮省略走未校验截断
                         rewind: rewind ? {
                             resumeAt: rewind.resumeAt,
-                            dropsTurn: rewind.nativeId,
+                            dropsTurn: rewind.dropsTurn,
                             // startup 截断完成后回报（先截断后软删除），并完成当前 restart 请求。
                             // 先清再回报：截断已完成即标记收尾，后续 query 失败不算截断失败
                             onTruncated: async () => {

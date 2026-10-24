@@ -905,10 +905,12 @@ export interface RemoteRewindPlan {
     resumeAt: string
     /**
      * 配对护栏（spec E1）：声明截断要丢弃的 turn 的 prompt UUID（= rewind 目标 user msg nativeId）。
-     * SDK fork 时校验截断区间只含该 turn；含其他则 refusal（error_during_execution，
-     * 消息前缀 "Resume rejected by --resume-drops-turn:"）。
+     * 仅丢弃区间恰好单轮时携带（受理侧区间分析决定）：SDK 校验截断区间全部归因该 turn，
+     * 含其他则 refusal（error_during_execution，消息前缀 "Resume rejected by --resume-drops-turn:"）。
+     * 区间跨多轮时省略（CLI 守卫只接受单轮，必拒）——退化为未校验截断，多轮回退照常成功
+     * （rewind-remediation 票 01）。
      */
-    dropsTurn: string
+    dropsTurn?: string
     /** rewind 截断完成后（startup 预热 boot 加载历史到锚点）立即回调，做两段回报 */
     onTruncated: () => Promise<void>
     /**

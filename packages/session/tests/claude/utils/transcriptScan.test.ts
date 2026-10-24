@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk'
-import { findCrossSessionEntryAfter } from '../../../src/claude/utils/transcriptScan'
+import { analyzeDropRange } from '../../../src/claude/utils/transcriptScan'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     getSessionMessages: vi.fn(),
@@ -29,9 +29,25 @@ function userMsg(uuid: string, text: string) {
     return { type: 'user', uuid, session_id: 'sess', message: { content: text }, parent_tool_use_id: null, parent_agent_id: null }
 }
 
-/** 最小 assistant entry（无跨会话语义，仅占位） */
+/** 最小 assistant entry（占位） */
 function assistantMsg(uuid: string) {
     return { type: 'assistant', uuid, session_id: 'sess', message: { content: [] }, parent_tool_use_id: null, parent_agent_id: null }
+}
+
+/** 工具结果载体 user entry（归因到所属轮，不计入轮数） */
+function toolResultMsg(uuid: string) {
+    return {
+        type: 'user', uuid, session_id: 'sess', parent_tool_use_id: null, parent_agent_id: null,
+        message: { content: [{ type: 'tool_result', content: 'ok' }] },
+    }
+}
+
+/** 中断标记 user entry（真实形态：text blocks 数组，F2 事故 transcript 实录） */
+function interruptMarker(uuid: string) {
+    return {
+        type: 'user', uuid, session_id: 'sess', parent_tool_use_id: null, parent_agent_id: null,
+        message: { content: [{ type: 'text', text: '[Request interrupted by user]' }] },
+    }
 }
 
 /** 真实事故形态（2026-09-29，9b4b2bbe）：跨会话入站消息以 user entry 落 transcript，
@@ -40,33 +56,70 @@ function crossSessionMsg(uuid: string) {
     return userMsg(uuid, '<cross-session-message from-name="其他会话" from-session-id="d68407db">hi</cross-session-message>')
 }
 
-describe('findCrossSessionEntryAfter（rewind 丢弃区间的跨会话归因预检）', () => {
+/** 被中断轮的完整形态：目标 user + tool_result 载体 + 中断标记 + assistant */
+function interruptedTurn(userUuid: string, text: string) {
+    return [userMsg(userUuid, text), assistantMsg(`tu-${userUuid}`), toolResultMsg(`tr-${userUuid}`), interruptMarker(`im-${userUuid}`)]
+}
+
+describe('analyzeDropRange（rewind 丢弃区间分析：轮数 + 跨会话归因）', () => {
     beforeEach(() => {
         mocked.mockReset()
     })
 
-    it('锚后区间含跨会话 user entry → 返回其 uuid', async () => {
+    it('单轮区间（被中断轮：tool_result / 中断标记归因所属轮）→ droppedTurns 1', async () => {
         mocked.mockResolvedValueOnce([
             assistantMsg('a1'),
-            userMsg('anchor', '回退到这里'),
-            crossSessionMsg('cs-1'),
+            ...interruptedTurn('target', '用 Bash 运行 sleep 90'),
         ] as never)
 
-        await expect(findCrossSessionEntryAfter('sess', '/dir', 'anchor')).resolves.toBe('cs-1')
+        await expect(analyzeDropRange('sess', '/dir', 'a1')).resolves.toEqual({
+            droppedTurns: 1,
+            crossSessionEntry: null,
+        })
     })
 
-    it('锚点自身之后的条目才算区间（锚前跨会话条目无关）', async () => {
+    it('多轮区间（目标轮 + 后续完整轮）→ droppedTurns 2', async () => {
         mocked.mockResolvedValueOnce([
-            crossSessionMsg('cs-0'),
             assistantMsg('a1'),
-            userMsg('anchor', '回退到这里'),
+            ...interruptedTurn('target', '第一轮消息'),
+            userMsg('next-turn', '第二轮消息'),
+            assistantMsg('a-next'),
+        ] as never)
+
+        await expect(analyzeDropRange('sess', '/dir', 'a1')).resolves.toEqual({
+            droppedTurns: 2,
+            crossSessionEntry: null,
+        })
+    })
+
+    it('中断标记的字符串形态同样不计入轮数', async () => {
+        mocked.mockResolvedValueOnce([
+            assistantMsg('a1'),
+            userMsg('target', '中断我'),
+            userMsg('mk-str', '[Request interrupted by user for tool use]'),
             assistantMsg('a2'),
         ] as never)
 
-        await expect(findCrossSessionEntryAfter('sess', '/dir', 'anchor')).resolves.toBeNull()
+        await expect(analyzeDropRange('sess', '/dir', 'a1')).resolves.toEqual({
+            droppedTurns: 1,
+            crossSessionEntry: null,
+        })
     })
 
-    it('user entry content 为 text blocks 数组形态同样命中', async () => {
+    it('区间含跨会话条目 → 不计入轮数但 crossSessionEntry 返回其 uuid（守卫单轮路径据此预检拒绝）', async () => {
+        mocked.mockResolvedValueOnce([
+            assistantMsg('a1'),
+            userMsg('target', '目标轮'),
+            crossSessionMsg('cs-1'),
+        ] as never)
+
+        await expect(analyzeDropRange('sess', '/dir', 'a1')).resolves.toEqual({
+            droppedTurns: 1,
+            crossSessionEntry: 'cs-1',
+        })
+    })
+
+    it('跨会话条目 text blocks 数组形态同样命中', async () => {
         mocked.mockResolvedValueOnce([
             userMsg('anchor', '回退到这里'),
             {
@@ -75,35 +128,31 @@ describe('findCrossSessionEntryAfter（rewind 丢弃区间的跨会话归因预�
             },
         ] as never)
 
-        await expect(findCrossSessionEntryAfter('sess', '/dir', 'anchor')).resolves.toBe('cs-blocks')
-    })
-
-    it('区间内只有本会话条目 → null（可回退）', async () => {
-        mocked.mockResolvedValueOnce([
-            userMsg('anchor', '回退到这里'),
-            assistantMsg('a2'),
-            userMsg('later', '后续消息'),
-        ] as never)
-
-        await expect(findCrossSessionEntryAfter('sess', '/dir', 'anchor')).resolves.toBeNull()
+        await expect(analyzeDropRange('sess', '/dir', 'anchor')).resolves.toEqual({
+            droppedTurns: 0,
+            crossSessionEntry: 'cs-blocks',
+        })
     })
 
     it('锚点跨页命中后继续扫到末尾（区间跨页）', async () => {
         const page1 = [assistantMsg('a0'), ...Array.from({ length: 49 }, (_, i) => assistantMsg(`p1-${i}`)), userMsg('anchor', '回退到这里')]
         mocked.mockResolvedValueOnce(page1 as never)
-        mocked.mockResolvedValueOnce([crossSessionMsg('cs-next-page')] as never)
+        mocked.mockResolvedValueOnce([userMsg('next-page-turn', '跨页的下一轮'), crossSessionMsg('cs-next-page')] as never)
 
-        await expect(findCrossSessionEntryAfter('sess', '/dir', 'anchor')).resolves.toBe('cs-next-page')
+        await expect(analyzeDropRange('sess', '/dir', 'anchor')).resolves.toEqual({
+            droppedTurns: 1,
+            crossSessionEntry: 'cs-next-page',
+        })
         expect(mocked).toHaveBeenNthCalledWith(2, 'sess', { dir: '/dir', limit: 50, offset: 50 })
     })
 
-    it('锚点不存在（transcript 已变）→ null（放行，由 SDK 兜底拒绝）', async () => {
+    it('锚点不存在（transcript 已变）→ null（调用方保守处理，由 SDK 兜底）', async () => {
         mocked.mockResolvedValueOnce([assistantMsg('a1')] as never)
 
-        await expect(findCrossSessionEntryAfter('sess', '/dir', 'ghost')).resolves.toBeNull()
+        await expect(analyzeDropRange('sess', '/dir', 'ghost')).resolves.toBeNull()
     })
 
-    it('assistant entry 即使内容含标记也不命中（只查 user entry）', async () => {
+    it('assistant entry 即使内容含标记也不命中跨会话判定（只查 user entry）', async () => {
         mocked.mockResolvedValueOnce([
             userMsg('anchor', '回退到这里'),
             {
@@ -112,6 +161,9 @@ describe('findCrossSessionEntryAfter（rewind 丢弃区间的跨会话归因预�
             },
         ] as never)
 
-        await expect(findCrossSessionEntryAfter('sess', '/dir', 'anchor')).resolves.toBeNull()
+        await expect(analyzeDropRange('sess', '/dir', 'anchor')).resolves.toEqual({
+            droppedTurns: 0,
+            crossSessionEntry: null,
+        })
     })
 })

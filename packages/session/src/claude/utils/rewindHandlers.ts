@@ -16,7 +16,7 @@
 
 import { logger } from '@mobi/node-core/logger';
 import { findRewindAnchor } from './rewindAnchor';
-import { findCrossSessionEntryAfter } from './transcriptScan';
+import { analyzeDropRange } from './transcriptScan';
 import type { QueryRestartController } from './queryRestart';
 import type { EnhancedMode, QueryControlRef } from '../types';
 import type { MessageQueue } from '@mobi/node-core/utils/MessageQueue';
@@ -104,12 +104,14 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
             return { canRewind: false, canRestoreFiles: false, reason: ANCHOR_REJECT_REASON };
         }
 
-        // 丢弃区间归因预检：区间含跨会话入站消息（无法归因到声明 turn）→ SDK --resume-drops-turn
-        // 必拒，提前拒绝免掉「点了确认必失败」的体验断点（执行链不复检——受理窗口内新到
-        // 跨会话消息属低概率，SDK 兜底拒绝 + Web 修复后的诚实失败文案已覆盖）
-        const crossSessionEntry = await findCrossSessionEntryAfter(session.sessionId, workingDirectory, resumeAt);
-        if (crossSessionEntry) {
-            logger.warn(`[rewind] dry-run rejected: cross-session entry ${crossSessionEntry} in drop range`);
+        // 丢弃区间分析：轮数决定守卫携带（单轮带 resumeDropsTurn 防呆 / 多轮省略走未校验
+        // 截断——CLI 守卫只接受区间恰好等于声明的一轮，多轮必拒）；跨会话归因预检保留在
+        // 单轮路径（守卫必拒，提前拒绝免掉「点了确认必失败」的体验断点，2026-09-29 实踩；
+        // 多轮省略守卫后截断照常成功，跨会话消息随用户明确选择的深度回退一并丢弃）
+        const analysis = await analyzeDropRange(session.sessionId, workingDirectory, resumeAt);
+        const droppedTurns = analysis?.droppedTurns ?? 0;
+        if (droppedTurns <= 1 && analysis?.crossSessionEntry) {
+            logger.warn(`[rewind] dry-run rejected: cross-session entry ${analysis.crossSessionEntry} in drop range`);
             return { canRewind: false, canRestoreFiles: false, reason: CROSS_SESSION_REJECT_REASON };
         }
 
@@ -118,10 +120,10 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
         // 真实调用裁决，部分失败降级语义（"仅回退对话"）已覆盖
         try {
             const dry = await queryControl.current?.rewindFiles(nativeId, { dryRun: true });
-            return { canRewind: true, canRestoreFiles: dry?.canRewind ?? true };
+            return { canRewind: true, canRestoreFiles: dry?.canRewind ?? true, droppedTurns };
         } catch (e) {
             logger.debug('[rewind] dry-run rewindFiles unavailable, defaulting canRestoreFiles=true', e);
-            return { canRewind: true, canRestoreFiles: true };
+            return { canRewind: true, canRestoreFiles: true, droppedTurns };
         }
     });
 
@@ -154,6 +156,12 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
                 return { ready: false, reason: ANCHOR_REJECT_REASON };
             }
 
+            // 区间轮数复检决定守卫携带：单轮 → dropsTurn = 目标消息（CLI 校验区间归因，
+            // 白拿「调用方视图过期」防呆）；多轮 → 省略（守卫必拒，未校验截断照常成功）。
+            // 分析不可得（transcript 窗口内已变）保守省略——SDK 截断兜底
+            const analysis = await analyzeDropRange(sessionId, workingDirectory, resumeAt);
+            const dropsTurn = analysis?.droppedTurns === 1 ? nativeId : undefined;
+
             // 文件回滚先于截断（PoC poc8 实测：截断后被截区间的 file checkpoint 立即作废，
             // 截断前调用才有效）。失败 → 干净失败：不截断、不清队列
             let filesRestored = false;
@@ -180,7 +188,7 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
 
             return {
                 ready: true,
-                request: { kind: 'rewind', nativeId, resumeAt, filesRestored, skippedLinks },
+                request: { kind: 'rewind', nativeId, resumeAt, filesRestored, skippedLinks, dropsTurn },
             };
         });
 
