@@ -38,6 +38,7 @@ vi.mock('react-i18next', () => ({
                 'session.contextUsage.used': '已用',
                 'session.contextUsage.remaining': '剩余',
                 'session.contextUsage.modelLimit': '模型上限',
+                'session.contextUsage.autoCompact': '自动压缩',
                 'session.contextUsage.cost': '累计成本',
                 'session.contextUsage.input': '输入',
                 'session.contextUsage.output': '输出',
@@ -81,35 +82,43 @@ function makeUsage(overrides: Partial<ContextUsage> = {}): ContextUsage {
 }
 
 describe('resolveRingTone', () => {
-    it('<50 → idle（日常无感）', () => {
-        expect(resolveRingTone(0)).toEqual({ pct: 0, tone: 'idle' })
-        expect(resolveRingTone(13)).toEqual({ pct: 13, tone: 'idle' })
-        expect(resolveRingTone(49.6)).toEqual({ pct: 50, tone: 'notice' }) // 四舍五入到 50 → notice
+    /** percentage 是后端契约字段（= total / max），测试夹具保持一致 */
+    const make = (totalTokens: number, maxTokens = 100_000, extra: Partial<ContextUsage> = {}) => ({
+        totalTokens, maxTokens, percentage: maxTokens > 0 ? (totalTokens / maxTokens) * 100 : 0, ...extra,
     })
 
-    it('50-74 → notice（开始注意）', () => {
-        expect(resolveRingTone(50)).toEqual({ pct: 50, tone: 'notice' })
-        expect(resolveRingTone(74)).toEqual({ pct: 74, tone: 'notice' })
+    // 无压缩阈值 → 回落到窗口百分比（与旧口径同义）
+    it('无阈值时按窗口百分比三档：<60 idle / 60–85 warn / ≥85 danger', () => {
+        expect(resolveRingTone(make(0))).toEqual({ pct: 0, tone: 'idle', limitUsage: 0 })
+        expect(resolveRingTone(make(59_400)).tone).toBe('idle')
+        expect(resolveRingTone(make(59_500)).tone).toBe('warn') // 59.5 → 四舍五入 60
+        expect(resolveRingTone(make(84_400)).tone).toBe('warn')
+        expect(resolveRingTone(make(85_000))).toEqual({ pct: 85, tone: 'danger', limitUsage: 85 })
     })
 
-    it('75-89 → warn（该考虑压缩）', () => {
-        expect(resolveRingTone(75)).toEqual({ pct: 75, tone: 'warn' })
-        expect(resolveRingTone(89)).toEqual({ pct: 89, tone: 'warn' })
+    // 阈值远小于窗口时，红档不再「永远不出现」
+    it('有阈值时分档相对阈值，弧长/百分比仍按窗口', () => {
+        // 1m 窗口 / 350k 阈值：315k = 31.5% 窗口，但已到 90% 阈值 → danger
+        expect(resolveRingTone(make(315_000, 1_000_000, { autoCompactAtTokens: 350_000 })))
+            .toEqual({ pct: 32, tone: 'danger', limitUsage: 90 })
+        expect(resolveRingTone(make(200_000, 1_000_000, { autoCompactAtTokens: 350_000 })).tone).toBe('idle')
+        expect(resolveRingTone(make(262_500, 1_000_000, { autoCompactAtTokens: 350_000 })).tone).toBe('warn')
     })
 
-    it('≥90 → danger（马上要压缩）', () => {
-        expect(resolveRingTone(90)).toEqual({ pct: 90, tone: 'danger' })
-        expect(resolveRingTone(100)).toEqual({ pct: 100, tone: 'danger' })
+    it('阈值超过窗口时以窗口为上限（窗口先撞到）', () => {
+        expect(resolveRingTone(make(90_000, 100_000, { autoCompactAtTokens: 200_000 })))
+            .toEqual({ pct: 90, tone: 'danger', limitUsage: 90 })
     })
 
-    it('百分比钳位到 [0, 100]', () => {
-        expect(resolveRingTone(120).pct).toBe(100)
-        expect(resolveRingTone(-5).pct).toBe(0)
+    it('百分比钳位到 [0, 100]，小数四舍五入', () => {
+        expect(resolveRingTone({ totalTokens: 120_000, maxTokens: 100_000, percentage: 120 }).pct).toBe(100)
+        expect(resolveRingTone({ totalTokens: -5, maxTokens: 100_000, percentage: -5 }).pct).toBe(0)
+        expect(resolveRingTone({ totalTokens: 49_400, maxTokens: 100_000, percentage: 49.4 }).pct).toBe(49)
+        expect(resolveRingTone({ totalTokens: 49_500, maxTokens: 100_000, percentage: 49.5 }).pct).toBe(50)
     })
 
-    it('小数四舍五入到整数', () => {
-        expect(resolveRingTone(49.4)).toEqual({ pct: 49, tone: 'idle' })
-        expect(resolveRingTone(49.5)).toEqual({ pct: 50, tone: 'notice' })
+    it('窗口为 0 不除零（全 0 读数 → idle）', () => {
+        expect(resolveRingTone({ totalTokens: 0, maxTokens: 0, percentage: 0 })).toEqual({ pct: 0, tone: 'idle', limitUsage: 0 })
     })
 })
 
@@ -154,6 +163,36 @@ describe('ContextRing', () => {
             expect(document.body.textContent).toContain('剩余')
         })
         expect(document.body.textContent).not.toContain('模型上限')
+    })
+
+    it('自动压缩阈值行：阈值已知才渲染（颜色分档的可读依据）', async () => {
+        render(<ContextRing usage={makeUsage({ maxTokens: 1_000_000, autoCompactAtTokens: 350_000 })} />)
+        fireEvent.click(screen.getByRole('button'))
+        await waitFor(() => {
+            expect(document.body.textContent).toContain('自动压缩')
+        })
+        expect(document.body.textContent).toContain('350k')
+
+        cleanup()
+        render(<ContextRing usage={makeUsage()} />)
+        fireEvent.click(screen.getByRole('button'))
+        await waitFor(() => {
+            expect(document.body.textContent).toContain('累计成本')
+        })
+        expect(document.body.textContent).not.toContain('自动压缩')
+    })
+
+    it('阈值口径接入组件：31.5% 窗口但 90% 阈值 → 弧色进入砖红档；同读数无阈值仍是灰档', () => {
+        // jsdom 的 cssstyle 不支持 animation 简写（style.animation 恒为空串），故断言弧色
+        const arcStroke = (usage: ContextUsage) => {
+            const { unmount } = render(<ContextRing usage={usage} />)
+            const stroke = document.querySelectorAll('svg[role="button"] circle')[1].getAttribute('stroke')
+            unmount()
+            return stroke
+        }
+        const base = makeUsage({ totalTokens: 315_000, maxTokens: 1_000_000, percentage: 31.5 })
+        // 1m 窗口 / 350k 阈值：315k 只占窗口 31.5%，但已到阈值 90%
+        expect(arcStroke({ ...base, autoCompactAtTokens: 350_000 })).not.toBe(arcStroke(base))
     })
 
     it('有细分数据也不渲染瞬时请求细分组（输入/输出/缓存读/缓存写/命中率整组移除）', async () => {

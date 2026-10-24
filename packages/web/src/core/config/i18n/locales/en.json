@@ -176,7 +176,8 @@
       "used": "Used",
       "cost": "Total Cost",
       "remaining": "Remaining",
-      "modelLimit": "Model Limit"
+      "modelLimit": "Model Limit",
+      "autoCompact": "Auto-compact"
     },
     "cacheStatus": {
       "badge": "Cache expired",

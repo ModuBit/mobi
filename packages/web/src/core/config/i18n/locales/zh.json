@@ -176,7 +176,8 @@
       "used": "已用",
       "cost": "累计成本",
       "remaining": "剩余",
-      "modelLimit": "模型上限"
+      "modelLimit": "模型上限",
+      "autoCompact": "自动压缩"
     },
     "cacheStatus": {
       "badge": "缓存已过期",

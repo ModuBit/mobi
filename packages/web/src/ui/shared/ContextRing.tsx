@@ -25,19 +25,43 @@ import { ContextBreakdown } from '@/ui/shared/ContextBreakdown'
 import { Popover } from '@/ui/base/interactive/popover/Popover'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 
-/** ≥90% 透明度脉冲（「马上要压缩」） */
+/** 砖红档（≥85% 压缩阈值）透明度脉冲（「马上要压缩」） */
 const pulse = keyframes`0%,100%{opacity:1}50%{opacity:0.35}`
 
-export type RingTone = 'idle' | 'notice' | 'warn' | 'danger'
+export type RingTone = 'idle' | 'warn' | 'danger'
+
+/** 弧长/百分比钳到 [0, 100] 并取整（环上不显示小数） */
+function clampPct(value: number): number {
+    return Math.max(0, Math.min(100, Math.round(value)))
+}
 
 /**
- * 四档色（灰/橙/橙红/红，参照 codex/qoder 低调风格）：
- * <50 灰（日常几乎无感）/ 50-75 橙（开始注意）/ 75-90 橙红（该考虑压缩）/ ≥90 红+脉冲
+ * 颜色分档的驱动口径：自动压缩触发点（可写上限）。
+ * 阈值未知（未启用 / 自动推导 / 旧 CLI）→ 回落到窗口；阈值超过窗口时窗口才是先撞到的限制。
  */
-export function resolveRingTone(percentage: number): { pct: number; tone: RingTone } {
-    const pct = Math.max(0, Math.min(100, Math.round(percentage)))
-    const tone: RingTone = pct >= 90 ? 'danger' : pct >= 75 ? 'warn' : pct >= 50 ? 'notice' : 'idle'
-    return { pct, tone }
+export function resolveRingLimit(usage: Pick<ContextUsage, 'maxTokens' | 'autoCompactAtTokens'>): number {
+    const threshold = usage.autoCompactAtTokens
+    return threshold !== undefined && threshold > 0 ? Math.min(threshold, usage.maxTokens) : usage.maxTokens
+}
+
+/**
+ * 三档色（灰 / 赤陶 / 砖红+脉冲，取土地色谱双档语义色）：
+ * `<60%` 灰（日常无感）/ `60–85%` 赤陶（该考虑压缩）/ `≥85%` 砖红+脉冲。
+ * 分档比例**相对自动压缩触发点**（见 resolveRingLimit），不是相对窗口——否则阈值远小于
+ * 窗口时（如 1m 窗口 / 350k 阈值）红档永远不出现；回落到窗口时与旧口径同义。
+ * 弧长与展示百分比仍是窗口占用（`pct`）：环画「窗口用了多少」，颜色说「离压缩还有多远」，
+ * 刻度线标出阈值位置，弧端靠近刻度即变红。
+ */
+export function resolveRingTone(
+    usage: Pick<ContextUsage, 'totalTokens' | 'maxTokens' | 'percentage' | 'autoCompactAtTokens'>,
+): { pct: number; tone: RingTone; limitUsage: number } {
+    // 展示百分比沿用后端算好的 percentage（契约字段），不在此重算
+    const pct = clampPct(Number.isFinite(usage.percentage) ? usage.percentage : 0)
+    const limit = resolveRingLimit(usage)
+    const limitUsage = limit > 0 ? (usage.totalTokens / limit) * 100 : 0
+    const band = clampPct(limitUsage)
+    const tone: RingTone = band >= 85 ? 'danger' : band >= 60 ? 'warn' : 'idle'
+    return { pct, tone, limitUsage }
 }
 
 /** 圆环半径（viewBox 24，描边 2.5） */
@@ -46,8 +70,8 @@ const CIRC = 2 * Math.PI * R
 
 /**
  * 自动压缩刻度位置。压缩触发点来自 CLI（summary.autoCompactThreshold），不由前端假设
- * 「200k/400k 开始衰减」——阈值随用户配置与模型窗口变化。在 ratio 角度处画一根橙色短刻度线
- * （仪表红线隐喻），弧越过即进入压缩区；仅作位置标注、不参与变色——环色仍由窗口百分比四档决定。
+ * 「200k/400k 开始衰减」——阈值随用户配置与模型窗口变化。在 ratio 角度处画一根中性短刻度线，
+ * 它是颜色分档的「红线」：颜色按 resolveRingLimit 的比例分档，弧端靠近刻度即进入砖红档。
  * 阈值缺省（未启用 / 自动推导 / 未知）或 ratio 越界（≤0、≥1）时不画。
  */
 const TICK_R_INNER = 7.5
@@ -82,10 +106,9 @@ interface ContextRingProps {
 export function ContextRing({ usage, size = 20, placement = 'top' }: ContextRingProps) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
-    const { pct, tone } = resolveRingTone(usage.percentage)
+    const { pct, tone } = resolveRingTone(usage)
     const color = tone === 'danger' ? token.colorError
-        : tone === 'warn' ? '#fa541c' // volcano-6 橙红（主题无此档，显式色值）
-        : tone === 'notice' ? token.colorWarning
+        : tone === 'warn' ? token.colorWarning
         : token.colorTextTertiary
     const remaining = Math.max(0, usage.maxTokens - usage.totalTokens)
     const tick = compactTick(usage.maxTokens, usage.autoCompactAtTokens)
@@ -114,10 +137,10 @@ export function ContextRing({ usage, size = 20, placement = 'top' }: ContextRing
                 strokeDashoffset={CIRC * (1 - pct / 100)}
                 transform="rotate(-90 12 12)"
             />
-            {/* 自动压缩刻度（后画、压在弧上）：横跨环带出头，弧越过即「该压缩了」 */}
+            {/* 自动压缩刻度（后画、压在弧上）：横跨环带出头，弧端靠近它即进入砖红档 */}
             {tick && (
                 <line x1={tick.x1} y1={tick.y1} x2={tick.x2} y2={tick.y2}
-                    stroke="#fa8c16" strokeWidth="1.4" strokeLinecap="round" />
+                    stroke={token.colorTextTertiary} strokeWidth="1.4" strokeLinecap="round" />
             )}
         </svg>
     )
@@ -155,6 +178,14 @@ export function ContextRing({ usage, size = 20, placement = 'top' }: ContextRing
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
                             <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.modelLimit')}</span>
                             <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTokens(usage.modelContextTokens)}</span>
+                        </div>
+                    )}
+                    {/* 自动压缩阈值：颜色分档的驱动口径（环色按它算比例），
+                        让「百分比不高却已变红」有据可查 */}
+                    {usage.autoCompactAtTokens != null && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                            <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.autoCompact')}</span>
+                            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTokens(usage.autoCompactAtTokens)}</span>
                         </div>
                     )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
