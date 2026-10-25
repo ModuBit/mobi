@@ -20,7 +20,7 @@
  * 拒绝（原因）三态。动作成功与否由 daemon 结果 union 决定，前端不猜。
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Alert, Modal, Radio } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
@@ -112,17 +112,29 @@ export function WorktreeMergeModal({ open, summary, onClose }: WorktreeMergeModa
     const { mergeBack, merging } = useWorktreeActions()
     const [strategy, setStrategy] = useState<'no-ff' | 'squash'>('no-ff')
     const [outcome, setOutcome] = useState<MergeOutcome>({ kind: 'idle' })
+    /**
+     * 打开瞬间冻结目标 worktree：动作成功会失效列表缓存，摘要随之变为 null
+     * （worktree 已被移除）——若继续直读 props，结果反馈会被重置回 idle，
+     * 用户看不到「已合回」。因此确认/结果期间一律用冻结值。
+     */
+    const [target, setTarget] = useState<WorktreeSummary | null>(null)
 
-    // 每次打开重置：策略回默认、上一轮结果不残留
+    // 每次打开（或换目标）：冻结目标、策略回默认、上一轮结果不残留。
+    // 依赖只看 open + 路径：同一 worktree 的列表刷新会换对象引用，若把 summary
+    // 放进依赖，失败结果（主树脏/冲突）也会被重置回 idle。
+    const summaryPath = summary?.worktreePath
+    const summaryRef = useRef(summary)
+    summaryRef.current = summary
     useEffect(() => {
-        if (!open) return
+        if (!open || summaryPath === undefined) return
+        setTarget(summaryRef.current)
         setStrategy('no-ff')
         setOutcome({ kind: 'idle' })
-    }, [open, summary?.worktreePath])
+    }, [open, summaryPath])
 
     const submit = async () => {
-        if (!summary || summary.state === 'running') return
-        const result = await mergeBack({ worktreePath: summary.worktreePath, strategy })
+        if (!target || target.state === 'running') return
+        const result = await mergeBack({ worktreePath: target.worktreePath, strategy })
         if (result.ok) {
             setOutcome({ kind: 'success', result })
         } else if (result.conflict) {
@@ -132,14 +144,14 @@ export function WorktreeMergeModal({ open, summary, onClose }: WorktreeMergeModa
         }
     }
 
-    const running = summary?.state === 'running'
-    const target = summary?.repoBranch
+    const running = target?.state === 'running'
+    const targetBranch = target?.repoBranch
 
     return (
         <Modal
             open={open}
             onCancel={onClose}
-            title={t('settings.worktrees.mergeTitle', { name: summary?.name ?? '' })}
+            title={t('settings.worktrees.mergeTitle', { name: target?.name ?? '' })}
             footer={outcome.kind === 'success'
                 ? [
                     <Button key="close" onClick={onClose}>
@@ -154,26 +166,26 @@ export function WorktreeMergeModal({ open, summary, onClose }: WorktreeMergeModa
                         key="merge"
                         variant="primary"
                         loading={merging}
-                        disabled={!summary || running}
+                        disabled={!target || running}
                         onClick={() => { void submit() }}
                     >
                         {t('settings.worktrees.mergeConfirm')}
                     </Button>
                 ]}
         >
-            {summary && (
+            {target && (
                 <>
                     <MetaRow>
                         <span>{t('settings.worktrees.columns.branch')}</span>
-                        <span>{summary.branch}</span>
+                        <span>{target.branch}</span>
                     </MetaRow>
                     <MetaRow>
                         <span>{t('settings.worktrees.columns.path')}</span>
-                        <span title={summary.worktreePath}>{summary.worktreePath}</span>
+                        <span title={target.worktreePath}>{target.worktreePath}</span>
                     </MetaRow>
                     <MetaRow>
                         <span>{t('settings.worktrees.columns.state')}</span>
-                        <WorktreeStateTag state={summary.state} />
+                        <WorktreeStateTag state={target.state} />
                     </MetaRow>
                 </>
             )}
@@ -183,7 +195,7 @@ export function WorktreeMergeModal({ open, summary, onClose }: WorktreeMergeModa
                     <FieldLabel>{t('settings.worktrees.targetBranch')}</FieldLabel>
                     <MetaRow>
                         <span>→</span>
-                        <span>{target ?? t('settings.worktrees.targetBranchUnknown')}</span>
+                        <span>{targetBranch ?? t('settings.worktrees.targetBranchUnknown')}</span>
                     </MetaRow>
 
                     <FieldLabel>{t('settings.worktrees.strategy')}</FieldLabel>
@@ -205,7 +217,7 @@ export function WorktreeMergeModal({ open, summary, onClose }: WorktreeMergeModa
                     <Hint>{t('settings.worktrees.wipHint')}</Hint>
                     <Hint>{t('settings.worktrees.conflictHint')}</Hint>
                     {running && <Hint>{t('settings.worktrees.runningHint')}</Hint>}
-                    {target === undefined && <Hint>{t('settings.worktrees.detachedHint')}</Hint>}
+                    {targetBranch === undefined && <Hint>{t('settings.worktrees.detachedHint')}</Hint>}
                 </>
             )}
 
@@ -220,8 +232,8 @@ export function WorktreeMergeModal({ open, summary, onClose }: WorktreeMergeModa
                             ? t('settings.worktrees.mergedWorktreeRemoved')
                             : t('settings.worktrees.mergedWorktreeKept'),
                         outcome.result.branchDeleted
-                            ? t('settings.worktrees.mergedBranchDeleted', { branch: summary?.branch ?? '' })
-                            : t('settings.worktrees.mergedBranchKept', { branch: summary?.branch ?? '' })
+                            ? t('settings.worktrees.mergedBranchDeleted', { branch: target?.branch ?? '' })
+                            : t('settings.worktrees.mergedBranchKept', { branch: target?.branch ?? '' })
                     ].join('；')}
                 />
             )}

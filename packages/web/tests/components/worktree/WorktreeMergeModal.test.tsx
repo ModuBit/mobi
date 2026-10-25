@@ -16,6 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, cleanup } from '@testing-library/react'
+import type React from 'react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import type { MergeBackResult, WorktreeSummary } from '@mobi/shared'
@@ -53,6 +54,15 @@ const SUMMARY: WorktreeSummary = {
 
 function renderModal(summary: WorktreeSummary | null = SUMMARY) {
     return render(
+        <ConfigProvider>
+            <WorktreeMergeModal open summary={summary} onClose={() => {}} />
+        </ConfigProvider>
+    )
+}
+
+/** 目标 worktree 在动作后被列表刷新改变（移除 → null / 同路径新对象） */
+function rerenderModal(rerender: (ui: React.ReactElement) => void, summary: WorktreeSummary | null) {
+    rerender(
         <ConfigProvider>
             <WorktreeMergeModal open summary={summary} onClose={() => {}} />
         </ConfigProvider>
@@ -161,5 +171,35 @@ describe('WorktreeMergeModal', () => {
         renderModal(null)
         const confirm = screen.getByText('settings.worktrees.mergeConfirm').closest('button')
         expect(confirm).toBeDisabled()
+    })
+
+    it('成功后列表刷新把目标移出（summary → null）：结果反馈不被重置', async () => {
+        actionState.mergeBack.mockResolvedValue({
+            ok: true,
+            strategy: 'no-ff',
+            worktreeRemoved: true,
+            branchDeleted: true
+        } satisfies MergeBackResult)
+        const { rerender } = renderModal()
+        await submit()
+        expect(await screen.findByText('settings.worktrees.merged')).toBeInTheDocument()
+
+        // merge 成功后 workflow 失效列表缓存：worktree 已移除 → 摘要变 null
+        rerenderModal(rerender, null)
+        expect(screen.getByText('settings.worktrees.merged')).toBeInTheDocument()
+        expect(screen.getByText('common.close')).toBeInTheDocument()
+        expect(screen.queryByText('settings.worktrees.mergeConfirm')).not.toBeInTheDocument()
+    })
+
+    it('失败后同路径列表刷新换了对象引用：拒绝反馈不被重置', async () => {
+        actionState.mergeBack.mockResolvedValue({ ok: false, reason: 'main-dirty' } satisfies MergeBackResult)
+        const { rerender } = renderModal()
+        await submit()
+        expect(await screen.findByText('settings.worktrees.rejectedTitle')).toBeInTheDocument()
+
+        // 同路径新对象（列表 refetch 的正常产物）
+        rerenderModal(rerender, { ...SUMMARY })
+        expect(screen.getByText('settings.worktrees.rejectedTitle')).toBeInTheDocument()
+        expect(screen.getByText('settings.worktrees.reason.mainDirty')).toBeInTheDocument()
     })
 })
