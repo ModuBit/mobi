@@ -15,8 +15,8 @@
  */
 
 /**
- * worktree 生命周期服务集成测试（真 git + 真磁盘）：列表扫描、合回两种策略、
- * 冲突回滚、前置闸、丢弃归属校验。
+ * worktree 生命周期服务集成测试（真 git + 真磁盘）：列表扫描、合回 two 策略、
+ * 冲突回滚、前置闸、丢弃归属校验、会话删除处置。
  *
  * 断言只锁外部行为（主树文件内容 / 分支存在性 / 目录存在性 / 结果字段），
  * 不断言 git 命令序列。
@@ -31,6 +31,7 @@ import {
     type WorktreeSessionRow,
     type WorktreeStoreSource
 } from '@/worktree/service'
+import { removeWorktreeIfClean } from '@/worktree/cleanup'
 import { git, createTempRepo, type TempRepo } from './testRepo'
 
 async function exists(path: string): Promise<boolean> {
@@ -334,5 +335,83 @@ describe('WorktreeLifecycleService', () => {
             expect(await service.discard({ worktreePath })).toEqual({ ok: false, reason: 'session-running' })
             expect(await exists(worktreePath)).toBe(true)
         })
+    })
+
+    describe('disposeAfterSessionDelete', () => {
+        it('干净 → 删 worktree + -d 删分支', async () => {
+            const worktreePath = await temp.addWorktree('idle')
+            const outcome = await service.disposeAfterSessionDelete({
+                metadata: { worktree: { basePath: temp.repo, branch: 'mobi-idle', name: 'idle', worktreePath } }
+            })
+
+            expect(outcome.retained).toBeUndefined()
+            expect(await exists(worktreePath)).toBe(false)
+            expect(await branchExists(temp.repo, 'mobi-idle')).toBe(false)
+        })
+
+        it('脏 → 保留并回传事实（dirtyFileCount）', async () => {
+            const worktreePath = await temp.addWorktree('dirty')
+            await writeFile(join(worktreePath, 'left.txt'), 'todo\n')
+
+            const outcome = await service.disposeAfterSessionDelete({
+                metadata: { worktree: { basePath: temp.repo, branch: 'mobi-dirty', name: 'dirty', worktreePath } }
+            })
+
+            expect(outcome.retained).toMatchObject({
+                name: 'dirty',
+                branch: 'mobi-dirty',
+                worktreePath,
+                state: 'dirty',
+                dirtyFileCount: 1
+            })
+            expect(await exists(worktreePath)).toBe(true)
+            expect(await branchExists(temp.repo, 'mobi-dirty')).toBe(true)
+        })
+
+        it('无 WorktreeMetadata（普通会话）→ 零行为变化', async () => {
+            expect(await service.disposeAfterSessionDelete({ metadata: { path: temp.repo } })).toEqual({})
+            expect(await service.disposeAfterSessionDelete({ metadata: null })).toEqual({})
+        })
+    })
+})
+
+describe('removeWorktreeIfClean（清理原语）', () => {
+    let temp: TempRepo
+
+    beforeEach(async () => {
+        clearWorktreeStatusCache()
+        temp = await createTempRepo()
+    })
+
+    afterEach(async () => {
+        clearWorktreeStatusCache()
+        await temp.cleanup()
+    })
+
+    it('干净 → 删 worktree 并 -d 删分支', async () => {
+        const worktreePath = await temp.addWorktree('clean')
+        const result = await removeWorktreeIfClean({ repoRoot: temp.repo, worktreePath, branch: 'mobi-clean' })
+
+        expect(result).toMatchObject({ removed: true, branchDeleted: true, state: 'clean' })
+        expect(await exists(worktreePath)).toBe(false)
+        expect(await branchExists(temp.repo, 'mobi-clean')).toBe(false)
+    })
+
+    it('脏 → 保留 worktree 与分支（spawn 失败/会话删除共用语义）', async () => {
+        const worktreePath = await temp.addWorktree('dirty')
+        await writeFile(join(worktreePath, 'half-done.txt'), 'wip\n')
+
+        const result = await removeWorktreeIfClean({ repoRoot: temp.repo, worktreePath, branch: 'mobi-dirty' })
+
+        expect(result).toMatchObject({ removed: false, branchDeleted: false, state: 'dirty', dirtyFileCount: 1 })
+        expect(await exists(worktreePath)).toBe(true)
+        expect(await branchExists(temp.repo, 'mobi-dirty')).toBe(true)
+    })
+
+    it('unknown（git 读不到）→ 保守保留', async () => {
+        const missing = join(temp.dir, 'repo-worktrees', 'gone')
+        const result = await removeWorktreeIfClean({ repoRoot: temp.repo, worktreePath: missing, branch: 'mobi-gone' })
+
+        expect(result).toMatchObject({ removed: false, state: 'unknown' })
     })
 })

@@ -15,11 +15,27 @@
  */
 
 /**
- * worktree 删除原语：合回清理与丢弃共用的强制删除 / 分支删除（调用方已完成
- * 前置校验：内容已合并或用户显式确认）。
+ * worktree 删除原语（生命周期挂点共用）：干净才删、脏/未知保留。
+ *
+ * spawn 失败与会话删除两条路径都走 {@link removeWorktreeIfClean}——不在这里
+ * 复制脏判定与分支删除顺序；合回/丢弃的强制删除另走 {@link forceRemoveWorktree}。
  */
 
 import type { GitRunner } from './gitRunner'
+import { inspectWorktreeStatus, isSafeToRemove, type WorktreeDirtyState } from './status'
+import { runGit } from './gitRunner'
+
+export interface WorktreeCleanupResult {
+    /** worktree 目录是否已删除 */
+    removed: boolean
+    /** 分支是否已删除（`-d` 被 git 拒绝时降级为 false，不追杀） */
+    branchDeleted: boolean
+    /** 判定时的脏状态（removed=false 时调用方据此说明「为什么保留」） */
+    state: WorktreeDirtyState
+    dirtyFileCount: number
+    /** 删除失败/降级细节（诊断用） */
+    warning?: string
+}
 
 /** 强制删除 worktree 目录（合回清理 / 丢弃；内容已合并或用户显式确认） */
 export async function forceRemoveWorktree(
@@ -47,6 +63,47 @@ export async function deleteWorktreeBranch(
         return { ok: true }
     } catch (error) {
         return { ok: false, error: errorMessage(error) }
+    }
+}
+
+/**
+ * 「干净才删、脏则保留」：脏或 unknown 一律保留（unknown 保守不删——git 失败时
+ * 无法证明没有未提交改动）。删除 worktree 成功后同步 `-d` 删分支；分支删除被拒
+ * 只降级为 warning，不回滚已完成的 worktree 删除。
+ */
+export async function removeWorktreeIfClean(
+    options: { repoRoot: string; worktreePath: string; branch: string },
+    deps: { git?: GitRunner } = {}
+): Promise<WorktreeCleanupResult> {
+    const git = deps.git ?? runGit
+    const status = await inspectWorktreeStatus(git, options.worktreePath)
+    if (!isSafeToRemove(status)) {
+        return {
+            removed: false,
+            branchDeleted: false,
+            state: status.state,
+            dirtyFileCount: status.dirtyFileCount
+        }
+    }
+
+    const removal = await forceRemoveWorktree(git, options.repoRoot, options.worktreePath)
+    if (!removal.ok) {
+        return {
+            removed: false,
+            branchDeleted: false,
+            state: status.state,
+            dirtyFileCount: 0,
+            warning: removal.error
+        }
+    }
+
+    const deleted = await deleteWorktreeBranch(git, options.repoRoot, options.branch, false)
+    return {
+        removed: true,
+        branchDeleted: deleted.ok,
+        state: status.state,
+        dirtyFileCount: 0,
+        ...(deleted.ok ? {} : { warning: deleted.error })
     }
 }
 

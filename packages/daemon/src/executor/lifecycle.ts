@@ -39,7 +39,8 @@ import { DEFAULT_LISTEN_PORT, resolveHostPort } from '@mobi/node-core/hostChanne
 import type { FileHandle } from 'node:fs/promises';
 import { isProcessAlive, killProcess, killProcessByChildProcess } from '@mobi/node-core/utils/process';
 import { startExecutorControlServer } from './controlServer';
-import { createWorktree, removeWorktree } from './worktree';
+import { createWorktree } from './worktree';
+import { removeWorktreeIfClean } from '../worktree/cleanup';
 import { SessionTrackingTable } from './sessionTrackingTable';
 import { SessionGovernor } from './sessionGovernor';
 import { spawnSession as runSpawnSession, type SpawnOutcome } from './spawnSession';
@@ -197,7 +198,7 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
     fs,
     spawn: spawnMobiCli,
     createWorktree,
-    removeWorktree,
+    disposeWorktree: (input: { repoRoot: string; worktreePath: string; branch: string }) => removeWorktreeIfClean(input),
     isProcessAlive,
   };
   const spawnSession = (options: SpawnRequest) => runSpawnSession(options, spawnDeps);

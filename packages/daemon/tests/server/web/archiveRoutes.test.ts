@@ -19,6 +19,7 @@ import { createSessionsRoutes } from '../../../src/web/routes/sessions'
 import { RpcFailure } from '../../../src/sync/rpcFailure'
 import { BackgroundTaskTracker } from '../../../src/sync/backgroundTaskTracker'
 import type { SyncEngine } from '../../../src/sync/syncEngine'
+import { Store } from '../../../src/store'
 
 /**
  * POST /api/sessions/:id/archive 的异常收口（2026-09-30 事故）：会话 RPC 不可达时
@@ -56,7 +57,7 @@ function makeArchiveEngine(opts: { throws?: Error } = {}): SyncEngine {
 }
 
 function makeApp(engine: SyncEngine) {
-    return createSessionsRoutes({ getSyncEngine: () => engine, backgroundTaskTracker: new BackgroundTaskTracker() })
+    return createSessionsRoutes({ getSyncEngine: () => engine, backgroundTaskTracker: new BackgroundTaskTracker(), store: new Store(':memory:') })
 }
 
 describe('POST /api/sessions/:id/archive 异常收口', () => {

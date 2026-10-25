@@ -20,6 +20,7 @@ import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
 import { BackgroundTaskTracker } from '../../../src/sync/backgroundTaskTracker'
 import { createSessionsRoutes } from '../../../src/web/routes/sessions'
 import type { SyncEngine } from '../../../src/sync/syncEngine'
+import { Store } from '../../../src/store'
 import type { Session } from '@mobi/shared'
 
 const mockSession: Session = {
@@ -67,7 +68,7 @@ function makeRewindEngine(opts: { dryRunResult?: unknown; rewindResult?: unknown
 
 /** 直接在 sessions 路由上挂 tracker（不走 createWebApp 的可选透传，闸门行为在此单测） */
 function makeApp(getEngine: () => SyncEngine | null, tracker: BackgroundTaskTracker) {
-    return createSessionsRoutes({ getSyncEngine: getEngine, backgroundTaskTracker: tracker })
+    return createSessionsRoutes({ getSyncEngine: getEngine, backgroundTaskTracker: tracker, store: new Store(':memory:') })
 }
 
 describe('rewind API 路由', () => {

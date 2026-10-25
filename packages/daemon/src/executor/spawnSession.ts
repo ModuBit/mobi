@@ -33,6 +33,7 @@ import { hostChannelUrl } from '@mobi/node-core/hostChannel';
 import { keepTail } from '@mobi/node-core/utils/keepTail';
 import { buildClaudeSpawnArgs } from './spawnArgs';
 import type { WorktreeInfo } from './worktree';
+import type { WorktreeCleanupResult } from '../worktree/cleanup';
 import type { SessionTrackingTable } from './sessionTrackingTable';
 import type { SlotAcquisition } from './sessionGovernor';
 
@@ -66,7 +67,8 @@ export type SpawnSessionDeps = {
     };
     spawn: (args: string[], options: { cwd: string; detached: boolean; stdio: Array<'ignore' | 'pipe'>; env: Record<string, string | undefined> }) => SpawnedCliProcess;
     createWorktree: (input: { basePath: string; nameHint?: string }) => Promise<{ ok: true; info: WorktreeInfo } | { ok: false; error: string }>;
-    removeWorktree: (input: { repoRoot: string; worktreePath: string }) => Promise<{ ok: true } | { ok: false; error: string }>;
+    /** 失败清理：干净才删、脏/未知保留（worktree-lifecycle 票 03；语义见 worktree/cleanup） */
+    disposeWorktree: (input: { repoRoot: string; worktreePath: string; branch: string }) => Promise<WorktreeCleanupResult>;
     isProcessAlive: (pid: number) => boolean;
     /** 会话级记忆裁决（agent-memory 票 02；三档隔离票 05 加 workspaceId 语境）：
      *  按 workspace 目录 + spawn 的 workspaceId 求值——active 返回注入子进程的 env
@@ -246,12 +248,19 @@ export async function spawnSession(options: SpawnRequest, deps: SpawnSessionDeps
             if (!worktreeInfo) {
                 return;
             }
-            const result = await deps.removeWorktree({
+            // 干净才删、脏/unknown 保留（spawn 失败不再 --force 盲删未提交改动）；
+            // 分支 -d 删除被拒只降级保留分支，不追杀
+            const result = await deps.disposeWorktree({
                 repoRoot: worktreeInfo.basePath,
-                worktreePath: worktreeInfo.worktreePath
+                worktreePath: worktreeInfo.worktreePath,
+                branch: worktreeInfo.branch
             });
-            if (!result.ok) {
-                logger.debug(`[EXECUTOR] Failed to remove worktree ${worktreeInfo.worktreePath}: ${result.error}`);
+            if (!result.removed) {
+                logger.debug(`[EXECUTOR] Worktree kept after spawn failure (${result.state}, ${result.dirtyFileCount} dirty files): ${worktreeInfo.worktreePath}`);
+                return;
+            }
+            if (!result.branchDeleted) {
+                logger.debug(`[EXECUTOR] Worktree removed but branch kept: ${worktreeInfo.branch}${result.warning ? ` (${result.warning})` : ''}`);
             }
         };
         const maybeCleanupWorktree = async (reason: string) => {

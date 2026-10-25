@@ -25,8 +25,8 @@
 
 import { realpath, stat } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import type { MergeBackResult, WorktreeSummary } from '@mobi/shared'
-import { deleteWorktreeBranch, forceRemoveWorktree } from './cleanup'
+import type { MergeBackResult, RetainedWorktree, WorktreeSummary } from '@mobi/shared'
+import { deleteWorktreeBranch, forceRemoveWorktree, removeWorktreeIfClean, type WorktreeCleanupResult } from './cleanup'
 import type { GitRunner } from './gitRunner'
 import { runGit } from './gitRunner'
 import { branchForWorktreeName, parseMobiWorktreeLayout, worktreeNameFromBranch } from './identity'
@@ -358,6 +358,44 @@ export class WorktreeLifecycleService {
             worktreeRemoved: true,
             branchDeleted: deleted.ok,
             ...(deleted.ok ? {} : { warning: deleted.error })
+        }
+    }
+
+    // ── 会话删除处置 ───────────────────────────────────────────────────────
+
+    /**
+     * 会话删除后的 worktree 处置：干净 → 删 worktree + `-d` 删分支；脏/unknown →
+     * 保留并回传事实（前端据此 toast）。无 WorktreeMetadata 的会话零行为变化。
+     * 处置失败不阻塞删除（best-effort，warning 带回）。
+     */
+    async disposeAfterSessionDelete(session: { metadata: unknown }): Promise<{
+        retained?: RetainedWorktree
+        warning?: string
+    }> {
+        const worktree = readWorktreeMetadata(session)
+        if (!worktree?.worktreePath || !worktree.basePath || !worktree.name) return {}
+
+        const branch = worktree.branch ?? branchForWorktreeName(worktree.name)
+        const worktreePath = await canonicalPath(worktree.worktreePath)
+        let result: WorktreeCleanupResult
+        try {
+            result = await removeWorktreeIfClean(
+                { repoRoot: await canonicalPath(worktree.basePath), worktreePath, branch },
+                { git: this.git }
+            )
+        } catch (error) {
+            return { warning: errorText(error) }
+        }
+        if (result.removed) return result.warning ? { warning: result.warning } : {}
+        return {
+            retained: {
+                name: worktree.name,
+                branch,
+                worktreePath,
+                state: result.state,
+                dirtyFileCount: result.dirtyFileCount
+            },
+            ...(result.warning ? { warning: result.warning } : {})
         }
     }
 

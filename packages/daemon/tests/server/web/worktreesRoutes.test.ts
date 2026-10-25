@@ -16,7 +16,8 @@
 
 /**
  * worktree 生命周期 HTTP 路由（bun 运行器：Store 依赖 bun:sqlite）：授权、body
- * schema 校验、转发断言。真 git 仓库 + 真 worktree，断言外部行为。
+ * schema 校验、转发断言，以及 DELETE /sessions/:id 的「worktree 已保留」事实。
+ * 真 git 仓库 + 真 worktree，断言外部行为。
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
@@ -163,5 +164,40 @@ describe('worktree 生命周期 REST 路由', () => {
         expect(await res.json()).toMatchObject({ ok: true, worktreeRemoved: true, branchDeleted: true })
         expect(await exists(worktreePath)).toBe(false)
         expect((await git(temp.repo, ['branch', '--list', 'mobi-trash'])).trim()).toBe('')
+    })
+
+    test('DELETE /sessions/:id：脏 worktree 保留并在响应带回保留事实', async () => {
+        const worktreePath = await temp.addWorktree('kept')
+        await writeFile(join(worktreePath, 'left.txt'), 'todo\n')
+        const session = insertSession({ name: 'kept', worktreePath })
+
+        const res = await app.request(`/api/sessions/${session.id}`, { method: 'DELETE', headers })
+
+        expect(res.status).toBe(200)
+        expect(await res.json()).toMatchObject({
+            ok: true,
+            retainedWorktree: {
+                name: 'kept',
+                branch: 'mobi-kept',
+                worktreePath,
+                state: 'dirty',
+                dirtyFileCount: 1
+            }
+        })
+        expect(await exists(worktreePath)).toBe(true)
+    })
+
+    test('DELETE /sessions/:id：干净 worktree 自动清理且响应无保留事实', async () => {
+        const worktreePath = await temp.addWorktree('idle')
+        const session = insertSession({ name: 'idle', worktreePath })
+
+        const res = await app.request(`/api/sessions/${session.id}`, { method: 'DELETE', headers })
+
+        expect(res.status).toBe(200)
+        const body = await res.json() as { ok: boolean; retainedWorktree?: unknown }
+        expect(body).toEqual({ ok: true })
+        expect(body.retainedWorktree).toBeUndefined()
+        expect(await exists(worktreePath)).toBe(false)
+        expect((await git(temp.repo, ['branch', '--list', 'mobi-idle'])).trim()).toBe('')
     })
 })

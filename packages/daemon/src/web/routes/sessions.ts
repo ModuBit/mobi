@@ -26,6 +26,8 @@ import { z } from 'zod'
 import { checkWorkspaceAssignable, type SyncEngine, type Session, type OutputStyleSwitchOutcome, type ForkSessionResult } from '../../sync/syncEngine'
 import { readRpcFailure } from '../../sync/rpcFailure'
 import { isSessionRowDeletable } from '../../sync/sessionDeleteGuard'
+import { daemonLogger } from '../../logger'
+import { WorktreeLifecycleService } from '../../worktree/service'
 import type { WebAppEnv } from '../middleware/auth'
 import type { WebAppDeps } from '../appDeps'
 import { toSummaryWithLiveState } from '../utils/sessionSummary'
@@ -175,10 +177,22 @@ function registerSessionConfigRoute<K extends SessionConfigFieldKey>(
 
 export function createSessionsRoutes(
     // 依赖形直接取自 WebAppDeps（候选①声明源）：字段改名/增删在装配处暴露
-    deps: Pick<WebAppDeps, 'getSyncEngine' | 'backgroundTaskTracker'>,
+    deps: Pick<WebAppDeps, 'getSyncEngine' | 'backgroundTaskTracker' | 'store'>,
 ): Hono<WebAppEnv> {
     const { getSyncEngine, backgroundTaskTracker } = deps
     const app = new Hono<WebAppEnv>()
+
+    /**
+     * 会话删除后的 worktree 处置（worktree-lifecycle 票 03）：干净 → 删 worktree +
+     * `-d` 删分支；脏/unknown → 保留并在响应里带回事实。运行态直读 SyncEngine。
+     */
+    const worktreeService = new WorktreeLifecycleService({
+        store: deps.store,
+        isSessionRunning: (sessionId) => {
+            const session = getSyncEngine()?.getSession(sessionId)
+            return Boolean(session?.active || session?.running)
+        }
+    })
 
     /**
      * dormancy 阻塞响应的单一收口（/sessions/:id/dormant 与 DELETE /sessions/:id 两路由共用）：
@@ -895,8 +909,17 @@ export function createSessionsRoutes(
         }
 
         try {
+            // 删除前留住 worktree 元数据（删后 store 无行可查）；处置在行清理后触发
+            const deletedMetadata = sessionResult.session.metadata
             await engine.deleteSession(sessionResult.sessionId)
-            return c.json({ ok: true })
+            const disposal = await worktreeService.disposeAfterSessionDelete({ metadata: deletedMetadata })
+            if (disposal.warning) {
+                daemonLogger.warn(`[sessions/delete] worktree 处置降级 (${sessionResult.sessionId}): ${disposal.warning}`)
+            }
+            return c.json({
+                ok: true,
+                ...(disposal.retained ? { retainedWorktree: disposal.retained } : {})
+            })
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to delete session'
             // Map "active session" error to 409 conflict (race condition: session became active)

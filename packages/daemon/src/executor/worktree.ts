@@ -31,10 +31,6 @@ type WorktreeResult =
   | { ok: true; info: WorktreeInfo }
   | { ok: false; error: string };
 
-export type RemoveWorktreeResult =
-  | { ok: true }
-  | { ok: false; error: string };
-
 const MAX_ATTEMPTS = 5;
 
 async function runGit(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
@@ -173,15 +169,3 @@ export async function createWorktree(options: {
   };
 }
 
-export async function removeWorktree(options: {
-  repoRoot: string;
-  worktreePath: string;
-}): Promise<RemoveWorktreeResult> {
-  try {
-    await runGit(['worktree', 'remove', '--force', options.worktreePath], options.repoRoot);
-    return { ok: true };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { ok: false, error: message };
-  }
-}

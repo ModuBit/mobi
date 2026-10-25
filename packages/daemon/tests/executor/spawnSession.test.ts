@@ -66,7 +66,7 @@ function makeDeps(overrides: Partial<SpawnSessionDeps> = {}) {
         },
         spawn: spawnFn,
         createWorktree: vi.fn().mockResolvedValue({ ok: true, info: { worktreePath: '/wt', basePath: '/repo', branch: 'b', name: 'wt', createdAt: 1 } as never }),
-        removeWorktree: vi.fn().mockResolvedValue({ ok: true }),
+        disposeWorktree: vi.fn().mockResolvedValue({ removed: true, branchDeleted: true, state: 'clean', dirtyFileCount: 0 }),
         isProcessAlive: vi.fn().mockReturnValue(false),
         resolveMemoryEnv: vi.fn().mockResolvedValue({}),
         ...overrides,
@@ -133,11 +133,35 @@ describe('spawnSession worktree 清理时机', () => {
         const { deps } = worktreeDeps(() => dead)
         const result = await spawnSession({ directory: '/repo', sessionType: 'worktree' } as unknown as SpawnSessionOptions, deps)
         expect(result.type).toBe('error')
-        expect(deps.removeWorktree).toHaveBeenCalledTimes(1)
+        expect(deps.disposeWorktree).toHaveBeenCalledTimes(1)
     })
 
-    it('webhook 等待失败且 child 已死（isAlive=false）→ 清理被调', async () => {
-        const child = new FakeProcess()
+    it('spawn 抛异常（exception 路径）→ worktree 清理被调', async () => {
+        const { deps } = worktreeDeps(() => { throw new Error('boom') })
+        const result = await spawnSession({ directory: '/repo', sessionType: 'worktree' } as unknown as SpawnSessionOptions, deps)
+        expect(result.type).toBe('error')
+        expect(deps.disposeWorktree).toHaveBeenCalledTimes(1)
+    })
+
+    it('处置判定为脏 → 清理原语保留 worktree，不影响失败返回', async () => {
+        const dead = new FakeProcess()
+        const { deps } = worktreeDeps(() => dead)
+        ;(deps.disposeWorktree as ReturnType<typeof vi.fn>).mockResolvedValue({
+            removed: false,
+            branchDeleted: false,
+            state: 'dirty',
+            dirtyFileCount: 2
+        })
+        const result = await spawnSession({ directory: '/repo', sessionType: 'worktree' } as unknown as SpawnSessionOptions, deps)
+        expect(result.type).toBe('error')
+        expect(deps.disposeWorktree).toHaveBeenCalledWith({
+            repoRoot: '/repo',
+            worktreePath: '/wt',
+            branch: 'b'
+        })
+    })
+
+    it('webhook 等待失败且 child 已死（isAlive=false）→ 清理被调', async () => {        const child = new FakeProcess()
         child.pid = 42
         const { deps, table } = worktreeDeps(() => child)
         ;(deps.isProcessAlive as ReturnType<typeof vi.fn>).mockReturnValue(false)
@@ -151,7 +175,7 @@ describe('spawnSession worktree 清理时机', () => {
         const result = await pending
 
         expect(result.type).toBe('error')
-        expect(deps.removeWorktree).toHaveBeenCalledTimes(1)
+        expect(deps.disposeWorktree).toHaveBeenCalledTimes(1)
     })
 
     it('webhook 等待失败但 child 存活（isAlive=true）→ 跳过清理', async () => {
@@ -167,7 +191,7 @@ describe('spawnSession worktree 清理时机', () => {
         const result = await pending
 
         expect(result.type).toBe('error')
-        expect(deps.removeWorktree).not.toHaveBeenCalled()
+        expect(deps.disposeWorktree).not.toHaveBeenCalled()
     })
 
     it('webhook 及时到达 → success 且不清理 worktree', async () => {
@@ -181,7 +205,7 @@ describe('spawnSession worktree 清理时机', () => {
         const result = await pending
 
         expect(result).toEqual({ type: 'success', sessionId: 'sess-ok' })
-        expect(deps.removeWorktree).not.toHaveBeenCalled()
+        expect(deps.disposeWorktree).not.toHaveBeenCalled()
         expect(deps.reportOutcome).toHaveBeenCalledWith({ type: 'success' })
     })
 })
