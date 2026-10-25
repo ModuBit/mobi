@@ -252,11 +252,14 @@ export function SessionContextBar({ metadata }: SessionContextBarProps) {
                     </>
                 )}
             </ContentRow>
-            <WorktreeMergeModal
-                open={mergeOpen}
-                summary={summary}
-                onClose={() => setMergeOpen(false)}
-            />
+            {/* 非 worktree 会话不挂合回弹层：避免流式高频重渲染时多跑一棵 Modal 子树 */}
+            {worktree && (
+                <WorktreeMergeModal
+                    open={mergeOpen}
+                    summary={summary}
+                    onClose={() => setMergeOpen(false)}
+                />
+            )}
         </BarContainer>
     )
 }

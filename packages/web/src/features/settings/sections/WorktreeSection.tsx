@@ -32,6 +32,7 @@ import { WorktreeStateTag } from '@/ui/shared/worktree/WorktreeStateTag'
 import { useWorktrees } from '@/core/data/hooks/queries/useWorktrees'
 import { useWorktreeActions } from '@/core/data/hooks/mutations/useWorktreeActions'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
+import { formatFileSize } from '@/core/utils/fileSize'
 import { SettingsCard, enter } from '@/features/settings/blocks/shared'
 
 const { useToken } = antTheme
@@ -155,18 +156,6 @@ const Empty = styled.div<{ $token: Token }>`
     color: ${p => p.$token.colorTextTertiary};
 `
 
-function formatBytes(bytes: number): string {
-    if (bytes <= 0) return '0 B'
-    const units = ['B', 'KB', 'MB', 'GB']
-    let value = bytes
-    let unit = 0
-    while (value >= 1024 && unit < units.length - 1) {
-        value /= 1024
-        unit += 1
-    }
-    return `${value >= 10 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`
-}
-
 /** 设置页 Worktree 管理分区 */
 export function WorktreeSection() {
     const { token } = useToken()
@@ -261,7 +250,7 @@ export function WorktreeSection() {
                             <MetaGrid>
                                 <Meta title={item.repoRoot}>{item.repoRoot}</Meta>
                                 <Meta>{t('settings.worktrees.dirtyFiles', { count: item.dirtyFileCount })}</Meta>
-                                <Meta>{formatBytes(item.sizeBytes)}</Meta>
+                                <Meta>{formatFileSize(item.sizeBytes)}</Meta>
                                 {item.createdAt !== undefined && (
                                     <Meta>{t('settings.worktrees.createdAt', { time: formatRelativeTime(item.createdAt, t) })}</Meta>
                                 )}

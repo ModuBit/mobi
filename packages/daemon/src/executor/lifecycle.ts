@@ -198,7 +198,7 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
     fs,
     spawn: spawnMobiCli,
     createWorktree,
-    disposeWorktree: (input: { repoRoot: string; worktreePath: string; branch: string }) => removeWorktreeIfClean(input),
+    disposeWorktree: removeWorktreeIfClean,
     isProcessAlive,
   };
   const spawnSession = (options: SpawnRequest) => runSpawnSession(options, spawnDeps);

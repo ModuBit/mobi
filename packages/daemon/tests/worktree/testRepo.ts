@@ -19,19 +19,13 @@
  * 只断言文件内容/分支存在性等外部行为）。
  */
 
-import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { promisify } from 'node:util'
+import { runGit } from '@/worktree/gitRunner'
 
-const execFileAsync = promisify(execFile)
-
-/** 真 git 执行（与生产 GitRunner 同签名） */
-export async function git(cwd: string, args: string[]): Promise<string> {
-    const { stdout } = await execFileAsync('git', args, { cwd })
-    return stdout.toString()
-}
+/** 真 git 执行（直接复用生产 GitRunner） */
+export const git = runGit
 
 export interface TempRepo {
     /** 临时根目录（repo 与 repo-worktrees 的父目录） */

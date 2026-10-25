@@ -25,10 +25,18 @@
 
 import { realpath, stat } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import type { MergeBackResult, RetainedWorktree, WorktreeSummary } from '@mobi/shared'
-import { deleteWorktreeBranch, forceRemoveWorktree, removeWorktreeIfClean, type WorktreeCleanupResult } from './cleanup'
+import { MOBI_STATE_EXCLUDE_PATHSPEC } from '@mobi/node-core/git/gitExec'
+import type {
+    DiscardRequest,
+    DiscardResult,
+    MergeBackRequest,
+    MergeBackResult,
+    RetainedWorktree,
+    WorktreeSummary
+} from '@mobi/shared'
+import { removeWorktreeAndBranch, removeWorktreeIfClean, type WorktreeCleanupResult } from './cleanup'
 import type { GitRunner } from './gitRunner'
-import { runGit } from './gitRunner'
+import { errorMessage, runGit } from './gitRunner'
 import { branchForWorktreeName, parseMobiWorktreeLayout, worktreeNameFromBranch } from './identity'
 import { hasStagedChanges, inspectWorktreeStatus, parseDirtyPaths } from './status'
 
@@ -62,7 +70,6 @@ export interface WorktreeLifecycleServiceOptions {
 interface WorktreeListEntry {
     path: string
     branch: string | null
-    head: string | null
 }
 
 /** 从会话 metadata 读取 worktree 三字段（metadata 是 json blob，形状非法按无 worktree 处理） */
@@ -80,19 +87,40 @@ function readWorktreeMetadata(session: { metadata: unknown }): { worktreePath?: 
     }
 }
 
-/** porcelain 输出按空行分块；每块取 worktree / HEAD / branch 三键 */
+/** porcelain 输出按空行分块；每块取 worktree / branch 两键 */
 export function parseWorktreeList(output: string): WorktreeListEntry[] {
     const entries: WorktreeListEntry[] = []
     for (const block of output.split(/\n\s*\n/)) {
-        const entry: WorktreeListEntry = { path: '', branch: null, head: null }
+        const entry: WorktreeListEntry = { path: '', branch: null }
         for (const line of block.split('\n')) {
             if (line.startsWith('worktree ')) entry.path = line.slice('worktree '.length).trim()
-            else if (line.startsWith('HEAD ')) entry.head = line.slice('HEAD '.length).trim()
             else if (line.startsWith('branch ')) entry.branch = line.slice('branch '.length).trim()
         }
         if (entry.path) entries.push(entry)
     }
     return entries
+}
+
+/** 会话实时态来源（SyncEngine 的结构子集）：运行态直读进程内状态，不信任落库旧值 */
+export interface SessionLivenessSource {
+    getSession(sessionId: string): { active?: boolean; running?: boolean } | null | undefined
+}
+
+/**
+ * 路由装配工厂：把「会话活者（active 进程在 / running 轮次中）即不可处置」这条
+ * 生命周期规则收在服务侧，路由只注入 SyncEngine 读取入口。
+ */
+export function createWorktreeLifecycleService(deps: {
+    store: WorktreeStoreSource
+    getSyncEngine: () => SessionLivenessSource | null | undefined
+}): WorktreeLifecycleService {
+    return new WorktreeLifecycleService({
+        store: deps.store,
+        isSessionRunning: (sessionId) => {
+            const session = deps.getSyncEngine()?.getSession(sessionId)
+            return Boolean(session?.active || session?.running)
+        }
+    })
 }
 
 export class WorktreeLifecycleService {
@@ -110,44 +138,55 @@ export class WorktreeLifecycleService {
 
     /** 扫描本机所有 mobi worktree 的完整画像（无登记表，按需扫描） */
     async list(): Promise<WorktreeSummary[]> {
-        const repoRoots = await this.collectRepoRoots()
-        const sessionsByWorktreePath = await this.sessionsByWorktreePath()
+        // 会话表一次读取，候选仓库根与会话反查共用（避免同请求两次全表查询）
+        const sessions = this.store.sessions.getSessions()
+        const repoRoots = await this.collectRepoRoots(sessions)
+        const sessionsByWorktreePath = await this.sessionsByWorktreePath(sessions)
 
-        const summaries: WorktreeSummary[] = []
-        const seen = new Set<string>()
-        for (const repoRoot of repoRoots) {
-            const repoBranch = await this.currentBranch(repoRoot)
-            for (const entry of await this.listRepoWorktrees(repoRoot)) {
+        // 仓库维度并发：每个仓库的分支 / worktree 列表 / 画像互不依赖
+        const perRepo = await Promise.all(repoRoots.map(async (repoRoot) => {
+            const [repoBranch, entries] = await Promise.all([
+                this.currentBranch(repoRoot),
+                this.listRepoWorktrees(repoRoot)
+            ])
+            const candidates: Array<Parameters<typeof this.toSummary>[0]> = []
+            for (const entry of entries) {
                 const worktreePath = await canonicalPath(entry.path)
-                if (seen.has(worktreePath)) continue
                 const layout = parseMobiWorktreeLayout(worktreePath)
                 if (!layout) continue
                 if (resolve(layout.repoRoot) !== resolve(repoRoot)) continue
                 const nameFromBranch = entry.branch ? worktreeNameFromBranch(entry.branch) : null
                 if (!nameFromBranch || nameFromBranch !== layout.name) continue
-
-                seen.add(worktreePath)
-                summaries.push(await this.toSummary({
+                candidates.push({
                     worktreePath,
                     repoRoot: resolve(repoRoot),
                     name: layout.name,
                     branch: branchForWorktreeName(layout.name),
                     repoBranch,
                     session: sessionsByWorktreePath.get(worktreePath)
-                }))
+                })
             }
-        }
+            return candidates
+        }))
 
+        // 候选仓库根可能因软链/嵌套重叠命中同一 worktree：顺序去重后再并发生成画像
+        const seen = new Set<string>()
+        const unique = perRepo.flat().filter((candidate) => {
+            if (seen.has(candidate.worktreePath)) return false
+            seen.add(candidate.worktreePath)
+            return true
+        })
+        const summaries = await Promise.all(unique.map((candidate) => this.toSummary(candidate)))
         return summaries.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0) || a.name.localeCompare(b.name))
     }
 
     /** 候选仓库根：工作区 folders + 会话 WorktreeMetadata.basePath，各自 rev-parse 收敛去重 */
-    private async collectRepoRoots(): Promise<string[]> {
+    private async collectRepoRoots(sessions: readonly WorktreeSessionRow[]): Promise<string[]> {
         const candidates = new Set<string>()
         for (const workspace of this.store.workspaces.getAllWorkspaces()) {
             for (const folder of workspace.folders) candidates.add(folder.path)
         }
-        for (const session of this.store.sessions.getSessions()) {
+        for (const session of sessions) {
             const worktree = readWorktreeMetadata(session)
             if (worktree?.basePath) candidates.add(worktree.basePath)
         }
@@ -167,11 +206,19 @@ export class WorktreeLifecycleService {
 
     /** 主仓库当前检出分支（detached HEAD / 读取失败返回 undefined） */
     private async currentBranch(repoRoot: string): Promise<string | undefined> {
+        const head = await this.headBranch(repoRoot)
+        return head.ok ? head.branch ?? undefined : undefined
+    }
+
+    /** HEAD 指向的分支；detached HEAD 时 branch 为 null（合回前置闸据此区分 detached-head） */
+    private async headBranch(repoRoot: string): Promise<
+        { ok: true; branch: string | null } | { ok: false; error: string }
+    > {
         try {
             const branch = (await this.git(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
-            return branch && branch !== 'HEAD' ? branch : undefined
-        } catch {
-            return undefined
+            return { ok: true, branch: branch && branch !== 'HEAD' ? branch : null }
+        } catch (error) {
+            return { ok: false, error: errorMessage(error) }
         }
     }
 
@@ -184,15 +231,19 @@ export class WorktreeLifecycleService {
     }
 
     /** worktreePath → 所属会话（同一路径理论上唯一；多行时取最近更新的一行） */
-    private async sessionsByWorktreePath(): Promise<Map<string, WorktreeSessionRow>> {
+    private async sessionsByWorktreePath(sessions: readonly WorktreeSessionRow[]): Promise<Map<string, WorktreeSessionRow>> {
+        const candidates = sessions
+            .map((session) => ({ session, worktreePath: readWorktreeMetadata(session)?.worktreePath }))
+            .filter((candidate): candidate is { session: WorktreeSessionRow; worktreePath: string } => Boolean(candidate.worktreePath))
+        // realpath 批量并发（串行时历史会话多会成为请求内的线性 I/O）
+        const keys = await Promise.all(candidates.map((candidate) => canonicalPath(candidate.worktreePath)))
+
         const byPath = new Map<string, WorktreeSessionRow>()
-        for (const session of this.store.sessions.getSessions()) {
-            const worktreePath = readWorktreeMetadata(session)?.worktreePath
-            if (!worktreePath) continue
-            const key = await canonicalPath(worktreePath)
+        candidates.forEach((candidate, index) => {
+            const key = keys[index]!
             const existing = byPath.get(key)
-            if (!existing || session.updatedAt > existing.updatedAt) byPath.set(key, session)
-        }
+            if (!existing || candidate.session.updatedAt > existing.updatedAt) byPath.set(key, candidate.session)
+        })
         return byPath
     }
 
@@ -251,11 +302,7 @@ export class WorktreeLifecycleService {
      * 合回：脏 worktree 先 WIP 提交 → 主仓库当前检出分支 merge（no-ff / squash）→
      * 成功后按需清理。冲突诚实失败：主树回滚到合并前，WIP 提交留在 worktree 分支。
      */
-    async mergeBack(request: {
-        worktreePath: string
-        strategy?: 'no-ff' | 'squash'
-        cleanup?: boolean
-    }): Promise<MergeBackResult> {
+    async mergeBack(request: MergeBackRequest): Promise<MergeBackResult> {
         const strategy = request.strategy ?? 'no-ff'
         const cleanup = request.cleanup ?? true
 
@@ -275,13 +322,13 @@ export class WorktreeLifecycleService {
             return { ok: false, reason: 'main-dirty', files: mainDirty }
         }
 
-        let mainBranch: string
-        try {
-            mainBranch = (await this.git(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
-        } catch (error) {
-            return { ok: false, reason: 'git-failed', message: errorText(error) }
+        // 合回目标恒为主仓库当前检出分支（用户想合到别的分支自己先切）；detached HEAD
+        // 没有「当前分支」可作目标，直接拒绝。
+        const head = await this.headBranch(repoRoot)
+        if (!head.ok) {
+            return { ok: false, reason: 'git-failed', message: head.error }
         }
-        if (!mainBranch || mainBranch === 'HEAD') {
+        if (!head.branch) {
             return { ok: false, reason: 'detached-head' }
         }
 
@@ -289,7 +336,6 @@ export class WorktreeLifecycleService {
         const wip = await this.commitWipIfNeeded(worktreePath, name)
         if (!wip.ok) return wip.result
 
-        // 目标恒为主仓库当前检出分支（用户想合到别的分支自己先切）
         const mergeError = await this.runMerge(repoRoot, branch, strategy)
         if (mergeError !== null) {
             const conflictFiles = await this.conflictFiles(repoRoot)
@@ -304,40 +350,20 @@ export class WorktreeLifecycleService {
             return { ok: true, strategy, worktreeRemoved: false, branchDeleted: false }
         }
 
-        const warnings: string[] = []
-        const removal = await forceRemoveWorktree(this.git, repoRoot, worktreePath)
-        let branchDeleted = false
-        if (!removal.ok) {
-            warnings.push(`Failed to remove worktree: ${removal.error ?? 'unknown error'}`)
-        } else {
-            // no-ff 用 -d（已合入才删得掉，天然防呆）；squash 后 git 认为未合入，用 -D
-            const deleted = await deleteWorktreeBranch(this.git, repoRoot, branch, strategy === 'squash')
-            branchDeleted = deleted.ok
-            if (!deleted.ok) warnings.push(`Failed to delete branch ${branch}: ${deleted.error ?? 'unknown error'}`)
-        }
-
-        return {
-            ok: true,
-            strategy,
-            worktreeRemoved: removal.ok,
-            branchDeleted,
-            ...(warnings.length > 0 ? { warning: warnings.join('; ') } : {})
-        }
+        // no-ff 用 -d（已合入才删得掉，天然防呆）；squash 后 git 认为未合入，用 -D
+        const cleanupResult = await removeWorktreeAndBranch(this.git, {
+            repoRoot,
+            worktreePath,
+            branch,
+            forceBranch: strategy === 'squash'
+        })
+        return { ok: true, strategy, ...cleanupResult }
     }
 
     // ── 丢弃 ───────────────────────────────────────────────────────────────
 
     /** 丢弃：`worktree remove --force` + `branch -D`；定位参数经归属约定校验后才执行 */
-    async discard(request: { worktreePath: string }): Promise<{
-        ok: true
-        worktreeRemoved: boolean
-        branchDeleted: boolean
-        warning?: string
-    } | {
-        ok: false
-        reason: 'invalid-worktree' | 'session-running' | 'git-failed'
-        message?: string
-    }> {
+    async discard(request: DiscardRequest): Promise<DiscardResult> {
         const located = await this.locate(request.worktreePath)
         if (!located.ok) {
             return located.result.reason === 'repo-mismatch'
@@ -349,15 +375,20 @@ export class WorktreeLifecycleService {
             return { ok: false, reason: 'session-running' }
         }
 
-        const removal = await forceRemoveWorktree(this.git, repoRoot, worktreePath)
-        if (!removal.ok) return { ok: false, reason: 'git-failed', message: removal.error }
-
-        const deleted = await deleteWorktreeBranch(this.git, repoRoot, branch, true)
+        const cleanupResult = await removeWorktreeAndBranch(this.git, {
+            repoRoot,
+            worktreePath,
+            branch,
+            forceBranch: true
+        })
+        if (!cleanupResult.worktreeRemoved) {
+            return { ok: false, reason: 'git-failed', message: cleanupResult.warning }
+        }
         return {
             ok: true,
             worktreeRemoved: true,
-            branchDeleted: deleted.ok,
-            ...(deleted.ok ? {} : { warning: deleted.error })
+            branchDeleted: cleanupResult.branchDeleted,
+            ...(cleanupResult.warning ? { warning: cleanupResult.warning } : {})
         }
     }
 
@@ -384,7 +415,7 @@ export class WorktreeLifecycleService {
                 { git: this.git }
             )
         } catch (error) {
-            return { warning: errorText(error) }
+            return { warning: errorMessage(error) }
         }
         if (result.removed) return result.warning ? { warning: result.warning } : {}
         return {
@@ -420,7 +451,7 @@ export class WorktreeLifecycleService {
                 return { ok: false, result: { ok: false, reason: 'invalid-worktree' } }
             }
         } catch (error) {
-            return { ok: false, result: { ok: false, reason: 'invalid-worktree', message: errorText(error) } }
+            return { ok: false, result: { ok: false, reason: 'invalid-worktree', message: errorMessage(error) } }
         }
 
         const repoRoot = resolve(layout.repoRoot)
@@ -432,7 +463,7 @@ export class WorktreeLifecycleService {
             return { ok: false, result: { ok: false, reason: 'repo-mismatch' } }
         }
 
-        const session = (await this.sessionsByWorktreePath()).get(absolutePath)
+        const session = (await this.sessionsByWorktreePath(this.store.sessions.getSessions())).get(absolutePath)
         return { ok: true, worktreePath: absolutePath, repoRoot, name: layout.name, branch: expectedBranch, session }
     }
 
@@ -470,7 +501,7 @@ export class WorktreeLifecycleService {
         name: string
     ): Promise<{ ok: true } | { ok: false; result: MergeBackResult }> {
         try {
-            await this.git(worktreePath, ['add', '-A', '--', '.', ':(exclude).mobi'])
+            await this.git(worktreePath, ['add', '-A', '--', '.', MOBI_STATE_EXCLUDE_PATHSPEC])
             const status = await this.git(worktreePath, ['status', '--porcelain', '-z', '-uall'])
             if (!hasStagedChanges(status)) return { ok: true }
             await this.git(worktreePath, ['commit', '--no-verify', '-m', `WIP: mobi ${name} pre-merge`])
@@ -478,7 +509,7 @@ export class WorktreeLifecycleService {
         } catch (error) {
             return {
                 ok: false,
-                result: { ok: false, reason: 'git-failed', message: errorText(error) }
+                result: { ok: false, reason: 'git-failed', message: errorMessage(error) }
             }
         }
     }
@@ -495,7 +526,7 @@ export class WorktreeLifecycleService {
             }
             return null
         } catch (error) {
-            return errorText(error)
+            return errorMessage(error)
         }
     }
 
@@ -524,7 +555,7 @@ export class WorktreeLifecycleService {
         }
         try {
             await this.git(repoRoot, ['reset', '--hard', 'HEAD'])
-            await this.git(repoRoot, ['clean', '-fdq', '--', '.', ':(exclude).mobi'])
+            await this.git(repoRoot, ['clean', '-fdq', '--', '.', MOBI_STATE_EXCLUDE_PATHSPEC])
         } catch {
             // 回滚本身失败时不再抛：调用方拿到的是 merge 失败事实，主树状态交 git 报告
         }
@@ -539,8 +570,4 @@ async function canonicalPath(path: string): Promise<string> {
     } catch {
         return resolve(path)
     }
-}
-
-function errorText(error: unknown): string {
-    return error instanceof Error ? error.message : String(error)
 }

@@ -25,7 +25,6 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest'
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { clearWorktreeStatusCache } from '@/worktree/status'
 import {
     WorktreeLifecycleService,
     type WorktreeSessionRow,
@@ -91,7 +90,6 @@ describe('WorktreeLifecycleService', () => {
     let runningSessionIds: Set<string>
 
     beforeEach(async () => {
-        clearWorktreeStatusCache()
         temp = await createTempRepo()
         store = createFakeStore()
         runningSessionIds = new Set()
@@ -102,7 +100,6 @@ describe('WorktreeLifecycleService', () => {
     })
 
     afterEach(async () => {
-        clearWorktreeStatusCache()
         await temp.cleanup()
     })
 
@@ -379,12 +376,10 @@ describe('removeWorktreeIfClean（清理原语）', () => {
     let temp: TempRepo
 
     beforeEach(async () => {
-        clearWorktreeStatusCache()
         temp = await createTempRepo()
     })
 
     afterEach(async () => {
-        clearWorktreeStatusCache()
         await temp.cleanup()
     })
 

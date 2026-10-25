@@ -25,8 +25,7 @@
 
 import { DiscardRequestSchema, MergeBackRequestSchema } from '@mobi/shared'
 import { Hono } from 'hono'
-import type { SyncEngine } from '../../sync/syncEngine'
-import { WorktreeLifecycleService } from '../../worktree/service'
+import { createWorktreeLifecycleService } from '../../worktree/service'
 import type { WebAppDeps } from '../appDeps'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSyncEngine } from './guards'
@@ -35,48 +34,38 @@ export function createWorktreesRoutes(
     deps: Pick<WebAppDeps, 'store' | 'getSyncEngine'>
 ): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
-
-    /**
-     * 会话运行态：active（进程/心跳在）或 running（轮次进行中）都视为不可处置。
-     * 直读 SyncEngine 实时态而非 DB，避免用过期落库值放行删除。
-     */
-    const serviceFor = (engine: SyncEngine): WorktreeLifecycleService => new WorktreeLifecycleService({
-        store: deps.store,
-        isSessionRunning: (sessionId) => {
-            const session = engine.getSession(sessionId)
-            return Boolean(session?.active || session?.running)
-        }
-    })
+    // 服务无状态，装配一次即可；运行态判据由工厂收口（active / running 都不可处置）
+    const worktreeService = createWorktreeLifecycleService(deps)
 
     // GET /api/worktrees - 本机全部 mobi worktree 画像（含孤儿）
     app.get('/worktrees', async (c) => {
-        const engine = requireSyncEngine(c, deps.getSyncEngine)
-        if (engine instanceof Response) return engine
+        const gate = requireSyncEngine(c, deps.getSyncEngine)
+        if (gate instanceof Response) return gate
 
-        const worktrees = await serviceFor(engine).list()
+        const worktrees = await worktreeService.list()
         return c.json({ worktrees })
     })
 
     // POST /api/worktrees/merge-back - 合回主仓库当前检出分支
     app.post('/worktrees/merge-back', async (c) => {
-        const engine = requireSyncEngine(c, deps.getSyncEngine)
-        if (engine instanceof Response) return engine
+        const gate = requireSyncEngine(c, deps.getSyncEngine)
+        if (gate instanceof Response) return gate
 
         const parsed = MergeBackRequestSchema.safeParse(await c.req.json().catch(() => null))
         if (!parsed.success) return c.json({ error: 'Invalid body' }, 400)
 
-        return c.json(await serviceFor(engine).mergeBack(parsed.data))
+        return c.json(await worktreeService.mergeBack(parsed.data))
     })
 
     // POST /api/worktrees/discard - 丢弃 worktree（二次确认由前端承担）
     app.post('/worktrees/discard', async (c) => {
-        const engine = requireSyncEngine(c, deps.getSyncEngine)
-        if (engine instanceof Response) return engine
+        const gate = requireSyncEngine(c, deps.getSyncEngine)
+        if (gate instanceof Response) return gate
 
         const parsed = DiscardRequestSchema.safeParse(await c.req.json().catch(() => null))
         if (!parsed.success) return c.json({ error: 'Invalid body' }, 400)
 
-        return c.json(await serviceFor(engine).discard(parsed.data))
+        return c.json(await worktreeService.discard(parsed.data))
     })
 
     return app

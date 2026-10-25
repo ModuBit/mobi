@@ -28,7 +28,6 @@ import { SyncEngine } from '../../../src/sync/syncEngine'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 import type { SSEManager } from '../../../src/sse/sseManager'
-import { clearWorktreeStatusCache } from '../../../src/worktree/status'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
 import { createTempRepo, git, type TempRepo } from '../../worktree/testRepo'
 
@@ -50,7 +49,6 @@ describe('worktree 生命周期 REST 路由', () => {
     let headers: Record<string, string>
 
     beforeEach(async () => {
-        clearWorktreeStatusCache()
         temp = await createTempRepo()
         store = new Store(':memory:')
         const io = { of() { return { sockets: new Map() } } } as unknown as Server
@@ -70,7 +68,6 @@ describe('worktree 生命周期 REST 路由', () => {
     })
 
     afterEach(async () => {
-        clearWorktreeStatusCache()
         engine.stop()
         cleanup()
         await temp.cleanup()

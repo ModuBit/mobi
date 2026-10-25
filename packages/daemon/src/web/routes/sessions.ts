@@ -27,7 +27,7 @@ import { checkWorkspaceAssignable, type SyncEngine, type Session, type OutputSty
 import { readRpcFailure } from '../../sync/rpcFailure'
 import { isSessionRowDeletable } from '../../sync/sessionDeleteGuard'
 import { daemonLogger } from '../../logger'
-import { WorktreeLifecycleService } from '../../worktree/service'
+import { createWorktreeLifecycleService } from '../../worktree/service'
 import type { WebAppEnv } from '../middleware/auth'
 import type { WebAppDeps } from '../appDeps'
 import { toSummaryWithLiveState } from '../utils/sessionSummary'
@@ -184,15 +184,9 @@ export function createSessionsRoutes(
 
     /**
      * 会话删除后的 worktree 处置（worktree-lifecycle 票 03）：干净 → 删 worktree +
-     * `-d` 删分支；脏/unknown → 保留并在响应里带回事实。运行态直读 SyncEngine。
+     * `-d` 删分支；脏/unknown → 保留并在响应里带回事实。运行态判据由服务工厂收口。
      */
-    const worktreeService = new WorktreeLifecycleService({
-        store: deps.store,
-        isSessionRunning: (sessionId) => {
-            const session = getSyncEngine()?.getSession(sessionId)
-            return Boolean(session?.active || session?.running)
-        }
-    })
+    const worktreeService = createWorktreeLifecycleService({ store: deps.store, getSyncEngine })
 
     /**
      * dormancy 阻塞响应的单一收口（/sessions/:id/dormant 与 DELETE /sessions/:id 两路由共用）：

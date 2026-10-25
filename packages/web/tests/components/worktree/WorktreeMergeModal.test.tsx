@@ -37,9 +37,10 @@ vi.mock('@/core/data/hooks/mutations/useWorktreeActions', () => ({
     })
 }))
 
-vi.mock('react-i18next', () => ({
-    useTranslation: () => ({ t: (key: string) => key })
-}))
+vi.mock('react-i18next', async () => {
+    const { i18nKeyStub } = await import('../../helpers/i18nStub')
+    return i18nKeyStub()
+})
 
 const SUMMARY: WorktreeSummary = {
     name: 'feat-a',

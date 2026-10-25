@@ -17,17 +17,17 @@
 /**
  * git 执行注入面（worktree 生命周期服务）：统一 (cwd, args) → stdout 的薄签名，
  * 测试可注入假件；失败抛错（message 含 git stderr），调用方按语义降级。
+ * 实现直接复用 node-core 的 git 收口（maxBuffer / 环境变量口径单源）。
  */
 
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
-
-const execFileAsync = promisify(execFile)
+import { git } from '@mobi/node-core/git/gitExec'
 
 export type GitRunner = (cwd: string, args: string[]) => Promise<string>
 
-/** 真实 git 执行（maxBuffer 64MB，与 node-core git 收口同口径） */
-export const runGit: GitRunner = async (cwd, args) => {
-    const { stdout } = await execFileAsync('git', args, { cwd, maxBuffer: 64 * 1024 * 1024 })
-    return stdout.toString()
+/** 真实 git 执行（node-core 唯一收口） */
+export const runGit: GitRunner = git
+
+/** git/文件系统失败文案（Error.message 已含 stderr；非 Error 兜底 String） */
+export function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error)
 }

@@ -22,8 +22,8 @@
  */
 
 import type { GitRunner } from './gitRunner'
+import { errorMessage, runGit } from './gitRunner'
 import { inspectWorktreeStatus, isSafeToRemove, type WorktreeDirtyState } from './status'
-import { runGit } from './gitRunner'
 
 export interface WorktreeCleanupResult {
     /** worktree 目录是否已删除 */
@@ -67,9 +67,33 @@ export async function deleteWorktreeBranch(
 }
 
 /**
+ * 强制删除 worktree 后按需删分支（合回清理 / 丢弃共用）：worktree 删除失败即终止，
+ * 分支删除失败只降级为 warning，不回滚已完成的 worktree 删除。
+ */
+export async function removeWorktreeAndBranch(
+    git: GitRunner,
+    options: { repoRoot: string; worktreePath: string; branch: string; forceBranch: boolean }
+): Promise<{ worktreeRemoved: boolean; branchDeleted: boolean; warning?: string }> {
+    const removal = await forceRemoveWorktree(git, options.repoRoot, options.worktreePath)
+    if (!removal.ok) {
+        return {
+            worktreeRemoved: false,
+            branchDeleted: false,
+            warning: `Failed to remove worktree: ${removal.error ?? 'unknown error'}`
+        }
+    }
+
+    const deleted = await deleteWorktreeBranch(git, options.repoRoot, options.branch, options.forceBranch)
+    return {
+        worktreeRemoved: true,
+        branchDeleted: deleted.ok,
+        ...(deleted.ok ? {} : { warning: `Failed to delete branch ${options.branch}: ${deleted.error ?? 'unknown error'}` })
+    }
+}
+
+/**
  * 「干净才删、脏则保留」：脏或 unknown 一律保留（unknown 保守不删——git 失败时
- * 无法证明没有未提交改动）。删除 worktree 成功后同步 `-d` 删分支；分支删除被拒
- * 只降级为 warning，不回滚已完成的 worktree 删除。
+ * 无法证明没有未提交改动）。删除口径与合回/丢弃共用 {@link removeWorktreeAndBranch}。
  */
 export async function removeWorktreeIfClean(
     options: { repoRoot: string; worktreePath: string; branch: string },
@@ -86,27 +110,12 @@ export async function removeWorktreeIfClean(
         }
     }
 
-    const removal = await forceRemoveWorktree(git, options.repoRoot, options.worktreePath)
-    if (!removal.ok) {
-        return {
-            removed: false,
-            branchDeleted: false,
-            state: status.state,
-            dirtyFileCount: 0,
-            warning: removal.error
-        }
-    }
-
-    const deleted = await deleteWorktreeBranch(git, options.repoRoot, options.branch, false)
+    const cleanup = await removeWorktreeAndBranch(git, { ...options, forceBranch: false })
     return {
-        removed: true,
-        branchDeleted: deleted.ok,
+        removed: cleanup.worktreeRemoved,
+        branchDeleted: cleanup.branchDeleted,
         state: status.state,
         dirtyFileCount: 0,
-        ...(deleted.ok ? {} : { warning: deleted.error })
+        ...(cleanup.warning ? { warning: cleanup.warning } : {})
     }
-}
-
-function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error)
 }

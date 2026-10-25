@@ -93,38 +93,20 @@ async function sumFileSizes(worktreePath: string, paths: string[]): Promise<numb
     return sizes.reduce((total, size) => total + size, 0)
 }
 
-// 页面列表按需扫描，同一 worktree 可能在一次列表请求里被多个候选 repo 命中；
-// 短 TTL 缓存避免重复跑 git（进程内、键为 worktree 绝对路径）。脏状态是用户可见事实，
-// 缓存窗口刻意压到 1s——只吸收同一次请求内的重复扫描，不跨用户动作。
-const STATUS_CACHE_TTL_MS = 1000
-const statusCache = new Map<string, { at: number; status: WorktreeStatus }>()
-
-/** 脏判定（带 1s 进程内去重缓存）；unknown 保守对待由调用方解释 */
+/** 脏判定（每次现跑 git；新鲜度由前端查询缓存控制，避免进程内隐藏的陈旧窗口） */
 export async function inspectWorktreeStatus(
     git: GitRunner,
-    worktreePath: string,
-    now: number = Date.now()
+    worktreePath: string
 ): Promise<WorktreeStatus> {
-    const cached = statusCache.get(worktreePath)
-    if (cached && now - cached.at < STATUS_CACHE_TTL_MS) return cached.status
-
-    let status: WorktreeStatus
     try {
         const output = await git(worktreePath, ['status', '--porcelain', '-z', '-uall'])
         const paths = parseDirtyPaths(output)
-        status = paths.length === 0
+        return paths.length === 0
             ? CLEAN_STATUS
             : { state: 'dirty', dirtyFileCount: paths.length, sizeBytes: await sumFileSizes(worktreePath, paths) }
     } catch {
-        status = UNKNOWN_STATUS
+        return UNKNOWN_STATUS
     }
-    statusCache.set(worktreePath, { at: now, status })
-    return status
-}
-
-/** 测试隔离：清空脏判定缓存 */
-export function clearWorktreeStatusCache(): void {
-    statusCache.clear()
 }
 
 /** unknown 视为不可安全删除（保守：不删、留给用户处置） */

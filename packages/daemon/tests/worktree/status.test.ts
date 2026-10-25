@@ -17,12 +17,7 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import {
-    clearWorktreeStatusCache,
-    hasStagedChanges,
-    inspectWorktreeStatus,
-    parseDirtyPaths
-} from '@/worktree/status'
+import { hasStagedChanges, inspectWorktreeStatus, parseDirtyPaths } from '@/worktree/status'
 import { git, createTempRepo, type TempRepo } from './testRepo'
 
 describe('脏判定 porcelain 解析', () => {
@@ -48,13 +43,11 @@ describe('inspectWorktreeStatus（真 git 集成）', () => {
     let worktreePath: string
 
     beforeEach(async () => {
-        clearWorktreeStatusCache()
         temp = await createTempRepo()
         worktreePath = await temp.addWorktree('s1')
     })
 
     afterEach(async () => {
-        clearWorktreeStatusCache()
         await temp.cleanup()
     })
 

@@ -47,6 +47,9 @@ export function isMobiStatePath(path: string): boolean {
     return normalized === MOBI_STATE_DIR || normalized.startsWith(`${MOBI_STATE_DIR}/`)
 }
 
+/** git pathspec 形态的 .mobi 排除（`git add` / `git clean` 共用同一常量，与 isMobiStatePath 同源） */
+export const MOBI_STATE_EXCLUDE_PATHSPEC = `:(exclude)${MOBI_STATE_DIR}`
+
 /** 引用名合法字符白名单外的字符（sessionId 理论上不含，兜底替换）。
  *  归档/journal 落盘目录（`.mobi/turn-diffs/<sid>/`）靠同一清洗对上（getTurnArchivePath
  *  派生自它），字符面单源在此 */
