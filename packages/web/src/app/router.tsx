@@ -35,6 +35,7 @@ const SettingsIndex = lazyRoute(routeChunkLoaders.SettingsIndex)
 const WebToolsSection = lazyRoute(routeChunkLoaders.WebToolsSection)
 const MemorySection = lazyRoute(routeChunkLoaders.MemorySection)
 const MapSection = lazyRoute(routeChunkLoaders.MapSection)
+const WorktreeSection = lazyRoute(routeChunkLoaders.WorktreeSection)
 const DebugSectionRoute = lazyRoute(routeChunkLoaders.DebugSectionRoute)
 
 
@@ -135,6 +136,12 @@ const settingsMapRoute = createRoute({
     path: 'map',
     component: MapSection,
 })
+// Worktree 管理分区（保留/残留工作树的可见性与处置出口）
+const settingsWorktreesRoute = createRoute({
+    getParentRoute: () => settingsRoute,
+    path: 'worktrees',
+    component: WorktreeSection,
+})
 // 调试分区（未解锁渲染空分区）
 const settingsDebugRoute = createRoute({
     getParentRoute: () => settingsRoute,
@@ -169,6 +176,7 @@ export const router = createRouter({
                 settingsWebToolsRoute,
                 settingsMemoryRoute,
                 settingsMapRoute,
+                settingsWorktreesRoute,
                 settingsDebugRoute,
             ]),
         ]),

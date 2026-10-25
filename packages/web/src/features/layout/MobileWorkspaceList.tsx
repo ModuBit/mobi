@@ -58,6 +58,7 @@ import { useMenuNavigate } from './useMenuNavigate'
 import { WorkspaceFormModal } from '@/ui/shared/WorkspaceFormModal'
 import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
 import { AssignWorkspaceModal } from '@/features/layout/AssignWorkspaceModal'
+import { notifyRetainedWorktree } from './retainedWorktreeNotice'
 import { SessionListFooter } from './SessionListFooter'
 import { useSectionExpanded } from './useSectionExpanded'
 import { usePagedSectionList } from './usePagedSectionList'
@@ -72,7 +73,7 @@ const { useToken } = antTheme
 export function MobileWorkspaceList() {
     const { token } = useToken()
     const { t } = useTranslation()
-    const { message: messageApi, modal } = AntdApp.useApp()
+    const { message: messageApi, modal, notification } = AntdApp.useApp()
     const navigate = useNavigate()
     const navigateFromMenu = useMenuNavigate()
     const queryClient = useQueryClient()
@@ -257,7 +258,15 @@ export function MobileWorkspaceList() {
         const sessionId = actionSessionId
         setActionLoading('delete')
         try {
-            await api.sessions.delete(sessionId)
+            const deleted = await api.sessions.delete(sessionId)
+            if (deleted.data.retainedWorktree) {
+                notifyRetainedWorktree({
+                    notification,
+                    t,
+                    retained: deleted.data.retainedWorktree,
+                    onManage: () => navigateFromMenu(() => navigate({ to: '/settings/worktrees' }))
+                })
+            }
             queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
             clearMessageWindow(sessionId)
             await invalidateSessionViews(queryClient, [sessionId])
@@ -276,7 +285,7 @@ export function MobileWorkspaceList() {
         } finally {
             setActionLoading(null)
         }
-    }, [actionSessionId, api, queryClient, activeSessionId, navigate, navigateFromMenu, t, messageApi])
+    }, [actionSessionId, api, queryClient, activeSessionId, navigate, navigateFromMenu, t, messageApi, notification])
 
     // ActionSheet 当前操作的 session
     const actionSession = actionSessionId ? findSession(actionSessionId) : null

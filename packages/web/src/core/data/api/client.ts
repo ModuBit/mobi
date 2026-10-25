@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, DaemonStatus, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse } from './types'
-import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, MapSettingsSubmission, MapSettingsView, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin, WorktreeListResponse, MergeBackResult, MergeBackRequest, DiscardResult } from '@mobi/shared'
+import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, MapSettingsSubmission, MapSettingsView, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin, WorktreeListResponse, MergeBackResult, MergeBackRequest, DiscardResult, DeleteSessionResponse } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
 // 全局 401 处理回调（由外部设置）
@@ -133,7 +133,8 @@ export function createMobiApi() {
                 client.post('/api/sessions/spawn', { directory, agent, model, permissionMode, sessionType, worktreeName, effort, outputStyle, workspaceId }),
             get: (sessionId: string) => client.get<{ session: Session }>(`/api/sessions/${sessionId}`),
             create: (path: string) => client.post<Session>('/api/sessions', { path }),
-            delete: (sessionId: string) => client.delete(`/api/sessions/${sessionId}`),
+            // 删除响应可能携带「worktree 已保留」事实（脏 worktree 不静默销毁）
+            delete: (sessionId: string) => client.delete<DeleteSessionResponse>(`/api/sessions/${sessionId}`),
             setPermissionMode: (sessionId: string, mode: string) =>
                 client.post(`/api/sessions/${sessionId}/permission-mode`, { mode }),
             setModelMode: (sessionId: string, mode: string) =>

@@ -286,4 +286,66 @@ describe('SidebarWorkspaces 工作区实体化', () => {
         fireEvent.click(await within(modal).findByRole('button', { name: 'common.confirm' }))
         await waitFor(() => expect(assignSession).toHaveBeenCalledWith('r1', 'p1'))
     })
+
+    it('删除会话：worktree 脏改动被保留时弹保留提示（含设置页入口），不弹通用成功', async () => {
+        const s1 = makeSession('s1', '工作区会话一')
+        sessionsDelete.mockResolvedValue({
+            data: {
+                ok: true,
+                retainedWorktree: {
+                    name: 'feat-a',
+                    branch: 'mobi/feat-a',
+                    worktreePath: '/repo-worktrees/feat-a',
+                    state: 'dirty',
+                    dirtyFileCount: 2,
+                },
+            },
+        })
+        setup({ workspaceSessionsMap: { p1: [s1] } })
+        await screen.findByText('工作区会话一')
+
+        // 行内「更多」→「删除」
+        const rowMore = document.querySelector('.session-actions button[title="common.more"]') as HTMLButtonElement
+        fireEvent.pointerDown(rowMore, { button: 0 })
+        fireEvent.click(await screen.findByText('session.actions.delete'))
+
+        // 二次确认
+        const confirmDialog = await waitFor(() => {
+            const el = document.querySelector('.ant-modal-confirm') as HTMLElement | null
+            expect(el).toBeTruthy()
+            return el as HTMLElement
+        })
+        fireEvent.click(within(confirmDialog).getByRole('button', { name: 'common.confirm' }))
+
+        await waitFor(() => expect(sessionsDelete).toHaveBeenCalledWith('s1'))
+        // 保留提示（非通用成功）
+        expect(await screen.findByText('settings.worktrees.retainedTitle')).toBeInTheDocument()
+        expect(screen.getByText('settings.worktrees.retainedDesc')).toBeInTheDocument()
+        expect(screen.queryByText('common.success')).not.toBeInTheDocument()
+
+        // 「去处理」跳设置页 worktree 分区
+        fireEvent.click(screen.getByText('settings.worktrees.goManage'))
+        expect(navigateSpy).toHaveBeenCalledWith({ to: '/settings/worktrees' })
+    })
+
+    it('删除会话：无保留事实时走通用成功提示', async () => {
+        const s1 = makeSession('s1', '工作区会话一')
+        sessionsDelete.mockResolvedValue({ data: { ok: true } })
+        setup({ workspaceSessionsMap: { p1: [s1] } })
+        await screen.findByText('工作区会话一')
+
+        const rowMore = document.querySelector('.session-actions button[title="common.more"]') as HTMLButtonElement
+        fireEvent.pointerDown(rowMore, { button: 0 })
+        fireEvent.click(await screen.findByText('session.actions.delete'))
+        const confirmDialog = await waitFor(() => {
+            const el = document.querySelector('.ant-modal-confirm') as HTMLElement | null
+            expect(el).toBeTruthy()
+            return el as HTMLElement
+        })
+        fireEvent.click(within(confirmDialog).getByRole('button', { name: 'common.confirm' }))
+
+        await waitFor(() => expect(sessionsDelete).toHaveBeenCalledWith('s1'))
+        expect(await screen.findByText('common.success')).toBeInTheDocument()
+        expect(screen.queryByText('settings.worktrees.retainedTitle')).not.toBeInTheDocument()
+    })
 })

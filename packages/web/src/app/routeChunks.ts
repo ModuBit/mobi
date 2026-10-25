@@ -51,6 +51,7 @@ export const routeChunkLoaders = {
     WebToolsSection: defineLoader(() => import('@/features/settings/sections/WebToolsSection'), 'WebToolsSection'),
     MemorySection: defineLoader(() => import('@/features/settings/sections/MemorySection'), 'MemorySection'),
     MapSection: defineLoader(() => import('@/features/settings/sections/MapSection'), 'MapSection'),
+    WorktreeSection: defineLoader(() => import('@/features/settings/sections/WorktreeSection'), 'WorktreeSection'),
     DebugSectionRoute: defineLoader(() => import('@/features/settings/sections/DebugSectionRoute'), 'DebugSectionRoute'),
 } satisfies Record<string, RouteChunkLoader>
 

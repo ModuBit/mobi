@@ -702,6 +702,10 @@
       "map": {
         "title": "Map",
         "desc": "AMap keys and render mode"
+      },
+      "worktrees": {
+        "title": "Worktrees",
+        "desc": "Kept and leftover worktrees — inspect and dispose"
       }
     },
     "webTools": {
@@ -880,7 +884,10 @@
         "detachedHead": "The main repository is on a detached HEAD; merge target is unknown",
         "mergeFailed": "Merge failed; the main repository was rolled back",
         "gitFailed": "Git operation failed"
-      }
+      },
+      "retainedTitle": "Worktree kept",
+      "retainedDesc": "\"{{name}}\" has {{count}} uncommitted changes and was kept when the session was deleted. You can handle it in Settings.",
+      "goManage": "Open settings"
     }
   },
   "debug": {

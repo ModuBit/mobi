@@ -20,7 +20,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, cleanup, fireEvent, waitFor, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { App as AntdApp } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -63,8 +63,9 @@ vi.mock('@/core/data/hooks/mutations/useSessionActions', () => ({
     useSessionActions: () => ({ renameSession: vi.fn(), isPending: false }),
 }))
 
+const deleteMock = vi.hoisted(() => vi.fn())
 vi.mock('@/core/data/api/client', () => ({
-    useMobiApi: () => ({ sessions: { archive: vi.fn(), resume: vi.fn(), delete: vi.fn() } }),
+    useMobiApi: () => ({ sessions: { archive: vi.fn(), resume: vi.fn(), delete: deleteMock } }),
 }))
 
 // 三个分区组件桩：渲染触发按钮调用 onSessionAction，隔离 ActionSheet 逻辑
@@ -124,6 +125,7 @@ function makeWrapper() {
 describe('MobileWorkspaceList ActionSheet 归属操作', () => {
     beforeEach(() => {
         assignMock.mockReset()
+        deleteMock.mockReset()
     })
 
     afterEach(cleanup)
@@ -168,5 +170,32 @@ describe('MobileWorkspaceList ActionSheet 归属操作', () => {
         fireEvent.click(getByText('workspace.toRecent'))
         await waitFor(() => expect(assignMock).toHaveBeenCalledWith({ sessionId: 'sess-in-workspace', workspaceId: null }))
         await waitFor(() => expect(queryByText('workspace.toRecent')).toBeNull()) // ActionSheet 已关
+    })
+
+    it('删除会话：worktree 脏改动被保留时弹保留提示', async () => {
+        // 删除按钮对活跃会话禁用（原行为），用未活跃会话进入删除流程
+        fixtures.sessions = [{ ...inWorkspaceSession, active: false }]
+        deleteMock.mockResolvedValue({
+            data: {
+                ok: true,
+                retainedWorktree: {
+                    name: 'feat-a',
+                    branch: 'mobi/feat-a',
+                    worktreePath: '/repo-worktrees/feat-a',
+                    state: 'dirty',
+                    dirtyFileCount: 1,
+                },
+            },
+        })
+        const { getByText } = render(<MobileWorkspaceList />, { wrapper: makeWrapper() })
+
+        fireEvent.click(getByText('open-in-workspace'))
+        fireEvent.click(getByText('session.actions.delete'))
+        // 同一 sheet 内就地确认（不叠 antd Modal）
+        fireEvent.click(await screen.findByText('common.confirm'))
+
+        await waitFor(() => expect(deleteMock).toHaveBeenCalledWith('sess-in-workspace'))
+        expect(await screen.findByText('settings.worktrees.retainedTitle')).toBeInTheDocument()
+        expect(screen.getByText('settings.worktrees.goManage')).toBeInTheDocument()
     })
 })

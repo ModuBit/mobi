@@ -693,6 +693,10 @@
       "map": {
         "title": "地图",
         "desc": "高德地图 key 与渲染档位"
+      },
+      "worktrees": {
+        "title": "Worktree 管理",
+        "desc": "保留/残留工作树的状态与处置"
       }
     },
     "webTools": {
@@ -871,7 +875,10 @@
         "detachedHead": "主仓库处于 detached HEAD，无法确定合并目标",
         "mergeFailed": "合并失败，主仓库已回滚",
         "gitFailed": "git 操作失败"
-      }
+      },
+      "retainedTitle": "工作树已保留",
+      "retainedDesc": "「{{name}}」有 {{count}} 个未提交改动，删除会话时已保留，可在设置中处理。",
+      "goManage": "去设置处理"
     }
   },
   "debug": {

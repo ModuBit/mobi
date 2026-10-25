@@ -24,6 +24,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useAssignSessionWorkspace, useDeleteWorkspace } from '@/core/data/hooks/mutations/useWorkspaceMutations'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
+import { notifyRetainedWorktree } from './retainedWorktreeNotice'
 import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinned'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useMobiApi } from '@/core/data/api/client'
@@ -58,7 +59,7 @@ export function SidebarWorkspaces() {
     const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
-    const { message: messageApi, modal } = App.useApp()
+    const { message: messageApi, modal, notification } = App.useApp()
     const queryClient = useQueryClient()
     const api = useMobiApi()
     const params = useParams({ strict: false })
@@ -132,8 +133,17 @@ export function SidebarWorkspaces() {
             cancelText: t('common.cancel'),
             onOk: async () => {
                 try {
-                    await api.sessions.delete(session.id)
-                    messageApi.success(t('common.success'))
+                    const deleted = await api.sessions.delete(session.id)
+                    if (deleted.data.retainedWorktree) {
+                        notifyRetainedWorktree({
+                            notification,
+                            t,
+                            retained: deleted.data.retainedWorktree,
+                            onManage: () => { void navigate({ to: '/settings/worktrees' }) }
+                        })
+                    } else {
+                        messageApi.success(t('common.success'))
+                    }
                     queryClient.removeQueries({ queryKey: queryKeys.session(session.id) })
                     clearMessageWindow(session.id)
                     await invalidateSessionViews(queryClient, [session.id])
@@ -148,7 +158,7 @@ export function SidebarWorkspaces() {
                 }
             },
         })
-    }, [api, t, queryClient, activeSessionId, navigate, messageApi])
+    }, [api, t, queryClient, activeSessionId, navigate, messageApi, notification])
 
     // ===== 工作区管理 =====
 
