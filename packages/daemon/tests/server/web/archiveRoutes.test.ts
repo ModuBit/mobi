@@ -20,6 +20,7 @@ import { RpcFailure } from '../../../src/sync/rpcFailure'
 import { BackgroundTaskTracker } from '../../../src/sync/backgroundTaskTracker'
 import type { SyncEngine } from '../../../src/sync/syncEngine'
 import { Store } from '../../../src/store'
+import { createTempRepo, git, type TempRepo } from '../../worktree/testRepo'
 
 /**
  * POST /api/sessions/:id/archive 的异常收口（2026-09-30 事故）：会话 RPC 不可达时
@@ -104,5 +105,41 @@ describe('POST /api/sessions/:id/archive 异常收口', () => {
 
         expect(res.status).toBe(200)
         expect(await res.json()).toEqual({ ok: true })
+    })
+})
+describe('POST /api/sessions/:id/archive 不处置 worktree（可复活语义）', () => {
+    test('归档后 worktree 目录与分支原样保留', async () => {
+        const temp: TempRepo = await createTempRepo()
+        try {
+            const worktreePath = await temp.addWorktree('revivable')
+            const branch = 'mobi-revivable'
+            const engine = {
+                resolveSessionAccess: (id: string) => ({
+                    ok: true as const,
+                    sessionId: id,
+                    session: {
+                        ...mockSession,
+                        id,
+                        metadata: {
+                            path: worktreePath,
+                            host: 'test-host',
+                            flavor: 'claude',
+                            worktree: { basePath: temp.repo, branch, name: 'revivable', worktreePath }
+                        }
+                    }
+                }),
+                archiveSession: async () => {}
+            } as unknown as SyncEngine
+
+            const res = await makeApp(engine).request('/sessions/s1/archive', { method: 'POST' })
+
+            expect(res.status).toBe(200)
+            // 归档 = 可复活：目录与分支都不能被清理
+            const { stat } = await import('node:fs/promises')
+            expect(await stat(worktreePath).then(() => true, () => false)).toBe(true)
+            expect((await git(temp.repo, ['branch', '--list', branch])).trim()).not.toBe('')
+        } finally {
+            await temp.cleanup()
+        }
     })
 })

@@ -200,4 +200,22 @@ describe('worktree 生命周期 REST 路由', () => {
         expect(await exists(worktreePath)).toBe(false)
         expect((await git(temp.repo, ['branch', '--list', 'mobi-idle'])).trim()).toBe('')
     })
+
+    test('非 worktree 会话删除：零行为变化，响应无保留事实', async () => {
+        const session = store.sessions.getOrCreateSession(
+            'tag-plain',
+            { path: temp.repo, host: 'test-host' },
+            null,
+            'default',
+            undefined,
+            null
+        )
+
+        const res = await app.request(`/api/sessions/${session.id}`, { method: 'DELETE', headers })
+
+        expect(res.status).toBe(200)
+        expect(await res.json()).toEqual({ ok: true })
+        // 主仓库不受影响
+        expect(await exists(temp.repo)).toBe(true)
+    })
 })
