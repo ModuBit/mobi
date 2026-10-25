@@ -1292,3 +1292,43 @@ HINDSIGHT_API_RERANKER_ALIBABA_API_KEY=sk-你的DashScope-key
 - 放行需落审计日志，便于事后追溯
 
 **关联文件**：`packages/session/src/claude/utils/permissionHandler.ts`（canUseTool 入口）、`packages/session/src/claude/claudeRemote.ts`（SDK options）。
+
+---
+
+## 124. forked command/skill 的实时步骤在 headless 会话里不可达（2026-10-23 实施票 01 时发现）
+
+**背景**：`/code-review` 等 skill 在 CLI 2.1.304 下以 `parent_tool_use_id=forked-command-<name>` 的 sidechain 执行。票 01 已完成这部分消息的归组渲染（命令组、默认折叠、刷新保留、耗时计算），但**执行期间的步骤看不到**。
+
+**实测**：E2E 中一次 61s 的 `/code-review`，21 条 sidechain 消息在结束那一刻（08:12:27）一次性落库；执行期间 UI 只有输入框上方的耗时指示，没有命令组、没有步骤。prod 会话同样是「task_notification → ready → init → 整段 sidechain 一次性落库」的形态。
+
+**机制**：CLI 的 fork 执行路径把 assistant/user 消息累积在内存里（`te`），只在 `session.active` 为真时写入 transcript（`JTt`）；headless/SDK 模式下宿主拿不到实时流，只在结束时通过结果数组一次交付。Desktop 能看到实时步骤是因为它 tail CLI 的 transcript jsonl 文件，不是同一通道。SDK 侧也没有 `progress` / `agent_progress` 消息类型可供 mobi 消费。
+
+**方向（未定）**：
+- 方案 A：mobi 会话侧 tail 该会话的 transcript jsonl（已有 `bridge/tailReader.ts` 的增量读能力），只把 `parentToolUseId` 以 `forked-command-` 开头的行转换成消息推送；
+- 方案 B：推动 CLI/SDK 暴露 fork 进度事件（`emitToolProgress` 目前只在进程内）；
+- 方案 A 不依赖上游，但要处理与 SDK 事件去重（同一 uuid 两边都会到）、以及 transcript 位置发现（`~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`）。
+
+**验收前提**：票 03 的「运行中逐秒」「中断」两态只有在实时链路打通后才可 E2E 复验。
+
+---
+
+## 125. forked skill 内的工具调用不触发权限审批（2026-10-23 票 04 实测，待确认是否预期）
+
+**实测**：新会话权限模式显式设为「请求批准」（会话 CLI `--permission-mode default`），执行 `/code-review`，命令组内的 `Read` / `Bash` 工具全部直接执行，**没有任何审批卡**（主链与组内都没有）。
+
+**影响**：票 04（审批重复）因此以「不重复」关闭——但「组内工具 + 待审批」这一状态在当前版本不可达，等于 forked skill 的工具调用绕过了人工审批。reducer 已把命令组子块的 `toolBlocksById` 合并回根上下文，将来若真的出现审批卡也不会重复。
+
+**待确认**：这是 CLI 对 forked skill 的设计（fork agent 自动放行），还是 mobi 的 `canUseTool` 在 sidechain 上没接住？需要对照 Desktop 在「请求批准」下跑同一命令的表现。
+
+---
+
+## 126. 会话内后台任务 10 分钟上限（`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`，2026-10-23 查证）
+
+**现象**：E2E 里面用 `run_in_background` 拉起的 daemon 约 10 分钟被停，通知文案「stopped after reaching its background time limit」。
+
+**根因**：Claude Code CLI 在 headless（print）模式下的后台任务等待上限，取环境变量 `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`，缺省 `600000`（10 分钟）。取证：CLI 二进制内 `function i_s(){return a.CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS??L0t}`、`L0t=600000`，与 `Dle.deadline` 文案同处。
+
+**mobi 侧改法**：无需改代码——会话 CLI 由 daemon spawn 并继承 `process.env`（`packages/cli/src/commands/claude.ts:83` 的 `withBunRuntimeEnv()` 只叠加 bun 运行时变量），在 `mobi service supervise` 的启动环境里设置该变量即可（如 `7200000` = 2 小时）。
+
+**顺带注意**：`setsid` 逃逸不了这层托管（实测 setsid 起的 daemon 同样被停），长驻 E2E 组件要么分段续拉，要么挂到 launchd/独立终端。
+
