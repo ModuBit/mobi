@@ -42,9 +42,10 @@ function ensureIsolatedMobiHome(): string {
 
 export async function setupTestApp(
     syncEngine: SyncEngine | null = null,
-    opts: { distDirOverride?: string } = {},
+    opts: { distDirOverride?: string; store?: Store } = {},
 ) {
-    const store = new Store(':memory:')
+    // 需要「路由 deps.store 与 engine 同库」的测试可注入共享 Store（缺省独立内存库）
+    const store = opts.store ?? new Store(':memory:')
     process.env.CLI_API_TOKEN = testCliApiToken
     process.env.WEB_API_TOKEN = testWebApiToken
     // 钉死 publicUrl 为 http：createConfiguration 会读 settings.daemon.json（env > file > default），

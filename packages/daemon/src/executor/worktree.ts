@@ -17,9 +17,9 @@
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { access, mkdir } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { WorktreeInfo } from '@mobi/shared/hostProtocol';
+import { branchForWorktreeName, worktreesRootForRepo, worktreePathFor } from '../worktree/identity';
 
 const execFileAsync = promisify(execFile);
 
@@ -128,17 +128,15 @@ export async function createWorktree(options: {
     };
   }
 
-  const repoParent = dirname(repoRoot);
-  const repoName = basename(repoRoot);
-  const repoWorktreesRoot = join(repoParent, `${repoName}-worktrees`);
+  const repoWorktreesRoot = worktreesRootForRepo(repoRoot);
   await mkdir(repoWorktreesRoot, { recursive: true });
 
   const baseName = normalizeNameHint(nameHint) ?? makeDefaultBaseName();
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     const name = attempt === 0 ? baseName : `${baseName}-${randomBytes(2).toString('hex')}`;
-    const branch = `mobi-${name}`;
-    const worktreePath = join(repoWorktreesRoot, name);
+    const branch = branchForWorktreeName(name);
+    const worktreePath = worktreePathFor(repoRoot, name);
 
     if (await pathExists(worktreePath)) {
       continue;

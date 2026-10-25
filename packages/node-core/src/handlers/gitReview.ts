@@ -48,7 +48,7 @@ import {
     type ReviewOverview,
     type TurnDiffFileEntry,
 } from '@mobi/shared'
-import { assembleDiffEntries, git, MOBI_STATE_DIR, parseNameStatus, textLineCount } from '@mobi/node-core/git/gitExec'
+import { assembleDiffEntries, git, isMobiStatePath, parseNameStatus, textLineCount } from '@mobi/node-core/git/gitExec'
 import { FileTurnArchiveStore, getTurnArchivePath, type TurnArchiveRecord } from '@mobi/node-core/git/turnArchiveStore'
 import { getTurnFulltextRoot } from '@mobi/node-core/git/turnFulltextStore'
 import { gatePathForSource, toReviewEntry, TurnAttributionProvider } from '@mobi/node-core/git/turnAttributionProvider'
@@ -508,11 +508,6 @@ function pickDegradedReason(a: FulltextSide['reason'], b: FulltextSide['reason']
     if (a === 'binary' || b === 'binary') return 'binary'
     if (a === 'oversized' || b === 'oversized') return 'oversized'
     return 'missing'
-}
-
-/** .mobi 状态目录内路径（generation dirty 刻度的过滤口径） */
-function isMobiStatePath(path: string): boolean {
-    return path === MOBI_STATE_DIR || path.startsWith(`${MOBI_STATE_DIR}/`)
 }
 
 /** uncommitted = staged ∪ unstaged：按 path 合并计数（kind 取信息量更大的优先） */

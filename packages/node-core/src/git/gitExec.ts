@@ -37,6 +37,16 @@ const execFileAsync = promisify(execFile)
  *  不入工作区实况口径（审查 untracked 清单与 generation dirty 刻度同源引用此常量） */
 export const MOBI_STATE_DIR = '.mobi'
 
+/**
+ * 仓库相对路径是否落在 .mobi 状态目录内（.mobi 排除口径单源）：
+ * 审查 untracked 过滤、worktree 脏判定与 WIP 提交排除共用。带尾斜杠的目录形态
+ * （`git status --porcelain` 的未跟踪目录条目）按同一入口归一。
+ */
+export function isMobiStatePath(path: string): boolean {
+    const normalized = path.endsWith('/') ? path.slice(0, -1) : path
+    return normalized === MOBI_STATE_DIR || normalized.startsWith(`${MOBI_STATE_DIR}/`)
+}
+
 /** 引用名合法字符白名单外的字符（sessionId 理论上不含，兜底替换）。
  *  归档/journal 落盘目录（`.mobi/turn-diffs/<sid>/`）靠同一清洗对上（getTurnArchivePath
  *  派生自它），字符面单源在此 */
