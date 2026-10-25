@@ -62,3 +62,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [治理 E2E](governance-e2e.md) — Governor/warm-on-open 真机 recipe：cap=8、pause 态只能逐出造（dormant=stop）、SSE+snapshot-resync 触发 warm、日志双写点坑（daemonLogger→daemon.log / console→pid 文件）、spawn 直登无心跳
 - [能力目录验证](capability-catalog-verify.md) — DEBUG 日志计数 + host-metadata API：per-cwd 缓存/单飞/签名失效/live Query 零探针/后台刷新节流（2026-10-20）
 - [审批通知卡片验证](approval-notification-verify.md) — 通知里就地审批/作答全链路；antd v6 通知内容独立 React 根（须补 QueryClient+Theme 提供者）、只读命令不触发审批、Playwright 兜底占用的 DevTools MCP（2026-10-21）
+- [worktree 生命周期验证](worktree-verify.md) — worktree 会话创建（Segmented 原生 input 点击）/ 合回 no-ff 与 squash / 脏保留 toast→设置页丢弃 / 冲突诚实失败 / **active 会话即「运行中」须先休眠** / 列表缓存 5s stale 须 reload（2026-10-25）
