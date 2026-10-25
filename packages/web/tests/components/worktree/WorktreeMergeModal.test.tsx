@@ -20,7 +20,7 @@ import type React from 'react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import type { MergeBackResult, WorktreeSummary } from '@mobi/shared'
-import { WorktreeMergeModal } from '@/ui/shared/worktree/WorktreeMergeModal'
+import { WorktreeMergeModal } from '@/ui/shared/WorktreeMergeModal'
 
 // 动作 hook 的稳定桩：断言提交入参与运行中态，不触达网络
 const actionState = vi.hoisted(() => ({
@@ -153,6 +153,16 @@ describe('WorktreeMergeModal', () => {
         expect(await screen.findByText('settings.worktrees.rejectedTitle')).toBeInTheDocument()
         expect(screen.getByText('settings.worktrees.reason.mainDirty')).toBeInTheDocument()
         expect(screen.getByText('dirty.ts')).toBeInTheDocument()
+    })
+
+    it('传输层失败（daemon 不可达）：按失败呈现，不留无反馈态', async () => {
+        actionState.mergeBack.mockRejectedValue(new Error('network down'))
+        renderModal()
+        await submit()
+
+        expect(await screen.findByText('settings.worktrees.rejectedTitle')).toBeInTheDocument()
+        expect(screen.getByText('settings.worktrees.reason.gitFailed')).toBeInTheDocument()
+        expect(screen.queryByText('settings.worktrees.merged')).not.toBeInTheDocument()
     })
 
     it('运行中 worktree：确认按钮禁用（点按不发请求）', async () => {

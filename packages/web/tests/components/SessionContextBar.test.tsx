@@ -165,4 +165,23 @@ describe('SessionContextBar worktree 弹层与合回入口', () => {
         expect(await screen.findByText('session.worktree.unavailableHint')).toBeInTheDocument()
         expect(screen.getByText('session.worktree.mergeBack').closest('button')).toBeDisabled()
     })
+
+    it('路径归一差异时按 name+branch+repoRoot 兜底命中', async () => {
+        // 元数据路径与扫描路径不同（如 /var vs /private/var），但同仓库同名同分支
+        worktreeList.data = [{ ...SUMMARY, worktreePath: '/private/var/main-repo-worktrees/feat-a' }]
+        render(<SessionContextBar metadata={WORKTREE_META} />, { wrapper })
+        openPopover()
+
+        expect(await screen.findByText('settings.worktrees.state.dirty')).toBeInTheDocument()
+        expect(screen.getByText('session.worktree.mergeBack').closest('button')).toBeEnabled()
+    })
+
+    it('同名同分支但不同仓库：不兜底命中（避免合回打错工作树）', async () => {
+        worktreeList.data = [{ ...SUMMARY, worktreePath: '/private/var/other-repo-worktrees/feat-a', repoRoot: '/home/user/other-repo' }]
+        render(<SessionContextBar metadata={WORKTREE_META} />, { wrapper })
+        openPopover()
+
+        expect(await screen.findByText('session.worktree.unavailableHint')).toBeInTheDocument()
+        expect(screen.getByText('session.worktree.mergeBack').closest('button')).toBeDisabled()
+    })
 })

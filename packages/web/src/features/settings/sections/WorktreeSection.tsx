@@ -27,8 +27,8 @@ import { FolderTree, GitBranch, RefreshCw } from 'lucide-react'
 import styled from '@emotion/styled'
 import type { WorktreeSummary } from '@mobi/shared'
 import { Button } from '@/ui/base/interactive/button/Button'
-import { WorktreeMergeModal } from '@/ui/shared/worktree/WorktreeMergeModal'
-import { WorktreeStateTag } from '@/ui/shared/worktree/WorktreeStateTag'
+import { WorktreeMergeModal } from '@/ui/shared/WorktreeMergeModal'
+import { WorktreeStateTag } from '@/ui/shared/WorktreeStateTag'
 import { useWorktrees } from '@/core/data/hooks/queries/useWorktrees'
 import { useWorktreeActions } from '@/core/data/hooks/mutations/useWorktreeActions'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
@@ -176,12 +176,17 @@ export function WorktreeSection() {
             okButtonProps: { danger: true },
             cancelText: t('common.cancel'),
             onOk: async () => {
-                const result = await discard(item.worktreePath)
-                if (result.ok) {
-                    messageApi.success(t('settings.worktrees.discarded'))
-                    return
+                try {
+                    const result = await discard(item.worktreePath)
+                    if (result.ok) {
+                        messageApi.success(t('settings.worktrees.discarded'))
+                        return
+                    }
+                    messageApi.error(t('settings.worktrees.discardFailed'))
+                } catch {
+                    // 传输层失败（daemon 不可达等）：给出失败反馈，不让确认框挂着未处理的 rejection
+                    messageApi.error(t('settings.worktrees.discardFailed'))
                 }
-                messageApi.error(t('settings.worktrees.discardFailed'))
             }
         })
     }

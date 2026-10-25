@@ -154,6 +154,19 @@ describe('WorktreeLifecycleService', () => {
             await temp.addRawWorktree('foreign', 'feature/x')
             expect(await service.list()).toEqual([])
         })
+
+        it('同一 worktree 被多行会话引用（fork 继承元数据）：任一行运行中即 state=running', async () => {
+            store.addWorkspace(temp.repo)
+            const path = await temp.addWorktree('shared')
+            const parent = store.addWorktreeSession({ basePath: temp.repo, name: 'shared', worktreePath: path })
+            const fork = store.addWorktreeSession({ basePath: temp.repo, name: 'shared', worktreePath: path })
+            // 较新的 fork 行不在运行，较旧的原会话仍在跑——状态必须按全集收敛
+            runningSessionIds.add(parent.id)
+
+            const list = await service.list()
+            expect(list).toHaveLength(1)
+            expect(list[0]).toMatchObject({ name: 'shared', state: 'running', sessionId: fork.id })
+        })
     })
 
     describe('mergeBack no-ff', () => {
@@ -222,6 +235,18 @@ describe('WorktreeLifecycleService', () => {
             expect(await branchExists(temp.repo, 'mobi-squash')).toBe(false)
         })
 
+        it('分支已并入（无事可做）：squash 不算失败，照常返回成功', async () => {
+            // 干净且无新提交的 worktree：merge --squash 只报 Already up to date，
+            // 不能因随后的 commit "nothing to commit" 误报 merge-failed
+            const worktreePath = await temp.addWorktree('noop')
+
+            const result = await service.mergeBack({ worktreePath, strategy: 'squash' })
+
+            expect(result).toMatchObject({ ok: true, strategy: 'squash', worktreeRemoved: true })
+            expect(await exists(worktreePath)).toBe(false)
+            expect(await branchExists(temp.repo, 'mobi-noop')).toBe(false)
+        })
+
         it('冲突时主树回滚到合并前（squash 无 MERGE_HEAD 的 reset 路径）', async () => {
             const worktreePath = await temp.addWorktree('squash-conflict')
             await writeFile(join(worktreePath, 'README.md'), 'worktree\n')
@@ -263,6 +288,16 @@ describe('WorktreeLifecycleService', () => {
             expect(await service.mergeBack({ worktreePath })).toEqual({ ok: false, reason: 'session-running' })
             expect(await exists(worktreePath)).toBe(true)
             expect(await branchExists(temp.repo, 'mobi-busy')).toBe(true)
+        })
+
+        it('同一 worktree 多行会话引用：较旧的原会话运行中也不能合回（fork 行不得掩盖）', async () => {
+            const worktreePath = await temp.addWorktree('shared-busy')
+            const parent = store.addWorktreeSession({ basePath: temp.repo, name: 'shared-busy', worktreePath })
+            store.addWorktreeSession({ basePath: temp.repo, name: 'shared-busy', worktreePath })
+            runningSessionIds.add(parent.id)
+
+            expect(await service.mergeBack({ worktreePath })).toEqual({ ok: false, reason: 'session-running' })
+            expect(await exists(worktreePath)).toBe(true)
         })
 
         it('非约定路径 / 非 mobi 分支 → invalid-worktree', async () => {
@@ -332,6 +367,16 @@ describe('WorktreeLifecycleService', () => {
             expect(await service.discard({ worktreePath })).toEqual({ ok: false, reason: 'session-running' })
             expect(await exists(worktreePath)).toBe(true)
         })
+
+        it('同一 worktree 多行会话引用：任一行运行中也拒绝丢弃', async () => {
+            const worktreePath = await temp.addWorktree('shared-busy')
+            const parent = store.addWorktreeSession({ basePath: temp.repo, name: 'shared-busy', worktreePath })
+            store.addWorktreeSession({ basePath: temp.repo, name: 'shared-busy', worktreePath })
+            runningSessionIds.add(parent.id)
+
+            expect(await service.discard({ worktreePath })).toEqual({ ok: false, reason: 'session-running' })
+            expect(await exists(worktreePath)).toBe(true)
+        })
     })
 
     describe('disposeAfterSessionDelete', () => {
@@ -363,6 +408,20 @@ describe('WorktreeLifecycleService', () => {
             })
             expect(await exists(worktreePath)).toBe(true)
             expect(await branchExists(temp.repo, 'mobi-dirty')).toBe(true)
+        })
+
+        it('同一 worktree 仍被其他会话引用（fork 继承元数据）→ 不处置，目录与分支保留', async () => {
+            const worktreePath = await temp.addWorktree('shared')
+            // 存活行（parent / fork 任一侧）仍在 store：删除另一行不能连根删工作树
+            store.addWorktreeSession({ basePath: temp.repo, name: 'shared', worktreePath })
+
+            const outcome = await service.disposeAfterSessionDelete({
+                metadata: { worktree: { basePath: temp.repo, branch: 'mobi-shared', name: 'shared', worktreePath } }
+            })
+
+            expect(outcome).toEqual({})
+            expect(await exists(worktreePath)).toBe(true)
+            expect(await branchExists(temp.repo, 'mobi-shared')).toBe(true)
         })
 
         it('无 WorktreeMetadata（普通会话）→ 零行为变化', async () => {

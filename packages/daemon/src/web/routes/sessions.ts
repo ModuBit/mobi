@@ -906,7 +906,10 @@ export function createSessionsRoutes(
             // 删除前留住 worktree 元数据（删后 store 无行可查）；处置在行清理后触发
             const deletedMetadata = sessionResult.session.metadata
             await engine.deleteSession(sessionResult.sessionId)
-            const disposal = await worktreeService.disposeAfterSessionDelete({ metadata: deletedMetadata })
+            const disposal = await worktreeService.disposeAfterSessionDelete({
+                id: sessionResult.sessionId,
+                metadata: deletedMetadata
+            })
             if (disposal.warning) {
                 daemonLogger.warn(`[sessions/delete] worktree 处置降级 (${sessionResult.sessionId}): ${disposal.warning}`)
             }

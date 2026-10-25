@@ -23,8 +23,8 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { useWorktrees } from '@/core/data/hooks/queries/useWorktrees'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { Popover } from '@/ui/base/interactive/popover/Popover'
-import { WorktreeMergeModal } from '@/ui/shared/worktree/WorktreeMergeModal'
-import { WorktreeStateTag } from '@/ui/shared/worktree/WorktreeStateTag'
+import { WorktreeMergeModal } from '@/ui/shared/WorktreeMergeModal'
+import { WorktreeStateTag } from '@/ui/shared/WorktreeStateTag'
 
 /** Session 上下文信息条（吊顶）：工作目录 / Git 分支 / Worktree。
  * 上下文用量已移至水位圆环（ContextRing）展示，吊顶不再承载用量。
@@ -161,11 +161,17 @@ export function SessionContextBar({ metadata }: SessionContextBarProps) {
     const [popoverOpen, setPopoverOpen] = useState(false)
     const [mergeOpen, setMergeOpen] = useState(false)
 
-    // 会话元数据里的 worktreePath 与列表扫描结果对齐（路径归一差异时按 name+branch 兜底）
+    // 会话元数据里的 worktreePath 与列表扫描结果对齐。路径归一差异时按
+    // name + branch + repoRoot 兜底——不能只按 name+branch，否则同机两个仓库的
+    // 同名 worktree 会命中错误目标，合回/丢弃打错工作树。
     const summary: WorktreeSummary | null = useMemo(() => {
         if (!worktree || !worktrees) return null
         return worktrees.find((item) => item.worktreePath === worktree.worktreePath)
-            ?? worktrees.find((item) => item.name === worktree.name && item.branch === worktree.branch)
+            ?? worktrees.find((item) =>
+                item.name === worktree.name
+                && item.branch === worktree.branch
+                && item.repoRoot === worktree.basePath
+            )
             ?? null
     }, [worktree, worktrees])
 

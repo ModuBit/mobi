@@ -134,13 +134,19 @@ export function WorktreeMergeModal({ open, summary, onClose }: WorktreeMergeModa
 
     const submit = async () => {
         if (!target || target.state === 'running') return
-        const result = await mergeBack({ worktreePath: target.worktreePath, strategy })
-        if (result.ok) {
-            setOutcome({ kind: 'success', result })
-        } else if (result.conflict) {
-            setOutcome({ kind: 'conflict', files: result.files ?? [] })
-        } else {
-            setOutcome({ kind: 'rejected', reason: result.reason, files: result.files })
+        try {
+            const result = await mergeBack({ worktreePath: target.worktreePath, strategy })
+            if (result.ok) {
+                setOutcome({ kind: 'success', result })
+            } else if (result.conflict) {
+                setOutcome({ kind: 'conflict', files: result.files ?? [] })
+            } else {
+                setOutcome({ kind: 'rejected', reason: result.reason, files: result.files })
+            }
+        } catch {
+            // 传输层失败（daemon 不可达 / 请求超时）：daemon 的结果 union 拿不到，
+            // 按 git 操作失败呈现，避免弹层停在无反馈态 + 未处理 rejection。
+            setOutcome({ kind: 'rejected', reason: 'git-failed' })
         }
     }
 

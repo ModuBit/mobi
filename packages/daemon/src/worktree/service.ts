@@ -72,6 +72,15 @@ interface WorktreeListEntry {
     branch: string | null
 }
 
+/** 同一 worktree 可能被多行会话引用（fork 继承 parent 的 worktree 元数据）：取最近更新的一行作列表归属展示 */
+function newestSession(sessions: readonly WorktreeSessionRow[]): WorktreeSessionRow | undefined {
+    let newest: WorktreeSessionRow | undefined
+    for (const session of sessions) {
+        if (!newest || session.updatedAt > newest.updatedAt) newest = session
+    }
+    return newest
+}
+
 /** 从会话 metadata 读取 worktree 三字段（metadata 是 json blob，形状非法按无 worktree 处理） */
 function readWorktreeMetadata(session: { metadata: unknown }): { worktreePath?: string; basePath?: string; name?: string; branch?: string } | null {
     const metadata = session.metadata
@@ -150,22 +159,24 @@ export class WorktreeLifecycleService {
                 this.listRepoWorktrees(repoRoot)
             ])
             const candidates: Array<Parameters<typeof this.toSummary>[0]> = []
-            for (const entry of entries) {
-                const worktreePath = await canonicalPath(entry.path)
+            // realpath 批量并发：逐条 await 在 worktree 多时是请求内线性 I/O
+            const paths = await Promise.all(entries.map((entry) => canonicalPath(entry.path)))
+            entries.forEach((entry, index) => {
+                const worktreePath = paths[index]!
                 const layout = parseMobiWorktreeLayout(worktreePath)
-                if (!layout) continue
-                if (resolve(layout.repoRoot) !== resolve(repoRoot)) continue
+                if (!layout) return
+                if (resolve(layout.repoRoot) !== resolve(repoRoot)) return
                 const nameFromBranch = entry.branch ? worktreeNameFromBranch(entry.branch) : null
-                if (!nameFromBranch || nameFromBranch !== layout.name) continue
+                if (!nameFromBranch || nameFromBranch !== layout.name) return
                 candidates.push({
                     worktreePath,
                     repoRoot: resolve(repoRoot),
                     name: layout.name,
                     branch: branchForWorktreeName(layout.name),
                     repoBranch,
-                    session: sessionsByWorktreePath.get(worktreePath)
+                    sessions: sessionsByWorktreePath.get(worktreePath) ?? []
                 })
-            }
+            })
             return candidates
         }))
 
@@ -230,19 +241,21 @@ export class WorktreeLifecycleService {
         }
     }
 
-    /** worktreePath → 所属会话（同一路径理论上唯一；多行时取最近更新的一行） */
-    private async sessionsByWorktreePath(sessions: readonly WorktreeSessionRow[]): Promise<Map<string, WorktreeSessionRow>> {
+    /** worktreePath → 引用该路径的全部会话行（fork 会继承 parent 的 worktree 元数据，
+     *  同一 worktree 可被多行引用；运行态与删除处置必须按全集收敛，不能只看一行） */
+    private async sessionsByWorktreePath(sessions: readonly WorktreeSessionRow[]): Promise<Map<string, WorktreeSessionRow[]>> {
         const candidates = sessions
             .map((session) => ({ session, worktreePath: readWorktreeMetadata(session)?.worktreePath }))
             .filter((candidate): candidate is { session: WorktreeSessionRow; worktreePath: string } => Boolean(candidate.worktreePath))
         // realpath 批量并发（串行时历史会话多会成为请求内的线性 I/O）
         const keys = await Promise.all(candidates.map((candidate) => canonicalPath(candidate.worktreePath)))
 
-        const byPath = new Map<string, WorktreeSessionRow>()
+        const byPath = new Map<string, WorktreeSessionRow[]>()
         candidates.forEach((candidate, index) => {
             const key = keys[index]!
-            const existing = byPath.get(key)
-            if (!existing || candidate.session.updatedAt > existing.updatedAt) byPath.set(key, candidate.session)
+            const group = byPath.get(key)
+            if (group) group.push(candidate.session)
+            else byPath.set(key, [candidate.session])
         })
         return byPath
     }
@@ -253,21 +266,23 @@ export class WorktreeLifecycleService {
         name: string
         branch: string
         repoBranch?: string
-        session: WorktreeSessionRow | undefined
+        sessions: WorktreeSessionRow[]
     }): Promise<WorktreeSummary> {
         const [status, createdAt, lastCommitAt] = await Promise.all([
             inspectWorktreeStatus(this.git, input.worktreePath),
             this.worktreeCreatedAt(input.worktreePath),
             this.lastCommitAt(input.worktreePath)
         ])
-        const running = input.session ? this.isSessionRunning(input.session.id) : false
+        const owner = newestSession(input.sessions)
+        // 任一引用行处于运行态即视为运行中（fork 行不能掩盖仍在跑的原会话）
+        const running = input.sessions.some((session) => this.isSessionRunning(session.id))
         return {
             name: input.name,
             branch: input.branch,
             worktreePath: input.worktreePath,
             repoRoot: input.repoRoot,
             ...(input.repoBranch ? { repoBranch: input.repoBranch } : {}),
-            ...(input.session ? { sessionId: input.session.id } : {}),
+            ...(owner ? { sessionId: owner.id } : {}),
             state: running ? 'running' : status.state,
             dirtyFileCount: status.dirtyFileCount,
             sizeBytes: status.sizeBytes,
@@ -308,9 +323,9 @@ export class WorktreeLifecycleService {
 
         const located = await this.locate(request.worktreePath)
         if (!located.ok) return located.result
-        const { worktreePath, repoRoot, name, branch, session } = located
+        const { worktreePath, repoRoot, name, branch, sessions } = located
 
-        if (session && this.isSessionRunning(session.id)) {
+        if (sessions.some((session) => this.isSessionRunning(session.id))) {
             return { ok: false, reason: 'session-running' }
         }
 
@@ -370,8 +385,8 @@ export class WorktreeLifecycleService {
                 ? { ok: false, reason: 'invalid-worktree' }
                 : { ok: false, reason: located.result.reason }
         }
-        const { worktreePath, repoRoot, branch, session } = located
-        if (session && this.isSessionRunning(session.id)) {
+        const { worktreePath, repoRoot, branch, sessions } = located
+        if (sessions.some((session) => this.isSessionRunning(session.id))) {
             return { ok: false, reason: 'session-running' }
         }
 
@@ -397,9 +412,10 @@ export class WorktreeLifecycleService {
     /**
      * 会话删除后的 worktree 处置：干净 → 删 worktree + `-d` 删分支；脏/unknown →
      * 保留并回传事实（前端据此 toast）。无 WorktreeMetadata 的会话零行为变化。
+     * 同一 worktree 仍被其他会话行引用（fork 继承 parent 元数据）时不处置。
      * 处置失败不阻塞删除（best-effort，warning 带回）。
      */
-    async disposeAfterSessionDelete(session: { metadata: unknown }): Promise<{
+    async disposeAfterSessionDelete(session: { id?: string; metadata: unknown }): Promise<{
         retained?: RetainedWorktree
         warning?: string
     }> {
@@ -408,6 +424,14 @@ export class WorktreeLifecycleService {
 
         const branch = worktree.branch ?? branchForWorktreeName(worktree.name)
         const worktreePath = await canonicalPath(worktree.worktreePath)
+
+        // 同一 worktree 可能仍被其他会话引用（fork 继承 parent 的 worktree 元数据）：
+        // 还有主人就不处置——否则删掉一行会把仍在用的工作树连根删除。
+        const owners = (await this.sessionsByWorktreePath(this.store.sessions.getSessions()))
+            .get(worktreePath)
+            ?.filter((owner) => owner.id !== session.id)
+        if (owners && owners.length > 0) return {}
+
         let result: WorktreeCleanupResult
         try {
             result = await removeWorktreeIfClean(
@@ -437,7 +461,7 @@ export class WorktreeLifecycleService {
      * `mobi-<name>` → 与解析出的主仓库共享同一 commonDir（防路径被挪动后误操作）。
      */
     private async locate(worktreePath: string): Promise<
-        | { ok: true; worktreePath: string; repoRoot: string; name: string; branch: string; session: WorktreeSessionRow | undefined }
+        | { ok: true; worktreePath: string; repoRoot: string; name: string; branch: string; sessions: WorktreeSessionRow[] }
         | { ok: false; result: { ok: false; reason: 'invalid-worktree' | 'repo-mismatch' | 'git-failed'; message?: string } }
     > {
         const absolutePath = await canonicalPath(worktreePath)
@@ -463,8 +487,8 @@ export class WorktreeLifecycleService {
             return { ok: false, result: { ok: false, reason: 'repo-mismatch' } }
         }
 
-        const session = (await this.sessionsByWorktreePath(this.store.sessions.getSessions())).get(absolutePath)
-        return { ok: true, worktreePath: absolutePath, repoRoot, name: layout.name, branch: expectedBranch, session }
+        const sessions = (await this.sessionsByWorktreePath(this.store.sessions.getSessions())).get(absolutePath) ?? []
+        return { ok: true, worktreePath: absolutePath, repoRoot, name: layout.name, branch: expectedBranch, sessions }
     }
 
     /** 两个目录的 git commonDir 是否相同（null = git 读取失败） */
@@ -519,6 +543,11 @@ export class WorktreeLifecycleService {
         try {
             if (strategy === 'squash') {
                 await this.git(repoRoot, ['merge', '--squash', branch])
+                // 分支已并入（无新改动）时 merge --squash 只报 "Already up to date." 且不产生
+                // 暂存内容，此时 commit 会以 "nothing to commit" 失败——按成功（无事可做）处理，
+                // 与 no-ff 的行为保持一致。
+                const status = await this.git(repoRoot, ['status', '--porcelain', '-z', '-uall'])
+                if (!hasStagedChanges(status)) return null
                 const name = worktreeNameFromBranch(branch) ?? branch
                 await this.git(repoRoot, ['commit', '--no-verify', '-m', `mobi worktree ${name}: squash merge`])
             } else {
