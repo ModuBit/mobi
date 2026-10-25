@@ -18,9 +18,12 @@
  * worktree 生命周期路由（host 直调族）：worktree 生命周期长于会话，且孤儿
  * worktree 没有会话可寻址，故不走 session machine 通道。
  *
- * 列表端点要求 syncEngine 就绪（daemon 启动早期 503，与其它 host 路由一致）。
+ * 三个端点都要求 syncEngine 就绪（daemon 启动早期 503，与其它 host 路由一致）；
+ * 业务失败（运行中/主树脏/冲突/归属非法）以 200 + 结果 union 返回，由前端按
+ * reason 映射提示——HTTP 状态只表达「请求本身是否合法」。
  */
 
+import { DiscardRequestSchema, MergeBackRequestSchema } from '@mobi/shared'
 import { Hono } from 'hono'
 import type { SyncEngine } from '../../sync/syncEngine'
 import { WorktreeLifecycleService } from '../../worktree/service'
@@ -52,6 +55,28 @@ export function createWorktreesRoutes(
 
         const worktrees = await serviceFor(engine).list()
         return c.json({ worktrees })
+    })
+
+    // POST /api/worktrees/merge-back - 合回主仓库当前检出分支
+    app.post('/worktrees/merge-back', async (c) => {
+        const engine = requireSyncEngine(c, deps.getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const parsed = MergeBackRequestSchema.safeParse(await c.req.json().catch(() => null))
+        if (!parsed.success) return c.json({ error: 'Invalid body' }, 400)
+
+        return c.json(await serviceFor(engine).mergeBack(parsed.data))
+    })
+
+    // POST /api/worktrees/discard - 丢弃 worktree（二次确认由前端承担）
+    app.post('/worktrees/discard', async (c) => {
+        const engine = requireSyncEngine(c, deps.getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const parsed = DiscardRequestSchema.safeParse(await c.req.json().catch(() => null))
+        if (!parsed.success) return c.json({ error: 'Invalid body' }, 400)
+
+        return c.json(await serviceFor(engine).discard(parsed.data))
     })
 
     return app

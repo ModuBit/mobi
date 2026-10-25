@@ -15,12 +15,12 @@
  */
 
 /**
- * worktree 列表 HTTP 路由（bun 运行器：Store 依赖 bun:sqlite）：授权与扫描画像。
- * 真 git 仓库 + 真 worktree，断言外部行为。
+ * worktree 生命周期 HTTP 路由（bun 运行器：Store 依赖 bun:sqlite）：授权、body
+ * schema 校验、转发断言。真 git 仓库 + 真 worktree，断言外部行为。
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { stat, writeFile } from 'node:fs/promises'
+import { readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Server } from 'socket.io'
 import { SyncEngine } from '../../../src/sync/syncEngine'
@@ -29,7 +29,7 @@ import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 import type { SSEManager } from '../../../src/sse/sseManager'
 import { clearWorktreeStatusCache } from '../../../src/worktree/status'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
-import { createTempRepo, type TempRepo } from '../../worktree/testRepo'
+import { createTempRepo, git, type TempRepo } from '../../worktree/testRepo'
 
 async function exists(path: string): Promise<boolean> {
     try {
@@ -116,5 +116,52 @@ describe('worktree 生命周期 REST 路由', () => {
             state: 'dirty',
             dirtyFileCount: 1
         })
+    })
+
+    test('POST merge-back：body 非法 → 400；路径不符约定 → 200 + invalid-worktree', async () => {
+        const badBody = await app.request('/api/worktrees/merge-back', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ strategy: 'bogus' })
+        })
+        expect(badBody.status).toBe(400)
+
+        const res = await app.request('/api/worktrees/merge-back', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ worktreePath: join(temp.dir, 'nope') })
+        })
+        expect(res.status).toBe(200)
+        expect(await res.json()).toMatchObject({ ok: false, reason: 'invalid-worktree' })
+    })
+
+    test('POST merge-back：合回成功并把内容落入主仓库', async () => {
+        const worktreePath = await temp.addWorktree('feature')
+        await writeFile(join(worktreePath, 'feature.txt'), 'done\n')
+
+        const res = await app.request('/api/worktrees/merge-back', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ worktreePath })
+        })
+        expect(res.status).toBe(200)
+        expect(await res.json()).toMatchObject({ ok: true, worktreeRemoved: true, branchDeleted: true })
+        expect(await readFile(join(temp.repo, 'feature.txt'), 'utf8')).toBe('done\n')
+        expect(await exists(worktreePath)).toBe(false)
+    })
+
+    test('POST discard：连根删除 worktree 与分支', async () => {
+        const worktreePath = await temp.addWorktree('trash')
+        await writeFile(join(worktreePath, 'uncommitted.txt'), 'bye\n')
+
+        const res = await app.request('/api/worktrees/discard', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ worktreePath })
+        })
+        expect(res.status).toBe(200)
+        expect(await res.json()).toMatchObject({ ok: true, worktreeRemoved: true, branchDeleted: true })
+        expect(await exists(worktreePath)).toBe(false)
+        expect((await git(temp.repo, ['branch', '--list', 'mobi-trash'])).trim()).toBe('')
     })
 })

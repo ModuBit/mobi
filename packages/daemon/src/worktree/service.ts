@@ -15,7 +15,7 @@
  */
 
 /**
- * worktree 生命周期服务（深模块）：把「归属判定 + 脏判定 + 列表扫描」
+ * worktree 生命周期服务（深模块）：把「归属判定 + 脏判定 + 列表扫描 + 合回 + 丢弃」
  * 收在一个进程内服务里，路由只做鉴权/校验/转发。worktree 生命周期长于会话
  * （孤儿 worktree 没有会话可寻址），所以挂 host 直调族而非 session machine 通道。
  *
@@ -25,11 +25,12 @@
 
 import { realpath, stat } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import type { WorktreeSummary } from '@mobi/shared'
+import type { MergeBackResult, WorktreeSummary } from '@mobi/shared'
+import { deleteWorktreeBranch, forceRemoveWorktree } from './cleanup'
 import type { GitRunner } from './gitRunner'
 import { runGit } from './gitRunner'
 import { branchForWorktreeName, parseMobiWorktreeLayout, worktreeNameFromBranch } from './identity'
-import { inspectWorktreeStatus } from './status'
+import { hasStagedChanges, inspectWorktreeStatus, parseDirtyPaths } from './status'
 
 /** 会话只读来源（Store 的结构子集）：列表反查与孤儿判定只需要 id / 更新时间 / metadata */
 export interface WorktreeSessionRow {
@@ -243,6 +244,253 @@ export class WorktreeLifecycleService {
             return undefined
         }
     }
+
+    // ── 合回主树 ───────────────────────────────────────────────────────────
+
+    /**
+     * 合回：脏 worktree 先 WIP 提交 → 主仓库当前检出分支 merge（no-ff / squash）→
+     * 成功后按需清理。冲突诚实失败：主树回滚到合并前，WIP 提交留在 worktree 分支。
+     */
+    async mergeBack(request: {
+        worktreePath: string
+        strategy?: 'no-ff' | 'squash'
+        cleanup?: boolean
+    }): Promise<MergeBackResult> {
+        const strategy = request.strategy ?? 'no-ff'
+        const cleanup = request.cleanup ?? true
+
+        const located = await this.locate(request.worktreePath)
+        if (!located.ok) return located.result
+        const { worktreePath, repoRoot, name, branch, session } = located
+
+        if (session && this.isSessionRunning(session.id)) {
+            return { ok: false, reason: 'session-running' }
+        }
+
+        const mainDirty = await this.dirtyPaths(repoRoot)
+        if (mainDirty === null) {
+            return { ok: false, reason: 'git-failed', message: 'Unable to read main repository status' }
+        }
+        if (mainDirty.length > 0) {
+            return { ok: false, reason: 'main-dirty', files: mainDirty }
+        }
+
+        let mainBranch: string
+        try {
+            mainBranch = (await this.git(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
+        } catch (error) {
+            return { ok: false, reason: 'git-failed', message: errorText(error) }
+        }
+        if (!mainBranch || mainBranch === 'HEAD') {
+            return { ok: false, reason: 'detached-head' }
+        }
+
+        // 脏 worktree → 自动 WIP 提交（只含非 .mobi 改动；无改动不产生空提交）
+        const wip = await this.commitWipIfNeeded(worktreePath, name)
+        if (!wip.ok) return wip.result
+
+        // 目标恒为主仓库当前检出分支（用户想合到别的分支自己先切）
+        const mergeError = await this.runMerge(repoRoot, branch, strategy)
+        if (mergeError !== null) {
+            const conflictFiles = await this.conflictFiles(repoRoot)
+            await this.rollbackMerge(repoRoot)
+            if (conflictFiles.length > 0) {
+                return { ok: false, reason: 'merge-failed', conflict: true, files: conflictFiles }
+            }
+            return { ok: false, reason: 'merge-failed', message: mergeError }
+        }
+
+        if (!cleanup) {
+            return { ok: true, strategy, worktreeRemoved: false, branchDeleted: false }
+        }
+
+        const warnings: string[] = []
+        const removal = await forceRemoveWorktree(this.git, repoRoot, worktreePath)
+        let branchDeleted = false
+        if (!removal.ok) {
+            warnings.push(`Failed to remove worktree: ${removal.error ?? 'unknown error'}`)
+        } else {
+            // no-ff 用 -d（已合入才删得掉，天然防呆）；squash 后 git 认为未合入，用 -D
+            const deleted = await deleteWorktreeBranch(this.git, repoRoot, branch, strategy === 'squash')
+            branchDeleted = deleted.ok
+            if (!deleted.ok) warnings.push(`Failed to delete branch ${branch}: ${deleted.error ?? 'unknown error'}`)
+        }
+
+        return {
+            ok: true,
+            strategy,
+            worktreeRemoved: removal.ok,
+            branchDeleted,
+            ...(warnings.length > 0 ? { warning: warnings.join('; ') } : {})
+        }
+    }
+
+    // ── 丢弃 ───────────────────────────────────────────────────────────────
+
+    /** 丢弃：`worktree remove --force` + `branch -D`；定位参数经归属约定校验后才执行 */
+    async discard(request: { worktreePath: string }): Promise<{
+        ok: true
+        worktreeRemoved: boolean
+        branchDeleted: boolean
+        warning?: string
+    } | {
+        ok: false
+        reason: 'invalid-worktree' | 'session-running' | 'git-failed'
+        message?: string
+    }> {
+        const located = await this.locate(request.worktreePath)
+        if (!located.ok) {
+            return located.result.reason === 'repo-mismatch'
+                ? { ok: false, reason: 'invalid-worktree' }
+                : { ok: false, reason: located.result.reason }
+        }
+        const { worktreePath, repoRoot, branch, session } = located
+        if (session && this.isSessionRunning(session.id)) {
+            return { ok: false, reason: 'session-running' }
+        }
+
+        const removal = await forceRemoveWorktree(this.git, repoRoot, worktreePath)
+        if (!removal.ok) return { ok: false, reason: 'git-failed', message: removal.error }
+
+        const deleted = await deleteWorktreeBranch(this.git, repoRoot, branch, true)
+        return {
+            ok: true,
+            worktreeRemoved: true,
+            branchDeleted: deleted.ok,
+            ...(deleted.ok ? {} : { warning: deleted.error })
+        }
+    }
+
+    // ── 归属定位与校验 ─────────────────────────────────────────────────────
+
+    /**
+     * 定位 + 归属校验（合回/丢弃共用）：路径形状符合约定 → worktree 实际分支必须是
+     * `mobi-<name>` → 与解析出的主仓库共享同一 commonDir（防路径被挪动后误操作）。
+     */
+    private async locate(worktreePath: string): Promise<
+        | { ok: true; worktreePath: string; repoRoot: string; name: string; branch: string; session: WorktreeSessionRow | undefined }
+        | { ok: false; result: { ok: false; reason: 'invalid-worktree' | 'repo-mismatch' | 'git-failed'; message?: string } }
+    > {
+        const absolutePath = await canonicalPath(worktreePath)
+        const layout = parseMobiWorktreeLayout(absolutePath)
+        if (!layout) return { ok: false, result: { ok: false, reason: 'invalid-worktree' } }
+
+        const expectedBranch = branchForWorktreeName(layout.name)
+        try {
+            const actualBranch = (await this.git(absolutePath, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
+            if (actualBranch !== expectedBranch) {
+                return { ok: false, result: { ok: false, reason: 'invalid-worktree' } }
+            }
+        } catch (error) {
+            return { ok: false, result: { ok: false, reason: 'invalid-worktree', message: errorText(error) } }
+        }
+
+        const repoRoot = resolve(layout.repoRoot)
+        const sameRepo = await this.sharesCommonDir(absolutePath, repoRoot)
+        if (sameRepo === null) {
+            return { ok: false, result: { ok: false, reason: 'git-failed' } }
+        }
+        if (!sameRepo) {
+            return { ok: false, result: { ok: false, reason: 'repo-mismatch' } }
+        }
+
+        const session = (await this.sessionsByWorktreePath()).get(absolutePath)
+        return { ok: true, worktreePath: absolutePath, repoRoot, name: layout.name, branch: expectedBranch, session }
+    }
+
+    /** 两个目录的 git commonDir 是否相同（null = git 读取失败） */
+    private async sharesCommonDir(worktreePath: string, repoRoot: string): Promise<boolean | null> {
+        try {
+            const [worktreeCommon, repoCommon] = await Promise.all([
+                this.git(worktreePath, ['rev-parse', '--git-common-dir']),
+                this.git(repoRoot, ['rev-parse', '--git-common-dir'])
+            ])
+            const [worktreeGitDir, repoGitDir] = await Promise.all([
+                canonicalPath(resolve(worktreePath, worktreeCommon.trim())),
+                canonicalPath(resolve(repoRoot, repoCommon.trim()))
+            ])
+            return worktreeGitDir === repoGitDir
+        } catch {
+            return null
+        }
+    }
+
+    /** 主仓库当前工作树改动（排除 .mobi）；null = git 失败 */
+    private async dirtyPaths(repoRoot: string): Promise<string[] | null> {
+        try {
+            return parseDirtyPaths(await this.git(repoRoot, ['status', '--porcelain', '-z', '-uall']))
+        } catch {
+            return null
+        }
+    }
+
+    // ── merge 内部步骤 ─────────────────────────────────────────────────────
+
+    /** 脏 worktree 自动 WIP 提交；只暂存非 .mobi 改动，暂存区为空时跳过（不产生空提交） */
+    private async commitWipIfNeeded(
+        worktreePath: string,
+        name: string
+    ): Promise<{ ok: true } | { ok: false; result: MergeBackResult }> {
+        try {
+            await this.git(worktreePath, ['add', '-A', '--', '.', ':(exclude).mobi'])
+            const status = await this.git(worktreePath, ['status', '--porcelain', '-z', '-uall'])
+            if (!hasStagedChanges(status)) return { ok: true }
+            await this.git(worktreePath, ['commit', '--no-verify', '-m', `WIP: mobi ${name} pre-merge`])
+            return { ok: true }
+        } catch (error) {
+            return {
+                ok: false,
+                result: { ok: false, reason: 'git-failed', message: errorText(error) }
+            }
+        }
+    }
+
+    /** 执行合并；成功返回 null，失败返回错误文案 */
+    private async runMerge(repoRoot: string, branch: string, strategy: 'no-ff' | 'squash'): Promise<string | null> {
+        try {
+            if (strategy === 'squash') {
+                await this.git(repoRoot, ['merge', '--squash', branch])
+                const name = worktreeNameFromBranch(branch) ?? branch
+                await this.git(repoRoot, ['commit', '--no-verify', '-m', `mobi worktree ${name}: squash merge`])
+            } else {
+                await this.git(repoRoot, ['merge', '--no-ff', branch])
+            }
+            return null
+        } catch (error) {
+            return errorText(error)
+        }
+    }
+
+    /** 冲突文件清单（merge 失败后、abort 前取）；git 失败返回空（按非冲突失败处理） */
+    private async conflictFiles(repoRoot: string): Promise<string[]> {
+        try {
+            const output = await this.git(repoRoot, ['diff', '--name-only', '--diff-filter=U'])
+            return output.split('\n').map((line) => line.trim()).filter(Boolean)
+        } catch {
+            return []
+        }
+    }
+
+    /**
+     * 合并失败回滚：no-ff 冲突有 MERGE_HEAD，`merge --abort` 是标准路径；squash
+     * 冲突不写 MERGE_HEAD（git 语义：不记录 merge 信息），退化为 reset 到 HEAD 并
+     * 清掉 merge 引入的未跟踪文件（前置闸已保证主树在合并前是干净的，非 .mobi 的
+     * 未跟踪文件只可能来自本次 merge）。
+     */
+    private async rollbackMerge(repoRoot: string): Promise<void> {
+        try {
+            await this.git(repoRoot, ['merge', '--abort'])
+            return
+        } catch {
+            // squash 冲突 / 无进行中的 merge：走下面的 reset 路径
+        }
+        try {
+            await this.git(repoRoot, ['reset', '--hard', 'HEAD'])
+            await this.git(repoRoot, ['clean', '-fdq', '--', '.', ':(exclude).mobi'])
+        } catch {
+            // 回滚本身失败时不再抛：调用方拿到的是 merge 失败事实，主树状态交 git 报告
+        }
+    }
 }
 
 /** 路径归一（真实路径）：mkdtemp 的 /var 与 git 回报的 /private/var 是同一目录，
@@ -253,4 +501,8 @@ async function canonicalPath(path: string): Promise<string> {
     } catch {
         return resolve(path)
     }
+}
+
+function errorText(error: unknown): string {
+    return error instanceof Error ? error.message : String(error)
 }

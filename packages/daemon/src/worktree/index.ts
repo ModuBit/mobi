@@ -25,6 +25,7 @@ export {
 } from './identity'
 export type { GitRunner } from './gitRunner'
 export { runGit } from './gitRunner'
+export { deleteWorktreeBranch, forceRemoveWorktree } from './cleanup'
 export {
     clearWorktreeStatusCache,
     hasStagedChanges,
