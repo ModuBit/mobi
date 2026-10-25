@@ -199,6 +199,13 @@
         "activationFailed": "Fork activation failed. Re-send a message once the connection is restored to retry",
         "unknown": "Fork activation failed"
       }
+    },
+    "worktree": {
+      "title": "Worktree {{name}}",
+      "openAria": "View worktree {{name}}",
+      "runningHint": "The session is running; merge-back is unavailable",
+      "unavailableHint": "This worktree is not in the scan list (it may have been removed)",
+      "mergeBack": "Merge back into main"
     }
   },
   "chat": {
@@ -815,6 +822,65 @@
       "saveFailed": "Save failed",
       "clear": "Clear all",
       "offline": "Daemon unreachable — cannot load settings"
+    },
+    "worktrees": {
+      "title": "Worktree management",
+      "count": "{{count}} total",
+      "refresh": "Refresh",
+      "empty": "No mobi worktrees on this machine",
+      "scanFailed": "Failed to scan worktrees; try again later",
+      "columns": {
+        "branch": "Branch",
+        "path": "Path",
+        "state": "State"
+      },
+      "state": {
+        "clean": "Clean",
+        "dirty": "Modified",
+        "unknown": "Unknown",
+        "running": "Running"
+      },
+      "dirtyFiles": "{{count}} changed files",
+      "createdAt": "Created {{time}}",
+      "lastCommitAt": "Last commit {{time}}",
+      "openSession": "Session",
+      "orphan": "Orphan (no session)",
+      "merge": "Merge back",
+      "discard": "Discard",
+      "discardConfirmTitle": "Discard worktree \"{{name}}\"",
+      "discardConfirmContent": "This permanently deletes the worktree directory and branch; {{count}} uncommitted changes will be lost. Continue?",
+      "discarded": "Worktree discarded",
+      "discardFailed": "Discard failed",
+      "mergeTitle": "Merge back \"{{name}}\"",
+      "mergeConfirm": "Merge back",
+      "targetBranch": "Target branch (current checkout of the main repository)",
+      "targetBranchUnknown": "Unknown (main repository has no branch checked out)",
+      "strategy": "Merge strategy",
+      "strategyNoFf": "Keep full history (merge --no-ff)",
+      "strategyNoFfDesc": "The worktree commits land together with one merge commit",
+      "strategySquash": "Squash into a single commit",
+      "strategySquashDesc": "All changes become one commit on the main repository",
+      "wipHint": "If the worktree has uncommitted changes, a WIP commit is created first (excluding mobi's own .mobi files).",
+      "conflictHint": "On conflict the merge-back fails honestly and rolls the main repository back to its pre-merge state; conflicting files are listed here.",
+      "runningHint": "Session is running; dispose is unavailable",
+      "detachedHint": "The main repository has no branch checked out, so the merge target is unknown",
+      "merged": "Merged back into the main repository",
+      "mergedWorktreeRemoved": "Worktree removed",
+      "mergedWorktreeKept": "Worktree kept",
+      "mergedBranchDeleted": "Branch {{branch}} deleted",
+      "mergedBranchKept": "Branch {{branch}} kept (git refused deletion)",
+      "conflictTitle": "Merge conflict — rolled back",
+      "conflictDesc": "The main repository is back to its pre-merge state; the WIP commit remains on the worktree branch. Conflicting files:",
+      "rejectedTitle": "Merge-back rejected",
+      "reason": {
+        "invalidWorktree": "Not a mobi-managed worktree (path convention or branch prefix mismatch)",
+        "sessionRunning": "The owning session is running; stop it and try again",
+        "mainDirty": "The main repository has uncommitted changes; handle them before merging back",
+        "repoMismatch": "The worktree and the main repository do not share a repo (path may have been moved)",
+        "detachedHead": "The main repository is on a detached HEAD; merge target is unknown",
+        "mergeFailed": "Merge failed; the main repository was rolled back",
+        "gitFailed": "Git operation failed"
+      }
     }
   },
   "debug": {

@@ -15,12 +15,20 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, within, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
+import type { WorktreeSummary } from '@mobi/shared'
 import { SessionContextBar } from '@/pages/session/SessionContextBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
+
+// 列表扫描结果按用例注入（真实 hook 会打网络；这里只验吊顶呈现与禁用语义）
+const worktreeList = vi.hoisted(() => ({ data: undefined as WorktreeSummary[] | undefined }))
+vi.mock('@/core/data/hooks/queries/useWorktrees', () => ({
+    useWorktrees: () => ({ data: worktreeList.data })
+}))
 
 // mock i18next（SessionContextBar 内部 useTranslation，mock 后不影响断言）
 vi.mock('react-i18next', () => ({
@@ -28,8 +36,12 @@ vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (key: string) => key }),
 }))
 
+// 合回 Modal 内的动作 hook 需要 QueryClient（即使弹层未打开也已挂载）
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 const wrapper = ({ children }: { children: ReactNode }) => (
-    <ConfigProvider>{children}</ConfigProvider>
+    <QueryClientProvider client={queryClient}>
+        <ConfigProvider>{children}</ConfigProvider>
+    </QueryClientProvider>
 )
 
 // SessionContextBar 接口只有 { metadata }——goal 已移至 StatusBar 渲染（见 GoalBadge），
@@ -84,5 +96,73 @@ describe('SessionContextBar 静态信息条', () => {
         render(<SessionContextBar metadata={metadata} />, { wrapper })
         expect(screen.getByText('main')).toBeInTheDocument()
         expect(screen.getByText('auth-worktree')).toBeInTheDocument()
+    })
+})
+
+const WORKTREE_META = {
+    path: '/home/user/main-repo-worktrees/feat-a',
+    host: 'localhost',
+    gitBranch: 'mobi/feat-a',
+    worktree: {
+        basePath: '/home/user/main-repo',
+        branch: 'mobi/feat-a',
+        name: 'feat-a',
+        worktreePath: '/home/user/main-repo-worktrees/feat-a'
+    }
+} as SessionMetadataSummary
+
+const SUMMARY: WorktreeSummary = {
+    name: 'feat-a',
+    branch: 'mobi/feat-a',
+    worktreePath: '/home/user/main-repo-worktrees/feat-a',
+    repoRoot: '/home/user/main-repo',
+    repoBranch: 'main',
+    sessionId: 's1',
+    state: 'dirty',
+    dirtyFileCount: 2,
+    sizeBytes: 100
+}
+
+/** 点开 worktree 徽标弹层 */
+function openPopover() {
+    screen.getByTestId('worktree-badge').click()
+}
+
+describe('SessionContextBar worktree 弹层与合回入口', () => {
+    afterEach(() => {
+        cleanup()
+        worktreeList.data = undefined
+    })
+
+    it('点徽标展示工作树信息：分支/路径/脏文件数', async () => {
+        worktreeList.data = [SUMMARY]
+        render(<SessionContextBar metadata={WORKTREE_META} />, { wrapper })
+        openPopover()
+
+        expect(await screen.findByText('session.worktree.title')).toBeInTheDocument()
+        // 面板锚点：路径在吊顶与面板各出现一次，按面板作用域断言
+        const panel = document.querySelector('[data-mobi-popover]')!
+        expect(within(panel as HTMLElement).getByText('/home/user/main-repo-worktrees/feat-a')).toBeInTheDocument()
+        expect(within(panel as HTMLElement).getByText('settings.worktrees.dirtyFiles')).toBeInTheDocument()
+        expect(within(panel as HTMLElement).getByText('settings.worktrees.state.dirty')).toBeInTheDocument()
+        expect(within(panel as HTMLElement).getByText('session.worktree.mergeBack').closest('button')).toBeEnabled()
+    })
+
+    it('运行中：合回禁用并给运行提示', async () => {
+        worktreeList.data = [{ ...SUMMARY, state: 'running' }]
+        render(<SessionContextBar metadata={WORKTREE_META} />, { wrapper })
+        openPopover()
+
+        expect(await screen.findByText('session.worktree.runningHint')).toBeInTheDocument()
+        expect(screen.getByText('session.worktree.mergeBack').closest('button')).toBeDisabled()
+    })
+
+    it('列表未命中（如扫描失败/会话已迁移）：提示不可用并禁用合回', async () => {
+        worktreeList.data = []
+        render(<SessionContextBar metadata={WORKTREE_META} />, { wrapper })
+        openPopover()
+
+        expect(await screen.findByText('session.worktree.unavailableHint')).toBeInTheDocument()
+        expect(screen.getByText('session.worktree.mergeBack').closest('button')).toBeDisabled()
     })
 })

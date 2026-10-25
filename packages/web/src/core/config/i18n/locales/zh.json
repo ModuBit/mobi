@@ -199,6 +199,13 @@
         "activationFailed": "分叉激活失败，恢复连接后重新发送消息即可重试",
         "unknown": "分叉激活失败"
       }
+    },
+    "worktree": {
+      "title": "工作树 {{name}}",
+      "openAria": "查看工作树 {{name}}",
+      "runningHint": "会话运行中，暂不可合回",
+      "unavailableHint": "工作树不在扫描列表中（可能已被移除）",
+      "mergeBack": "合回主仓库"
     }
   },
   "chat": {
@@ -806,6 +813,65 @@
       "saveFailed": "保存失败",
       "clear": "清除全部",
       "offline": "daemon 不可达，无法读取设置"
+    },
+    "worktrees": {
+      "title": "Worktree 管理",
+      "count": "共 {{count}} 个",
+      "refresh": "刷新",
+      "empty": "本机没有 mobi worktree",
+      "scanFailed": "worktree 扫描失败，请稍后重试",
+      "columns": {
+        "branch": "分支",
+        "path": "路径",
+        "state": "状态"
+      },
+      "state": {
+        "clean": "干净",
+        "dirty": "有改动",
+        "unknown": "未知",
+        "running": "运行中"
+      },
+      "dirtyFiles": "{{count}} 个改动文件",
+      "createdAt": "创建于 {{time}}",
+      "lastCommitAt": "最近提交 {{time}}",
+      "openSession": "所属会话",
+      "orphan": "孤儿（无会话）",
+      "merge": "合回",
+      "discard": "丢弃",
+      "discardConfirmTitle": "丢弃 worktree「{{name}}」",
+      "discardConfirmContent": "此操作会永久删除工作树目录与分支，其中 {{count}} 个未提交改动将丢失。确定继续吗？",
+      "discarded": "worktree 已丢弃",
+      "discardFailed": "丢弃失败",
+      "mergeTitle": "合回「{{name}}」",
+      "mergeConfirm": "合回",
+      "targetBranch": "目标分支（主仓库当前检出）",
+      "targetBranchUnknown": "未知（主仓库未检出分支）",
+      "strategy": "合并策略",
+      "strategyNoFf": "保留完整历史（merge --no-ff）",
+      "strategyNoFfDesc": "worktree 的提交与一次合并提交一起进入主仓库",
+      "strategySquash": "压缩为一条提交（squash）",
+      "strategySquashDesc": "所有改动压成主仓库上的一个提交",
+      "wipHint": "worktree 有未提交改动时，会先自动创建一条 WIP 提交（不含 .mobi 自产文件）。",
+      "conflictHint": "若与主仓库冲突，合回会诚实失败并把主仓库回滚到合并前状态；冲突文件会列在这里。",
+      "runningHint": "会话运行中，暂不可处置",
+      "detachedHint": "主仓库当前未检出分支，无法确定合并目标",
+      "merged": "已合回主仓库",
+      "mergedWorktreeRemoved": "worktree 已移除",
+      "mergedWorktreeKept": "worktree 已保留",
+      "mergedBranchDeleted": "分支 {{branch}} 已删除",
+      "mergedBranchKept": "分支 {{branch}} 保留（删除被 git 拒绝）",
+      "conflictTitle": "合回冲突，已回滚",
+      "conflictDesc": "主仓库已回到合并前状态；WIP 提交仍保留在 worktree 分支上。冲突文件：",
+      "rejectedTitle": "未能合回",
+      "reason": {
+        "invalidWorktree": "这不是 mobi 管理的 worktree（目录约定或分支前缀不符）",
+        "sessionRunning": "所属会话正在运行，请结束后再试",
+        "mainDirty": "主仓库有未提交改动，请先处理后再合回",
+        "repoMismatch": "worktree 与主仓库不在同一仓库（路径可能已被移动）",
+        "detachedHead": "主仓库处于 detached HEAD，无法确定合并目标",
+        "mergeFailed": "合并失败，主仓库已回滚",
+        "gitFailed": "git 操作失败"
+      }
     }
   },
   "debug": {

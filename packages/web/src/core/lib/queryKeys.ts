@@ -33,6 +33,8 @@ const workspaceSessionsRoot = ['workspaceSessions'] as const
 export const queryKeys = {
     /** 所有会话列表 */
     sessions: ['sessions'] as const,
+    /** 本机 mobi worktree 列表（含孤儿；列表/处置动作共用失效前缀） */
+    worktrees: ['worktrees'] as const,
     /** 单个会话 */
     session: (sessionId: string) => ['session', sessionId] as const,
     /** Sidechain 消息 */

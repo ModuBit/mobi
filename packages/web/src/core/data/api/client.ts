@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, DaemonStatus, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse } from './types'
-import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, MapSettingsSubmission, MapSettingsView, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin } from '@mobi/shared'
+import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, MapSettingsSubmission, MapSettingsView, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin, WorktreeListResponse, MergeBackResult, MergeBackRequest, DiscardResult } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
 // 全局 401 处理回调（由外部设置）
@@ -116,6 +116,13 @@ export function createMobiApi() {
                 client.post<{ token: string; user: { id: number; firstName: string } }>('/api/auth', { accessToken }),
             // 登出：清 httpOnly cookie（cookie 链路下必须服务端清，仅清内存 state 会在刷新后因 cookie 仍有效而自动恢复登录）
             logout: () => client.post('/api/auth/logout'),
+        },
+
+        // Worktree 生命周期（host 直调族：worktree 生命周期长于会话，孤儿无会话可寻址）
+        worktrees: {
+            list: () => client.get<WorktreeListResponse>('/api/worktrees'),
+            mergeBack: (request: MergeBackRequest) => client.post<MergeBackResult>('/api/worktrees/merge-back', request),
+            discard: (worktreePath: string) => client.post<DiscardResult>('/api/worktrees/discard', { worktreePath }),
         },
 
         // Sessions
