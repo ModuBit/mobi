@@ -35,24 +35,50 @@
  */
 
 import type { UserContentBlock, UserQuoteBlock } from './userContentSchema'
-/** 出向 XML 形态标签名（与进向 `<quote index role>` 同族语法） */
+/** quote 基础标签名（无命名空间——仅作旧形态读兼容的基名，写路径一律用 {@link QUOTE_TAG_NS}） */
 export const QUOTE_XML_TAG = 'quote'
 
-/** 标签开前缀 `<quote`——所有「文本是否含 XML 形态」的快速守卫与起点扫描的唯一字面量
- *  （禁手抄：标签改名时守卫静默失配 = 去重/截断裸奔，正是单源要防的漂移） */
-export const QUOTE_XML_OPEN = `<${QUOTE_XML_TAG}`
+/**
+ * 指令族 XML 命名空间（spec .scratch/mobi-xml-namespace）：所有内联指令的 XML 标签
+ * 带此前缀——与模型正文里自然产出的泛 XML/HTML 标签碰撞免疫（泛型名如 `<quote>` 在
+ * 讨论 XML 本身时会误命中）；命名空间前缀（xsl:/fb: 形态）训练语料海量，模型不陌生。
+ */
+export const MOBI_XML_NS = 'mobi:'
+/** 族标签开前缀 `<mobi:`——新形态热路径守卫的单闸字面量（禁手抄） */
+export const MOBI_XML_OPEN = `<${MOBI_XML_NS}`
+
+/** quote 现行标签名（带命名空间，写路径唯一形态） */
+export const QUOTE_TAG_NS = `${MOBI_XML_NS}${QUOTE_XML_TAG}`
 
 /**
- * XML 形态完整正形（无 g 标志的源串）：自闭合 `<quote …/>` 或完整回显
- * `<quote …>…</quote>`。attrs 段不含 `>`；web markdown tokenizer 用 `^` 锚定派生
- * （同一正形，扫描与 tokenizer 判定不漂移）。
- *
- * attrs 必须懒量词（`[^>]*?`）：贪婪会把自闭合尾部的 `/` 吃进 attrs，随后 `>` 命中
- * 开放标签分支、向后懒吞到下一个 `</quote>`——同文本后随回显形态时，自闭合命中被
- * 整体污染（2026-10-26 E2E 实锤，降级矩阵场景抓出）。懒量词让 `/>` 分支在自闭合
- * 处优先命中，回显分支只在真有开标签（attrs 后直连 `>`）时到达。
+ * quote 标签形态清单（读兼容矩阵）：现行在前，旧无命名空间形态（2026-10-26~27
+ * 一天龄的 `<quote/>`）只读——历史会话渲染零迁移。跨形态同 index 是同一引用
+ * （去重统一处理）。
  */
-export const QUOTE_XML_SHAPE = `${QUOTE_XML_OPEN}\\b([^>]*?)(?:/>|>([\\s\\S]*?)</${QUOTE_XML_TAG}>)`
+export const QUOTE_TAG_NAMES: readonly string[] = [QUOTE_TAG_NS, QUOTE_XML_TAG]
+
+/** 各形态标签开前缀（tokenizer 起点扫描用，禁手抄字面量） */
+export const QUOTE_TAG_OPENS: readonly string[] = QUOTE_TAG_NAMES.map(t => `<${t}`)
+
+/** 文本含任一 quote 标签形态的快速守卫（去重/保护区/截断共用热路径闸） */
+export function hasQuoteXmlTag(text: string): boolean {
+    return QUOTE_TAG_OPENS.some(open => text.includes(open))
+}
+
+/** 单标签完整正形（无 g 标志的源串）：自闭合 `<tag …/>` 或完整回显 `<tag …>…</tag>`。
+ *  attrs 段不含 `>`；attrs 必须懒量词（`[^>]*?`）：贪婪会把自闭合尾部的 `/` 吃进
+ *  attrs、随后以开放标签分支懒吞到下一个闭合标签——同文本后随回显形态时自闭合命中
+ *  被整体污染（2026-10-26 E2E 实锤）。懒量词让 `/>` 分支优先在自闭合处命中。 */
+const xmlTagShape = (tag: string): string =>
+    `<${tag}\\b([^>]*?)(?:/>|>([\\s\\S]*?)</${tag}>)`
+
+/** 全形态合并的 tokenizer 正形（外层整组包裹——marked 扩展 `^` 锚定派生用；
+ *  注意不能裸 join：`^(?:A)|(?:B)` 的 `^` 只锚定第一分支，第二分支未锚定会让
+ *  tokenizer 在非 src 起点命中、按 raw 推进时丢失前置文本） */
+export const QUOTE_XML_TOKEN_SHAPE = `(?:${QUOTE_TAG_NAMES.map(t => `(?:${xmlTagShape(t)})`).join('|')})`
+
+/** 各形态扫描正则（g 标志，执行态共享——每次使用前重置 lastIndex） */
+const QUOTE_TAG_RES = QUOTE_TAG_NAMES.map(t => new RegExp(xmlTagShape(t), 'g'))
 
 /**
  * index 属性语义单源：一基正整数十进制串，规范为数字（"01" 即 1——同一编号的
@@ -93,26 +119,28 @@ export function parseTagAttrs(raw: string): Record<string, string> {
     return attrs
 }
 
-const QUOTE_XML_RE = new RegExp(QUOTE_XML_SHAPE, 'g')
-
 /**
- * 出向解析：模型回复文本 → 引用命中序列（按出现顺序）。
+ * 出向解析：模型回复文本 → 引用命中序列（按出现顺序，跨形态合并）。
  *
- * 只认正形（自闭合 / 完整回显带 `</quote>` 收口）：流式半截（无 `>` 或未收口）
+ * 只认正形（自闭合 / 完整回显带闭合标签收口）：流式半截（无 `>` 或未收口）
  * 不产出命中——半截由流式截断扣住（`truncateIncompleteQuoteXmlTail`），闭合帧
  * 一次性完整进入渲染。index 非法（伪造/缺字段/"0"）不产出命中，原文诚实降级。
+ * 读兼容：一天龄旧形态 `<quote/>` 与现行 `<mobi:quote/>` 同等解析，同 index 同引用。
  */
 export function parseQuoteXmlHits(text: string): QuoteOutboundHit[] {
-    // 快速路径：绝大多数正文不含标签前缀，免整串正则（渲染热路径每帧调用）
-    if (!text.includes(QUOTE_XML_OPEN)) return []
+    // 快速路径：绝大多数正文不含任一标签前缀，免整串正则（渲染热路径每帧调用）
+    if (!hasQuoteXmlTag(text)) return []
     const hits: QuoteOutboundHit[] = []
-    QUOTE_XML_RE.lastIndex = 0
-    for (let m = QUOTE_XML_RE.exec(text); m; m = QUOTE_XML_RE.exec(text)) {
-        const index = parseQuoteIndexAttr(parseTagAttrs(m[1] ?? '').index)
-        if (index === null) continue
-        hits.push({ index, raw: m[0], start: m.index, end: m.index + m[0].length })
+    for (const re of QUOTE_TAG_RES) {
+        re.lastIndex = 0
+        for (let m = re.exec(text); m; m = re.exec(text)) {
+            const index = parseQuoteIndexAttr(parseTagAttrs(m[1] ?? '').index)
+            if (index === null) continue
+            hits.push({ index, raw: m[0], start: m.index, end: m.index + m[0].length })
+        }
     }
-    return hits
+    // 跨形态命中按原文位置归并（两形态标签不互相嵌套，区间无重叠）
+    return hits.sort((a, b) => a.start - b.start)
 }
 
 /**
@@ -130,7 +158,7 @@ export function dedupeQuoteXmlText(
     text: string,
     protectedRanges?: readonly Readonly<{ start: number; end: number }>[],
 ): string {
-    if (!text.includes(QUOTE_XML_OPEN)) return text
+    if (!hasQuoteXmlTag(text)) return text
     const seen = new Set<number>()
     let out = ''
     let cursor = 0
@@ -150,16 +178,19 @@ export function dedupeQuoteXmlText(
     return out + text.slice(cursor)
 }
 
-/** 未闭合尾巴：`<quote` 开标签已出现但 `>` 未到达——只在**串尾**命中，正文里
- *  带后随 `>` 的形近文本（讨论语法本身）不受影响。 */
-const INCOMPLETE_QUOTE_XML_TAIL_RE = new RegExp(`${QUOTE_XML_OPEN}\\b[^>]*$`)
+/** 未闭合尾巴：任一形态开标签已出现但 `>` 未到达——只在**串尾**命中，正文里
+ *  带后随 `>` 的形近文本（讨论语法本身）不受影响。
+ *  注意 alternation 的 `<` 必须逐分支携带（`(?:<a|<b)`）：括在组外会变成
+ *  `<a|b`（第二分支成裸标签名），`:quote` 尾部与正文的 'quote' 单词都会误命中 */
+const TAG_OPEN_ALT = QUOTE_TAG_OPENS.join('|')
+const INCOMPLETE_QUOTE_XML_TAIL_RE = new RegExp(`(?:${TAG_OPEN_ALT})\\b[^>]*$`)
 
 /** 自闭合完整形态（开标签含尾斜杠已到 `>`）：已完整即揭示，不参与尾巴扣住 */
-const SELFCLOSING_OPEN_RE = new RegExp(`^${QUOTE_XML_OPEN}\\b[^>]*\\/>`)
+const SELFCLOSING_OPEN_RE = new RegExp(`^(?:${TAG_OPEN_ALT})\\b[^>]*\\/>`)
 
-/** 最后一个 quote 标签起点扫描（`\b` 单源——与 SHAPE 等正则同一词边界语义，
- *  `<quoted` 形近词不算）；无则 -1。单趟前向 matchAll，无标签文本一次扫描即出 */
-const LAST_QUOTE_TAG_OPEN_RE = new RegExp(`${QUOTE_XML_OPEN}\\b`, 'g')
+/** 最后一个 quote 标签起点扫描（`\b` 单源——词边界语义与正形单源，`<quoted`
+ *  形近词不算）；无则 -1。单趟前向 matchAll，无标签文本一次扫描即出 */
+const LAST_QUOTE_TAG_OPEN_RE = new RegExp(`(?:${TAG_OPEN_ALT})\\b`, 'g')
 function lastQuoteTagOpen(text: string): number {
     let open = -1
     for (const m of text.matchAll(LAST_QUOTE_TAG_OPEN_RE)) open = m.index
@@ -185,7 +216,7 @@ export function truncateIncompleteQuoteXmlTail(text: string): string {
     const m = text.match(INCOMPLETE_QUOTE_XML_TAIL_RE)
     if (m) return text.slice(0, m.index)
     const rest = text.slice(open)
-    if (SELFCLOSING_OPEN_RE.test(rest) || rest.includes(`</${QUOTE_XML_TAG}>`)) return text
+    if (SELFCLOSING_OPEN_RE.test(rest) || QUOTE_TAG_NAMES.some(t => rest.includes(`</${t}>`))) return text
     return text.slice(0, open)
 }
 
@@ -286,7 +317,7 @@ export function buildQuoteXml(block: UserQuoteBlock, index: number): string {
     const inner = block.comment !== undefined
         ? `${excerpt}<user-comment>${escapeXmlText(block.comment)}</user-comment>`
         : excerpt
-    return `<quote index="${index}" role="${block.role}">${inner}</quote>`
+    return `<mobi:quote index="${index}" role="${block.role}">${inner}</mobi:quote>`
 }
 
 /**
@@ -301,12 +332,12 @@ export function buildQuoteXml(block: UserQuoteBlock, index: number): string {
  */
 export const QUOTE_ANNOTATION_PROTOCOL = [
     '<system-reminder>',
-    'Some `<quote>` elements in this message (role="agent") are response annotations:',
+    'Some `<mobi:quote>` elements in this message (role="agent") are response annotations:',
     'excerpts the user selected from your earlier replies, optionally followed by a',
     '<user-comment> with the user\'s question or clarification. Address every annotation',
     'and every user comment.',
     '',
-    'When you address an annotation, emit its self-closing form <quote index="N"/>',
+    'When you address an annotation, emit its self-closing form <mobi:quote index="N"/>',
     'inline at the single most relevant point in your reply, where N is that quote\'s',
     'one-based `index` in this message. Emit these tags only for quotes with',
     'role="agent"; never for role="user" quotes.',

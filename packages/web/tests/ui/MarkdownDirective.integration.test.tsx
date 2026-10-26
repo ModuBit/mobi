@@ -51,12 +51,13 @@ describe('Markdown 内联指令（真实渲染管线）', () => {
         expect(body).not.toContain(`${QUOTE_DIRECTIVE}{index="1"}`)
     })
 
-    // 协议统一出向（spec .scratch/quote-protocol-unification 票 01）：新 XML 形态
-    // `<quote index="N"/>` 与旧 directive 同管线收敛到「引用 N」标注
-    it('<quote index="1"/> 自闭合渲染为「引用 1」标注，无原文残留', async () => {
+    // 协议统一出向 → XML 命名空间化（spec .scratch/mobi-xml-namespace 票 01）：
+    // 现行 `<mobi:quote index="N"/>` 与旧形态（`:mobi-quote{}`、一天龄 `<quote/>`）
+    // 同管线收敛到「引用 N」标注
+    it('<mobi:quote index="1"/> 自闭合渲染为「引用 1」标注，无原文残留', async () => {
         render(
             <QuoteAnnotationsProvider quotes={quotes} onLocate={() => {}}>
-                <Markdown content={'前文 <quote index="1"/> 后文'} />
+                <Markdown content={'前文 <mobi:quote index="1"/> 后文'} />
             </QuoteAnnotationsProvider>,
         )
         const marker = await screen.findByTestId('quote-annotation-1')
@@ -65,6 +66,19 @@ describe('Markdown 内联指令（真实渲染管线）', () => {
         const body = document.body.textContent ?? ''
         expect(body).toContain('前文')
         expect(body).toContain('后文')
+        expect(body).not.toContain('<mobi:quote')
+    })
+
+    it('读兼容：一天龄旧形态 <quote index="1"/> 照常渲染标注', async () => {
+        render(
+            <QuoteAnnotationsProvider quotes={quotes} onLocate={() => {}}>
+                <Markdown content={'前文 <quote index="1"/> 后文'} />
+            </QuoteAnnotationsProvider>,
+        )
+        const marker = await screen.findByTestId('quote-annotation-1')
+        expect(marker).toBeInTheDocument()
+        const body = document.body.textContent ?? ''
+        expect(body).toContain('前文')
         expect(body).not.toContain('<quote')
     })
 

@@ -29,9 +29,11 @@ export const QUOTE_EXCERPT_MAX = 1000
 export const QUOTE_COMMENT_MAX = 300
 
 /**
- * 回应批注 directive 字面量（spec .scratch/response-annotations）：模型在回复中回应
- * agent 引用的位置输出 `:mobi-quote{index="N"}`（index 与 `<quote index>` 同源一基）。
- * CLI 协议文案与 web 渲染解析共用此常量，字面量两处漂移会被对方解析不了。
+ * 回应批注 directive 字面量（spec .scratch/response-annotations）：历史会话渲染的
+ * 只读旧形态——模型曾在回复中输出 `:mobi-quote{index="N"}`。现行出向形态是
+ * `<mobi:quote index="N"/>`（spec .scratch/mobi-xml-namespace，语法常量在
+ * quoteProtocol 单源；index 同源一基）。web 渲染解析共用此常量，字面量漂移会被
+ * 对方解析不了。
  */
 export const QUOTE_DIRECTIVE = ':mobi-quote'
 

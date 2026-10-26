@@ -24,18 +24,18 @@
  * quote 协议统一（spec .scratch/quote-protocol-unification）后新增
  * {@link quoteXmlExtension}：出向新 XML 形态 `<quote index="N"/>`（含完整回显形态，
  * 只取 index）同样渲染为 `<mobi-directive>` 走统一路由，语法单源 shared
- * quoteProtocol（QUOTE_XML_SHAPE），扫描与 tokenizer 判定不漂移。
+ * quoteProtocol（QUOTE_XML_TOKEN_SHAPE 全形态合并），扫描与 tokenizer 判定不漂移。
  */
 
 import type { Tokens, TokenizerAndRendererExtension } from 'marked'
-import { QUOTE_XML_OPEN, QUOTE_XML_SHAPE } from '@mobi/shared'
+import { QUOTE_TAG_OPENS, QUOTE_XML_TOKEN_SHAPE } from '@mobi/shared'
 import { DIRECTIVE_SHAPE, findDirectiveStart } from '@/domain/chat/directives'
 
 /** directive 完整形态（派生自 domain 单源，锚定串首供 tokenizer 逐段匹配） */
 const DIRECTIVE_TOKEN_RE = new RegExp(`^${DIRECTIVE_SHAPE}`)
 
 /** quote XML 完整形态（派生自 shared 单源，锚定串首供 tokenizer 逐段匹配） */
-const QUOTE_XML_TOKEN_RE = new RegExp(`^${QUOTE_XML_SHAPE}`)
+const QUOTE_XML_TOKEN_RE = new RegExp(`^${QUOTE_XML_TOKEN_SHAPE}`)
 
 export function directiveExtension(): TokenizerAndRendererExtension {
     return {
@@ -64,11 +64,15 @@ export function directiveExtension(): TokenizerAndRendererExtension {
     }
 }
 
-/** quote XML 形态的下一个起点；无命中返回 -1（marked start 约定）。前缀常量
- *  单源 shared QUOTE_XML_OPEN，indexOf 未命中本身即 -1，无需前置 includes 守卫
- *  （两个分支都是子串扫描，守卫只会白多扫一遍） */
+/** quote XML 形态的下一个起点；无命中返回 -1（marked start 约定）。现行与旧读兼容
+ *  形态取最早出现位置；前缀常量单源 shared QUOTE_TAG_OPENS，indexOf 未命中本身即 -1 */
 export function findQuoteXmlStart(src: string): number {
-    return src.indexOf(QUOTE_XML_OPEN)
+    let start = -1
+    for (const open of QUOTE_TAG_OPENS) {
+        const i = src.indexOf(open)
+        if (i !== -1 && (start === -1 || i < start)) start = i
+    }
+    return start
 }
 
 export function quoteXmlExtension(): TokenizerAndRendererExtension {

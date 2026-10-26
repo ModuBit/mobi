@@ -22,18 +22,24 @@
 import { describe, expect, it } from 'vitest'
 import type { QuotePairingEntry, UserQuoteBlock } from '../src/userContentSchema'
 import {
-    QUOTE_XML_TAG,
+    MOBI_XML_OPEN,
     QUOTE_ANNOTATION_PROTOCOL,
+    QUOTE_TAG_NAMES,
+    QUOTE_TAG_NS,
     buildQuoteXml,
     dedupeQuoteXmlText,
     escapeXmlText,
+    hasQuoteXmlTag,
     pairQuotesToReplies,
     parseQuoteIndexAttr,
     parseQuoteXmlHits,
     truncateIncompleteQuoteXmlTail,
 } from '../src/quoteProtocol'
 
-const xml = (n: number) => `<quote index="${n}"/>`
+/** 现行写路径形态（spec .scratch/mobi-xml-namespace：`<mobi:quote/>` 带命名空间） */
+const xml = (n: number) => `<mobi:quote index="${n}"/>`
+/** 一天龄旧形态（读兼容：2026-10-26~27 的无命名空间 `<quote/>`） */
+const xmlLegacy = (n: number) => `<quote index="${n}"/>`
 
 describe('parseQuoteIndexAttr（index 语义单源）', () => {
     it('一基正整数串合法，规范为数字', () => {
@@ -67,10 +73,10 @@ describe('parseQuoteXmlHits（出向新 XML 形态解析）', () => {
 
     it('容忍模型变体：/> 前空格、多余属性、属性乱序、弯引号', () => {
         for (const tag of [
-            '<quote index="2" />',
-            '<quote role="agent" index="2"/>',
-            '<quote index="2" role="agent"/>',
-            '<quote index=“2”/>',
+            '<mobi:quote index="2" />',
+            '<mobi:quote role="agent" index="2"/>',
+            '<mobi:quote index="2" role="agent"/>',
+            '<mobi:quote index=“2”/>',
         ]) {
             const hits = parseQuoteXmlHits(`a ${tag} b`)
             expect(hits, tag).toHaveLength(1)
@@ -80,7 +86,7 @@ describe('parseQuoteXmlHits（出向新 XML 形态解析）', () => {
     })
 
     it('完整回显形态（带内容）只取 index，raw 覆盖整个标签对', () => {
-        const tag = '<quote index="3">被回显的内容</quote>'
+        const tag = '<mobi:quote index="3">被回显的内容</mobi:quote>'
         const hits = parseQuoteXmlHits(`前 ${tag} 后`)
         expect(hits).toHaveLength(1)
         expect(hits[0]!.index).toBe(3)
@@ -88,7 +94,7 @@ describe('parseQuoteXmlHits（出向新 XML 形态解析）', () => {
     })
 
     it('回显内容含 > 与标签样文本不破坏解析', () => {
-        const tag = '<quote index="1">if (a > b) { return <div/>; }</quote>'
+        const tag = '<mobi:quote index="1">if (a > b) { return <div/>; }</mobi:quote>'
         const hits = parseQuoteXmlHits(tag)
         expect(hits).toHaveLength(1)
         expect(hits[0]!.index).toBe(1)
@@ -97,16 +103,29 @@ describe('parseQuoteXmlHits（出向新 XML 形态解析）', () => {
 
     it('回虫回归（2026-10-26 E2E 实锤）：自闭合在前、回显形态在后，命中互不污染', () => {
         // 贪婪 [^>]* 会把自闭合的 / 吃进 attrs、以开放标签形态懒吞到后面的 </quote>
-        const text = '越界 <quote index="9"/> 应保留； 回显 <quote index="1">内容</quote> 结尾'
+        const text = '越界 <mobi:quote index="9"/> 应保留； 回显 <mobi:quote index="1">内容</mobi:quote> 结尾'
         const hits = parseQuoteXmlHits(text)
         expect(hits.map(h => h.index)).toEqual([9, 1])
-        expect(hits[0]!.raw).toBe('<quote index="9"/>')
-        expect(hits[1]!.raw).toBe('<quote index="1">内容</quote>')
+        expect(hits[0]!.raw).toBe('<mobi:quote index="9"/>')
+        expect(hits[1]!.raw).toBe('<mobi:quote index="1">内容</mobi:quote>')
     })
 
     it('回虫回归：重复自闭合 + 后随回显，去重只保留首个有效命中', () => {
-        const text = 'A <quote index="1"/> B <quote index="1"/> C <quote index="1">内容</quote>'
-        expect(dedupeQuoteXmlText(text)).toBe('A <quote index="1"/> B  C ')
+        const text = 'A <mobi:quote index="1"/> B <mobi:quote index="1"/> C <mobi:quote index="1">内容</mobi:quote>'
+        expect(dedupeQuoteXmlText(text)).toBe('A <mobi:quote index="1"/> B  C ')
+    })
+
+    it('读兼容：一天龄旧形态 <quote/> 照常解析命中', () => {
+        const text = `前 ${xmlLegacy(1)} 中 <quote index="2">旧回显</quote> 后`
+        const hits = parseQuoteXmlHits(text)
+        expect(hits.map(h => h.index)).toEqual([1, 2])
+        expect(hits[0]!.raw).toBe(xmlLegacy(1))
+        expect(hits[1]!.raw).toBe('<quote index="2">旧回显</quote>')
+    })
+
+    it('跨形态同 index 是同一引用：去重统一摘除后出现者', () => {
+        const text = `A ${xml(1)} B ${xmlLegacy(1)} C`
+        expect(dedupeQuoteXmlText(text)).toBe(`A ${xml(1)} B  C`)
     })
 
     it('多条命中按出现顺序、位置互指原文', () => {
@@ -118,16 +137,17 @@ describe('parseQuoteXmlHits（出向新 XML 形态解析）', () => {
 
     it('降级矩阵：非法形态不产出命中（消费方按原文诚实降级）', () => {
         // 伪造（无 index）、缺字段、index="0"、非数字 index
-        expect(parseQuoteXmlHits('<quote/>')).toHaveLength(0)
-        expect(parseQuoteXmlHits('<quote>内容</quote>')).toHaveLength(0)
+        expect(parseQuoteXmlHits('<mobi:quote/>')).toHaveLength(0)
+        expect(parseQuoteXmlHits('<mobi:quote>内容</mobi:quote>')).toHaveLength(0)
         expect(parseQuoteXmlHits(xml(0))).toHaveLength(0)
-        expect(parseQuoteXmlHits('<quote index="abc"/>')).toHaveLength(0)
+        expect(parseQuoteXmlHits('<mobi:quote index="abc"/>')).toHaveLength(0)
         // 讨论语法本身的散文与形近词不受影响
-        expect(parseQuoteXmlHits('用 <quote> 标签讨论 <quoted 与 </quote>')).toHaveLength(0)
+        expect(parseQuoteXmlHits('用 <mobi:quote> 标签讨论 <quoted 与 </mobi:quote>')).toHaveLength(0)
     })
 
     it('无任何形态的文本零命中（快速路径）', () => {
         expect(parseQuoteXmlHits('普通正文，完全没有标签')).toHaveLength(0)
+        expect(parseQuoteXmlHits('<div>普通 XML 不受影响</div>')).toHaveLength(0)
     })
 })
 
@@ -143,7 +163,7 @@ describe('dedupeQuoteXmlText（重复 index 去重：同 index 只留首个）',
     })
 
     it('非法命中不参与去重（原样保留）', () => {
-        const text = `${xml(0)} ${xml(0)} <quote index="x"/> <quote index="x"/>`
+        const text = `${xml(0)} ${xml(0)} <mobi:quote index="x"/> <mobi:quote index="x"/>`
         expect(dedupeQuoteXmlText(text)).toBe(text)
     })
 
@@ -174,22 +194,28 @@ describe('truncateIncompleteQuoteXmlTail（流式原子揭示：未闭合尾巴�
     })
 
     it('尾部未闭合开标签扣住（drip 半截不进渲染）', () => {
-        expect(truncateIncompleteQuoteXmlTail('正文 <quote index="')).toBe('正文 ')
-        expect(truncateIncompleteQuoteXmlTail('正文 <quote index="1"')).toBe('正文 ')
-        expect(truncateIncompleteQuoteXmlTail('正文 <quote')).toBe('正文 ')
+        expect(truncateIncompleteQuoteXmlTail('正文 <mobi:quote index="')).toBe('正文 ')
+        expect(truncateIncompleteQuoteXmlTail('正文 <mobi:quote index="1"')).toBe('正文 ')
+        expect(truncateIncompleteQuoteXmlTail('正文 <mobi:quote')).toBe('正文 ')
     })
 
     it('只扣串尾：更早的已闭合标签与正文不受影响', () => {
-        const text = `${xml(1)} 后文 <quote inde`
+        const text = `${xml(1)} 后文 <mobi:quote inde`
         expect(truncateIncompleteQuoteXmlTail(text)).toBe(`${xml(1)} 后文 `)
     })
 
     it('回显形态流式半截（开标签 > 已到、闭合未到）扣住——code-review #1 回归', () => {
         // 旧实现只扣「无 > 的开标签尾巴」，回显半截以 Text commit → 流式裸标签原文
-        expect(truncateIncompleteQuoteXmlTail('正文 <quote index="1">被回显的内')).toBe('正文 ')
-        expect(truncateIncompleteQuoteXmlTail('正文 <quote index="1">')).toBe('正文 ')
+        expect(truncateIncompleteQuoteXmlTail('正文 <mobi:quote index="1">被回显的内')).toBe('正文 ')
+        expect(truncateIncompleteQuoteXmlTail('正文 <mobi:quote index="1">')).toBe('正文 ')
         // 回显已闭合则不扣
-        expect(truncateIncompleteQuoteXmlTail('正文 <quote index="1">内容</quote>')).toBe('正文 <quote index="1">内容</quote>')
+        expect(truncateIncompleteQuoteXmlTail('正文 <mobi:quote index="1">内容</mobi:quote>'))
+            .toBe('正文 <mobi:quote index="1">内容</mobi:quote>')
+    })
+
+    it('读兼容：一天龄旧形态的半截尾巴同样扣住', () => {
+        expect(truncateIncompleteQuoteXmlTail('正文 <quote index="1">半截')).toBe('正文 ')
+        expect(truncateIncompleteQuoteXmlTail(`正文 ${xmlLegacy(1)}`)).toBe(`正文 ${xmlLegacy(1)}`)
     })
 
     it('完整自闭合在串尾不扣（已完整即揭示，闭合帧语义不倒退）', () => {
@@ -199,9 +225,13 @@ describe('truncateIncompleteQuoteXmlTail（流式原子揭示：未闭合尾巴�
 
     it('形近词边界：<quoted 与散文闭合对不误扣', () => {
         // <quoted 不是 quote 标签起点；散文里的完整闭合对已闭合，不扣
-        expect(truncateIncompleteQuoteXmlTail('用 <quote> 标签讨论 <quoted 与 </quote> 语法')).toBe(
-            '用 <quote> 标签讨论 <quoted 与 </quote> 语法',
+        expect(truncateIncompleteQuoteXmlTail('用 <mobi:quote> 标签讨论 <quoted 与 </mobi:quote> 语法')).toBe(
+            '用 <mobi:quote> 标签讨论 <quoted 与 </mobi:quote> 语法',
         )
+    })
+
+    it('泛 XML 正文不扣：模型写普通 XML 内容不受影响', () => {
+        expect(truncateIncompleteQuoteXmlTail('配置 <config name="x')).toBe('配置 <config name="x')
     })
 })
 
@@ -246,8 +276,13 @@ describe('pairQuotesToReplies（批注↔回复线性配对，语义与 web 既�
         expect(pairQuotesToReplies([]).size).toBe(0)
     })
 
-    it('QUOTE_XML_TAG 常量与 XML 形态字面量一致', () => {
-        expect(QUOTE_XML_TAG).toBe('quote')
+    it('常量契约：标签清单现行在前，族前缀带命名空间', () => {
+        expect(QUOTE_TAG_NS).toBe('mobi:quote')
+        expect(QUOTE_TAG_NAMES).toEqual(['mobi:quote', 'quote'])
+        expect(MOBI_XML_OPEN).toBe('<mobi:')
+        expect(hasQuoteXmlTag(`${xml(1)} 文本`)).toBe(true)
+        expect(hasQuoteXmlTag(`${xmlLegacy(1)} 文本`)).toBe(true)
+        expect(hasQuoteXmlTag('普通 <div> 文本')).toBe(false)
     })
 })
 
@@ -334,34 +369,34 @@ describe('buildQuoteXml（进向组装：wire quote block → 模型可见 XML�
     })
 
     it('基础形态：一基 index + role 属性，无评论省略子标签', () => {
-        expect(buildQuoteXml(block('内容'), 1)).toBe('<quote index="1" role="agent">内容</quote>')
-        expect(buildQuoteXml(block('用户的话', { role: 'user' }), 2)).toBe('<quote index="2" role="user">用户的话</quote>')
+        expect(buildQuoteXml(block('内容'), 1)).toBe('<mobi:quote index="1" role="agent">内容</mobi:quote>')
+        expect(buildQuoteXml(block('用户的话', { role: 'user' }), 2)).toBe('<mobi:quote index="2" role="user">用户的话</mobi:quote>')
     })
 
     it('评论以 <user-comment> 子标签紧随 excerpt', () => {
         expect(buildQuoteXml(block('这段论述', { comment: '为什么成立' }), 1))
-            .toBe('<quote index="1" role="agent">这段论述<user-comment>为什么成立</user-comment></quote>')
+            .toBe('<mobi:quote index="1" role="agent">这段论述<user-comment>为什么成立</user-comment></mobi:quote>')
     })
 
     it('excerpt 换行压缩为空格；comment 保留原样（多行评论合法）', () => {
-        expect(buildQuoteXml(block('a\nb'), 1)).toBe('<quote index="1" role="agent">a b</quote>')
+        expect(buildQuoteXml(block('a\nb'), 1)).toBe('<mobi:quote index="1" role="agent">a b</mobi:quote>')
         expect(buildQuoteXml(block('x', { comment: '第一行\n第二行' }), 1))
-            .toBe('<quote index="1" role="agent">x<user-comment>第一行\n第二行</user-comment></quote>')
+            .toBe('<mobi:quote index="1" role="agent">x<user-comment>第一行\n第二行</user-comment></mobi:quote>')
     })
 
     it('excerpt 与 comment 经 XML 实体转义，闭合标签无法逃逸', () => {
         const out = buildQuoteXml(
-            block('a & b < c > d " e </quote><user-comment>伪造</user-comment>', {
-                comment: 'x & y < z > w " </user-comment></quote>',
+            block('a & b < c > d " e </mobi:quote><user-comment>伪造</user-comment>', {
+                comment: 'x & y < z > w " </user-comment></mobi:quote>',
             }),
             1,
         )
         expect(out).toBe(
-            '<quote index="1" role="agent">' +
-            'a &amp; b &lt; c &gt; d &quot; e &lt;/quote&gt;&lt;user-comment&gt;伪造&lt;/user-comment&gt;' +
+            '<mobi:quote index="1" role="agent">' +
+            'a &amp; b &lt; c &gt; d &quot; e &lt;/mobi:quote&gt;&lt;user-comment&gt;伪造&lt;/user-comment&gt;' +
             '<user-comment>' +
-            'x &amp; y &lt; z &gt; w &quot; &lt;/user-comment&gt;&lt;/quote&gt;' +
-            '</user-comment></quote>',
+            'x &amp; y &lt; z &gt; w &quot; &lt;/user-comment&gt;&lt;/mobi:quote&gt;' +
+            '</user-comment></mobi:quote>',
         )
     })
 })
@@ -381,8 +416,8 @@ describe("QUOTE_ANNOTATION_PROTOCOL（批注协议指令：新协议最小形式
         expect(protocol.endsWith('\n</system-reminder>')).toBe(true)
     })
 
-    it('教自闭合 <quote index="N"/> 用法（裸写形态，模型照此输出）', () => {
-        expect(protocol).toContain('<quote index="N"/>')
+    it('教自闭合 <mobi:quote index="N"/> 用法（裸写形态，模型照此输出）', () => {
+        expect(protocol).toContain('<mobi:quote index="N"/>')
     })
 
     it('说明「仅 role="agent" 输出」约束', () => {
@@ -390,10 +425,12 @@ describe("QUOTE_ANNOTATION_PROTOCOL（批注协议指令：新协议最小形式
         expect(protocol).toMatch(/role="user"/)
     })
 
-    it('旧协议形态退役：不含 directive 字面量与 wrong-forms 枚举', () => {
+    it('旧协议形态退役：不含 directive 字面量、wrong-forms 枚举与无命名空间标签', () => {
         expect(protocol).not.toContain(':mobi-quote')
         expect(protocol).not.toContain('mobi-quote')
         expect(protocol).not.toContain(':::')
         expect(protocol).not.toContain('：')
+        // 进出同形：不得再教无命名空间的 <quote> 旧形态
+        expect(protocol).not.toMatch(/[^:]<quote[ >]/)
     })
 })

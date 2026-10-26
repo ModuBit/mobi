@@ -28,8 +28,8 @@
 
 import {
     dedupeQuoteXmlText,
+    hasQuoteXmlTag,
     parseTagAttrs,
-    QUOTE_XML_OPEN,
     truncateIncompleteQuoteXmlTail,
 } from '@mobi/shared'
 
@@ -181,7 +181,7 @@ export function dedupeDirectiveText(text: string): string {
     // （绝大多数帧零扫描成本），directive 族剔除导致坐标偏移后对去重后文本重算
     // （removedAny 帧罕见，成本可忽略）。两语法族的命中区间互不重叠，先跑哪族等价
     const dedupeXml = (t: string): string =>
-        t.includes(QUOTE_XML_OPEN) ? dedupeQuoteXmlText(t, codeRangesOf(t)) : t
+        hasQuoteXmlTag(t) ? dedupeQuoteXmlText(t, codeRangesOf(t)) : t
     // 快速路径单源：findDirectiveStart 的 -1 返回即「无指令」（冒号守卫 + lead 正则
     // 都在其中），此处不再手抄一份同义守卫
     if (findDirectiveStart(text) === -1) return dedupeXml(text)
