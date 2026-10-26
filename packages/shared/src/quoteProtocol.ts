@@ -42,8 +42,13 @@ export const QUOTE_XML_TAG = 'quote'
  * XML 形态完整正形（无 g 标志的源串）：自闭合 `<quote …/>` 或完整回显
  * `<quote …>…</quote>`。attrs 段不含 `>`；web markdown tokenizer 用 `^` 锚定派生
  * （同一正形，扫描与 tokenizer 判定不漂移）。
+ *
+ * attrs 必须懒量词（`[^>]*?`）：贪婪会把自闭合尾部的 `/` 吃进 attrs，随后 `>` 命中
+ * 开放标签分支、向后懒吞到下一个 `</quote>`——同文本后随回显形态时，自闭合命中被
+ * 整体污染（2026-10-26 E2E 实锤，降级矩阵场景抓出）。懒量词让 `/>` 分支在自闭合
+ * 处优先命中，回显分支只在真有开标签（attrs 后直连 `>`）时到达。
  */
-export const QUOTE_XML_SHAPE = `<${QUOTE_XML_TAG}\\b([^>]*)(?:/>|>([\\s\\S]*?)</${QUOTE_XML_TAG}>)`
+export const QUOTE_XML_SHAPE = `<${QUOTE_XML_TAG}\\b([^>]*?)(?:/>|>([\\s\\S]*?)</${QUOTE_XML_TAG}>)`
 
 /**
  * index 属性语义单源：一基正整数十进制串，规范为数字（"01" 即 1——同一编号的

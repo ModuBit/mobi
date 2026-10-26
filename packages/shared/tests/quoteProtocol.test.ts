@@ -95,6 +95,20 @@ describe('parseQuoteXmlHits（出向新 XML 形态解析）', () => {
         expect(hits[0]!.raw).toBe(tag)
     })
 
+    it('回虫回归（2026-10-26 E2E 实锤）：自闭合在前、回显形态在后，命中互不污染', () => {
+        // 贪婪 [^>]* 会把自闭合的 / 吃进 attrs、以开放标签形态懒吞到后面的 </quote>
+        const text = '越界 <quote index="9"/> 应保留； 回显 <quote index="1">内容</quote> 结尾'
+        const hits = parseQuoteXmlHits(text)
+        expect(hits.map(h => h.index)).toEqual([9, 1])
+        expect(hits[0]!.raw).toBe('<quote index="9"/>')
+        expect(hits[1]!.raw).toBe('<quote index="1">内容</quote>')
+    })
+
+    it('回虫回归：重复自闭合 + 后随回显，去重只保留首个有效命中', () => {
+        const text = 'A <quote index="1"/> B <quote index="1"/> C <quote index="1">内容</quote>'
+        expect(dedupeQuoteXmlText(text)).toBe('A <quote index="1"/> B  C ')
+    })
+
     it('多条命中按出现顺序、位置互指原文', () => {
         const text = `a ${xml(2)} b ${xml(1)} c`
         const hits = parseQuoteXmlHits(text)
