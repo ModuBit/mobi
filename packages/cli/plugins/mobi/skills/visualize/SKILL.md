@@ -1,6 +1,6 @@
 ---
 name: visualize
-description: Proactively use this skill whenever the user asks for a chart, graph, data visualization, diagram, dashboard, interactive mockup, demo page, or any visual artifact in the conversation. Guides the choice between markdown tables, mermaid fences, and self-contained HTML artifacts, and how to declare the result with the :mobi-artifact directive so it renders inline in the chat stream.
+description: Proactively use this skill whenever the user asks for a chart, graph, data visualization, diagram, dashboard, interactive mockup, demo page, or any visual artifact in the conversation. Guides the choice between markdown tables, mermaid fences, and self-contained HTML artifacts, and how to declare the result with the <mobi:artifact path="..."/> tag so it renders inline in the chat stream.
 ---
 
 # Visualize
@@ -21,7 +21,7 @@ Pick the smallest form that answers the request. Escalate only when the smaller 
 
 - **Markdown table** — labeled rows and columns fully explain it. Return it directly in prose; no file, no directive.
 - **Mermaid code fence** — labeled nodes and edges fully explain a static structure (flowcharts, sequence diagrams, class diagrams, state machines). Return a normal fenced block; no file, no directive.
-- **HTML artifact + `:mobi-artifact` declaration** — dynamics, spatial motion, adjustable inputs, simulations, maps, UI mockups, dashboards, or anything the user must interact with to understand.
+- **HTML artifact + `<mobi:artifact/>` declaration** — dynamics, spatial motion, adjustable inputs, simulations, maps, UI mockups, dashboards, or anything the user must interact with to understand.
 - **Plain file delivery** — the user asked for a deliverable file (a real page for their project, a dataset, an image for downstream use). Write the file where it belongs and declare it with the directive; do not redesign it as a conversation visual, and do not skip the declaration.
 
 Boundary rules:

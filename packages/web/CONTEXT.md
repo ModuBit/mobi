@@ -76,7 +76,7 @@ _Avoid_: 运行中块与待审批块的混称（二者皆是活跃块）
 ### 聊天流 · 产物呈现
 
 **产物声明（Artifact Declaration）**：
-agent 在回复正文中用 `:mobi-artifact{path mode}` 内联指令对「本轮产出的可视产物」的正式指认——声明是 inline 渲染的唯一触发源。web 端校验通过（文件存在、类型白名单、大小上限）才渲染，失败降级为产物卡而非静默吞掉。声明出现在 turn 的最终回复，模型不必写产物类型（类型由 web 判定），只表达展示意愿（mode）。
+agent 在回复正文中用 `<mobi:artifact path mode/>` 内联标签（spec mobi-xml-namespace 票 02 换形；旧 `:mobi-artifact{}` DSL 读兼容）对「本轮产出的可视产物」的正式指认——声明是 inline 渲染的唯一触发源。web 端校验通过（文件存在、类型白名单、大小上限）才渲染，失败降级为产物卡而非静默吞掉。声明出现在 turn 的最终回复，模型不必写产物类型（类型由 web 判定），只表达展示意愿（mode）。
 _Avoid_: 扫描正文发现产物（检测靠声明不靠猜）、要求模型声明 MIME/类型
 
 **inline 产物（Inline Artifact）**：

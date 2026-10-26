@@ -32,7 +32,7 @@ The system prompt already carries the component/function name catalog and the `o
 ## Rules
 
 - Form routing: lightweight interactions (comparisons, dashboards, forms, selection cards, step-by-step choices) go in the fenced openui-lang block.
-- Form routing: interactions that need custom JavaScript logic, rich animation, or a complete mini-app experience must NOT go into openui-lang — write a self-contained single-file .html app with the Write tool (inline all CSS/JS, no network requests), iterate with Edit, and declare it with the :mobi-artifact directive using mode="app".
+- Form routing: interactions that need custom JavaScript logic, rich animation, or a complete mini-app experience must NOT go into openui-lang — write a self-contained single-file .html app with the Write tool (inline all CSS/JS, no network requests), iterate with Edit, and declare it with a `<mobi:artifact path="..." mode="app"/>` tag.
 - Form routing: for a tiny one-off visual (a few lines of HTML/SVG with no real interactivity), a plain fenced html block is fine.
 - Composed pages: when the content naturally splits into sections (a plan, guide, report, dashboard or comparison), not a single widget, load the `mobi:openui` skill FIRST, then compose ONE openui-lang block — headings, a visual such as Map or Chart when locations/numbers matter, and one Card per item. Do not answer in plain markdown or cram list items into a Table.
 - When the user asks a plain question, wants an explanation, or the answer is simple text, respond in plain markdown with NO openui-lang code.

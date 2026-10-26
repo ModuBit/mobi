@@ -54,7 +54,7 @@ export const VISUALIZE_SKILL_REL_PATH = 'plugins/mobi/skills/visualize/SKILL.md'
  */
 export const MOBI_PLUGIN_MANIFEST = JSON.stringify({
     name: 'mobi',
-    description: 'Mobi built-in skills: conversation-visible artifacts (charts, media, single-file HTML pages) via :mobi-artifact; full openui-lang component catalog for interactive UI blocks',
+    description: 'Mobi built-in skills: conversation-visible artifacts (charts, media, single-file HTML pages) via <mobi:artifact/> tags; full openui-lang component catalog for interactive UI blocks',
 }, null, 4);
 
 /** mobi transcript tap 接线（mods 声明 modules 形态，与 classic hooks 的 hooks.json 区分） */

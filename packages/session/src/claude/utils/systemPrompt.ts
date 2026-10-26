@@ -75,7 +75,7 @@ export interface AppendSystemPromptConfig {
  * openui 核心段（generative-ui 票 02 注入、票 08 分层收窄）。
  *
  * 【通道裁决（票 02）】openui prompt 走 session 侧 systemPrompt 组装链（与
- * :mobi-artifact 声明教学的 BASE_SYSTEM_PROMPT 同一链路、常驻契约），不走
+ * `<mobi:artifact>` 声明教学的 BASE_SYSTEM_PROMPT 同一链路、常驻契约），不走
  * appendSystemPrompt——那是用户自定义配置通道，程序化注入混入会互相污染且不可
  * 独立演进。判据措辞单一来源在生成脚本的 OPENUI_CORE_PROMPT_OPTIONS，非代码路由。
  *

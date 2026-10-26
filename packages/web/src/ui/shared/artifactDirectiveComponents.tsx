@@ -15,7 +15,8 @@
  */
 
 /**
- * 产物声明（:mobi-artifact）渲染组件（spec .scratch/inline-artifacts 票 01）
+ * 产物声明渲染组件（spec .scratch/inline-artifacts 票 01 + mobi-xml-namespace 票 02：
+ * `<mobi:artifact/>` XML 与旧 :mobi-artifact DSL 两形态共用入口，路由在 MobiDirective）
  *
  * 声明 → fileMeta 校验（存在 + 类型白名单 + inline 大小上限，判定单源
  * domain/chat/artifactDirectives）→ 渲染。本票产物恒呈卡片形态；inline 渲染
@@ -268,7 +269,7 @@ const ArtifactInvalidCard: FC<{ raw?: ReactNode }> = ({ raw }) => {
 }
 
 /**
- * :mobi-artifact 渲染入口（MobiDirective 路由表项）：attrs → 类型化参数，非法降级原文；
+ * 产物声明渲染入口（MobiDirective 路由表项）：attrs → 类型化参数，非法降级原文；
  * 渲染形态由 classifyArtifact（domain 裁决纯函数）唯一确定，本层只做端口装配：
  * 无寻址 → 卡（不打无效请求）；有端口 → 直接裁决；缺省 → react-query adapter。
  */

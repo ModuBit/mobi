@@ -131,7 +131,7 @@ const SHARED_RULES: PromptRule[] = [
     // 地图已是原生组件（票 04），不再属于「必须走 .html app」的范畴——旧措辞把
     // maps 列在 app 路由里，模型据此放弃 openui-lang 里的 Map
     {
-        text: 'Form routing: interactions that need custom JavaScript logic, rich animation, or a complete mini-app experience must NOT go into openui-lang — write a self-contained single-file .html app with the Write tool (inline all CSS/JS, no network requests), iterate with Edit, and declare it with the :mobi-artifact directive using mode="app".',
+        text: 'Form routing: interactions that need custom JavaScript logic, rich animation, or a complete mini-app experience must NOT go into openui-lang — write a self-contained single-file .html app with the Write tool (inline all CSS/JS, no network requests), iterate with Edit, and declare it with a `<mobi:artifact path="..." mode="app"/>` tag.',
     },
     {
         text: 'Form routing: for a tiny one-off visual (a few lines of HTML/SVG with no real interactivity), a plain fenced html block is fine.',

@@ -4,6 +4,8 @@
 
 accepted（2026-09-26）。产物声明特性（`:mobi-artifact`）的渲染安全基线。
 
+> 注（2026-10-26，mobi-xml-namespace 票 02）：产物声明 wire 形态已换 `<mobi:artifact/>` XML 命名空间，本文 `:mobi-artifact` 字样均指其旧 DSL 形态（读兼容保留），安全决策不变。
+
 ## 背景
 
 `:mobi-artifact` 声明的单文件 HTML 需要在聊天流中 inline 渲染。行业两条现成路线：

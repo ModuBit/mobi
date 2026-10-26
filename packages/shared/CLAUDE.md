@@ -14,7 +14,8 @@
 | `src/types.ts` | 纯 TypeScript 类型重导出 |
 | `src/messages.ts` | 消息辅助函数（unwrapRole / unwrapOutput / lifecycle） |
 | `src/messageClassification.ts` | 消息投影单一来源：写路径分类 classifyMessage + 读路径可见性 isClaudeChatVisibleMessage |
-| `src/quoteProtocol.ts` | quote 协议单源：进出同形引用协议（出向 `<quote index="N"/>` 解析/去重/流式截断、进向 XML 组装、批注↔回复配对 uuid 优先+线性兜底、XML 转义原语） |
+| `src/mobiXml.ts` | 指令族 XML 命名空间协议单源：`<mobi:name/>` 族通用原语（标签正形/扫描/去重/流式尾巴截断）+ artifact 成员语义（path/mode 校验、去重键） |
+| `src/quoteProtocol.ts` | quote 协议单源：进出同形引用协议（出向 `<mobi:quote index="N"/>` 解析/去重/流式截断、进向 XML 组装、批注↔回复配对 uuid 优先+线性兜底、XML 转义原语；族通用原语委托 mobiXml） |
 | `src/streamingToolInputPreview.ts` | 流式工具入参预览单一来源：半截 JSON 尽力解析 + 白名单字段抓取 + 8KB 扫描窗口 |
 | `src/socket.ts` | Socket.IO 事件类型定义（含 `snapshot-stream-end`） |
 | `src/transcriptTap.ts` | transcript tap 生产/消费契约单源（`TRANSCRIPT_TAP_SESSION_APPEND_RULES` / 信封 type `goal.append`；mod 生产端 config.mjs 由 cli 测试锁定等值） |
