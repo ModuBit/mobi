@@ -15,17 +15,21 @@
  */
 
 /**
- * 回应批注 directive 语义层（spec .scratch/response-annotations 票 03/04）
+ * 回应批注 directive 语义层（spec .scratch/response-annotations 票 03/04；协议统一
+ * spec .scratch/quote-protocol-unification 票 01 派生化改造）
  *
- * 模型在回复正文输出的内联 directive `:mobi-quote{index="N"}`（字面量单源 shared
- * QUOTE_DIRECTIVE，CLI 协议文案共用）。语法/扫描/去重管线单源 domain/chat/directives，
- * 本模块注册 quote 的参数语义与去重键，并导出渲染插桩用的解析、批注↔回复的 turn 配对
- * （handoff 记录的失败模式：同一 directive 被模型输出多次——由注册的去重键处理）。
- * 全部纯函数、单 pass 正则。
+ * 模型在回复正文的引用标记有两代语法，渲染收敛到同一 QuoteDirectiveMarker：
+ * - 新 XML 形态 `<quote index="N"/>`（进出同形协议）：语法/解析/去重单源 shared
+ *   quoteProtocol，本模块只做管线级组装（注册表外的 markdown 扩展与去重桥接）。
+ * - 旧 directive `:mobi-quote{index="N"}`（只读兼容，历史会话渲染，零迁移）：语法/
+ *   扫描/去重管线单源 domain/chat/directives 注册表，quote 的 index 语义
+ *   （合法性、去重键）从 shared parseQuoteIndexAttr 派生——本模块不私写校验正则。
+ * 另导出批注↔回复的 turn 配对（线性推导派生自 shared pairQuotesToReplies；
+ * handoff 记录的失败模式：同一标记被模型输出多次——由去重键处理）。
  */
 
-import { QUOTE_DIRECTIVE } from '@mobi/shared'
-import type { UserQuoteBlock } from '@mobi/shared'
+import { QUOTE_DIRECTIVE, parseQuoteIndexAttr, pairQuotesToReplies } from '@mobi/shared'
+import type { QuotePairingEntry, UserQuoteBlock } from '@mobi/shared'
 import { DIRECTIVE_PREFIX, registerDirective } from './directives'
 import type { DirectiveDefinition } from './directives'
 import type { ChatBlock } from './types'
@@ -34,15 +38,16 @@ import type { ChatBlock } from './types'
 export const QUOTE_DIRECTIVE_NAME = QUOTE_DIRECTIVE.slice(DIRECTIVE_PREFIX.length)
 
 /**
- * quote 指令语义：唯一参数 index（一基正整数串）。非法（伪造/缺字段/"0"）返回 null，
- * 消费方按原文诚实降级；index 超出引用数量的越界由渲染层兜底为纯展示。
- * 去重键 = index：同 index 只保留首次出现。
+ * quote 指令语义：唯一参数 index，合法性由 shared parseQuoteIndexAttr 单源裁决
+ * （一基正整数，规范为数字）。非法（伪造/缺字段/"0"）返回 null，消费方按原文诚实
+ * 降级；index 超出引用数量的越界由渲染层兜底为纯展示。去重键 = 规范化 index：
+ * 同一编号的任何写法只保留首次出现。
  */
 const QUOTE_DEFINITION: DirectiveDefinition<string> = {
     directive: QUOTE_DIRECTIVE,
     parse: (attrs) => {
-        const { index } = attrs
-        return index !== undefined && /^\d+$/.test(index) && Number(index) > 0 ? index : null
+        const index = parseQuoteIndexAttr(attrs.index)
+        return index === null ? null : String(index)
     },
     dedupeKey: (index) => index,
 }
@@ -52,8 +57,19 @@ registerDirective(QUOTE_DEFINITION)
 /** 会话完全无引用时返回共享空 Map（零分配早退——渲染热路径每帧调用，无批注会话不付全量构建成本） */
 const EMPTY_ANNOTATIONS: ReadonlyMap<string, UserQuoteBlock[]> = new Map()
 
+/** 配对输入投影：只取 user-text / agent-text 两类（其余块不参与、不打断——user 引用跨工具轮仍归属其后的回复） */
+type PairableTextBlock = Extract<ChatBlock, { kind: 'user-text' | 'agent-text' }>
+
+/** web ChatBlock → shared 协议中性条目（blocks 按引用透传，不拷贝） */
+function toPairingEntry(block: PairableTextBlock): QuotePairingEntry {
+    return block.kind === 'user-text'
+        ? { side: 'user', id: block.id, blocks: block.blocks }
+        : { side: 'agent', id: block.id }
+}
+
 /**
- * 回应批注↔回复的 turn 配对（spec .scratch/response-annotations，领域规则单源）：
+ * 回应批注↔回复的 turn 配对（spec .scratch/response-annotations；领域规则单源
+ * shared pairQuotesToReplies，本函数只做 ChatBlock 序列的投影适配）：
  * 与 CLI 协议注入同语义——每条 agent 回复配「触发它的那条 user 消息」的引用。
  *
  * 归属按块顺序线性推导：user-text 之后、下一个 user-text 之前的所有 agent-text
@@ -73,14 +89,8 @@ export function collectQuoteAnnotationsByAgentId(
     )
     if (!hasAnyQuote) return EMPTY_ANNOTATIONS
 
-    const byId = new Map<string, UserQuoteBlock[]>()
-    let currentQuotes: UserQuoteBlock[] = []
-    for (const block of chatBlocks) {
-        if (block.kind === 'user-text') {
-            currentQuotes = block.blocks.filter((b): b is UserQuoteBlock => b.type === 'quote')
-        } else if (block.kind === 'agent-text' && currentQuotes.length > 0) {
-            byId.set(block.id, currentQuotes)
-        }
-    }
-    return byId
+    const entries = chatBlocks
+        .filter((b): b is PairableTextBlock => b.kind === 'user-text' || b.kind === 'agent-text')
+        .map(toPairingEntry)
+    return pairQuotesToReplies(entries)
 }

@@ -31,6 +31,7 @@ import { Quote } from 'lucide-react'
 import type { ComponentProps } from '@ant-design/x-markdown'
 import type { UserQuoteBlock } from '@mobi/shared'
 import { parseDirectiveHits } from '@/domain/chat/directives'
+import { parseQuoteXmlHits } from '@mobi/shared'
 import { QuoteLocateFn, quoteOffsetsOf } from '@/core/lib/quoteLocate'
 import { QUOTE_DIRECTIVE_NAME } from '@/domain/chat/quoteDirectives'
 import { ARTIFACT_DIRECTIVE_NAME } from '@/domain/chat/artifactDirectives'
@@ -140,13 +141,18 @@ const DIRECTIVE_COMPONENTS: Record<string, FC<Record<string, string> & { childre
 
 /**
  * 内联指令路由（XMarkdown components 映射 `mobi-directive`，该标签唯一生产方是
- * directivePlugin 且恒带 data-raw）：解码原文 → 解析指令名与 attrs → 分发到注册的
- * 渲染组件；未注册指令按原文诚实降级，不吞模型输出。
+ * directivePlugin 的两个扩展：旧 directive 形态 + quote 新 XML 形态，恒带 data-raw）：
+ * 解码原文 → 旧 directive 按注册表路由 → 新 XML 形态按 shared 解析出 index 走
+ * 引用标注；未注册指令与非法形态按原文诚实降级，不吞模型输出。
  */
 export const MobiDirective: FC<ComponentProps<{ 'data-raw'?: string }>> = ({ 'data-raw': dataRaw }) => {
     const raw = decodeURIComponent(dataRaw ?? '')
     const hit = parseDirectiveHits(raw)[0]
     const Component = hit ? DIRECTIVE_COMPONENTS[hit.name] : undefined
-    if (!Component) return <span>{raw}</span>
-    return <Component {...hit.attrs}>{raw}</Component>
+    if (Component) return <Component {...hit.attrs}>{raw}</Component>
+    // 协议统一出向（spec .scratch/quote-protocol-unification 票 01）：`<quote index="N"/>`
+    // 自闭合 / 完整回显形态（只取 index）；非法（伪造/缺字段/"0"）不产出命中，落原文降级
+    const xmlHit = parseQuoteXmlHits(raw)[0]
+    if (xmlHit) return <QuoteDirectiveMarker index={String(xmlHit.index)}>{raw}</QuoteDirectiveMarker>
+    return <span>{raw}</span>
 }

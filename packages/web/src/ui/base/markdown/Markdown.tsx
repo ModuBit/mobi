@@ -23,8 +23,9 @@ import Latex, { containsLatex, ensureKatexLoaded } from '@/ui/base/markdown/late
 import slashCommand from '@/ui/base/markdown/slashCommandPlugin'
 import mention from '@/ui/base/markdown/mentionPlugin'
 import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from '@/ui/base/markdown/footnotePlugin'
-import { directiveExtension } from '@/ui/base/markdown/directivePlugin'
+import { directiveExtension, quoteXmlExtension } from '@/ui/base/markdown/directivePlugin'
 import { truncateIncompleteDirectiveTail } from '@/domain/chat/directives'
+import { truncateIncompleteQuoteXmlTail } from '@mobi/shared'
 import { MobiDirective } from '@/ui/shared/quoteDirectiveComponents'
 import { isXMarkdownDebugEnabled } from '@/core/lib/xMarkdownDebug'
 import { useStreamingContent } from '@/ui/shared/useStreamingContent'
@@ -67,8 +68,9 @@ const MENTION_EXTENSIONS = [mention()]
 /** 脚注引用扩展（稳定引用，不依赖运行时数据） */
 const FOOTNOTE_REF_EXTENSIONS = [footnoteRefExtension()]
 
-/** 内联指令扩展（`:mobi-*{...}` → mobi-directive 标签；MobiDirective 按指令名路由渲染组件） */
-const DIRECTIVE_EXTENSIONS = [directiveExtension()]
+/** 内联指令扩展（`:mobi-*{...}` 与 quote 新 XML 形态 `<quote index="N"/>` → mobi-directive
+ *  标签；MobiDirective 按指令名/shared 解析路由渲染组件） */
+const DIRECTIVE_EXTENSIONS = [directiveExtension(), quoteXmlExtension()]
 
 /** mobi URI scheme 前缀（scheme 大小写不敏感，按 URI 惯例归一后识别；scheme 权威声明在 shared actionUri） */
 const MOBI_URI_PREFIX = `${MOBI_URI_SCHEME}://`
@@ -227,11 +229,14 @@ export const Markdown = memo(function Markdown({
 }: MarkdownProps) {
     const useDrip = !!streaming && typing !== false
     const displayContent = useStreamingContent(content ?? '', useDrip)
-    // 指令原子揭示：drip 半截的 `:mobi-*{...}` 尾巴扣住不进 parse——x-markdown 的
-    // 流式 recognizer 不覆盖自定义扩展，半截 Text commit 后闭合不重识别（流式裸
-    // 文本、刷新才成钮的根因，2026-09-28）。仅 drip 流式路径截断；静态/非 drip
-    // 路径恒透传完整 content，模型真输出无闭合字面量时流结束诚实呈现
-    const finalContent = useDrip ? truncateIncompleteDirectiveTail(displayContent) : displayContent
+    // 指令原子揭示：drip 半截的 `:mobi-*{...}` / `<quote …` 尾巴扣住不进 parse——
+    // x-markdown 的流式 recognizer 不覆盖自定义扩展，半截 Text commit 后闭合不重
+    // 识别（流式裸文本、刷新才成钮的根因，2026-09-28）。两语法族各自截断；仅 drip
+    // 流式路径截断，静态/非 drip 路径恒透传完整 content，模型真输出无闭合字面量时
+    // 流结束诚实呈现
+    const finalContent = useDrip
+        ? truncateIncompleteQuoteXmlTail(truncateIncompleteDirectiveTail(displayContent))
+        : displayContent
 
     // LaTeX 按需加载：探测到公式特征才拉 katex chunk（raw ~234K，含样式），
     // 避免绝大多数不含公式的消息把 katex 带进会话页首载。加载是模块级幂等

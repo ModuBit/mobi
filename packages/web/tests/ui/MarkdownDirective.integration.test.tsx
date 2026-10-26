@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { QUOTE_DIRECTIVE } from '@mobi/shared'
 import { Markdown } from '@/ui/base/markdown/Markdown'
@@ -49,5 +49,59 @@ describe('Markdown 内联指令（真实渲染管线）', () => {
         expect(body).toContain('前文')
         expect(body).toContain('后文')
         expect(body).not.toContain(`${QUOTE_DIRECTIVE}{index="1"}`)
+    })
+
+    // 协议统一出向（spec .scratch/quote-protocol-unification 票 01）：新 XML 形态
+    // `<quote index="N"/>` 与旧 directive 同管线收敛到「引用 N」标注
+    it('<quote index="1"/> 自闭合渲染为「引用 1」标注，无原文残留', async () => {
+        render(
+            <QuoteAnnotationsProvider quotes={quotes} onLocate={() => {}}>
+                <Markdown content={'前文 <quote index="1"/> 后文'} />
+            </QuoteAnnotationsProvider>,
+        )
+        const marker = await screen.findByTestId('quote-annotation-1')
+        expect(marker).toBeInTheDocument()
+        expect(marker.textContent).toMatch(/引用 1|Quote 1/)
+        const body = document.body.textContent ?? ''
+        expect(body).toContain('前文')
+        expect(body).toContain('后文')
+        expect(body).not.toContain('<quote')
+    })
+
+    it('完整回显形态只取 index：渲染标注且回显内容不重复显示', async () => {
+        render(
+            <QuoteAnnotationsProvider quotes={quotes} onLocate={() => {}}>
+                <Markdown content={'前文 <quote index="1">被回显的内容</quote> 后文'} />
+            </QuoteAnnotationsProvider>,
+        )
+        expect(await screen.findByTestId('quote-annotation-1')).toBeInTheDocument()
+        const body = document.body.textContent ?? ''
+        expect(body).toContain('前文')
+        expect(body).toContain('后文')
+        // 完整形态被整体替换为标注：内容与标签都不残留
+        expect(body).not.toContain('被回显的内容')
+        expect(body).not.toContain('<quote')
+    })
+
+    it('降级矩阵：index="0" / 越界 / 无批注上下文按原文诚实降级', async () => {
+        const { container: c0 } = render(
+            <QuoteAnnotationsProvider quotes={quotes} onLocate={() => {}}>
+                <Markdown content={'前文 <quote index="0"/> 后文'} />
+            </QuoteAnnotationsProvider>,
+        )
+        await waitFor(() => expect(c0.textContent).toContain('前文'))
+        expect(c0.textContent).toContain('<quote index="0"/>')
+        expect(c0.querySelector('[data-testid="quote-annotation-0"]')).toBeNull()
+
+        cleanup()
+        // 越界（ctx 只有 1 条引用）
+        const { container: c9 } = render(
+            <QuoteAnnotationsProvider quotes={quotes} onLocate={() => {}}>
+                <Markdown content={'前文 <quote index="9"/> 后文'} />
+            </QuoteAnnotationsProvider>,
+        )
+        await waitFor(() => expect(c9.textContent).toContain('前文'))
+        expect(c9.textContent).toContain('<quote index="9"/>')
+        expect(c9.querySelector('[data-testid="quote-annotation-9"]')).toBeNull()
     })
 })

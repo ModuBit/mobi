@@ -26,6 +26,8 @@
  * 的视觉过渡，闭合后自然成钮（沿袭 quote 专属实现的行为契约）。
  */
 
+import { dedupeQuoteXmlText } from '@mobi/shared'
+
 /** 指令前缀：per-type 字面量（如 shared QUOTE_DIRECTIVE）必须以此开头（namespace 防线） */
 export const DIRECTIVE_PREFIX = ':mobi-'
 
@@ -135,13 +137,15 @@ export function registerDirective<P>(definition: DirectiveDefinition<P>): void {
 }
 
 /** 通用重复剔除：注册了 dedupeKey 的指令按「指令名+键」去重，同键只保留首次出现，
- *  其余从文本移除；未注册指令与无 dedupeKey 的命中原样保留。输入变化时输出保持
+ *  其余从文本移除；未注册指令与无 dedupeKey 的命中原样保留。quote 协议统一后
+ *  （spec .scratch/quote-protocol-unification）新 XML 形态同帧去重——语法/去重
+ *  单源 shared quoteProtocol，本函数只做两条语法族的管线组装。输入变化时输出保持
  *  前缀稳定（后来的重复只会让尾部更短）——与流式渲染的 append-only 假设兼容，
  *  不会引发已揭示内容的重淡入。 */
 export function dedupeDirectiveText(text: string): string {
     // 快速路径单源：findDirectiveStart 的 -1 返回即「无指令」（冒号守卫 + lead 正则
     // 都在其中），此处不再手抄一份同义守卫
-    if (findDirectiveStart(text) === -1) return text
+    if (findDirectiveStart(text) === -1) return dedupeQuoteXmlText(text)
     const seen = new Set<string>()
     let out = ''
     let cursor = 0
@@ -162,9 +166,10 @@ export function dedupeDirectiveText(text: string): string {
             seen.add(key)
         }
     }
-    // 无剔除则原样返回（避免无谓的字符串重建，历史消息每帧渲染都走这里）
-    if (!removedAny) return text
-    return out + text.slice(cursor)
+    // 无剔除则原样返回（避免无谓的字符串重建，历史消息每帧渲染都走这里）；
+    // XML 形态的去重在其上补跑（两语法族的命中区间互不重叠，先跑哪族等价）
+    if (!removedAny) return dedupeQuoteXmlText(text)
+    return dedupeQuoteXmlText(out + text.slice(cursor))
 }
 
 /**

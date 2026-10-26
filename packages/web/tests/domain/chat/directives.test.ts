@@ -121,6 +121,31 @@ describe('dedupeDirectiveText（quote 已注册：同 index 只留首个）', ()
     })
 })
 
+describe('dedupeDirectiveText（quote 新 XML 形态同帧去重，协议统一票 01）', () => {
+    const d = (n: number) => `${QUOTE_DIRECTIVE}{index="${n}"}`
+    const x = (n: number) => `<quote index="${n}"/>`
+
+    it('同 index 的 XML 重复只保留首个；不同 index 互不影响', () => {
+        expect(dedupeDirectiveText(`A ${x(1)} B ${x(1)} C`)).toBe(`A ${x(1)} B  C`)
+        expect(dedupeDirectiveText(`${x(1)}${x(2)}${x(1)}`)).toBe(`${x(1)}${x(2)}`)
+    })
+
+    it('旧 directive 与新 XML 两语法族各自去重、互不跨族合并', () => {
+        const text = `${d(1)} ${x(1)}`
+        expect(dedupeDirectiveText(text)).toBe(text)
+    })
+
+    it('非法 XML 命中不参与去重（原样保留）', () => {
+        const text = `${x(0)} ${x(0)} <quote index="x"/> <quote index="x"/>`
+        expect(dedupeDirectiveText(text)).toBe(text)
+    })
+
+    it('完全不含任何指令形态的文本零开销原样返回', () => {
+        const text = '普通正文，既无冒号指令也无标签'
+        expect(dedupeDirectiveText(text)).toBe(text)
+    })
+})
+
 describe('truncateIncompleteDirectiveTail（drip 原子揭示：未闭合尾巴扣住不进渲染）', () => {
     it('无未闭合尾巴原样返回', () => {
         const text = `前文 ${QUOTE_DIRECTIVE}{index="1"} 后文`
