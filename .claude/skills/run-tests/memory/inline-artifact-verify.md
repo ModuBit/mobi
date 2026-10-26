@@ -1,12 +1,12 @@
 ---
 name: inline-artifact-verify
-description: 产物声明 :mobi-artifact 全链路 E2E recipe——inline 渲染断言、悬空降级、挂载验证、孤儿进程误判坑
+description: 产物声明 <mobi:artifact/> 全链路 E2E recipe——inline 渲染断言、悬空降级、挂载验证、孤儿进程误判坑
 metadata:
   type: recipe
-  last_verified: 2026-09-26
+  last_verified: 2026-10-26
 ---
 
-# 产物声明（:mobi-artifact）全链路验证
+# 产物声明（<mobi:artifact/>，2026-10-26 XML 命名空间换形）全链路验证
 
 ## 前置
 
@@ -16,7 +16,7 @@ metadata:
 
 ## 场景 recipe（真机已验证 2026-09-26）
 
-- **A 图片 inline**：prompt 明确要求「生成后用 :mobi-artifact 声明」（首轮模型契约遵从率实测 100%，但点名更稳）。断言 `[data-testid="artifact-inline-image"]` 内 img src 含 `/read-file` 且带 `v=<etag>`
+- **A 图片 inline**：prompt 明确要求「生成后用 `<mobi:artifact path="..."/>` 声明」（现行教学即 XML 形态；点名更稳）。断言 `[data-testid="artifact-inline-image"]` 内 img src 含 `/read-file` 且带 `v=<etag>`。旧 `:mobi-artifact{}` DSL 读兼容（历史会话照常渲染，2026-10-26 真机 seed 会话实测照常 inline）。**坑（2026-10-26 实踩）：探针里别写字面模板 `path="/绝对路径"`——模型会照抄占位符**，产出指向不存在路径的产物卡（顺带验证了非法 path 降级为产物卡而非静默吞掉）；措辞用「用绝对路径声明」让模型自己代入
 - **B HTML iframe**：断言 iframe src 含 `/serve-file/`、sandbox 含 allow-scripts、style.height 随 mode（wide=640px/默认 480px，机制单源在 SandboxHtmlFrame）。模型对「多面板对比」自主选 mode="wide"（skill §4 判据生效的行为证据）
 - **C 悬空降级**：直接 `rm` 已声明的产物文件 → 刷新页面 → 原 inline 变产物卡且文案「文件不存在或不可读」。比 DB 造消息简单且确定性等价
 - **D 窄屏**：`resize_page 375` → 断言 wrap/iframe clientWidth ≤ 视口且 `getBoundingClientRect().right <= viewport+1`（无横向溢出）。注意 Chrome 最小窗宽限制，viewport 可能 >375，断言以实际 clientWidth 为准
