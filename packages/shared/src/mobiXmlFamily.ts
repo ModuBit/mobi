@@ -26,6 +26,7 @@ import {
     ARTIFACT_TAG_NAMES,
     artifactDedupeKey,
     buildXmlTokenShape,
+    opensOf,
     type XmlTagHit,
 } from './mobiXml'
 import { QUOTE_TAG_NAMES, quoteDedupeKey } from './quoteProtocol'
@@ -53,8 +54,8 @@ for (const member of MEMBERS) {
 /** 族标签形态清单（现行 + legacy 读兼容），tokenizer / 去重 / 截断共用 */
 export const MOBI_XML_FAMILY_TAG_NAMES: readonly string[] = MEMBERS.flatMap(m => [...m.tagNames])
 
-/** 族标签开前缀清单（守卫 / tokenizer 起点扫描共用，由标签名派生禁手抄） */
-export const MOBI_XML_FAMILY_OPENS: readonly string[] = MOBI_XML_FAMILY_TAG_NAMES.map(t => `<${t}`)
+/** 族标签开前缀清单（守卫 / tokenizer 起点扫描共用，opensOf 单源派生禁手抄） */
+export const MOBI_XML_FAMILY_OPENS: readonly string[] = opensOf(MOBI_XML_FAMILY_TAG_NAMES)
 
 /** 族 tokenizer 正形（外层整组包裹的锚定语义单源在 buildXmlTokenShape） */
 export const MOBI_XML_FAMILY_TOKEN_SHAPE = buildXmlTokenShape(MOBI_XML_FAMILY_TAG_NAMES)

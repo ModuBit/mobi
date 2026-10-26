@@ -81,7 +81,7 @@ export interface XmlTagHit {
     end: number
 }
 
-/** 执行态正则缓存（key = 语义前缀 + pattern 串；扫描 / 截断共用一套记忆化） */
+/** 执行态正则缓存（key = pattern 串，扫描正则记忆化） */
 const DERIVED_RES = new Map<string, RegExp>()
 
 function derivedRe(key: string, build: () => RegExp): RegExp {
@@ -111,18 +111,6 @@ export function opensOf(tagNames: readonly string[]): readonly string[] {
     return opens
 }
 
-/** opens → 合并 alternation 串缓存（截断热路径每帧 join 的消除，key 为数组引用） */
-const ALT_CACHE = new WeakMap<readonly string[], string>()
-
-function altOf(opens: readonly string[]): string {
-    let alt = ALT_CACHE.get(opens)
-    if (alt === undefined) {
-        alt = opens.join('|')
-        ALT_CACHE.set(opens, alt)
-    }
-    return alt
-}
-
 /** 文本含任一指定标签形态的快速守卫（去重/保护区/截断共用热路径闸） */
 export function hasXmlTagOpen(text: string, opens: readonly string[]): boolean {
     return opens.some(open => text.includes(open))
@@ -135,6 +123,10 @@ export function hasXmlTagOpen(text: string, opens: readonly string[]): boolean {
  * 命中——半截由流式截断扣住（{@link truncateIncompleteXmlTagTail}），闭合帧一次性
  * 完整进入渲染。参数合法性（quote 的 index、artifact 的 path）不在本层判定，由
  * 消费方按成员语义过滤或降级。守卫唯一归属此处（无标签一次扫描早退）。
+ *
+ * echo 形态 body 内的同族标签（如 `<mobi:quote>见 <mobi:artifact/> </mobi:quote>`）
+ * 不产出独立命中——被外层区间包含的命中按嵌套丢弃（回显内容不是独立指令，外层
+ * 整体消费：去重摘除外层时区间一并摘除，内层不再登记去重键产幻影）。
  */
 export function scanXmlTagHits(text: string, tagNames: readonly string[]): XmlTagHit[] {
     if (!hasXmlTagOpen(text, opensOf(tagNames))) return []
@@ -146,24 +138,35 @@ export function scanXmlTagHits(text: string, tagNames: readonly string[]): XmlTa
             hits.push({ tagName: tag, attrs: parseTagAttrs(m[1] ?? ''), raw: m[0], start: m.index, end: m.index + m[0].length })
         }
     }
-    // 跨标签命中按原文位置归并（族标签互不嵌套，区间无重叠）
-    return hits.sort((a, b) => a.start - b.start)
+    // 跨标签命中按原文位置归并；被前一个命中区间包含的（echo body 内嵌）丢弃
+    hits.sort((a, b) => a.start - b.start)
+    const merged: XmlTagHit[] = []
+    for (const hit of hits) {
+        const last = merged[merged.length - 1]
+        if (last !== undefined && hit.start < last.end) continue
+        merged.push(hit)
+    }
+    return merged
 }
 
-/** 最后一个标签起点扫描（`\b` 单源——词边界语义与正形单源，`<mobi:artifactx`
- *  形近词不算）；无则 -1。从尾部 lastIndexOf 反向定位 + 后随词字符校验，零 match 分配 */
+/** word 字符（`\b` 语义单源：标签名后随 word 字符即形近词，不算标签开） */
 const WORD_CHAR_RE = /[A-Za-z0-9_]/
-function lastTagOpen(text: string, opens: readonly string[]): number {
-    let best = -1
+
+/**
+ * 全部合法标签开起点（升序；`\b` 语义——`<mobi:artifactx` 形近词不算）。从尾部
+ * lastIndexOf 反向收集，零 match 分配；i 归 0 即终止——`lastIndexOf(open, -1)` 被
+ * 钳到 0 会反复命中自身死循环（code-review 实锤：`<quoted` 在串首时挂起流式渲染）。
+ */
+function tagOpenPositions(text: string, opens: readonly string[]): number[] {
+    const positions: number[] = []
     for (const open of opens) {
         let i = text.lastIndexOf(open)
-        // 后随 word 字符（形如 <mobiar）时 \b 不成立，不算标签开——继续往前找
-        while (i !== -1 && WORD_CHAR_RE.test(text[i + open.length] ?? '')) {
-            i = text.lastIndexOf(open, i - 1)
+        while (i !== -1) {
+            if (!WORD_CHAR_RE.test(text[i + open.length] ?? '')) positions.push(i)
+            i = i > 0 ? text.lastIndexOf(open, i - 1) : -1
         }
-        if (i > best) best = i
     }
-    return best
+    return positions.sort((a, b) => a - b)
 }
 
 /**
@@ -172,24 +175,22 @@ function lastTagOpen(text: string, opens: readonly string[]): number {
  * 一次性完整进入渲染；模型真输出无闭合字面量时流结束诚实呈现（静态路径不截断）。
  *
  * 两类尾巴：1. 开标签未到 `>`（`<mobi:artifact path="`）；2. 开标签 `>` 已到、对应
- * 闭合标签未到（回显形态半截）——从最后一个未闭合标签起点整段扣住。闭合判定按**该
- * 起点的标签名**查闭合对（族混排下不拿别族闭合对误判完整）。
+ * 闭合标签未到（回显形态半截）。从**最早的**标签开起逐个检查收口，第一个未完整
+ * 收口的起点整段扣住（其后内容都在流式未来里，一并扣住）——echo body 内后随的
+ * 完整标签不能让更早的未闭合 echo 放行（否则半截开标签按 Text commit 裸奔）。
+ * 闭合判定按**该起点的标签名**查闭合对（族混排下不拿别族闭合对误判完整）。
  */
 export function truncateIncompleteXmlTagTail(text: string, opens: readonly string[]): string {
-    // 单次扫描守卫：无标签前缀的帧（流式 drip 绝大多数）一次扫描即早退
-    const open = lastTagOpen(text, opens)
-    if (open === -1) return text
-    const alt = altOf(opens)
-    // 未闭合尾巴只在串尾命中，正文里带后随 `>` 的形近文本（讨论语法本身）不受影响
-    const tailRe = derivedRe(`tail:${alt}`, () => new RegExp(`(?:${alt})\\b[^>]*$`))
-    const tail = text.match(tailRe)
-    if (tail) return text.slice(0, tail.index)
-    const rest = text.slice(open)
-    // 自闭合完整形态（开标签含尾斜杠已到 `>`）或对应闭合对已到：完整即揭示
-    if (/^<[\w:.-]+\b[^>]*\/>/.test(rest)) return text
-    const tagMatch = rest.match(/^<([\w:.-]+)/)
-    if (tagMatch && rest.includes(`</${tagMatch[1]}>`)) return text
-    return text.slice(0, open)
+    for (const start of tagOpenPositions(text, opens)) {
+        const rest = text.slice(start)
+        // 自闭合完整形态（开标签含尾斜杠已到 `>`）：完整即揭示
+        if (/^<[\w:.-]+\b[^>]*\/>/.test(rest)) continue
+        const tagMatch = rest.match(/^<([\w:.-]+)/)
+        // 对应闭合对已到（回显形态收口）：完整即揭示
+        if (tagMatch && rest.includes(`</${tagMatch[1]}>`)) continue
+        return text.slice(0, start)
+    }
+    return text
 }
 
 /**

@@ -36,7 +36,7 @@
  */
 
 import type { UserContentBlock, UserQuoteBlock } from './userContentSchema'
-import { MOBI_XML_NS, MOBI_XML_OPEN, parseTagAttrs } from './mobiXml'
+import { MOBI_XML_NS, MOBI_XML_OPEN, opensOf, parseTagAttrs } from './mobiXml'
 
 // 族通用原语已上移 mobiXml（票 02）：此处 re-export 维持 quote 语义层既有引用面
 export { MOBI_XML_NS, MOBI_XML_OPEN, parseTagAttrs }
@@ -54,8 +54,8 @@ export const QUOTE_TAG_NS = `${MOBI_XML_NS}${QUOTE_XML_TAG}`
  */
 export const QUOTE_TAG_NAMES: readonly string[] = [QUOTE_TAG_NS, QUOTE_XML_TAG]
 
-/** 各形态标签开前缀（族组装单源 mobiXmlFamily，禁手抄字面量） */
-export const QUOTE_TAG_OPENS: readonly string[] = QUOTE_TAG_NAMES.map(t => `<${t}`)
+/** 各形态标签开前缀（opensOf 单源派生，禁手抄 map；族组装单源 mobiXmlFamily） */
+export const QUOTE_TAG_OPENS: readonly string[] = opensOf(QUOTE_TAG_NAMES)
 
 /**
  * index 属性语义单源：一基正整数十进制串，规范为数字（"01" 即 1——同一编号的

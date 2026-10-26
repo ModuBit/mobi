@@ -51,6 +51,7 @@ describe('产物声明协议三方一致性（shared 常量 ↔ 常驻契约 ↔
     expect(SKILL_MD).toContain(`<${ARTIFACT_TAG_NS} path="`);
     // 旧 DSL 字面量在两份教学文本中都不再作为出向形态出现（读兼容只在解析侧）
     expect(systemPrompt).not.toContain(`${ARTIFACT_DIRECTIVE}{`);
+    expect(SKILL_MD).not.toContain(`${ARTIFACT_DIRECTIVE}{`);
   });
 
   it('产物目录模板两份文本同源：ARTIFACTS_DIR_REL + 月份段格式', () => {

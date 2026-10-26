@@ -32,7 +32,6 @@ import type { ComponentProps } from '@ant-design/x-markdown'
 import type { UserQuoteBlock, XmlTagHit } from '@mobi/shared'
 import {
     ARTIFACT_TAG_NS,
-    parseArtifactTagAttrs,
     parseQuoteIndexAttr,
     QUOTE_TAG_NS,
     QUOTE_XML_TAG,
@@ -154,13 +153,11 @@ const QuoteXmlView: FC<{ hit: XmlTagHit; raw: string }> = ({ hit, raw }) => {
         : <span>{raw}</span>
 }
 
-/** XML 族 artifact 标签视图：参数判定单源 parseArtifactTagAttrs，非法按原文降级 */
-const ArtifactXmlView: FC<{ hit: XmlTagHit; raw: string }> = ({ hit, raw }) => {
-    const params = parseArtifactTagAttrs(hit.attrs)
-    return params !== null
-        ? <ArtifactDirectiveView path={params.path} mode={params.mode}>{raw}</ArtifactDirectiveView>
-        : <span>{raw}</span>
-}
+/** XML 族 artifact 标签视图：参数判定与非法降级（警示卡）单源 ArtifactDirectiveView——
+ *  与 DSL 侧同语义错误同降级形态（缺 path 不再裸漏 XML 字面量进聊天流） */
+const ArtifactXmlView: FC<{ hit: XmlTagHit; raw: string }> = ({ hit, raw }) => (
+    <ArtifactDirectiveView path={hit.attrs.path} mode={hit.attrs.mode}>{raw}</ArtifactDirectiveView>
+)
 
 /** XML 族标签名 → 渲染组件路由表（DSL 侧 DIRECTIVE_COMPONENTS 的同构注册表）：
  *  标签清单单源 shared 族注册表，新成员在此加一行；未登记标签按原文诚实降级 */

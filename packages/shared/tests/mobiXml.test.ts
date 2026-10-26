@@ -90,6 +90,19 @@ describe('scanXmlTagHits（族通用标签扫描）', () => {
         expect(scanXmlTagHits('尾巴 <mobi:artifact path="/ab', FAMILY_TAG_NAMES)).toEqual([])
     })
 
+    it('echo body 内嵌同族标签不产出独立命中（嵌套丢弃：回显内容不是独立指令）', () => {
+        const echo = '<mobi:quote index="1">见 <mobi:artifact path="/x.png"/> </mobi:quote>'
+        const hits = scanXmlTagHits(echo, FAMILY_TAG_NAMES)
+        expect(hits).toHaveLength(1)
+        expect(hits[0]!.tagName).toBe('mobi:quote')
+        expect(hits[0]!.raw).toBe(echo)
+        // 去重摘除外层 echo 时区间一并摘除，内嵌 artifact 不登记去重键——
+        // 其后同 path 的独立声明仍作为首个合法命中保留（不再静默消失）
+        const text = `<mobi:quote index="1"/>${echo}${artifact('/x.png')}`
+        expect(dedupeXmlTagText(text, FAMILY_TAG_NAMES, familyKeyOf))
+            .toBe(`<mobi:quote index="1"/>${artifact('/x.png')}`)
+    })
+
     it('中文弯引号容错（与 quote 族同一 parseTagAttrs 单源）', () => {
         const hits = scanXmlTagHits('<mobi:artifact path=“/a.png”/>', ARTIFACT_TAG_NAMES)
         expect(hits[0]!.attrs).toEqual({ path: '/a.png' })
@@ -111,6 +124,19 @@ describe('truncateIncompleteXmlTagTail（流式原子揭示，族通用）', () 
         expect(truncateIncompleteXmlTagTail(echo, FAMILY_OPENS)).toBe(echo)
         const lookalike = '正文 <mobiar 与 <mobi:artifactx 讨论协议本身'
         expect(truncateIncompleteXmlTagTail(lookalike, FAMILY_OPENS)).toBe(lookalike)
+    })
+
+    it('形近词命中回退到串首不死循环（lastIndexOf(open, -1) 钳 0 回归，code-review 实锤挂起）', () => {
+        const lookalike = '<quoted> 的一些讨论（唯一形近命中在位置 0 且后随词字符）'
+        expect(truncateIncompleteXmlTagTail(lookalike, FAMILY_OPENS)).toBe(lookalike)
+    })
+
+    it('更早的未闭合回显不被后随完整标签放行（扣到更早未收口起点，整段含其后）', () => {
+        // 旧实现只查最后一个标签开（artifact 自闭合完整）→ 前半截 echo 按 Text commit 裸奔
+        expect(truncateIncompleteXmlTagTail('<mobi:quote index="1">半截 <mobi:artifact path="/a"/>', FAMILY_OPENS))
+            .toBe('')
+        expect(truncateIncompleteXmlTagTail(`前文 <mobi:quote index="1">半截 ${artifact('/a')}`, FAMILY_OPENS))
+            .toBe('前文 ')
     })
 })
 
