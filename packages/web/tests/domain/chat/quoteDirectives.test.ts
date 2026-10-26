@@ -77,3 +77,43 @@ describe('collectQuoteAnnotationsByAgentId（批注↔回复 turn 配对）', ()
         expect(collectQuoteAnnotationsByAgentId([user('u1'), agent('r1')])).toBe(collectQuoteAnnotationsByAgentId([]))
     })
 })
+
+describe('collectQuoteAnnotationsByAgentId（uuid 官方绑定，票 03）', () => {
+    const quote = (messageId: string, excerpt = `摘录-${messageId}`) =>
+        ({ type: 'quote', messageId, role: 'agent', excerpt }) as UserContentBlock
+    const user = (id: string, nativeId?: string, ...quotes: UserContentBlock[]): ChatBlock =>
+        ({ kind: 'user-text', id, localId: id, createdAt: 0, blocks: quotes, ...(nativeId ? { nativeId } : {}) })
+    const agent = (id: string, userMessageUuid?: string): ChatBlock =>
+        ({ kind: 'agent-text', id, localId: id, createdAt: 0, text: `回复-${id}`, ...(userMessageUuid ? { userMessageUuid } : {}) })
+    const reasoning = (id: string, userMessageUuid?: string): ChatBlock =>
+        ({ kind: 'agent-reasoning', id, localId: id, createdAt: 0, text: '思考', ...(userMessageUuid ? { userMessageUuid } : {}) })
+
+    it('uuid 命中：steer 交错轮各归其主（线性推导会错配的场景）', () => {
+        const blocks = [user('u1', 'A', quote('m1')), user('u2', 'B', quote('m2')), agent('r1', 'A'), agent('r2', 'B')]
+        const map = collectQuoteAnnotationsByAgentId(blocks)
+        expect(map.get('r1')?.[0].messageId).toBe('m1')
+        expect(map.get('r2')?.[0].messageId).toBe('m2')
+    })
+
+    it('thinking 首帧作为回戳继承源：同轮后续 agent-text 继承', () => {
+        const blocks = [user('u1', 'A', quote('m1')), reasoning('t1', 'A'), agent('r1')]
+        const map = collectQuoteAnnotationsByAgentId(blocks)
+        expect(map.get('r1')?.[0].messageId).toBe('m1')
+        // reasoning 条目也在 map 里（共享配对函数把一切 agent 条目当目标），但渲染层
+        // 只按 agent-text id 查询——多出的键无消费方，无害
+    })
+
+    it('user 边界重置继承：下一轮未回戳帧线性兜底到最近 user', () => {
+        const blocks = [
+            user('u1', 'A', quote('m1')), agent('r1', 'A'),
+            user('u2', 'B', quote('m2')), agent('r2'),
+        ]
+        const map = collectQuoteAnnotationsByAgentId(blocks)
+        expect(map.get('r2')?.[0].messageId).toBe('m2')
+    })
+
+    it('无 uuid 字段（历史会话）整链回落线性，配对不失败', () => {
+        const blocks = [user('u1', undefined, quote('m1')), agent('r1')]
+        expect(collectQuoteAnnotationsByAgentId(blocks).get('r1')?.[0].messageId).toBe('m1')
+    })
+})

@@ -207,6 +207,11 @@ export type NormalizedMessage = ({
     isSynthetic?: boolean
     /** 流式快照消息（未落库，daemon 直接透传） */
     snapshot?: boolean
+    /** user 消息的官方发送 uuid（落库 metadata.nativeId = SDKUserMessage.uuid，票 03）；
+     *  仅 user 角色携带 */
+    nativeId?: string
+    /** agent 消息的官方回戳（SDK assistant 帧 user_message_uuid，票 03）；仅 agent 角色携带 */
+    userMessageUuid?: string
     /** Anthropic 分配的 message.id（snapshot 与 full 共享，双保险第二道按 (messageId, type) 去重的键） */
     messageId?: string
 }
@@ -256,6 +261,9 @@ export type UserTextBlock = {
     meta?: MessageMeta
     /** 非用户主动输入的消息（如 SDK 自动生成的中断消息），渲染时使用柔和样式 */
     isSynthetic?: boolean
+    /** 官方发送 uuid（落库 metadata.nativeId = SDKUserMessage.uuid）：批注配对的
+     *  uuid 命中键（spec quote-protocol-unification 票 03）；缺省 = 未绑定，只参与线性推导 */
+    nativeId?: string
 }
 
 export type AgentTextBlock = {
@@ -273,6 +281,9 @@ export type AgentTextBlock = {
     isSnapshot?: boolean
     /** 源 assistant 消息被截断（spec D6）：该块为消息内最后一个 text 块时渲染「已截断」中性标注 */
     aborted?: boolean
+    /** 官方回戳（SDK 帧 user_message_uuid = 本 turn 回答的那条 user 消息 uuid）：
+     *  批注配对 uuid 命中优先（票 03）；缺省 = 本帧未回戳，配对层继承/线性兜底 */
+    userMessageUuid?: string
 }
 
 export type AgentReasoningBlock = {
@@ -290,6 +301,9 @@ export type AgentReasoningBlock = {
     durationMs?: number
     /** thinking 块是否已收到 content_block_stop（思考完成）；仅 remote 有 */
     done?: boolean
+    /** 官方回戳（同 AgentTextBlock）：turn 首帧常是 thinking-only 消息——配对层的
+     *  回戳继承以此为源（票 03），本块自身不是配对目标 */
+    userMessageUuid?: string
 }
 
 export type CliOutputBlock = {

@@ -153,16 +153,27 @@ export interface QuotePairingEntry {
     id: string
     /** side='user' 的消息 content；agent 项可省略 */
     blocks?: readonly UserContentBlock[]
+    /** side='user' 的官方发送 uuid（SDKUserMessage.uuid = 发送链路 push 时生成、
+     *  落库 metadata.nativeId）。缺省 = 未绑定（历史会话/异常路径），该条目只参与
+     *  线性推导、不进 uuid 索引 */
+    nativeId?: string
+    /** side='agent' 的官方回戳（SDK assistant 帧 user_message_uuid：本 turn 回答的
+     *  那条 user 消息的客户端 uuid）。缺省 = 本帧未回戳（同轮后续帧/旧生产者）——
+     *  继承本轮已见回戳（user 边界重置），全无回戳走线性兜底 */
+    userMessageUuid?: string
 }
 
 /**
- * 批注↔回复的 turn 配对（spec .scratch/response-annotations 语义收编，票 01 线性
- * 推导、票 03 升级 uuid 优先）：每条 agent 回复配「触发它的那条 user 消息」的引用，
- * 与 CLI 协议注入同语义。
+ * 批注↔回复的 turn 配对（spec 决策 5，票 03 升级 uuid 官方绑定）：每条 agent 回复
+ * 配「触发它的那条 user 消息」的引用，与 CLI 协议注入同语义。
  *
- * 归属按条目顺序线性推导：user 之后、下一个 user 之前的所有 agent 都属于这一轮
- * （一轮常有 thinking/text 分段产生的多条 agent）。steer 场景（u1/u2/r1/r2）下
- * 回复归属最近一条 user——模型看到的最新协议注入就是它。
+ * 配对两级：
+ * 1. **uuid 命中优先**——agent 条目带官方回戳（user_message_uuid）且能在 uuid 索引
+ *    （user 条目 nativeId → 引用）命中时，直接绑定回戳指向的那条 user。steer 场景
+ *    （u1/u2/r1/r2 交错）下各归其主，不依赖顺序假设。
+ * 2. **线性推导兜底**——回戳缺失（同轮后续帧：仅 turn 首帧回戳，继承本轮回戳，
+ *    user 边界重置）或回戳未命中索引（历史消息未绑定 uuid）时，归属最近一条 user。
+ *    全员无 uuid 时语义与票 01 线性推导逐条一致（e32acfef 回归锁定）。
  *
  * 历史教训（2026-10-20 生产实锤 e32acfef）：旧实现用 FIFO 队列、每条 agent 消费
  * 一个 user——一轮多条 agent 会吞掉后续 user，没有产出正文的 user（工具轮/中断轮）
@@ -173,13 +184,23 @@ export function pairQuotesToReplies(entries: readonly QuotePairingEntry[]): Read
     if (!hasAnyQuote) return new Map()
 
     const byId = new Map<string, UserQuoteBlock[]>()
+    /** uuid 索引：user 条目 nativeId → 该消息的引用（无引用消息也入索引，uuid 命中 = 空配对） */
+    const byNativeId = new Map<string, UserQuoteBlock[]>()
     let currentQuotes: UserQuoteBlock[] = []
+    /** 本轮已见的最新回戳（同轮后续 agent 帧继承；user 边界重置——跨轮继承即错配） */
+    let lastStamp: string | undefined
+
     for (const entry of entries) {
         if (entry.side === 'user') {
             currentQuotes = (entry.blocks ?? []).filter((b): b is UserQuoteBlock => b.type === 'quote')
-        } else if (currentQuotes.length > 0) {
-            byId.set(entry.id, currentQuotes)
+            if (entry.nativeId !== undefined) byNativeId.set(entry.nativeId, currentQuotes)
+            lastStamp = undefined
+            continue
         }
+        if (entry.userMessageUuid !== undefined) lastStamp = entry.userMessageUuid
+        // uuid 命中优先（含命中「无引用消息」→ 空数组）；miss 回落线性
+        const quotes = (lastStamp !== undefined && byNativeId.get(lastStamp)) || currentQuotes
+        if (quotes.length > 0) byId.set(entry.id, quotes)
     }
     return byId
 }

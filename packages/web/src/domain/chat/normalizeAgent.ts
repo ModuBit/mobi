@@ -193,6 +193,12 @@ const handleAssistantOutput: OutputHandler = (data, ctx) => {
         // SDK 顶层 aborted（cli 展开整个 assistantMsg 带入，spec D6）：正文被截断的中性标注信号。
         // 显式构造会丢顶层字段，需在此补读；仅 true 时携带，与 cli 侧落库口径一致（缺省不带）。
         ...(getField(data, 'aborted') === true ? { aborted: true } : {}),
+        // 官方回戳（票 03）：assistant 帧 user_message_uuid = 本 turn 回答的那条 user 消息
+        // 客户端 uuid（cli 落库行原样携带，sdk.d.ts 0.3.304 契约）。仅 turn 首帧回戳，
+        // 配对层负责同轮继承；缺省不带（线性推导兜底）
+        ...(asString(getField(data, 'user_message_uuid'))
+            ? { userMessageUuid: asString(getField(data, 'user_message_uuid')) as string }
+            : {}),
         usage: inputTokens !== null && outputTokens !== null ? {
             input_tokens: inputTokens,
             output_tokens: outputTokens,

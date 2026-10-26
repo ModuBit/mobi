@@ -291,7 +291,9 @@ export function reduceTimeline(
                 status: msg.status,
                 originalText: msg.originalText,
                 meta: msg.meta,
-                isSynthetic: msg.isSynthetic
+                isSynthetic: msg.isSynthetic,
+                // 官方发送 uuid（票 03）：批注配对 uuid 命中键
+                ...(msg.nativeId ? { nativeId: msg.nativeId } : {}),
             })
             continue
         }
@@ -343,6 +345,8 @@ export function reduceTimeline(
                         meta: msg.meta,
                         isSynthetic: msg.isSynthetic,
                         isSnapshot,
+                        // 官方回戳（票 03）：批注配对 uuid 命中优先
+                        ...(msg.userMessageUuid ? { userMessageUuid: msg.userMessageUuid } : {}),
                     })
                     lastAgentTextBlock = blocks[blocks.length - 1] as { aborted?: boolean }
                     continue
@@ -360,6 +364,8 @@ export function reduceTimeline(
                         // thinking 耗时/完成标记（仅 remote 有，照搬 isSnapshot 透传路径）
                         ...(c.durationMs != null ? { durationMs: c.durationMs } : {}),
                         ...(c.done ? { done: true } : {}),
+                        // 官方回戳（票 03）：turn 首帧常是 thinking-only，配对继承以此为源
+                        ...(msg.userMessageUuid ? { userMessageUuid: msg.userMessageUuid } : {}),
                     })
                     continue
                 }

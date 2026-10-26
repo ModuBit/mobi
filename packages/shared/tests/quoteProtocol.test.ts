@@ -203,6 +203,82 @@ describe('pairQuotesToReplies（批注↔回复线性配对，语义与 web 既�
     })
 })
 
+describe('pairQuotesToReplies（批注↔回复 uuid 命中优先 + 线性兜底，票 03）', () => {
+    const quote = (messageId: string): UserQuoteBlock =>
+        ({ type: 'quote', messageId, role: 'agent', excerpt: `摘录-${messageId}` })
+    const user = (id: string, opts?: { nativeId?: string; quotes?: UserQuoteBlock[] }): QuotePairingEntry =>
+        ({ side: 'user', id, ...(opts?.nativeId ? { nativeId: opts.nativeId } : {}), blocks: [{ type: 'text', text: '正文' }, ...(opts?.quotes ?? [])] })
+    const agent = (id: string, userMessageUuid?: string): QuotePairingEntry =>
+        ({ side: 'agent', id, ...(userMessageUuid ? { userMessageUuid } : {}) })
+
+    it('uuid 命中：回复配到回戳指向的那条 user（steer 乱序也能各归其主）', () => {
+        // u1 先发、u2 steer 插入；r1 实际回答 u1（官方回戳 A）——线性推导会错配成 u2
+        const map = pairQuotesToReplies([
+            user('u1', { nativeId: 'A', quotes: [quote('m1')] }),
+            user('u2', { nativeId: 'B', quotes: [quote('m2')] }),
+            agent('r1', 'A'),
+            agent('r2', 'B'),
+        ])
+        expect(map.get('r1')?.[0].messageId).toBe('m1')
+        expect(map.get('r2')?.[0].messageId).toBe('m2')
+    })
+
+    it('回戳指向无引用的 user：uuid 命中 → 空配对（不沿用上一轮）', () => {
+        const map = pairQuotesToReplies([
+            user('u1', { nativeId: 'A', quotes: [quote('m1')] }),
+            agent('r1', 'A'),
+            user('u2', { nativeId: 'B' }),
+            agent('r2', 'B'),
+        ])
+        expect(map.get('r1')?.[0].messageId).toBe('m1')
+        expect(map.has('r2')).toBe(false)
+    })
+
+    it('回戳 miss（历史消息未绑定 uuid）：该回复线性兜底到最近一条 user', () => {
+        const map = pairQuotesToReplies([
+            user('u1', { nativeId: 'A', quotes: [quote('m1')] }),
+            user('u2', { quotes: [quote('m2')] }),
+            agent('r1', 'B'), // B 不在绑定索引里（u2 无 nativeId）
+        ])
+        expect(map.get('r1')?.[0].messageId).toBe('m2')
+    })
+
+    it('未回戳的 agent 帧（同轮后续帧）继承本轮回戳；user 边界重置继承', () => {
+        // 同轮多条 assistant 帧：仅首帧带回戳，后续帧继承；跨 user 后继承失效走线性
+        const map = pairQuotesToReplies([
+            user('u1', { nativeId: 'A', quotes: [quote('m1')] }),
+            agent('r1-thinking', 'A'),
+            agent('r2-text'), // 同轮未回戳帧 → 继承 A
+            user('u2', { nativeId: 'B', quotes: [quote('m2')] }),
+            agent('r3'), // 继承已被 u2 重置 → 线性兜底 u2
+        ])
+        expect(map.get('r1-thinking')?.[0].messageId).toBe('m1')
+        expect(map.get('r2-text')?.[0].messageId).toBe('m1')
+        expect(map.get('r3')?.[0].messageId).toBe('m2')
+    })
+
+    it('全线性兜底回归：无任何 uuid 时语义与票 01 线性推导逐条一致', () => {
+        const map = pairQuotesToReplies([
+            user('u1', { quotes: [quote('m1')] }),
+            user('u2', { quotes: [quote('m2')] }),
+            agent('r1'),
+            agent('r2'),
+        ])
+        expect(map.get('r1')?.[0].messageId).toBe('m2')
+        expect(map.get('r2')?.[0].messageId).toBe('m2')
+    })
+
+    it('e32acfef 错位回归（uuid 路径）：未回复的 user 不累积错位', () => {
+        const map = pairQuotesToReplies([
+            user('u1', { nativeId: 'A', quotes: [quote('m1')] }),
+            user('u2', { nativeId: 'B', quotes: [quote('m2')] }), agent('r2', 'B'),
+            user('u3', { nativeId: 'C', quotes: [quote('m3')] }), agent('r3', 'C'),
+        ])
+        expect(map.get('r2')?.[0].messageId).toBe('m2')
+        expect(map.get('r3')?.[0].messageId).toBe('m3')
+    })
+})
+
 describe('buildQuoteXml（进向组装：wire quote block → 模型可见 XML）', () => {
     const block = (excerpt: string, opts?: { role?: 'user' | 'agent'; comment?: string }): UserQuoteBlock => ({
         type: 'quote', messageId: 'm1', role: opts?.role ?? 'agent', excerpt,

@@ -62,8 +62,11 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
 
     if (record.role === 'user') {
         const normalized = normalizeUserRecord(message.id, message.localId, message.createdAt, record.content, record.meta as MessageMeta | undefined)
+        // 官方发送 uuid（票 03）：metadata.nativeId = 发送链路 push 时生成的 SDKUserMessage.uuid，
+        // 批注配对的 uuid 命中键。push 绑定晚于消息到达（onBound 上报），update 广播后补齐
+        const nativeId = message.metadata?.nativeId
         return normalized
-            ? { ...normalized, status: message.status, originalText: message.originalText, snapshot }
+            ? { ...normalized, status: message.status, originalText: message.originalText, snapshot, ...(nativeId ? { nativeId } : {}) }
             : {
                 id: message.id,
                 localId: message.localId,
@@ -75,6 +78,7 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
                 status: message.status,
                 originalText: message.originalText,
                 snapshot,
+                ...(nativeId ? { nativeId } : {}),
             }
     }
     if (record.role === 'agent') {

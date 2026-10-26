@@ -36,7 +36,6 @@ import type { ChatBlock } from './types'
 
 /** quote 指令在注册表中的名字（由 shared 字面量派生，ui 路由表按此寻址） */
 export const QUOTE_DIRECTIVE_NAME = QUOTE_DIRECTIVE.slice(DIRECTIVE_PREFIX.length)
-
 /**
  * quote 指令语义：唯一参数 index，合法性由 shared parseQuoteIndexAttr 单源裁决
  * （一基正整数，规范为数字）。非法（伪造/缺字段/"0"）返回 null，消费方按原文诚实
@@ -57,24 +56,32 @@ registerDirective(QUOTE_DEFINITION)
 /** 会话完全无引用时返回共享空 Map（零分配早退——渲染热路径每帧调用，无批注会话不付全量构建成本） */
 const EMPTY_ANNOTATIONS: ReadonlyMap<string, UserQuoteBlock[]> = new Map()
 
-/** 配对输入投影：只取 user-text / agent-text 两类（其余块不参与、不打断——user 引用跨工具轮仍归属其后的回复） */
-type PairableTextBlock = Extract<ChatBlock, { kind: 'user-text' | 'agent-text' }>
+/** 配对输入投影：user-text = 触发方；agent-text / agent-reasoning = assistant 帧投影
+ *  （reasoning 不是配对目标，但 turn 首帧常是 thinking-only——官方回戳以它为继承源，
+ *  票 03）；其余块不参与、不打断（user 引用跨工具轮仍归属其后的回复） */
+type PairableChatBlock = Extract<ChatBlock, { kind: 'user-text' | 'agent-text' | 'agent-reasoning' }>
 
 /** web ChatBlock → shared 协议中性条目（blocks 按引用透传，不拷贝） */
-function toPairingEntry(block: PairableTextBlock): QuotePairingEntry {
-    return block.kind === 'user-text'
-        ? { side: 'user', id: block.id, blocks: block.blocks }
-        : { side: 'agent', id: block.id }
+function toPairingEntry(block: PairableChatBlock): QuotePairingEntry {
+    if (block.kind === 'user-text') {
+        return { side: 'user', id: block.id, blocks: block.blocks, ...(block.nativeId ? { nativeId: block.nativeId } : {}) }
+    }
+    return {
+        side: 'agent',
+        id: block.id,
+        ...(block.userMessageUuid ? { userMessageUuid: block.userMessageUuid } : {}),
+    }
 }
 
 /**
  * 回应批注↔回复的 turn 配对（spec .scratch/response-annotations；领域规则单源
- * shared pairQuotesToReplies，本函数只做 ChatBlock 序列的投影适配）：
- * 与 CLI 协议注入同语义——每条 agent 回复配「触发它的那条 user 消息」的引用。
+ * shared pairQuotesToReplies——uuid 官方绑定优先 + 线性推导兜底（票 03），本函数
+ * 只做 ChatBlock 序列的投影适配）：与 CLI 协议注入同语义——每条 agent 回复配
+ * 「触发它的那条 user 消息」的引用。
  *
- * 归属按块顺序线性推导：user-text 之后、下一个 user-text 之前的所有 agent-text
- * 都属于这一轮（一轮常有 thinking/text 分段产生的多条 agent-text）。steer 场景
- * （u1/u2/r1/r2）下回复归属最近一条 user——模型看到的最新协议注入就是它。
+ * uuid 两端：user 侧 nativeId（落库 metadata.nativeId = SDKUserMessage.uuid）×
+ * agent 侧官方回戳 user_message_uuid（SDK assistant 帧）。旧会话（无 uuid）与
+ * 异常路径自动回落线性推导，配对不失败。
  *
  * 旧实现用 FIFO 队列、每条 agent-text 消费一个 user：一轮多条 agent-text 会吞掉
  * 后续 user，而没有产出正文的 user（工具轮/中断轮）会在队列里残留，队列长度越跑
@@ -90,7 +97,8 @@ export function collectQuoteAnnotationsByAgentId(
     if (!hasAnyQuote) return EMPTY_ANNOTATIONS
 
     const entries = chatBlocks
-        .filter((b): b is PairableTextBlock => b.kind === 'user-text' || b.kind === 'agent-text')
+        .filter((b): b is PairableChatBlock =>
+            b.kind === 'user-text' || b.kind === 'agent-text' || b.kind === 'agent-reasoning')
         .map(toPairingEntry)
     return pairQuotesToReplies(entries)
 }
