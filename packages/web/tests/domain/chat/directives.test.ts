@@ -140,6 +140,18 @@ describe('dedupeDirectiveText（quote 新 XML 形态同帧去重，协议统一�
         expect(dedupeDirectiveText(text)).toBe(text)
     })
 
+    it('代码围栏/行内代码内的 XML 字面量受保护，不被协议去重改写（code-review #3）', () => {
+        // 围栏里的示例是内容不是协议：首个正文的命中保留、围栏内的字面量原样保留
+        const fenced = `正文 ${x(1)}\n\`\`\`xml\n示例 ${x(1)}\n\`\`\``
+        expect(dedupeDirectiveText(fenced)).toBe(fenced)
+        // 行内代码同理
+        const inline = `A ${x(1)} B 写作 \`${x(1)}\` 时表示引用一`
+        expect(dedupeDirectiveText(inline)).toBe(inline)
+        // 未闭合围栏兜底：围栏开启后的全部内容受保护
+        const openFence = `正文 ${x(1)}\n\`\`\`\n示例 ${x(1)}`
+        expect(dedupeDirectiveText(openFence)).toBe(openFence)
+    })
+
     it('完全不含任何指令形态的文本零开销原样返回', () => {
         const text = '普通正文，既无冒号指令也无标签'
         expect(dedupeDirectiveText(text)).toBe(text)

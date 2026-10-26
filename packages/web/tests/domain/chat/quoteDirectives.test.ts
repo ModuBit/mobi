@@ -116,4 +116,17 @@ describe('collectQuoteAnnotationsByAgentId（uuid 官方绑定，票 03）', () 
         const blocks = [user('u1', undefined, quote('m1')), agent('r1')]
         expect(collectQuoteAnnotationsByAgentId(blocks).get('r1')?.[0].messageId).toBe('m1')
     })
+
+    it('合成 user-text（sidechain 子代理 prompt / rewind 起点）不是 turn 边界：不重置回戳与引用窗口（code-review #2 回归）', () => {
+        // 场景：引用 user（回戳 A）→ turn 首帧 → 工具轮派 sidechain 子代理 → 最终正文帧（非首帧无回戳）。
+        // 合成块若参与投影，lastStamp 被重置、currentQuotes 清空 → uuid 命中与线性兜底双落空
+        const sidechainPrompt: ChatBlock = {
+            kind: 'user-text', id: 'side-1', localId: null, createdAt: 0,
+            blocks: [{ type: 'text', text: '子代理 prompt' }], isSynthetic: true,
+        }
+        const blocks = [user('u1', 'A', quote('m1')), agent('t1', 'A'), sidechainPrompt, agent('r1')]
+        const map = collectQuoteAnnotationsByAgentId(blocks)
+        expect(map.get('r1')?.[0].messageId).toBe('m1')
+        expect(map.get('t1')?.[0].messageId).toBe('m1')
+    })
 })

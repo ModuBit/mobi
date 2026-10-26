@@ -112,14 +112,23 @@ export function parseQuoteXmlHits(text: string): QuoteOutboundHit[] {
  * 前缀稳定（后来的重复只会让尾部更短）——与流式渲染的 append-only 假设兼容。
  * 非法命中不参与去重（原样保留）；旧 directive 的去重走 web 既有注册表管线
  * （含前缀变体容错），两语法族各自去重、互不跨族合并。
+ *
+ * protectedRanges（code-review #3）：调用方标出的「协议无权改写」区间（如 markdown
+ * 代码围栏/行内代码——代码示例里的 `<quote/>` 是内容不是协议）。完全落在保护区内的
+ * 命中透明处理：不摘除、不占去重键（其后的区外同名命中仍按首个处理）；跨界命中不保护
+ * （调用方按完整区间计算，标签要么在内要么在外，跨界只出现在调用方算错的帧）。
  */
-export function dedupeQuoteXmlText(text: string): string {
+export function dedupeQuoteXmlText(
+    text: string,
+    protectedRanges?: readonly Readonly<{ start: number; end: number }>[],
+): string {
     if (!text.includes(`<${QUOTE_XML_TAG}`)) return text
     const seen = new Set<number>()
     let out = ''
     let cursor = 0
     let removedAny = false
     for (const hit of parseQuoteXmlHits(text)) {
+        if (protectedRanges?.some(r => hit.start >= r.start && hit.end <= r.end)) continue
         if (seen.has(hit.index)) {
             out += text.slice(cursor, hit.start)
             cursor = hit.end
@@ -137,14 +146,39 @@ export function dedupeQuoteXmlText(text: string): string {
  *  带后随 `>` 的形近文本（讨论语法本身）不受影响。 */
 const INCOMPLETE_QUOTE_XML_TAIL_RE = new RegExp(`<${QUOTE_XML_TAG}\\b[^>]*$`)
 
+/** 自闭合完整形态（开标签含尾斜杠已到 `>`）：已完整即揭示，不参与尾巴扣住 */
+const SELFCLOSING_OPEN_RE = new RegExp(`^<${QUOTE_XML_TAG}\\b[^>]*\\/>`)
+/** 最后一个 quote 标签起点（词边界校验，`<quoted` 这类形近词不算）；无则 -1 */
+function lastQuoteTagOpen(text: string): number {
+    let open = text.lastIndexOf(`<${QUOTE_XML_TAG}`)
+    while (open >= 0) {
+        // 标签起点边界：'<quote' 之后必须是非词字符（\b 语义），否则是 <quoted 形近词
+        const next = text[open + QUOTE_XML_TAG.length + 1]
+        if (next === undefined || !/[A-Za-z0-9_]/.test(next)) return open
+        open = text.lastIndexOf(`<${QUOTE_XML_TAG}`, open - 1)
+    }
+    return -1
+}
+
 /**
  * 流式原子揭示：drip 半截的开标签尾巴扣住不进渲染（x-markdown 的流式 recognizer
  * 不覆盖自定义扩展，半截 Text commit 后闭合不重识别）。仅扣串尾，闭合帧一次性
  * 完整进入渲染；模型真输出无闭合字面量时流结束诚实呈现（静态路径不截断）。
+ *
+ * 两类尾巴（code-review #1：完整回显形态的半截同样会以 Text commit 裸奔）：
+ * 1. 开标签未到 `>`（`<quote index="`）；
+ * 2. 开标签 `>` 已到、闭合 `</quote>` 未到（`<quote index="1">被回显的内`）——
+ *    从最后一个未闭合标签起点整段扣住。完整自闭合（已揭示）与已闭合回显不扣；
+ *    形近词（`<quoted`）与散文里的完整闭合对不受影响。
  */
 export function truncateIncompleteQuoteXmlTail(text: string): string {
     const m = text.match(INCOMPLETE_QUOTE_XML_TAIL_RE)
-    return m ? text.slice(0, m.index) : text
+    if (m) return text.slice(0, m.index)
+    const open = lastQuoteTagOpen(text)
+    if (open === -1) return text
+    const rest = text.slice(open)
+    if (SELFCLOSING_OPEN_RE.test(rest) || rest.includes(`</${QUOTE_XML_TAG}>`)) return text
+    return text.slice(0, open)
 }
 
 /**
@@ -184,9 +218,12 @@ export interface QuotePairingEntry {
  * 一个 user——一轮多条 agent 会吞掉后续 user，没有产出正文的 user（工具轮/中断轮）
  * 在队列里残留，队列长度越跑越偏。线性推导不消费、不残留。
  */
+/** 会话无引用时的共享空结果（零分配早退——web 渲染热路径每帧调用，ReadonlyMap 契约下共享安全） */
+const EMPTY_QUOTES_MAP: ReadonlyMap<string, UserQuoteBlock[]> = new Map()
+
 export function pairQuotesToReplies(entries: readonly QuotePairingEntry[]): ReadonlyMap<string, UserQuoteBlock[]> {
     const hasAnyQuote = entries.some(e => e.side === 'user' && e.blocks?.some(b => b.type === 'quote'))
-    if (!hasAnyQuote) return new Map()
+    if (!hasAnyQuote) return EMPTY_QUOTES_MAP
 
     const byId = new Map<string, UserQuoteBlock[]>()
     /** uuid 索引：user 条目 nativeId → 该消息的引用（无引用消息也入索引，uuid 命中 = 空配对） */

@@ -142,10 +142,48 @@ export function registerDirective<P>(definition: DirectiveDefinition<P>): void {
  *  单源 shared quoteProtocol，本函数只做两条语法族的管线组装。输入变化时输出保持
  *  前缀稳定（后来的重复只会让尾部更短）——与流式渲染的 append-only 假设兼容，
  *  不会引发已揭示内容的重淡入。 */
+/**
+ * markdown 代码区间的轻量扫描（XML 去重的保护区，review #3）：行首 ``` 围栏（含未闭合
+ * 兜底到串尾）与行内 `...` 成对区间。不追求完整 CommonMark 语义（缩进围栏/波浪线围栏
+ * 不支持）——堵住「代码示例里的协议字面量被静默摘除」的主路径即可，围栏语法本就少见于
+ * 模型正文外的场景。只对含 `<quote` 前缀的文本调用（热路径零成本）。
+ */
+function codeRangesOf(text: string): { start: number; end: number }[] {
+    const ranges: { start: number; end: number }[] = []
+    let inFence = false
+    let fenceStart = 0
+    let offset = 0
+    for (const line of text.split('\n')) {
+        if (/^[ \t]*```/.test(line)) {
+            if (!inFence) {
+                inFence = true
+                fenceStart = offset
+            } else {
+                inFence = false
+                ranges.push({ start: fenceStart, end: offset + line.length })
+            }
+        } else if (!inFence) {
+            let i = line.indexOf('`')
+            while (i !== -1) {
+                const j = line.indexOf('`', i + 1)
+                if (j === -1) break
+                ranges.push({ start: offset + i, end: offset + j + 1 })
+                i = line.indexOf('`', j + 1)
+            }
+        }
+        offset += line.length + 1
+    }
+    // 未闭合围栏兜底：开启后的全部内容受保护（流式 drip 期间的常态形态）
+    if (inFence) ranges.push({ start: fenceStart, end: text.length })
+    return ranges
+}
+
 export function dedupeDirectiveText(text: string): string {
     // 快速路径单源：findDirectiveStart 的 -1 返回即「无指令」（冒号守卫 + lead 正则
-    // 都在其中），此处不再手抄一份同义守卫
-    if (findDirectiveStart(text) === -1) return dedupeQuoteXmlText(text)
+    // 都在其中），此处不再手抄一份同义守卫。代码保护区只在文本含 XML 标签前缀时计算
+    // （去重的消费方），绝大多数帧零扫描成本
+    const xmlProtected = text.includes('<quote') ? codeRangesOf(text) : undefined
+    if (findDirectiveStart(text) === -1) return dedupeQuoteXmlText(text, xmlProtected)
     const seen = new Set<string>()
     let out = ''
     let cursor = 0
@@ -167,9 +205,14 @@ export function dedupeDirectiveText(text: string): string {
         }
     }
     // 无剔除则原样返回（避免无谓的字符串重建，历史消息每帧渲染都走这里）；
-    // XML 形态的去重在其上补跑（两语法族的命中区间互不重叠，先跑哪族等价）
-    if (!removedAny) return dedupeQuoteXmlText(text)
-    return dedupeQuoteXmlText(out + text.slice(cursor))
+    // XML 形态的去重在其上补跑（两语法族的命中区间互不重叠，先跑哪族等价）。
+    // 有剔除时区间坐标已偏移，对去重后文本重算保护区（removedAny 帧罕见，成本可忽略）
+    if (!removedAny) return dedupeQuoteXmlText(text, xmlProtected)
+    const afterDirectiveDedupe = out + text.slice(cursor)
+    return dedupeQuoteXmlText(
+        afterDirectiveDedupe,
+        afterDirectiveDedupe.includes('<quote') ? codeRangesOf(afterDirectiveDedupe) : undefined,
+    )
 }
 
 /**

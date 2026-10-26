@@ -104,4 +104,16 @@ describe('Markdown 内联指令（真实渲染管线）', () => {
         expect(c9.textContent).toContain('<quote index="9"/>')
         expect(c9.querySelector('[data-testid="quote-annotation-9"]')).toBeNull()
     })
+
+    it('旧 directive index 非法（"1.5"）→ 原文诚实降级，不渲染标注（code-review #4：校验单源）', async () => {
+        // parseInt 截断会把 1.5 当合法 1 渲染引用钮——旧路径必须与新 XML 路径同走 parseQuoteIndexAttr
+        const { container } = render(
+            <QuoteAnnotationsProvider quotes={quotes} onLocate={() => {}}>
+                <Markdown content={`前文 ${QUOTE_DIRECTIVE}{index="1.5"} 后文`} />
+            </QuoteAnnotationsProvider>,
+        )
+        await waitFor(() => expect(container.textContent).toContain('前文'))
+        expect(container.querySelector('[data-testid="quote-annotation-1"]')).toBeNull()
+        expect(container.textContent).toContain(`${QUOTE_DIRECTIVE}{index="1.5"}`)
+    })
 })

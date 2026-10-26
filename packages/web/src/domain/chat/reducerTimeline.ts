@@ -527,7 +527,11 @@ export function reduceTimeline(
                         id: blockId(c),
                         localId: null,
                         createdAt: msg.createdAt,
-                        blocks: [{ type: 'text', text: c.prompt }]
+                        blocks: [{ type: 'text', text: c.prompt }],
+                        // 合成消息（非用户主动输入）：渲染走柔和样式；批注配对不把它当
+                        // turn 边界——重置回戳继承/引用窗口会让工具轮+子代理后的正文帧
+                        // 双落空（code-review #2，e32acfef 同类场景）
+                        isSynthetic: true,
                     })
                 }
             }

@@ -53,13 +53,17 @@ const QUOTE_DEFINITION: DirectiveDefinition<string> = {
 
 registerDirective(QUOTE_DEFINITION)
 
-/** 会话完全无引用时返回共享空 Map（零分配早退——渲染热路径每帧调用，无批注会话不付全量构建成本） */
-const EMPTY_ANNOTATIONS: ReadonlyMap<string, UserQuoteBlock[]> = new Map()
-
 /** 配对输入投影：user-text = 触发方；agent-text / agent-reasoning = assistant 帧投影
  *  （reasoning 不是配对目标，但 turn 首帧常是 thinking-only——官方回戳以它为继承源，
- *  票 03）；其余块不参与、不打断（user 引用跨工具轮仍归属其后的回复） */
+ *  票 03）；其余块不参与、不打断（user 引用跨工具轮仍归属其后的回复）。
+ *  合成 user-text（sidechain 子代理 prompt / rewind 起点）不是 turn 边界——排除而非
+ *  投影，否则它会重置回戳继承与引用窗口，让工具轮+子代理后的正文帧双落空（review #2） */
 type PairableChatBlock = Extract<ChatBlock, { kind: 'user-text' | 'agent-text' | 'agent-reasoning' }>
+
+function isPairable(b: ChatBlock): b is PairableChatBlock {
+    if (b.kind === 'user-text') return !b.isSynthetic
+    return b.kind === 'agent-text' || b.kind === 'agent-reasoning'
+}
 
 /** web ChatBlock → shared 协议中性条目（blocks 按引用透传，不拷贝） */
 function toPairingEntry(block: PairableChatBlock): QuotePairingEntry {
@@ -91,14 +95,8 @@ function toPairingEntry(block: PairableChatBlock): QuotePairingEntry {
 export function collectQuoteAnnotationsByAgentId(
     chatBlocks: readonly ChatBlock[],
 ): ReadonlyMap<string, UserQuoteBlock[]> {
-    const hasAnyQuote = chatBlocks.some(
-        b => b.kind === 'user-text' && b.blocks.some(x => x.type === 'quote'),
-    )
-    if (!hasAnyQuote) return EMPTY_ANNOTATIONS
-
-    const entries = chatBlocks
-        .filter((b): b is PairableChatBlock =>
-            b.kind === 'user-text' || b.kind === 'agent-text' || b.kind === 'agent-reasoning')
-        .map(toPairingEntry)
+    // 空结果早退在 shared 函数内建（共享 EMPTY_QUOTES_MAP，web 侧 toBe 同源成立）——
+    // 此处不重复预扫 hasAnyQuote，避免 chatBlocks 双扫（review #6）
+    const entries = chatBlocks.filter(isPairable).map(toPairingEntry)
     return pairQuotesToReplies(entries)
 }

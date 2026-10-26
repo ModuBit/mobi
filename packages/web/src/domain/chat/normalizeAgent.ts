@@ -181,6 +181,8 @@ const handleAssistantOutput: OutputHandler = (data, ctx) => {
     const usage = isObject(message.usage) ? (message.usage as Record<string, unknown>) : null
     const inputTokens = usage ? asNumber(getField(usage, 'input_tokens')) : null
     const outputTokens = usage ? asNumber(getField(usage, 'output_tokens')) : null
+    // 官方回戳（票 03）单次取值（review #5）：getField+asString 求值一次存局部
+    const userMessageUuid = asString(getField(data, 'user_message_uuid'))
 
     return {
         id: ctx.messageId,
@@ -196,9 +198,7 @@ const handleAssistantOutput: OutputHandler = (data, ctx) => {
         // 官方回戳（票 03）：assistant 帧 user_message_uuid = 本 turn 回答的那条 user 消息
         // 客户端 uuid（cli 落库行原样携带，sdk.d.ts 0.3.304 契约）。仅 turn 首帧回戳，
         // 配对层负责同轮继承；缺省不带（线性推导兜底）
-        ...(asString(getField(data, 'user_message_uuid'))
-            ? { userMessageUuid: asString(getField(data, 'user_message_uuid')) as string }
-            : {}),
+        ...(userMessageUuid ? { userMessageUuid } : {}),
         usage: inputTokens !== null && outputTokens !== null ? {
             input_tokens: inputTokens,
             output_tokens: outputTokens,

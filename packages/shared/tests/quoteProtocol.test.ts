@@ -147,6 +147,20 @@ describe('dedupeQuoteXmlText（重复 index 去重：同 index 只留首个）',
         expect(dedupeQuoteXmlText(text)).toBe(text)
     })
 
+    it('保护区内的命中不参与去重也不占号（code-review #3：代码块字面量原样保留）', () => {
+        const text = `A ${xml(1)} B ${xml(1)}`
+        // 第二个命中落在保护区（代码块区间）→ 原样保留；首个非保护区命中照常揭示
+        const ranges = [{ start: text.indexOf('B'), end: text.length }]
+        expect(dedupeQuoteXmlText(text, ranges)).toBe(`A ${xml(1)} B ${xml(1)}`)
+    })
+
+    it('保护区命中透明：不占去重键，其后的非保护区同名命中仍作为首个保留', () => {
+        const text = `${xml(1)} ${xml(1)} ${xml(1)}`
+        // 中间的命中在保护区内；首尾都在区外 → 首个保留、中间原样、尾部被摘
+        const ranges = [{ start: xml(1).length + 1, end: xml(1).length * 2 + 2 }]
+        expect(dedupeQuoteXmlText(text, ranges)).toBe(`${xml(1)} ${xml(1)} `)
+    })
+
     it('无命中原样返回', () => {
         const text = '普通正文'
         expect(dedupeQuoteXmlText(text)).toBe(text)
@@ -168,6 +182,26 @@ describe('truncateIncompleteQuoteXmlTail（流式原子揭示：未闭合尾巴�
     it('只扣串尾：更早的已闭合标签与正文不受影响', () => {
         const text = `${xml(1)} 后文 <quote inde`
         expect(truncateIncompleteQuoteXmlTail(text)).toBe(`${xml(1)} 后文 `)
+    })
+
+    it('回显形态流式半截（开标签 > 已到、闭合未到）扣住——code-review #1 回归', () => {
+        // 旧实现只扣「无 > 的开标签尾巴」，回显半截以 Text commit → 流式裸标签原文
+        expect(truncateIncompleteQuoteXmlTail('正文 <quote index="1">被回显的内')).toBe('正文 ')
+        expect(truncateIncompleteQuoteXmlTail('正文 <quote index="1">')).toBe('正文 ')
+        // 回显已闭合则不扣
+        expect(truncateIncompleteQuoteXmlTail('正文 <quote index="1">内容</quote>')).toBe('正文 <quote index="1">内容</quote>')
+    })
+
+    it('完整自闭合在串尾不扣（已完整即揭示，闭合帧语义不倒退）', () => {
+        expect(truncateIncompleteQuoteXmlTail(`前文 ${xml(1)}`)).toBe(`前文 ${xml(1)}`)
+        expect(truncateIncompleteQuoteXmlTail(`前文 ${xml(1)} `)).toBe(`前文 ${xml(1)} `)
+    })
+
+    it('形近词边界：<quoted 与散文闭合对不误扣', () => {
+        // <quoted 不是 quote 标签起点；散文里的完整闭合对已闭合，不扣
+        expect(truncateIncompleteQuoteXmlTail('用 <quote> 标签讨论 <quoted 与 </quote> 语法')).toBe(
+            '用 <quote> 标签讨论 <quoted 与 </quote> 语法',
+        )
     })
 })
 

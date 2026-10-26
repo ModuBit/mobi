@@ -507,6 +507,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 localId: null,
                 createdAt: rewindProgress.startedAt,
                 blocks: [{ type: 'text', text: REWIND_COMMAND }],
+                // 合成块（不发送不落库）：不是 turn 边界，批注配对不得重置回戳/引用窗口
+                isSynthetic: true,
             }]
         }
         if (rewindCompletion) {

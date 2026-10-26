@@ -31,7 +31,7 @@ import { Quote } from 'lucide-react'
 import type { ComponentProps } from '@ant-design/x-markdown'
 import type { UserQuoteBlock } from '@mobi/shared'
 import { parseDirectiveHits } from '@/domain/chat/directives'
-import { parseQuoteXmlHits } from '@mobi/shared'
+import { parseQuoteIndexAttr, parseQuoteXmlHits } from '@mobi/shared'
 import { QuoteLocateFn, quoteOffsetsOf } from '@/core/lib/quoteLocate'
 import { QUOTE_DIRECTIVE_NAME } from '@/domain/chat/quoteDirectives'
 import { ARTIFACT_DIRECTIVE_NAME } from '@/domain/chat/artifactDirectives'
@@ -148,8 +148,18 @@ const DIRECTIVE_COMPONENTS: Record<string, FC<Record<string, string> & { childre
 export const MobiDirective: FC<ComponentProps<{ 'data-raw'?: string }>> = ({ 'data-raw': dataRaw }) => {
     const raw = decodeURIComponent(dataRaw ?? '')
     const hit = parseDirectiveHits(raw)[0]
-    const Component = hit ? DIRECTIVE_COMPONENTS[hit.name] : undefined
-    if (Component) return <Component {...hit.attrs}>{raw}</Component>
+    if (hit) {
+        const Component = DIRECTIVE_COMPONENTS[hit.name]
+        if (Component) {
+            // quote 的 index 合法性与新 XML 路径同走 shared parseQuoteIndexAttr 单源
+            // （review #4）：parseInt 截断会把 index="1.5" 当合法 1 渲染引用钮，违背
+            // 「非法→原文诚实降级」
+            if (hit.name === QUOTE_DIRECTIVE_NAME && parseQuoteIndexAttr(hit.attrs.index) === null) {
+                return <span>{raw}</span>
+            }
+            return <Component {...hit.attrs}>{raw}</Component>
+        }
+    }
     // 协议统一出向（spec .scratch/quote-protocol-unification 票 01）：`<quote index="N"/>`
     // 自闭合 / 完整回显形态（只取 index）；非法（伪造/缺字段/"0"）不产出命中，落原文降级
     const xmlHit = parseQuoteXmlHits(raw)[0]
