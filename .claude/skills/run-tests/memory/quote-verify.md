@@ -50,15 +50,14 @@ metadata:
 
 ## 回应批注（XML 命名空间换形后，2026-10-26 mobi-xml-namespace 票 04）
 
-协议已「进出同形」且带命名空间（spec .scratch/mobi-xml-namespace）：进向 `<mobi:quote index role>…</mobi:quote>` XML（shared buildQuoteXml 组装 + `<user-comment>` 评论内嵌），出向自闭合 `<mobi:quote index="N"/>`（`<system-reminder>` 指令教模型输出）。历史读兼容矩阵三格式：`:mobi-quote{}` / `<quote/>` / `<mobi:quote/>`（tokenizer 通用扩展一个管全族，web XML_DIRECTIVE_TAG_NAMES 单源）。
-**bootstrap 重启后新会话才带新协议代码**（会话 CLI 启动即固化代码）。
+协议已「进出同形」且带命名空间（spec .scratch/mobi-xml-namespace）：进向 `<mobi:quote index role>…</mobi:quote>` XML（shared buildQuoteXml 组装 + `<user-comment>` 评论内嵌），出向自闭合 `<mobi:quote index="N"/>`（`<system-reminder>` 指令教模型输出）。历史读兼容矩阵（2026-10-26 移除 legacy 后）：`:mobi-quote{}` DSL / `<mobi:quote/>` XML 两格式；一天龄无命名空间 `<quote/>` 已按用户裁决移除（不再解析，marked 泛 HTML 管线剥除、不渲染标注）。tokenizer 通用扩展一个管全族，族清单单源 shared mobiXmlFamily。**bootstrap 重启后新会话才带新协议代码**（会话 CLI 启动即固化代码）。
 
 链路：划选 agent 回复 → 添加到对话 → 评论保存（CommentField 的 `.anticon-check` 按钮，Enter 只换行）→ 发探针 → 回复中断言：
 
 1. `[data-testid="quote-annotation-N"]`「引用 N」上标按钮渲染（新 XML 与旧 directive 经 MobiDirective 收敛到同一 QuoteDirectiveMarker）；正文无标签原文残留
 2. tooltip 内容 = excerpt + 评论（合成 PointerEvent 验证法见坑一节；CDP hover 测不出 AppTooltip）
 3. 点击按钮 → `CSS.highlights` 注册 `quote-fragment-flash`（Chrome 155 用 forEach 遍历，见片段高亮节）
-4. **降级矩阵 seed recipe**（Store 造混合形态历史行真机断言）：越界 `index="9"` / 伪造 `index="0"` 原文保留、同 index 重复只留首处、回显形态 `<mobi:quote index="1">…</mobi:quote>` 整体渲染为标注无内容残留（旧 `<quote index="1">…</quote>` 同样收敛）。**三形态混合行的预期基线（2026-10-26 真机实测）**：`:mobi-quote{}` / `<quote/>` / `<mobi:quote/>` 同 index 各一次 + 重复一次时，markers 恰好 **2 个**（DSL 族首处 + XML 族首处各一；XML 族跨形态同 index 去重、DSL↔XML 互不跨族合并），正文字面量残留仅代码围栏内那处；**seed 会话 workspace_id 需手工 UPDATE 补绑**（getOrCreateSession 的 workspaceId 传 undefined 落 loose session，UI 列表不可见）**坑：user 行 seed 时 localId 必须传 null**——带 localId 的 user 行会被 isQueueableUserSubmission 判入 queued 轨道，UI 按排队消息从线程剔除 → 配对输入缺 user → 全部标注降级原文（2026-10-26 实踩：表现为 markers 全消失 + directive 原文回潮）。**纯 Store 造的 session 行没有 executor 执行体，发消息静默排队不回复**——真实模型链路必须走 UI 新对话
+4. **降级矩阵 seed recipe**（Store 造混合形态历史行真机断言）：越界 `index="9"` / 伪造 `index="0"` 原文保留、同 index 重复只留首处、回显形态 `<mobi:quote index="1">…</mobi:quote>` 整体渲染为标注无内容残留。**混合形态行的 markers 基线（2026-10-26 legacy `<quote/>` 移除后，未真机重验）**：`:mobi-quote{}` DSL 与 `<mobi:quote/>` XML 同 index 各一次 + 重复一次时 markers 恰好 **2 个**（DSL 族首处 + XML 族首处各一；XML 族同 index 去重、DSL↔XML 互不跨族合并）；无命名空间 `<quote index="1"/>` **不再渲染标注**（被剥，只算正文）；正文字面量残留仅代码围栏内那处；**seed 会话 workspace_id 需手工 UPDATE 补绑**（getOrCreateSession 的 workspaceId 传 undefined 落 loose session，UI 列表不可见）**坑：user 行 seed 时 localId 必须传 null**——带 localId 的 user 行会被 isQueueableUserSubmission 判入 queued 轨道，UI 按排队消息从线程剔除 → 配对输入缺 user → 全部标注降级原文（2026-10-26 实踩：表现为 markers 全消失 + directive 原文回潮）。**纯 Store 造的 session 行没有 executor 执行体，发消息静默排队不回复**——真实模型链路必须走 UI 新对话
 5. **steer uuid 配对断言**：长任务（如「数到 40」）运行中划选发 steer → DB 断言 `messages.metadata` 列 user 行 nativeId 与 assistant 帧 `user_message_uuid` 交错各归其主（nativeId 在 metadata 列，不在 content.meta；steer 回复回戳指向自身消息，线性推导在该场景会错配——票 03 价值实锤）
 
 探针 prompt 要求「直接回答不要用工具」，否则首轮会触发 Change Title 等工具流干扰选区。
