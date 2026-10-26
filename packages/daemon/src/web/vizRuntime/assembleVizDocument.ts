@@ -28,7 +28,7 @@
  */
 
 import { VIZ_FRAGMENT_MAX_BYTES } from '@mobi/shared'
-import { escapeXmlText } from '@mobi/node-core/utils/xmlEscape'
+import { escapeXmlText } from '@mobi/shared'
 import { VIZ_TOKENS_CSS, VIZ_KIT_CSS } from './vizStyles'
 import { VIZ_CALENDAR_SCRIPT } from './vizCalendar'
 import {

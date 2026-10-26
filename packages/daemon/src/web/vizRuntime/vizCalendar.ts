@@ -35,10 +35,10 @@
  *
  * 纯逻辑（时间解析 / lane 分配 / 转义）以真实 TS 函数导出，脚本经 toString() 内联同一份
  * 实现——单源，单测直接测函数本体（vizTimeToMinutes / assignVizLanes 见 vizCalendar.test.ts；
- * 转义复用 @mobi/node-core 的 escapeXmlText，不自抄一份）。
+ * 转义复用 shared 的 escapeXmlText，不自抄一份）。
  */
 
-import { escapeXmlText } from '@mobi/node-core/utils/xmlEscape'
+import { escapeXmlText } from '@mobi/shared'
 
 /** HH:MM → 当日分钟数；`24:00` 允许（作窗口 end）。非法值抛错（错误文案面向用户） */
 export function vizTimeToMinutes(value: unknown): number {

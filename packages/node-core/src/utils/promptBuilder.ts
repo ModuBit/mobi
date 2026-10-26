@@ -16,9 +16,8 @@
 
 import { readFileSync } from 'node:fs'
 import type { UserContentBlock, UserImageBlock } from '@mobi/shared'
-import { QUOTE_DIRECTIVE } from '@mobi/shared'
+import { buildQuoteAnnotationProtocol, buildQuoteXml } from '@mobi/shared'
 import { logger } from '../logger'
-import { escapeXmlText } from './xmlEscape'
 
 /** 单个 Anthropic content 元素（mobi prompt 场景子集） */
 export type PromptContentBlock =
@@ -38,61 +37,6 @@ type SupportedImageMime = (typeof SUPPORTED_IMAGE_MIME)[number]
 const MAX_SDK_IMAGE_BYTES = 3.5 * 1024 * 1024
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-
-/**
- * quote block → 结构化 XML 片段（对齐项目内 bash 注入惯例，见 buildBashInjectionText）：
- * `<quote index="1" role="agent">被选文本<user-comment>评论</user-comment></quote>`，
- * 无评论省略子标签。excerpt 与 comment 是用户可控的自由文本，经 XML 实体转义防止
- * `</quote>` 逃逸破坏结构（引用代码片段等含尖括号内容同样安全）。index 从 1 起、
- * 按 quote block 出现顺序编号，与 composer 引用编号一致。
- */
-function buildQuoteText(block: Extract<UserContentBlock, { type: 'quote' }>, index: number): string {
-    // excerpt 沿用既有的换行压缩（选区可能含软换行），comment 保留原样（多行评论是合法输入）
-    const excerpt = escapeXmlText(block.excerpt.replace(/\s*\n\s*/g, ' '))
-    const inner = block.comment !== undefined
-        ? `${excerpt}<user-comment>${escapeXmlText(block.comment)}</user-comment>`
-        : excerpt
-    return `<quote index="${index}" role="${block.role}">${inner}</quote>`
-}
-
-/**
- * 回应批注协议指令（spec .scratch/response-annotations）：当本次消息含 agent 角色引用时，
- * 在首个 `<quote>` 前注入一段 `<system-reminder>` 指令（Claude 系模型对该标记有专门的
- * 注意力权重），要求模型在回应引用的位置输出 `:mobi-quote{index="N"}` 内联 directive。
- * directive 字面量取 shared 的 QUOTE_DIRECTIVE——与 web 渲染解析共用同一常量。
- * 全部引用统一编号（与 `<quote index>` 同源一基），user 角色引用占号但不输出 directive。
- */
-function buildAnnotationProtocol(): string {
-    return [
-        '<system-reminder>',
-        'Some `<quote>` elements in this message (role="agent") are response annotations:',
-        'excerpts the user selected from your earlier replies, optionally followed by a',
-        '<user-comment> with the user\'s question or clarification. Address every annotation',
-        'and every user comment.',
-        '',
-        `When you address an annotation, emit exactly one inline directive ${QUOTE_DIRECTIVE}{index="N"}`,
-        'at the single most relevant point in your reply, where N is that quote\'s one-based',
-        '`index` in this message. Rules:',
-        // 反例对照（2026-10-10 生产实锤 c568aa0b）：模型把单半角冒号记成 markdown 围栏
-        // 风格 `:::` / 全角冒号 / 冒号后带空格，directive 不被解析、原文裸奔进聊天流。
-        // 正例紧贴 + 错误形态点名，模型对反例教学的遵守率显著更高。
-        // 2026-10-21 生产实锤（e32acfef）：正例原先用反引号包裹，模型照抄反引号形态，
-        // 指令被渲染成行内代码（用户看到裸指令）。正例必须裸写，反引号显式列为错误形态
-        '- Format is exactly ONE ASCII colon hugging the name, no space anywhere, and the',
-        '  name is exactly mobi-quote (never mobile-quote or any other spelling).',
-        '- Emit it as bare inline text inside your sentence — never wrapped in backticks,',
-        '  inline code, or a code fence. A wrapped directive is shown as raw code text.',
-        `- Correct, bare: ${QUOTE_DIRECTIVE}{index="1"}`,
-        `- Wrong forms: ::: mobi-quote, ：mobi-quote (full-width colon), : mobi-quote`,
-        `  (space after colon), \`${QUOTE_DIRECTIVE}{index="1"}\` (backtick-wrapped).`,
-        '- Emit directives only for quotes with role="agent"; never for role="user" quotes.',
-        '- Emit each directive at most once, in your final answer; do not repeat it in',
-        '  intermediate progress messages.',
-        '- Never invent indices, and never replace the directive with a prose label',
-        '  (such as writing "Note 1" as ordinary text).',
-        '</system-reminder>',
-    ].join('\n')
-}
 
 /**
  * 剥离 PNG 的 tEXt chunk（画板产物的内嵌 scene 就藏在这里，对模型无意义、白占 payload）。
@@ -130,8 +74,8 @@ export function stripPngTextChunks(input: Buffer): Buffer {
  *
  * 缓冲规则：
  * - @path 引用（document / 图片降级）同批单行空格合并；文本段以 \n\n 合并；两者间以 \n\n 分隔
- * - quote 视为独立引用边界：先冲刷缓冲，再单独成段（结构化 XML 片段，见 buildQuoteText；
- *   与后续正文成为相邻 text 元素，Anthropic 拼接语义下等价换段）
+ * - quote 视为独立引用边界：先冲刷缓冲，再单独成段（结构化 XML 片段，shared
+ *   buildQuoteXml 组装；与后续正文成为相邻 text 元素，Anthropic 拼接语义下等价换段）
  * - 成功读取的图片冲刷缓冲后原位插入 base64 image 元素
  *
  * 全程无成功图片时退化为 string（与现状 prompt 形态零差异），否则返回 content 数组。
@@ -181,9 +125,9 @@ export function buildPromptFromBlocks(blocks: UserContentBlock[]): PromptPayload
                 flush()
                 // 批注协议段只在首个 quote 前注入一次（全部引用共享一段指令，不逐条重复）
                 if (quoteSeq === 0 && hasAgentQuote) {
-                    out.push({ type: 'text', text: buildAnnotationProtocol() })
+                    out.push({ type: 'text', text: buildQuoteAnnotationProtocol() })
                 }
-                out.push({ type: 'text', text: buildQuoteText(block, ++quoteSeq) })
+                out.push({ type: 'text', text: buildQuoteXml(block, ++quoteSeq) })
                 break
             }
         }

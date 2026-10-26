@@ -37,7 +37,7 @@
 
 import type { CrossSessionOrigin, UserContentBlock } from '@mobi/shared'
 import { SEND_MESSAGE_TOOL_NAME } from '../../mcp/sendMessageTool'
-import { escapeXmlText } from '@mobi/node-core/utils/xmlEscape'
+import { escapeXmlText } from '@mobi/shared'
 
 export interface CrossSessionEnvelope extends CrossSessionOrigin {
     /**

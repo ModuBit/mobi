@@ -28,9 +28,10 @@ vi.mock('@/logger', () => ({
 
 // vi.mock 之上再导入被测模块（vitest 会把 vi.mock 提升到文件顶部）
 import { buildPromptFromBlocks, stripPngTextChunks } from '@/utils/promptBuilder'
-import { QUOTE_DIRECTIVE } from '@mobi/shared'
 
-/** 批注协议段期望值（票 02，与实现同步锁定）：含 agent 角色引用时首 quote 前注入的整段 */
+/** 批注协议段期望值（票 02 换形后，与实现同步锁定）：含 agent 角色引用时首 quote 前注入的整段。
+ *  新协议最小形式（进出同形）：教自闭合 <quote index="N"/> + 仅 agent 角色输出；
+ *  旧 directive 的 wrong-forms 枚举（::: / 全角冒号 / 反引号）随旧协议退役 */
 const ANNOTATION_PROTOCOL = [
     '<system-reminder>',
     'Some `<quote>` elements in this message (role="agent") are response annotations:',
@@ -38,21 +39,10 @@ const ANNOTATION_PROTOCOL = [
     '<user-comment> with the user\'s question or clarification. Address every annotation',
     'and every user comment.',
     '',
-    `When you address an annotation, emit exactly one inline directive ${QUOTE_DIRECTIVE}{index="N"}`,
-    'at the single most relevant point in your reply, where N is that quote\'s one-based',
-    '`index` in this message. Rules:',
-    '- Format is exactly ONE ASCII colon hugging the name, no space anywhere, and the',
-    '  name is exactly mobi-quote (never mobile-quote or any other spelling).',
-    '- Emit it as bare inline text inside your sentence — never wrapped in backticks,',
-    '  inline code, or a code fence. A wrapped directive is shown as raw code text.',
-    `- Correct, bare: ${QUOTE_DIRECTIVE}{index="1"}`,
-    '- Wrong forms: ::: mobi-quote, ：mobi-quote (full-width colon), : mobi-quote',
-    `  (space after colon), \`${QUOTE_DIRECTIVE}{index="1"}\` (backtick-wrapped).`,
-    '- Emit directives only for quotes with role="agent"; never for role="user" quotes.',
-    '- Emit each directive at most once, in your final answer; do not repeat it in',
-    '  intermediate progress messages.',
-    '- Never invent indices, and never replace the directive with a prose label',
-    '  (such as writing "Note 1" as ordinary text).',
+    'When you address an annotation, emit its self-closing form <quote index="N"/>',
+    'inline at the single most relevant point in your reply, where N is that quote\'s',
+    'one-based `index` in this message. Emit these tags only for quotes with',
+    'role="agent"; never for role="user" quotes.',
     '</system-reminder>',
 ].join('\n')
 
@@ -187,10 +177,8 @@ describe('buildPromptFromBlocks', () => {
                 '<quote index="2" role="agent">agent 引用</quote>',
             ),
         )
-        expect(r).toContain('mobi-quote{index="N"}')
-        // 反例对照（2026-10-10 生产实锤 c568aa0b）：点名错误形态，降低模型语法记岔率
-        expect(r).toContain('::: mobi-quote')
-        expect(r).toContain('：mobi-quote')
+        // 换形后指令教自闭合 XML 形态（进出同形，协议统一票 02）
+        expect(r).toContain('<quote index="N"/>')
     })
 
     it('单条 quote 含评论：comment 以 <user-comment> 子标签紧随 excerpt', () => {

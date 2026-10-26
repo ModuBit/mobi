@@ -35,7 +35,6 @@
  */
 
 import type { UserContentBlock, UserQuoteBlock } from './userContentSchema'
-
 /** 出向 XML 形态标签名（与进向 `<quote index role>` 同族语法） */
 export const QUOTE_XML_TAG = 'quote'
 
@@ -183,4 +182,65 @@ export function pairQuotesToReplies(entries: readonly QuotePairingEntry[]): Read
         }
     }
     return byId
+}
+
+/**
+ * XML 文本转义（& " < >）——协议内嵌自由文本防标签逃逸的唯一实现（原 node-core
+ * xmlEscape 上移：进向组装在 shared，转义原语必须随协议同层）。
+ *
+ * `&` 必须最先替换：放后面会把刚生成的实体（如 `&quot;`）里的 `&` 再转义一遍，
+ * 变成 `&amp;quot;`。转义字符集是最怕漂移的安全原语，新增调用方直接复用，不要再抄一份。
+ *
+ * 注：claudeRemote 的 bash 输出转义（仅 & < >，控制 token 膨胀）与 serviceManager 的
+ * plist 转义（含 '，属 XML 属性位）字符集是按场景有意收窄/扩展的，不在此收口范围。
+ */
+export function escapeXmlText(s: string): string {
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+}
+
+/**
+ * 进向组装（spec 决策 3，票 02）：wire quote block → 模型可见 XML 片段——
+ * `<quote index="1" role="agent">被选文本<user-comment>评论</user-comment></quote>`，
+ * 无评论省略子标签。与出向 `<quote index="N"/>` 同族语法（进出同形，模型无需建立
+ * 两套语法的映射）。excerpt 与 comment 是用户可控的自由文本，经 XML 实体转义防止
+ * `</quote>` 逃逸破坏结构（引用代码片段等含尖括号内容同样安全）。index 从 1 起、
+ * 按 quote block 出现顺序编号（一基，与出向命中 index 同源），与 composer 引用编号一致。
+ */
+export function buildQuoteXml(block: UserQuoteBlock, index: number): string {
+    // excerpt 沿用既有的换行压缩（选区可能含软换行），comment 保留原样（多行评论是合法输入）
+    const excerpt = escapeXmlText(block.excerpt.replace(/\s*\n\s*/g, ' '))
+    const inner = block.comment !== undefined
+        ? `${excerpt}<user-comment>${escapeXmlText(block.comment)}</user-comment>`
+        : excerpt
+    return `<quote index="${index}" role="${block.role}">${inner}</quote>`
+}
+
+/**
+ * 回应批注协议指令（spec 决策 4，票 02）：当本次消息含 agent 角色引用时，在首个
+ * `<quote>` 前注入一段 `<system-reminder>` 指令（Claude 系模型对该标记有专门的
+ * 注意力权重）。
+ *
+ * 新协议最小形式：进出同形后模型看到的引用语法就是它该输出的语法，无需映射教学；
+ * 只说明自闭合标记的用法与「仅 agent 角色输出」约束。旧协议为修补模型语法记岔
+ * 累积的 wrong-forms 枚举（全角冒号、`:::`、反引号包裹等）随旧协议退役；新协议的
+ * 错误形态在使用中观察，不做预置教学。
+ */
+export function buildQuoteAnnotationProtocol(): string {
+    return [
+        '<system-reminder>',
+        'Some `<quote>` elements in this message (role="agent") are response annotations:',
+        'excerpts the user selected from your earlier replies, optionally followed by a',
+        '<user-comment> with the user\'s question or clarification. Address every annotation',
+        'and every user comment.',
+        '',
+        'When you address an annotation, emit its self-closing form <quote index="N"/>',
+        'inline at the single most relevant point in your reply, where N is that quote\'s',
+        'one-based `index` in this message. Emit these tags only for quotes with',
+        'role="agent"; never for role="user" quotes.',
+        '</system-reminder>',
+    ].join('\n')
 }
