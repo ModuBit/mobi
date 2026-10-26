@@ -69,23 +69,21 @@ describe('Markdown 内联指令（真实渲染管线）', () => {
         expect(body).not.toContain('<mobi:quote')
     })
 
-    it('读兼容：一天龄旧形态 <quote index="1"/> 照常渲染标注', async () => {
-        render(
+    it('legacy 无命名空间 <quote/> 已移除：不渲染标注（标签走 marked 泛 HTML 管线剥除，同 <div> 等未知标签）', async () => {
+        const { container } = render(
             <QuoteAnnotationsProvider quotes={quotes} onLocate={() => {}}>
                 <Markdown content={'前文 <quote index="1"/> 后文'} />
             </QuoteAnnotationsProvider>,
         )
-        const marker = await screen.findByTestId('quote-annotation-1')
-        expect(marker).toBeInTheDocument()
-        const body = document.body.textContent ?? ''
-        expect(body).toContain('前文')
-        expect(body).not.toContain('<quote')
+        await waitFor(() => expect(container.textContent).toContain('前文'))
+        expect(container.querySelector('[data-testid="quote-annotation-1"]')).toBeNull()
+        expect(container.textContent).toContain('后文')
     })
 
     it('完整回显形态只取 index：渲染标注且回显内容不重复显示', async () => {
         render(
             <QuoteAnnotationsProvider quotes={quotes} onLocate={() => {}}>
-                <Markdown content={'前文 <quote index="1">被回显的内容</quote> 后文'} />
+                <Markdown content={'前文 <mobi:quote index="1">被回显的内容</mobi:quote> 后文'} />
             </QuoteAnnotationsProvider>,
         )
         expect(await screen.findByTestId('quote-annotation-1')).toBeInTheDocument()
@@ -94,28 +92,28 @@ describe('Markdown 内联指令（真实渲染管线）', () => {
         expect(body).toContain('后文')
         // 完整形态被整体替换为标注：内容与标签都不残留
         expect(body).not.toContain('被回显的内容')
-        expect(body).not.toContain('<quote')
+        expect(body).not.toContain('<mobi:quote')
     })
 
     it('降级矩阵：index="0" / 越界 / 无批注上下文按原文诚实降级', async () => {
         const { container: c0 } = render(
             <QuoteAnnotationsProvider quotes={quotes} onLocate={() => {}}>
-                <Markdown content={'前文 <quote index="0"/> 后文'} />
+                <Markdown content={'前文 <mobi:quote index="0"/> 后文'} />
             </QuoteAnnotationsProvider>,
         )
         await waitFor(() => expect(c0.textContent).toContain('前文'))
-        expect(c0.textContent).toContain('<quote index="0"/>')
+        expect(c0.textContent).toContain('<mobi:quote index="0"/>')
         expect(c0.querySelector('[data-testid="quote-annotation-0"]')).toBeNull()
 
         cleanup()
         // 越界（ctx 只有 1 条引用）
         const { container: c9 } = render(
             <QuoteAnnotationsProvider quotes={quotes} onLocate={() => {}}>
-                <Markdown content={'前文 <quote index="9"/> 后文'} />
+                <Markdown content={'前文 <mobi:quote index="9"/> 后文'} />
             </QuoteAnnotationsProvider>,
         )
         await waitFor(() => expect(c9.textContent).toContain('前文'))
-        expect(c9.textContent).toContain('<quote index="9"/>')
+        expect(c9.textContent).toContain('<mobi:quote index="9"/>')
         expect(c9.querySelector('[data-testid="quote-annotation-9"]')).toBeNull()
     })
 

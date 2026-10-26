@@ -41,18 +41,19 @@ import { MOBI_XML_NS, MOBI_XML_OPEN, opensOf, parseTagAttrs } from './mobiXml'
 // 族通用原语已上移 mobiXml（票 02）：此处 re-export 维持 quote 语义层既有引用面
 export { MOBI_XML_NS, MOBI_XML_OPEN, parseTagAttrs }
 
-/** quote 基础标签名（无命名空间——仅作旧形态读兼容的基名，写路径一律用 {@link QUOTE_TAG_NS}） */
-export const QUOTE_XML_TAG = 'quote'
+/** quote 基础标签名（无命名空间） */
+const QUOTE_XML_TAG = 'quote'
 
-/** quote 现行标签名（带命名空间，写路径唯一形态） */
+/** quote 现行标签名（带命名空间，读写唯一形态） */
 export const QUOTE_TAG_NS = `${MOBI_XML_NS}${QUOTE_XML_TAG}`
 
 /**
- * quote 标签形态清单（读兼容矩阵）：现行在前，旧无命名空间形态（2026-10-26~27
- * 一天龄的 `<quote/>`）只读——历史会话渲染零迁移。跨形态同 index 是同一引用
- * （去重统一处理）。
+ * quote 标签形态清单：**单形态**。一天龄 legacy `<quote/>`（无命名空间，
+ * 2026-10-26~27 存活）读兼容已移除（2026-10-26 用户裁决）：泛 `<quote` 前缀使
+ * tokenizer/去重/截断对「讨论 XML 的正文」全量激活——正是命名空间化要消除的
+ * 碰撞面；该形态仅存活一天，历史会话降级原文显示可接受。
  */
-export const QUOTE_TAG_NAMES: readonly string[] = [QUOTE_TAG_NS, QUOTE_XML_TAG]
+export const QUOTE_TAG_NAMES: readonly string[] = [QUOTE_TAG_NS]
 
 /** 各形态标签开前缀（opensOf 单源派生，禁手抄 map；族组装单源 mobiXmlFamily） */
 export const QUOTE_TAG_OPENS: readonly string[] = opensOf(QUOTE_TAG_NAMES)

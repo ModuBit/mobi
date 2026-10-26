@@ -83,10 +83,10 @@ describe('scanXmlTagHits（族通用标签扫描）', () => {
 
     it('quote 与 artifact 混排按原文位置归并；半截不产出命中', () => {
         const hits = scanXmlTagHits(
-            `<mobi:quote index="1"/> 中 ${artifact('/b.png')} <quote index="2"/>`,
+            `<mobi:quote index="1"/> 中 ${artifact('/b.png')} <mobi:quote index="2"/>`,
             FAMILY_TAG_NAMES,
         )
-        expect(hits.map(h => h.tagName)).toEqual(['mobi:quote', 'mobi:artifact', 'quote'])
+        expect(hits.map(h => h.tagName)).toEqual(['mobi:quote', 'mobi:artifact', 'mobi:quote'])
         expect(scanXmlTagHits('尾巴 <mobi:artifact path="/ab', FAMILY_TAG_NAMES)).toEqual([])
     })
 
@@ -114,7 +114,7 @@ describe('truncateIncompleteXmlTagTail（流式原子揭示，族通用）', () 
         expect(truncateIncompleteXmlTagTail('看图 <mobi:artifact path="/ab', FAMILY_OPENS))
             .toBe('看图 ')
         expect(truncateIncompleteXmlTagTail('A <mobi:quote index="', FAMILY_OPENS)).toBe('A ')
-        expect(truncateIncompleteXmlTagTail('A <quote index="1', FAMILY_OPENS)).toBe('A ')
+        expect(truncateIncompleteXmlTagTail('A <mobi:quote index="1', FAMILY_OPENS)).toBe('A ')
     })
 
     it('完整自闭合 / 完整回显不扣；形近词（<mobiar / <mobi:artifactx）不误扣', () => {
@@ -172,9 +172,10 @@ describe('buildXmlTokenShape（tokenizer 正形）', () => {
     it('外层整组 ^ 锚定：任意成员形态在串首命中、串中不命中（alternation 锚定回归）', () => {
         const re = new RegExp(`^${buildXmlTokenShape(FAMILY_TAG_NAMES)}`)
         expect(re.test('<mobi:quote index="1"/>')).toBe(true)
-        expect(re.test('<quote index="1"/>')).toBe(true)
         expect(re.test('<mobi:artifact path="/a"/>')).toBe(true)
         expect(re.test('前文 <mobi:quote index="1"/>')).toBe(false)
+        // legacy 无命名空间 <quote/> 已移除：不在族正形内，tokenizer 不消费
+        expect(re.test('<quote index="1"/>')).toBe(false)
     })
 
     it('alternation 的 < 逐分支携带：裸标签名（artifact/quote）不误命中', () => {

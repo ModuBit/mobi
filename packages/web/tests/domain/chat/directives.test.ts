@@ -124,7 +124,7 @@ describe('dedupeDirectiveText（quote 已注册：同 index 只留首个）', ()
 
 describe('dedupeDirectiveText（quote 新 XML 形态同帧去重，协议统一票 01）', () => {
     const d = (n: number) => `${QUOTE_DIRECTIVE}{index="${n}"}`
-    const x = (n: number) => `<quote index="${n}"/>`
+    const x = (n: number) => `<mobi:quote index="${n}"/>`
 
     it('同 index 的 XML 重复只保留首个；不同 index 互不影响', () => {
         expect(dedupeDirectiveText(`A ${x(1)} B ${x(1)} C`)).toBe(`A ${x(1)} B  C`)

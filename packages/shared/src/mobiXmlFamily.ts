@@ -51,7 +51,7 @@ for (const member of MEMBERS) {
     for (const tag of member.tagNames) MEMBER_BY_TAG.set(tag, member)
 }
 
-/** 族标签形态清单（现行 + legacy 读兼容），tokenizer / 去重 / 截断共用 */
+/** 族标签形态清单（各成员读兼容矩阵汇总），tokenizer / 去重 / 截断共用 */
 export const MOBI_XML_FAMILY_TAG_NAMES: readonly string[] = MEMBERS.flatMap(m => [...m.tagNames])
 
 /** 族标签开前缀清单（守卫 / tokenizer 起点扫描共用，opensOf 单源派生禁手抄） */

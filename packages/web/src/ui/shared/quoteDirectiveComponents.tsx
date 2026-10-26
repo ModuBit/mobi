@@ -34,7 +34,6 @@ import {
     ARTIFACT_TAG_NS,
     parseQuoteIndexAttr,
     QUOTE_TAG_NS,
-    QUOTE_XML_TAG,
     scanXmlTagHits,
 } from '@mobi/shared'
 import { parseDirectiveHits, parseDirectiveParams, XML_DIRECTIVE_TAG_NAMES } from '@/domain/chat/directives'
@@ -163,7 +162,6 @@ const ArtifactXmlView: FC<{ hit: XmlTagHit; raw: string }> = ({ hit, raw }) => (
  *  标签清单单源 shared 族注册表，新成员在此加一行；未登记标签按原文诚实降级 */
 const XML_DIRECTIVE_COMPONENTS: Record<string, FC<{ hit: XmlTagHit; raw: string }>> = {
     [QUOTE_TAG_NS]: QuoteXmlView,
-    [QUOTE_XML_TAG]: QuoteXmlView,
     [ARTIFACT_TAG_NS]: ArtifactXmlView,
 }
 

@@ -51,7 +51,7 @@ const truncateIncompleteQuoteXmlTail = (text: string) => truncateIncompleteXmlTa
 
 /** 现行写路径形态（spec .scratch/mobi-xml-namespace：`<mobi:quote/>` 带命名空间） */
 const xml = (n: number) => `<mobi:quote index="${n}"/>`
-/** 一天龄旧形态（读兼容：2026-10-26~27 的无命名空间 `<quote/>`） */
+/** 一天龄旧形态（2026-10-26 用户裁决移除读兼容：不再解析，降级原文） */
 const xmlLegacy = (n: number) => `<quote index="${n}"/>`
 
 describe('parseQuoteIndexAttr（index 语义单源）', () => {
@@ -128,17 +128,9 @@ describe('parseQuoteXmlHits（出向新 XML 形态解析）', () => {
         expect(dedupeQuoteXmlText(text)).toBe('A <mobi:quote index="1"/> B  C ')
     })
 
-    it('读兼容：一天龄旧形态 <quote/> 照常解析命中', () => {
-        const text = `前 ${xmlLegacy(1)} 中 <quote index="2">旧回显</quote> 后`
-        const hits = parseQuoteXmlHits(text)
-        expect(hits.map(h => h.index)).toEqual([1, 2])
-        expect(hits[0]!.raw).toBe(xmlLegacy(1))
-        expect(hits[1]!.raw).toBe('<quote index="2">旧回显</quote>')
-    })
-
-    it('跨形态同 index 是同一引用：去重统一摘除后出现者', () => {
-        const text = `A ${xml(1)} B ${xmlLegacy(1)} C`
-        expect(dedupeQuoteXmlText(text)).toBe(`A ${xml(1)} B  C`)
+    it('legacy 无命名空间形态已移除：不产出命中，消费方按原文降级', () => {
+        // 泛 <quote 前缀对「讨论 XML 的正文」全量激活是命名空间化要消除的碰撞面
+        expect(parseQuoteXmlHits(`前 ${xmlLegacy(1)} 中 <quote index="2">旧回显</quote> 后`)).toEqual([])
     })
 
     it('多条命中按出现顺序、位置互指原文', () => {
@@ -226,8 +218,8 @@ describe('truncateIncompleteQuoteXmlTail（流式原子揭示：未闭合尾巴�
             .toBe('正文 <mobi:quote index="1">内容</mobi:quote>')
     })
 
-    it('读兼容：一天龄旧形态的半截尾巴同样扣住', () => {
-        expect(truncateIncompleteQuoteXmlTail('正文 <quote index="1">半截')).toBe('正文 ')
+    it('legacy 形态已移除：不再命中族前缀，半截尾巴同样不扣', () => {
+        expect(truncateIncompleteQuoteXmlTail('正文 <quote index="1">半截')).toBe('正文 <quote index="1">半截')
         expect(truncateIncompleteQuoteXmlTail(`正文 ${xmlLegacy(1)}`)).toBe(`正文 ${xmlLegacy(1)}`)
     })
 
@@ -289,12 +281,13 @@ describe('pairQuotesToReplies（批注↔回复线性配对，语义与 web 既�
         expect(pairQuotesToReplies([]).size).toBe(0)
     })
 
-    it('常量契约：标签清单现行在前，族前缀带命名空间', () => {
+    it('常量契约：单形态清单，族前缀带命名空间', () => {
         expect(QUOTE_TAG_NS).toBe('mobi:quote')
-        expect(QUOTE_TAG_NAMES).toEqual(['mobi:quote', 'quote'])
+        expect(QUOTE_TAG_NAMES).toEqual(['mobi:quote'])
         expect(MOBI_XML_OPEN).toBe('<mobi:')
         expect(hasXmlTagOpen(`${xml(1)} 文本`, QUOTE_TAG_OPENS)).toBe(true)
-        expect(hasXmlTagOpen(`${xmlLegacy(1)} 文本`, QUOTE_TAG_OPENS)).toBe(true)
+        // legacy 泛前缀不再激活守卫（移除读兼容的碰撞面收敛）
+        expect(hasXmlTagOpen(`${xmlLegacy(1)} 文本`, QUOTE_TAG_OPENS)).toBe(false)
         expect(hasXmlTagOpen('普通 <div> 文本', QUOTE_TAG_OPENS)).toBe(false)
     })
 })
