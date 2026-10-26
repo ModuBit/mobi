@@ -3,7 +3,7 @@ name: env-bootstrap
 description: E2E 环境启动 / 清理 / 就绪判断 / profile 检查 / 端口隔离 / 故障恢复 / daemon 单独重启
 metadata:
   type: recipe
-  last_verified: 2026-10-11
+  last_verified: 2026-10-26
 ---
 
 # 环境启动
@@ -39,6 +39,24 @@ failed 态常驻且 socket 失联不可发现），累积 10 个后才根治为�
    ```bash
    grep "PROFILE" ~/.mobi-e2e/logs/web.log
    ```
+
+**长验收（>10 分钟）禁走后台任务托管——bootstrap 会自毁**（2026-10-26 实踩）：挂在 Claude 后台任务上的
+bootstrap 被 10 分钟超时 SIGTERM 时，脚本 EXIT trap 的 cleanup 按端口 kill -9 全部组件并
+`rm -rf` 数据目录（seed 数据全丢）。规避：做 **/tmp 禁自毁副本**再孤儿化启动——
+
+```bash
+# 副本三处改造：删 3 行 trap（EXIT/SIGINT/SIGTERM）、source 与 MOBI_ROOT 硬编码原路径
+sed '/^trap cleanup EXIT$/d; /^trap .exit 130. SIGINT$/d; /^trap .exit 143. SIGTERM$/d' \
+  .claude/skills/run-tests/scripts/e2e-bootstrap.sh > /tmp/e2e-bootstrap-nodestruct.sh
+sed -i '' 's|source "$(dirname "$0")/e2e-common.sh"|source "<repo>/.claude/skills/run-tests/scripts/e2e-common.sh"|' /tmp/e2e-bootstrap-nodestruct.sh
+sed -i '' 's|^readonly MOBI_ROOT=.*|readonly MOBI_ROOT="<repo>"|' /tmp/e2e-bootstrap-nodestruct.sh
+# perl 双 fork 孤儿化（macOS 无 setsid 命令）+ env -u 剥宿主 MOBI_*
+env -u MOBI_API_URL -u MOBI_LISTEN_PORT -u MOBI_LISTEN_HOST -u MOBI_HOME -u MOBI_WEB_PORT \
+  perl -e 'use POSIX qw(setsid); setsid(); fork and exit; exec @ARGV' \
+  bash /tmp/e2e-bootstrap-nodestruct.sh &>/tmp/e2e-bootstrap-nodestruct.log &
+```
+
+收尾手工清理：kill bootstrap PID（trap 已删不会连杀）→ `bash .claude/skills/run-tests/scripts/e2e-cleanup.sh`。
 
 ## 端口隔离
 

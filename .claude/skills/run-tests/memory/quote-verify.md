@@ -1,9 +1,9 @@
 ---
 name: quote-verify
-description: 引用特性 E2E 验证——划选 popover / 评论浮层 / chip 列表卡 / 气泡引用组 / 点击定位 / 边界拒绝的 recipe 与合成事件坑
+description: 引用特性 E2E 验证——划选 popover / 评论浮层 / chip 列表卡 / 气泡引用组 / 点击定位 / 出向标注 / 降级矩阵的 recipe 与合成事件坑
 metadata:
   type: recipe
-  last_verified: 2026-09-28
+  last_verified: 2026-10-26
 ---
 
 # 引用特性验证
@@ -19,7 +19,7 @@ metadata:
 
 ## 片段高亮（2026-09-28 全链路验证）
 
-1. **注册断言**：点击引用条目后查 `CSS.highlights`（Map-like，`forEach((v,k))` 遍历）含 `quote-fragment-flash`，`highlight.ranges[0].toString()` 应等于落库 excerpt
+1. **注册断言**：点击引用条目后查 `CSS.highlights`（Map-like，`forEach((v,k))` 遍历）含 `quote-fragment-flash`，高亮 Range 文本应等于落库 excerpt——**Chrome 155 起 `Highlight.ranges` 已移除**（Set-like：`size`/`forEach`/`values`），`[...v.ranges]` 会抛 `v.ranges is not iterable` 且中断探针链路（2026-10-26 实踩）；遍历用 `v.forEach(r => ...)`
 2. **视觉断言**：片段 Range 有矩形（`range.getBoundingClientRect()`）且 ::highlight 底色渲染——**截图必须在高亮窗口（2400ms）内**；错过窗口会误判「高亮不可见」（实踩：连拍三次以为 color-mix 不支持，实际是摘除后才截）
 3. **`::highlight` 支持 `color-mix()`**（Chrome 153 实测渲染正常），dark 主题下用 `color-mix(colorWarning 35%, transparent)` 可见；antd `colorWarningBg` dark 档 rgb(58,28,8) 黑底不可辨，别用
 4. **CSS.highlights 不是 Map 实例**（Chrome 153 `instanceof Map` = false）——特性检测按 duck typing（`typeof registry.set === 'function'`），jsdom 无此 API
@@ -41,25 +41,24 @@ metadata:
 ## 坑
 
 - **锚点结构探针**（2026-09-25）：单段 agent 消息的 `data-quote-block` 就落在消息容器自身（与 `data-quote-message-id`/`data-quote-role` 同元素），`agentEl.querySelector('[data-quote-block]')` 会查空——取 block 用 `closest('[data-quote-block]')` 或直接对锚内 `p` 的 text node 造 Range
-- **antd Tooltip 的 hover 合成事件不触发**（rc-trigger 过滤）——tooltip 验证必须用 CDP `hover` 工具（真实鼠标事件）对 snapshot uid，约 0.9s 后查 `.ant-tooltip:not(.ant-tooltip-hidden)`
+- **AppTooltip 底座（Radix + pointerenter）CDP hover 测不出**（2026-10-26 推翻旧条目「tooltip 必须 CDP hover」——那只对 antd rc-trigger 成立）：AppTooltip 监听 React `onPointerEnter`，CDP `hover` 只派发 mouse 系事件、瞬移跨界不产生 React enter 模拟所需的 pointerover/out 对（原生 mouseenter 能到、tooltip 不开）。**可靠 recipe**：先 hover 远处元素再 hover 目标造跨界（验证事件通路），tooltip 断言用合成 `PointerEvent`——对任意外部元素 dispatch `pointerout`、对目标 dispatch `pointerover`（bubbles）+ `pointerenter`（不冒泡），~1.2s 后查 `[role=tooltip]`（Radix DOM，**不是** `.ant-tooltip`）。pointerType 必须 'mouse'
 - **>500 字符 tooLong 拒绝**：普通问答回复单块仅 ~300 字符，跨块又被拒——UI 内难自然构造，留单测覆盖即可
 - quote E2E 用的模型下拉显示 glm-5.2 但 turn 实际 claude-sonnet-4-6（模型下拉与 turn 无关，别被迷惑）
 - **远程验收环境必踩：裸 `crypto.randomUUID` 在 http+IP 访问（非安全上下文）不存在**——新建 uid 时抛错、流程静默中断，localhost 测不出；新代码一律走 `core/lib/uuid.ts` 的 `uuid()`（getRandomValues 兜底），见引用特性首条添加中断事故（2026-09-22）
 - 评论键位（2026-09-22 定稿）：Enter 换行、Ctrl/Cmd+Enter 提交、Esc/点外关闭——「Enter 提交」让多行无法输入，用户验收否决过
 - **running 时 popover 不闪**（2026-09-23 修）：流式 stick-to-bottom 程序滚动不再关引用浮层，关闭只认 wheel/touchmove 手势后 250ms 内的 scroll——CDP 自测时别用程序 scrollTo 复现「滚动关浮层」，要先 dispatch wheel 事件
 
-## 回应批注（response annotations，2026-09-23 全链路验证）
+## 回应批注（引用协议统一后，2026-10-26 全链路验证）
 
-前置：协议在 CLI（含 agent 引用时注入 `<system-reminder>` + `:mobi-quote{index="N"}` directive），
+协议已「进出同形」（spec .scratch/quote-protocol-unification）：进向 `<quote index role>…</quote>` XML（shared buildQuoteXml 组装 + `<user-comment>` 评论内嵌），出向自闭合 `<quote index="N"/>`（新最小 `<system-reminder>` 指令教模型输出）。旧 directive `:mobi-quote{index="N"}` 只读兼容历史会话渲染。
 **bootstrap 重启后新会话才带新协议代码**（会话 CLI 启动即固化代码）。
 
-链路：划选 agent 回复 → 添加到对话 → 评论 → 发「请围绕引用深入讲解」类探针 → 回复中断言：
+链路：划选 agent 回复 → 添加到对话 → 评论保存（CommentField 的 `.anticon-check` 按钮，Enter 只换行）→ 发探针 → 回复中断言：
 
-1. `[data-testid="quote-annotation-1"]`「引用 1」上标按钮渲染（标记 2026-09-25 起走通用指令路由 MobiDirective）；正文无 `:mobi-quote` 原文残留
-2. ~~聚合 chip~~ 已移除（d133b33e，「N 条注释」chip 删除、标记改名「引用 N」）——marker 即唯一锚
-3. tooltip 必须 CDP hover（合成事件不触发，同引用 tooltip 坑）~2s 后查 `.ant-tooltip:not(.ant-tooltip-hidden)`，内容 = excerpt + 评论
-4. 点击按钮 → `.quote-locate-flash` 挂上（1.2s 内断言；flash 类挂在锚内首个真实盒上，锚本身 display:contents 无该 id，别按 messageId 查 flash 元素）
-5. DB 断言 offsets：`messages` user 消息 `content[0].startOffset/endOffset`（json_extract 数组路径写 `'$[0].x'`，bash 双引号下 `$[0]` 会被算术展开——用 heredoc 或单引号 SQL；messages 表无 role 列，role 在 content JSON 内）
-6. 移动端 390：chip 列表卡 popper `left=16, right=innerWidth-16, width=100vw-32`（quote-list-popover 全局钳制复用）
+1. `[data-testid="quote-annotation-N"]`「引用 N」上标按钮渲染（新 XML 与旧 directive 经 MobiDirective 收敛到同一 QuoteDirectiveMarker）；正文无标签原文残留
+2. tooltip 内容 = excerpt + 评论（合成 PointerEvent 验证法见坑一节；CDP hover 测不出 AppTooltip）
+3. 点击按钮 → `CSS.highlights` 注册 `quote-fragment-flash`（Chrome 155 用 forEach 遍历，见片段高亮节）
+4. **降级矩阵 seed recipe**（Store 造混合形态历史行真机断言）：越界 `index="9"` / 伪造 `index="0"` 原文保留、同 index 重复只留首处、回显形态 `<quote index="1">…</quote>` 整体渲染为标注无内容残留。**坑：user 行 seed 时 localId 必须传 null**——带 localId 的 user 行会被 isQueueableUserSubmission 判入 queued 轨道，UI 按排队消息从线程剔除 → 配对输入缺 user → 全部标注降级原文（2026-10-26 实踩：表现为 markers 全消失 + directive 原文回潮）。**纯 Store 造的 session 行没有 executor 执行体，发消息静默排队不回复**——真实模型链路必须走 UI 新对话
+5. **steer uuid 配对断言**：长任务（如「数到 40」）运行中划选发 steer → DB 断言 `messages.metadata` 列 user 行 nativeId 与 assistant 帧 `user_message_uuid` 交错各归其主（nativeId 在 metadata 列，不在 content.meta；steer 回复回戳指向自身消息，线性推导在该场景会错配——票 03 价值实锤）
 
 探针 prompt 要求「直接回答不要用工具」，否则首轮会触发 Change Title 等工具流干扰选区。
