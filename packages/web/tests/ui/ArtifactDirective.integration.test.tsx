@@ -92,6 +92,24 @@ describe('产物声明渲染（:mobi-artifact 管线集成）', () => {
         expect(document.body.textContent).not.toContain(':mobi-artifact{path="/tmp/demo.png"}')
     })
 
+    it('XML 新形态 <mobi:artifact/> 同链路渲染（mobi-xml-namespace 票 02）；mode 非法容错为 auto', async () => {
+        mockMeta.mockReturnValue({ isPending: false, isError: false, data: META_OK } as never)
+        renderDirective('看这个 <mobi:artifact path="/tmp/demo.png"/> 好了')
+        expect(await screen.findByTestId('artifact-inline-image')).toBeInTheDocument()
+        // 标签整体替换为视图，原文不残留
+        expect(document.body.textContent).not.toContain('<mobi:artifact')
+        cleanup()
+
+        // mode 非法 → 容错为 auto（按类型 inline，不炸不降级）——与 DSL 同语义单源
+        renderDirective('<mobi:artifact path="/tmp/demo.png" mode="bogus"/>')
+        expect(await screen.findByTestId('artifact-inline-image')).toBeInTheDocument()
+        cleanup()
+
+        // mode="card" 意愿在 XML 形态同样生效
+        renderDirective('<mobi:artifact path="/tmp/demo.png" mode="card"/>')
+        expect(await screen.findByTestId('artifact-card')).toBeInTheDocument()
+    })
+
     it('产物卡交互：整卡/「打开方式」标签 → 检查器分发；箭头下拉含浏览器打开与复制链接', async () => {
         mockMeta.mockReturnValue({ isPending: false, isError: false, data: { ...META_OK, mime: 'text/html' } } as never)
         renderDirective(':mobi-artifact{path="/tmp/page.html" mode="card"}')

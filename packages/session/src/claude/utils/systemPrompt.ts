@@ -15,7 +15,7 @@
  */
 
 import { trimIdent } from "@mobi/node-core/utils/trimIdent";
-import { ARTIFACTS_DIR_MONTH_FORMAT, ARTIFACTS_DIR_REL, ARTIFACT_DIRECTIVE, MOBI_CORE_SERVER_NAME } from "@mobi/shared";
+import { ARTIFACTS_DIR_MONTH_FORMAT, ARTIFACTS_DIR_REL, ARTIFACT_TAG_NS, MOBI_CORE_SERVER_NAME } from "@mobi/shared";
 import { OPENUI_CORE_PROMPT } from "./openuiCorePrompt.generated";
 
 /**
@@ -24,8 +24,9 @@ import { OPENUI_CORE_PROMPT } from "./openuiCorePrompt.generated";
  * 2. mobi URI 协议段：教模型在回复中用 mobi://file/open 链接承载文件引用，
  *    web 端 Markdown 渲染链拦截后打开 inspector（ADR 0003）；含 URI 模板、
  *    使用时机约束（防链接噪音）与 URL 编码提醒三要素
- * 3. 产物声明契约（inline-artifacts spec ticket 04）：模型在 turn 最终回复中用
- *    :mobi-artifact 指令声明可在聊天流 inline 呈现的产物，并约定非项目交付物的
+ * 3. 产物声明契约（inline-artifacts spec ticket 04 + mobi-xml-namespace 票 02）：模型
+ *    在 turn 最终回复中用 `<mobi:artifact/>` 标签声明可在聊天流 inline 呈现的产物，
+ *    并约定非项目交付物的
  *    存放目录。契约常驻（不依赖 skill 加载，失效面收窄的根基），细则由内置
  *    visualize 插件的 skill 承载（分发见 ticket 05）
  * 这段始终追加在 claude_code 默认 system prompt 之后。
@@ -38,12 +39,12 @@ const BASE_SYSTEM_PROMPT = (() => trimIdent(`
     - Use it ONLY where opening the file genuinely helps the user (comparisons, references to files you created or edited) - never wrap paths inside code snippets, and not every file mention.
 
     ### Inline artifacts
-    - When your turn produced a file the user should view in this conversation (image, audio, video, or a self-contained HTML page), end your final reply with one directive per file: ${ARTIFACT_DIRECTIVE}{path="/absolute/path"}  (add mode="app" for interactive mini-apps — host theme palette + issueNewTurn bridge, see the visualize skill; mode="viz" for visualization fragments — write an HTML FRAGMENT, not a complete document: no doctype/html/head/body, host injects design tokens + utility classes + interaction runtime, add "viz-wide" for full-width variants; mode="card" for complex HTML/apps/dev-server URLs, mode="wide" for full-width HTML mockups)
-    - Attribute quotes MUST be ASCII straight quotes (") - curly quotes like “” break parsing; path may be absolute or relative to the current working directory.
+    - When your turn produced a file the user should view in this conversation (image, audio, video, or a self-contained HTML page), end your final reply with one tag per file: <${ARTIFACT_TAG_NS} path="/absolute/path"/>  (attribute quotes MUST be ASCII straight quotes (") - curly quotes break parsing; path may be absolute or relative to the current working directory)
+    - Optional mode attribute: mode="app" for interactive mini-apps (host theme palette + issueNewTurn bridge, see the visualize skill); mode="viz" for visualization fragments (write an HTML FRAGMENT, not a complete document - the host injects design tokens and interaction runtime; add "viz-wide" for full-width variants); mode="card" for complex HTML/apps/dev-server URLs; mode="wide" for full-width HTML mockups
     - Static diagrams: use a mermaid code fence instead. Files meant only for download: do not declare.
     - Non-project deliverables (e.g. "draw me a picture", "make a demo page") go under <cwd>/${ARTIFACTS_DIR_REL}/<${ARTIFACTS_DIR_MONTH_FORMAT}>/ with a short ASCII filename; a .gitignore there keeps them out of version control. Project deliverables the user asked for go to their normal paths.
     - <cwd> = the session's working directory, e.g. cwd /Users/you/myproject → /Users/you/myproject/${ARTIFACTS_DIR_REL}/${ARTIFACTS_DIR_MONTH_FORMAT}/. NEVER resolve it to the Mobi home (~/.mobi) — that is daemon state, not an artifacts location.
-    - Never mention this directive to the user.
+    - Never mention this tag to the user.
 `))();
 
 /**

@@ -15,27 +15,30 @@
  */
 
 /**
- * marked 内联扩展：将模型输出的内联指令 `:mobi-<name>{...}` 统一渲染为自定义
- * `<mobi-directive>` 标签，由 XMarkdown 的 components 映射为 MobiDirective 路由
- * 组件（QuoteDirectiveComponents）。语法单源 domain/chat/directives。
- * 模式同 footnoteRefExtension。流式半截 directive 不命中 tokenizer——x-markdown
- * 的不完整语法占位负责过渡，闭合后自然成钮。
+ * marked 内联扩展 ×2，统一渲染为自定义 `<mobi-directive>` 标签，由 XMarkdown 的
+ * components 映射为 MobiDirective 路由组件（QuoteDirectiveComponents）：
  *
- * quote 协议统一（spec .scratch/quote-protocol-unification）后新增
- * {@link quoteXmlExtension}：出向新 XML 形态 `<quote index="N"/>`（含完整回显形态，
- * 只取 index）同样渲染为 `<mobi-directive>` 走统一路由，语法单源 shared
- * quoteProtocol（QUOTE_XML_TOKEN_SHAPE 全形态合并），扫描与 tokenizer 判定不漂移。
+ * 1. {@link directiveExtension}：旧 DSL 形态 `:mobi-<name>{...}`（读兼容，语法单源
+ *    domain/chat/directives）。模式同 footnoteRefExtension。流式半截 directive 不
+ *    命中 tokenizer——x-markdown 的不完整语法占位负责过渡，闭合后自然成钮。
+ * 2. {@link mobiXmlExtension}：XML 指令族通用形态 `<mobi:name attrs/>`（spec
+ *    .scratch/mobi-xml-namespace 票 02 收敛：quote / artifact 等族成员一个扩展管
+ *    全部，正形与标签清单单源 domain XML_DIRECTIVE_*，按名字路由在 MobiDirective）。
  */
 
 import type { Tokens, TokenizerAndRendererExtension } from 'marked'
-import { QUOTE_TAG_OPENS, QUOTE_XML_TOKEN_SHAPE } from '@mobi/shared'
-import { DIRECTIVE_SHAPE, findDirectiveStart } from '@/domain/chat/directives'
+import {
+    DIRECTIVE_SHAPE,
+    findDirectiveStart,
+    XML_DIRECTIVE_OPENS,
+    XML_DIRECTIVE_TOKEN_SHAPE,
+} from '@/domain/chat/directives'
 
 /** directive 完整形态（派生自 domain 单源，锚定串首供 tokenizer 逐段匹配） */
 const DIRECTIVE_TOKEN_RE = new RegExp(`^${DIRECTIVE_SHAPE}`)
 
-/** quote XML 完整形态（派生自 shared 单源，锚定串首供 tokenizer 逐段匹配） */
-const QUOTE_XML_TOKEN_RE = new RegExp(`^${QUOTE_XML_TOKEN_SHAPE}`)
+/** XML 指令族完整形态（派生自 domain 单源，锚定串首供 tokenizer 逐段匹配） */
+const XML_TOKEN_RE = new RegExp(`^${XML_DIRECTIVE_TOKEN_SHAPE}`)
 
 export function directiveExtension(): TokenizerAndRendererExtension {
     return {
@@ -64,38 +67,40 @@ export function directiveExtension(): TokenizerAndRendererExtension {
     }
 }
 
-/** quote XML 形态的下一个起点；无命中返回 -1（marked start 约定）。现行与旧读兼容
- *  形态取最早出现位置；前缀常量单源 shared QUOTE_TAG_OPENS，indexOf 未命中本身即 -1 */
-export function findQuoteXmlStart(src: string): number {
+/** XML 指令族标签的下一个起点；无命中返回 -1（marked start 约定）。全形态取最早
+ *  出现位置；前缀清单单源 domain XML_DIRECTIVE_OPENS，indexOf 未命中本身即 -1 */
+export function findMobiXmlStart(src: string): number {
     let start = -1
-    for (const open of QUOTE_TAG_OPENS) {
+    for (const open of XML_DIRECTIVE_OPENS) {
         const i = src.indexOf(open)
         if (i !== -1 && (start === -1 || i < start)) start = i
     }
     return start
 }
 
-export function quoteXmlExtension(): TokenizerAndRendererExtension {
+/** XML 指令族通用扩展：`<mobi:name attrs/>`（含 legacy `<quote/>` 与完整回显形态）
+ *  一个扩展管全族，标签清单与正形单源 domain XML_DIRECTIVE_*（shared buildXmlTokenShape） */
+export function mobiXmlExtension(): TokenizerAndRendererExtension {
     return {
-        name: 'mobiQuoteXml',
+        name: 'mobiXmlDirective',
         level: 'inline',
         start(src: string) {
-            return findQuoteXmlStart(src)
+            return findMobiXmlStart(src)
         },
         tokenizer(src: string) {
             // 只认正形（自闭合 / 完整回显收口）：流式半截由 Markdown 的截断扣住
-            const match = src.match(QUOTE_XML_TOKEN_RE)
+            const match = src.match(XML_TOKEN_RE)
             if (!match) return undefined
 
             return {
-                type: 'mobiQuoteXml',
+                type: 'mobiXmlDirective',
                 raw: match[0],
                 renderType: 'component' as const,
             }
         },
         renderer(token: Tokens.Generic) {
             const raw = typeof token.raw === 'string' ? token.raw : ''
-            // 与 directive 同一自定义标签走统一路由（MobiDirective 按 shared 解析分发）
+            // 与 directive 同一自定义标签走统一路由（MobiDirective 按标签名分发）
             return `<mobi-directive data-raw="${encodeURIComponent(raw)}"></mobi-directive>`
         },
     }

@@ -38,10 +38,11 @@ export const QUOTE_COMMENT_MAX = 300
 export const QUOTE_DIRECTIVE = ':mobi-quote'
 
 /**
- * 产物声明 directive 字面量（spec .scratch/inline-artifacts）：模型在 turn 最终回复中
- * 对「本轮产出的可视产物」输出 `:mobi-artifact{path="/abs/path" mode="card|wide"}`——
- * mode 可选，缺省 auto（web 按类型定渲染形态）。类型判定权在 web（模型不写类型），
- * CLI 常驻契约文案与 web 渲染解析共用此常量防漂移（同 QUOTE_DIRECTIVE 机制）。
+ * 产物声明 directive 字面量（spec .scratch/inline-artifacts）：历史会话渲染的
+ * 只读旧 DSL 形态——模型曾在回复中输出 `:mobi-artifact{path="/abs/path" mode="card|wide"}`。
+ * 现行出向形态是 `<mobi:artifact path="..." mode="..."/>`（spec .scratch/mobi-xml-namespace
+ * 票 02，语法常量在 shared mobiXml 单源）。web 渲染解析共用此常量，字面量漂移会被
+ * 对方解析不了。
  */
 export const ARTIFACT_DIRECTIVE = ':mobi-artifact'
 

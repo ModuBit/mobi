@@ -27,10 +27,16 @@
  */
 
 import {
-    dedupeQuoteXmlText,
-    hasQuoteXmlTag,
+    ARTIFACT_TAG_NS,
+    artifactDedupeKey,
+    buildXmlTokenShape,
+    dedupeXmlTagText,
+    hasXmlTagOpen,
     parseTagAttrs,
-    truncateIncompleteQuoteXmlTail,
+    quoteDedupeKey,
+    QUOTE_TAG_NAMES,
+    truncateIncompleteXmlTagTail,
+    type XmlTagHit,
 } from '@mobi/shared'
 
 /** 指令前缀：per-type 字面量（如 shared QUOTE_DIRECTIVE）必须以此开头（namespace 防线） */
@@ -53,6 +59,33 @@ export const DIRECTIVE_LEAD = '(?:[:：][ \t]*){1,3}'
  * directive 的判定同源，语法变更只改这一处。
  */
 export const DIRECTIVE_SHAPE = `${DIRECTIVE_LEAD}mobi-([a-z][a-z0-9-]*)\\{([^{}]*)\\}`
+
+/**
+ * XML 指令族全形态清单（spec .scratch/mobi-xml-namespace 票 02）：现行
+ * `<mobi:quote>` / `<mobi:artifact>` + quote 一天龄 legacy `<quote>`（只读）。
+ * tokenizer 通用扩展、去重与流式截断共用——新增 XML 族成员只在此追加一行。
+ */
+export const XML_DIRECTIVE_TAG_NAMES: readonly string[] = [...QUOTE_TAG_NAMES, ARTIFACT_TAG_NS]
+
+/** 族标签开前缀清单（tokenizer 起点扫描 / 守卫 / 截断共用，由标签名派生禁手抄） */
+export const XML_DIRECTIVE_OPENS: readonly string[] = XML_DIRECTIVE_TAG_NAMES.map(t => `<${t}`)
+
+/** 通用 XML 扩展的 tokenizer 正形（shared 族构建器派生，锚定语义单源在 buildXmlTokenShape） */
+export const XML_DIRECTIVE_TOKEN_SHAPE = buildXmlTokenShape(XML_DIRECTIVE_TAG_NAMES)
+
+/**
+ * 族标签命中 → 去重键（null = 不参与去重，原样保留）。键的全局唯一性在此收口：
+ * quote 跨标签同 index 收敛同键（同一引用），artifact 按成员前缀隔离。成员参数
+ * 合法性单源 shared（quoteDedupeKey / artifactDedupeKey），本层零 per-成员校验知识。
+ */
+function xmlDedupeKey(hit: XmlTagHit): string | null {
+    if (hit.tagName === ARTIFACT_TAG_NS) {
+        const key = artifactDedupeKey(hit.attrs)
+        return key === null ? null : `artifact\0${key}`
+    }
+    const key = quoteDedupeKey(hit.attrs)
+    return key === null ? null : `quote\0${key}`
+}
 
 const DIRECTIVE_RE = new RegExp(DIRECTIVE_SHAPE, 'g')
 
@@ -181,7 +214,9 @@ export function dedupeDirectiveText(text: string): string {
     // （绝大多数帧零扫描成本），directive 族剔除导致坐标偏移后对去重后文本重算
     // （removedAny 帧罕见，成本可忽略）。两语法族的命中区间互不重叠，先跑哪族等价
     const dedupeXml = (t: string): string =>
-        hasQuoteXmlTag(t) ? dedupeQuoteXmlText(t, codeRangesOf(t)) : t
+        hasXmlTagOpen(t, XML_DIRECTIVE_OPENS)
+            ? dedupeXmlTagText(t, XML_DIRECTIVE_TAG_NAMES, xmlDedupeKey, codeRangesOf(t))
+            : t
     // 快速路径单源：findDirectiveStart 的 -1 返回即「无指令」（冒号守卫 + lead 正则
     // 都在其中），此处不再手抄一份同义守卫
     if (findDirectiveStart(text) === -1) return dedupeXml(text)
@@ -236,12 +271,12 @@ export function truncateIncompleteDirectiveTail(text: string): string {
 }
 
 /**
- * 流式原子揭示的族组合入口：两个语法族（旧 directive / quote XML）的尾巴截断
- * 一次收口——调用方（Markdown）只见一个函数，族增减不再触碰 UI 层。嵌套顺序：
+ * 流式原子揭示的族组合入口：两条语法通道（旧 directive DSL / XML 指令族）的尾巴
+ * 截断一次收口——调用方（Markdown）只见一个函数，族增减不再触碰 UI 层。嵌套顺序：
  * directive 族先截（其尾巴不含 XML 标签，两族互不干扰）。
  */
 export function truncateIncompleteMarkerTails(text: string): string {
-    return truncateIncompleteQuoteXmlTail(truncateIncompleteDirectiveTail(text))
+    return truncateIncompleteXmlTagTail(truncateIncompleteDirectiveTail(text), XML_DIRECTIVE_OPENS)
 }
 
 /**

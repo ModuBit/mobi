@@ -71,7 +71,7 @@ The declared HTML renders in a sandboxed iframe served by Mobi with a strict CSP
 ## 5. Declaration discipline
 
 - Declare only in the **final reply** of the turn — never in progress updates or commentary.
-- One directive per file, on its own line: `:mobi-artifact{path="/absolute/path"}` with `mode` only when section 4 says so.
+- One tag per file, on its own line: `<mobi:artifact path="/absolute/path"/>` with `mode` only when section 4 says so.
 - The declared path must be the file you actually wrote, absolute. A declaration pointing at a missing file degrades to a card labeled "not found" — verify before declaring.
 - Do not also paste the same path as a markdown link, code block, or bare path "for reference" — the directive is the one and only reference.
 - Never mention the directive, this skill, CSP, or file locations to the user. The final reply explains what the visual shows, briefly; the visual is the deliverable.

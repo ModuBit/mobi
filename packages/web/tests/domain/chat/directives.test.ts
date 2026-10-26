@@ -26,6 +26,7 @@ import {
     parseDirectiveHits,
     registerDirective,
     truncateIncompleteDirectiveTail,
+    truncateIncompleteMarkerTails,
 } from '@/domain/chat/directives'
 
 describe('parseDirectiveAttrs', () => {
@@ -185,5 +186,33 @@ describe('truncateIncompleteDirectiveTail（drip 原子揭示：未闭合尾巴�
     it('非指令的冒号文本不受影响', () => {
         const text = '比例 3:1 与时间 12:30'
         expect(truncateIncompleteDirectiveTail(text)).toBe(text)
+    })
+})
+
+describe('dedupeDirectiveText（artifact XML 形态，mobi-xml-namespace 票 02）', () => {
+    const a = (p: string, mode?: string) => `<mobi:artifact path="${p}"${mode ? ` mode="${mode}"` : ''}/>`
+
+    it('同 path 只留首个；不同 path 都保留', () => {
+        expect(dedupeDirectiveText(`A ${a('/x.png')} B ${a('/x.png')} C`)).toBe(`A ${a('/x.png')} B  C`)
+        expect(dedupeDirectiveText(`${a('/x.png')}${a('/y.png')}`)).toBe(`${a('/x.png')}${a('/y.png')}`)
+    })
+
+    it('quote 与 artifact 键空间隔离：index 与 path 同值不互删', () => {
+        const text = '<mobi:quote index="1"/><mobi:artifact path="1"/>'
+        expect(dedupeDirectiveText(text)).toBe(text)
+    })
+
+    it('非法命中（缺 path）不参与去重，原样保留', () => {
+        const text = `${a('/x.png')}<mobi:artifact mode="card"/>`
+        expect(dedupeDirectiveText(text)).toBe(text)
+    })
+})
+
+describe('truncateIncompleteMarkerTails（artifact XML 尾巴扣住，票 02）', () => {
+    it('半截 artifact 开标签尾巴扣住；完整自闭合/回显不扣', () => {
+        expect(truncateIncompleteMarkerTails('图 <mobi:artifact path="/ab')).toBe('图 ')
+        expect(truncateIncompleteMarkerTails('图 <mobi:artifact path="/a.png">回显中')).toBe('图 ')
+        const done = '图 <mobi:artifact path="/a.png"/> 与 <mobi:quote index="1"/>'
+        expect(truncateIncompleteMarkerTails(done)).toBe(done)
     })
 })

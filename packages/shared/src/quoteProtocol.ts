@@ -35,17 +35,22 @@
  */
 
 import type { UserContentBlock, UserQuoteBlock } from './userContentSchema'
+import {
+    MOBI_XML_NS,
+    MOBI_XML_OPEN,
+    parseTagAttrs,
+    buildXmlTokenShape,
+    dedupeXmlTagText,
+    hasXmlTagOpen,
+    scanXmlTagHits,
+    truncateIncompleteXmlTagTail,
+} from './mobiXml'
+
+// 族通用原语已上移 mobiXml（票 02）：此处 re-export 维持 quote 语义层既有引用面
+export { MOBI_XML_NS, MOBI_XML_OPEN, parseTagAttrs }
+
 /** quote 基础标签名（无命名空间——仅作旧形态读兼容的基名，写路径一律用 {@link QUOTE_TAG_NS}） */
 export const QUOTE_XML_TAG = 'quote'
-
-/**
- * 指令族 XML 命名空间（spec .scratch/mobi-xml-namespace）：所有内联指令的 XML 标签
- * 带此前缀——与模型正文里自然产出的泛 XML/HTML 标签碰撞免疫（泛型名如 `<quote>` 在
- * 讨论 XML 本身时会误命中）；命名空间前缀（xsl:/fb: 形态）训练语料海量，模型不陌生。
- */
-export const MOBI_XML_NS = 'mobi:'
-/** 族标签开前缀 `<mobi:`——新形态热路径守卫的单闸字面量（禁手抄） */
-export const MOBI_XML_OPEN = `<${MOBI_XML_NS}`
 
 /** quote 现行标签名（带命名空间，写路径唯一形态） */
 export const QUOTE_TAG_NS = `${MOBI_XML_NS}${QUOTE_XML_TAG}`
@@ -62,23 +67,11 @@ export const QUOTE_TAG_OPENS: readonly string[] = QUOTE_TAG_NAMES.map(t => `<${t
 
 /** 文本含任一 quote 标签形态的快速守卫（去重/保护区/截断共用热路径闸） */
 export function hasQuoteXmlTag(text: string): boolean {
-    return QUOTE_TAG_OPENS.some(open => text.includes(open))
+    return hasXmlTagOpen(text, QUOTE_TAG_OPENS)
 }
 
-/** 单标签完整正形（无 g 标志的源串）：自闭合 `<tag …/>` 或完整回显 `<tag …>…</tag>`。
- *  attrs 段不含 `>`；attrs 必须懒量词（`[^>]*?`）：贪婪会把自闭合尾部的 `/` 吃进
- *  attrs、随后以开放标签分支懒吞到下一个闭合标签——同文本后随回显形态时自闭合命中
- *  被整体污染（2026-10-26 E2E 实锤）。懒量词让 `/>` 分支优先在自闭合处命中。 */
-const xmlTagShape = (tag: string): string =>
-    `<${tag}\\b([^>]*?)(?:/>|>([\\s\\S]*?)</${tag}>)`
-
-/** 全形态合并的 tokenizer 正形（外层整组包裹——marked 扩展 `^` 锚定派生用；
- *  注意不能裸 join：`^(?:A)|(?:B)` 的 `^` 只锚定第一分支，第二分支未锚定会让
- *  tokenizer 在非 src 起点命中、按 raw 推进时丢失前置文本） */
-export const QUOTE_XML_TOKEN_SHAPE = `(?:${QUOTE_TAG_NAMES.map(t => `(?:${xmlTagShape(t)})`).join('|')})`
-
-/** 各形态扫描正则（g 标志，执行态共享——每次使用前重置 lastIndex） */
-const QUOTE_TAG_RES = QUOTE_TAG_NAMES.map(t => new RegExp(xmlTagShape(t), 'g'))
+/** 全形态合并的 tokenizer 正形（外层整组包裹的锚定语义单源在族模块 buildXmlTokenShape） */
+export const QUOTE_XML_TOKEN_SHAPE = buildXmlTokenShape(QUOTE_TAG_NAMES)
 
 /**
  * index 属性语义单源：一基正整数十进制串，规范为数字（"01" 即 1——同一编号的
@@ -102,22 +95,7 @@ export interface QuoteOutboundHit {
     end: number
 }
 
-/** attrs 值允许的引号：直引号 + 中文弯引号（模型中文语境输出易带弯引号，容错而非降级）。
- *  值不含引号字符，协议不定义转义。 */
-const QUOTE_XML_ATTR_RE = /([a-zA-Z][\w-]*)\s*=\s*["“”]([^"“”]*)["“”]/g
-
-/**
- * attrs 串 → 键值表（`key="val"` 空格分隔；值不含引号，协议不定义转义；同名后者覆盖）。
- * 引号容错集（直引号 + 中文弯引号——模型中文语境输出易带弯引号，容错而非降级）与
- * 键名字符集是协议级决策，XML 族与 web 旧 directive 族共用本实现，禁止再抄一份。
- */
-export function parseTagAttrs(raw: string): Record<string, string> {
-    const attrs: Record<string, string> = {}
-    for (const m of raw.matchAll(QUOTE_XML_ATTR_RE)) {
-        attrs[m[1]!] = m[2]!
-    }
-    return attrs
-}
+/** attrs 串 → 键值表：族通用实现单源在 mobiXml.parseTagAttrs（本模块 re-export） */
 
 /**
  * 出向解析：模型回复文本 → 引用命中序列（按出现顺序，跨形态合并）。
@@ -126,28 +104,33 @@ export function parseTagAttrs(raw: string): Record<string, string> {
  * 不产出命中——半截由流式截断扣住（`truncateIncompleteQuoteXmlTail`），闭合帧
  * 一次性完整进入渲染。index 非法（伪造/缺字段/"0"）不产出命中，原文诚实降级。
  * 读兼容：一天龄旧形态 `<quote/>` 与现行 `<mobi:quote/>` 同等解析，同 index 同引用。
+ * 扫描实现走族通用 {@link scanXmlTagHits}（quote 语义 = 标签族 + index 合法性过滤）。
  */
 export function parseQuoteXmlHits(text: string): QuoteOutboundHit[] {
-    // 快速路径：绝大多数正文不含任一标签前缀，免整串正则（渲染热路径每帧调用）
     if (!hasQuoteXmlTag(text)) return []
     const hits: QuoteOutboundHit[] = []
-    for (const re of QUOTE_TAG_RES) {
-        re.lastIndex = 0
-        for (let m = re.exec(text); m; m = re.exec(text)) {
-            const index = parseQuoteIndexAttr(parseTagAttrs(m[1] ?? '').index)
-            if (index === null) continue
-            hits.push({ index, raw: m[0], start: m.index, end: m.index + m[0].length })
-        }
+    for (const hit of scanXmlTagHits(text, QUOTE_TAG_NAMES)) {
+        const index = parseQuoteIndexAttr(hit.attrs.index)
+        if (index === null) continue
+        hits.push({ index, raw: hit.raw, start: hit.start, end: hit.end })
     }
-    // 跨形态命中按原文位置归并（两形态标签不互相嵌套，区间无重叠）
-    return hits.sort((a, b) => a.start - b.start)
+    return hits
+}
+
+/** quote 去重键 = 规范化一基 index；非法（伪造/缺字段/"0"）→ null 不参与去重。
+ *  族级去重（web directives 混排 quote+artifact 单趟）与本模块 {@link dedupeQuoteXmlText}
+ *  共用本判定，禁止消费方私写。 */
+export function quoteDedupeKey(attrs: Record<string, string>): string | null {
+    const index = parseQuoteIndexAttr(attrs.index)
+    return index === null ? null : String(index)
 }
 
 /**
  * 出向去重：同 index 只保留首次出现，其余从文本整体摘除。输入变化时输出保持
  * 前缀稳定（后来的重复只会让尾部更短）——与流式渲染的 append-only 假设兼容。
  * 非法命中不参与去重（原样保留）；旧 directive 的去重走 web 既有注册表管线
- * （含前缀变体容错），两语法族各自去重、互不跨族合并。
+ * （含前缀变体容错），两语法族各自去重、互不跨族合并。实现委托族通用
+ * {@link dedupeXmlTagText}（quote 语义 = 标签族 + 本模块去重键）。
  *
  * protectedRanges（code-review #3）：调用方标出的「协议无权改写」区间（如 markdown
  * 代码围栏/行内代码——代码示例里的 `<quote/>` 是内容不是协议）。完全落在保护区内的
@@ -158,66 +141,17 @@ export function dedupeQuoteXmlText(
     text: string,
     protectedRanges?: readonly Readonly<{ start: number; end: number }>[],
 ): string {
-    if (!hasQuoteXmlTag(text)) return text
-    const seen = new Set<number>()
-    let out = ''
-    let cursor = 0
-    let removedAny = false
-    for (const hit of parseQuoteXmlHits(text)) {
-        if (protectedRanges?.some(r => hit.start >= r.start && hit.end <= r.end)) continue
-        if (seen.has(hit.index)) {
-            out += text.slice(cursor, hit.start)
-            cursor = hit.end
-            removedAny = true
-            continue
-        }
-        seen.add(hit.index)
-    }
-    // 无剔除则原样返回（避免无谓的字符串重建，历史消息每帧渲染都走这里）
-    if (!removedAny) return text
-    return out + text.slice(cursor)
-}
-
-/** 未闭合尾巴：任一形态开标签已出现但 `>` 未到达——只在**串尾**命中，正文里
- *  带后随 `>` 的形近文本（讨论语法本身）不受影响。
- *  注意 alternation 的 `<` 必须逐分支携带（`(?:<a|<b)`）：括在组外会变成
- *  `<a|b`（第二分支成裸标签名），`:quote` 尾部与正文的 'quote' 单词都会误命中 */
-const TAG_OPEN_ALT = QUOTE_TAG_OPENS.join('|')
-const INCOMPLETE_QUOTE_XML_TAIL_RE = new RegExp(`(?:${TAG_OPEN_ALT})\\b[^>]*$`)
-
-/** 自闭合完整形态（开标签含尾斜杠已到 `>`）：已完整即揭示，不参与尾巴扣住 */
-const SELFCLOSING_OPEN_RE = new RegExp(`^(?:${TAG_OPEN_ALT})\\b[^>]*\\/>`)
-
-/** 最后一个 quote 标签起点扫描（`\b` 单源——词边界语义与正形单源，`<quoted`
- *  形近词不算）；无则 -1。单趟前向 matchAll，无标签文本一次扫描即出 */
-const LAST_QUOTE_TAG_OPEN_RE = new RegExp(`(?:${TAG_OPEN_ALT})\\b`, 'g')
-function lastQuoteTagOpen(text: string): number {
-    let open = -1
-    for (const m of text.matchAll(LAST_QUOTE_TAG_OPEN_RE)) open = m.index
-    return open
+    return dedupeXmlTagText(text, QUOTE_TAG_NAMES, hit => quoteDedupeKey(hit.attrs), protectedRanges)
 }
 
 /**
  * 流式原子揭示：drip 半截的开标签尾巴扣住不进渲染（x-markdown 的流式 recognizer
  * 不覆盖自定义扩展，半截 Text commit 后闭合不重识别）。仅扣串尾，闭合帧一次性
  * 完整进入渲染；模型真输出无闭合字面量时流结束诚实呈现（静态路径不截断）。
- *
- * 两类尾巴（code-review #1：完整回显形态的半截同样会以 Text commit 裸奔）：
- * 1. 开标签未到 `>`（`<quote index="`）；
- * 2. 开标签 `>` 已到、闭合 `</quote>` 未到（`<quote index="1">被回显的内`）——
- *    从最后一个未闭合标签起点整段扣住。完整自闭合（已揭示）与已闭合回显不扣；
- *    形近词（`<quoted`）与散文里的完整闭合对不受影响。
+ * 实现委托族通用 {@link truncateIncompleteXmlTagTail}（quote 语义 = 标签前缀族）。
  */
 export function truncateIncompleteQuoteXmlTail(text: string): string {
-    // 单次扫描守卫：无标签前缀的帧（流式 drip 绝大多数）一次 matchAll 即早退，
-    // 免掉「正则全串 + lastIndexOf 双扫」（渲染热路径每帧调用）
-    const open = lastQuoteTagOpen(text)
-    if (open === -1) return text
-    const m = text.match(INCOMPLETE_QUOTE_XML_TAIL_RE)
-    if (m) return text.slice(0, m.index)
-    const rest = text.slice(open)
-    if (SELFCLOSING_OPEN_RE.test(rest) || QUOTE_TAG_NAMES.some(t => rest.includes(`</${t}>`))) return text
-    return text.slice(0, open)
+    return truncateIncompleteXmlTagTail(text, QUOTE_TAG_OPENS)
 }
 
 /**

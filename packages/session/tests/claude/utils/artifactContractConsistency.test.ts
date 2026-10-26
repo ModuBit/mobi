@@ -30,6 +30,7 @@ import {
   ARTIFACTS_DIR_MONTH_FORMAT,
   ARTIFACTS_DIR_REL,
   ARTIFACT_DIRECTIVE,
+  ARTIFACT_TAG_NS,
   ARTIFACT_HTML_INLINE_LIMIT_MB,
   MOBI_THEME_VAR_LIST,
 } from '@mobi/shared';
@@ -43,11 +44,13 @@ const SKILL_MD = readFileSync(
 );
 
 describe('产物声明协议三方一致性（shared 常量 ↔ 常驻契约 ↔ SKILL.md）', () => {
-  it('wire 字面量三方同源：契约与 skill 的声明句式都由 ARTIFACT_DIRECTIVE 拼出', () => {
+  it('wire 字面量三方同源：契约与 skill 的声明句式都是 <mobi:artifact/> XML 形态（票 02 换形）', () => {
     // 契约：模板字面量逐字锁死（模型照抄输出 = web 端解析的 wire 格式）
-    expect(systemPrompt).toContain(`${ARTIFACT_DIRECTIVE}{path="/absolute/path"}`);
+    expect(systemPrompt).toContain(`<${ARTIFACT_TAG_NS} path="/absolute/path"/>`);
     // skill：声明句式同一字面量（模型无 skill 时靠契约、有 skill 时靠细则，两者不能分叉）
-    expect(SKILL_MD).toContain(`${ARTIFACT_DIRECTIVE}{path="`);
+    expect(SKILL_MD).toContain(`<${ARTIFACT_TAG_NS} path="`);
+    // 旧 DSL 字面量在两份教学文本中都不再作为出向形态出现（读兼容只在解析侧）
+    expect(systemPrompt).not.toContain(`${ARTIFACT_DIRECTIVE}{`);
   });
 
   it('产物目录模板两份文本同源：ARTIFACTS_DIR_REL + 月份段格式', () => {

@@ -30,8 +30,8 @@ import { useTranslation } from 'react-i18next'
 import { Quote } from 'lucide-react'
 import type { ComponentProps } from '@ant-design/x-markdown'
 import type { UserQuoteBlock } from '@mobi/shared'
-import { parseDirectiveHits, parseDirectiveParams } from '@/domain/chat/directives'
-import { parseQuoteXmlHits } from '@mobi/shared'
+import { ARTIFACT_TAG_NS, parseArtifactTagAttrs, parseQuoteIndexAttr, scanXmlTagHits } from '@mobi/shared'
+import { parseDirectiveHits, parseDirectiveParams, XML_DIRECTIVE_TAG_NAMES } from '@/domain/chat/directives'
 import { QuoteLocateFn, quoteOffsetsOf } from '@/core/lib/quoteLocate'
 import { QUOTE_DIRECTIVE_NAME } from '@/domain/chat/quoteDirectives'
 import { ARTIFACT_DIRECTIVE_NAME } from '@/domain/chat/artifactDirectives'
@@ -141,9 +141,9 @@ const DIRECTIVE_COMPONENTS: Record<string, FC<Record<string, string> & { childre
 
 /**
  * 内联指令路由（XMarkdown components 映射 `mobi-directive`，该标签唯一生产方是
- * directivePlugin 的两个扩展：旧 directive 形态 + quote 新 XML 形态，恒带 data-raw）：
- * 解码原文 → 旧 directive 按注册表路由 → 新 XML 形态按 shared 解析出 index 走
- * 引用标注；未注册指令与非法形态按原文诚实降级，不吞模型输出。
+ * directivePlugin 的两个扩展：旧 directive DSL 形态 + XML 指令族通用形态，恒带
+ * data-raw）：解码原文 → DSL 按注册表路由 → XML 按标签名路由（mobi:quote → 引用
+ * 标注、mobi:artifact → 产物视图）；未注册指令与非法形态按原文诚实降级，不吞模型输出。
  */
 export const MobiDirective: FC<ComponentProps<{ 'data-raw'?: string }>> = ({ 'data-raw': dataRaw }) => {
     const raw = decodeURIComponent(dataRaw ?? '')
@@ -158,9 +158,17 @@ export const MobiDirective: FC<ComponentProps<{ 'data-raw'?: string }>> = ({ 'da
             return <Component {...hit.attrs}>{raw}</Component>
         }
     }
-    // 协议统一出向（spec .scratch/quote-protocol-unification 票 01）：`<quote index="N"/>`
-    // 自闭合 / 完整回显形态（只取 index）；非法（伪造/缺字段/"0"）不产出命中，落原文降级
-    const xmlHit = parseQuoteXmlHits(raw)[0]
-    if (xmlHit) return <QuoteDirectiveMarker index={String(xmlHit.index)}>{raw}</QuoteDirectiveMarker>
+    // XML 指令族（spec .scratch/mobi-xml-namespace 票 02）：按标签名路由，参数合法性
+    // 单源 shared（quoteDedupeKey 族 parseQuoteIndexAttr / artifact parseArtifactTagAttrs）
+    const xmlHit = scanXmlTagHits(raw, XML_DIRECTIVE_TAG_NAMES)[0]
+    if (xmlHit) {
+        if (xmlHit.tagName === ARTIFACT_TAG_NS) {
+            const params = parseArtifactTagAttrs(xmlHit.attrs)
+            if (params === null) return <span>{raw}</span>
+            return <ArtifactDirectiveView path={params.path} mode={params.mode}>{raw}</ArtifactDirectiveView>
+        }
+        const index = parseQuoteIndexAttr(xmlHit.attrs.index)
+        if (index !== null) return <QuoteDirectiveMarker index={String(index)}>{raw}</QuoteDirectiveMarker>
+    }
     return <span>{raw}</span>
 }

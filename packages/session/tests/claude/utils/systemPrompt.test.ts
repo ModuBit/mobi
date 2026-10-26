@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { systemPrompt, buildAppendSystemPrompt } from '@/claude/utils/systemPrompt';
 import { OPENUI_CORE_PROMPT } from '@/claude/utils/openuiCorePrompt.generated';
-import { buildActionUri, MOBI_THEME_VAR_LIST } from '@mobi/shared';
+import { ARTIFACT_TAG_NS, buildActionUri, MOBI_THEME_VAR_LIST } from '@mobi/shared';
 import { projectPath } from '@mobi/node-core/projectPath';
 
 /** 无用户自定义时的完整追加内容（base + openui 核心段，票 02 注入 / 票 08 分层后形状） */
@@ -77,8 +77,8 @@ describe('产物声明契约（inline-artifacts ticket 04）', () => {
   // 构建，同一断言覆盖两模式——契约加在源头常量 BASE_SYSTEM_PROMPT，双模式天然同源
   const prompt = buildAppendSystemPrompt({});
 
-  it('含 :mobi-artifact 声明指令的 wire 格式（逐字锁死，模型照抄输出）', () => {
-    expect(prompt).toContain(':mobi-artifact{path="/absolute/path"}');
+  it('含 <mobi:artifact> 声明标签的 wire 格式（逐字锁死，模型照抄输出；mobi-xml-namespace 票 02）', () => {
+    expect(prompt).toContain(`<${ARTIFACT_TAG_NS} path="/absolute/path"/>`);
     // mode 枚举：card（复杂 HTML/应用/dev server）与 wide（全宽 mockup）
     expect(prompt).toContain('mode="card"');
     expect(prompt).toContain('mode="wide"');
@@ -95,7 +95,7 @@ describe('产物声明契约（inline-artifacts ticket 04）', () => {
   it('含边界约束：静态图走 mermaid、仅下载文件不声明、不向用户提及协议', () => {
     expect(prompt).toMatch(/mermaid/i);
     expect(prompt).toMatch(/do not declare/i);
-    expect(prompt).toMatch(/Never mention this directive to the user/i);
+    expect(prompt).toMatch(/Never mention this tag to the user/i);
   });
 
   it('既有 base 内容不受契约追加影响', () => {

@@ -23,7 +23,7 @@ import Latex, { containsLatex, ensureKatexLoaded } from '@/ui/base/markdown/late
 import slashCommand from '@/ui/base/markdown/slashCommandPlugin'
 import mention from '@/ui/base/markdown/mentionPlugin'
 import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from '@/ui/base/markdown/footnotePlugin'
-import { directiveExtension, quoteXmlExtension } from '@/ui/base/markdown/directivePlugin'
+import { directiveExtension, mobiXmlExtension } from '@/ui/base/markdown/directivePlugin'
 import { truncateIncompleteMarkerTails } from '@/domain/chat/directives'
 import { MobiDirective } from '@/ui/shared/quoteDirectiveComponents'
 import { isXMarkdownDebugEnabled } from '@/core/lib/xMarkdownDebug'
@@ -69,7 +69,7 @@ const FOOTNOTE_REF_EXTENSIONS = [footnoteRefExtension()]
 
 /** 内联指令扩展（`:mobi-*{...}` 与 quote 新 XML 形态 `<quote index="N"/>` → mobi-directive
  *  标签；MobiDirective 按指令名/shared 解析路由渲染组件） */
-const DIRECTIVE_EXTENSIONS = [directiveExtension(), quoteXmlExtension()]
+const DIRECTIVE_EXTENSIONS = [directiveExtension(), mobiXmlExtension()]
 
 /** mobi URI scheme 前缀（scheme 大小写不敏感，按 URI 惯例归一后识别；scheme 权威声明在 shared actionUri） */
 const MOBI_URI_PREFIX = `${MOBI_URI_SCHEME}://`

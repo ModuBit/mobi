@@ -15,50 +15,46 @@
  */
 
 /**
- * 产物声明 directive 语义层（spec .scratch/inline-artifacts 票 01）
+ * 产物声明 directive 语义层（spec .scratch/inline-artifacts 票 01 + mobi-xml-namespace 票 02）
  *
- * 模型在 turn 最终回复输出 `:mobi-artifact{path="/abs/path" mode="card|wide"}`（字面量
- * 单源 shared ARTIFACT_DIRECTIVE，CLI 常驻契约文案共用）。语法/扫描/去重管线单源
- * domain/chat/directives，本模块注册 artifact 的参数语义与去重键，并单源收口
+ * 模型在 turn 最终回复输出产物声明：现行 XML 形态 `<mobi:artifact path="..." mode="..."/>`
+ * 或旧 DSL `:mobi-artifact{path=...}`（读兼容，字面量单源 shared ARTIFACT_DIRECTIVE）。
+ * 参数语义（path 必填、mode 枚举、去重键 path）单源 shared parseArtifactTagAttrs——
+ * XML 出向解析、DSL 注册表、渲染入口三方共用，本模块注册 DSL 项并单源收口
  * 「扩展名 → 产物类型」白名单与 inline 大小上限——渲染层（卡片/媒体/HTML）只消费
  * 判定结果，不各自罗列扩展名（Quality Issues 纪律：判定一处，引用多点）。
  * 全部纯函数、单 pass。
  */
 
-import { ARTIFACT_DIRECTIVE, ARTIFACT_HTML_INLINE_LIMIT_MB, VIZ_FRAGMENT_MAX_BYTES } from '@mobi/shared'
+import {
+    ARTIFACT_DIRECTIVE,
+    ARTIFACT_HTML_INLINE_LIMIT_MB,
+    VIZ_FRAGMENT_MAX_BYTES,
+    parseArtifactTagAttrs,
+    type ArtifactMode,
+} from '@mobi/shared'
 import { DIRECTIVE_PREFIX, registerDirective } from './directives'
 import type { DirectiveDefinition } from './directives'
 
 /** artifact 指令在注册表中的名字（由 shared 字面量派生，ui 路由表按此寻址） */
 export const ARTIFACT_DIRECTIVE_NAME = ARTIFACT_DIRECTIVE.slice(DIRECTIVE_PREFIX.length)
 
-/** 展示意愿 mode：`card` 强制产物卡；`wide` 仅 HTML 放宽容器；`app` = 沙箱交互 app
- *  （generative-ui 票 05：HTML inline 附加主题变量注入，与 wide 同高档）；
- *  `viz` / `viz-wide` = 可视化 fragment 档（visualize-runtime 票 02：fragment 契约 +
- *  宿主注入 --viz-* token/工具类/交互运行时，蕴含 app 的主题注入与回灌桥；
- *  `viz-wide` 再叠加 wide 高档）；缺省 = auto */
-export type ArtifactMode = 'card' | 'wide' | 'app' | 'viz' | 'viz-wide'
+export type { ArtifactMode } from '@mobi/shared'
 
 /** 声明的类型化参数。mode 非法值按缺省 auto 处理（模型输出容错优先，不因拼写降级整条声明） */
-export interface ArtifactParams {
+export type ArtifactParams = {
     path: string
     mode?: ArtifactMode
 }
 
 /**
- * artifact 指令语义：path 必填（非空字符串），mode 仅接受 card/wide/app/viz/viz-wide。
- * 非法（缺 path / 空 path）返回 null，消费方按原文诚实降级。
+ * artifact 指令语义：参数判定/去重键单源 shared parseArtifactTagAttrs / artifactDedupeKey
+ * （XML 与 DSL 两语法共用）。非法（缺 path / 空 path）返回 null，消费方按原文诚实降级。
  * 去重键 = path：同一路径一条消息只保留首次声明（同一产物不重复渲染）。
  */
-const ARTIFACT_MODES: readonly string[] = ['card', 'wide', 'app', 'viz', 'viz-wide']
-
 const ARTIFACT_DEFINITION: DirectiveDefinition<ArtifactParams> = {
     directive: ARTIFACT_DIRECTIVE,
-    parse: (attrs) => {
-        const { path, mode } = attrs
-        if (path === undefined || path.trim() === '') return null
-        return { path, mode: mode !== undefined && ARTIFACT_MODES.includes(mode) ? mode as ArtifactMode : undefined }
-    },
+    parse: parseArtifactTagAttrs,
     dedupeKey: (params) => params.path,
 }
 
