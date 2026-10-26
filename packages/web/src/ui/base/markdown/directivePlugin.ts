@@ -28,7 +28,7 @@
  */
 
 import type { Tokens, TokenizerAndRendererExtension } from 'marked'
-import { QUOTE_XML_TAG, QUOTE_XML_SHAPE } from '@mobi/shared'
+import { QUOTE_XML_OPEN, QUOTE_XML_SHAPE } from '@mobi/shared'
 import { DIRECTIVE_SHAPE, findDirectiveStart } from '@/domain/chat/directives'
 
 /** directive 完整形态（派生自 domain 单源，锚定串首供 tokenizer 逐段匹配） */
@@ -64,11 +64,11 @@ export function directiveExtension(): TokenizerAndRendererExtension {
     }
 }
 
-/** quote XML 形态的下一个起点；无命中返回 -1（marked start 约定） */
+/** quote XML 形态的下一个起点；无命中返回 -1（marked start 约定）。前缀常量
+ *  单源 shared QUOTE_XML_OPEN，indexOf 未命中本身即 -1，无需前置 includes 守卫
+ *  （两个分支都是子串扫描，守卫只会白多扫一遍） */
 export function findQuoteXmlStart(src: string): number {
-    // 快速守卫同 findDirectiveStart：无标签前缀的文本（流式绝大多数）免 indexOf
-    if (!src.includes(`<${QUOTE_XML_TAG}`)) return -1
-    return src.indexOf(`<${QUOTE_XML_TAG}`)
+    return src.indexOf(QUOTE_XML_OPEN)
 }
 
 export function quoteXmlExtension(): TokenizerAndRendererExtension {

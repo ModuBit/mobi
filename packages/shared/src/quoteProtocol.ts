@@ -38,6 +38,10 @@ import type { UserContentBlock, UserQuoteBlock } from './userContentSchema'
 /** 出向 XML 形态标签名（与进向 `<quote index role>` 同族语法） */
 export const QUOTE_XML_TAG = 'quote'
 
+/** 标签开前缀 `<quote`——所有「文本是否含 XML 形态」的快速守卫与起点扫描的唯一字面量
+ *  （禁手抄：标签改名时守卫静默失配 = 去重/截断裸奔，正是单源要防的漂移） */
+export const QUOTE_XML_OPEN = `<${QUOTE_XML_TAG}`
+
 /**
  * XML 形态完整正形（无 g 标志的源串）：自闭合 `<quote …/>` 或完整回显
  * `<quote …>…</quote>`。attrs 段不含 `>`；web markdown tokenizer 用 `^` 锚定派生
@@ -48,7 +52,7 @@ export const QUOTE_XML_TAG = 'quote'
  * 整体污染（2026-10-26 E2E 实锤，降级矩阵场景抓出）。懒量词让 `/>` 分支在自闭合
  * 处优先命中，回显分支只在真有开标签（attrs 后直连 `>`）时到达。
  */
-export const QUOTE_XML_SHAPE = `<${QUOTE_XML_TAG}\\b([^>]*?)(?:/>|>([\\s\\S]*?)</${QUOTE_XML_TAG}>)`
+export const QUOTE_XML_SHAPE = `${QUOTE_XML_OPEN}\\b([^>]*?)(?:/>|>([\\s\\S]*?)</${QUOTE_XML_TAG}>)`
 
 /**
  * index 属性语义单源：一基正整数十进制串，规范为数字（"01" 即 1——同一编号的
@@ -72,20 +76,24 @@ export interface QuoteOutboundHit {
     end: number
 }
 
-/** attrs 值允许的引号：直引号 + 中文弯引号（模型中文语境输出易带弯引号，容错而非降级；
- *  与 web 旧指令 attrs 解析同一哲学）。值不含引号字符，协议不定义转义。 */
+/** attrs 值允许的引号：直引号 + 中文弯引号（模型中文语境输出易带弯引号，容错而非降级）。
+ *  值不含引号字符，协议不定义转义。 */
 const QUOTE_XML_ATTR_RE = /([a-zA-Z][\w-]*)\s*=\s*["“”]([^"“”]*)["“”]/g
 
-const QUOTE_XML_RE = new RegExp(QUOTE_XML_SHAPE, 'g')
-
-/** 开标签 attrs 串 → 键值表（同名后者覆盖；自闭合尾斜杠不是合法 attr，自然忽略） */
-function parseQuoteXmlAttrs(raw: string): Record<string, string> {
+/**
+ * attrs 串 → 键值表（`key="val"` 空格分隔；值不含引号，协议不定义转义；同名后者覆盖）。
+ * 引号容错集（直引号 + 中文弯引号——模型中文语境输出易带弯引号，容错而非降级）与
+ * 键名字符集是协议级决策，XML 族与 web 旧 directive 族共用本实现，禁止再抄一份。
+ */
+export function parseTagAttrs(raw: string): Record<string, string> {
     const attrs: Record<string, string> = {}
     for (const m of raw.matchAll(QUOTE_XML_ATTR_RE)) {
         attrs[m[1]!] = m[2]!
     }
     return attrs
 }
+
+const QUOTE_XML_RE = new RegExp(QUOTE_XML_SHAPE, 'g')
 
 /**
  * 出向解析：模型回复文本 → 引用命中序列（按出现顺序）。
@@ -96,11 +104,11 @@ function parseQuoteXmlAttrs(raw: string): Record<string, string> {
  */
 export function parseQuoteXmlHits(text: string): QuoteOutboundHit[] {
     // 快速路径：绝大多数正文不含标签前缀，免整串正则（渲染热路径每帧调用）
-    if (!text.includes(`<${QUOTE_XML_TAG}`)) return []
+    if (!text.includes(QUOTE_XML_OPEN)) return []
     const hits: QuoteOutboundHit[] = []
     QUOTE_XML_RE.lastIndex = 0
     for (let m = QUOTE_XML_RE.exec(text); m; m = QUOTE_XML_RE.exec(text)) {
-        const index = parseQuoteIndexAttr(parseQuoteXmlAttrs(m[1] ?? '').index)
+        const index = parseQuoteIndexAttr(parseTagAttrs(m[1] ?? '').index)
         if (index === null) continue
         hits.push({ index, raw: m[0], start: m.index, end: m.index + m[0].length })
     }
@@ -122,7 +130,7 @@ export function dedupeQuoteXmlText(
     text: string,
     protectedRanges?: readonly Readonly<{ start: number; end: number }>[],
 ): string {
-    if (!text.includes(`<${QUOTE_XML_TAG}`)) return text
+    if (!text.includes(QUOTE_XML_OPEN)) return text
     const seen = new Set<number>()
     let out = ''
     let cursor = 0
@@ -144,20 +152,18 @@ export function dedupeQuoteXmlText(
 
 /** 未闭合尾巴：`<quote` 开标签已出现但 `>` 未到达——只在**串尾**命中，正文里
  *  带后随 `>` 的形近文本（讨论语法本身）不受影响。 */
-const INCOMPLETE_QUOTE_XML_TAIL_RE = new RegExp(`<${QUOTE_XML_TAG}\\b[^>]*$`)
+const INCOMPLETE_QUOTE_XML_TAIL_RE = new RegExp(`${QUOTE_XML_OPEN}\\b[^>]*$`)
 
 /** 自闭合完整形态（开标签含尾斜杠已到 `>`）：已完整即揭示，不参与尾巴扣住 */
-const SELFCLOSING_OPEN_RE = new RegExp(`^<${QUOTE_XML_TAG}\\b[^>]*\\/>`)
-/** 最后一个 quote 标签起点（词边界校验，`<quoted` 这类形近词不算）；无则 -1 */
+const SELFCLOSING_OPEN_RE = new RegExp(`^${QUOTE_XML_OPEN}\\b[^>]*\\/>`)
+
+/** 最后一个 quote 标签起点扫描（`\b` 单源——与 SHAPE 等正则同一词边界语义，
+ *  `<quoted` 形近词不算）；无则 -1。单趟前向 matchAll，无标签文本一次扫描即出 */
+const LAST_QUOTE_TAG_OPEN_RE = new RegExp(`${QUOTE_XML_OPEN}\\b`, 'g')
 function lastQuoteTagOpen(text: string): number {
-    let open = text.lastIndexOf(`<${QUOTE_XML_TAG}`)
-    while (open >= 0) {
-        // 标签起点边界：'<quote' 之后必须是非词字符（\b 语义），否则是 <quoted 形近词
-        const next = text[open + QUOTE_XML_TAG.length + 1]
-        if (next === undefined || !/[A-Za-z0-9_]/.test(next)) return open
-        open = text.lastIndexOf(`<${QUOTE_XML_TAG}`, open - 1)
-    }
-    return -1
+    let open = -1
+    for (const m of text.matchAll(LAST_QUOTE_TAG_OPEN_RE)) open = m.index
+    return open
 }
 
 /**
@@ -172,10 +178,12 @@ function lastQuoteTagOpen(text: string): number {
  *    形近词（`<quoted`）与散文里的完整闭合对不受影响。
  */
 export function truncateIncompleteQuoteXmlTail(text: string): string {
-    const m = text.match(INCOMPLETE_QUOTE_XML_TAIL_RE)
-    if (m) return text.slice(0, m.index)
+    // 单次扫描守卫：无标签前缀的帧（流式 drip 绝大多数）一次 matchAll 即早退，
+    // 免掉「正则全串 + lastIndexOf 双扫」（渲染热路径每帧调用）
     const open = lastQuoteTagOpen(text)
     if (open === -1) return text
+    const m = text.match(INCOMPLETE_QUOTE_XML_TAIL_RE)
+    if (m) return text.slice(0, m.index)
     const rest = text.slice(open)
     if (SELFCLOSING_OPEN_RE.test(rest) || rest.includes(`</${QUOTE_XML_TAG}>`)) return text
     return text.slice(0, open)
@@ -219,12 +227,11 @@ export interface QuotePairingEntry {
  * 在队列里残留，队列长度越跑越偏。线性推导不消费、不残留。
  */
 /** 会话无引用时的共享空结果（零分配早退——web 渲染热路径每帧调用，ReadonlyMap 契约下共享安全） */
-const EMPTY_QUOTES_MAP: ReadonlyMap<string, UserQuoteBlock[]> = new Map()
+export const EMPTY_QUOTES_MAP: ReadonlyMap<string, UserQuoteBlock[]> = new Map()
 
 export function pairQuotesToReplies(entries: readonly QuotePairingEntry[]): ReadonlyMap<string, UserQuoteBlock[]> {
     const hasAnyQuote = entries.some(e => e.side === 'user' && e.blocks?.some(b => b.type === 'quote'))
     if (!hasAnyQuote) return EMPTY_QUOTES_MAP
-
     const byId = new Map<string, UserQuoteBlock[]>()
     /** uuid 索引：user 条目 nativeId → 该消息的引用（无引用消息也入索引，uuid 命中 = 空配对） */
     const byNativeId = new Map<string, UserQuoteBlock[]>()
@@ -292,18 +299,16 @@ export function buildQuoteXml(block: UserQuoteBlock, index: number): string {
  * 累积的 wrong-forms 枚举（全角冒号、`:::`、反引号包裹等）随旧协议退役；新协议的
  * 错误形态在使用中观察，不做预置教学。
  */
-export function buildQuoteAnnotationProtocol(): string {
-    return [
-        '<system-reminder>',
-        'Some `<quote>` elements in this message (role="agent") are response annotations:',
-        'excerpts the user selected from your earlier replies, optionally followed by a',
-        '<user-comment> with the user\'s question or clarification. Address every annotation',
-        'and every user comment.',
-        '',
-        'When you address an annotation, emit its self-closing form <quote index="N"/>',
-        'inline at the single most relevant point in your reply, where N is that quote\'s',
-        'one-based `index` in this message. Emit these tags only for quotes with',
-        'role="agent"; never for role="user" quotes.',
-        '</system-reminder>',
-    ].join('\n')
-}
+export const QUOTE_ANNOTATION_PROTOCOL = [
+    '<system-reminder>',
+    'Some `<quote>` elements in this message (role="agent") are response annotations:',
+    'excerpts the user selected from your earlier replies, optionally followed by a',
+    '<user-comment> with the user\'s question or clarification. Address every annotation',
+    'and every user comment.',
+    '',
+    'When you address an annotation, emit its self-closing form <quote index="N"/>',
+    'inline at the single most relevant point in your reply, where N is that quote\'s',
+    'one-based `index` in this message. Emit these tags only for quotes with',
+    'role="agent"; never for role="user" quotes.',
+    '</system-reminder>',
+].join('\n')

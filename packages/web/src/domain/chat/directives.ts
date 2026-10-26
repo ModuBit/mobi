@@ -26,7 +26,12 @@
  * 的视觉过渡，闭合后自然成钮（沿袭 quote 专属实现的行为契约）。
  */
 
-import { dedupeQuoteXmlText } from '@mobi/shared'
+import {
+    dedupeQuoteXmlText,
+    parseTagAttrs,
+    QUOTE_XML_OPEN,
+    truncateIncompleteQuoteXmlTail,
+} from '@mobi/shared'
 
 /** 指令前缀：per-type 字面量（如 shared QUOTE_DIRECTIVE）必须以此开头（namespace 防线） */
 export const DIRECTIVE_PREFIX = ':mobi-'
@@ -43,7 +48,7 @@ export const DIRECTIVE_LEAD = '(?:[:：][ \t]*){1,3}'
 
 /**
  * 通用完整形态：`[:：]…mobi-<name>{<attrs>}`——name 小写字母开头可含数字连字符，
- * attrs 为不含花括号的任意串（`key="val"` 空格分隔，见 parseDirectiveAttrs）。
+ * attrs 为不含花括号的任意串（`key="val"` 空格分隔，解析走 shared parseTagAttrs）。
  * 去重/解析与 markdown 扩展（directivePlugin）的 tokenizer 由它派生，对同一
  * directive 的判定同源，语法变更只改这一处。
  */
@@ -63,18 +68,9 @@ export function findDirectiveStart(src: string): number {
     return m?.index ?? -1
 }
 
-/** attrs 值允许的引号：直引号 + 中文弯引号（模型在中文语境输出易带弯引号，容错而非降级） */
-const ATTR_QUOTE = '["“”]'
-const ATTR_VALUE = '[^"“”]*'
-
-/** attrs 串 → 键值表（`key="val"` 空格分隔；值不含引号，协议不定义转义；同名后者覆盖） */
-export function parseDirectiveAttrs(raw: string): Record<string, string> {
-    const attrs: Record<string, string> = {}
-    for (const m of raw.matchAll(new RegExp(`([a-zA-Z][\\w-]*)\\s*=\\s*${ATTR_QUOTE}(${ATTR_VALUE})${ATTR_QUOTE}`, 'g'))) {
-        attrs[m[1]!] = m[2]!
-    }
-    return attrs
-}
+/** attrs 解析：shared parseTagAttrs 单源（引号容错/键名字符集是协议级决策，
+ *  与 quote XML 族共用，本层不再持有正则）。具名再导出供指令层契约测试锁定 */
+export const parseDirectiveAttrs = parseTagAttrs
 
 /** 单个 directive 命中：指令名 + attrs + 原文位置 */
 export interface DirectiveHit {
@@ -93,7 +89,7 @@ export function parseDirectiveHits(text: string): DirectiveHit[] {
     for (let m = DIRECTIVE_RE.exec(text); m; m = DIRECTIVE_RE.exec(text)) {
         hits.push({
             name: m[1]!,
-            attrs: parseDirectiveAttrs(m[2] ?? ''),
+            attrs: parseTagAttrs(m[2] ?? ''),
             raw: m[0],
             start: m.index,
             end: m.index + m[0].length,
@@ -143,26 +139,28 @@ export function registerDirective<P>(definition: DirectiveDefinition<P>): void {
  *  前缀稳定（后来的重复只会让尾部更短）——与流式渲染的 append-only 假设兼容，
  *  不会引发已揭示内容的重淡入。 */
 /**
- * markdown 代码区间的轻量扫描（XML 去重的保护区，review #3）：行首 ``` 围栏（含未闭合
- * 兜底到串尾）与行内 `...` 成对区间。不追求完整 CommonMark 语义（缩进围栏/波浪线围栏
- * 不支持）——堵住「代码示例里的协议字面量被静默摘除」的主路径即可，围栏语法本就少见于
- * 模型正文外的场景。只对含 `<quote` 前缀的文本调用（热路径零成本）。
+ * markdown 代码区间的轻量扫描（XML 去重的保护区，review #3）：行首 ``` / ~~~ 围栏
+ * （同标记配对，含未闭合兜底到串尾）与行内 `...` 成对区间。不追求完整 CommonMark
+ * 语义（缩进围栏不支持）——堵住「代码示例里的协议字面量被静默摘除」的主路径即可，
+ * 围栏语法本就少见于模型正文外的场景。只对含 XML 标签前缀的文本调用（热路径零成本）。
  */
+const FENCE_OPEN_RE = /^[ \t]*(```|~~~)/
 function codeRangesOf(text: string): { start: number; end: number }[] {
     const ranges: { start: number; end: number }[] = []
-    let inFence = false
+    let fenceMarker: string | undefined
     let fenceStart = 0
     let offset = 0
     for (const line of text.split('\n')) {
-        if (/^[ \t]*```/.test(line)) {
-            if (!inFence) {
-                inFence = true
+        const fence = line.match(FENCE_OPEN_RE)
+        if (fence) {
+            if (fenceMarker === undefined) {
+                fenceMarker = fence[1]
                 fenceStart = offset
-            } else {
-                inFence = false
+            } else if (fence[1] === fenceMarker) {
+                fenceMarker = undefined
                 ranges.push({ start: fenceStart, end: offset + line.length })
             }
-        } else if (!inFence) {
+        } else if (fenceMarker === undefined) {
             let i = line.indexOf('`')
             while (i !== -1) {
                 const j = line.indexOf('`', i + 1)
@@ -174,16 +172,19 @@ function codeRangesOf(text: string): { start: number; end: number }[] {
         offset += line.length + 1
     }
     // 未闭合围栏兜底：开启后的全部内容受保护（流式 drip 期间的常态形态）
-    if (inFence) ranges.push({ start: fenceStart, end: text.length })
+    if (fenceMarker !== undefined) ranges.push({ start: fenceStart, end: text.length })
     return ranges
 }
 
 export function dedupeDirectiveText(text: string): string {
+    // XML 族去重的单点出口：前缀守卫 + 代码保护区计算只在有标签前缀的帧发生
+    // （绝大多数帧零扫描成本），directive 族剔除导致坐标偏移后对去重后文本重算
+    // （removedAny 帧罕见，成本可忽略）。两语法族的命中区间互不重叠，先跑哪族等价
+    const dedupeXml = (t: string): string =>
+        t.includes(QUOTE_XML_OPEN) ? dedupeQuoteXmlText(t, codeRangesOf(t)) : t
     // 快速路径单源：findDirectiveStart 的 -1 返回即「无指令」（冒号守卫 + lead 正则
-    // 都在其中），此处不再手抄一份同义守卫。代码保护区只在文本含 XML 标签前缀时计算
-    // （去重的消费方），绝大多数帧零扫描成本
-    const xmlProtected = text.includes('<quote') ? codeRangesOf(text) : undefined
-    if (findDirectiveStart(text) === -1) return dedupeQuoteXmlText(text, xmlProtected)
+    // 都在其中），此处不再手抄一份同义守卫
+    if (findDirectiveStart(text) === -1) return dedupeXml(text)
     const seen = new Set<string>()
     let out = ''
     let cursor = 0
@@ -204,15 +205,8 @@ export function dedupeDirectiveText(text: string): string {
             seen.add(key)
         }
     }
-    // 无剔除则原样返回（避免无谓的字符串重建，历史消息每帧渲染都走这里）；
-    // XML 形态的去重在其上补跑（两语法族的命中区间互不重叠，先跑哪族等价）。
-    // 有剔除时区间坐标已偏移，对去重后文本重算保护区（removedAny 帧罕见，成本可忽略）
-    if (!removedAny) return dedupeQuoteXmlText(text, xmlProtected)
-    const afterDirectiveDedupe = out + text.slice(cursor)
-    return dedupeQuoteXmlText(
-        afterDirectiveDedupe,
-        afterDirectiveDedupe.includes('<quote') ? codeRangesOf(afterDirectiveDedupe) : undefined,
-    )
+    // 无剔除则原样传递（避免无谓的字符串重建，历史消息每帧渲染都走这里）
+    return dedupeXml(!removedAny ? text : out + text.slice(cursor))
 }
 
 /**
@@ -239,4 +233,22 @@ const INCOMPLETE_DIRECTIVE_TAIL_RE = new RegExp(`${DIRECTIVE_LEAD}mobi-[a-z][a-z
 export function truncateIncompleteDirectiveTail(text: string): string {
     const m = text.match(INCOMPLETE_DIRECTIVE_TAIL_RE)
     return m ? text.slice(0, m.index) : text
+}
+
+/**
+ * 流式原子揭示的族组合入口：两个语法族（旧 directive / quote XML）的尾巴截断
+ * 一次收口——调用方（Markdown）只见一个函数，族增减不再触碰 UI 层。嵌套顺序：
+ * directive 族先截（其尾巴不含 XML 标签，两族互不干扰）。
+ */
+export function truncateIncompleteMarkerTails(text: string): string {
+    return truncateIncompleteQuoteXmlTail(truncateIncompleteDirectiveTail(text))
+}
+
+/**
+ * 注册表参数解析出口：渲染路径与去重管线同走 definition.parse（合法性单源，
+ * 未注册或非法返回 null，消费方按原文诚实降级）。此前 parse 只服务去重，
+ * 渲染层被迫复刻校验（quote 的 index 合法性判了三层的根因）。
+ */
+export function parseDirectiveParams(name: string, attrs: Record<string, string>): unknown {
+    return registry.get(name)?.parse(attrs) ?? null
 }

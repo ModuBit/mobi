@@ -16,7 +16,7 @@
 
 import { readFileSync } from 'node:fs'
 import type { UserContentBlock, UserImageBlock } from '@mobi/shared'
-import { buildQuoteAnnotationProtocol, buildQuoteXml } from '@mobi/shared'
+import { QUOTE_ANNOTATION_PROTOCOL, buildQuoteXml } from '@mobi/shared'
 import { logger } from '../logger'
 
 /** 单个 Anthropic content 元素（mobi prompt 场景子集） */
@@ -125,7 +125,7 @@ export function buildPromptFromBlocks(blocks: UserContentBlock[]): PromptPayload
                 flush()
                 // 批注协议段只在首个 quote 前注入一次（全部引用共享一段指令，不逐条重复）
                 if (quoteSeq === 0 && hasAgentQuote) {
-                    out.push({ type: 'text', text: buildQuoteAnnotationProtocol() })
+                    out.push({ type: 'text', text: QUOTE_ANNOTATION_PROTOCOL })
                 }
                 out.push({ type: 'text', text: buildQuoteXml(block, ++quoteSeq) })
                 break

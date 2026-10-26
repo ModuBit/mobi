@@ -23,7 +23,7 @@ import { describe, expect, it } from 'vitest'
 import type { QuotePairingEntry, UserQuoteBlock } from '../src/userContentSchema'
 import {
     QUOTE_XML_TAG,
-    buildQuoteAnnotationProtocol,
+    QUOTE_ANNOTATION_PROTOCOL,
     buildQuoteXml,
     dedupeQuoteXmlText,
     escapeXmlText,
@@ -373,8 +373,8 @@ describe('escapeXmlText（XML 文本转义原语）', () => {
     })
 })
 
-describe('buildQuoteAnnotationProtocol（批注协议指令：新协议最小形式）', () => {
-    const protocol = buildQuoteAnnotationProtocol()
+describe("QUOTE_ANNOTATION_PROTOCOL（批注协议指令：新协议最小形式）", () => {
+    const protocol = QUOTE_ANNOTATION_PROTOCOL
 
     it('system-reminder 包裹', () => {
         expect(protocol.startsWith('<system-reminder>\n')).toBe(true)

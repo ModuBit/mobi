@@ -28,7 +28,7 @@
  * handoff 记录的失败模式：同一标记被模型输出多次——由去重键处理）。
  */
 
-import { QUOTE_DIRECTIVE, parseQuoteIndexAttr, pairQuotesToReplies } from '@mobi/shared'
+import { QUOTE_DIRECTIVE, parseQuoteIndexAttr, pairQuotesToReplies, EMPTY_QUOTES_MAP } from '@mobi/shared'
 import type { QuotePairingEntry, UserQuoteBlock } from '@mobi/shared'
 import { DIRECTIVE_PREFIX, registerDirective } from './directives'
 import type { DirectiveDefinition } from './directives'
@@ -95,8 +95,16 @@ function toPairingEntry(block: PairableChatBlock): QuotePairingEntry {
 export function collectQuoteAnnotationsByAgentId(
     chatBlocks: readonly ChatBlock[],
 ): ReadonlyMap<string, UserQuoteBlock[]> {
-    // 空结果早退在 shared 函数内建（共享 EMPTY_QUOTES_MAP，web 侧 toBe 同源成立）——
-    // 此处不重复预扫 hasAnyQuote，避免 chatBlocks 双扫（review #6）
-    const entries = chatBlocks.filter(isPairable).map(toPairingEntry)
+    // 投影前的廉价预检（单遍 .some 早退）：无引用会话（绝大多数）不进入 filter+map
+    // 的中间数组与逐条 entry 分配，直接返回 shared 共享空 Map——渲染热路径每帧调用
+    // （chatBlocks 流式期间每帧换引用）。注意与「投影后再扫」的双扫不同：预检在前
+    // 省掉的是全部投影分配
+    if (!chatBlocks.some(b => b.kind === 'user-text' && b.blocks.some(x => x.type === 'quote'))) {
+        return EMPTY_QUOTES_MAP
+    }
+    const entries: QuotePairingEntry[] = []
+    for (const block of chatBlocks) {
+        if (isPairable(block)) entries.push(toPairingEntry(block))
+    }
     return pairQuotesToReplies(entries)
 }
