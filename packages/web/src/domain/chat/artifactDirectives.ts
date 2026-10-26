@@ -31,7 +31,7 @@ import {
     ARTIFACT_HTML_INLINE_LIMIT_MB,
     VIZ_FRAGMENT_MAX_BYTES,
     parseArtifactTagAttrs,
-    type ArtifactMode,
+    type ArtifactTagParams,
 } from '@mobi/shared'
 import { DIRECTIVE_PREFIX, registerDirective } from './directives'
 import type { DirectiveDefinition } from './directives'
@@ -41,11 +41,8 @@ export const ARTIFACT_DIRECTIVE_NAME = ARTIFACT_DIRECTIVE.slice(DIRECTIVE_PREFIX
 
 export type { ArtifactMode } from '@mobi/shared'
 
-/** 声明的类型化参数。mode 非法值按缺省 auto 处理（模型输出容错优先，不因拼写降级整条声明） */
-export type ArtifactParams = {
-    path: string
-    mode?: ArtifactMode
-}
+/** 声明的类型化参数（字段单源 shared ArtifactTagParams，别名维持 web 引用面） */
+export type ArtifactParams = ArtifactTagParams
 
 /**
  * artifact 指令语义：参数判定/去重键单源 shared parseArtifactTagAttrs / artifactDedupeKey

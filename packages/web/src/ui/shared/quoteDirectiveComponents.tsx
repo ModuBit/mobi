@@ -29,8 +29,15 @@ import { theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { Quote } from 'lucide-react'
 import type { ComponentProps } from '@ant-design/x-markdown'
-import type { UserQuoteBlock } from '@mobi/shared'
-import { ARTIFACT_TAG_NS, parseArtifactTagAttrs, parseQuoteIndexAttr, scanXmlTagHits } from '@mobi/shared'
+import type { UserQuoteBlock, XmlTagHit } from '@mobi/shared'
+import {
+    ARTIFACT_TAG_NS,
+    parseArtifactTagAttrs,
+    parseQuoteIndexAttr,
+    QUOTE_TAG_NS,
+    QUOTE_XML_TAG,
+    scanXmlTagHits,
+} from '@mobi/shared'
 import { parseDirectiveHits, parseDirectiveParams, XML_DIRECTIVE_TAG_NAMES } from '@/domain/chat/directives'
 import { QuoteLocateFn, quoteOffsetsOf } from '@/core/lib/quoteLocate'
 import { QUOTE_DIRECTIVE_NAME } from '@/domain/chat/quoteDirectives'
@@ -139,14 +146,47 @@ const DIRECTIVE_COMPONENTS: Record<string, FC<Record<string, string> & { childre
     [ARTIFACT_DIRECTIVE_NAME]: ArtifactDirectiveView,
 }
 
+/** XML 族 quote 标签视图：index 合法性单源 parseQuoteIndexAttr，非法按原文降级 */
+const QuoteXmlView: FC<{ hit: XmlTagHit; raw: string }> = ({ hit, raw }) => {
+    const index = parseQuoteIndexAttr(hit.attrs.index)
+    return index !== null
+        ? <QuoteDirectiveMarker index={String(index)}>{raw}</QuoteDirectiveMarker>
+        : <span>{raw}</span>
+}
+
+/** XML 族 artifact 标签视图：参数判定单源 parseArtifactTagAttrs，非法按原文降级 */
+const ArtifactXmlView: FC<{ hit: XmlTagHit; raw: string }> = ({ hit, raw }) => {
+    const params = parseArtifactTagAttrs(hit.attrs)
+    return params !== null
+        ? <ArtifactDirectiveView path={params.path} mode={params.mode}>{raw}</ArtifactDirectiveView>
+        : <span>{raw}</span>
+}
+
+/** XML 族标签名 → 渲染组件路由表（DSL 侧 DIRECTIVE_COMPONENTS 的同构注册表）：
+ *  标签清单单源 shared 族注册表，新成员在此加一行；未登记标签按原文诚实降级 */
+const XML_DIRECTIVE_COMPONENTS: Record<string, FC<{ hit: XmlTagHit; raw: string }>> = {
+    [QUOTE_TAG_NS]: QuoteXmlView,
+    [QUOTE_XML_TAG]: QuoteXmlView,
+    [ARTIFACT_TAG_NS]: ArtifactXmlView,
+}
+
 /**
  * 内联指令路由（XMarkdown components 映射 `mobi-directive`，该标签唯一生产方是
  * directivePlugin 的两个扩展：旧 directive DSL 形态 + XML 指令族通用形态，恒带
- * data-raw）：解码原文 → DSL 按注册表路由 → XML 按标签名路由（mobi:quote → 引用
- * 标注、mobi:artifact → 产物视图）；未注册指令与非法形态按原文诚实降级，不吞模型输出。
+ * data-raw）：解码原文 → 首字符分流（DSL lead 必为冒号、XML 必为 `<`——tokenizer
+ * 保证 raw 是完整 token，互不白付对方语法的扫描）→ DSL 按注册表路由、XML 按标签
+ * 名路由；未注册指令与非法形态按原文诚实降级，不吞模型输出。
  */
 export const MobiDirective: FC<ComponentProps<{ 'data-raw'?: string }>> = ({ 'data-raw': dataRaw }) => {
     const raw = decodeURIComponent(dataRaw ?? '')
+    if (raw.startsWith('<')) {
+        // tokenizer 保证标签在串首（XML_TOKEN_RE 锚定 ^），单次扫描取首个命中
+        const hit = scanXmlTagHits(raw, XML_DIRECTIVE_TAG_NAMES)[0]
+        const Component = hit === undefined ? undefined : XML_DIRECTIVE_COMPONENTS[hit.tagName]
+        return hit !== undefined && Component !== undefined
+            ? <Component hit={hit} raw={raw} />
+            : <span>{raw}</span>
+    }
     const hit = parseDirectiveHits(raw)[0]
     if (hit) {
         const Component = DIRECTIVE_COMPONENTS[hit.name]
@@ -157,18 +197,6 @@ export const MobiDirective: FC<ComponentProps<{ 'data-raw'?: string }>> = ({ 'da
             if (parseDirectiveParams(hit.name, hit.attrs) === null) return <span>{raw}</span>
             return <Component {...hit.attrs}>{raw}</Component>
         }
-    }
-    // XML 指令族（spec .scratch/mobi-xml-namespace 票 02）：按标签名路由，参数合法性
-    // 单源 shared（quoteDedupeKey 族 parseQuoteIndexAttr / artifact parseArtifactTagAttrs）
-    const xmlHit = scanXmlTagHits(raw, XML_DIRECTIVE_TAG_NAMES)[0]
-    if (xmlHit) {
-        if (xmlHit.tagName === ARTIFACT_TAG_NS) {
-            const params = parseArtifactTagAttrs(xmlHit.attrs)
-            if (params === null) return <span>{raw}</span>
-            return <ArtifactDirectiveView path={params.path} mode={params.mode}>{raw}</ArtifactDirectiveView>
-        }
-        const index = parseQuoteIndexAttr(xmlHit.attrs.index)
-        if (index !== null) return <QuoteDirectiveMarker index={String(index)}>{raw}</QuoteDirectiveMarker>
     }
     return <span>{raw}</span>
 }

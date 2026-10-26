@@ -28,7 +28,7 @@
  * handoff 记录的失败模式：同一标记被模型输出多次——由去重键处理）。
  */
 
-import { QUOTE_DIRECTIVE, parseQuoteIndexAttr, pairQuotesToReplies, EMPTY_QUOTES_MAP } from '@mobi/shared'
+import { QUOTE_DIRECTIVE, quoteDedupeKey, pairQuotesToReplies, EMPTY_QUOTES_MAP } from '@mobi/shared'
 import type { QuotePairingEntry, UserQuoteBlock } from '@mobi/shared'
 import { DIRECTIVE_PREFIX, registerDirective } from './directives'
 import type { DirectiveDefinition } from './directives'
@@ -37,17 +37,14 @@ import type { ChatBlock } from './types'
 /** quote 指令在注册表中的名字（由 shared 字面量派生，ui 路由表按此寻址） */
 export const QUOTE_DIRECTIVE_NAME = QUOTE_DIRECTIVE.slice(DIRECTIVE_PREFIX.length)
 /**
- * quote 指令语义：唯一参数 index，合法性由 shared parseQuoteIndexAttr 单源裁决
- * （一基正整数，规范为数字）。非法（伪造/缺字段/"0"）返回 null，消费方按原文诚实
- * 降级；index 超出引用数量的越界由渲染层兜底为纯展示。去重键 = 规范化 index：
- * 同一编号的任何写法只保留首次出现。
+ * quote 指令语义：唯一参数 index，合法性与去重键单源 shared quoteDedupeKey（一基
+ * 正整数，规范为数字——与 artifact 侧 parse 委托 parseArtifactTagAttrs 同构）。
+ * 非法（伪造/缺字段/"0"）返回 null，消费方按原文诚实降级；index 超出引用数量的
+ * 越界由渲染层兜底为纯展示。去重键 = 规范化 index：同一编号的任何写法只保留首次出现。
  */
 const QUOTE_DEFINITION: DirectiveDefinition<string> = {
     directive: QUOTE_DIRECTIVE,
-    parse: (attrs) => {
-        const index = parseQuoteIndexAttr(attrs.index)
-        return index === null ? null : String(index)
-    },
+    parse: quoteDedupeKey,
     dedupeKey: (index) => index,
 }
 

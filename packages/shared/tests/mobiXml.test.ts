@@ -30,26 +30,17 @@ import {
     scanXmlTagHits,
     truncateIncompleteXmlTagTail,
 } from '../src/mobiXml'
-import { QUOTE_TAG_NAMES, QUOTE_TAG_OPENS, quoteDedupeKey } from '../src/quoteProtocol'
+import { mobiXmlDedupeKey, MOBI_XML_FAMILY_OPENS, MOBI_XML_FAMILY_TAG_NAMES } from '../src/mobiXmlFamily'
 
 /** 现行 artifact 写路径形态：`<mobi:artifact path="..." [mode="..."]/>` */
 const artifact = (path: string, mode?: string) =>
     `<mobi:artifact path="${path}"${mode ? ` mode="${mode}"` : ''}/>`
 
-/** 族级清单（web directives 同构组装）：现行 quote/artifact + quote 一天龄 legacy */
-const FAMILY_TAG_NAMES = [...QUOTE_TAG_NAMES, ...ARTIFACT_TAG_NAMES]
-const FAMILY_OPENS = [...QUOTE_TAG_OPENS, `<${ARTIFACT_TAG_NS}`]
-
-/** 族级去重键路由（与 web directives 的 xmlDedupeKey 同构）：键全局唯一性归
- *  keyOf——quote 跨标签同 index 收敛同键，artifact 按成员语义前缀隔离 */
-const familyKeyOf = (hit: ReturnType<typeof scanXmlTagHits>[number]): string | null => {
-    if (hit.tagName === ARTIFACT_TAG_NS) {
-        const key = artifactDedupeKey(hit.attrs)
-        return key === null ? null : `artifact\0${key}`
-    }
-    const key = quoteDedupeKey(hit.attrs)
-    return key === null ? null : `quote\0${key}`
-}
+/** 族级清单 / 开前缀 / 去重键：mobiXmlFamily 注册表单源派生（此处直接引用锁定真实
+ *  族形状，不再同构手抄一份） */
+const FAMILY_TAG_NAMES = MOBI_XML_FAMILY_TAG_NAMES
+const FAMILY_OPENS = MOBI_XML_FAMILY_OPENS
+const familyKeyOf = mobiXmlDedupeKey
 
 describe('parseArtifactTagAttrs（artifact 参数语义单源：DSL 与 XML 两语法共用）', () => {
     it('path + 合法 mode → {path, mode}', () => {

@@ -26,15 +26,28 @@ import {
     QUOTE_ANNOTATION_PROTOCOL,
     QUOTE_TAG_NAMES,
     QUOTE_TAG_NS,
+    QUOTE_TAG_OPENS,
     buildQuoteXml,
-    dedupeQuoteXmlText,
     escapeXmlText,
-    hasQuoteXmlTag,
     pairQuotesToReplies,
     parseQuoteIndexAttr,
-    parseQuoteXmlHits,
-    truncateIncompleteQuoteXmlTail,
+    quoteDedupeKey,
 } from '../src/quoteProtocol'
+import { dedupeXmlTagText, hasXmlTagOpen, scanXmlTagHits, truncateIncompleteXmlTagTail } from '../src/mobiXml'
+
+/** 出向命中投影（与渲染路径同构）：族通用扫描 + QUOTE_TAG_NAMES 绑定 + index
+ *  合法性过滤——wrapper 删除后测试直接锁「quote 语义 = 标签族 + index 过滤」 */
+const parseQuoteXmlHits = (text: string) => {
+    const hits: { index: number; raw: string; start: number; end: number }[] = []
+    for (const hit of scanXmlTagHits(text, QUOTE_TAG_NAMES)) {
+        const index = parseQuoteIndexAttr(hit.attrs.index)
+        if (index !== null) hits.push({ index, raw: hit.raw, start: hit.start, end: hit.end })
+    }
+    return hits
+}
+const dedupeQuoteXmlText = (text: string, protectedRanges?: readonly Readonly<{ start: number; end: number }>[]) =>
+    dedupeXmlTagText(text, QUOTE_TAG_NAMES, hit => quoteDedupeKey(hit.attrs), protectedRanges)
+const truncateIncompleteQuoteXmlTail = (text: string) => truncateIncompleteXmlTagTail(text, QUOTE_TAG_OPENS)
 
 /** 现行写路径形态（spec .scratch/mobi-xml-namespace：`<mobi:quote/>` 带命名空间） */
 const xml = (n: number) => `<mobi:quote index="${n}"/>`
@@ -280,9 +293,9 @@ describe('pairQuotesToReplies（批注↔回复线性配对，语义与 web 既�
         expect(QUOTE_TAG_NS).toBe('mobi:quote')
         expect(QUOTE_TAG_NAMES).toEqual(['mobi:quote', 'quote'])
         expect(MOBI_XML_OPEN).toBe('<mobi:')
-        expect(hasQuoteXmlTag(`${xml(1)} 文本`)).toBe(true)
-        expect(hasQuoteXmlTag(`${xmlLegacy(1)} 文本`)).toBe(true)
-        expect(hasQuoteXmlTag('普通 <div> 文本')).toBe(false)
+        expect(hasXmlTagOpen(`${xml(1)} 文本`, QUOTE_TAG_OPENS)).toBe(true)
+        expect(hasXmlTagOpen(`${xmlLegacy(1)} 文本`, QUOTE_TAG_OPENS)).toBe(true)
+        expect(hasXmlTagOpen('普通 <div> 文本', QUOTE_TAG_OPENS)).toBe(false)
     })
 })
 

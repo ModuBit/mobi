@@ -81,16 +81,46 @@ export interface XmlTagHit {
     end: number
 }
 
-/** 各标签的执行态共享扫描正则（g 标志，每次使用前重置 lastIndex；按标签名缓存） */
-const TAG_SCAN_RES = new Map<string, RegExp>()
+/** 执行态正则缓存（key = 语义前缀 + pattern 串；扫描 / 截断共用一套记忆化） */
+const DERIVED_RES = new Map<string, RegExp>()
 
-function tagScanRe(tag: string): RegExp {
-    let re = TAG_SCAN_RES.get(tag)
+function derivedRe(key: string, build: () => RegExp): RegExp {
+    let re = DERIVED_RES.get(key)
     if (!re) {
-        re = new RegExp(xmlTagShape(tag), 'g')
-        TAG_SCAN_RES.set(tag, re)
+        re = build()
+        DERIVED_RES.set(key, re)
     }
     return re
+}
+
+/** 各标签的执行态共享扫描正则（g 标志，每次使用前重置 lastIndex；按标签名缓存） */
+function tagScanRe(tag: string): RegExp {
+    return derivedRe(tag, () => new RegExp(xmlTagShape(tag), 'g'))
+}
+
+/** tagNames → opens 派生缓存：调用方传模块级常量清单时热路径零重复派生（流式
+ *  每帧调用；临时数组作 key 不命中缓存，仅省一次 map，行为不变） */
+const OPENS_CACHE = new WeakMap<readonly string[], readonly string[]>()
+
+export function opensOf(tagNames: readonly string[]): readonly string[] {
+    let opens = OPENS_CACHE.get(tagNames)
+    if (opens === undefined) {
+        opens = tagNames.map(t => `<${t}`)
+        OPENS_CACHE.set(tagNames, opens)
+    }
+    return opens
+}
+
+/** opens → 合并 alternation 串缓存（截断热路径每帧 join 的消除，key 为数组引用） */
+const ALT_CACHE = new WeakMap<readonly string[], string>()
+
+function altOf(opens: readonly string[]): string {
+    let alt = ALT_CACHE.get(opens)
+    if (alt === undefined) {
+        alt = opens.join('|')
+        ALT_CACHE.set(opens, alt)
+    }
+    return alt
 }
 
 /** 文本含任一指定标签形态的快速守卫（去重/保护区/截断共用热路径闸） */
@@ -104,11 +134,10 @@ export function hasXmlTagOpen(text: string, opens: readonly string[]): boolean {
  * 只认正形（自闭合 / 完整回显带闭合标签收口）：流式半截（无 `>` 或未收口）不产出
  * 命中——半截由流式截断扣住（{@link truncateIncompleteXmlTagTail}），闭合帧一次性
  * 完整进入渲染。参数合法性（quote 的 index、artifact 的 path）不在本层判定，由
- * 消费方按成员语义过滤或降级。
+ * 消费方按成员语义过滤或降级。守卫唯一归属此处（无标签一次扫描早退）。
  */
 export function scanXmlTagHits(text: string, tagNames: readonly string[]): XmlTagHit[] {
-    const opens = tagNames.map(t => `<${t}`)
-    if (!hasXmlTagOpen(text, opens)) return []
+    if (!hasXmlTagOpen(text, opensOf(tagNames))) return []
     const hits: XmlTagHit[] = []
     for (const tag of tagNames) {
         const re = tagScanRe(tag)
@@ -121,28 +150,20 @@ export function scanXmlTagHits(text: string, tagNames: readonly string[]): XmlTa
     return hits.sort((a, b) => a.start - b.start)
 }
 
-/** 按 opens 清单派生（并缓存）执行态正则；key 为合并 alternation 串 */
-const DERIVED_RES = new Map<string, RegExp>()
-
-function derivedRe(key: string, build: () => RegExp): RegExp {
-    let re = DERIVED_RES.get(key)
-    if (!re) {
-        re = build()
-        DERIVED_RES.set(key, re)
-    }
-    return re
-}
-
 /** 最后一个标签起点扫描（`\b` 单源——词边界语义与正形单源，`<mobi:artifactx`
- *  形近词不算）；无则 -1。单趟前向 matchAll，无标签文本一次扫描即出 */
+ *  形近词不算）；无则 -1。从尾部 lastIndexOf 反向定位 + 后随词字符校验，零 match 分配 */
+const WORD_CHAR_RE = /[A-Za-z0-9_]/
 function lastTagOpen(text: string, opens: readonly string[]): number {
-    // alternation 的 `<` 必须逐分支携带（`(?:<a|<b)`）：括在组外会变成 `<a|b`
-    // （第二分支成裸标签名），正文的标签名字样会误命中
-    const alt = opens.join('|')
-    const re = derivedRe(alt, () => new RegExp(`(?:${alt})\\b`, 'g'))
-    let open = -1
-    for (const m of text.matchAll(re)) open = m.index
-    return open
+    let best = -1
+    for (const open of opens) {
+        let i = text.lastIndexOf(open)
+        // 后随 word 字符（形如 <mobiar）时 \b 不成立，不算标签开——继续往前找
+        while (i !== -1 && WORD_CHAR_RE.test(text[i + open.length] ?? '')) {
+            i = text.lastIndexOf(open, i - 1)
+        }
+        if (i > best) best = i
+    }
+    return best
 }
 
 /**
@@ -158,7 +179,7 @@ export function truncateIncompleteXmlTagTail(text: string, opens: readonly strin
     // 单次扫描守卫：无标签前缀的帧（流式 drip 绝大多数）一次扫描即早退
     const open = lastTagOpen(text, opens)
     if (open === -1) return text
-    const alt = opens.join('|')
+    const alt = altOf(opens)
     // 未闭合尾巴只在串尾命中，正文里带后随 `>` 的形近文本（讨论语法本身）不受影响
     const tailRe = derivedRe(`tail:${alt}`, () => new RegExp(`(?:${alt})\\b[^>]*$`))
     const tail = text.match(tailRe)
@@ -191,8 +212,6 @@ export function dedupeXmlTagText(
     keyOf: (hit: XmlTagHit) => string | null,
     protectedRanges?: readonly Readonly<{ start: number; end: number }>[],
 ): string {
-    const opens = tagNames.map(t => `<${t}`)
-    if (!hasXmlTagOpen(text, opens)) return text
     const seen = new Set<string>()
     let out = ''
     let cursor = 0

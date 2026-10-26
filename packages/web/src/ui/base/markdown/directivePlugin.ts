@@ -67,15 +67,16 @@ export function directiveExtension(): TokenizerAndRendererExtension {
     }
 }
 
-/** XML 指令族标签的下一个起点；无命中返回 -1（marked start 约定）。全形态取最早
- *  出现位置；前缀清单单源 domain XML_DIRECTIVE_OPENS，indexOf 未命中本身即 -1 */
+/** XML 指令族标签的下一个起点；无命中返回 -1（marked start 约定）。单趟缓存正则
+ *  扫描（模块级、非 g 无 lastIndex 态）——start 钩子对每段剩余 src 逐 token 调用，
+ *  逐 open indexOf 的多趟扫描在流式长帧下成倍放大。前缀清单单源 domain
+ *  XML_DIRECTIVE_OPENS（标签名字符集 [\w:.-] 含正则元字符 `.`，逐项转义防漂移） */
+const XML_OPEN_RE = new RegExp(
+    `(?:${XML_DIRECTIVE_OPENS.map(open => open.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`,
+)
+
 export function findMobiXmlStart(src: string): number {
-    let start = -1
-    for (const open of XML_DIRECTIVE_OPENS) {
-        const i = src.indexOf(open)
-        if (i !== -1 && (start === -1 || i < start)) start = i
-    }
-    return start
+    return XML_OPEN_RE.exec(src)?.index ?? -1
 }
 
 /** XML 指令族通用扩展：`<mobi:name attrs/>`（含 legacy `<quote/>` 与完整回显形态）
