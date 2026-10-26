@@ -215,7 +215,7 @@ packages/web/src/
 │   │   ├── composerSegments.ts composer 分段状态 ⇄ UserContentBlock[] 序列化/反序列化
 │   │   ├── reconcile.ts        消息对账（去重/排序/合并）
 │   │   ├── groupToolCalls.ts   工具调用折叠分组算法
-│   │   ├── quoteDirectives.ts  回应批注 directive 解析（:mobi-quote 命中/去重/批注↔回复 turn 配对）
+│   │   ├── quoteDirectives.ts  回应批注 directive 语义层（旧 :mobi-quote 注册表解析派生自 shared index 单源 + 新 XML 出向管线桥接 + 批注↔回复 turn 配对投影）
 │   │   ├── quoteSelection.ts   选区判定器（引用资格纯函数：锚点属性契约 + 拒绝原因决策）
 │   │   ├── presentation.ts     展示层格式化（时间戳、时长等）
 │   │   ├── extractRunningAgents.ts 提取运行中 Agent
