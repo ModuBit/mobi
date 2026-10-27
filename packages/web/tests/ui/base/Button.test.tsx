@@ -65,6 +65,29 @@ describe('uiarc Button 行为契约', () => {
         expect(onClick).not.toHaveBeenCalled()
     })
 
+    it('loading + 前置 icon：spinner 原位替换 icon（不并排）', () => {
+        render(
+            <Button loading>
+                <svg data-testid="icon" />
+                保存
+            </Button>,
+        )
+        // icon 被换下，文案保留
+        expect(screen.queryByTestId('icon')).not.toBeInTheDocument()
+        expect(screen.getByText('保存')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: '保存' }).querySelector('[aria-hidden="true"]')).not.toBeNull()
+    })
+
+    it('非 loading + 前置 icon：icon 正常渲染在替换槽位', () => {
+        render(
+            <Button>
+                <svg data-testid="icon" />
+                保存
+            </Button>,
+        )
+        expect(screen.getByTestId('icon')).toBeInTheDocument()
+    })
+
     it('variant/size 落 className，默认 primary/md', () => {
         const { rerender } = render(<Button>保存</Button>)
         const btn = screen.getByRole('button', { name: '保存' })
