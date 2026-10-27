@@ -55,6 +55,18 @@ metadata:
 切到唯一带 `supportsFastMode` 的 `claude-opus-5-5` 模型 + DB 注入 `runtime_state.fastModeState='cooldown'`，
 闪电按钮即显示冷却态。完整注入 recipe 见 [[fast-mode-state-verify]]（含 runtimeState 优先 / metadata 兜底两分支）。
 
+### 换模型按能力收敛（effort / fastMode）
+
+规则在 shared `reconcileSessionConfigForModel`，daemon 的 `applySessionConfig` / 休眠暂存两条路径都过它。
+本机最好的对照组：`claude-opus-5-5`（五档含 xhigh、支持 fast）↔ `claude-opus-4-6`（只有 low/medium/high/**max**、无 fast）。
+
+- API 直验：会话设成 5-5 + `effort:xhigh` + `fastMode:true` → `POST /sessions/:id/model` 传 4-6 →
+  `runtimeState` 变 `{effort:'max', fastMode:false}`（值来自 CLI 回的 `applied`，证明真下发过）。
+  切回 5-5：`max` 保持、fastMode 保持 false（不自动重开）。
+- 休眠路径：先 `/dormant` 再依次 POST effort/models → 同样收敛，唤醒不会带上越界值。
+- 会话内面板（SSE 驱动，浏览器）：换到 4-6 后 pill 变「… · 最高」、闪电按钮**消失**、档位只剩四档；
+  切回 5-5 闪电重现且为「快速模式已关闭」(`aria-pressed=false`)。
+
 ## agent 侧：list_models + create_session
 
 探针会话用 `deepseek-flash` 直接建（claude-opus-5-5 provider 本轮持续 502
