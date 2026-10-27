@@ -3,7 +3,7 @@ name: chat-verify
 description: 对话交互 / 等待轮询 / 权限审批 / 排队消息 / 停止 abort / 渲染验证 / 触发工具折叠分组
 metadata:
   type: recipe
-  last_verified: 2026-08-05
+  last_verified: 2026-10-27
 ---
 
 # 对话与验证
@@ -37,7 +37,24 @@ mobi 没有独立的停止按钮——**停止 = composer 右下角的 send/stop
 - **输入框空 + running/sending → 停止态（方块 ■，svg 是 `<rect>`）**
 - 输入框空 + 空闲 → 发送态 disabled
 
-要点停止：先 `Ctrl+A` + `Backspace` 清空输入框，按钮才翻成停止态。时间敏感场景（长任务执行中）用 `evaluate_script` 定位 + `.click()` 比 `take_snapshot` 拿 uid 快。
+要点停止：先 `Ctrl+A` + `Backspace` 清空输入框，按钮才翻成停止态。
+
+**定位必须用 `button[aria-label="停止"]`（2026-10-27 实踩）**：`.ant-sender-actions-btn` 在有内容/流式中命中的常是 antd Sender 自己的 **loading 占位按钮**（class 带 `ant-sender-actions-btn-loading-button`，svg 首子元素是 `<title>`），点它不触发 abort——三轮都在点它，turn 全部正常跑完。真停止按钮是 `aria-label="停止"`、class 形如 `ant-btn-color-primary ant-btn-variant-solid ant-btn-icon-only`、svg 首子元素是 `<rect>`。
+
+**用 pointer 序列而非 `.click()`**：`SubmitButton.tsx` 的中止走 `startPress`/`finishPress`/`resolveStopPress`（pointerdown/pointerup 驱动），实测下发可用序列：
+
+```js
+() => {
+  const btn = [...document.querySelectorAll('button')].find(b => b.getAttribute('aria-label') === '停止');
+  const mk = (type, buttons) => new PointerEvent(type, { bubbles: true, cancelable: true, button: 0, buttons, pointerId: 1, isPrimary: true, pointerType: 'mouse' });
+  btn.dispatchEvent(mk('pointerdown', 1));
+  setTimeout(() => btn.dispatchEvent(mk('pointerup', 0)), 120);
+}
+```
+
+（是否 `.click()` 也能触发未单独验证；别再用裸元素位置/className 猜按钮。）
+
+**成功断言三件套**：UI 输出尾部出现「已截断」徽标；会话尾行「会话已中断 · 13.2s」；DB 最新 result 帧 `content.data.terminal_reason === 'aborted_streaming'`（同时 `subtype: 'error_during_execution'`、`is_error: true`，`content.data` 就是 SDK 原始 result，字段在顶层）。abort 后 SDK 仍会下发 `prompt_suggestion`，看到它不代表 turn 正常完成。刷新页面历史与「已截断」标记照常恢复。
 
 **过早停止无效（2026-09-01 实测）**：发送后立即轮询到 stop 态就点会打空——112ms 时 SDK turn 尚未真正开始（首 token ~5s），点了停止 turn 照常跑完（DB 消息完整、无 aborted）。验证 abort/截断类场景必须**先等 assistant 正文流式输出开始**（如轮询 main innerText 出现目标内容）再点停止，才截在真实 turn 上：
 
@@ -50,7 +67,7 @@ mobi 没有独立的停止按钮——**停止 = composer 右下角的 send/stop
 }
 ```
 
-点 `.click()` 即触发 abort（等价 UI 点击，不是调 API）。
+（旧结论「点 `.click()` 即触发 abort」已修正，见上：先按 `aria-label="停止"` 定位，再发 pointerdown→pointerup。）
 
 ## 排队消息（running 中发送）
 

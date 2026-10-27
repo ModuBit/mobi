@@ -1,0 +1,87 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* 档位滑杆（ChatGPT 形态）：渐变层铺满整条轨道，进度只做裁切——颜色按 x 固定，
+   拖动时填充不会「变色」；档位点贴在渐变层上，走到哪档点亮到哪档。 */
+
+.track {
+    position: relative;
+    border-radius: var(--radius-pill);
+    background: var(--surface-muted);
+    cursor: pointer;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+}
+
+/* 渐变全长：石青 → 灰紫（与 --mobi-chart-5/6 同源，双档各自取色）。
+   未填充部分靠 progress 层裁切，所以这里不做宽度动画。 */
+.gradient {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--mobi-chart-5) 0%, var(--mobi-chart-6) 100%);
+    pointer-events: none;
+    will-change: clip-path;
+}
+
+/* 档位点：填充侧用半透明白（压在渐变上），未达侧用墨色淡阶 */
+.dot {
+    position: absolute;
+    top: 50%;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+/* 拇指：白色实心圆 + 悬浮阴影（与面板其他浮起件同一语言）。
+   x 由 motion value 驱动（1:1 跟手），这里只定纵向居中与尺寸基线。 */
+.thumb {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    border-radius: 50%;
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-floating);
+    pointer-events: none;
+}
+
+/* 拉满档位的星屑：细碎菱形/圆点，长周期短点亮，错相避免齐闪。
+   只在该档渲染（组件控制），reduced-motion 下退化为静态微光点。 */
+.sparkle {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.75);
+    pointer-events: none;
+    opacity: 0.2;
+    animation: effort-sparkle 2.8s ease-in-out infinite;
+}
+
+.sparkleDiamond {
+    border-radius: 1px;
+    transform: rotate(45deg);
+}
+
+@keyframes effort-sparkle {
+    0%, 100% { opacity: 0.2; }
+    10%, 26% { opacity: 1; }
+    42% { opacity: 0.2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sparkle { animation: none; opacity: 0.8; }
+}

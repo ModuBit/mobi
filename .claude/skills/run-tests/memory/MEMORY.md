@@ -13,7 +13,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [工作区 UI](create-project.md) — 建工作区 / 工作区内新建会话 / 归入工作区往返 / 编辑 folders / 删工作区（Escape 关 modal / hover 按钮 evaluate click 坑；2026-09-28 项目→工作区更名后复核）
 - [终端游离会话](terminal-session.md) — script 造 PTY 后台跑 CLI，会话入 Recent
 - [文件树验证](file-tree-verify.md) — 展开 inspector 文件树 / 虚拟滚动下数条目（看 network 响应非 DOM）/ 截断字段
-- [对话与验证](chat-verify.md) — 发消息 / 等待轮询 / 权限审批 / 排队消息 / 停止按钮（composer 合并按钮）/ 渲染验证
+- [对话与验证](chat-verify.md) — 发消息 / 等待轮询 / 权限审批 / 排队消息 / 停止按钮（**必须按 `aria-label="停止"` 定位 + pointerdown→pointerup；`.ant-sender-actions-btn` 是 antd loading 占位**）/ 渲染验证
 - [工具调用 UI 验证](tool-ui-verify.md) — AskUserQuestion 页签一类「工具调用派生 UI」：会话必须走 spawn API（seed 的会话 daemon 认不到、消息静默不回）/ 提示词点名工具 / messages API 断言 tool_use
 - [附件上传验证](upload-verify.md) — AttachPanel「文件」按钮可直接 upload_file / 落盘 .mobi/uploads/YYYY-MM/ 去重断言 / DB document block / 模型回显；messages 表无 role 列用 rowid
 - [plan 模式切换验证](plan-mode-verify.md) — 切 plan / 触发 exit_plan_mode / 批准四档按钮 / 模式生效观测点（composer 指示器 + 编辑是否弹审批）
@@ -63,5 +63,5 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [能力目录验证](capability-catalog-verify.md) — DEBUG 日志计数 + host-metadata API：per-cwd 缓存/单飞/签名失效/live Query 零探针/后台刷新节流（2026-10-20）
 - [审批通知卡片验证](approval-notification-verify.md) — 通知里就地审批/作答全链路；antd v6 通知内容独立 React 根（须补 QueryClient+Theme 提供者）、只读命令不触发审批、Playwright 兜底占用的 DevTools MCP（2026-10-21）
 - [worktree 生命周期验证](worktree-verify.md) — worktree 会话创建（Segmented 原生 input 点击）/ 合回 no-ff 与 squash / 脏保留 toast→设置页丢弃 / 冲突诚实失败 / **active 会话即「运行中」须先休眠** / 列表缓存 5s stale 须 reload（2026-10-25）
-- [模型目录验收](model-catalog-verify.md) — 创建页/会话内面板（换模型·换档·重置）路径与断言 / **CDP drag 才能拖动换档（合成 PointerEvent 无效且会误改值）** / 手机视口 innerWidth=500 / max 落库 / agent list_models + create_session 未知模型回落 notice / 快速模式创建预设双证据与 useCallback 依赖坑（2026-10-27）
+- [模型目录验收](model-catalog-verify.md) — 创建页/会话内面板（换模型·换档·重置）路径与断言 / **滑杆拖动只预览、松手吸附才提交；setPointerCapture 被收回会丢 pointerup** / 手机视口 innerWidth=500 / max 落库 / agent list_models + create_session 未知模型回落 notice / 快速模式创建预设双证据与 useCallback 依赖坑（2026-10-27）
 - [快速模式执行态验证](fast-mode-state-verify.md) — result 帧 vs 切换后 reinitialize 两来源判别（reason 有无）/ **claudeRemote 事件白名单漏转发坑** / 只有 opus-5-5 支持快速模式 / DB 注入验 web 优先级与兜底（2026-10-27）

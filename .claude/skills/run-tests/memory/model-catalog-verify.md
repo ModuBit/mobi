@@ -29,13 +29,25 @@ metadata:
   断言别写死 390：面板 `rect.width` ≈ `innerWidth - 20`、`scrollWidth === clientWidth` 即满宽无溢出。
 - 五档、模型行、重置钮在 500 宽下全部可见，无裁切。
 
-### 拖动换档：CDP drag 才行
+### 拖动换档：跟手预览、松手吸附才算数（2026-10-27 改版）
 
-- `chrome-devtools drag`（`from_uid` = slider，`to_uid` = 目标档位按钮）**真实拖动生效**。
-- 页面内 `evaluate_script` 合成 `PointerEvent`（pointerdown on thumb + document pointermove/up）
-  **拖不动**（Radix slider 只认真实指针）；合成事件还可能触发一次意外点按，把已有值改掉——
-  诊断「值怎么自己变了」时先翻 `list_network_requests` 的 `/effort` 请求体，别怀疑回写 bug。
-  （2026-10-27 实踩：max 值「被回写成 high」其实是自己合成事件发的第二次请求。）
+滑块改成 ChatGPT 形态后（轨道内嵌档位点、渐变填充、最高档星屑）：
+
+- **CDP drag 真实拖动生效**（真实指针事件）。拖动的语义是：pointerdown 起跟手 →
+  pointermove 只更新预览（顶栏大字 + pill 不变）→ **pointerup 吸附到最近档位才提交**
+  （一次拖动 = 一次请求；旧实现是每跨一档就发一次 POST）。
+- **不要在滑块上用 `setPointerCapture`**（2026-10-27 实踩）：CDP drag 实测
+  `lostpointercapture` 先于 `pointerup` 触发，之后的 pointermove/up 落到别的元素
+  （target 变成外层 DIV），松手不提交、pill 停在旧档。实现已改 window 级 pointermove/up
+  监听；诊断同类「拖完没生效」先抓 `pointerdown/move/up/lostpointercapture` 序列。
+- **合成 PointerEvent 仍可用**：往 `[role="slider"]` 依次 dispatch pointerdown / move / up
+  （bubbles 到 window 即被接住），能精确落在两档之间验「吸附最近档」：
+  `x = rect.left + thumb/2 + ratio * (rect.width - thumb)`（桌面 thumb 22 / 手机 28）。
+  实测 ratio 0.625（5 档，介于「高」「超高」之间）松手 → 落「超高」。
+- **断言**：pill 文案（`模型 · 档位`，档位名带渐变取色）、顶栏大字、最高档
+  `[data-testid="effort-sparkle"]` 共 7 个；拖动/取消（pointercancel）不提交见单测。
+- 手机视口（innerWidth 500）下新会话页 composer 行本身是 `overflow-x: auto` 横滚条
+  （scrollWidth ~647 > 500），不是本轮滑杆引入的溢出。
 
 ### max 是 session-only，但运行时切换照样落库
 

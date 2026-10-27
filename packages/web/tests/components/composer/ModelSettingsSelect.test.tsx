@@ -26,7 +26,7 @@
 import { useState } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, cleanup, fireEvent, screen, act } from '@testing-library/react'
+import { render, cleanup, fireEvent, screen } from '@testing-library/react'
 import type { EffortLevel, ModelInfo } from '@mobi/shared'
 import { ModelSettingsSelect } from '@/features/composer/ModelSettingsSelect'
 
@@ -113,6 +113,13 @@ describe('ModelSettingsSelect', () => {
         expect(screen.getByRole('button', { name: '模型' })).toHaveTextContent('Sonnet · composer.effortLevels.medium')
     })
 
+    /** 轨道几何：桌面拇指 22 → 可走区间 = width - 22，起点偏移 11 */
+    function mockTrack(slider: HTMLElement) {
+        vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue({
+            left: 0, width: 100, top: 0, height: 30, right: 100, bottom: 30, x: 0, y: 0, toJSON: () => ({}),
+        } as DOMRect)
+    }
+
     it('点档位名与点按轨道产生同一结果', () => {
         const onEffortChange = vi.fn()
         render(<Harness onEffortChange={onEffortChange} />)
@@ -121,15 +128,56 @@ describe('ModelSettingsSelect', () => {
         fireEvent.click(screen.getByRole('button', { name: 'composer.effortLevels.high' }))
         expect(onEffortChange).toHaveBeenLastCalledWith('high')
 
-        // 轨道：4 档 → 0/33/66/100；点 60% 应落在 high（索引 2）
+        // 轨道：4 档 → 可走区间 78px；点 x=60 → ratio 0.628 → 索引 2（high）
         const slider = screen.getByRole('slider')
-        vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue({
-            left: 0, width: 100, top: 0, height: 30, right: 100, bottom: 30, x: 0, y: 0, toJSON: () => ({}),
-        } as DOMRect)
-        act(() => {
-            fireEvent.pointerDown(slider, { clientX: 60, pointerId: 1 })
-        })
+        mockTrack(slider)
+        fireEvent.pointerDown(slider, { clientX: 60, pointerId: 1 })
+        fireEvent.pointerUp(slider, { clientX: 60, pointerId: 1 })
         expect(onEffortChange).toHaveBeenLastCalledWith('high')
+    })
+
+    it('拖动过程中只预览不提交，松手吸附到最近档位', () => {
+        const onEffortChange = vi.fn()
+        render(<Harness initialEffort="low" onEffortChange={onEffortChange} />)
+        openPanel()
+        const slider = screen.getByRole('slider')
+        mockTrack(slider)
+
+        fireEvent.pointerDown(slider, { clientX: 20, pointerId: 1 })
+        // 拖到两档之间的 53px（ratio 0.538 → 最近档 = 索引 2 / high），不应提交
+        fireEvent.pointerMove(slider, { clientX: 53, pointerId: 1 })
+        expect(onEffortChange).not.toHaveBeenCalled()
+
+        fireEvent.pointerMove(slider, { clientX: 95, pointerId: 1 })
+        fireEvent.pointerUp(slider, { clientX: 95, pointerId: 1 })
+        // 一次拖动只下发一次，且落在最近档（x=95 → ratio 1 → xhigh）
+        expect(onEffortChange).toHaveBeenCalledTimes(1)
+        expect(onEffortChange).toHaveBeenLastCalledWith('xhigh')
+    })
+
+    it('拖动取消不提交，回到原档位', () => {
+        const onEffortChange = vi.fn()
+        render(<Harness initialEffort="low" onEffortChange={onEffortChange} />)
+        openPanel()
+        const slider = screen.getByRole('slider')
+        mockTrack(slider)
+
+        fireEvent.pointerDown(slider, { clientX: 20, pointerId: 1 })
+        fireEvent.pointerMove(slider, { clientX: 95, pointerId: 1 })
+        fireEvent.pointerCancel(slider, { clientX: 95, pointerId: 1 })
+        expect(onEffortChange).not.toHaveBeenCalled()
+    })
+
+    it('拉到最高档才渲染星屑特效', () => {
+        const withMax: ModelInfo[] = [
+            { value: 'opus', displayName: 'Opus', description: '', supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'] },
+        ]
+        render(<Harness models={withMax} initialEffort="high" />)
+        openPanel()
+        expect(screen.queryAllByTestId('effort-sparkle')).toHaveLength(0)
+
+        fireEvent.click(screen.getByRole('button', { name: 'composer.effortLevels.max' }))
+        expect(screen.getAllByTestId('effort-sparkle').length).toBeGreaterThan(0)
     })
 
     it('重置恢复默认模型与默认档', () => {
