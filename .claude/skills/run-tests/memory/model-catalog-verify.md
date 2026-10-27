@@ -15,10 +15,17 @@ metadata:
 ## 创建页 / 会话内面板（同一组件）
 
 - 入口：创建页 `/sessions/new?workspaceId=<id>`；会话内底栏「模型 · 档位」pill。
-- pill 按钮带 `aria-haspopup="dialog"`，点开是 `[role="dialog"]`：
-  - 大字标题 = 当前档位；模型行按钮点开后切到列表视图（Auto 合成项 + 宿主模型）。
+- pill 按钮带 `aria-haspopup="dialog"`，点开后 **pill 原地长成** `[role="dialog"]` 面板
+  （2026-10-27 改版：MorphSurface 形变容器，portal 到 body + fixed 锚在 pill 实测矩形，
+  底边恒对齐 pill 底边、向上生长；桌面宽 320，移动端满宽 `innerWidth - 24`）：
+  - 面板大字标题 = 当前档位；模型行是**自管 MorphSelect**（`[role="combobox"]`，
+    accessible name = `composer.modelPanel.selectModel`，`stretch` 撑满面板宽、
+    `direction="up"` 列表向上展开覆盖面板）。当前模型不在宿主目录时行上显示原值，不是「请选择」。
   - `[role="slider"]` 的 `aria-valuemax` = 档位数 − 1（4 = 五档含 max；3 = 四档）。
   - 档位名按钮（低 / 中 / 高 / 超高 / 最高）；重置按钮的 `aria-label`/description 是「重置为默认」。
+- **形变几何断言**（真机 `evaluate_script` 量 rect）：展开后 surface 的 `bottom` == pill 的
+  `bottom`（收起动画结束回到 pill 尺寸且与 pill 完全重合）。面板在 composer 里必须走 portal——
+  内联表面会被 composer 上方的工作区行（`z-index: 2`，`.ant-sender` 只有 1）压住穿模。
 - 点档位名与点按轨道走同一路径：`POST /api/sessions/<sid>/effort {"effort":"…"}`。
   读响应 + `GET /api/sessions/<sid>` 的 `session.runtimeState.effort` 做权威断言。
 - 重置 = 模型回 `auto`、档位回 `medium`；auto 无能力位，档位集合随之回落四档（UI 只剩低中高超高）。

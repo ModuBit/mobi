@@ -1,0 +1,78 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* morph-surface：一份表面在 pill 与面板之间形变。
+   pill 留在文档流里（composer 工具条的一格），展开面 portal 到 body 并用 fixed 锚在
+   pill 的实测矩形上——只有跨出工具条的层叠上下文，面板才不会被 composer 上方的行压住。
+   overflow 刻意不裁：嵌套在面板里的 MorphSelect 列表要能越出面板边界。 */
+
+.root {
+    position: relative;
+    display: inline-grid;
+    justify-items: start;
+    min-width: 0;
+    color: var(--foreground);
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+}
+
+.pill {
+    display: flex;
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* 展开面（portal）：宽高/圆角由 motion 值驱动，左上锚 pill 左缘、下缘对齐 pill 底边，
+   所以"长"的方向恒为向上。未展开时透明且不拦指针——首帧与收起尾帧都只是 pill 大小。 */
+.surface {
+    position: fixed;
+    z-index: var(--mobi-z-overlay, 1000);
+    box-sizing: border-box;
+    background: transparent;
+    pointer-events: none;
+    transition: background-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.surface[data-expanded] {
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-floating);
+    pointer-events: auto;
+}
+
+/* 面板内容：宽度由组件按面板宽内联给出，从底缘向上铺满；形变途中不可见，末尾淡入 */
+.face {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--duration-fast) var(--ease-standard), visibility 0s linear var(--duration-fast);
+}
+
+.surface[data-expanded] .face {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity var(--duration-fast) var(--ease-standard) 60ms, visibility 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .surface,
+    .face,
+    .surface[data-expanded] .face {
+        transition-duration: 0s;
+        transition-delay: 0s;
+    }
+}

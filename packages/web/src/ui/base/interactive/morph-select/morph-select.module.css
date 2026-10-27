@@ -33,6 +33,9 @@
 /* 水平钳制（mobi）：shape 恒 left:0 锚 root 左缘，出视窗的偏移由组件 x 驱动（--ms-shift 语义），
    align 只参与理想锚位决策——不再用 right:0 翻面，x 数学恒以 root 左缘为基准 */
 .root[data-open] { z-index: 30; }
+/* stretch（mobi）：trigger 撑满容器宽——嵌进固定宽度面板/表单行时，pill 与展开面
+   都以行宽为基准；量宽源同走 --ms-trigger-w（measure 取容器宽，不再取 max-content） */
+.root[data-stretch] { width: 100%; }
 .label { color: var(--text-secondary); font-size: var(--text-sm); font-weight: 500; }
 
 /* 收起 pill 的布局占位宽（宽度弹簧的目标）。测量落地（data-ready）后交给
@@ -69,6 +72,10 @@
 /* An invisible copy that says how wide the closed trigger wants to be. It sits in flow until the first measurement lands, so the server render already has the right size. */
 .measure { position: static; visibility: hidden; pointer-events: none; width: max-content; max-width: min(20rem, calc(100vw - 2rem)); }
 .root[data-ready] .measure { position: absolute; top: 0; left: 0; }
+/* stretch（mobi）：触发器撑满容器宽（面板内嵌行）。量宽必须留在流内——data-ready 的绝对定位
+   会让 width:100% 反查 .anchor 的 var(--ms-trigger-w)，自己锁死在首测的 max-content 上。 */
+.root[data-stretch] .anchor { width: 100%; max-width: none; }
+.root[data-stretch] .measure { position: static; width: 100%; max-width: none; }
 
 /* value 层（layer）绝对定位垂直居中，prefix 静态缀走同一 flex 行居中——
    slot 若是纯 block，prefix 会贴顶悬在 pill 上缘（2026-10-15 实踩） */

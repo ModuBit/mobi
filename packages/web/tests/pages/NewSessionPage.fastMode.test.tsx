@@ -206,7 +206,7 @@ describe('NewSessionPage 快速模式预设', () => {
         expect(screen.getByRole('button', { name: 'composer.modelPanel.fastOn' })).toBeInTheDocument()
 
         // 切到精简模型：闪电该随能力消失，档位该从 xhigh 收敛到 medium
-        fireEvent.click(screen.getByRole('button', { name: /Fast Model/ }))
+        fireEvent.click(screen.getByRole('combobox', { name: 'composer.modelPanel.selectModel' }))
         fireEvent.click(await screen.findByRole('option', { name: /Plain Model/ }))
 
         await waitFor(() => {

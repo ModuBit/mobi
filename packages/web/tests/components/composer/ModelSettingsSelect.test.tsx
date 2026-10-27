@@ -17,7 +17,7 @@
 /**
  * ModelSettingsSelect（模型设置面板）行为契约：
  * ① pill 文案「模型 · 档位」，点开面板顶栏显示当前档位大字；
- * ② 模型行原地切到列表视图（auto 单列默认组 + 勾选），选中后回到档位视图；
+ * ② 模型行是 MorphSelect 弹层：点开原地长成列表（auto 单列默认组），选中后收起并更新 pill；
  * ③ 档位来自模型能力：不支持 effort 时不渲染滑杆，声明档位不足五档时不出现多余档；
  * ④ 滑杆点按轨道 / 点档位名产生同一结果（同一 onEffortChange 值）；
  * ⑤ 重置一次恢复默认模型 + 默认档。
@@ -101,14 +101,19 @@ describe('ModelSettingsSelect', () => {
         expect(screen.getByRole('slider')).toBeInTheDocument()
     })
 
-    it('模型行原地切到列表视图，选中后回到档位视图', () => {
+    it('模型行走 MorphSelect 弹层：点开列出分组，选中后收起并更新 pill', () => {
         render(<Harness />)
         openPanel()
-        fireEvent.click(screen.getByRole('button', { name: /Opus/ }))
-        expect(screen.getByText('composer.modelPanel.selectModel')).toBeInTheDocument()
+        const select = screen.getByRole('combobox', { name: 'composer.modelPanel.selectModel' })
+        expect(select).toHaveTextContent('Opus')
+
+        fireEvent.click(select)
+        expect(screen.getByRole('listbox')).toBeInTheDocument()
         expect(screen.getByRole('option', { name: /Opus/ })).toHaveAttribute('aria-selected', 'true')
 
         fireEvent.click(screen.getByRole('option', { name: /Sonnet/ }))
+        // 列表收起（listFace 关闭态 aria-hidden），档位滑杆仍在原位
+        expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
         expect(screen.getByRole('slider')).toBeInTheDocument()
         expect(screen.getByRole('button', { name: '模型' })).toHaveTextContent('Sonnet · composer.effortLevels.medium')
     })

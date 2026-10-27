@@ -118,6 +118,17 @@ describe('direction 方向档（mobi 本地槽位）', () => {
     })
 })
 
+describe('stretch 撑满容器（mobi 本地槽位）', () => {
+    afterEach(cleanup)
+
+    it('默认不撑满；stretch 时 root 打标记（宽度交给 CSS）', () => {
+        const { container, rerender } = render(<Harness />)
+        expect(container.firstElementChild).not.toHaveAttribute('data-stretch')
+        rerender(<Harness props={{ stretch: true }} />)
+        expect(container.firstElementChild).toHaveAttribute('data-stretch')
+    })
+})
+
 describe('description 双行槽（mobi 本地槽位）', () => {
     afterEach(cleanup)
 

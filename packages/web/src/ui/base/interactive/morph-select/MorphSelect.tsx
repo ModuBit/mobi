@@ -90,6 +90,8 @@ export interface MorphSelectProps {
   panelWidth?: number;
   /** 面板满宽（mobi 本地槽位）：宽度顶到视口上限（减两侧 1rem 边距），忽略 panelWidth。 */
   fullWidth?: boolean;
+  /** Trigger 撑满容器宽（mobi 本地槽位）：嵌进固定宽度面板/表单行时用，列表宽度随行宽。 */
+  stretch?: boolean;
   /** Tallest the option list gets before it scrolls, in px. Defaults to 296. */
   maxListHeight?: number;
   /** Which edge of the trigger stays put while the surface grows. */
@@ -157,7 +159,7 @@ const triggerWidth = (node: HTMLElement) => {
 };
 
 export function MorphSelect({ label, hideLabel = false, iconOnly = false, direction = "auto", prefix, items, value, defaultValue = null, onValueChange, placeholder, searchable = "auto", searchPlaceholder,
-  panelWidth = 272, fullWidth = false, maxListHeight = 296, align = "start", name, disabled = false, className, style }: MorphSelectProps) {
+  panelWidth = 272, fullWidth = false, stretch = false, maxListHeight = 296, align = "start", name, disabled = false, className, style }: MorphSelectProps) {
   const { t } = useTranslation();
   const placeholderText = placeholder ?? t("common.select");
   const reduced = useReducedFlag();
@@ -462,7 +464,7 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
   const layerKey = selected ?? "__empty";
   const rootStyle = { "--ms-panel-w": fullWidth ? "calc(100vw - 2rem)" : `${panelWidth}px`, "--ms-list-max": `${maxListHeight}px`, ...style } as CSSProperties;
 
-  return <div ref={rootRef} className={[styles.root, className].filter(Boolean).join(" ")} style={rootStyle} data-open={open || undefined} data-align={align} data-direction={directionValue} data-disabled={disabled || undefined} onBlur={onBlur}>
+  return <div ref={rootRef} className={[styles.root, className].filter(Boolean).join(" ")} style={rootStyle} data-open={open || undefined} data-align={align} data-direction={directionValue} data-stretch={stretch || undefined} data-disabled={disabled || undefined} onBlur={onBlur}>
     <span id={labelId} className={hideLabel || iconOnly ? styles.srOnly : styles.label}>{label}</span>
 
     <div className={styles.anchor}>

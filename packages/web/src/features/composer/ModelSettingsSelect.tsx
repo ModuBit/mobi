@@ -17,11 +17,11 @@
 /**
  * 模型设置面板（model-catalog 票 02）：一个入口统管「模型 / 推理档位（/ 快速模式）」。
  *
- * - 触发器 = 模型 pill（`模型名 · 档位`）；点开是一个面板，**PC 与移动端同一组件**，
- *   移动端仅三处尺寸差异（滑杆轨道 44、thumb 28、图标钮 38×38）并满宽贴 composer 上沿；
+ * - 触发器 = 模型 pill（`模型名 · 档位`）；pill 本身原地长成面板（MorphSurface），
+ *   **PC 与移动端同一组件**，移动端面板满宽贴 composer 上沿；
  * - 顶栏三栏：左 = 快速模式控件槽（票 03 注入，缺席时中栏仍居中）、中 = 当前档位大字、
  *   右 = 重置为默认（auto + 默认档）；
- * - 模型行点击后**面板内容原地切换**为模型列表（不叠新浮层），选中/返回键回到档位视图；
+ * - 模型行是 **MorphSelect**：点开在面板内就地长成模型列表，选中后收起并更新 pill；
  * - 档位滑杆（ChatGPT 形态）：轨道内嵌档位点，拖动时拇指跟手但**不提交**，释放吸附到
  *   最近档位才下发（一次拖动只发一次请求）；点按轨道 / 档位名同样即时提交；
  *   拉到最高档时轨道铺满渐变并浮出星屑（reduced-motion 下退化为静态点）；
@@ -34,10 +34,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
-import { Check, ChevronLeft, ChevronRight, RotateCcw, Zap } from 'lucide-react'
+import { ChevronRight, RotateCcw, Zap } from 'lucide-react'
 import { EFFORT_LABELS, resolveModelEffortLevels } from '@mobi/shared'
 import type { EffortLevel, FastModeState, ModelInfo } from '@mobi/shared'
-import { Popover } from '@/ui/base/interactive/popover/Popover'
+import { MorphSelect, type MorphSelectItem } from '@/ui/base/interactive/morph-select/MorphSelect'
+import { MorphSurface } from '@/ui/base/interactive/morph-surface/MorphSurface'
 import { spring } from '@/ui/base/motion/presets'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { buildModelSelectOptions } from '@/domain/session/modelSelectOptions'
@@ -84,8 +85,6 @@ export interface ModelSettingsSelectProps {
     disabled?: boolean
 }
 
-type PanelView = 'effort' | 'model'
-
 export function ModelSettingsSelect({
     label,
     model,
@@ -101,13 +100,8 @@ export function ModelSettingsSelect({
     const { t } = useTranslation()
     const isMobile = useIsMobile()
     const [open, setOpen] = useState(false)
-    const [view, setView] = useState<PanelView>('effort')
 
-    // 关闭即回到档位视图：下次打开不该停在上次的模型列表里
-    const handleOpenChange = useCallback((next: boolean) => {
-        setOpen(next)
-        if (!next) setView('effort')
-    }, [])
+    const handleOpenChange = useCallback((next: boolean) => setOpen(next), [])
 
     const modelOptions = useMemo(() => buildModelSelectOptions(models), [models])
     const modelInfo = useMemo(
@@ -115,6 +109,21 @@ export function ModelSettingsSelect({
         [models, model],
     )
     const effortLevels = useMemo(() => resolveModelEffortLevels(modelInfo), [modelInfo])
+
+    /** MorphSelect 的分组清单：`auto` 单列默认组，其余为宿主真实模型（描述行参与搜索） */
+    const modelItems = useMemo<MorphSelectItem[]>(() => {
+        const toItem = (option: { value: string; label: string; description?: string }) => ({
+            value: option.value,
+            label: option.label,
+            description: option.description,
+        })
+        const auto = modelOptions.filter(o => o.value === DEFAULT_MODEL)
+        const host = modelOptions.filter(o => o.value !== DEFAULT_MODEL)
+        const items: MorphSelectItem[] = []
+        if (auto.length > 0) items.push({ label: t('composer.modelPanel.groupDefault'), options: auto.map(toItem) })
+        if (host.length > 0) items.push({ label: t('composer.modelPanel.groupHost'), options: host.map(toItem) })
+        return items
+    }, [modelOptions, t])
 
     const modelLabel = useMemo(() => {
         const hit = modelOptions.find(o => o.value === model)
@@ -139,7 +148,6 @@ export function ModelSettingsSelect({
 
     const handleModelSelect = useCallback((value: string) => {
         if (value !== model) onModelChange?.(value)
-        setView('effort')
     }, [model, onModelChange])
 
     const effortIndex = Math.max(0, effortLevels.indexOf(effort))
@@ -147,11 +155,9 @@ export function ModelSettingsSelect({
 
     const panel = (
         <ModelSettingsPanel
-            view={view}
-            onViewChange={setView}
             model={model}
             modelLabel={modelLabel}
-            modelOptions={modelOptions}
+            modelItems={modelItems}
             effort={effort}
             effortLevels={effortLevels}
             effortLabel={effortLabel}
@@ -168,74 +174,72 @@ export function ModelSettingsSelect({
     )
 
     return (
-        <Popover
-            trigger="click"
+        <MorphSurface
+            label={label}
+            width={320}
+            fullWidth={isMobile}
             open={open}
             onOpenChange={handleOpenChange}
-            side="top"
-            align="center"
-            sideOffset={8}
-            panelClassName="model-settings-popover"
-            panelPadding={0}
-            panelStyle={isMobile ? { width: 'calc(100vw - 20px)' } : { width: 320 }}
-            maxWidth="calc(100vw - 20px)"
+            disabled={disabled}
             content={panel}
-        >
-            <button
-                type="button"
-                aria-label={label}
-                disabled={disabled}
-                style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    maxWidth: '100%',
-                    height: 'var(--control-height-md)',
-                    padding: '0 12px',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-pill)',
-                    background: open ? 'var(--surface-raised)' : 'var(--surface)',
-                    color: 'var(--foreground)',
-                    font: 'inherit',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 500,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    cursor: disabled ? 'not-allowed' : 'pointer',
-                    opacity: disabled ? 0.55 : 1,
-                    WebkitTapHighlightColor: 'transparent',
-                }}
-            >
-                {fastEnabled && (
-                    <Zap size={12} aria-hidden="true" fill="currentColor" style={{ flex: 'none', color: 'var(--primary)' }} />
-                )}
-                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {modelLabel}
-                    {showEffort && (
-                        <>
-                            {' · '}
-                            <span style={{ color: effortColor }}>{effortLabel(effort)}</span>
-                        </>
+            trigger={({ open: isOpen, toggle }) => (
+                <button
+                    type="button"
+                    aria-label={label}
+                    aria-haspopup="dialog"
+                    aria-expanded={isOpen}
+                    disabled={disabled}
+                    onClick={toggle}
+                    style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        maxWidth: '100%',
+                        height: 'var(--control-height-md)',
+                        padding: '0 12px',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius-pill)',
+                        background: isOpen ? 'var(--surface-raised)' : 'var(--surface)',
+                        color: 'var(--foreground)',
+                        font: 'inherit',
+                        fontSize: 'var(--text-sm)',
+                        fontWeight: 500,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        opacity: disabled ? 0.55 : 1,
+                        WebkitTapHighlightColor: 'transparent',
+                    }}
+                >
+                    {fastEnabled && (
+                        <Zap size={12} aria-hidden="true" fill="currentColor" style={{ flex: 'none', color: 'var(--primary)' }} />
                     )}
-                </span>
-                <ChevronRight
-                    size={14}
-                    aria-hidden="true"
-                    style={{ flex: 'none', color: 'var(--text-muted)', transform: open ? 'rotate(-90deg)' : undefined, transition: 'transform var(--duration-fast) var(--ease-standard)' }}
-                />
-            </button>
-        </Popover>
+                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {modelLabel}
+                        {showEffort && (
+                            <>
+                                {' · '}
+                                <span style={{ color: effortColor }}>{effortLabel(effort)}</span>
+                            </>
+                        )}
+                    </span>
+                    <ChevronRight
+                        size={14}
+                        aria-hidden="true"
+                        style={{ flex: 'none', color: 'var(--text-muted)', transform: isOpen ? 'rotate(-90deg)' : undefined, transition: 'transform var(--duration-fast) var(--ease-standard)' }}
+                    />
+                </button>
+            )}
+        />
     )
 }
 
-/** 面板本体：档位视图 ⇄ 模型列表视图在同一容器内原地切换 */
+/** 面板本体：顶栏（快速模式 / 档位大字 / 重置）+ 模型行（MorphSelect）+ 档位滑杆 */
 function ModelSettingsPanel({
-    view,
-    onViewChange,
     model,
     modelLabel,
-    modelOptions,
+    modelItems,
     effort,
     effortLevels,
     effortLabel,
@@ -249,11 +253,9 @@ function ModelSettingsPanel({
     onModelSelect,
     onEffortChange,
 }: {
-    view: PanelView
-    onViewChange: (view: PanelView) => void
     model: string
     modelLabel: string
-    modelOptions: ReturnType<typeof buildModelSelectOptions>
+    modelItems: MorphSelectItem[]
     effort: EffortLevel
     effortLevels: readonly EffortLevel[]
     effortLabel: (level: EffortLevel) => string
@@ -275,83 +277,62 @@ function ModelSettingsPanel({
     const shownIndex = Math.max(0, effortLevels.indexOf(shownEffort))
     return (
         <div style={{ padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {view === 'model' ? (
-                <ModelListView
-                    model={model}
-                    modelOptions={modelOptions}
-                    isMobile={isMobile}
-                    iconButtonSize={iconButtonSize}
-                    onBack={() => onViewChange('effort')}
-                    onSelect={onModelSelect}
-                />
-            ) : (
-                <>
-                    {/* 顶栏三栏：左控件槽 / 中档位大字 / 右重置（左右等宽，中栏恒居中） */}
-                    <div style={{ display: 'grid', gridTemplateColumns: `${iconButtonSize}px 1fr ${iconButtonSize}px`, alignItems: 'center', gap: 4 }}>
-                        <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                            {showFast && onFastModeToggle && (
-                                <FastModeButton
-                                    enabled={fastEnabled}
-                                    state={fastModeState}
-                                    size={iconButtonSize}
-                                    onToggle={onFastModeToggle}
-                                />
-                            )}
-                        </div>
-                        <div style={{
-                            textAlign: 'center',
-                            fontSize: isMobile ? 17 : 16,
-                            fontWeight: 600,
-                            color: showEffort ? effortAccent(shownIndex, effortLevels.length - 1) : 'var(--foreground)',
-                            lineHeight: 1.2,
-                        }}>
-                            {showEffort ? effortLabel(shownEffort) : modelLabel}
-                        </div>
-                        <PanelIconButton
-                            label={t('composer.modelPanel.reset')}
+            {/* 顶栏三栏：左控件槽 / 中档位大字 / 右重置（左右等宽，中栏恒居中） */}
+            <div style={{ display: 'grid', gridTemplateColumns: `${iconButtonSize}px 1fr ${iconButtonSize}px`, alignItems: 'center', gap: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                    {showFast && onFastModeToggle && (
+                        <FastModeButton
+                            enabled={fastEnabled}
+                            state={fastModeState}
                             size={iconButtonSize}
-                            onClick={onReset}
-                        >
-                            <RotateCcw size={isMobile ? 16 : 15} />
-                        </PanelIconButton>
-                    </div>
-
-                    {/* 模型行：点击原地切到列表 */}
-                    <button
-                        type="button"
-                        onClick={() => onViewChange('model')}
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 4,
-                            minHeight: isMobile ? 40 : 32,
-                            padding: '0 8px',
-                            border: 0,
-                            borderRadius: 'var(--radius-square)',
-                            background: 'transparent',
-                            color: 'var(--text-secondary)',
-                            font: 'inherit',
-                            fontSize: 13,
-                            cursor: 'pointer',
-                            WebkitTapHighlightColor: 'transparent',
-                        }}
-                    >
-                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{modelLabel}</span>
-                        <ChevronRight size={14} aria-hidden="true" style={{ flex: 'none', color: 'var(--text-muted)' }} />
-                    </button>
-
-                    {showEffort && (
-                        <EffortSlider
-                            levels={effortLevels}
-                            value={effort}
-                            label={effortLabel}
-                            isMobile={isMobile}
-                            onChange={(level) => onEffortChange?.(level)}
-                            onPreviewChange={setPreview}
+                            onToggle={onFastModeToggle}
                         />
                     )}
-                </>
+                </div>
+                <div style={{
+                    textAlign: 'center',
+                    fontSize: isMobile ? 17 : 16,
+                    fontWeight: 600,
+                    color: showEffort ? effortAccent(shownIndex, effortLevels.length - 1) : 'var(--foreground)',
+                    lineHeight: 1.2,
+                }}>
+                    {showEffort ? effortLabel(shownEffort) : modelLabel}
+                </div>
+                <PanelIconButton
+                    label={t('composer.modelPanel.reset')}
+                    size={iconButtonSize}
+                    onClick={onReset}
+                >
+                    <RotateCcw size={isMobile ? 16 : 15} />
+                </PanelIconButton>
+            </div>
+
+            {/* 模型行：MorphSelect 原地长成列表（stretch 让行与展开面都占满面板宽） */}
+            <MorphSelect
+                label={t('composer.modelPanel.selectModel')}
+                hideLabel
+                stretch
+                items={modelItems}
+                value={model}
+                // 当前模型不在宿主目录里（探针滞后 / 已下线的模型）时，如实显示原值而不是占位符
+                placeholder={modelLabel}
+                onValueChange={(next) => onModelSelect(next)}
+                // 模型清单短：不做搜索行，展开即全列表（typeahead 键盘检索仍可用）
+                searchable={false}
+                // 面板贴在 composer 上沿：列表恒向上展开，覆盖面板而不是压到输入框上
+                direction="up"
+                maxListHeight={isMobile ? 260 : 240}
+            />
+
+            {showEffort && (
+                <EffortSlider
+                    levels={effortLevels}
+                    value={effort}
+                    label={effortLabel}
+                    isMobile={isMobile}
+                    onChange={(level) => onEffortChange?.(level)}
+                    onPreviewChange={setPreview}
+                />
             )}
         </div>
     )
@@ -708,106 +689,5 @@ function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChang
                 })}
             </div>
         </div>
-    )
-}
-
-/** 模型列表视图：`auto` 单列默认组，其余为宿主真实清单（描述行 + 勾选） */
-function ModelListView({ model, modelOptions, isMobile, iconButtonSize, onBack, onSelect }: {
-    model: string
-    modelOptions: ReturnType<typeof buildModelSelectOptions>
-    isMobile: boolean
-    iconButtonSize: number
-    onBack: () => void
-    onSelect: (model: string) => void
-}) {
-    const { t } = useTranslation()
-    const autoOptions = modelOptions.filter(o => o.value === DEFAULT_MODEL)
-    const hostOptions = modelOptions.filter(o => o.value !== DEFAULT_MODEL)
-
-    const renderItem = (option: { value: string; label: string; description?: string }) => {
-        const selected = option.value === model
-        return (
-            <button
-                key={option.value}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                onClick={() => onSelect(option.value)}
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    width: '100%',
-                    minHeight: isMobile ? 44 : 36,
-                    padding: '6px 10px',
-                    border: 0,
-                    borderRadius: 'var(--radius-square)',
-                    background: selected ? 'var(--surface-muted)' : 'transparent',
-                    color: selected ? 'var(--foreground)' : 'var(--text-secondary)',
-                    font: 'inherit',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    WebkitTapHighlightColor: 'transparent',
-                }}
-            >
-                <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
-                    <span style={{ fontSize: 13, fontWeight: selected ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {option.label}
-                    </span>
-                    {option.description && (
-                        <span style={{ fontSize: 11.5, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {option.description}
-                        </span>
-                    )}
-                </span>
-                {selected && <Check size={15} aria-hidden="true" style={{ flex: 'none' }} />}
-            </button>
-        )
-    }
-
-    return (
-        <>
-            <div style={{ display: 'grid', gridTemplateColumns: `${iconButtonSize}px 1fr ${iconButtonSize}px`, alignItems: 'center' }}>
-                <PanelIconButton label={t('composer.modelPanel.back')} size={iconButtonSize} onClick={onBack}>
-                    <ChevronLeft size={isMobile ? 17 : 16} />
-                </PanelIconButton>
-                <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                    {t('composer.modelPanel.selectModel')}
-                </div>
-                <span />
-            </div>
-            <div
-                role="listbox"
-                aria-label={t('composer.modelPanel.selectModel')}
-                style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 2,
-                    maxHeight: isMobile ? '60dvh' : 320,
-                    overflowY: 'auto',
-                    overscrollBehavior: 'contain',
-                    paddingRight: 2,
-                }}
-            >
-                {autoOptions.length > 0 && (
-                    <div role="group" aria-label={t('composer.modelPanel.groupDefault')}>
-                        <GroupLabel>{t('composer.modelPanel.groupDefault')}</GroupLabel>
-                        {autoOptions.map(renderItem)}
-                    </div>
-                )}
-                {hostOptions.length > 0 && (
-                    <div role="group" aria-label={t('composer.modelPanel.groupHost')}>
-                        <GroupLabel>{t('composer.modelPanel.groupHost')}</GroupLabel>
-                        {hostOptions.map(renderItem)}
-                    </div>
-                )}
-            </div>
-        </>
-    )
-}
-
-function GroupLabel({ children }: { children: ReactNode }) {
-    return (
-        <div style={{ padding: '8px 10px 4px', fontSize: 11, color: 'var(--text-muted)' }}>{children}</div>
     )
 }
