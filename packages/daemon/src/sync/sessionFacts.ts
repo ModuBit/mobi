@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { CacheStatus, ContextUsage, EffortLevel, PermissionMode, SessionEndReason, SessionGovernanceSnapshot, SessionPauseTrigger } from '@mobi/shared/types'
+import type { CacheStatus, ContextUsage, EffortLevel, FastModeDisabledReason, FastModeState, PermissionMode, SessionEndReason, SessionGovernanceSnapshot, SessionPauseTrigger } from '@mobi/shared/types'
 
 /**
  * CLI 会话「事实上报」管线（深化候选③）：CLI 运行时持续上报会话实时状态
@@ -76,6 +76,14 @@ export type CacheStatusPayload = {
     cacheStatus: CacheStatus | null
 }
 
+export type FastModeStatePayload = {
+    sid: string
+    /** 快速模式的 SDK 权威执行态；null 表示清空（回到未知，读取方回落 metadata 快照） */
+    fastModeState: FastModeState | null
+    /** 此刻不可用的原因（只在非 on 时出现） */
+    fastModeDisabledReason?: FastModeDisabledReason
+}
+
 /**
  * 会话事实上报的落库入口（seam）：socket 层完成校验与鉴权后调用，实现方为 SyncEngine /
  * SessionCache。
@@ -86,6 +94,7 @@ export type SessionFactsSink = {
     handleContextUsage?: (payload: ContextUsagePayload) => void
     handleRunStarted?: (payload: RunStartedPayload) => void
     handleCacheStatus?: (payload: CacheStatusPayload) => void
+    handleFastModeState?: (payload: FastModeStatePayload) => void
     /** 不落库的「此刻」事实，只喂 SessionReceiveReadiness（见该模块说明） */
     handleReceiveReadiness?: (payload: ReceiveReadinessPayload) => void
 }

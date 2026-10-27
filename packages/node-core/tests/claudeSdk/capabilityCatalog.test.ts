@@ -21,6 +21,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
     createCapabilityCatalog,
+    readFastModeState,
     readLiveCapabilities,
     type LiveCapabilitySource,
 } from '@/claudeSdk/capabilityCatalog'
@@ -49,6 +50,35 @@ function makeSource(overrides: Partial<LiveCapabilitySource> = {}): LiveCapabili
         ...overrides,
     }
 }
+
+describe('readFastModeState', () => {
+    it('优先 reinitialize（新鲜值），不碰 initializationResult 快照', async () => {
+        const initializationResult = vi.fn().mockResolvedValue({ fast_mode_state: 'off' })
+        const reinitialize = vi.fn().mockResolvedValue({ fast_mode_state: 'on' })
+        const source = makeSource({ initializationResult, reinitialize })
+
+        await expect(readFastModeState(source)).resolves.toEqual({ state: 'on' })
+        expect(initializationResult).not.toHaveBeenCalled()
+    })
+
+    it('源不支持 reinitialize 时回落启动快照', async () => {
+        await expect(readFastModeState(makeSource())).resolves.toEqual({ state: 'off' })
+    })
+
+    it('携带不可用原因', async () => {
+        const source = makeSource({
+            reinitialize: vi.fn().mockResolvedValue({ fast_mode_state: 'off', fast_mode_disabled_reason: 'free' }),
+        })
+
+        await expect(readFastModeState(source)).resolves.toEqual({ state: 'off', reason: 'free' })
+    })
+
+    it('SDK 未给状态字段（老版本 / 非 fast 模型）→ null，调用方保持上一次值', async () => {
+        const source = makeSource({ reinitialize: vi.fn().mockResolvedValue({}) })
+
+        await expect(readFastModeState(source)).resolves.toBeNull()
+    })
+})
 
 describe('readLiveCapabilities', () => {
     it('投影完整 SDKMetadata（含 account / fastModeState）', async () => {

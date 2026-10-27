@@ -397,6 +397,73 @@ describe('SessionCache.handleCacheStatus', () => {
     })
 })
 
+describe('SessionCache.handleFastModeState', () => {
+    let store: Store
+    let emits: { type: string; sessionId: string; data: unknown }[]
+    let cache: SessionCache
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        emits = []
+        const rec = { emit: (e: { type: string; sessionId: string; data: unknown }) => emits.push(e) }
+        cache = new SessionCache(store, rec as unknown as EventPublisher)
+    })
+
+    afterEach(() => {
+        store.close()
+    })
+
+    test('落库到 runtimeState.fastModeState / fastModeDisabledReason 并 SSE 推送', () => {
+        const session = cache.getOrCreateSession('tag-fm-1', { path: '/tmp/p' }, null, 'default')
+
+        cache.handleFastModeState({ sid: session.id, fastModeState: 'cooldown', fastModeDisabledReason: 'extra_usage_disabled' })
+
+        const rs = cache.getSession(session.id)?.runtimeState
+        expect(rs?.fastModeState).toBe('cooldown')
+        expect(rs?.fastModeDisabledReason).toBe('extra_usage_disabled')
+        const stored = store.sessions.getSession(session.id)?.runtimeState as { fastModeState?: string } | undefined
+        expect(stored?.fastModeState).toBe('cooldown')
+        expect(emits.find(e => e.type === 'session-updated')).toBeTruthy()
+    })
+
+    test('不影响同名的用户意图字段 fastMode 与其他 runtimeState', () => {
+        const session = cache.getOrCreateSession(
+            'tag-fm-2', { path: '/tmp/p' }, null, 'default', 'remote', { model: 'opus', fastMode: true }
+        )
+
+        cache.handleFastModeState({ sid: session.id, fastModeState: 'on' })
+
+        const rs = cache.getSession(session.id)?.runtimeState
+        expect(rs?.fastMode).toBeTrue()
+        expect(rs?.fastModeState).toBe('on')
+        expect(rs?.model).toBe('opus')
+    })
+
+    test('state 为 null 时连同原因一起清空（恢复 on 后不残留旧原因）', () => {
+        const session = cache.getOrCreateSession('tag-fm-3', { path: '/tmp/p' }, null, 'default')
+
+        cache.handleFastModeState({ sid: session.id, fastModeState: 'off', fastModeDisabledReason: 'free' })
+        cache.handleFastModeState({ sid: session.id, fastModeState: null })
+
+        const rs = cache.getSession(session.id)?.runtimeState
+        expect(rs?.fastModeState).toBeUndefined()
+        expect(rs?.fastModeDisabledReason).toBeUndefined()
+    })
+
+    test('state 为 on 时丢弃陈旧 reason（不写入）', () => {
+        const session = cache.getOrCreateSession('tag-fm-4', { path: '/tmp/p' }, null, 'default')
+
+        cache.handleFastModeState({ sid: session.id, fastModeState: 'on', fastModeDisabledReason: 'pending' })
+
+        expect(cache.getSession(session.id)?.runtimeState?.fastModeDisabledReason).toBeUndefined()
+    })
+
+    test('未知 sid 静默忽略（不抛错、不推送）', () => {
+        expect(() => cache.handleFastModeState({ sid: 'no-such-session', fastModeState: 'on' })).not.toThrow()
+        expect(emits).toHaveLength(0)
+    })
+})
+
 describe('SessionCache.handleRunStarted（docs/pending.md #55 方案 1）', () => {
     let store: Store
     let emits: { type: string; sessionId: string; data: unknown }[]

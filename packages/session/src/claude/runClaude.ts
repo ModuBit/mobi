@@ -467,10 +467,11 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
         },
     };
 
-    const syncSessionModes = () => {
+    /** 把当前配置下发到活会话；返回的 Promise 在 flag 层落地（或无事可做）后 resolve */
+    const syncSessionModes = (): Promise<void> => {
         const sessionInstance = currentSessionRef.current;
         if (!sessionInstance) {
-            return;
+            return Promise.resolve();
         }
 
         const nextConfig: Record<LiveConfigKey, LiveConfigValue | undefined> = {
@@ -482,7 +483,7 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
         const changed = (Object.keys(LIVE_CONFIG_APPLIERS) as LiveConfigKey[])
             .filter((key) => LIVE_CONFIG_APPLIERS[key].get(sessionInstance) !== nextConfig[key]);
         if (changed.length === 0) {
-            return;
+            return Promise.resolve();
         }
 
         for (const key of changed) {
@@ -490,12 +491,17 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
         }
 
         const control = queryControlRef.current;
+        let applied: Promise<void> = Promise.resolve();
         if (control) {
-            Promise.all(changed.map((key) => LIVE_CONFIG_APPLIERS[key].applyLive(control, nextConfig[key] as LiveConfigValue)))
-                .catch(err => logger.debug(`[loop] dynamic config apply failed: ${err}`));
+            applied = Promise.all(changed.map((key) => LIVE_CONFIG_APPLIERS[key].applyLive(control, nextConfig[key] as LiveConfigValue)))
+                .then(() => undefined)
+                .catch(err => {
+                    logger.debug(`[loop] dynamic config apply failed: ${err}`);
+                });
         }
 
         logger.debug(`[loop] Synced session config: permissionMode=${currentPermissionMode}, model=${currentModel ?? 'auto'}, effort=${currentEffort}`);
+        return applied;
     };
     apiSession.onUserMessage((message) => {
         const messagePermissionMode = currentPermissionMode;
@@ -615,15 +621,23 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
             currentEffort = parsed.data as EffortLevel;
         }
 
+        let fastModeChanged = false;
         if (config.fastMode !== undefined) {
             const parsed = SESSION_CONFIG_FIELDS.fastMode.schema.safeParse(config.fastMode);
             if (!parsed.success) {
                 throw new Error('Invalid fast mode flag');
             }
+            fastModeChanged = parsed.data !== currentFastMode;
             currentFastMode = parsed.data;
         }
 
-        syncSessionModes();
+        const applied = syncSessionModes();
+        // 快速模式切换后主动回读 SDK 权威执行态：flag 层落地与否只有 initialize 说了算
+        // （off/cooldown/on + 不可用原因），等同步完成再读，避免读到切换前的值。
+        // reinitialize 有「重投挂起审批」的副作用，所以只在用户显式切换时调，不做周期刷新。
+        if (fastModeChanged) {
+            void applied.then(() => apiSession.refreshFastModeState());
+        }
         return { applied: { permissionMode: currentPermissionMode, model: currentModel, effort: currentEffort, fastMode: currentFastMode } };
     });
 

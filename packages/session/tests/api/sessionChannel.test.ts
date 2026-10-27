@@ -80,7 +80,7 @@ beforeEach(() => {
 })
 
 describe('SessionChannel：report 单一出口的 wire 映射（协议不变锁）', () => {
-    it('五类 report 各映射回既有 socket 事件名与负载形状', () => {
+    it('各类 report 各映射回既有 socket 事件名与负载形状', () => {
         const { channel, emitted } = makeHarness()
 
         channel.report({ kind: 'facts', facts: [{ kind: 'pushed', localIds: ['a'], at: 1 }] })
@@ -88,6 +88,7 @@ describe('SessionChannel：report 单一出口的 wire 映射（协议不变锁�
         channel.report({ kind: 'run-started', runStartedAt: 123 })
         channel.report({ kind: 'receive-readiness', canReceive: true })
         channel.report({ kind: 'cache-status', cacheStatus: null })
+        channel.report({ kind: 'fast-mode-state', fastModeState: 'cooldown', fastModeDisabledReason: 'extra_usage_disabled' })
 
         expect(emitted).toEqual([
             { event: 'messages-facts', payload: { sid: 'session-1', facts: [{ kind: 'pushed', localIds: ['a'], at: 1 }] } },
@@ -95,6 +96,10 @@ describe('SessionChannel：report 单一出口的 wire 映射（协议不变锁�
             { event: 'run-started', payload: { sid: 'session-1', runStartedAt: 123 } },
             { event: 'receive-readiness', payload: { sid: 'session-1', canReceive: true } },
             { event: 'cache-status', payload: { sid: 'session-1', cacheStatus: null } },
+            {
+                event: 'fast-mode-state',
+                payload: { sid: 'session-1', fastModeState: 'cooldown', fastModeDisabledReason: 'extra_usage_disabled' },
+            },
         ])
     })
 

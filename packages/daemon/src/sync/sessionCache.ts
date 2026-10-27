@@ -21,7 +21,7 @@ import { clampAliveTime } from './aliveTime'
 import { isSessionRowDeletable } from './sessionDeleteGuard'
 import { EventPublisher } from './eventPublisher'
 import { applySessionEnd, projectSession } from './sessionProjection'
-import type { SessionAlivePayload, SessionEndPayload } from './sessionFacts'
+import type { FastModeStatePayload, SessionAlivePayload, SessionEndPayload } from './sessionFacts'
 import { RuntimeStateStore } from './runtimeStateStore'
 import { applyTeamStateDelta, handleTeamSessionEnd } from './teams'
 
@@ -280,6 +280,36 @@ export class SessionCache {
             this.runtimeStateStore.merge(session, { cacheStatus: payload.cacheStatus ?? undefined })
         } catch {
             // 落库失败不阻塞 CLI 流程（提示缺失只损失 UI 提示，不影响会话）
+            return
+        }
+        this.publisher.emit({
+            type: 'session-updated',
+            sessionId: session.id,
+            data: { runtimeState: session.runtimeState },
+        })
+    }
+
+    /**
+     * 处理快速模式执行态上报（每轮 result 帧 + 切换后的 reinitialize 回读）。
+     * 落库到 runtimeState.fastModeState / fastModeDisabledReason（RuntimeStateStore 单一收口）
+     * + SSE 推 runtimeState patch。这是 SDK 的**权威**值：与用户意图字段 fastMode 分开，
+     * web 优先读它，缺失才回落 metadata.sdkMetadata.fastModeState（启动快照）。
+     * null → merge 传 undefined 删字段（原因字段一并清，避免「已恢复 on 却还挂着旧原因」）。
+     */
+    handleFastModeState(payload: FastModeStatePayload): void {
+        const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)
+        if (!session) return
+        try {
+            this.runtimeStateStore.merge(session, {
+                fastModeState: payload.fastModeState ?? undefined,
+                // 原因只在「有状态且不是 on」时有意义：state 为 on / null 时清掉旧原因，
+                // 否则会残留「已恢复 on 却还挂着 free」的假提示
+                fastModeDisabledReason: payload.fastModeState && payload.fastModeState !== 'on'
+                    ? payload.fastModeDisabledReason
+                    : undefined,
+            })
+        } catch {
+            // 落库失败不阻塞 CLI 流程（只影响 UI 显示，不影响会话）
             return
         }
         this.publisher.emit({

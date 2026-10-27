@@ -29,7 +29,7 @@
 import { readdir, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { Dirent } from 'node:fs'
-import type { AgentInfo, ModelInfo, SDKMetadata, SlashCommand } from '@mobi/shared'
+import type { AgentInfo, FastModeDisabledReason, FastModeState, ModelInfo, SDKMetadata, SlashCommand } from '@mobi/shared'
 import { logger } from '@mobi/node-core/logger'
 import { resolveClaudeConfigDir } from './claudeConfigDir'
 import { extractSDKMetadata } from './metadataExtractor'
@@ -37,6 +37,12 @@ import { extractSDKMetadata } from './metadataExtractor'
 /** 能力发现所需的 Query 结构子集（不 import SDK 类型，便于测试替身） */
 export interface LiveCapabilitySource {
     initializationResult(): Promise<unknown>
+    /**
+     * 重新发一次 initialize 控制请求（对应 SDK `Query.reinitialize()`），拿到「此刻」而非
+     * 启动快照的能力面。**只在用户显式动作后调用**：SDK 文档明确它会带回仍挂起的审批 /
+     * 对话框，可能触发一次工具调用被拒后重试或一条提示重发，不适合放进周期刷新。
+     */
+    reinitialize?(): Promise<unknown>
     supportedModels(): Promise<ModelInfo[]>
     supportedCommands(): Promise<SlashCommand[]>
     supportedAgents(): Promise<AgentInfo[]>
@@ -48,6 +54,28 @@ interface InitCapabilityFields {
     available_output_styles?: string[]
     account?: SDKMetadata['account']
     fast_mode_state?: SDKMetadata['fastModeState']
+    fast_mode_disabled_reason?: FastModeDisabledReason
+}
+
+/** 快速模式的执行态快照（state + 此刻不可用的原因） */
+export type FastModeSnapshot = {
+    state: FastModeState
+    reason?: FastModeDisabledReason
+}
+
+/**
+ * 读「此刻」的快速模式执行态：优先 `reinitialize()`（新鲜请求），源不支持时回落
+ * `initializationResult()`（启动快照）。切换 fastMode 后的即时回读走这里；
+ * 每轮 result 里的同一组字段由会话进程直接上报，不经过本函数。
+ */
+export async function readFastModeState(source: LiveCapabilitySource): Promise<FastModeSnapshot | null> {
+    const raw = (source.reinitialize ? await source.reinitialize() : await source.initializationResult()) ?? {}
+    const init = raw as InitCapabilityFields
+    if (!init.fast_mode_state) return null
+    return {
+        state: init.fast_mode_state,
+        ...(init.fast_mode_disabled_reason ? { reason: init.fast_mode_disabled_reason } : {}),
+    }
 }
 
 /**

@@ -432,6 +432,31 @@ describe('sdkOutputLoop contextUsage 分发', () => {
         expect(onContextUsage).toHaveBeenCalled()
     })
 
+    it('result 帧的 fast_mode_state / fast_mode_disabled_reason 透传给 onFastModeState', async () => {
+        const onFastModeState = vi.fn()
+        await sdkOutputLoop(
+            mockQuery([{
+                type: 'result', subtype: 'success', terminal_reason: undefined,
+                fast_mode_state: 'cooldown', fast_mode_disabled_reason: 'extra_usage_disabled',
+            } as unknown as SDKMessage]),
+            { isCompactCommand: false } satisfies LoopContext,
+            { ...baseOpts(), onFastModeState },
+        )
+        expect(onFastModeState).toHaveBeenCalledWith('cooldown', 'extra_usage_disabled')
+    })
+
+    it('中断的 result 同样上报快速模式执行态（与 turn 是否完成无关）', async () => {
+        const onFastModeState = vi.fn()
+        await sdkOutputLoop(
+            mockQuery([{
+                type: 'result', subtype: 'success', terminal_reason: 'aborted_streaming', fast_mode_state: 'off',
+            } as unknown as SDKMessage]),
+            { isCompactCommand: false } satisfies LoopContext,
+            { ...baseOpts(), onFastModeState },
+        )
+        expect(onFastModeState).toHaveBeenCalledWith('off', undefined)
+    })
+
     it('conversation_reset 不触发 onContextCleared（plan-mode exit 也发此消息，无法与 /clear 区分）', async () => {
         const onContextCleared = vi.fn()
         await sdkOutputLoop(

@@ -57,6 +57,7 @@ import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotS
 import { AssistantPartialAssembler } from './utils/assistantPartialAssembler'
 import { MOBI_CORE_SERVER_NAME } from '@mobi/shared'
 import type { CacheStatus } from '@mobi/shared'
+import type { FastModeDisabledReason, FastModeState } from '@mobi/shared'
 import { buildClaudeFeatureEnv } from './featureFlags'
 import { pushUserMessage } from './utils/pushUserMessage'
 import type { PushOrigin } from './utils/stopAction'
@@ -503,6 +504,8 @@ export async function sdkOutputLoop(
          * 改由 onCompactBoundary 用 post_tokens 上报压缩后真实占用。
          */
         onContextUsage?: (resultMsg: SDKResultMessage, isCompact: boolean) => void
+        /** 快速模式执行态（result 帧的 SDK 权威值，与 turn 完成与否无关） */
+        onFastModeState?: (state: FastModeState | undefined, reason: FastModeDisabledReason | undefined) => void
         /**
          * compact_boundary 到达时触发，携带压缩后 token（compact_metadata.post_tokens）。
          * launcher 用它 + 上次记忆的 maxTokens/costUsd 组装 ContextUsage 上报。
@@ -761,6 +764,10 @@ export async function sdkOutputLoop(
 
             // 通知就绪
             opts.onReady();
+
+            // 快速模式执行态：result 帧携带 SDK 权威值（off/cooldown/on + 不可用原因），
+            // 与 turn 是否完成无关，无条件上报（中断帧同样带）。
+            opts.onFastModeState?.(resultMsg.fast_mode_state, resultMsg.fast_mode_disabled_reason);
 
             // 上下文用量上报：launcher 从 resultMsg 本地组装。
             // - 中断（aborted_*）：turn 未完成，usage 可能缺失/不完整，跳过，UI 保留上一轮读数。
@@ -1027,6 +1034,8 @@ export interface RemoteSessionEvents {
     /** 上下文用量上报触发（result 时；launcher 从 resultMsg 本地组装，零额外 API）。
      *  isCompact=true 表示这是 compact 的 result：用量改由 compact_boundary 上报，launcher 只回填成本 */
     onContextUsage?: (resultMsg: SDKResultMessage, isCompact: boolean) => void
+    /** 快速模式执行态（result 帧的 SDK 权威值，与 turn 完成与否无关） */
+    onFastModeState?: (state: FastModeState | undefined, reason: FastModeDisabledReason | undefined) => void
     /** compact_boundary 到达：post_tokens 为压缩后 token（失败时 undefined），launcher 据此上报压缩后占用 */
     onCompactBoundary?: (postTokens: number | undefined) => void
     /** turn 输出观测（批次 A 撤回复验判据，透传给 sdkOutputLoop，见 TurnTrackingState） */
@@ -1450,6 +1459,7 @@ export async function claudeRemote(
             onCompactCompleted: events.onCompactCompleted,
             onCompactStart: events.onCompactStart,
             onContextUsage: events.onContextUsage,
+            onFastModeState: events.onFastModeState,
             onCompactBoundary: events.onCompactBoundary,
             onConversationReset: events.onConversationReset,
             synthesizedPluginErrorContents,

@@ -67,6 +67,7 @@ export type {
 export type {
     AccountInfo,
     AgentInfo,
+    FastModeDisabledReason,
     FastModeState,
     ModelInfo,
     SDKMetadata,

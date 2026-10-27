@@ -51,8 +51,9 @@ metadata:
 `useMobiApi` 必须用模块级稳定引用，否则每次渲染换对象会掩盖依赖漏项。
 
 运行中切换：点闪电 → 请求发出 → `runtime_state.fastMode` 翻 0/1、pill 同步。
-冷却态（`fastModeState=cooldown`）依赖 SDK 限流上报，真机不廉价复现——只做组件级验证，
-验收结论要显式标注「真机未复现」，别降级打勾。
+冷却态（`fastModeState=cooldown`）的真实来源依赖 SDK 限流上报，本机未复现；但**渲染侧已可廉价真机验**：
+切到唯一带 `supportsFastMode` 的 `claude-opus-5-5` 模型 + DB 注入 `runtime_state.fastModeState='cooldown'`，
+闪电按钮即显示冷却态。完整注入 recipe 见 [[fast-mode-state-verify]]（含 runtimeState 优先 / metadata 兜底两分支）。
 
 ## agent 侧：list_models + create_session
 

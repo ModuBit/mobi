@@ -37,6 +37,8 @@ import type {
     ContextUsage,
     CrossSessionOrigin,
     DecryptedMessage,
+    FastModeDisabledReason,
+    FastModeState,
     MessageFact,
     SnapshotDeltaFrame,
     TurnOrigin,
@@ -97,6 +99,8 @@ export type SessionChannelReport =
     | { kind: 'receive-readiness'; canReceive: boolean }
     /** prompt cache 状态（null = 清空，首个 result 帧统一清） */
     | { kind: 'cache-status'; cacheStatus: CacheStatus | null }
+    /** 快速模式的 SDK 权威执行态（每轮 result / 切换后 reinitialize 上报；null = 清空） */
+    | { kind: 'fast-mode-state'; fastModeState: FastModeState | null; fastModeDisabledReason?: FastModeDisabledReason }
 
 /** 自定义事件载荷（session-message event 信封的 data 形状；类型单源——
  *  ApiSessionClient.sendSessionEvent 门面直接引用，新增 variant 只改这里） */
@@ -676,6 +680,13 @@ export class SessionChannel {
                 return
             case 'cache-status':
                 this.transport.emit('cache-status', { sid: this.sessionId, cacheStatus: event.cacheStatus })
+                return
+            case 'fast-mode-state':
+                this.transport.emit('fast-mode-state', {
+                    sid: this.sessionId,
+                    fastModeState: event.fastModeState,
+                    fastModeDisabledReason: event.fastModeDisabledReason,
+                })
                 return
         }
     }

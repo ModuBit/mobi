@@ -19,7 +19,7 @@ import type { PermissionMode, EffortLevel } from './modes'
 import type { MessageCategory } from './messageClassification'
 import type { MessageFact } from './messages'
 import type { CrossSessionOrigin } from './inboundOrigin'
-import type { CacheStatus, ContextUsage, ModelInfo, SnapshotDeltaFrame, UiCommandAction } from './schemas'
+import type { CacheStatus, ContextUsage, FastModeDisabledReason, FastModeState, ModelInfo, SnapshotDeltaFrame, UiCommandAction } from './schemas'
 import type { UserContentBlock, UserMessageContent } from './userContentSchema'
 
 export type SocketErrorReason = 'namespace-missing' | 'access-denied' | 'not-found'
@@ -456,6 +456,10 @@ export interface ClientToServerEvents {
     /** CLI 会话恢复（resume/fork）时上报 prompt cache 状态（daemon 落库到 runtimeState.cacheStatus + SSE 推 web）。
      * cacheStatus 为 null 表示清空（首 turn result 到达后 CLI 清除，过期提示只在首轮前有意义） */
     'cache-status': (data: { sid: string; cacheStatus: CacheStatus | null }) => void
+    /** CLI 上报快速模式的 SDK 权威执行态（daemon 落库到 runtimeState.fastModeState +
+     * fastModeDisabledReason，SSE 推 web）。来源两处：每轮 result 帧、切换 fastMode 后的
+     * reinitialize 回读。state 为 null 表示清空（读取方回落 metadata 快照） */
+    'fast-mode-state': (data: { sid: string; fastModeState: FastModeState | null; fastModeDisabledReason?: FastModeDisabledReason }) => void
     /** CLI「本会话此刻能不能收消息」的翻转上报（sink 接通 true / 轮次收尾断开 false）。
      * **不落库**——只喂 daemon 的会话内 latch（等「建完即可用」），跨进程重启没有意义；
      * 且它会反复翻转，不是「会话还在不在」的判据。 */

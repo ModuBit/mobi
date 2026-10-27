@@ -35,6 +35,8 @@ import type {
     CrossSessionOrigin,
     DecryptedMessage,
     EffortLevel,
+    FastModeDisabledReason,
+    FastModeState,
     MessageFact,
     SnapshotDeltaFrame,
     TurnOrigin,
@@ -56,6 +58,7 @@ import type {
 } from '@mobi/node-core/api/types'
 import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { registerCommandHandlers, type LiveCapabilityGetter } from '@mobi/node-core/handlers/commands'
+import { readFastModeState } from '@mobi/node-core/claudeSdk/capabilityCatalog'
 import { IdleTimer } from '../modules/common/idleTimer'
 import { SessionTransport } from './sessionTransport'
 import { SessionChannel, type SessionEventPayload } from './sessionChannel'
@@ -316,6 +319,35 @@ export class ApiSessionClient extends EventEmitter {
      */
     reportRunStarted(at: number): void {
         this.channel.report({ kind: 'run-started', runStartedAt: at })
+    }
+
+    /**
+     * 上报快速模式的 SDK 权威执行态（每轮 result 帧携带；与用户意图的 fastMode 分开）。
+     * daemon 落库到 runtimeState.fastModeState / fastModeDisabledReason + SSE 推 web。
+     */
+    reportFastModeState(state: FastModeState, reason?: FastModeDisabledReason): void {
+        this.channel.report({
+            kind: 'fast-mode-state',
+            fastModeState: state,
+            ...(reason ? { fastModeDisabledReason: reason } : {}),
+        })
+    }
+
+    /**
+     * 切换快速模式后主动回读「此刻」状态：走 SDK `reinitialize()` 拿新鲜结果，
+     * 不是启动快照。只在用户显式切换后调用（代价与副作用见 LiveCapabilitySource.reinitialize）；
+     * 读不到或无活 Query 时静默——下一轮 result 会补上。
+     */
+    async refreshFastModeState(): Promise<void> {
+        const source = this.liveCapabilitySource?.() ?? null
+        if (!source) return
+        try {
+            const snapshot = await readFastModeState(source)
+            if (!snapshot) return
+            this.reportFastModeState(snapshot.state, snapshot.reason)
+        } catch (error) {
+            logger.debug('[fastMode] reinitialize read failed, next result will refresh:', error)
+        }
     }
 
     /**

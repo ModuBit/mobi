@@ -1132,6 +1132,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         onContextCleared: () => this.handleContextCleared(),
                         onConversationReset: (info) => this.handleConversationReset(info.trigger),
                         onContextUsage: (resultMsg, isCompact) => this.handleResultUsage(resultMsg, isCompact),
+                        onFastModeState: (state, reason) => {
+                            // 老 SDK / 非 fast 模型可能不带字段：缺省不上报，保持上一次权威值
+                            if (state) this.session.client.reportFastModeState(state, reason)
+                        },
                         onCompactBoundary: (postTokens) => this.handleCompactBoundary(postTokens),
                         onSessionReset: () => this.handleSessionReset(),
                         onReady: () => this.handleTurnReady(),

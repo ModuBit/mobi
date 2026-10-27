@@ -1790,7 +1790,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 workingDir={session?.metadata?.path}
                 effort={session?.runtimeState?.effort}
                 fastMode={session?.runtimeState?.fastMode}
-                fastModeState={session?.metadata?.sdkMetadata?.fastModeState}
+                // 快速模式执行态以 SDK 权威上报（runtimeState，每轮 result / 切换后回读）为准；
+                // 刚进会话尚未收到上报时才回落 metadata 里的启动快照
+                fastModeState={session?.runtimeState?.fastModeState ?? session?.metadata?.sdkMetadata?.fastModeState}
                 contextUsage={session?.runtimeState?.contextUsage ?? null}
                 onCompact={() => handleSend({ ...emptySegments(), text: COMPACT_COMMAND })}
                 compactDisabled={session?.running ?? false}

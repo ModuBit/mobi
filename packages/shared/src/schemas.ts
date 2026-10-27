@@ -165,9 +165,17 @@ const AccountInfoSchema = z.object({
 export type AccountInfo = z.infer<typeof AccountInfoSchema>
 
 /** SDK 快速模式状态 */
-const FastModeStateSchema = z.enum(['off', 'cooldown', 'on'])
+export const FastModeStateSchema = z.enum(['off', 'cooldown', 'on'])
 
 export type FastModeState = z.infer<typeof FastModeStateSchema>
+
+/** 快速模式此刻不可用的原因（SDK 枚举；只在 state 非 on 时可能出现） */
+export const FastModeDisabledReasonSchema = z.enum([
+    'free', 'preference', 'extra_usage_disabled', 'network_error', 'unknown',
+    'not_first_party', 'disabled_by_env', 'model_not_allowed', 'sdk_opt_in_required', 'pending',
+])
+
+export type FastModeDisabledReason = z.infer<typeof FastModeDisabledReasonSchema>
 
 /** SDK 元数据（来自 initializationResult） */
 const SDKMetadataSchema = z.object({
@@ -674,6 +682,12 @@ export const RuntimeStateSchema = z.object({
     effort: z.enum(EFFORT_SESSION_LEVELS).optional(),
     /** 快速模式开关（用户意图 / 已应用值）：会话内切换即时生效，不落盘 */
     fastMode: z.boolean().optional(),
+    /** 快速模式的 SDK 权威执行态（off / cooldown / on）：随每轮 result 与切换后的
+     *  reinitialize 上报，反映「SDK 实际能不能用快速模式」，与上面用户意图的 fastMode 分开。
+     *  读取方优先本字段，缺失才回落 metadata.sdkMetadata.fastModeState（启动快照） */
+    fastModeState: FastModeStateSchema.optional(),
+    /** 快速模式此刻不可用的原因（同上来源）。用于区分「用户没开」与「开着但 SDK 不给用」 */
+    fastModeDisabledReason: FastModeDisabledReasonSchema.optional(),
     /** 当前权限模式（CLI keep-alive 上报落库，daemon 重启后 resume 回放；与 model/effort/outputStyle 持久化对齐）。
      * catch：CLI 新版本引入未知权限模式时单字段降级为 undefined（回落 default），不拖垮整条
      * runtimeState 解析——safeParse 全有全无会让 model/effort/outputStyle 等恢复字段一并丢失 */

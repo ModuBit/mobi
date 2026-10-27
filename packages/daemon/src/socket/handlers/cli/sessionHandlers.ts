@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { CacheStatusSchema, ContextUsageSchema, SessionEndReasonSchema, SessionGovernanceSnapshotSchema, SessionPauseTriggerSchema, SnapshotDeltaFrameSchema, type ClientToServerEvents, type SDKMetadata } from '@mobi/shared'
+import { CacheStatusSchema, ContextUsageSchema, FastModeDisabledReasonSchema, FastModeStateSchema, SessionEndReasonSchema, SessionGovernanceSnapshotSchema, SessionPauseTriggerSchema, SnapshotDeltaFrameSchema, type ClientToServerEvents, type SDKMetadata } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { daemonLogger } from '../../../logger'
@@ -367,6 +367,12 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         }).passthrough(),
         'context-usage': z.object({ sid: z.string(), contextUsage: ContextUsageSchema.nullable() }),
         'cache-status': z.object({ sid: z.string(), cacheStatus: CacheStatusSchema.nullable() }),
+        // 快速模式权威执行态：state 可 null（清空），reason 只在非 on 时出现
+        'fast-mode-state': z.object({
+            sid: z.string(),
+            fastModeState: FastModeStateSchema.nullable(),
+            fastModeDisabledReason: FastModeDisabledReasonSchema.optional(),
+        }),
         'run-started': z.object({ sid: z.string(), runStartedAt: z.number().finite().positive() }).passthrough(),
         // 两个字段都是判据本身，缺一不可（不是「其余字段透传」那一类）
         'receive-readiness': z.object({ sid: z.string(), canReceive: z.boolean() }),
@@ -412,6 +418,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     socket.on('session-alive', (raw) => validateAndForward(factSchemas['session-alive'], raw, (data) => factsSink?.handleSessionAlive?.(data)))
     socket.on('context-usage', (raw) => validateAndForward(factSchemas['context-usage'], raw, (data) => factsSink?.handleContextUsage?.(data)))
     socket.on('cache-status', (raw) => validateAndForward(factSchemas['cache-status'], raw, (data) => factsSink?.handleCacheStatus?.(data)))
+    socket.on('fast-mode-state', (raw) => validateAndForward(factSchemas['fast-mode-state'], raw, (data) => factsSink?.handleFastModeState?.(data)))
     socket.on('run-started', (raw) => validateAndForward(factSchemas['run-started'], raw, (data) => factsSink?.handleRunStarted?.(data)))
     socket.on('receive-readiness', (raw) => validateAndForward(factSchemas['receive-readiness'], raw, (data) => factsSink?.handleReceiveReadiness?.(data)))
     socket.on('session-end', (raw, ack) => {
