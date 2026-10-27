@@ -35,7 +35,7 @@ import {
 import { normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash } from '@/domain/command/composerInputNormalization'
 import { bucketCompletedAttachments, fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
 import { fileRefContext } from '@/core/utils/fileUrl'
-import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
+import { buildModelSelectOptions } from '@/domain/session/modelSelectOptions'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { AttachPanel } from '@/features/composer/AttachPanel'
 import { QuoteChipBar } from '@/features/composer/QuoteChipBar'
@@ -56,7 +56,7 @@ import { useSuggestionListAria } from '@/features/composer/useSuggestionListAria
 import { useAttachmentHandling } from '@/features/composer/useAttachmentHandling'
 import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useDirectoryCommands } from '@/features/composer/useDirectoryCommands'
-import { useSDKMetadata, type ModelOption } from '@/core/data/hooks/queries/useSDKMetadata'
+import { useSDKMetadata } from '@/core/data/hooks/queries/useSDKMetadata'
 import { MentionDropdown, MENTION_LISTBOX_ID } from '@/features/composer/MentionDropdown'
 import { SlashCommandDropdown, SLASH_LISTBOX_ID } from '@/features/composer/SlashCommandDropdown'
 import { CommandHintBar } from '@/features/composer/CommandHintBar'
@@ -473,19 +473,10 @@ export function ChatComposer(props: ChatComposerProps) {
     )
     const showSettingsButton = Boolean(onPermissionModeChange && permissionModeOptions.length > 0)
 
-    const modelSelectOptions = useMemo(() => {
-        if (sdkMetadata?.models && sdkMetadata.models.length > 0) {
-            return sdkMetadata.models.map((m: ModelOption) => ({
-                value: m.value,
-                label: m.displayName.replace(/\s*\([^()]*\)\s*$/, ''),
-                description: m.description,
-            }))
-        }
-        return CLAUDE_MODEL_FALLBACK.map(opt => ({
-            value: opt.value,
-            label: opt.displayName,
-        }))
-    }, [sdkMetadata?.models])
+    const modelSelectOptions = useMemo(
+        () => buildModelSelectOptions(sdkMetadata?.models),
+        [sdkMetadata?.models],
+    )
 
     // model + effort 合并选择
     const handleModelEffortSelect = useCallback((selectedModel: string, selectedEffort: EffortLevel) => {
@@ -502,6 +493,7 @@ export function ChatComposer(props: ChatComposerProps) {
         effort: effort ?? 'medium',
         onSelect: handleModelEffortSelect,
         enabled: !!onEffortChange,
+        models: sdkMetadata?.models,
     })
 
     // 权限模式选项：名称 + 描述双行（morph description 槽），tone 色随选项图标；

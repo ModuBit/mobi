@@ -17,7 +17,9 @@
 import { describe, it, expect } from 'vitest'
 import {
     EFFORT_LEVELS,
+    EFFORT_SESSION_LEVELS,
     EFFORT_LABELS,
+    resolveModelEffortLevels,
     type EffortLevel,
     PERMISSION_MODES,
     CLAUDE_PERMISSION_MODES,
@@ -29,13 +31,48 @@ import {
 import { RuntimeStateSchema } from '../src/schemas'
 
 describe('EFFORT_LEVELS', () => {
-    it('包含所有四个级别', () => {
+    it('可落盘档位包含四个级别（max 不落盘）', () => {
         expect(EFFORT_LEVELS).toEqual(['low', 'medium', 'high', 'xhigh'])
     })
 
-    it('EffortLevel 类型支持有效的字符串字面量', () => {
-        const valid: EffortLevel[] = ['low', 'medium', 'high', 'xhigh']
-        expect(valid).toHaveLength(4)
+    it('会话档位 = 可落盘四档 + max', () => {
+        expect(EFFORT_SESSION_LEVELS).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+    })
+
+    it('EffortLevel 类型支持含 max 的有效字符串字面量', () => {
+        const valid: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max']
+        expect(valid).toHaveLength(5)
+    })
+})
+
+describe('resolveModelEffortLevels', () => {
+    it('无模型信息时回落四档', () => {
+        expect(resolveModelEffortLevels(undefined)).toEqual(['low', 'medium', 'high', 'xhigh'])
+        expect(resolveModelEffortLevels(null)).toEqual(['low', 'medium', 'high', 'xhigh'])
+    })
+
+    it('模型声明不支持 effort 时返回空集合', () => {
+        expect(resolveModelEffortLevels({ supportsEffort: false, supportedEffortLevels: ['low'] })).toEqual([])
+    })
+
+    it('按 supportedEffortLevels 过滤并保持由低到高的规范顺序', () => {
+        expect(resolveModelEffortLevels({ supportedEffortLevels: ['xhigh', 'low', 'medium'] }))
+            .toEqual(['low', 'medium', 'xhigh'])
+    })
+
+    it('模型声明 max 时出现第五档', () => {
+        expect(resolveModelEffortLevels({
+            supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+        })).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+    })
+
+    it('声明里的未知档位名被丢弃', () => {
+        expect(resolveModelEffortLevels({ supportedEffortLevels: ['low', 'turbo'] })).toEqual(['low'])
+    })
+
+    it('声明缺失或为空时回落四档', () => {
+        expect(resolveModelEffortLevels({ supportsEffort: true })).toEqual(EFFORT_LEVELS)
+        expect(resolveModelEffortLevels({ supportedEffortLevels: [] })).toEqual(EFFORT_LEVELS)
     })
 })
 
@@ -51,6 +88,7 @@ describe('EFFORT_LABELS', () => {
         expect(EFFORT_LABELS.medium).toBe('Medium')
         expect(EFFORT_LABELS.high).toBe('High')
         expect(EFFORT_LABELS.xhigh).toBe('X-High')
+        expect(EFFORT_LABELS.max).toBe('Max')
     })
 })
 
@@ -74,8 +112,12 @@ describe('RuntimeStateSchema effort', () => {
 
     it('非法 effort 值抛错', () => {
         expect(() => RuntimeStateSchema.parse({ effort: 'invalid' })).toThrow()
-        expect(() => RuntimeStateSchema.parse({ effort: 'max' })).toThrow()
         expect(() => RuntimeStateSchema.parse({ effort: '' })).toThrow()
+    })
+
+    it('session-only 的 max 在运行时状态里合法', () => {
+        const result = RuntimeStateSchema.parse({ effort: 'max' })
+        expect(result.effort).toBe('max')
     })
 
     it('effort 与 model 共存', () => {

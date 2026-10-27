@@ -58,6 +58,7 @@ export type {
     ClaudePermissionMode,
     ClaudeModelPreset,
     EffortLevel,
+    ModelEffortCapability,
     PermissionMode,
     PermissionModeOption,
     PermissionModeTone

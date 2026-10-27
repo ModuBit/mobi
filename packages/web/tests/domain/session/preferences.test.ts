@@ -21,11 +21,48 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
     loadLastUsedWorkspaceId,
+    loadPreferredEffort,
+    loadPreferredModel,
     saveLastUsedWorkspaceId,
+    savePreferredEffort,
+    savePreferredModel,
 } from '@/domain/session/preferences'
 
 beforeEach(() => {
     localStorage.clear()
+})
+
+describe('模型偏好持久化', () => {
+    it('未存过回退 auto', () => {
+        expect(loadPreferredModel()).toBe('auto')
+    })
+
+    it('清单外的合法模型名（代理模型 / 带标签变体）刷新后仍生效', () => {
+        savePreferredModel('opus[1m]')
+        expect(loadPreferredModel()).toBe('opus[1m]')
+        savePreferredModel('deepseek-v3')
+        expect(loadPreferredModel()).toBe('deepseek-v3')
+    })
+
+    it('空值不当作有效偏好，仍回退 auto', () => {
+        savePreferredModel('')
+        expect(loadPreferredModel()).toBe('auto')
+        savePreferredModel('   ')
+        expect(loadPreferredModel()).toBe('auto')
+    })
+})
+
+describe('effort 偏好持久化', () => {
+    it('可落盘四档正常往返', () => {
+        savePreferredEffort('xhigh')
+        expect(loadPreferredEffort()).toBe('xhigh')
+    })
+
+    it('session-only 的 max 不写进偏好（保留上次的可落盘档位）', () => {
+        savePreferredEffort('high')
+        savePreferredEffort('max')
+        expect(loadPreferredEffort()).toBe('high')
+    })
 })
 
 describe('最近使用的工作区持久化', () => {

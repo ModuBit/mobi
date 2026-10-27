@@ -47,7 +47,8 @@ import { EffortDot, useModelOptionsWithEffort } from '@/features/composer/modelE
 import { EnvironmentBar, extractWorkspaceName } from '@/features/composer/EnvironmentBar'
 import { useMobiApi } from '@/core/data/api/client'
 import type { Workspace } from '@/core/data/api/types'
-import { type AgentType, type SessionType, CLAUDE_MODEL_FALLBACK, AGENT_OPTIONS } from '@/domain/session/types'
+import { type AgentType, type SessionType, AGENT_OPTIONS } from '@/domain/session/types'
+import { buildModelSelectOptions } from '@/domain/session/modelSelectOptions'
 import {
     loadPreferredAgent,
     savePreferredAgent,
@@ -273,7 +274,11 @@ export function NewSessionPage() {
         // host 通道单机即宿主，cwd 单参数
         return confirmedDirectory ? { kind: 'host', cwd: confirmedDirectory } : null
     }, [confirmedDirectory])
-    const capabilities = useDirectoryCapabilities(capTarget, { metadataEnabled: metadataNeeded })
+    // 选定工作区（confirmedDirectory 就绪）即取宿主元数据：模型清单要在建会话前就可见，
+    // '/' 触发只是更早的时机；confirmedDirectory 仅在工作区提交时变化，不会逐字符触发
+    const capabilities = useDirectoryCapabilities(capTarget, {
+        metadataEnabled: metadataNeeded || Boolean(confirmedDirectory),
+    })
     const { data: commandsData, isLoading: commandsLoading } = useDirectoryCommands(capabilities)
 
     // 附件管理（共享 hook）
@@ -596,13 +601,9 @@ export function NewSessionPage() {
     const canSubmit = gatePassed && !isPending && attachments.every(a => a.status !== 'uploading')
 
     // ============ model + effort 合并选择 ============
-    const modelSelectOptions = useMemo(() => {
-        return CLAUDE_MODEL_FALLBACK.map(opt => ({
-            value: opt.value,
-            label: opt.displayName,
-            description: opt.description,
-        }))
-    }, [])
+    // 宿主探针清单（选定工作区即取数）→ 无感替换兜底四项；auto 恒在首位（合成项）
+    const hostModels = capabilities.metadata?.models
+    const modelSelectOptions = useMemo(() => buildModelSelectOptions(hostModels), [hostModels])
 
     const handleModelEffortSelect = useCallback((selectedModel: string, selectedEffort: EffortLevel) => {
         if (selectedModel !== model) setModel(selectedModel)
@@ -613,10 +614,11 @@ export function NewSessionPage() {
         if (v !== model) setModel(v)
     }, [model])
 
-    // 模型行尾缀 effort 子菜单入口：共享装配（同 ChatComposer）
+    // 模型行尾缀 effort 子菜单入口：共享装配（同 ChatComposer），档位按模型能力过滤
     const modelOptionsWithEffort = useModelOptionsWithEffort(modelSelectOptions, {
         effort: effort,
         onSelect: handleModelEffortSelect,
+        models: hostModels,
     })
 
     // permission mode 选项（带颜色 + 国际化，同 ChatComposer）：名称 + 描述双行，tone 色随选项图标

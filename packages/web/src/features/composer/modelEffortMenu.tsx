@@ -26,8 +26,8 @@
 import { useMemo, useState } from 'react'
 import { theme } from 'antd'
 import { RightOutlined } from '@ant-design/icons'
-import { EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
-import type { EffortLevel } from '@mobi/shared'
+import { EFFORT_LABELS, resolveModelEffortLevels } from '@mobi/shared'
+import type { EffortLevel, ModelEffortCapability } from '@mobi/shared'
 import type { CompactHoverSelectOption } from '@/features/composer/CompactHoverSelect'
 import { Popover } from '@/ui/base/interactive/popover/Popover'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
@@ -37,6 +37,7 @@ const EFFORT_COLORS: Record<EffortLevel, string> = {
     medium: 'var(--ant-color-info)',
     high: 'var(--ant-color-warning)',
     xhigh: 'var(--ant-color-error)',
+    max: 'var(--ant-color-error-active)',
 }
 
 /** Effort 级别小圆点 */
@@ -53,9 +54,10 @@ export function EffortDot({ level }: { level: EffortLevel }) {
     )
 }
 
-/** model option 中的 effort 选择 Popover 内容 */
-function EffortPopoverContent({ modelValue, effort, onEffortSelect }: {
+/** model option 中的 effort 选择 Popover 内容（档位集合由选中模型能力解析） */
+function EffortPopoverContent({ modelValue, levels, effort, onEffortSelect }: {
     modelValue: string
+    levels: readonly EffortLevel[]
     effort: EffortLevel
     onEffortSelect: (model: string, effort: EffortLevel) => void
 }) {
@@ -63,7 +65,7 @@ function EffortPopoverContent({ modelValue, effort, onEffortSelect }: {
     const [hovered, setHovered] = useState<string | null>(null)
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 100 }}>
-            {EFFORT_LEVELS.map(e => (
+            {levels.map(e => (
                 <div
                     key={e}
                     onClick={(ev) => { ev.stopPropagation(); onEffortSelect(modelValue, e) }}
@@ -89,55 +91,64 @@ function EffortPopoverContent({ modelValue, effort, onEffortSelect }: {
 
 /**
  * 给模型选项逐项装配 effort 子菜单入口（morph trailing 槽）。
- * enabled=false（调用方无 effort 回调的形态）不加 trailing。
+ * enabled=false（调用方无 effort 回调的形态）不加 trailing；
+ * 档位集合按模型的 `supportedEffortLevels` 过滤——模型声明不支持 effort（或清单里
+ * 解析不出任何档位）时不渲染子菜单，不留空壳入口。
  */
 export function useModelOptionsWithEffort(
     options: CompactHoverSelectOption[],
-    { effort, onSelect, enabled = true }: {
+    { effort, onSelect, enabled = true, models }: {
         effort: EffortLevel
         onSelect: (model: string, effort: EffortLevel) => void
         enabled?: boolean
+        /** 宿主模型清单（探针）：提供模型档位能力；缺失时回落四档 */
+        models?: readonly (ModelEffortCapability & { value: string })[]
     },
 ): CompactHoverSelectOption[] {
     const hasFinePointer = useHasFinePointer()
     const [popoverModel, setPopoverModel] = useState<string | null>(null)
-    return useMemo(
-        () => options.map(option => ({
-            ...option,
-            trailing: enabled ? (
-                <Popover
-                    open={popoverModel === option.value}
-                    onOpenChange={(open) => setPopoverModel(open ? option.value : null)}
-                    side="left"
-                    align="start"
-                    trigger={hasFinePointer ? 'hover' : 'click'}
-                    openDelay={100}
-                    closeDelay={300}
-                    panelClassName="effort-popover"
-                    panelPadding="4px 0"
-                    content={
-                        <EffortPopoverContent
-                            modelValue={option.value}
-                            effort={effort}
-                            onEffortSelect={(m, e) => {
-                                onSelect(m, e)
-                                setPopoverModel(null)
-                            }}
-                        />
-                    }
-                >
-                    <span
-                        style={{
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                            minWidth: 24, minHeight: 24, borderRadius: 'var(--radius-icon)', cursor: 'pointer',
-                        }}
-                        onClick={(ev) => ev.stopPropagation()}
+    return useMemo(() => {
+        // 选项值 → 模型能力：选项可能不含于清单（auto 合成项 / 兜底四项），未命中按默认四档
+        const capabilityByValue = new Map((models ?? []).map(m => [m.value, m]))
+        return options.map(option => {
+            const levels = resolveModelEffortLevels(capabilityByValue.get(option.value))
+            return {
+                ...option,
+                trailing: enabled && levels.length > 0 ? (
+                    <Popover
+                        open={popoverModel === option.value}
+                        onOpenChange={(open) => setPopoverModel(open ? option.value : null)}
+                        side="left"
+                        align="start"
+                        trigger={hasFinePointer ? 'hover' : 'click'}
+                        openDelay={100}
+                        closeDelay={300}
+                        panelClassName="effort-popover"
+                        panelPadding="4px 0"
+                        content={
+                            <EffortPopoverContent
+                                modelValue={option.value}
+                                levels={levels}
+                                effort={effort}
+                                onEffortSelect={(m, e) => {
+                                    onSelect(m, e)
+                                    setPopoverModel(null)
+                                }}
+                            />
+                        }
                     >
-                        <RightOutlined style={{ fontSize: 10, opacity: 0.4 }} />
-                    </span>
-                </Popover>
-            ) : undefined,
-        })),
-        [options, enabled, effort, popoverModel, hasFinePointer, onSelect],
-    )
+                        <span
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                minWidth: 24, minHeight: 24, borderRadius: 'var(--radius-icon)', cursor: 'pointer',
+                            }}
+                            onClick={(ev) => ev.stopPropagation()}
+                        >
+                            <RightOutlined style={{ fontSize: 10, opacity: 0.4 }} />
+                        </span>
+                    </Popover>
+                ) : undefined,
+            }
+        })
+    }, [options, enabled, effort, popoverModel, hasFinePointer, onSelect, models])
 }

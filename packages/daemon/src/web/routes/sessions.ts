@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { CLEARABLE_RUNTIME_STATE_FIELDS, DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, DiffTargetSchema, EFFORT_LEVELS, PermissionModeSchema, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
+import { CLEARABLE_RUNTIME_STATE_FIELDS, DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, DiffTargetSchema, EFFORT_SESSION_LEVELS, PermissionModeSchema, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
 import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
 import { buildHostMetadata } from '@mobi/node-core/hostMetadata'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
@@ -214,7 +214,7 @@ export function createSessionsRoutes(
         directory: z.string().min(1),
         agent: z.enum(['claude']).optional(),  // Mobi 当前仅支持 Claude
         model: z.string().optional(),
-        effort: z.enum(EFFORT_LEVELS).optional(),
+        effort: z.enum(EFFORT_SESSION_LEVELS).optional(),
         outputStyle: z.string().optional(),
         permissionMode: PermissionModeSchema.optional(),
         sessionType: z.enum(['simple', 'worktree']).optional(),

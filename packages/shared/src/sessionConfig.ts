@@ -16,7 +16,7 @@
 
 import { z } from 'zod'
 import { PermissionModeSchema } from './schemas'
-import { EFFORT_LEVELS } from './modes'
+import { EFFORT_SESSION_LEVELS } from './modes'
 
 /**
  * 会话配置字段注册表（深化候选②）：「改会话的一个配置项」的单一声明源。
@@ -56,7 +56,8 @@ export const SESSION_CONFIG_FIELDS = {
     },
     effort: {
         apply: 'live',
-        schema: z.enum(EFFORT_LEVELS),
+        // 含 session-only 的 max（flag 层原生支持，只是不落盘）
+        schema: z.enum(EFFORT_SESSION_LEVELS),
         bodyKey: 'effort',
     },
     outputStyle: {

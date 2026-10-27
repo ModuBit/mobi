@@ -15,7 +15,7 @@
  */
 
 import { z } from 'zod'
-import { PERMISSION_MODES, EFFORT_LEVELS } from './modes'
+import { PERMISSION_MODES, EFFORT_SESSION_LEVELS } from './modes'
 import { SessionEndReasonSchema, SessionPauseTriggerSchema } from './sessionEnd'
 
 // —— executor 状态上报（运行时状态机；hostProtocol re-export 保持协议入口）——
@@ -671,7 +671,7 @@ export const RuntimeStateSchema = z.object({
     foregroundTasks: ForegroundTasksSchema.optional(),
     teamState: TeamStateSchema.optional(),
     model: z.string().nullable().optional(),
-    effort: z.enum(EFFORT_LEVELS).optional(),
+    effort: z.enum(EFFORT_SESSION_LEVELS).optional(),
     /** 当前权限模式（CLI keep-alive 上报落库，daemon 重启后 resume 回放；与 model/effort/outputStyle 持久化对齐）。
      * catch：CLI 新版本引入未知权限模式时单字段降级为 undefined（回落 default），不拖垮整条
      * runtimeState 解析——safeParse 全有全无会让 model/effort/outputStyle 等恢复字段一并丢失 */

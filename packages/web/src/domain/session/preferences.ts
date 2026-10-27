@@ -15,7 +15,6 @@
  */
 
 import type { AgentType } from './types'
-import { CLAUDE_MODEL_FALLBACK } from './types'
 import { EFFORT_LEVELS, OUTPUT_STYLE_FOLLOW_SETTING, PERMISSION_MODES, type EffortLevel, type PermissionMode } from '@mobi/shared'
 
 const AGENT_STORAGE_KEY = 'mobi:newSession:agent'
@@ -24,8 +23,6 @@ const EFFORT_STORAGE_KEY = 'mobi:newSession:effort'
 const PERMISSION_MODE_STORAGE_KEY = 'mobi:newSession:permissionMode'
 const OUTPUT_STYLE_STORAGE_KEY = 'mobi:newSession:outputStyle'
 const LAST_USED_WORKSPACE_STORAGE_KEY = 'mobi:newSession:lastUsedWorkspace'
-
-const VALID_MODELS = CLAUDE_MODEL_FALLBACK.map(m => m.value)
 
 const VALID_AGENTS: AgentType[] = ['claude', 'codex']
 
@@ -65,9 +62,13 @@ export function savePreferredAgent(agent: AgentType): void {
 
 /**
  * 加载首选 Model
+ *
+ * 校验放宽为「非空白字符串」：模型清单来自宿主探针（可含代理/自建模型名、带标签的
+ * `opus[1m]` 这类值），无法静态枚举；存过的名字即使当前清单里没有也尊重用户显式选择
+ * （与会话内 model 切换同语义）。只有从未选择（空值）时回退 auto。
  */
 export function loadPreferredModel(): string {
-    return loadPreference(MODEL_STORAGE_KEY, (v): v is string => VALID_MODELS.includes(v), 'auto')
+    return loadPreference(MODEL_STORAGE_KEY, (v): v is string => v.trim().length > 0, 'auto')
 }
 
 /**
@@ -77,17 +78,26 @@ export function savePreferredModel(model: string): void {
     savePreference(MODEL_STORAGE_KEY, model)
 }
 
+/** 偏好里只认可落盘四档（`max` 为 session-only，即使存过也不恢复） */
+function isPersistableEffort(v: string): v is EffortLevel {
+    return (EFFORT_LEVELS as readonly string[]).includes(v)
+}
+
 /**
  * 加载首选 Effort
  */
 export function loadPreferredEffort(): EffortLevel {
-    return loadPreference(EFFORT_STORAGE_KEY, (v): v is EffortLevel => EFFORT_LEVELS.includes(v as EffortLevel), 'medium')
+    return loadPreference(EFFORT_STORAGE_KEY, isPersistableEffort, 'medium')
 }
 
 /**
  * 保存首选 Effort
+ *
+ * `max` 是 session-only（不写 settings 文件），同样不写进偏好——否则下次打开创建页
+ * 会带着一个“上次没落盘”的档位，语义失真。写入静默跳过，保留上次的可落盘档位。
  */
 export function savePreferredEffort(effort: EffortLevel): void {
+    if (!isPersistableEffort(effort)) return
     savePreference(EFFORT_STORAGE_KEY, effort)
 }
 

@@ -48,7 +48,8 @@ describe('SESSION_CONFIG_FIELDS', () => {
         ['model', 'claude-opus-4-8', true],
         ['model', 123, false],
         ['effort', 'xhigh', true],
-        ['effort', 'max', false],                 // EFFORT_LEVELS 不含 max（启动/运行时口径一致）
+        ['effort', 'max', true],                  // session-only 档位：flag 层原生支持，只是不落盘
+        ['effort', 'turbo', false],               // 枚举外的档位名仍拦下
         ['outputStyle', 'Explanatory', true],
         ['outputStyle', '', false],               // 只挡空串：自定义 style 合法性由 CLI 守卫
     ])('%s 接受 %j → %j', (field, value, ok) => {

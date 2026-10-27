@@ -224,9 +224,9 @@ describe('Sessions API', () => {
             expect(body.ok).toBe(true)
         })
 
-        test('所有四个级别均可接受', async () => {
+        test('所有会话档位（含 session-only 的 max）均可接受', async () => {
             const token = await getAuthToken(app)
-            const levels = ['low', 'medium', 'high', 'xhigh']
+            const levels = ['low', 'medium', 'high', 'xhigh', 'max']
 
             for (const level of levels) {
                 const res = await app.request('/api/sessions/test-session-1/effort', {
@@ -241,7 +241,7 @@ describe('Sessions API', () => {
             }
         })
 
-        test('非法 effort 值返回 400', async () => {
+        test('session-only 的 max 档同样接受（flag 层原生支持）', async () => {
             const token = await getAuthToken(app)
 
             const res = await app.request('/api/sessions/test-session-1/effort', {
@@ -251,6 +251,21 @@ describe('Sessions API', () => {
                     Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({ effort: 'max' }),
+            })
+
+            expect(res.status).toBe(200)
+        })
+
+        test('非法 effort 值返回 400', async () => {
+            const token = await getAuthToken(app)
+
+            const res = await app.request('/api/sessions/test-session-1/effort', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ effort: 'turbo' }),
             })
 
             expect(res.status).toBe(400)

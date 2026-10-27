@@ -102,16 +102,51 @@ export function isClaudeModelPreset(model: string | null | undefined): model is 
 
 // ============ Effort 级别 ============
 
-// 注意：不包含 'max' 级别
-// SDK Options.effort 接受 'max'，但 applyFlagSettings（运行时动态修改）的
-// effortLevel 类型为 'low' | 'medium' | 'high' | 'xhigh'，不含 'max'
-// 为保持启动时和运行时一致，仅列出四个级别
+/**
+ * 可落盘档位：会写进偏好 / settings 文件的四档。
+ * 用户偏好持久化只认这四档——`max` 是 session-only，写进偏好会跨会话失真。
+ */
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh'] as const
-export type EffortLevel = typeof EFFORT_LEVELS[number]
+
+/**
+ * 会话档位：可落盘四档 + `max`。
+ * `max` 走 SDK 的 session-only 语义（启动 Options 与运行时 flag 层都接受，但不落盘），
+ * 故协议校验、spawn 透传、运行时切换都以本清单为准；UI 展示再按模型能力二次过滤。
+ */
+export const EFFORT_SESSION_LEVELS = [...EFFORT_LEVELS, 'max'] as const
+
+/** effort 全部合法取值（类型与协议校验单源） */
+export type EffortLevel = typeof EFFORT_SESSION_LEVELS[number]
 
 export const EFFORT_LABELS: Record<EffortLevel, string> = {
     low: 'Low',
     medium: 'Medium',
     high: 'High',
     xhigh: 'X-High',
+    max: 'Max',
+}
+
+/**
+ * 模型声明的档位能力（结构类型，避免与 schemas 的 ModelInfo 循环依赖；
+ * 探针返回的 ModelInfo 天然满足）
+ */
+export interface ModelEffortCapability {
+    supportsEffort?: boolean
+    supportedEffortLevels?: readonly string[]
+}
+
+/**
+ * 按模型能力解析可展示的档位集合。
+ *
+ * - 无模型信息（探针未就绪 / 兜底四项）：回落可落盘四档
+ * - `supportsEffort === false`：返回空数组，调用方据此不渲染档位入口
+ * - 声明了 `supportedEffortLevels`：按该清单过滤，保持由低到高的规范顺序
+ *   （未知档位名丢弃）；声明为空视同未声明，回落四档
+ */
+export function resolveModelEffortLevels(model?: ModelEffortCapability | null): readonly EffortLevel[] {
+    if (!model) return EFFORT_LEVELS
+    if (model.supportsEffort === false) return []
+    const declared = model.supportedEffortLevels
+    if (!declared || declared.length === 0) return EFFORT_LEVELS
+    return EFFORT_SESSION_LEVELS.filter(level => declared.includes(level))
 }
