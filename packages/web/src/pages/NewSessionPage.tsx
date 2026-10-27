@@ -48,6 +48,7 @@ import { EnvironmentBar, extractWorkspaceName } from '@/features/composer/Enviro
 import { useMobiApi } from '@/core/data/api/client'
 import type { Workspace } from '@/core/data/api/types'
 import { type AgentType, type SessionType, AGENT_OPTIONS } from '@/domain/session/types'
+import { reconcileStoredModel } from '@/domain/session/modelSelectOptions'
 import {
     loadPreferredAgent,
     savePreferredAgent,
@@ -605,6 +606,15 @@ export function NewSessionPage() {
     // 宿主探针清单（选定工作区即取数）直接交给模型设置面板：列表与档位能力同源，
     // 探针未就绪时面板内部回落兜底四项 / 四档
     const hostModels = capabilities.metadata?.models
+
+    // 目录到位后校正过期偏好：老版本存的是 `opus` / `sonnet` 这类预设别名，宿主清单里没有
+    // 对应 value——列表选不到，pill 只能把原值裸显出来。清单为空（探针未就绪）时不校正。
+    useEffect(() => {
+        const next = reconcileStoredModel(model, hostModels)
+        if (next === model) return
+        setModel(next)
+        savePreferredModel(next)
+    }, [hostModels, model])
 
     // 换模型时按目标模型能力收敛档位与快速模式：创建页没有 daemon 的配置下发环节，
     // 越界值会原样进 spawn 请求体，所以这里必须自己收一次（规则与 daemon 同一函数）

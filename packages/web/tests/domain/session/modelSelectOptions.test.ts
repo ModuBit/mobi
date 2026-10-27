@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { buildModelSelectOptions } from '@/domain/session/modelSelectOptions'
+import { buildModelSelectOptions, reconcileStoredModel } from '@/domain/session/modelSelectOptions'
 import type { ModelInfo } from '@mobi/shared'
 
 function model(overrides: Partial<ModelInfo> & { value: string }): ModelInfo {
@@ -66,5 +66,26 @@ describe('buildModelSelectOptions', () => {
             model({ value: 'opus[1m]', displayName: 'Opus 4.6 (1M context)' }),
         ])
         expect(options.find(o => o.value === 'opus[1m]')?.label).toBe('Opus 4.6')
+    })
+})
+
+describe('reconcileStoredModel', () => {
+    const catalog = [model({ value: 'auto' }), model({ value: 'claude-opus-5-5' })]
+
+    it('目录里有该值 → 原样保留', () => {
+        expect(reconcileStoredModel('claude-opus-5-5', catalog)).toBe('claude-opus-5-5')
+    })
+
+    it('老版本存的预设别名（opus）不在目录里 → 回 auto', () => {
+        // model-catalog 之前的偏好值是 `opus` 这类 CLI 别名，宿主目录只给完整模型名：
+        // 不校正的话 pill 会一直裸显 `opus`，用户既选不到也改不掉
+        expect(reconcileStoredModel('opus', catalog)).toBe('auto')
+        expect(reconcileStoredModel('sonnet[1m]', catalog)).toBe('auto')
+    })
+
+    it('目录为空（探针未就绪 / 失败）→ 原样保留，不清掉显式选择', () => {
+        expect(reconcileStoredModel('opus', undefined)).toBe('opus')
+        expect(reconcileStoredModel('opus', null)).toBe('opus')
+        expect(reconcileStoredModel('opus', [])).toBe('opus')
     })
 })

@@ -63,3 +63,19 @@ export function buildModelSelectOptions(models?: readonly ModelInfo[] | null): M
         ? probed
         : [AUTO_MODEL_OPTION, ...probed]
 }
+
+/**
+ * 校正存过的首选 model（创建页偏好 → 实际选中的 model）。
+ *
+ * model-catalog 之前存的是 `opus` / `sonnet` 这类预设别名，宿主目录里没有对应 value：
+ * 列表里选不到它，pill 只能把原值裸显出来（`opus`），用户既看不出也改不掉来源。
+ * 目录到位后若查无此值就回 `auto`。
+ *
+ * 目录为空（探针未就绪 / 失败）时原样返回——此时清单不可信，把显式选择清成 auto
+ * 会把「探针慢」误判成「模型不存在」。
+ */
+export function reconcileStoredModel(stored: string, models?: readonly ModelInfo[] | null): string {
+    if (!models || models.length === 0) return stored
+    if (models.some(m => m.value === stored)) return stored
+    return AUTO_MODEL_OPTION.value
+}

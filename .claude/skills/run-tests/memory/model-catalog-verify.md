@@ -132,8 +132,13 @@ for seq, raw in db.execute("SELECT seq, content FROM messages WHERE session_id='
 PY
 ```
 
-## 探针到达不冲掉已选值
+## 探针到达不冲掉已选值（唯一例外：目录里没有的值）
 
 创建页 `model` 是 `useState`（localStorage 初值）+ `onModelChange` 才更新；metadata 刷新
 （切目录 / 30s fresh 过期后 reload）只换下拉清单，不回写选择。真机验法：选非默认模型 →
 等 30s → reload → pill 仍是原模型且下拉里清单已刷新（Auto + 全部宿主模型）。
+
+**例外（2026-10-27 修复）**：清单到位后若存过的值不在清单里（老版本的 `opus` / `sonnet`
+预设别名——CLI 别名，目录只给完整模型名），回 `auto` 并落盘，否则 pill 裸显一个列表里
+选不到的名字。清单为空（探针未就绪 / 失败）时不校正。验法：`localStorage['mobi:newSession:model']='opus'`
+→ reload → pill 变「Auto · 档位」，且 localStorage 被改写成 `auto`。
