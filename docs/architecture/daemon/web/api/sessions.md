@@ -94,6 +94,8 @@
 { "ok": true }
 ```
 
+**换模型会连带收敛 effort / fastMode**：daemon 按目标模型的能力位（`metadata.sdkMetadata.models` 的 `supportedEffortLevels` / `supportsFastMode`）把越界值改掉后再下发——当前档位不被支持时回落到该模型支持的最高档（如 `max` → `xhigh`），模型未声明 `supportsFastMode: true` 时把 `fastMode` 置 false。规则单源在 `@mobi/shared` 的 `reconcileSessionConfigForModel`，休眠会话的暂存路径同样经过它（唤醒时不会把越界值带上天）。
+
 ### POST /sessions/:id/archive — 归档会话
 
 错误经 `readRpcFailure` 分类收口，不再裸 500：

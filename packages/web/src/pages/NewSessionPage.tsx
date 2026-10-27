@@ -25,7 +25,7 @@ import { Cpu } from 'lucide-react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
-import { OUTPUT_STYLE_FOLLOW_SETTING } from '@mobi/shared'
+import { OUTPUT_STYLE_FOLLOW_SETTING, reconcileSessionConfigForModel } from '@mobi/shared'
 import { useDaemonStatus } from '@/core/data/hooks/queries/useDaemonStatus'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
@@ -606,6 +606,18 @@ export function NewSessionPage() {
     // 探针未就绪时面板内部回落兜底四项 / 四档
     const hostModels = capabilities.metadata?.models
 
+    // 换模型时按目标模型能力收敛档位与快速模式：创建页没有 daemon 的配置下发环节，
+    // 越界值会原样进 spawn 请求体，所以这里必须自己收一次（规则与 daemon 同一函数）
+    const handleModelChange = useCallback((value: string) => {
+        const patch = reconcileSessionConfigForModel(
+            hostModels?.find(m => m.value === value) ?? null,
+            { effort, fastMode },
+        )
+        setModel(value)
+        if (patch.effort) setEffort(patch.effort)
+        if (patch.fastMode !== undefined) setFastMode(patch.fastMode)
+    }, [hostModels, effort, fastMode])
+
     // permission mode 选项（带颜色 + 国际化，同 ChatComposer）：名称 + 描述双行，tone 色随选项图标
     const permissionSelectOptions = useMemo(
         () => buildPermissionModeHoverOptions(t, token),
@@ -654,7 +666,7 @@ export function NewSessionPage() {
                     effort={effort}
                     models={hostModels}
                     fastMode={fastMode}
-                    onModelChange={setModel}
+                    onModelChange={handleModelChange}
                     onEffortChange={setEffort}
                     onFastModeChange={setFastMode}
                     disabled={inputDisabled}

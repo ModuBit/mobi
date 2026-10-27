@@ -16,7 +16,7 @@
 
 import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
 import type { ExecutorState } from '@mobi/node-core/api/types'
-import { DEFAULT_STOP_KIND, isCancelQueued, type PermissionAnswers, type PermissionUpdate, type SessionKillRequest, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, isCancelQueued, reconcileSessionConfigForModel, type PermissionAnswers, type PermissionUpdate, type SessionKillRequest, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import { homedir } from 'node:os'
 import type { Store } from '../store'
@@ -752,6 +752,26 @@ export class SyncEngine {
         }
     }
 
+    /**
+     * 换模型时按目标模型能力收敛 effort / fastMode（规则单源在 `@mobi/shared` 的
+     * `reconcileSessionConfigForModel`）。放在 daemon 这一层是因为它同时是 web 与 agent/API
+     * 的入口——只靠面板隐藏按钮挡不住直调 API 传 `effort:"max"` + 不支持该档位的模型。
+     * 只在 config 显式带 model 时介入：单改 effort / fastMode 的路由不受影响。
+     */
+    private reconcileForModelChange<T extends { model?: string | null; effort?: EffortLevel; fastMode?: boolean }>(
+        sessionId: string,
+        config: T
+    ): T {
+        if (config.model === undefined) return config
+        const session = this.sessionCache.getSession(sessionId)
+        const target = session?.metadata?.sdkMetadata?.models?.find((m) => m.value === config.model) ?? null
+        const patch = reconcileSessionConfigForModel(target, {
+            effort: config.effort ?? session?.runtimeState?.effort,
+            fastMode: config.fastMode ?? session?.runtimeState?.fastMode,
+        })
+        return { ...config, ...patch }
+    }
+
     async applySessionConfig(
         sessionId: string,
         config: {
@@ -761,7 +781,10 @@ export class SyncEngine {
             fastMode?: boolean
         }
     ): Promise<void> {
-        const result = await this.rpcGateway.requestSessionConfig(sessionId, config)
+        const result = await this.rpcGateway.requestSessionConfig(
+            sessionId,
+            this.reconcileForModelChange(sessionId, config)
+        )
         if (!result || typeof result !== 'object') {
             throw new Error('Invalid response from session config RPC')
         }
@@ -786,7 +809,8 @@ export class SyncEngine {
             outputStyle?: string
         }
     ): void {
-        this.sessionCache.applyDormantConfig(sessionId, config)
+        // 休眠会话同样要收敛（唤醒时这些值随 spawn 选项带回，不收敛会把越界值带上天）
+        this.sessionCache.applyDormantConfig(sessionId, this.reconcileForModelChange(sessionId, config))
     }
 
     /**

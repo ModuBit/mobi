@@ -83,9 +83,17 @@ const FAST_MODEL = {
     supportsFastMode: true,
 }
 const noop = async () => ({ data: { success: false } })
+/** 无快速模式、档位更少（最高 medium）的模型：换到它必须收敛 effort / fastMode */
+const PLAIN_MODEL = {
+    value: 'plain-model',
+    displayName: 'Plain Model',
+    description: 'no fast, fewer levels',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium'],
+}
 vi.mock('@/core/data/hooks/queries/useDirectoryCapabilities', () => ({
     useDirectoryCapabilities: () => ({
-        metadata: { models: [FAST_MODEL] },
+        metadata: { models: [FAST_MODEL, PLAIN_MODEL] },
         metadataLoading: false,
         commands: [],
         searchFiles: noop,
@@ -182,6 +190,33 @@ describe('NewSessionPage 快速模式预设', () => {
 
         await submit()
         const input = spawnSpy.mock.calls[0][0] as Record<string, unknown>
+        expect(input.fastMode).toBeUndefined()
+    })
+
+    it('换到不支持快速模式、档位更少的模型 → 快速模式关闭、档位回落到该模型最高档', async () => {
+        localStorage.setItem('mobi:newSession:effort', 'xhigh')
+        render(<NewSessionPage />, { wrapper })
+        await waitFor(() => {
+            expect(modelTrigger()).not.toBeDisabled()
+        })
+
+        // 先在支持快速模式的模型上点亮闪电
+        fireEvent.click(modelTrigger())
+        fireEvent.click(await screen.findByRole('button', { name: 'composer.modelPanel.fastOff' }))
+        expect(screen.getByRole('button', { name: 'composer.modelPanel.fastOn' })).toBeInTheDocument()
+
+        // 切到精简模型：闪电该随能力消失，档位该从 xhigh 收敛到 medium
+        fireEvent.click(screen.getByRole('button', { name: /Fast Model/ }))
+        fireEvent.click(await screen.findByRole('option', { name: /Plain Model/ }))
+
+        await waitFor(() => {
+            expect(screen.queryByRole('button', { name: 'composer.modelPanel.fastOn' })).not.toBeInTheDocument()
+        })
+
+        await submit()
+        const input = spawnSpy.mock.calls[0][0] as Record<string, unknown>
+        expect(input.model).toBe('plain-model')
+        expect(input.effort).toBe('medium')
         expect(input.fastMode).toBeUndefined()
     })
 })

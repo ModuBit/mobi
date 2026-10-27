@@ -20,6 +20,7 @@ import {
     EFFORT_SESSION_LEVELS,
     EFFORT_LABELS,
     resolveModelEffortLevels,
+    reconcileSessionConfigForModel,
     type EffortLevel,
     PERMISSION_MODES,
     CLAUDE_PERMISSION_MODES,
@@ -76,8 +77,50 @@ describe('resolveModelEffortLevels', () => {
     })
 })
 
-describe('EFFORT_LABELS', () => {
-    it('每个级别都有对应的标签', () => {
+describe('reconcileSessionConfigForModel', () => {
+    it('当前档位被目标模型支持时不动', () => {
+        expect(reconcileSessionConfigForModel(
+            { supportedEffortLevels: ['low', 'medium', 'high'] },
+            { effort: 'medium', fastMode: false },
+        )).toEqual({})
+    })
+
+    it('当前档位越界 → 回落到该模型支持的最高档（max → xhigh）', () => {
+        expect(reconcileSessionConfigForModel(
+            { supportedEffortLevels: ['low', 'medium', 'high', 'xhigh'] },
+            { effort: 'max' },
+        )).toEqual({ effort: 'xhigh' })
+        expect(reconcileSessionConfigForModel(
+            { supportedEffortLevels: ['low', 'medium'] },
+            { effort: 'max' },
+        )).toEqual({ effort: 'medium' })
+    })
+
+    it('模型无能力位（auto / 目录未命中）→ 四档兜底，max 同样回落', () => {
+        expect(reconcileSessionConfigForModel(null, { effort: 'max' })).toEqual({ effort: 'xhigh' })
+        expect(reconcileSessionConfigForModel(null, { effort: 'high' })).toEqual({})
+    })
+
+    it('模型声明不支持 effort → 档位值保持原样（惰性值，换回支持的模型仍生效）', () => {
+        expect(reconcileSessionConfigForModel({ supportsEffort: false }, { effort: 'max' })).toEqual({})
+    })
+
+    it('模型未声明 supportsFastMode → 已开启的快速模式置 false', () => {
+        expect(reconcileSessionConfigForModel({ supportsEffort: true }, { fastMode: true })).toEqual({ fastMode: false })
+        expect(reconcileSessionConfigForModel(null, { fastMode: true })).toEqual({ fastMode: false })
+    })
+
+    it('模型显式支持快速模式 → 不动', () => {
+        expect(reconcileSessionConfigForModel({ supportsFastMode: true }, { fastMode: true })).toEqual({})
+    })
+
+    it('本来就是关闭状态 → 不回写 false（不制造无意义的变更）', () => {
+        expect(reconcileSessionConfigForModel({}, { fastMode: false })).toEqual({})
+        expect(reconcileSessionConfigForModel({}, {})).toEqual({})
+    })
+})
+
+describe('EFFORT_LABELS', () => {    it('每个级别都有对应的标签', () => {
         for (const level of EFFORT_LEVELS) {
             expect(EFFORT_LABELS[level]).toBeTruthy()
         }

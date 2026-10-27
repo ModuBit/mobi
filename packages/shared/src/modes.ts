@@ -166,3 +166,43 @@ export function resolveModelEffortLevels(model?: ModelEffortCapability | null): 
     if (!declared || declared.length === 0) return EFFORT_LEVELS
     return EFFORT_SESSION_LEVELS.filter(level => declared.includes(level))
 }
+
+/** 换模型时参与收敛的配置项（effort / fastMode 都由模型能力决定能不能用） */
+export interface ModelConfigCapability extends ModelEffortCapability {
+    supportsFastMode?: boolean
+}
+
+/**
+ * 换模型后需要跟着改的会话配置。**只含需要变的字段**——undefined 表示保持原值。
+ */
+export interface ReconciledSessionConfig {
+    effort?: EffortLevel
+    fastMode?: boolean
+}
+
+/**
+ * 按目标模型能力收敛 effort / fastMode（换模型的单一规则来源，web 与 daemon 共用）。
+ *
+ * 为什么要有：能力过滤只在展示层（面板按模型过滤档位、闪电按钮按 `supportsFastMode` 显隐），
+ * 而配置值是跨模型存续的。不收敛时会出现「存着 max 却被下发到不支持它的模型」——滑杆
+ * 找不到该档位退到最低、大字仍显示最高；以及「闪电已隐藏但 fastMode 仍是 true」。
+ *
+ * 规则：
+ * - effort 不在目标模型档位集合内 → 回落到它支持的**最高档**（如 max → xhigh）；
+ *   模型完全不支持 effort（档位集合为空）时不动——值处于惰性态，换回支持的模型仍生效
+ * - fastMode 只在模型显式声明 `supportsFastMode === true` 时有意义，否则置 false
+ */
+export function reconcileSessionConfigForModel(
+    model: ModelConfigCapability | null | undefined,
+    current: { effort?: EffortLevel; fastMode?: boolean },
+): ReconciledSessionConfig {
+    const reconciled: ReconciledSessionConfig = {}
+    const levels = resolveModelEffortLevels(model)
+    if (current.effort && levels.length > 0 && !levels.includes(current.effort)) {
+        reconciled.effort = levels[levels.length - 1]
+    }
+    if (current.fastMode === true && model?.supportsFastMode !== true) {
+        reconciled.fastMode = false
+    }
+    return reconciled
+}
