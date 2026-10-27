@@ -34,8 +34,11 @@
    align 只参与理想锚位决策——不再用 right:0 翻面，x 数学恒以 root 左缘为基准 */
 .root[data-open] { z-index: 30; }
 /* stretch（mobi）：trigger 撑满容器宽——嵌进固定宽度面板/表单行时，pill 与展开面
-   都以行宽为基准；量宽源同走 --ms-trigger-w（measure 取容器宽，不再取 max-content） */
-.root[data-stretch] { width: 100%; }
+   都以行宽为基准；量宽源同走 --ms-trigger-w（measure 取容器宽，不再取 max-content）。
+   列宽必须锁成 minmax(0, 1fr)：inline-grid 的 auto 列取 max-content，长的模型名会把
+   anchor 撑出面板（2026-10-27 真机：行右缘越出面板圆角），短值时列又缩到内容宽，
+   列表反被 shape 的 overflow: clip 切掉右端（check 只剩一半）。 */
+.root[data-stretch] { width: 100%; grid-template-columns: minmax(0, 1fr); }
 .label { color: var(--text-secondary); font-size: var(--text-sm); font-weight: 500; }
 
 /* 收起 pill 的布局占位宽（宽度弹簧的目标）。测量落地（data-ready）后交给
@@ -73,9 +76,12 @@
 .measure { position: static; visibility: hidden; pointer-events: none; width: max-content; max-width: min(20rem, calc(100vw - 2rem)); }
 .root[data-ready] .measure { position: absolute; top: 0; left: 0; }
 /* stretch（mobi）：触发器撑满容器宽（面板内嵌行）。量宽必须留在流内——data-ready 的绝对定位
-   会让 width:100% 反查 .anchor 的 var(--ms-trigger-w)，自己锁死在首测的 max-content 上。 */
+   会让 width:100% 反查 .anchor 的 var(--ms-trigger-w)，自己锁死在首测的 max-content 上。
+   列表宽度也回到 trigger 宽：行已撑满容器，再取 panelWidth（默认 272）会比 shape 宽，
+   右端被 .shape 的 overflow: clip 切掉（选中勾只露一半，2026-10-27 真机）。 */
 .root[data-stretch] .anchor { width: 100%; max-width: none; }
-.root[data-stretch] .measure { position: static; width: 100%; max-width: none; }
+.root[data-stretch] .measure { position: static; width: 100%; max-width: none; overflow: hidden; }
+.root[data-stretch] .listFace { width: var(--ms-trigger-w); }
 
 /* value 层（layer）绝对定位垂直居中，prefix 静态缀走同一 flex 行居中——
    slot 若是纯 block，prefix 会贴顶悬在 pill 上缘（2026-10-15 实踩） */
@@ -119,6 +125,9 @@
 
 .group { display: grid; gap: 2px; }
 .group + .group { margin-top: 4px; }
+/* 隐式 grid 列按 max-content 定宽（与外层 .root 同一个坑）：长模型名把行撑得比 listFace
+   还宽，行尾的选中勾越到 shape 的 overflow: clip 之外只剩一半（2026-10-27 真机）。 */
+.options, .group { grid-template-columns: minmax(0, 1fr); }
 .groupLabel { padding: 8px 10px 4px; color: var(--text-muted); font-size: var(--text-xs); font-weight: 400; }
 
 .option { position: relative; display: flex; min-height: 36px; box-sizing: border-box; align-items: center; gap: var(--space-2); padding: 0 10px 0 8px; border-radius: calc(var(--radius-panel) - 6px); color: var(--text-secondary); cursor: pointer; user-select: none; -webkit-user-select: none; transition: color var(--duration-fast) var(--ease-standard); }
