@@ -594,7 +594,7 @@ export function NewSessionPage() {
         }
     }, [
         selectedDirectory, isPending,
-        agent, model, effort, permissionMode, outputStyle, sessionType, worktreeName,
+        agent, model, effort, fastMode, permissionMode, outputStyle, sessionType, worktreeName,
         selectedWorkspaceId, spawnSession, navigate, messageApi, api.messages,
     ])
 
