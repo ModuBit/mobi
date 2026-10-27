@@ -63,3 +63,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [能力目录验证](capability-catalog-verify.md) — DEBUG 日志计数 + host-metadata API：per-cwd 缓存/单飞/签名失效/live Query 零探针/后台刷新节流（2026-10-20）
 - [审批通知卡片验证](approval-notification-verify.md) — 通知里就地审批/作答全链路；antd v6 通知内容独立 React 根（须补 QueryClient+Theme 提供者）、只读命令不触发审批、Playwright 兜底占用的 DevTools MCP（2026-10-21）
 - [worktree 生命周期验证](worktree-verify.md) — worktree 会话创建（Segmented 原生 input 点击）/ 合回 no-ff 与 squash / 脏保留 toast→设置页丢弃 / 冲突诚实失败 / **active 会话即「运行中」须先休眠** / 列表缓存 5s stale 须 reload（2026-10-25）
+- [模型目录验收](model-catalog-verify.md) — 创建页/会话内面板（换模型·换档·重置）路径与断言 / **CDP drag 才能拖动换档（合成 PointerEvent 无效且会误改值）** / 手机视口 innerWidth=500 / max 落库 / agent list_models + create_session 未知模型回落 notice / 快速模式创建预设双证据与 useCallback 依赖坑（2026-10-27）
