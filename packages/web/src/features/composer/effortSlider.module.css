@@ -48,13 +48,15 @@
 }
 
 /* 拇指：白色实心圆 + 悬浮阴影（与面板其他浮起件同一语言）。
-   x 由 motion value 驱动（1:1 跟手），这里只定纵向居中与尺寸基线。 */
+   x 由 motion value 驱动（1:1 跟手），这里只定纵向居中与尺寸基线。
+   底色双档同值取白：拇指压在饱和渐变上，白是唯一在两档都成立的「把手」语义——
+   跟 --surface-raised 走会在暗档变成深灰圆，压在深色轨道上几乎看不见。 */
 .thumb {
     position: absolute;
     left: 0;
     top: 50%;
     border-radius: 50%;
-    background: var(--surface-raised);
+    background: #fff;
     box-shadow: var(--shadow-floating);
     pointer-events: none;
 }

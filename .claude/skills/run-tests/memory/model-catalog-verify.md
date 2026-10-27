@@ -22,7 +22,11 @@ metadata:
     accessible name = `composer.modelPanel.selectModel`，`stretch` 撑满面板宽、
     `direction="up"` 列表向上展开覆盖面板）。当前模型不在宿主目录时行上显示原值，不是「请选择」。
   - `[role="slider"]` 的 `aria-valuemax` = 档位数 − 1（4 = 五档含 max；3 = 四档）。
-  - 档位名按钮（低 / 中 / 高 / 超高 / 最高）；重置按钮的 `aria-label`/description 是「重置为默认」。
+  - **面板里没有档位名行**（2026-10-27 按 ChatGPT 形态去掉「低/中/高/超高/最高」）：
+    当前档位只剩顶栏大字与 pill 两处，档位集合只能读 slider 的 `aria-valuemax`。
+  - 轨道矮、拇指大：轨道高 26（手机 34）、拇指 34（手机 44），上下各溢出一圈；
+    拇指固定纯白（暗档若跟 `--surface-raised` 会变成深灰圆，压在深色轨道上几乎看不见）。
+  - 重置按钮的 `aria-label`/description 是「重置为默认」。
 - **形变几何断言**（真机 `evaluate_script` 量 rect）：展开后 surface 的 `bottom` == pill 的
   `bottom`（收起动画结束回到 pill 尺寸且与 pill 完全重合）。面板在 composer 里必须走 portal——
   内联表面会被 composer 上方的工作区行（`z-index: 2`，`.ant-sender` 只有 1）压住穿模。
@@ -31,7 +35,7 @@ metadata:
   `claude-opus-5-5（apikey fun claude）` 最易触发），再量选中项的 `[class*="check"]`
   右缘是否 ≤ shape 右缘、`[role="listbox"]` 的 `scrollWidth === clientWidth`。
   只看 shape 尺寸看不出裁切——溢出的是行，被裁的是行尾的勾。
-- 点档位名与点按轨道走同一路径：`POST /api/sessions/<sid>/effort {"effort":"…"}`。
+- 点按轨道（唯一入口；档位名行已删）：`POST /api/sessions/<sid>/effort {"effort":"…"}`。
   读响应 + `GET /api/sessions/<sid>` 的 `session.runtimeState.effort` 做权威断言。
 - 重置 = 模型回 `auto`、档位回 `medium`；auto 无能力位，档位集合随之回落四档（UI 只剩低中高超高）。
 
@@ -54,7 +58,7 @@ metadata:
   监听；诊断同类「拖完没生效」先抓 `pointerdown/move/up/lostpointercapture` 序列。
 - **合成 PointerEvent 仍可用**：往 `[role="slider"]` 依次 dispatch pointerdown / move / up
   （bubbles 到 window 即被接住），能精确落在两档之间验「吸附最近档」：
-  `x = rect.left + thumb/2 + ratio * (rect.width - thumb)`（桌面 thumb 22 / 手机 28）。
+  `x = rect.left + thumb/2 + ratio * (rect.width - thumb)`（桌面 thumb 34 / 手机 44）。
   实测 ratio 0.625（5 档，介于「高」「超高」之间）松手 → 落「超高」。
 - **断言**：pill 文案（`模型 · 档位`，档位名带渐变取色）、顶栏大字、最高档
   `[data-testid="effort-sparkle"]` 共 7 个；拖动/取消（pointercancel）不提交见单测。
@@ -63,7 +67,7 @@ metadata:
 
 ### max 是 session-only，但运行时切换照样落库
 
-- 点「最高」→ `POST /effort {"effort":"max"}` 200 → `runtime_state.effort = 'max'` 稳定保持，
+- 拖/点轨道最右端到「最高」→ `POST /effort {"effort":"max"}` 200 → `runtime_state.effort = 'max'` 稳定保持，
   pill 显示「最高」。若某模型 supportedEffortLevels 不含 max，第五档不渲染是能力过滤，不是缺陷。
 
 ## 快速模式（创建时预设 / 运行中切换）

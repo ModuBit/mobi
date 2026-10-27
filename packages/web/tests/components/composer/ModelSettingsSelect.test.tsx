@@ -123,22 +123,19 @@ describe('ModelSettingsSelect', () => {
         expect(updated).toHaveTextContent('composer.effortLevels.medium')
     })
 
-    /** 轨道几何：桌面拇指 22 → 可走区间 = width - 22，起点偏移 11 */
+    /** 轨道几何：桌面拇指 34 → 可走区间 = width - 34，起点偏移 17 */
     function mockTrack(slider: HTMLElement) {
         vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue({
-            left: 0, width: 100, top: 0, height: 30, right: 100, bottom: 30, x: 0, y: 0, toJSON: () => ({}),
+            left: 0, width: 100, top: 0, height: 26, right: 100, bottom: 26, x: 0, y: 0, toJSON: () => ({}),
         } as DOMRect)
     }
 
-    it('点档位名与点按轨道产生同一结果', () => {
+    it('点按轨道即时提交到对应档位', () => {
         const onEffortChange = vi.fn()
         render(<Harness onEffortChange={onEffortChange} />)
         openPanel()
 
-        fireEvent.click(screen.getByRole('button', { name: 'composer.effortLevels.high' }))
-        expect(onEffortChange).toHaveBeenLastCalledWith('high')
-
-        // 轨道：4 档 → 可走区间 78px；点 x=60 → ratio 0.628 → 索引 2（high）
+        // 4 档 → 可走区间 66px；点 x=60 → ratio 0.65 → 索引 2（high）
         const slider = screen.getByRole('slider')
         mockTrack(slider)
         fireEvent.pointerDown(slider, { clientX: 60, pointerId: 1 })
@@ -154,7 +151,7 @@ describe('ModelSettingsSelect', () => {
         mockTrack(slider)
 
         fireEvent.pointerDown(slider, { clientX: 20, pointerId: 1 })
-        // 拖到两档之间的 53px（ratio 0.538 → 最近档 = 索引 2 / high），不应提交
+        // 拖到两档之间的 53px（ratio 0.545 → 最近档 = 索引 2 / high），不应提交
         fireEvent.pointerMove(slider, { clientX: 53, pointerId: 1 })
         expect(onEffortChange).not.toHaveBeenCalled()
 
@@ -186,7 +183,10 @@ describe('ModelSettingsSelect', () => {
         openPanel()
         expect(screen.queryAllByTestId('effort-sparkle')).toHaveLength(0)
 
-        fireEvent.click(screen.getByRole('button', { name: 'composer.effortLevels.max' }))
+        const slider = screen.getByRole('slider')
+        mockTrack(slider)
+        fireEvent.pointerDown(slider, { clientX: 95, pointerId: 1 })
+        fireEvent.pointerUp(slider, { clientX: 95, pointerId: 1 })
         expect(screen.getAllByTestId('effort-sparkle').length).toBeGreaterThan(0)
     })
 
@@ -205,7 +205,6 @@ describe('ModelSettingsSelect', () => {
         expect(screen.getByRole('button', { name: '模型' })).toHaveTextContent('Plain')
         openPanel()
         expect(screen.queryByRole('slider')).not.toBeInTheDocument()
-        expect(screen.queryByRole('button', { name: 'composer.effortLevels.low' })).not.toBeInTheDocument()
     })
 
     it('档位集合来自模型的 supportedEffortLevels（含 max 时出现第五档）', () => {
@@ -214,7 +213,7 @@ describe('ModelSettingsSelect', () => {
         ]
         render(<Harness models={withMax} />)
         openPanel()
-        expect(screen.getByRole('button', { name: 'composer.effortLevels.max' })).toBeInTheDocument()
+        expect(screen.getByRole('slider')).toHaveAttribute('aria-valuemax', '4')
     })
 
     it('支持快速模式的模型渲染闪电钮，点击切换并点亮 pill', () => {
@@ -257,7 +256,6 @@ describe('ModelSettingsSelect', () => {
     it('兜底（无模型清单）时档位回落四档', () => {
         render(<Harness models={[]} />)
         openPanel()
-        expect(screen.getByRole('button', { name: 'composer.effortLevels.xhigh' })).toBeInTheDocument()
-        expect(screen.queryByRole('button', { name: 'composer.effortLevels.max' })).not.toBeInTheDocument()
+        expect(screen.getByRole('slider')).toHaveAttribute('aria-valuemax', '3')
     })
 })

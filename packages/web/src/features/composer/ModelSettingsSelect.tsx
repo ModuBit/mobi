@@ -22,8 +22,8 @@
  * - 顶栏三栏：左 = 快速模式控件槽（票 03 注入，缺席时中栏仍居中）、中 = 当前档位大字、
  *   右 = 重置为默认（auto + 默认档）；
  * - 模型行是 **MorphSelect**：点开在面板内就地长成模型列表，选中后收起并更新 pill；
- * - 档位滑杆（ChatGPT 形态）：轨道内嵌档位点，拖动时拇指跟手但**不提交**，释放吸附到
- *   最近档位才下发（一次拖动只发一次请求）；点按轨道 / 档位名同样即时提交；
+ * - 档位滑杆（ChatGPT 形态）：矮轨道 + 大拇指南，轨道内嵌档位点，拖动时拇指跟手但**不提交**，
+ *   释放吸附到最近档位才下发（一次拖动只发一次请求）；点按轨道同样即时提交；
  *   拉到最高档时轨道铺满渐变并浮出星屑（reduced-motion 下退化为静态点）；
  * - 档位集合来自模型能力（`resolveModelEffortLevels`）：不支持 effort 时不渲染滑杆区。
  *
@@ -431,7 +431,8 @@ function PanelIconButton({ label, size, onClick, children }: {
  * - 拖动时拇指**不吃 React 状态**：motion value 1:1 跟手，只有档位真的换了才更新一次
  *   预览（顶栏大字随之走），松手时把拇指速度交给 spring.momentum 做惯性沉降 + 吸附到
  *   最近档位，**吸附完成才下发**（一次拖动 = 一次请求）；
- * - 点按轨道 / 档位名 = 立即提交；键盘左右键逐档提交；
+ * - 点按轨道 = 立即提交（档位名不进面板，当前档位只在顶栏大字与 pill 上显示）；
+ *   键盘左右键逐档提交；
  * - 拉到最高档时浮出星屑（纯装饰，reduced-motion 下退化为静态点）。
  */
 function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChange }: {
@@ -461,8 +462,10 @@ function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChang
     const activeIndex = Math.max(0, levels.indexOf(activeLevel))
     const atTop = lastIndex > 0 && activeIndex === lastIndex
 
-    const trackHeight = isMobile ? 44 : 30
-    const thumbSize = isMobile ? 28 : 22
+    // 轨道矮、拇指大：拇指直径 ≈ 轨道高 × 1.3，上下各溢出一圈（ChatGPT 形态）。
+    // 轨道越矮越像「条」，拇指越大越好抓；两者比例保持不变，只按视口缩放。
+    const trackHeight = isMobile ? 34 : 26
+    const thumbSize = isMobile ? 44 : 34
     const dotSize = isMobile ? 7 : 5
 
     /** 进度（0..1）是动效的唯一真源：拖动直接 set，松手/外部变更走弹簧 */
@@ -622,7 +625,7 @@ function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChang
                 className={styles.track}
                 onPointerDown={handlePointerDown}
                 onKeyDown={handleKeyDown}
-                style={{ height: trackHeight, margin: '2px 2px 6px' }}
+                style={{ height: trackHeight, margin: '2px 2px 4px' }}
             >
                 {/* 已选进度：裁切而非缩放，渐变颜色按 x 固定 */}
                 <motion.div className={styles.gradient} style={{ clipPath }} />
@@ -669,37 +672,6 @@ function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChang
                         marginTop: -thumbSize / 2,
                     }}
                 />
-            </div>
-            {/* 档位名刻度：本身也是点按入口（触屏主路径） */}
-            <div style={{ display: 'flex', margin: '0 2px' }}>
-                {levels.map((level, index) => {
-                    const active = level === value
-                    return (
-                        <button
-                            key={level}
-                            type="button"
-                            onClick={() => level !== value && onChange(level)}
-                            style={{
-                                flex: 1,
-                                minWidth: 0,
-                                minHeight: isMobile ? 28 : 20,
-                                padding: '2px 0',
-                                border: 0,
-                                background: 'transparent',
-                                color: active ? effortAccent(index, lastIndex) : 'var(--text-muted)',
-                                font: 'inherit',
-                                fontSize: isMobile ? 11.5 : 11,
-                                fontWeight: active ? 600 : 400,
-                                textAlign: 'center',
-                                cursor: 'pointer',
-                                WebkitTapHighlightColor: 'transparent',
-                                transition: reduced ? undefined : 'color var(--duration-fast) var(--ease-standard)',
-                            }}
-                        >
-                            {label(level)}
-                        </button>
-                    )
-                })}
             </div>
         </div>
     )
