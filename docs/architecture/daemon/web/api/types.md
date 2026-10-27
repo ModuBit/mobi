@@ -478,6 +478,9 @@ interface RuntimeState {
     teamState?: TeamState
     model?: string | null
     effort?: EffortLevel
+    fastMode?: boolean // 用户意图（开关）。与下面的 SDK 权威执行态分开
+    fastModeState?: FastModeState // SDK 权威执行态 on/cooldown/off（每轮 result 帧 + 切换后 reinitialize 回读）；web 优先读它，缺失回落 metadata.sdkMetadata.fastModeState
+    fastModeDisabledReason?: FastModeDisabledReason // 此刻不可用的原因，只在 state 非 on 时存在
     permissionMode?: PermissionMode // CLI keep-alive 上报落库，daemon 重启后 resume 回放
     outputStyle?: string
     contextUsage?: ContextUsage // 上下文用量快照（CLI 事件驱动上报，见 ContextUsage）

@@ -56,6 +56,7 @@ CLI 连接后，通过事件与 daemon 交互。事件按职责分为六组：
 | `context-usage` | CLI → daemon | 上下文用量事件驱动上报（启动采样/result 采样走 SDK `getContextUsage({detail:'summary'})` 零 LLM + assistant usage 派生），落库到 `runtimeState.contextUsage` 并广播给 Web |
 | `run-started` | CLI → daemon | 轮次起点上报（`running` 翻转 false→true 时），落库 `runtimeState.runStartedAt` 并广播给 Web；StatusBar 计时的权威来源（不随 Web 消息窗口化丢失） |
 | `cache-status` | CLI → daemon | 会话恢复（resume/fork）时 prompt cache 过期状态（SessionStart hook 信号），落库 `runtimeState.cacheStatus` 并广播给 Web；`cacheStatus:null` 表示清空（首 turn result 到达后 CLI 清除） |
+| `fast-mode-state` | CLI → daemon | 快速模式的 SDK 权威执行态（`off`/`cooldown`/`on` + 不可用原因），来源有两处：每轮 result 帧、切换 fastMode 后的 `reinitialize` 回读。落库 `runtimeState.fastModeState` / `fastModeDisabledReason` 并广播给 Web（Web 优先读它，缺失才回落 `metadata.sdkMetadata.fastModeState`）；`null` 表示清空 |
 | `receive-readiness` | CLI → daemon | 「本会话此刻能不能收消息」的翻转上报（sink 接通 `true` / **接通过之后**收尾断开 `false`；从未接通的一轮不上报，因为 `false` 在 daemon 侧读作「它曾经连上过、连接没了」）。**不落库、不广播**——只在 daemon 进程内喂 `SessionReceiveReadiness`（供「建完即可用」等待与投递失败成因解释），随会话进程生灭且会反复翻转 |
 | `update-metadata` | CLI ⇄ daemon | 更新会话元数据（名称等），带乐观锁 |
 | `update-state` | CLI ⇄ daemon | 更新 Agent 状态（requests 等），带乐观锁 |
