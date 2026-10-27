@@ -45,23 +45,33 @@ metadata:
   断言别写死 390：面板 `rect.width` ≈ `innerWidth - 20`、`scrollWidth === clientWidth` 即满宽无溢出。
 - 五档、模型行、重置钮在 500 宽下全部可见，无裁切。
 
-### 拖动换档：跟手预览、松手吸附才算数（2026-10-27 改版）
+### 拖动换档：拇指只在档位点上、松手才提交（2026-10-27 改版）
 
-滑块改成 ChatGPT 形态后（轨道内嵌档位点、渐变填充、最高档星屑）：
+滑块对齐 ChatGPT（轨道内嵌档位点、普通档纯蓝、最高档流光 + 星屑）：
 
-- **CDP drag 真实拖动生效**（真实指针事件）。拖动的语义是：pointerdown 起跟手 →
-  pointermove 只更新预览（顶栏大字 + pill 不变）→ **pointerup 吸附到最近档位才提交**
-  （一次拖动 = 一次请求；旧实现是每跨一档就发一次 POST）。
+- **拖动时拇指不做连续跟手**：指针跨过相邻两点中点才换档，拇指从点滑到点（spring），
+  不会停在两档之间；跨档只更新预览（顶栏大字随之走，pill 不变）→ **pointerup 才提交**
+  （一次拖动 = 一次请求）。量法：拖动中采样 `[class*="thumb"]` 中心 x，必须恒等于某个
+  档位点中心（`rect.left + thumb/2 + ratio*(rect.width - thumb)`），空档位置只允许出现在
+  弹簧途中。
+- **颜色只有两态**：普通档 `var(--effort-fill)` 纯蓝（亮 #2f6fed / 暗 #4f8bff），最高档
+  才铺多彩流光（`.track[data-top] .gradient`，`effort-flow` 4.5s 动画）+ 星屑 7 个；
+  顶栏大字与 pill 的档位名同色（最高档取 `--effort-ink-top` 紫）。
+- **拇指描边双档**：亮档 1px `--mobi-hairline-strong`（白圆压在浅灰轨道上没这圈边界发虚），
+  暗档透明。验法：`getComputedStyle(thumb).borderTopColor` = `rgb(217,217,224)` / `rgba(0,0,0,0)`。
+- **档位点 hover 放大 1.9×**（`pointer-events: auto`，事件照常冒泡到轨道，不影响拖动）。
+  验法：临时给某个点 `style.left='50%'` 挪到轨道正中 → `hover` 轨道 → 该点
+  `matches(':hover')` 为真且 `transform: matrix(1.9,…)`。
 - **不要在滑块上用 `setPointerCapture`**（2026-10-27 实踩）：CDP drag 实测
   `lostpointercapture` 先于 `pointerup` 触发，之后的 pointermove/up 落到别的元素
   （target 变成外层 DIV），松手不提交、pill 停在旧档。实现已改 window 级 pointermove/up
   监听；诊断同类「拖完没生效」先抓 `pointerdown/move/up/lostpointercapture` 序列。
-- **合成 PointerEvent 仍可用**：往 `[role="slider"]` 依次 dispatch pointerdown / move / up
-  （bubbles 到 window 即被接住），能精确落在两档之间验「吸附最近档」：
-  `x = rect.left + thumb/2 + ratio * (rect.width - thumb)`（桌面 thumb 34 / 手机 44）。
-  实测 ratio 0.625（5 档，介于「高」「超高」之间）松手 → 落「超高」。
-- **断言**：pill 文案（`模型 · 档位`，档位名带渐变取色）、顶栏大字、最高档
-  `[data-testid="effort-sparkle"]` 共 7 个；拖动/取消（pointercancel）不提交见单测。
+- **合成 PointerEvent 可用**：往 `[role="slider"]` 依次 dispatch pointerdown / move / up
+  （bubbles 到 window 即被接住），clientX 用页面坐标（`rect.left + …`，桌面 thumb 34 /
+  手机 44）。实测 4 档轨道 left=706 w=292 时点中心 723/809/895/981：拖到 760（中点左）
+  仍 723、770（中点右）已 809、900（空档）弹簧 894→松手 895。
+- **断言**：pill 文案（`模型 · 档位`）、顶栏大字、最高档 `[data-testid="effort-sparkle"]`
+  共 7 个；拖动/取消（pointercancel）不提交见单测。
 - 手机视口（innerWidth 500）下新会话页 composer 行本身是 `overflow-x: auto` 横滚条
   （scrollWidth ~647 > 500），不是本轮滑杆引入的溢出。
 

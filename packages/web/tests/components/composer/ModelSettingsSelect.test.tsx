@@ -162,6 +162,23 @@ describe('ModelSettingsSelect', () => {
         expect(onEffortChange).toHaveBeenLastCalledWith('xhigh')
     })
 
+    it('拖动跨过两点中点才换档，拇指不会停在两档之间', () => {
+        render(<Harness initialEffort="low" />)
+        openPanel()
+        const slider = screen.getByRole('slider')
+        mockTrack(slider)
+
+        fireEvent.pointerDown(slider, { clientX: 17, pointerId: 1 })
+        expect(slider).toHaveAttribute('aria-valuenow', '0')
+
+        // 0 与 1 的中点 = ratio 1/6 ≈ x 28：中点的左右各自仍落在原档/下一档上
+        fireEvent.pointerMove(slider, { clientX: 25, pointerId: 1 })
+        expect(slider).toHaveAttribute('aria-valuenow', '0')
+        fireEvent.pointerMove(slider, { clientX: 32, pointerId: 1 })
+        expect(slider).toHaveAttribute('aria-valuenow', '1')
+        fireEvent.pointerUp(slider, { clientX: 32, pointerId: 1 })
+    })
+
     it('拖动取消不提交，回到原档位', () => {
         const onEffortChange = vi.fn()
         render(<Harness initialEffort="low" onEffortChange={onEffortChange} />)

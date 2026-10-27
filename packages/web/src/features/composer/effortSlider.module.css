@@ -14,8 +14,20 @@
  * limitations under the License.
  */
 
-/* 档位滑杆（ChatGPT 形态）：渐变层铺满整条轨道，进度只做裁切——颜色按 x 固定，
-   拖动时填充不会「变色」；档位点贴在渐变层上，走到哪档点亮到哪档。 */
+/* 档位滑杆（ChatGPT 形态）：轨道矮、拇指大；颜色只有两态——普通档统一填充蓝，
+   只有最高档才铺多彩流光（唯一有动画的一档）。档位点贴在填充层上，走到哪档点亮到哪档。 */
+
+/* 档位色（双档各给一份）：填充蓝双档都取「饱和蓝」，最高档的文字墨色在暗档提亮，
+   否则深底上的紫几乎看不清 */
+:root {
+    --effort-fill: #2f6fed;
+    --effort-ink-top: #7c5cff;
+}
+
+:global(.dark) {
+    --effort-fill: #4f8bff;
+    --effort-ink-top: #a78bfa;
+}
 
 .track {
     position: relative;
@@ -27,38 +39,63 @@
     user-select: none;
 }
 
-/* 渐变全长：石青 → 灰紫（与 --mobi-chart-5/6 同源，双档各自取色）。
-   未填充部分靠 progress 层裁切，所以这里不做宽度动画。 */
+/* 填充全长：裁切而非缩放宽度，颜色按 x 固定，拖动时填充不会「变色」 */
 .gradient {
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: linear-gradient(90deg, var(--mobi-chart-5) 0%, var(--mobi-chart-6) 100%);
+    background: var(--effort-fill);
     pointer-events: none;
     will-change: clip-path;
 }
 
-/* 档位点：填充侧用半透明白（压在渐变上），未达侧用墨色淡阶 */
+/* 最高档：多彩流光。只有这一档炫——其余档保持安静的纯蓝，颜色本身承载「到顶了」 */
+.track[data-top] .gradient {
+    background-image: linear-gradient(100deg, #4f8bff 0%, #7c5cff 22%, #d94fd0 45%, #ff8a4f 68%, #4f8bff 100%);
+    background-size: 220% 100%;
+    animation: effort-flow 4.5s linear infinite;
+}
+
+@keyframes effort-flow {
+    from { background-position: 0% 50%; }
+    to { background-position: 220% 50%; }
+}
+
+/* 档位点：填充侧用半透明白（压在渐变上），未达侧用墨色淡阶。
+   pointer-events 交还给点本身——hover 时放大给「可落点」的响应，
+   事件照常冒泡到轨道，不改变拖动与点按的既有路径。 */
 .dot {
     position: absolute;
     top: 50%;
     border-radius: 50%;
     transform: translate(-50%, -50%);
-    pointer-events: none;
+    pointer-events: auto;
+    transition: transform var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard);
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .dot:hover { transform: translate(-50%, -50%) scale(1.9); }
 }
 
 /* 拇指：白色实心圆 + 悬浮阴影（与面板其他浮起件同一语言）。
-   x 由 motion value 驱动（1:1 跟手），这里只定纵向居中与尺寸基线。
-   底色双档同值取白：拇指压在饱和渐变上，白是唯一在两档都成立的「把手」语义——
-   跟 --surface-raised 走会在暗档变成深灰圆，压在深色轨道上几乎看不见。 */
+   x 由 motion value 驱动，这里只定纵向居中与尺寸基线。
+   底色双档同值取白：拇指压在饱和填充上，白是唯一在两档都成立的「把手」语义——
+   跟 --surface-raised 走会在暗档变成深灰圆，贴在深色轨道上几乎看不见。
+   描边只在亮档要：白圆压在浅灰轨道上，没有这圈 hairline 就只剩一层淡阴影，边界发虚。 */
 .thumb {
     position: absolute;
     left: 0;
     top: 50%;
+    box-sizing: border-box;
+    border: 1px solid var(--mobi-hairline-strong);
     border-radius: 50%;
     background: #fff;
     box-shadow: var(--shadow-floating);
     pointer-events: none;
+}
+
+:global(.dark) .thumb {
+    border-color: transparent;
 }
 
 /* 拉满档位的星屑：细碎菱形/圆点，长周期短点亮，错相避免齐闪。
@@ -86,4 +123,6 @@
 
 @media (prefers-reduced-motion: reduce) {
     .sparkle { animation: none; opacity: 0.8; }
+    .dot { transition-duration: 0ms; }
+    .track[data-top] .gradient { animation: none; }
 }

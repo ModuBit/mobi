@@ -22,9 +22,9 @@
  * - 顶栏三栏：左 = 快速模式控件槽（票 03 注入，缺席时中栏仍居中）、中 = 当前档位大字、
  *   右 = 重置为默认（auto + 默认档）；
  * - 模型行是 **MorphSelect**：点开在面板内就地长成模型列表，选中后收起并更新 pill；
- * - 档位滑杆（ChatGPT 形态）：矮轨道 + 大拇指南，轨道内嵌档位点，拖动时拇指跟手但**不提交**，
- *   释放吸附到最近档位才下发（一次拖动只发一次请求）；点按轨道同样即时提交；
- *   拉到最高档时轨道铺满渐变并浮出星屑（reduced-motion 下退化为静态点）；
+ * - 档位滑杆（ChatGPT 形态）：矮轨道 + 大拇指南，轨道内嵌档位点，拖动时拇指只在档位点
+ *   之间跳、**松手才提交**（一次拖动只发一次请求）；点按轨道同样即时提交；
+ *   普通档纯蓝填充，只有最高档铺多彩流光并浮出星屑（reduced-motion 下退化为静态点）；
  * - 档位集合来自模型能力（`resolveModelEffortLevels`）：不支持 effort 时不渲染滑杆区。
  *
  * 样式沿用 morph-select 的 pill 变量（--surface/--border/--radius-pill…），不再另立一套。
@@ -60,12 +60,11 @@ function pillMaxWidth(isMobile: boolean): number {
 }
 
 /**
- * 档位强调色：沿轨道渐变取色（首档 → 石青，末档 → 灰紫），与滑杆填充同源。
- * 顶栏大字与 pill 的档位名共用——「看到的颜色」始终对应「轨道上的位置」。
+ * 档位强调色：非最高档统一取填充蓝（与轨道同色），只有最高档取彩色档的墨紫——
+ * 轨道也只在最高档才铺多彩流光，「文字的颜色」与「轨道的颜色」始终是同一句话。
  */
 function effortAccent(index: number, lastIndex: number): string {
-    const percent = lastIndex > 0 ? Math.max(0, Math.min(100, Math.round((index / lastIndex) * 100))) : 0
-    return `color-mix(in oklab, var(--mobi-chart-5) ${100 - percent}%, var(--mobi-chart-6) ${percent}%)`
+    return lastIndex > 0 && index >= lastIndex ? 'var(--effort-ink-top)' : 'var(--effort-fill)'
 }
 
 /** 拉满档位的星屑（左/上百分比、尺寸、错相、是否菱形）：纯装饰语言，不从数据推导 */
@@ -426,11 +425,11 @@ function PanelIconButton({ label, size, onClick, children }: {
 
 /**
  * 档位滑杆（ChatGPT 形态 + uiarc 动效语言）：
- * - 轨道铺满渐变（石青→灰紫），进度只做裁切，颜色按位置固定，拖动时不「变色」；
- * - 档位点嵌在轨道内，到达哪档点亮到哪档；
- * - 拖动时拇指**不吃 React 状态**：motion value 1:1 跟手，只有档位真的换了才更新一次
- *   预览（顶栏大字随之走），松手时把拇指速度交给 spring.momentum 做惯性沉降 + 吸附到
- *   最近档位，**吸附完成才下发**（一次拖动 = 一次请求）；
+ * - 填充只做裁切，颜色分两态：普通档统一填充蓝，**只有最高档**才铺多彩流光并浮出星屑；
+ * - 档位点嵌在轨道内，到达哪档点亮到哪档（hover 时放大，作为「可落点」的响应）；
+ * - 拖动时拇指**只在档位点之间跳**：指针跨过相邻两点中点才换档，拇指从点滑到点，
+ *   不会停在两个点之间；跨档只更新一次预览（顶栏大字随之走），**松手才下发**
+ *   （一次拖动 = 一次请求）；
  * - 点按轨道 = 立即提交（档位名不进面板，当前档位只在顶栏大字与 pill 上显示）；
  *   键盘左右键逐档提交；
  * - 拉到最高档时浮出星屑（纯装饰，reduced-motion 下退化为静态点）。
@@ -449,9 +448,8 @@ function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChang
     /** 拖动中的预览档位：只在跨档时 setState，逐像素移动不进 React */
     const [preview, setPreview] = useState<EffortLevel | null>(null)
     const draggingRef = useRef(false)
-    /** 最近一次指针采样（速度 = px/ms），释放时折算给吸附弹簧 */
-    const lastSampleRef = useRef<{ x: number; t: number } | null>(null)
-    const velocityRef = useRef(0)
+    /** 当前吸附到的档位索引：拇指位置可能还在弹簧途中，松手要按「指针停在哪档」提交 */
+    const snappedIndexRef = useRef(Math.max(0, levels.indexOf(value)))
     /** 轨道实测宽度：ResizeObserver 驱动，jsdom 下缺席则保持 0（测试只走比例换算） */
     const [trackWidth, setTrackWidth] = useState(0)
 
@@ -487,9 +485,10 @@ function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChang
         return () => observer.disconnect()
     }, [])
 
-    // 外部值变更（换模型收敛档位、重置、点档位名）→ 滑过去而不是瞬移
+    // 外部值变更（换模型收敛档位、重置）→ 滑过去而不是瞬移
     useEffect(() => {
         const target = ratioOf(currentIndex)
+        snappedIndexRef.current = currentIndex
         if (Math.abs(progress.get() - target) < 1e-4) return
         if (reduced) progress.set(target)
         else animate(progress, target, spring.ui)
@@ -527,49 +526,51 @@ function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChang
     }
     useEffect(() => stopTracking, [])
 
-    /** 松手：惯性吸附到最近档位；commit=false（取消）时不提交 */
+    /** 松手：档位已由吸附决定，这里只把拇指稳定到点上并提交 */
     const finishDrag = (commit: boolean) => {
         if (!draggingRef.current) return
         draggingRef.current = false
         stopTracking()
-        const settled = Math.round(progress.get() * Math.max(lastIndex, 0))
+        const settled = commit ? snappedIndexRef.current : currentIndex
         const target = ratioOf(settled)
-        // 惯性吸附：拇指速度（px/ms）折算成比例速度（每秒），弹簧负责把过冲收回来
-        const span = Math.max(1, trackWidth - thumbSize)
-        const velocity = reduced ? 0 : (velocityRef.current / span) * 1000
         if (reduced) progress.set(target)
-        else animate(progress, target, { ...spring.momentum, velocity })
+        else animate(progress, target, spring.ui)
         if (!reduced) animate(scale, 1, spring.ui)
         const level = levels[settled]
+        snappedIndexRef.current = currentIndex
         setPreview(null)
         onPreviewChange?.(null)
-        lastSampleRef.current = null
         if (commit && level && level !== value) onChange(level)
     }
 
     /**
-     * 跟手移动：直接写 motion value（不进 React 状态机），只在跨档时更新一次预览。
-     * 不做 setPointerCapture——实测（CDP drag）捕获会在拖动中被浏览器收回
-     * （lostpointercapture 先于 pointerup），之后的 pointerup 落到别的元素上，
-     * 松手不提交。window 级监听不依赖捕获，指针离开轨道也照样跟手。
+     * 拖动：拇指**只在档位点之间跳**，不做连续跟手。
+     *
+     * 连续跟手会让圆圈停在两个点之间，看起来像是能落在未定义的位置（拖动时空转、
+     * 松手又弹回点上）；改成「跨过两点中点才换档、圆圈从点滑到点」后，视觉位置
+     * 始终等于当前档位。
      */
-    const trackMove = (clientX: number) => {
+    const moveTo = (clientX: number) => {
         const ratio = ratioAt(clientX)
         if (ratio === null) return
-        // 速度采样：甩动越快，释放后的惯性沉降越明显
-        const now = performance.now()
-        const last = lastSampleRef.current
-        if (last && now > last.t) velocityRef.current = (clientX - last.x) / (now - last.t)
-        lastSampleRef.current = { x: clientX, t: now }
-        progress.set(ratio)
+        const index = Math.round(ratio * Math.max(lastIndex, 0))
+        snappedIndexRef.current = index
+        const snapped = ratioOf(index)
+        if (reduced) progress.set(snapped)
+        else animate(progress, snapped, spring.ui)
         updatePreview(ratio)
     }
 
+    /**
+     * 拖动期间在 window 上监听移动/松手。不做 setPointerCapture——实测（CDP drag）捕获会在
+     * 拖动中被浏览器收回（lostpointercapture 先于 pointerup），之后的 pointerup 落到别的元素上，
+     * 松手不提交。window 级监听不依赖捕获，指针离开轨道也照样跟着走。
+     */
     const startTracking = (pointerId: number) => {
         stopTracking()
         const onMove = (event: PointerEvent) => {
             if (event.pointerId !== pointerId) return
-            trackMove(event.clientX)
+            moveTo(event.clientX)
         }
         const onUp = (event: PointerEvent) => {
             if (event.pointerId !== pointerId) return
@@ -590,14 +591,11 @@ function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChang
     }
 
     const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-        const ratio = ratioAt(event.clientX)
-        if (ratio === null) return
+        if (ratioAt(event.clientX) === null) return
         draggingRef.current = true
-        velocityRef.current = 0
-        lastSampleRef.current = { x: event.clientX, t: performance.now() }
-        progress.set(ratio)
+        // 点按也走同一吸附：圆圈从当前档滑到被点的档，而不是瞬间跳到指针下方
+        moveTo(event.clientX)
         if (!reduced) animate(scale, 1.12, spring.ui)
-        updatePreview(ratio)
         startTracking(event.pointerId)
     }
 
@@ -623,6 +621,7 @@ function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChang
                 aria-valuenow={activeIndex}
                 aria-valuetext={label(activeLevel)}
                 className={styles.track}
+                data-top={atTop || undefined}
                 onPointerDown={handlePointerDown}
                 onKeyDown={handleKeyDown}
                 style={{ height: trackHeight, margin: '2px 2px 4px' }}
@@ -640,7 +639,6 @@ function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChang
                             width: index === activeIndex ? 0 : dotSize,
                             height: index === activeIndex ? 0 : dotSize,
                             background: index <= activeIndex ? 'rgba(255, 255, 255, 0.62)' : 'var(--mobi-ink-quaternary)',
-                            transition: reduced ? undefined : 'background-color var(--duration-fast) var(--ease-standard)',
                         }}
                     />
                 ))}
