@@ -43,12 +43,11 @@ import { CommandHintBar } from '@/features/composer/CommandHintBar'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { ResponsiveActionBar, type ActionItem } from '@/features/composer/ResponsiveActionBar'
 import { ToolStrip, type ToolStripItem } from '@/features/composer/ToolStrip'
-import { EffortDot, useModelOptionsWithEffort } from '@/features/composer/modelEffortMenu'
+import { ModelSettingsSelect } from '@/features/composer/ModelSettingsSelect'
 import { EnvironmentBar, extractWorkspaceName } from '@/features/composer/EnvironmentBar'
 import { useMobiApi } from '@/core/data/api/client'
 import type { Workspace } from '@/core/data/api/types'
 import { type AgentType, type SessionType, AGENT_OPTIONS } from '@/domain/session/types'
-import { buildModelSelectOptions } from '@/domain/session/modelSelectOptions'
 import {
     loadPreferredAgent,
     savePreferredAgent,
@@ -89,7 +88,6 @@ const SESSION_TYPE_OPTIONS: { value: SessionType; label: string }[] = [
     { value: 'worktree', label: 'Worktree' },
 ]
 
-// Effort 级别颜色 / 圆点 / effort 子菜单装配在 features/composer/modelEffortMenu.tsx
 
 /* ========== 样式组件 ========== */
 
@@ -601,25 +599,9 @@ export function NewSessionPage() {
     const canSubmit = gatePassed && !isPending && attachments.every(a => a.status !== 'uploading')
 
     // ============ model + effort 合并选择 ============
-    // 宿主探针清单（选定工作区即取数）→ 无感替换兜底四项；auto 恒在首位（合成项）
+    // 宿主探针清单（选定工作区即取数）直接交给模型设置面板：列表与档位能力同源，
+    // 探针未就绪时面板内部回落兜底四项 / 四档
     const hostModels = capabilities.metadata?.models
-    const modelSelectOptions = useMemo(() => buildModelSelectOptions(hostModels), [hostModels])
-
-    const handleModelEffortSelect = useCallback((selectedModel: string, selectedEffort: EffortLevel) => {
-        if (selectedModel !== model) setModel(selectedModel)
-        if (selectedEffort !== effort) setEffort(selectedEffort)
-    }, [model, effort])
-
-    const handleModelSelect = useCallback((v: string) => {
-        if (v !== model) setModel(v)
-    }, [model])
-
-    // 模型行尾缀 effort 子菜单入口：共享装配（同 ChatComposer），档位按模型能力过滤
-    const modelOptionsWithEffort = useModelOptionsWithEffort(modelSelectOptions, {
-        effort: effort,
-        onSelect: handleModelEffortSelect,
-        models: hostModels,
-    })
 
     // permission mode 选项（带颜色 + 国际化，同 ChatComposer）：名称 + 描述双行，tone 色随选项图标
     const permissionSelectOptions = useMemo(
@@ -659,18 +641,18 @@ export function NewSessionPage() {
                 />
             ),
         },
-        // Model + Effort 选择（移动端下拉满宽：698493a5 的有意调整，收编共享组件后保留）
+        // 模型设置（模型 + 推理档位；移动端面板满宽）
         {
             key: 'model',
             content: (
-                <CompactHoverSelect
+                <ModelSettingsSelect
                     label={t('newSession.model')}
-                    prefix={<EffortDot level={effort} />}
-                    value={model}
-                    onChange={v => handleModelSelect(v as string)}
+                    model={model}
+                    effort={effort}
+                    models={hostModels}
+                    onModelChange={setModel}
+                    onEffortChange={setEffort}
                     disabled={inputDisabled}
-                    options={modelOptionsWithEffort}
-                    mobileFullWidth
                 />
             ),
         },
@@ -693,9 +675,8 @@ export function NewSessionPage() {
         },
     ], [
         t, inputDisabled, effort, model, permissionMode,
-        permissionSelectOptions, modelOptionsWithEffort,
+        permissionSelectOptions, hostModels,
         outputStyle, outputStyleOptions,
-        handleModelSelect,
     ])
 
     // SubBar（Sender 下方抽屉）：次要配置项

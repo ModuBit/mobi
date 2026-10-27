@@ -35,14 +35,13 @@ import {
 import { normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash } from '@/domain/command/composerInputNormalization'
 import { bucketCompletedAttachments, fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
 import { fileRefContext } from '@/core/utils/fileUrl'
-import { buildModelSelectOptions } from '@/domain/session/modelSelectOptions'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { AttachPanel } from '@/features/composer/AttachPanel'
 import { QuoteChipBar } from '@/features/composer/QuoteChipBar'
 import { composerSenderCard, composerSubmitButton, COMPOSER_CARD_HEADER_INSET } from '@/features/composer/composerSurface.styles'
 import { ComposerInfoPanel } from '@/pages/session/ComposerInfoPanel'
 import { resolveCopyShortcut } from '@/features/composer/copyShortcut'
-import { EffortDot, useModelOptionsWithEffort } from '@/features/composer/modelEffortMenu'
+import { ModelSettingsSelect } from '@/features/composer/ModelSettingsSelect'
 import { GoalRow } from '@/ui/shared/GoalRow'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { useMobiApi } from '@/core/data/api/client'
@@ -205,7 +204,7 @@ const ComposerDock = styled.div`
 // 紧凑 Select 与 dropdown 样式注入统一在 CompactHoverSelect.tsx（composer / output style 切换器共用）
 
 // 预配置的紧凑 Select 已抽出为共享的 CompactHoverSelect.tsx（composer / output style 切换器共用）
-// effort 子菜单（EffortDot / useModelOptionsWithEffort）在 features/composer/modelEffortMenu.tsx
+// 模型设置面板（ModelSettingsSelect）在 features/composer/ModelSettingsSelect.tsx
 
 /**
  * 聊天输入组件
@@ -472,29 +471,6 @@ export function ChatComposer(props: ChatComposerProps) {
         [agentFlavor]
     )
     const showSettingsButton = Boolean(onPermissionModeChange && permissionModeOptions.length > 0)
-
-    const modelSelectOptions = useMemo(
-        () => buildModelSelectOptions(sdkMetadata?.models),
-        [sdkMetadata?.models],
-    )
-
-    // model + effort 合并选择
-    const handleModelEffortSelect = useCallback((selectedModel: string, selectedEffort: EffortLevel) => {
-        if (selectedModel !== model) onModelChange?.(selectedModel)
-        if (selectedEffort !== effort) onEffortChange?.(selectedEffort)
-    }, [model, effort, onModelChange, onEffortChange])
-
-    const handleModelSelect = useCallback((v: string) => {
-        if (v !== model) onModelChange?.(v)
-    }, [model, onModelChange])
-
-    // 模型行尾缀 effort 子菜单入口：共享装配（无 effort 回调的调用形态不加 trailing）
-    const modelOptionsWithEffort = useModelOptionsWithEffort(modelSelectOptions, {
-        effort: effort ?? 'medium',
-        onSelect: handleModelEffortSelect,
-        enabled: !!onEffortChange,
-        models: sdkMetadata?.models,
-    })
 
     // 权限模式选项：名称 + 描述双行（morph description 槽），tone 色随选项图标；
     // 触发器 iconOnly（收起态仅当前模式图标 + chevron），色不再依赖容器 tint
@@ -862,17 +838,18 @@ export function ChatComposer(props: ChatComposerProps) {
                                             />
                                         ),
                                     }] : []),
-                                    // model + effort
+                                    // 模型设置（模型 + 推理档位，面板形态同创建页）
                                     ...(onModelChange ? [{
                                         key: 'model',
                                         content: (
-                                            <CompactHoverSelect
+                                            <ModelSettingsSelect
                                                 label={t('composer.model')}
-                                                prefix={<EffortDot level={effort ?? 'medium'} />}
-                                                value={model ?? 'auto'}
-                                                onChange={v => handleModelSelect(v as string)}
+                                                model={model ?? 'auto'}
+                                                effort={effort ?? 'medium'}
+                                                models={sdkMetadata?.models}
+                                                onModelChange={v => onModelChange(v)}
+                                                onEffortChange={onEffortChange ? e => onEffortChange(e) : undefined}
                                                 disabled={controlsDisabled || showLocalModeCover}
-                                                options={modelOptionsWithEffort}
                                             />
                                         ),
                                     }] : []),

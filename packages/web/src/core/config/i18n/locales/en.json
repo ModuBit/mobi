@@ -963,7 +963,24 @@
     "attachPhoto": "Photo",
     "attachRecord": "Video",
     "quoteCommentPlaceholder": "Add an optional comment...",
-    "quoteEditComment": "Edit comment"
+    "quoteEditComment": "Edit comment",
+    "effortLevels": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "X-High",
+      "max": "Max"
+    },
+    "modelPanel": {
+      "selectModel": "Select model",
+      "groupDefault": "Default",
+      "groupHost": "Host models",
+      "back": "Back to reasoning",
+      "reset": "Reset to defaults",
+      "fastOn": "Fast mode is on",
+      "fastOff": "Fast mode is off",
+      "fastCooldown": "Fast mode cooling down: temporarily rate-limited, recovers automatically"
+    }
   },
   "status": {
     "percentLeft": "{{percent}}% left"
