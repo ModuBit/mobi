@@ -19,8 +19,7 @@
  * 宿主探针清单 → 选项；探针未就绪/失败时回落兜底四项；`auto` 恒为首位合成项。
  */
 
-import type { ModelInfo } from '@mobi/shared'
-import { CLAUDE_MODEL_FALLBACK } from './types'
+import { CLAUDE_MODEL_FALLBACK, type ModelInfo } from '@mobi/shared'
 
 export interface ModelSelectOption {
     value: string

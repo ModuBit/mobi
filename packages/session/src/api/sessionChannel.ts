@@ -28,6 +28,7 @@ import { ReliableRewindReportQueue } from '../claude/utils/reliableReport'
 import type {
     AgentCreateSessionAck,
     AgentCreateSessionRequest,
+    AgentListModelsAck,
     AgentSendMessageAck,
     AgentSendMessageRequest,
     AgentSessionsAck,
@@ -76,6 +77,8 @@ const AGENT_CREATE_SESSION_ACK_TIMEOUT_MS = 45_000
 /** 投递消息的 ack 等待上限（ms）：daemon 侧并发扇出，卡住的目标最多吃掉一次 30s RPC 上限
  *  （见 sendMessageToSessionsForAgent 注释），60s 留一倍余量 */
 const AGENT_SEND_MESSAGE_ACK_TIMEOUT_MS = 60_000
+/** 模型清单：缓存未命中时要跑一次真探针（预算 90s），5s 级别的下限不够 */
+const AGENT_LIST_MODELS_ACK_TIMEOUT_MS = 100_000
 /** session-end ack 等待上限（ms） */
 const SESSION_END_ACK_TIMEOUT_MS = 5_000
 
@@ -740,6 +743,17 @@ export class SessionChannel {
      */
     async createSessionForAgent(input: Omit<AgentCreateSessionRequest, 'sid'>): Promise<AgentCreateSessionAck> {
         return await this.transport.emitWithAck<AgentCreateSessionAck>('createSessionForAgent', { sid: this.sessionId, ...input }, AGENT_CREATE_SESSION_ACK_TIMEOUT_MS)
+    }
+
+    /**
+     * 查宿主可用的模型清单（B 类工具族）。无业务入参，只有寻址用的 sid。
+     *
+     * 等待上限按**冷探针**定：目录缓存未命中时 daemon 要真跑一次能力探针
+     *（node-core 的探针预算 90s），用列表类的 5s 会让 CLI 先超时、把「探针慢」
+     * 误报成连接故障。
+     */
+    async listModelsForAgent(): Promise<AgentListModelsAck> {
+        return await this.transport.emitWithAck<AgentListModelsAck>('listModelsForAgent', { sid: this.sessionId }, AGENT_LIST_MODELS_ACK_TIMEOUT_MS)
     }
 
     /**

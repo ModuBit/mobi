@@ -28,21 +28,23 @@ import { MOBI_APPS_TOOL_NAMES, buildMobiAppsTools } from '@/mcp/mobiAppsServer'
 import type { ApiSessionClient } from '@/api/apiSession'
 import { OPEN_IN_MOBI_TOOL_NAME } from '@/mcp/openInMobiTool'
 import { LIST_SESSIONS_TOOL_NAME } from '@/mcp/listSessionsTool'
+import { LIST_MODELS_TOOL_NAME } from '@/mcp/listModelsTool'
 import { CREATE_SESSION_TOOL_NAME } from '@/mcp/createSessionTool'
 import { SEND_MESSAGE_TOOL_NAME } from '@/mcp/sendMessageTool'
 
-/** 四个通道各一个 vi.fn——分开记数才能证明「哪个工具接哪条通道」 */
+/** 五个通道各一个 vi.fn——分开记数才能证明「哪个工具接哪条通道」 */
 function makeClient() {
     return {
         sendUiCommand: vi.fn().mockResolvedValue({ delivered: true }),
         listSessionsForAgent: vi.fn().mockResolvedValue({ ok: true, sessions: [] }),
+        listModelsForAgent: vi.fn().mockResolvedValue({ ok: true, models: [] }),
         createSessionForAgent: vi.fn().mockResolvedValue({ ok: true, sessionId: 's-new', readiness: 'ready' }),
         sendMessageToSessionsForAgent: vi.fn().mockResolvedValue({ ok: true, results: [{ sessionId: 'B', ok: true }] }),
     }
 }
 
 describe('buildMobiAppsTools', () => {
-    it('四个工具各自接上自己的会话通道，入参原样透传', async () => {
+    it('五个工具各自接上自己的会话通道，入参原样透传', async () => {
         const client = makeClient()
         const byName = new Map(
             buildMobiAppsTools(client as unknown as ApiSessionClient).map((tool) => [tool.name, tool])
@@ -57,15 +59,19 @@ describe('buildMobiAppsTools', () => {
         await byName.get(LIST_SESSIONS_TOOL_NAME)!.execute({ status: 'ALL', limit: 3 })
         expect(client.listSessionsForAgent).toHaveBeenCalledWith({ status: 'ALL', limit: 3 })
 
+        await byName.get(LIST_MODELS_TOOL_NAME)!.execute({})
+        expect(client.listModelsForAgent).toHaveBeenCalledWith()
+
         await byName.get(CREATE_SESSION_TOOL_NAME)!.execute({ directory: '/work/app' })
         expect(client.createSessionForAgent).toHaveBeenCalledWith({ directory: '/work/app' })
 
         await byName.get(SEND_MESSAGE_TOOL_NAME)!.execute({ targets: ['B'], content: 'hi' })
         expect(client.sendMessageToSessionsForAgent).toHaveBeenCalledWith({ targets: ['B'], content: 'hi' })
 
-        // 没串线：四条通道各被调一次（接错的话会是一个 2 次、一个 0 次）
+        // 没串线：五条通道各被调一次（接错的话会是一个 2 次、一个 0 次）
         expect(client.sendUiCommand).toHaveBeenCalledTimes(1)
         expect(client.listSessionsForAgent).toHaveBeenCalledTimes(1)
+        expect(client.listModelsForAgent).toHaveBeenCalledTimes(1)
         expect(client.createSessionForAgent).toHaveBeenCalledTimes(1)
         expect(client.sendMessageToSessionsForAgent).toHaveBeenCalledTimes(1)
     })

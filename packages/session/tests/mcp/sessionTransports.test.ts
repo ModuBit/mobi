@@ -77,9 +77,10 @@ describe('REMOTE_INLINE_HOOK_SETTINGS', () => {
  * 写错不会报错，只会静默失效，症状是该工具每次调用弹审批（B 类那样等于编排不可用）。
  */
 describe('MOBI_PREAUTHORIZED_TOOLS', () => {
-    it('是 SDK 认的那八个前缀（+openui_components，2026-10-19 签名按需检索）', () => {
+    it('是 SDK 认的九个前缀（+openui_components，2026-10-19 签名按需检索 / list_models 票 04）', () => {
         expect([...MOBI_PREAUTHORIZED_TOOLS].sort()).toEqual([
             'mcp__mobi-apps__create_session',
+            'mcp__mobi-apps__list_models',
             'mcp__mobi-apps__list_sessions',
             'mcp__mobi-apps__open_in_mobi',
             'mcp__mobi-apps__send_message_to_session',

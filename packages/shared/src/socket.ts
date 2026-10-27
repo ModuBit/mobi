@@ -19,7 +19,7 @@ import type { PermissionMode, EffortLevel } from './modes'
 import type { MessageCategory } from './messageClassification'
 import type { MessageFact } from './messages'
 import type { CrossSessionOrigin } from './inboundOrigin'
-import type { CacheStatus, ContextUsage, SnapshotDeltaFrame, UiCommandAction } from './schemas'
+import type { CacheStatus, ContextUsage, ModelInfo, SnapshotDeltaFrame, UiCommandAction } from './schemas'
 import type { UserContentBlock, UserMessageContent } from './userContentSchema'
 
 export type SocketErrorReason = 'namespace-missing' | 'access-denied' | 'not-found'
@@ -103,6 +103,8 @@ export type AgentCreateSessionRequest = {
     workspaceId?: string
     model?: string
     effort?: EffortLevel
+    /** 快速模式预设（创建时携带）：flag 层注入，不写 settings 文件 */
+    fastMode?: boolean
     permissionMode?: PermissionMode
     /**
      * 会话标题（可选，与 Web 侧改名的上限同规则）。
@@ -146,7 +148,26 @@ export type AgentCreateSessionReadiness =
  * 给人看的话。与 D15 的 per-target `error` 同口径——码在这里没有消费方。
  */
 export type AgentCreateSessionAck =
-    | { ok: true; sessionId: string; readiness: AgentCreateSessionReadiness }
+    | {
+        ok: true
+        sessionId: string
+        readiness: AgentCreateSessionReadiness
+        /**
+         * 建成了、但有件事得让 agent 知道（目前唯一来源：请求的模型不在宿主模型清单里，
+         * 已回落默认模型）。**不是失败**——会话已经存在，只是与入参有一处出入。
+         */
+        notice?: string
+    }
+    | { ok: false; error: string }
+
+/**
+ * listModelsForAgent 回执（工具 `list_models`）。
+ *
+ * 失败用自由文本而非 reason 码，理由与 AgentCreateSessionAck 同：探测失败是开放集合
+ *（超时 / 空清单 / 端点异常），每种都翻译成一句能行动的话——码在这里没有消费方。
+ */
+export type AgentListModelsAck =
+    | { ok: true; models: ModelInfo[] }
     | { ok: false; error: string }
 
 /** send_message_to_session 入参 */
@@ -451,10 +472,18 @@ export interface ClientToServerEvents {
     /** 同上，在本机起一个新会话进程。语义是「现在就有了这个会话」，
      *  没有「建了行但空着」的中间态——建完即可往里发消息。 */
     'createSessionForAgent': (data: AgentCreateSessionRequest, cb: (answer: AgentCreateSessionAck) => void) => void
+    /** 同上，查宿主当前可用的模型清单。**无业务入参**（只有鉴权用的 sid）：清单取宿主
+     *  默认配置目录，per-project 差异不足以支撑一个入参，调用方通常也还没有目录。 */
+    'listModelsForAgent': (data: AgentListModelsRequest, cb: (answer: AgentListModelsAck) => void) => void
     /** 同上，把一条消息投给别的会话。**不经投递队列**——daemon 落库即终态并经 RPC 直推目标
      *  CLI 的 input stream，因此不可取消、不可编辑、不在 Web 上呈现排队态。
      *  成功判据是「已进入对方输入流」，不是「对方已读」。 */
     'sendMessageToSessionForAgent': (data: AgentSendMessageRequest, cb: (answer: AgentSendMessageAck) => void) => void
+}
+
+/** listModelsForAgent 入参：只有发问方自己的会话 id（daemon 据此定 namespace / 鉴权） */
+export type AgentListModelsRequest = {
+    sid: string
 }
 
 /** listSessionsForAgent 入参 */

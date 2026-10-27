@@ -47,12 +47,3 @@ export const AGENT_OPTIONS: AgentOption[] = [
  */
 export type SessionType = 'simple' | 'worktree'
 
-/**
- * Claude 模型 fallback 选项（metadata 不可用时使用）
- */
-export const CLAUDE_MODEL_FALLBACK: { value: string; displayName: string; description?: string }[] = [
-    { value: 'auto', displayName: 'Auto', description: 'Use the default model' },
-    { value: 'opus', displayName: 'Opus', description: 'Most capable for complex work' },
-    { value: 'sonnet', displayName: 'Sonnet', description: 'Best for everyday tasks' },
-    { value: 'haiku', displayName: 'Haiku', description: 'Fastest for quick answers' },
-]

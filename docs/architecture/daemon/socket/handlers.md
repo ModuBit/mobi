@@ -272,18 +272,19 @@ ack 的 `delivered` 是「已广播给活跃 Web 连接」，不是「用户已�
 
 **文件**: [`packages/daemon/src/socket/handlers/cli/agentSessionHandlers.ts`](/packages/daemon/src/socket/handlers/cli/agentSessionHandlers.ts)
 
-agent 触达**其他会话**（列会话 / 建会话 / 投消息，见 ADR 0005；列机器事件已随 machine 概念移除退场）。与 A 类的分界：**不依赖 Web 在线、落库即终态**。
+agent 触达**其他会话**（列会话 / 查模型 / 建会话 / 投消息，见 ADR 0005；列机器事件已随 machine 概念移除退场）。与 A 类的分界：**不依赖 Web 在线、落库即终态**。
 
-四个事件形状一致：**入参只校验形状 → `resolveSessionAccess` 鉴权取 namespace → 调 `AgentSessionService` → 把结果转 ack**。业务规则（过滤排序、扇出、失败翻译）全在服务里，handler 不重复一份（与 `SessionMessageFactsProcessor` / `SessionForkStore` 同一分工）。
+五个事件形状一致：**入参只校验形状 → `resolveSessionAccess` 鉴权取 namespace → 调 `AgentSessionService` → 把结果转 ack**。业务规则（过滤排序、扇出、失败翻译、模型软校验）全在服务里，handler 不重复一份（与 `SessionMessageFactsProcessor` / `SessionForkStore` 同一分工）。
 
-服务以**一个能力对象**（`AgentSessionOps`，从服务类 Pick 出来的四个方法）整份注入，不逐方法开字段：此前这条链上四个方法名在三层里各改一遍名、各判一遍空。
+服务以**一个能力对象**（`AgentSessionOps`，从服务类 Pick 出来的五个方法）整份注入，不逐方法开字段：此前这条链上方法名在三层里各改一遍名、各判一遍空。
 
-装配缺失属组装 bug，**在注册时判一次**（`agentSessions` 缺席 → 四个事件一次性回固定回执），故每个 handler 各自只有一条代码路径。回执一律明确拒绝而非静默：列类回 `handler-misconfigured`，写类回一句「会话服务不可用」的人话。**不静默返回空清单**——那会让 agent 以为「一个会话都没有」；也**不能不注册**——CLI 的 emitWithAck 会等一个永远不来的回执，agent 只剩超时。
+装配缺失属组装 bug，**在注册时判一次**（`agentSessions` 缺席 → 五个事件一次性回固定回执），故每个 handler 各自只有一条代码路径。回执一律明确拒绝而非静默：列类回 `handler-misconfigured`，写类与模型清单回一句「会话服务不可用」的人话。**不静默返回空清单**——那会让 agent 以为「一个会话都没有 / 宿主没有模型」；也**不能不注册**——CLI 的 emitWithAck 会等一个永远不来的回执，agent 只剩超时。
 
 | 事件 | 模式 | 服务方法 |
 |------|------|----------|
 | `listSessionsForAgent` | 请求/响应 | `listSessions` |
-| `createSessionForAgent` | 请求/响应 | `createSession`（`waitForReady` 默认等到新会话能收消息再返回） |
+| `listModelsForAgent` | 请求/响应 | `listModels`（清单不按 namespace 收窄：模型是宿主事实） |
+| `createSessionForAgent` | 请求/响应 | `createSession`（`waitForReady` 默认等到新会话能收消息再返回；`model` 做软校验——清单可用且不含时回落默认模型并在 `notice` 里说明） |
 | `sendMessageToSessionForAgent` | 请求/响应 | `sendMessageToSessions` |
 
 ---

@@ -20,7 +20,7 @@ import type { WorkspaceAssignability } from '../../../src/sync/agentSessionServi
 import type { ReceiveReadiness } from '../../../src/sync/sessionReceiveReadiness'
 import { RpcFailure, type RpcFailureKind } from '../../../src/sync/rpcFailure'
 import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT } from '@mobi/shared'
-import type { AgentMessageDelivery, AgentMessagePushResult, UserContentBlock } from '@mobi/shared'
+import type { AgentMessageDelivery, AgentMessagePushResult, ModelInfo, UserContentBlock } from '@mobi/shared'
 import type { Session } from '@mobi/shared/types'
 
 /** 构造最小 Session（只填服务真正读的字段） */
@@ -62,10 +62,20 @@ function makeService(
         readiness?: ReceiveReadiness
         /** canReceiveNow 的返回（缺省 undefined = 从没上报过） */
         canReceiveNow?: boolean
+        /** 模型目录：缺省给空清单（= 目录不可用，按原样放行） */
+        catalog?: { ok: true; models: ModelInfo[] } | { ok: false; error: string }
+        /** 让模型目录读取抛错（模拟适配器层面炸掉） */
+        catalogThrows?: string
     },
 ) {
     const seenSessionNamespaces: string[] = []
-    const spawnCalls: Array<{ directory: string; options: unknown }> = []
+    const spawnCalls: Array<{ directory: string; options: {
+        model?: string
+        effort?: string
+        fastMode?: boolean
+        permissionMode?: string
+        workspaceId?: string
+    } }> = []
     const pushed: Array<{ sessionId: string; delivery: AgentMessageDelivery }> = []
     const stored: Array<{ sessionId: string; delivery: AgentMessageDelivery }> = []
     const renamed: Array<{ sessionId: string; name: string }> = []
@@ -119,6 +129,12 @@ function makeService(
         canReceiveNow: (sessionId) => {
             readinessReads.push(sessionId)
             return overrides?.canReceiveNow
+        },
+        readModelCatalog: async () => {
+            if (overrides?.catalogThrows) {
+                throw new Error(overrides.catalogThrows)
+            }
+            return overrides?.catalog ?? { ok: true, models: [] }
         },
     })
     return { service, seenSessionNamespaces, spawnCalls, pushed, stored, renamed, readinessWaits, readinessReads }
@@ -372,6 +388,7 @@ describe('AgentSessionService.createSession — 前置闸', () => {
             renameSession: async () => {},
             waitUntilCanReceive: async () => 'ready',
             canReceiveNow: () => undefined,
+            readModelCatalog: async () => ({ ok: true, models: [] }),
         })
 
         const result = await service.createSession('ns', { directory: '/work/app' })
@@ -397,7 +414,7 @@ describe('AgentSessionService.createSession — 起进程', () => {
 
         expect(spawnCalls).toEqual([{
             directory: '/work/app',
-            options: { model: undefined, effort: undefined, permissionMode: undefined, workspaceId: undefined },
+            options: { model: undefined, effort: undefined, fastMode: undefined, permissionMode: undefined, workspaceId: undefined },
         }])
     })
 
@@ -408,6 +425,7 @@ describe('AgentSessionService.createSession — 起进程', () => {
             directory: '/work/app',
             model: 'opus',
             effort: 'high',
+            fastMode: true,
             permissionMode: 'plan',
             workspaceId: 'p1',
         })
@@ -415,11 +433,129 @@ describe('AgentSessionService.createSession — 起进程', () => {
         expect(spawnCalls[0].options).toEqual({
             model: 'opus',
             effort: 'high',
+            fastMode: true,
             permissionMode: 'plan',
             workspaceId: 'p1',
         })
     })
 
+})
+
+describe('AgentSessionService — 模型目录（list_models 与建会话软校验）', () => {
+    const MODELS: ModelInfo[] = [
+        { value: 'opus', resolvedModel: 'claude-opus-4-8', displayName: 'Opus', description: '最强' },
+        { value: 'sonnet', displayName: 'Sonnet', description: '日常' },
+    ]
+
+    test('listModels：目录可用 → ok:true 带清单', async () => {
+        const { service } = makeService([], { catalog: { ok: true, models: MODELS } })
+
+        expect(await service.listModels()).toEqual({ ok: true, models: MODELS })
+    })
+
+    test('listModels：探测失败 → 报错并说明原因与兜底选项，不返回空清单', async () => {
+        const { service } = makeService([], { catalog: { ok: false, error: 'probe timed out' } })
+
+        const answer = await service.listModels()
+
+        expect(answer.ok).toBe(false)
+        if (answer.ok) throw new Error('expected failure')
+        expect(answer.error).toContain('probe timed out')
+        expect(answer.error).toContain('auto')
+        expect(answer.error).toContain('haiku')
+    })
+
+    test('listModels：空清单按不可用处理（不冒充「宿主没有模型」）', async () => {
+        const { service } = makeService([], { catalog: { ok: true, models: [] } })
+
+        const answer = await service.listModels()
+
+        expect(answer.ok).toBe(false)
+    })
+
+    test('清单内的模型原样透传，没有回落说明', async () => {
+        const { service, spawnCalls } = makeService([], { catalog: { ok: true, models: MODELS } })
+
+        const result = await service.createSession('ns', { directory: '/d', model: 'sonnet' })
+
+        expect(result.ok).toBe(true)
+        if (result.ok) expect(result.notice).toBeUndefined()
+        expect(spawnCalls[0].options.model).toBe('sonnet')
+    })
+
+    test('resolvedModel 全名同样认作清单内', async () => {
+        const { service, spawnCalls } = makeService([], { catalog: { ok: true, models: MODELS } })
+
+        await service.createSession('ns', { directory: '/d', model: 'claude-opus-4-8' })
+
+        expect(spawnCalls[0].options.model).toBe('claude-opus-4-8')
+    })
+
+    test('auto 恒为合法值（探针清单未必列默认别名）', async () => {
+        const { service, spawnCalls } = makeService([], { catalog: { ok: true, models: MODELS } })
+
+        const result = await service.createSession('ns', { directory: '/d', model: 'auto' })
+
+        expect(result.ok).toBe(true)
+        if (result.ok) expect(result.notice).toBeUndefined()
+        expect(spawnCalls[0].options.model).toBe('auto')
+    })
+
+    test('清单外的模型 → 回落默认模型建起，并在 notice 里说清回落与可用清单', async () => {
+        const { service, spawnCalls } = makeService([], { catalog: { ok: true, models: MODELS } })
+
+        const result = await service.createSession('ns', { directory: '/d', model: 'ghost' })
+
+        expect(result.ok).toBe(true)
+        if (!result.ok) throw new Error('expected success')
+        // 会话照常建起，只是不带这个模型名
+        expect(spawnCalls[0].options.model).toBeUndefined()
+        expect(result.notice).toContain('"ghost"')
+        expect(result.notice).toContain('default model')
+        expect(result.notice).toContain('opus, sonnet')
+    })
+
+    test('目录不可用（探测失败）→ 原样放行传入的模型名，不拦建会话', async () => {
+        const { service, spawnCalls } = makeService([], { catalog: { ok: false, error: 'probe timed out' } })
+
+        const result = await service.createSession('ns', { directory: '/d', model: 'proxy-model-x' })
+
+        expect(result.ok).toBe(true)
+        if (result.ok) expect(result.notice).toBeUndefined()
+        expect(spawnCalls[0].options.model).toBe('proxy-model-x')
+    })
+
+    test('目录读取抛错同样按不可用处理', async () => {
+        const { service, spawnCalls } = makeService([], { catalogThrows: 'boom' })
+
+        const result = await service.createSession('ns', { directory: '/d', model: 'opus' })
+
+        expect(result.ok).toBe(true)
+        expect(spawnCalls[0].options.model).toBe('opus')
+    })
+
+    test('没传模型时不读目录（省一次探测）', async () => {
+        let reads = 0
+        const counting = new AgentSessionService({
+            getSessionsByNamespace: () => [],
+            getSessionByNamespace: () => undefined,
+            checkWorkspaceAssignable: () => 'ok',
+            spawnSession: async () => ({ type: 'success', sessionId: 's-new' }),
+            pushAgentMessage: async () => ({ status: 'delivered' }),
+            storeAgentMessage: async () => {},
+            renameSession: async () => {},
+            waitUntilCanReceive: async () => 'ready',
+            canReceiveNow: () => undefined,
+            readModelCatalog: async () => {
+                reads++
+                return { ok: true, models: MODELS }
+            },
+        })
+
+        await counting.createSession('ns', { directory: '/d' })
+
+        expect(reads).toBe(0)
+    })
 })
 
 describe('AgentSessionService.createSession — 初始标题（D10 的可选 title）', () => {

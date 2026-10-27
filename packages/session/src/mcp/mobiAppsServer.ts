@@ -36,6 +36,7 @@ import { MOBI_APPS_SERVER_NAME } from '@mobi/shared'
 import { toSdkTool } from './sdkTool'
 import { OPEN_IN_MOBI_TOOL_NAME, createOpenInMobiTool } from './openInMobiTool'
 import { LIST_SESSIONS_TOOL_NAME, createListSessionsTool } from './listSessionsTool'
+import { LIST_MODELS_TOOL_NAME, createListModelsTool } from './listModelsTool'
 import { CREATE_SESSION_TOOL_NAME, createCreateSessionTool } from './createSessionTool'
 import { SEND_MESSAGE_TOOL_NAME, createSendMessageTool } from './sendMessageTool'
 
@@ -61,6 +62,12 @@ const MOBI_APPS_TOOLS = [
         name: LIST_SESSIONS_TOOL_NAME,
         build: (client: ApiSessionClient) => createListSessionsTool({
             listSessions: (query) => client.listSessionsForAgent(query),
+        }),
+    },
+    {
+        name: LIST_MODELS_TOOL_NAME,
+        build: (client: ApiSessionClient) => createListModelsTool({
+            listModels: () => client.listModelsForAgent(),
         }),
     },
     {

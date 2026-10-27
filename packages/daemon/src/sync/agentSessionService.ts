@@ -28,16 +28,18 @@
  * 依赖一律收成窄入参（不直接持 Store / MachineCache），便于单测用内存假件。
  */
 
-import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT, normalizeUserContent, UserMessageContentSchema } from '@mobi/shared'
+import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT, CLAUDE_MODEL_FALLBACK, normalizeUserContent, UserMessageContentSchema } from '@mobi/shared'
 import type {
     AgentCreateSessionAck,
     AgentCreateSessionReadiness,
     AgentCreateSessionRequest,
+    AgentListModelsAck,
     AgentMessageDelivery,
     AgentMessagePushResult,
     AgentSendMessageTargetResult,
     AgentSessionStatus,
     AgentSessionSummary,
+    ModelInfo,
 } from '@mobi/shared'
 import type { Session } from '@mobi/shared/types'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
@@ -61,6 +63,15 @@ export type AgentCreateSessionInput = Omit<AgentCreateSessionRequest, 'sid'>
  * 代价明码标价：create_session 从 ~390ms 变成最长 ~3.4s（正常等到的情形下 ~700ms）。
  */
 const RECEIVE_READY_BUDGET_MS = 3_000
+
+/**
+ * create_session 做模型软校验时等目录的上限（ms）。
+ *
+ * 目录缓存未命中要跑一次真探针（node-core 预算 90s），而 create_session 的 ack 上限
+ * 只有 45s——跟着等会让调用方先超时，把「探针慢」误报成建会话故障。软校验只是锦上添花：
+ * 超时就按「目录不可用」原样放行（见 resolveModel），探针仍在后台跑完并进缓存。
+ */
+const MODEL_CHECK_BUDGET_MS = 2_000
 
 /** 投递入参（sid / namespace 都是寻址信息，服务不收） */
 export interface AgentSendMessageInput {
@@ -101,9 +112,18 @@ export interface AgentSessionServiceDeps {
     spawnSession: (directory: string, options: {
         model?: string
         effort?: EffortLevel
+        fastMode?: boolean
         permissionMode?: PermissionMode
         workspaceId?: string
     }) => Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string; failure: RpcFailureKind }>
+    /**
+     * 读宿主模型目录（per-cwd 能力探针的默认目录，见 syncEngine 装配）。
+     *
+     * 失败支带一句**原因**而不是抛异常：目录不可用是「这项信息现在拿不到」的常态
+     *（探针超时 / 首启未就绪），不是编程错误——调用方要拿这句话告诉 agent 还能填什么。
+     * 返回空清单同样按不可用处理：空清单冒充成功会让 agent 以为宿主没有模型。
+     */
+    readModelCatalog: () => Promise<{ ok: true; models: ModelInfo[] } | { ok: false; error: string }>
     /**
      * 把一条跨会话消息推进目标 CLI 的 input stream（RPC 投递，**不经投递队列**）。
      *
@@ -186,9 +206,12 @@ export class AgentSessionService {
             }
         }
 
+        const { model, notice } = await this.resolveModel(input.model)
+
         const result = await this.deps.spawnSession(input.directory, {
-            model: input.model,
+            model,
             effort: input.effort,
+            fastMode: input.fastMode,
             permissionMode: input.permissionMode,
             workspaceId: input.workspaceId,
         })
@@ -208,7 +231,82 @@ export class AgentSessionService {
         // 走到这里，spawn 链路刚回执——**进程起了，但输入通道通常还没接上**（差 134–549ms）。
         // 默认等它接上再返回，让「拿到 id 就能立刻投递」成为接口保证而不是运气（见 resolveReadiness）
         const readiness = await this.resolveReadiness(result.sessionId, input.waitForReady ?? true)
-        return { ok: true, sessionId: result.sessionId, readiness }
+        return { ok: true, sessionId: result.sessionId, readiness, ...(notice ? { notice } : {}) }
+    }
+
+    /**
+     * 列出宿主可用模型（`list_models` 工具的服务端）。
+     *
+     * 空清单**不冒充成功**：那会让 agent 以为宿主没有模型；与探测失败同样处理，
+     * 由 {@link catalogUnavailableError} 说清「拿不到」以及「还能填什么」。
+     */
+    async listModels(): Promise<AgentListModelsAck> {
+        const answer = await this.readCatalogAnswer()
+        if (!answer.ok) {
+            return { ok: false, error: catalogUnavailableError(answer.error) }
+        }
+        return { ok: true, models: answer.models }
+    }
+
+    /**
+     * 模型名软校验（票 04）：目录可用且清单不含该模型时**回落默认模型**并把原因说清
+     * （`notice`），会话照常建起；目录不可用就原样放行——兜底四项与代理模型名都在
+     * 清单之外，硬拦会误伤。
+     *
+     * `auto` 恒为合法值：它是 CLI 的默认模型别名，探针清单不保证列它（web 侧同样
+     * 强制合成这一项，见 modelSelectOptions）。
+     */
+    private async resolveModel(requested: string | undefined): Promise<{ model?: string; notice?: string }> {
+        if (requested === undefined) {
+            return {}
+        }
+
+        const answer = await this.readCatalogAnswer(MODEL_CHECK_BUDGET_MS)
+        if (!answer.ok || isModelInCatalog(requested, answer.models)) {
+            return { model: requested }
+        }
+        return { notice: modelFallbackNotice(requested, answer.models) }
+    }
+
+    /**
+     * 读模型目录（原始结论）。空清单在这里被降级为失败——「宿主没有模型」不是
+     * 一个真实状态，把空清单当成功会让 agent 以为没什么可选。
+     *
+     * `withinMs` 缺省不设预算（`list_models` 要真清单，宁可等探针）；软校验传预算。
+     */
+    private async readCatalogAnswer(
+        withinMs?: number,
+    ): Promise<{ ok: true; models: ModelInfo[] } | { ok: false; error: string }> {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        try {
+            const pending = this.deps.readModelCatalog()
+            const answer = withinMs === undefined
+                ? await pending
+                : await Promise.race([
+                    pending,
+                    new Promise<null>((resolve) => {
+                        timer = setTimeout(() => resolve(null), withinMs)
+                    }),
+                ])
+            if (answer === null) {
+                return { ok: false, error: `the capability probe did not answer within ${withinMs}ms` }
+            }
+            if (!answer.ok) {
+                return answer
+            }
+            if (answer.models.length === 0) {
+                return { ok: false, error: 'the capability probe returned no model list' }
+            }
+            return answer
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error)
+            daemonLogger.debug(`[AgentSessions] 读模型目录失败，按不可用处理: ${reason}`)
+            return { ok: false, error: reason }
+        } finally {
+            if (timer !== undefined) {
+                clearTimeout(timer)
+            }
+        }
     }
 
     /**
@@ -374,7 +472,7 @@ export class AgentSessionService {
  */
 export type AgentSessionOps = Pick<
     AgentSessionService,
-    'listSessions' | 'createSession' | 'sendMessageToSessions'
+    'listSessions' | 'listModels' | 'createSession' | 'sendMessageToSessions'
 >
 
 /**
@@ -434,6 +532,40 @@ function translateSpawnFailure(failure: RpcFailureKind, message: string): string
         default:
             return message
     }
+}
+
+/**
+ * 请求的模型名是否在目录里。
+ *
+ * `auto` 恒真：它是 CLI 的默认模型别名，探针清单不保证列它（web 侧同样强制合成，
+ * 见 modelSelectOptions.buildModelSelectOptions）。`resolvedModel` 也认——那是同一个
+ * 模型的全名，调用方从哪里抄来的都可能。
+ */
+function isModelInCatalog(requested: string, models: readonly ModelInfo[]): boolean {
+    if (requested === 'auto') {
+        return true
+    }
+    return models.some((model) => model.value === requested || model.resolvedModel === requested)
+}
+
+/** 回落说明（建会话成功后的 `notice`）：说清「你给的名字不可用」+「现在是什么」+「能用什么」 */
+function modelFallbackNotice(requested: string, models: readonly ModelInfo[]): string {
+    return (
+        `The requested model "${requested}" is not in this host's model catalog, so the session was created ` +
+        `with the default model instead. Available models: ${models.map((model) => model.value).join(', ')}.`
+    )
+}
+
+/**
+ * 目录不可用时的失败文案（`list_models`）。必须同时给两条信息：**为什么拿不到**
+ *（不是 agent 的错）与**还能填什么**（兜底四项是合法 CLI 值，建会话不必等目录）。
+ */
+function catalogUnavailableError(reason: string): string {
+    return (
+        `The host model catalog is unavailable (${reason}). You can still create sessions: omit model to take ` +
+        `the default, or pass one of the fallback names ` +
+        `${CLAUDE_MODEL_FALLBACK.map((model) => model.value).join(', ')}.`
+    )
 }
 
 /**

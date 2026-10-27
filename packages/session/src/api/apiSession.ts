@@ -24,6 +24,7 @@ import type { RawJSONLines } from '../claude/types'
 import type {
     AgentCreateSessionAck,
     AgentCreateSessionRequest,
+    AgentListModelsAck,
     AgentSendMessageAck,
     AgentSendMessageRequest,
     AgentSessionsAck,
@@ -388,6 +389,14 @@ export class ApiSessionClient extends EventEmitter {
      */
     createSessionForAgent(input: Omit<AgentCreateSessionRequest, 'sid'>): Promise<AgentCreateSessionAck> {
         return this.channel.createSessionForAgent(input)
+    }
+
+    /**
+     * 查宿主可用的模型清单（B 类工具族，`list_models` 的通道）。
+     * 无业务入参——清单取宿主默认配置目录，口径见 SessionChannel。
+     */
+    listModelsForAgent(): Promise<AgentListModelsAck> {
+        return this.channel.listModelsForAgent()
     }
 
     /**

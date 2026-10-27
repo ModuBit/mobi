@@ -18,6 +18,7 @@ import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Sessio
 import type { ExecutorState } from '@mobi/node-core/api/types'
 import { DEFAULT_STOP_KIND, isCancelQueued, type PermissionAnswers, type PermissionUpdate, type SessionKillRequest, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
+import { homedir } from 'node:os'
 import type { Store } from '../store'
 import type { ForkCreationFailureReason } from '../store/sessionFork'
 import type { WorkspaceSessionsResult } from '../store/sessions'
@@ -151,6 +152,21 @@ export class SyncEngine {
                 return result
             },
             getSessionByNamespace: (sessionId, namespace) => this.sessionCache.getSessionByNamespace(sessionId, namespace),
+            /**
+             * 模型目录：`list_models` 与 create_session 的软校验共用同一个 per-cwd 能力目录
+             *（零新增探测/缓存路径）。cwd 取宿主家目录 = 默认配置目录——清单不按项目分。
+             */
+            readModelCatalog: async () => {
+                try {
+                    const result = await this.executionAccess.hostRefreshMetadata(homedir())
+                    if (!result.success) {
+                        return { ok: false as const, error: result.error ?? 'metadata refresh failed' }
+                    }
+                    return { ok: true as const, models: result.metadata?.models ?? [] }
+                } catch (error) {
+                    return { ok: false as const, error: error instanceof Error ? error.message : String(error) }
+                }
+            },
             // 投递（RPC）与落库（DB）是两个独立步骤，顺序由服务决定：先投递成功才落库，
             // 失败不落库——Web 上不该出现一条永远不会被处理的消息
             pushAgentMessage: (sessionId, delivery) => this.rpcGateway.pushAgentMessage(sessionId, delivery),

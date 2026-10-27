@@ -19,7 +19,7 @@ import { registerAgentSessionHandlers } from '../../../../src/socket/handlers/cl
 import type { AgentSessionHandlersDeps } from '../../../../src/socket/handlers/cli/agentSessionHandlers'
 import type { StoredSession } from '../../../../src/store/types'
 import type { AccessErrorReason } from '../../../../src/socket/handlers/cli/types'
-import type { AgentCreateSessionAck, AgentSendMessageTargetResult, AgentSessionSummary } from '@mobi/shared'
+import type { AgentCreateSessionAck, AgentListModelsAck, AgentSendMessageTargetResult, AgentSessionSummary } from '@mobi/shared'
 
 /** 构造最小 StoredSession mock（仅含必要字段） */
 function makeStoredSession(sid: string, namespace = 'default'): StoredSession {
@@ -50,6 +50,7 @@ type SendAck = { ok: true; results: AgentSendMessageTargetResult[] } | { ok: fal
 function makeDeps(opts?: {
     sessions?: AgentSessionSummary[]
     createResult?: AgentCreateSessionAck
+    modelsResult?: AgentListModelsAck
     sendResult?: AgentSendMessageTargetResult[]
     /** 让 resolveSessionAccess 失败（模拟鉴权 / 存在性判定不通过） */
     accessReason?: AccessErrorReason
@@ -57,6 +58,7 @@ function makeDeps(opts?: {
     const seenNamespaces: string[] = []
     const seenQueries: unknown[] = []
     const seenCreateInputs: unknown[] = []
+    const seenListModelsCalls: number[] = []
     const seenSendCalls: Array<{ namespace: string; fromSessionId: string; input: unknown }> = []
     const deps: AgentSessionHandlersDeps = {
         resolveSessionAccess: (sid: string) => (opts?.accessReason
@@ -68,6 +70,10 @@ function makeDeps(opts?: {
                 seenNamespaces.push(namespace)
                 seenQueries.push(query)
                 return opts?.sessions ?? []
+            },
+            listModels: async () => {
+                seenListModelsCalls.push(1)
+                return opts?.modelsResult ?? { ok: true, models: [] }
             },
             createSession: async (namespace: string, input) => {
                 seenNamespaces.push(namespace)
@@ -81,7 +87,7 @@ function makeDeps(opts?: {
             },
         },
     }
-    return { deps, seenNamespaces, seenQueries, seenCreateInputs, seenSendCalls }
+    return { deps, seenNamespaces, seenQueries, seenCreateInputs, seenSendCalls, seenListModelsCalls }
 }
 
 /** 触发 sendMessageToSessionForAgent 并捕获 ack 回执（同 callCreateSession 的 Promise 包裹） */
@@ -285,12 +291,22 @@ describe('createSessionForAgent handler', () => {
 
         // 空串会一路走到 spawn 才炸（runner 报 "Directory is required"），在这里挡下来更清楚
         const blankDirectory = await callCreateSession(socket, { sid: 's1', directory: '' })
-        const blank = await callCreateSession(socket, { sid: 's1', directory: '' })
-        const badEffort = await callCreateSession(socket, { sid: 's1', directory: '/d', effort: 'max' })
+        const badEffort = await callCreateSession(socket, { sid: 's1', directory: '/d', effort: 'turbo' })
 
         expect(blankDirectory.ok).toBe(false)
         expect(badEffort.ok).toBe(false)
         expect(seenCreateInputs).toHaveLength(0)
+    })
+
+    test('session-only 的 max 档与快速模式开关在形状层放行', async () => {
+        const socket = makeFakeSocket()
+        const { deps, seenCreateInputs } = makeDeps()
+        register(socket, deps)
+
+        const answer = await callCreateSession(socket, { sid: 's1', directory: '/d', effort: 'max', fastMode: true })
+
+        expect(answer.ok).toBe(true)
+        expect(seenCreateInputs).toEqual([{ directory: '/d', effort: 'max', fastMode: true }])
     })
 
     test('会话访问被拒 → 拒绝且不调服务', async () => {
@@ -332,6 +348,65 @@ describe('createSessionForAgent handler', () => {
 
         expect(await callCreateSession(socket, { sid: 's1', directory: '/d' }))
             .toEqual({ ok: false, error: 'No workspace with id "p-missing".' })
+    })
+})
+
+/** 触发 listModelsForAgent 并等 ack（handler 是 async 的，要等目录读取） */
+function callListModels(socket: ReturnType<typeof makeFakeSocket>, payload: unknown): Promise<AgentListModelsAck> {
+    return new Promise((resolve) => {
+        socket.emit('listModelsForAgent', payload, (a: AgentListModelsAck) => resolve(a))
+    })
+}
+
+describe('listModelsForAgent handler', () => {
+    const MODELS: AgentListModelsAck = {
+        ok: true,
+        models: [{ value: 'opus', displayName: 'Opus', description: '最强' }],
+    }
+
+    test('正常请求 → 服务结论原样回给 CLI', async () => {
+        const socket = makeFakeSocket()
+        const { deps, seenListModelsCalls } = makeDeps({ modelsResult: MODELS })
+        register(socket, deps)
+
+        expect(await callListModels(socket, { sid: 's1' })).toEqual(MODELS)
+        expect(seenListModelsCalls).toHaveLength(1)
+    })
+
+    test('服务给的失败文案原样透出（翻译只发生在服务一处）', async () => {
+        const socket = makeFakeSocket()
+        const { deps } = makeDeps({ modelsResult: { ok: false, error: 'The host model catalog is unavailable (probe timed out).' } })
+        register(socket, deps)
+
+        expect(await callListModels(socket, { sid: 's1' }))
+            .toEqual({ ok: false, error: 'The host model catalog is unavailable (probe timed out).' })
+    })
+
+    test('缺 sid → 拒绝且不调服务', async () => {
+        const socket = makeFakeSocket()
+        const { deps, seenListModelsCalls } = makeDeps()
+        register(socket, deps)
+
+        const answer = await callListModels(socket, {})
+        expect(answer.ok).toBe(false)
+        expect(answer.ok ? '' : answer.error).toContain('invalid arguments')
+        expect(seenListModelsCalls).toHaveLength(0)
+    })
+
+    test('会话访问被拒 → 说清是那个会话的问题（别改入参重试），且不调服务', async () => {
+        const socket = makeFakeSocket()
+        const { deps, seenListModelsCalls } = makeDeps({ accessReason: 'not-found' })
+        register(socket, deps)
+
+        const answer = await callListModels(socket, { sid: 'gone' })
+        expect(answer.ok).toBe(false)
+        const text = answer.ok ? '' : answer.error
+        expect(text).toContain('no longer registered')
+        expect(text).toContain('do not retry')
+        expect(text).not.toContain('invalid arguments')
+        // 文案讲的是「读目录」而不是「建会话」
+        expect(text).toContain('read the host model catalog')
+        expect(seenListModelsCalls).toHaveLength(0)
     })
 })
 
@@ -451,5 +526,10 @@ describe('registerAgentSessionHandlers — 服务未装配', () => {
         const created = await callCreateSession(socket, { sid: 's1', directory: '/d' })
         expect(created.ok).toBe(false)
         expect(created.ok ? '' : created.error).toContain('do not retry')
+
+        // 模型清单同理：绝不能回空清单，那会把「服务没接上」伪装成「宿主没有模型」
+        const models = await callListModels(socket, { sid: 's1' })
+        expect(models.ok).toBe(false)
+        expect(models.ok ? '' : models.error).toContain('do not retry')
     })
 })

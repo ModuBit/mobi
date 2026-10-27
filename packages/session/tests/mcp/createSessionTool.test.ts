@@ -86,6 +86,7 @@ describe('createCreateSessionTool', () => {
             workspaceId: 'p1',
             model: 'opus',
             effort: 'high',
+            fastMode: true,
             permissionMode: 'plan',
             title: '验收会话',
             waitForReady: false,
@@ -96,6 +97,7 @@ describe('createCreateSessionTool', () => {
             workspaceId: 'p1',
             model: 'opus',
             effort: 'high',
+            fastMode: true,
             permissionMode: 'plan',
             title: '验收会话',
             waitForReady: false,
@@ -137,11 +139,49 @@ describe('createCreateSessionTool', () => {
 
         // 都必须在此挡下：空 directory 会一路走到 runner 才报 "Directory is required"
         const blankDirectory = await tool.execute({ directory: '' })
-        const badEffort = await tool.execute({ directory: '/d', effort: 'max' })
+        const badEffort = await tool.execute({ directory: '/d', effort: 'turbo' })
 
         expect(blankDirectory.isError).toBe(true)
         expect(badEffort.isError).toBe(true)
         expect(createSession).not.toHaveBeenCalled()
+    })
+
+    it('accepts the session-only max effort level', async () => {
+        const { deps, createSession } = buildDeps()
+        const tool = createCreateSessionTool(deps)
+
+        const result = await tool.execute({ directory: '/d', effort: 'max' })
+
+        expect(result.isError).toBe(false)
+        expect(createSession).toHaveBeenCalledWith({ directory: '/d', effort: 'max' })
+    })
+
+    it('forwards fastMode to the hub', async () => {
+        const { deps, createSession } = buildDeps()
+        const tool = createCreateSessionTool(deps)
+
+        await tool.execute({ directory: '/d', fastMode: true })
+
+        expect(createSession).toHaveBeenCalledWith({ directory: '/d', fastMode: true })
+    })
+
+    it('model parameter description points at list_models for available values', () => {
+        const { deps } = buildDeps()
+        const schema = createCreateSessionTool(deps).inputSchema
+
+        expect(schema.shape.model.description).toContain('list_models')
+    })
+
+    it('appends the hub\'s model-fallback notice to an otherwise successful result', async () => {
+        const notice = 'The requested model "ghost" is not in this host\'s model catalog, so the session was created with the default model instead.'
+        const { deps } = buildDeps({ ok: true, sessionId: 's-new', readiness: 'ready', notice })
+        const tool = createCreateSessionTool(deps)
+
+        const result = await tool.execute({ directory: '/work/app', model: 'ghost' })
+
+        expect(result.isError).toBe(false)
+        expect(result.content[0].text).toContain('s-new')
+        expect(result.content[0].text).toContain(notice)
     })
 
     it('passes the hub\'s plain-language failure through unwrapped', async () => {

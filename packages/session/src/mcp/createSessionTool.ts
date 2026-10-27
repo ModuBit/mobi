@@ -32,7 +32,7 @@
  */
 
 import { z } from 'zod'
-import { EFFORT_LEVELS, PermissionModeSchema } from '@mobi/shared'
+import { EFFORT_SESSION_LEVELS, PermissionModeSchema } from '@mobi/shared'
 import type { AgentCreateSessionAck, AgentCreateSessionReadiness, AgentCreateSessionRequest } from '@mobi/shared'
 import { errorTextResult, textResult, type MobiToolTextResult } from './toolResult'
 
@@ -80,10 +80,16 @@ export function createCreateSessionTool(deps: CreateSessionToolDeps) {
             'Optional workspace id to file the new session under. Omit for a loose session.',
         ),
         model: z.string().optional().describe(
-            'Optional model for the new session. Omit to take the mobi default.',
+            'Optional model for the new session. Omit to take the mobi default. Call list_models for the values ' +
+            'this host actually accepts; an unknown name does not fail the call — the session is created with ' +
+            'the default model and the result says so.',
         ),
-        effort: z.enum(EFFORT_LEVELS).optional().describe(
-            'Optional effort level for the new session. Omit to take the mobi default.',
+        effort: z.enum(EFFORT_SESSION_LEVELS).optional().describe(
+            'Optional effort level for the new session. Omit to take the mobi default. list_models reports which ' +
+            'levels each model declares; max is session-only and not persisted.',
+        ),
+        fastMode: z.boolean().optional().describe(
+            'Optional fast mode preset. Omit to leave it off. Only models that support fast mode honor it.',
         ),
         permissionMode: PermissionModeSchema.optional().describe(
             'Optional permission mode for the new session. Omit to take the mobi default.',
@@ -119,7 +125,9 @@ export function createCreateSessionTool(deps: CreateSessionToolDeps) {
 
         return textResult(
             `Created session ${answer.sessionId} (directory ${parsed.data.directory}). ` +
-            successDetail(answer.readiness)
+            successDetail(answer.readiness) +
+            // notice 由 daemon 写（它才知道清单与回落），原样接在就绪说明之后
+            (answer.notice ? ` ${answer.notice}` : '')
         )
     }
 

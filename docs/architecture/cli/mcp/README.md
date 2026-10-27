@@ -54,7 +54,7 @@ local 壳只挂 change_title：A/B 类工具都依赖 daemon 链路，local 不�
 `mobi-apps` 内部再分两类（照 OpenAI Codex 的 `codex_apps`：一个 namespace 装全部应用工具）：
 
 - **A 类 · UI 呈现**：驱动 Web 界面（`open_in_mobi`，后续 `focus_session` / `set_theme` 进此）。依赖 Web 在线，瞬态呈现不落库。
-- **B 类 · 系统操作**：会话操作（`list_sessions` / `create_session` / `send_message_to_session`）。不依赖 Web，落库即终态。（`list_machines` 已随 machine 概念移除退场——单机世界 daemon 即宿主，agent 无需挑机器）
+- **B 类 · 系统操作**：会话操作（`list_sessions` / `list_models` / `create_session` / `send_message_to_session`）。不依赖 Web，落库即终态。（`list_machines` 已随 machine 概念移除退场——单机世界 daemon 即宿主，agent 无需挑机器）
 
 接口形态的决策记录见 [ADR 0005](/docs/architecture/0005-agent-apps-mcp-route.md)。
 
@@ -68,7 +68,8 @@ local 壳只挂 change_title：A/B 类工具都依赖 daemon 链路，local 不�
 | web_search / web_fetch | `mcp__mobi-core__web_search` / `..._web_fetch` | core | 只读 web 工具，见 [webtools](/packages/node-core/src/webtools/) |
 | open_in_mobi | `mcp__mobi-apps__open_in_mobi` | A | 在 Web UI 打开工作区文件（可带行号）或终端 |
 | list_sessions | `mcp__mobi-apps__list_sessions` | B | 列可派活的会话（keyword / status / limit / workspaceId） |
-| create_session | `mcp__mobi-apps__create_session` | B | 起新会话，默认等到「能收消息」再返回 |
+| list_models | `mcp__mobi-apps__list_models` | B | 宿主当前可用的模型清单（无入参，返回 JSON：模型值 + 档位/快速能力位） |
+| create_session | `mcp__mobi-apps__create_session` | B | 起新会话（模型 / 档位含 max / 快速模式），默认等到「能收消息」再返回；清单外模型名回落默认模型并在结果里说明 |
 | send_message_to_session | `mcp__mobi-apps__send_message_to_session` | B | 投消息给一个或多个会话 |
 
 web 工具由 [`webtools/server.ts`](/packages/session/src/webtools/server.ts) 提供、已是 SDK `tool()` 形态，`mobi-core` 直接挂载；模型仍用内置名 `WebSearch` / `WebFetch` 调用，经 [`claude/claudeRemote.ts`](/packages/session/src/claude/claudeRemote.ts) 的 `toolAliases` 重定向过来。
@@ -160,6 +161,7 @@ packages/session/src/mcp/
 ├── changeTitleTool.ts       # change_title 核心（remote SDK / local HTTP / stdio bridge 共用形状）
 ├── openInMobiTool.ts        # open_in_mobi（A 类）
 ├── listSessionsTool.ts      # list_sessions（B 类）
+├── listModelsTool.ts        # list_models（B 类）
 ├── createSessionTool.ts     # create_session（B 类）
 └── sendMessageTool.ts       # send_message_to_session（B 类）
 ```

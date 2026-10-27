@@ -25,7 +25,7 @@
  */
 
 import { z } from 'zod'
-import { EFFORT_LEVELS, PermissionModeSchema } from '@mobi/shared'
+import { EFFORT_SESSION_LEVELS, PermissionModeSchema } from '@mobi/shared'
 import type { ClientToServerEvents } from '@mobi/shared'
 import { daemonLogger } from '../../../logger'
 import type { CliSocketWithData } from '../../socketTypes'
@@ -34,6 +34,7 @@ import type { StoredSession } from '../../../store'
 import type { AgentSessionOps } from '../../../sync/agentSessionService'
 
 type ListSessionsForAgentHandler = ClientToServerEvents['listSessionsForAgent']
+type ListModelsForAgentHandler = ClientToServerEvents['listModelsForAgent']
 type CreateSessionForAgentHandler = ClientToServerEvents['createSessionForAgent']
 type SendMessageForAgentHandler = ClientToServerEvents['sendMessageToSessionForAgent']
 
@@ -50,13 +51,19 @@ const listSessionsPayloadSchema = z.object({
     workspaceId: z.string().optional(),
 })
 
+/** 模型清单无业务入参，只有鉴权用的 sid */
+const listModelsPayloadSchema = z.object({
+    sid: z.string(),
+})
+
 /** directory 非空：空串会一路走到 spawn 才炸，在这里挡下来更清楚 */
 const createSessionPayloadSchema = z.object({
     sid: z.string(),
     directory: z.string().min(1),
     workspaceId: z.string().optional(),
     model: z.string().optional(),
-    effort: z.enum(EFFORT_LEVELS).optional(),
+    effort: z.enum(EFFORT_SESSION_LEVELS).optional(),
+    fastMode: z.boolean().optional(),
     permissionMode: PermissionModeSchema.optional(),
     // 长度上限与 Web 侧改名同一规则（那边是 255）；标题是给人看的短标签，不是正文
     title: z.string().min(1).max(255).optional(),
@@ -95,9 +102,9 @@ const SERVICE_UNAVAILABLE_ERROR =
  * 分两句是因为**处置不同**：not-found = 那个会话已经没了；另两种 = mobi 没认出它的身份。
  * 两者都不是重试能解决的，所以都写明别重试。
  */
-function callerRejectedError(reason: AccessErrorReason): string {
+function callerRejectedError(reason: AccessErrorReason, action: string): string {
     return reason === 'not-found'
-        ? 'The session that asked is no longer registered with mobi, so it cannot start new sessions. ' +
+        ? `The session that asked is no longer registered with mobi, so it cannot ${action}. ` +
           'This is about that session, not your arguments — do not retry.'
         : 'mobi could not identify the session that asked. ' +
           'This is a mobi problem, not something you did — do not retry.'
@@ -116,6 +123,7 @@ export type AgentSessionHandlersDeps = {
 
 type AgentSessionEventName =
     | 'listSessionsForAgent'
+    | 'listModelsForAgent'
     | 'createSessionForAgent'
     | 'sendMessageToSessionForAgent'
 
@@ -155,6 +163,7 @@ type UnavailableReply = UnavailableReplyRow['reply']
  */
 const UNAVAILABLE_REPLIES: readonly UnavailableReplyRow[] = [
     { event: 'listSessionsForAgent', reply: { ok: false, reason: 'handler-misconfigured' } },
+    { event: 'listModelsForAgent', reply: { ok: false, error: SERVICE_UNAVAILABLE_ERROR } },
     { event: 'createSessionForAgent', reply: { ok: false, error: SERVICE_UNAVAILABLE_ERROR } },
     { event: 'sendMessageToSessionForAgent', reply: { ok: false, reason: 'handler-misconfigured' } },
 ]
@@ -206,6 +215,23 @@ export function registerAgentSessionHandlers(socket: CliSocketWithData, deps: Ag
         cb?.({ ok: true, sessions: agentSessions.listSessions(access.value.namespace, query) })
     }) as ListSessionsForAgentHandler)
 
+    socket.on('listModelsForAgent', (async (raw: unknown, cb: Parameters<ListModelsForAgentHandler>[1]) => {
+        const parsed = listModelsPayloadSchema.safeParse(raw)
+        if (!parsed.success) {
+            cb?.({ ok: false, error: INVALID_ARGUMENTS_ERROR })
+            return
+        }
+
+        const access = resolveSessionAccess(parsed.data.sid)
+        if (!access.ok) {
+            cb?.({ ok: false, error: callerRejectedError(access.reason, 'read the host model catalog') })
+            return
+        }
+
+        // 清单不按 namespace 收窄：模型是宿主事实，不是某个租户的资源
+        cb?.(await agentSessions.listModels())
+    }) as ListModelsForAgentHandler)
+
     socket.on('createSessionForAgent', (async (raw: unknown, cb: Parameters<CreateSessionForAgentHandler>[1]) => {
         const parsed = createSessionPayloadSchema.safeParse(raw)
         if (!parsed.success) {
@@ -215,7 +241,7 @@ export function registerAgentSessionHandlers(socket: CliSocketWithData, deps: Ag
 
         const access = resolveSessionAccess(parsed.data.sid)
         if (!access.ok) {
-            cb?.({ ok: false, error: callerRejectedError(access.reason) })
+            cb?.({ ok: false, error: callerRejectedError(access.reason, 'start new sessions') })
             return
         }
 

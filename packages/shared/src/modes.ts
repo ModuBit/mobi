@@ -26,6 +26,22 @@ export type ClaudePermissionMode = typeof CLAUDE_PERMISSION_MODES[number]
 const CLAUDE_MODEL_PRESETS = ['sonnet', 'sonnet[1m]', 'opus', 'opus[1m]'] as const
 export type ClaudeModelPreset = typeof CLAUDE_MODEL_PRESETS[number]
 
+/**
+ * 模型兜底清单（宿主能力探针不可用时使用）。
+ *
+ * 单源在 shared：web 创建页 / 会话面板拿它渲染下拉，daemon 的 MCP 失败文案拿它
+ * 告诉 agent「目录不可用时还能填什么」——两处各写一份必然漂移。
+ *
+ * 项形状刻意宽于 `ModelInfo`（description 可选、无能力位）：它是**手写常量**，
+ * 不是探针结果，能力位未知就如实缺省。
+ */
+export const CLAUDE_MODEL_FALLBACK: readonly { value: string; displayName: string; description?: string }[] = [
+    { value: 'auto', displayName: 'Auto', description: 'Use the default model' },
+    { value: 'opus', displayName: 'Opus', description: 'Most capable for complex work' },
+    { value: 'sonnet', displayName: 'Sonnet', description: 'Best for everyday tasks' },
+    { value: 'haiku', displayName: 'Haiku', description: 'Fastest for quick answers' },
+]
+
 // 顺序与 CLAUDE_PERMISSION_MODES 一致（自由度递增，auto 置顶）
 export const PERMISSION_MODES = [
     'auto',
