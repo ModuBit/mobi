@@ -35,6 +35,8 @@ interface LoopOptions {
     model?: SessionModel
     permissionMode?: PermissionMode
     effort?: EffortLevel
+    /** 快速模式预设（Web spawn 透传；经 applyStartupFastMode（applyFlagSettings）注入） */
+    fastMode?: boolean
     /** CC output style（Web spawn 透传；经 applyStartupOutputStyle（applyFlagSettings）注入） */
     outputStyle?: string
     startingMode?: 'local' | 'remote'
@@ -88,6 +90,7 @@ export async function loop(opts: LoopOptions) {
         permissionMode: opts.permissionMode ?? 'default',
         model: opts.model,
         effort: opts.effort,
+        fastMode: opts.fastMode,
         outputStyle: opts.outputStyle,
         additionalDirectories: opts.additionalDirectories,
         forkActivation: opts.forkActivation

@@ -128,9 +128,20 @@ export function createMobiApi() {
         // Sessions
         sessions: {
             list: () => client.get<{ sessions: Session[] }>('/api/sessions'),
-            // spawn 新会话（单机：POST /api/sessions/spawn，原 /api/machines/:id/spawn 去 machineId 重组）
-            spawn: (directory: string, agent?: string, model?: string, permissionMode?: PermissionMode, sessionType?: string, worktreeName?: string, effort?: string, outputStyle?: string, workspaceId?: string) =>
-                client.post('/api/sessions/spawn', { directory, agent, model, permissionMode, sessionType, worktreeName, effort, outputStyle, workspaceId }),
+            // spawn 新会话（单机：POST /api/sessions/spawn，原 /api/machines/:id/spawn 去 machineId 重组）。
+            // 选项对象化：位置参数已到 9 个，新增字段漏位/错位无法被类型捕获
+            spawn: (body: {
+                directory: string
+                agent?: string
+                model?: string
+                permissionMode?: PermissionMode
+                sessionType?: string
+                worktreeName?: string
+                effort?: string
+                fastMode?: boolean
+                outputStyle?: string
+                workspaceId?: string
+            }) => client.post('/api/sessions/spawn', body),
             get: (sessionId: string) => client.get<{ session: Session }>(`/api/sessions/${sessionId}`),
             create: (path: string) => client.post<Session>('/api/sessions', { path }),
             // 删除响应可能携带「worktree 已保留」事实（脏 worktree 不静默销毁）
@@ -141,6 +152,8 @@ export function createMobiApi() {
                 client.post(`/api/sessions/${sessionId}/model`, { model: mode }),
             setEffort: (sessionId: string, effort: string) =>
                 client.post(`/api/sessions/${sessionId}/effort`, { effort }),
+            setFastMode: (sessionId: string, fastMode: boolean) =>
+                client.post(`/api/sessions/${sessionId}/fast-mode`, { fastMode }),
             switchOutputStyle: (sessionId: string, style: string) =>
                 client.post(`/api/sessions/${sessionId}/output-style`, { style }),
             // 会话操作

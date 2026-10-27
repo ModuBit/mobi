@@ -34,6 +34,7 @@ export function useSessionActions(sessionId: string | null): {
     setPermissionMode: (mode: string) => Promise<void>
     setModelMode: (mode: string) => Promise<void>
     setEffort: (effort: string) => Promise<void>
+    setFastMode: (fastMode: boolean) => Promise<void>
     renameSession: (name: string) => Promise<void>
     deleteSession: () => Promise<void>
     isPending: boolean
@@ -125,6 +126,16 @@ export function useSessionActions(sessionId: string | null): {
     })
 
     // 设置模型模式
+    const fastModeMutation = useMutation({
+        mutationFn: async (fastMode: boolean) => {
+            if (!sessionId) {
+                throw new Error('Session unavailable')
+            }
+            await api.sessions.setFastMode(sessionId, fastMode)
+        },
+        onSuccess: () => void invalidateSession(),
+    })
+
     const modelMutation = useMutation({
         mutationFn: async (mode: string) => {
             if (!sessionId) {
@@ -173,6 +184,7 @@ export function useSessionActions(sessionId: string | null): {
         setPermissionMode: permissionMutation.mutateAsync,
         setModelMode: modelMutation.mutateAsync,
         setEffort: effortMutation.mutateAsync,
+        setFastMode: fastModeMutation.mutateAsync,
         renameSession: renameMutation.mutateAsync,
         deleteSession: deleteMutation.mutateAsync,
         isPending:
@@ -182,6 +194,7 @@ export function useSessionActions(sessionId: string | null): {
             permissionMutation.isPending ||
             modelMutation.isPending ||
             effortMutation.isPending ||
+            fastModeMutation.isPending ||
             renameMutation.isPending ||
             deleteMutation.isPending,
         isAbortPending: abortMutation.isPending,

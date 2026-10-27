@@ -37,6 +37,7 @@ export type AgentSessionBaseOptions<Mode> = {
     permissionMode?: SessionPermissionMode;
     model?: SessionModel;
     effort?: EffortLevel;
+    fastMode?: boolean;
     outputStyle?: string;
 };
 
@@ -60,6 +61,7 @@ export class AgentSessionBase<Mode> {
     protected permissionMode?: SessionPermissionMode;
     protected model?: SessionModel;
     protected effort?: EffortLevel;
+    protected fastMode?: boolean;
     protected outputStyle?: string;
 
     constructor(opts: AgentSessionBaseOptions<Mode>) {
@@ -77,6 +79,7 @@ export class AgentSessionBase<Mode> {
         this.permissionMode = opts.permissionMode;
         this.model = opts.model;
         this.effort = opts.effort;
+        this.fastMode = opts.fastMode;
         this.outputStyle = opts.outputStyle;
 
         this.client.keepAlive(this.running, this.mode, this.getKeepAliveRuntime());
@@ -155,11 +158,12 @@ export class AgentSessionBase<Mode> {
      * outputStyle undefined = 「跟随 CC settings」（NewSessionPage 默认不携带字段 spawn）：
      * 不上报该字段 → runtimeState 不落 → resume 不回放，用户 settings 的默认 style 保持权威。
      */
-    protected getKeepAliveRuntime(): { permissionMode?: SessionPermissionMode; model?: SessionModel; effort?: EffortLevel; outputStyle?: string } | undefined {
+    protected getKeepAliveRuntime(): { permissionMode?: SessionPermissionMode; model?: SessionModel; effort?: EffortLevel; fastMode?: boolean; outputStyle?: string } | undefined {
         if (
             this.permissionMode === undefined
             && this.model === undefined
             && this.effort === undefined
+            && this.fastMode === undefined
             && this.outputStyle === undefined
         ) {
             return undefined;
@@ -168,6 +172,7 @@ export class AgentSessionBase<Mode> {
             permissionMode: this.permissionMode,
             model: this.model,
             effort: this.effort,
+            fastMode: this.fastMode,
             outputStyle: this.outputStyle,
         };
     }
@@ -182,6 +187,10 @@ export class AgentSessionBase<Mode> {
 
     getEffort(): EffortLevel | undefined {
         return this.effort;
+    }
+
+    getFastMode(): boolean | undefined {
+        return this.fastMode;
     }
 
     getOutputStyle(): string | undefined {

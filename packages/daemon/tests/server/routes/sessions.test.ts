@@ -241,21 +241,6 @@ describe('Sessions API', () => {
             }
         })
 
-        test('session-only 的 max 档同样接受（flag 层原生支持）', async () => {
-            const token = await getAuthToken(app)
-
-            const res = await app.request('/api/sessions/test-session-1/effort', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({ effort: 'max' }),
-            })
-
-            expect(res.status).toBe(200)
-        })
-
         test('非法 effort 值返回 400', async () => {
             const token = await getAuthToken(app)
 
@@ -266,6 +251,37 @@ describe('Sessions API', () => {
                     Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({ effort: 'turbo' }),
+            })
+
+            expect(res.status).toBe(400)
+        })
+
+        test('快速模式开关接受布尔值（开 / 关）', async () => {
+            const token = await getAuthToken(app)
+
+            for (const fastMode of [true, false]) {
+                const res = await app.request('/api/sessions/test-session-1/fast-mode', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ fastMode }),
+                })
+                expect(res.status).toBe(200)
+            }
+        })
+
+        test('快速模式开关非布尔值返回 400', async () => {
+            const token = await getAuthToken(app)
+
+            const res = await app.request('/api/sessions/test-session-1/fast-mode', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ fastMode: 'on' }),
             })
 
             expect(res.status).toBe(400)

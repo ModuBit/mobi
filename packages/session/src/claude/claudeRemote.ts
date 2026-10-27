@@ -881,6 +881,18 @@ export async function userInputLoop(
  * runClaude.ts 动态配置（setModel/applyFlagSettings effortLevel）一致：失败仅 debug 日志，
  * style 退化默认，不阻塞会话启动。
  */
+export async function applyStartupFastMode(response: Query, fastMode: boolean | undefined): Promise<void> {
+    // false 是有效值（显式关闭）：只有 undefined = 未指定才跳过
+    if (fastMode === undefined) {
+        return;
+    }
+    try {
+        await response.applyFlagSettings({ fastMode });
+    } catch (e) {
+        logger.debug(`[claudeRemote] applyFlagSettings(fastMode=${fastMode}) failed, keeping SDK default:`, e);
+    }
+}
+
 export async function applyStartupOutputStyle(response: Query, outputStyle: string | undefined): Promise<void> {
     if (!outputStyle) {
         return;
@@ -936,6 +948,8 @@ export interface RemoteRoundParams {
      * applyStartupOutputStyle → applyFlagSettings 注入 session 级 flag layer
      */
     outputStyle?: string
+    /** 快速模式（session 当前值）：query attach 后经 applyStartupFastMode 注入 flag 层 */
+    fastMode?: boolean
     /**
      * fork 激活计划（fork-session spec §5.2）：待激活分叉会话的首条消息触发轮携带。
      * 携带时 resume 权威值取 forkFrom.parentNativeId（绕过 claudeCheckSession 守卫，
@@ -1462,6 +1476,7 @@ export async function claudeRemote(
         response = q
         warmConsumed = true
         await applyStartupOutputStyle(q, params.outputStyle)
+        await applyStartupFastMode(q, params.fastMode)
         events.onQueryReady?.(q, { isResume: startFrom != null })
         startOutputLoop(q)
     }

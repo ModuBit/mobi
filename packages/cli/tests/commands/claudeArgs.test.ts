@@ -55,6 +55,28 @@ describe('parseStartOptions --workspace', () => {
     })
 })
 
+describe('parseStartOptions --fast-mode', () => {
+    it('--fast-mode true → options.fastMode=true，且不下传 claude 二进制', () => {
+        const { options, unknownArgs } = parseStartOptions(['--fast-mode', 'true'])
+        expect(options.fastMode).toBe(true)
+        expect(unknownArgs).toEqual([])
+    })
+
+    it('--fast-mode false → options.fastMode=false', () => {
+        const { options } = parseStartOptions(['--fast-mode', 'false'])
+        expect(options.fastMode).toBe(false)
+    })
+
+    it('非布尔值 → 抛错', () => {
+        expect(() => parseStartOptions(['--fast-mode', 'yes'])).toThrow()
+    })
+
+    it('缺值 → 抛错（下一参数是 flag 时不被吞作值）', () => {
+        expect(() => parseStartOptions(['--fast-mode'])).toThrow(/Missing --fast-mode value/i)
+        expect(() => parseStartOptions(['--fast-mode', '--yolo'])).toThrow(/Missing --fast-mode value/i)
+    })
+})
+
 describe('parseStartOptions 既有 flag 回归（锁定搬迁前行为）', () => {
     it('--yolo → bypassPermissions 且透传 --dangerously-skip-permissions', () => {
         const { options, unknownArgs } = parseStartOptions(['--yolo'])

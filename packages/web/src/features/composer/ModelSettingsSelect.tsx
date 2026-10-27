@@ -31,9 +31,9 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, RotateCcw, Zap } from 'lucide-react'
 import { EFFORT_LABELS, resolveModelEffortLevels } from '@mobi/shared'
-import type { EffortLevel, ModelInfo } from '@mobi/shared'
+import type { EffortLevel, FastModeState, ModelInfo } from '@mobi/shared'
 import { Popover } from '@/ui/base/interactive/popover/Popover'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { buildModelSelectOptions } from '@/domain/session/modelSelectOptions'
@@ -51,9 +51,12 @@ export interface ModelSettingsSelectProps {
     models?: readonly ModelInfo[]
     onModelChange?: (model: string) => void
     onEffortChange?: (effort: EffortLevel) => void
+    /** 快速模式当前开关（undefined = 未指定，按关闭展示） */
+    fastMode?: boolean
+    /** 快速模式运行态（来自会话元数据）；cooldown = 限流临时不可用，如实反映而非当作开启 */
+    fastModeState?: FastModeState | null
+    onFastModeChange?: (enabled: boolean) => void
     disabled?: boolean
-    /** 顶栏左侧控件槽（快速模式图标钮，票 03 注入）；不支持快速模式的模型由调用方传 null */
-    fastControl?: ReactNode
 }
 
 type PanelView = 'effort' | 'model'
@@ -65,8 +68,10 @@ export function ModelSettingsSelect({
     models,
     onModelChange,
     onEffortChange,
+    fastMode,
+    fastModeState,
+    onFastModeChange,
     disabled,
-    fastControl,
 }: ModelSettingsSelectProps) {
     const { t } = useTranslation()
     const isMobile = useIsMobile()
@@ -97,11 +102,15 @@ export function ModelSettingsSelect({
     )
 
     const showEffort = Boolean(onEffortChange) && effortLevels.length > 0
+    // 快速开关只在模型声明支持且调用方能承载切换时出现（创建页与会话内同规）
+    const showFast = Boolean(onFastModeChange) && modelInfo?.supportsFastMode === true
+    const fastEnabled = fastMode === true
 
     const handleReset = useCallback(() => {
         if (model !== DEFAULT_MODEL) onModelChange?.(DEFAULT_MODEL)
         if (effort !== DEFAULT_EFFORT) onEffortChange?.(DEFAULT_EFFORT)
-    }, [model, effort, onModelChange, onEffortChange])
+        if (fastEnabled) onFastModeChange?.(false)
+    }, [model, effort, fastEnabled, onModelChange, onEffortChange, onFastModeChange])
 
     const handleModelSelect = useCallback((value: string) => {
         if (value !== model) onModelChange?.(value)
@@ -121,7 +130,10 @@ export function ModelSettingsSelect({
             effortLevels={effortLevels}
             effortLabel={effortLabel}
             showEffort={showEffort}
-            fastControl={fastControl}
+            showFast={showFast}
+            fastEnabled={fastEnabled}
+            fastModeState={fastModeState ?? null}
+            onFastModeToggle={onFastModeChange ? () => onFastModeChange(!fastEnabled) : undefined}
             isMobile={isMobile}
             onReset={handleReset}
             onModelSelect={handleModelSelect}
@@ -169,6 +181,9 @@ export function ModelSettingsSelect({
                     WebkitTapHighlightColor: 'transparent',
                 }}
             >
+                {fastEnabled && (
+                    <Zap size={12} aria-hidden="true" fill="currentColor" style={{ flex: 'none', color: 'var(--primary)' }} />
+                )}
                 <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{pillText}</span>
                 <ChevronRight
                     size={14}
@@ -191,7 +206,10 @@ function ModelSettingsPanel({
     effortLevels,
     effortLabel,
     showEffort,
-    fastControl,
+    showFast,
+    fastEnabled,
+    fastModeState,
+    onFastModeToggle,
     isMobile,
     onReset,
     onModelSelect,
@@ -206,7 +224,10 @@ function ModelSettingsPanel({
     effortLevels: readonly EffortLevel[]
     effortLabel: (level: EffortLevel) => string
     showEffort: boolean
-    fastControl?: ReactNode
+    showFast: boolean
+    fastEnabled: boolean
+    fastModeState: FastModeState | null
+    onFastModeToggle?: () => void
     isMobile: boolean
     onReset: () => void
     onModelSelect: (model: string) => void
@@ -229,7 +250,16 @@ function ModelSettingsPanel({
                 <>
                     {/* 顶栏三栏：左控件槽 / 中档位大字 / 右重置（左右等宽，中栏恒居中） */}
                     <div style={{ display: 'grid', gridTemplateColumns: `${iconButtonSize}px 1fr ${iconButtonSize}px`, alignItems: 'center', gap: 4 }}>
-                        <div style={{ display: 'flex', justifyContent: 'flex-start' }}>{fastControl ?? null}</div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                            {showFast && onFastModeToggle && (
+                                <FastModeButton
+                                    enabled={fastEnabled}
+                                    state={fastModeState}
+                                    size={iconButtonSize}
+                                    onToggle={onFastModeToggle}
+                                />
+                            )}
+                        </div>
                         <div style={{
                             textAlign: 'center',
                             fontSize: isMobile ? 17 : 16,
@@ -285,6 +315,47 @@ function ModelSettingsPanel({
                 </>
             )}
         </div>
+    )
+}
+
+/**
+ * 快速模式图标钮（无文字）：镂空闪电 = 关 / 填充闪电 = 开 / 填充 + 警告色 = 冷却。
+ * 冷却态仍可点击（关掉快速模式），说明走悬浮提示。
+ */
+function FastModeButton({ enabled, state, size, onToggle }: {
+    enabled: boolean
+    state: FastModeState | null
+    size: number
+    onToggle: () => void
+}) {
+    const { t } = useTranslation()
+    const cooldown = state === 'cooldown' && enabled
+    const label = cooldown
+        ? t('composer.modelPanel.fastCooldown')
+        : enabled ? t('composer.modelPanel.fastOn') : t('composer.modelPanel.fastOff')
+    return (
+        <button
+            type="button"
+            aria-label={label}
+            aria-pressed={enabled}
+            title={label}
+            onClick={onToggle}
+            style={{
+                display: 'grid',
+                placeItems: 'center',
+                width: size,
+                height: size,
+                padding: 0,
+                border: 0,
+                borderRadius: 'var(--radius-square)',
+                background: 'transparent',
+                color: cooldown ? 'var(--mobi-warning)' : enabled ? 'var(--primary)' : 'var(--text-muted)',
+                cursor: 'pointer',
+                WebkitTapHighlightColor: 'transparent',
+            }}
+        >
+            <Zap size={size >= 36 ? 18 : 16} aria-hidden="true" fill={enabled ? 'currentColor' : 'none'} />
+        </button>
     )
 }
 

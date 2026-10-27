@@ -741,13 +741,14 @@ export class SyncEngine {
             permissionMode?: PermissionMode
             model?: string | null
             effort?: EffortLevel
+            fastMode?: boolean
         }
     ): Promise<void> {
         const result = await this.rpcGateway.requestSessionConfig(sessionId, config)
         if (!result || typeof result !== 'object') {
             throw new Error('Invalid response from session config RPC')
         }
-        const obj = result as { applied?: { permissionMode?: Session['permissionMode']; model?: string | null; effort?: EffortLevel } }
+        const obj = result as { applied?: { permissionMode?: Session['permissionMode']; model?: string | null; effort?: EffortLevel; fastMode?: boolean } }
         const applied = obj.applied
         if (!applied || typeof applied !== 'object') {
             throw new Error('Missing applied session config')
@@ -764,6 +765,7 @@ export class SyncEngine {
             permissionMode?: PermissionMode
             model?: string | null
             effort?: EffortLevel
+            fastMode?: boolean
             outputStyle?: string
         }
     ): void {

@@ -71,6 +71,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         permissionMode?: PermissionMode;
         model?: SessionModel;
         effort?: EffortLevel;
+        fastMode?: boolean;
         outputStyle?: string;
         additionalDirectories?: string[];
         /** fork 激活计划（runClaude 从 bootstrap metadata 解析后传入；缺省 null） */
@@ -94,6 +95,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
             permissionMode: opts.permissionMode,
             model: opts.model,
             effort: opts.effort,
+            fastMode: opts.fastMode,
             outputStyle: opts.outputStyle,
         });
 
@@ -120,6 +122,10 @@ export class Session extends AgentSessionBase<EnhancedMode> {
 
     setEffort = (effort: EffortLevel): void => {
         this.effort = effort;
+    };
+
+    setFastMode = (fastMode: boolean): void => {
+        this.fastMode = fastMode;
     };
 
     setOutputStyle = (style: string): void => {

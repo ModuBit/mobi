@@ -381,6 +381,8 @@ export interface ClientToServerEvents {
         effort?: EffortLevel
         /** 当前 output style：随 keep-alive 上报，daemon 落 runtimeState.outputStyle 供 resume 回放 */
         outputStyle?: string
+        /** 快速模式开关（随 keep-alive 上报，daemon 落 runtimeState.fastMode） */
+        fastMode?: boolean
     }) => void
     // ack 制：CLI 关 socket 前等回执，裸 emit + 立即 close 会把事件丢在本地缓冲
     // （daemon 收不到 → active 永久悬挂，2026-09-30 事故）

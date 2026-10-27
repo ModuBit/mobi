@@ -215,6 +215,7 @@ export function createSessionsRoutes(
         agent: z.enum(['claude']).optional(),  // Mobi 当前仅支持 Claude
         model: z.string().optional(),
         effort: z.enum(EFFORT_SESSION_LEVELS).optional(),
+        fastMode: z.boolean().optional(),
         outputStyle: z.string().optional(),
         permissionMode: PermissionModeSchema.optional(),
         sessionType: z.enum(['simple', 'worktree']).optional(),
@@ -261,6 +262,7 @@ export function createSessionsRoutes(
                 sessionType: parsed.data.sessionType,
                 worktreeName: parsed.data.worktreeName,
                 effort: parsed.data.effort,
+                fastMode: parsed.data.fastMode,
                 outputStyle: parsed.data.outputStyle,
                 workspaceId: parsed.data.workspaceId,
             }
@@ -687,6 +689,13 @@ export function createSessionsRoutes(
         path: 'effort',
         field: 'effort',
         apply: (engine, sessionId, effort) => engine.applySessionConfig(sessionId, { effort }),
+    })
+
+    // 快速模式开关（live）：转 flag 层即时生效，无需重启会话
+    registerSessionConfigRoute(app, getSyncEngine, {
+        path: 'fast-mode',
+        field: 'fastMode',
+        apply: (engine, sessionId, fastMode) => engine.applySessionConfig(sessionId, { fastMode }),
     })
 
     // output style 切换（/clear 语义）：错误分层有用户数据安全语义——CLI 明确拒绝

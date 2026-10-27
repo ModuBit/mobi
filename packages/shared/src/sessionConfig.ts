@@ -60,6 +60,12 @@ export const SESSION_CONFIG_FIELDS = {
         schema: z.enum(EFFORT_SESSION_LEVELS),
         bodyKey: 'effort',
     },
+    fastMode: {
+        apply: 'live',
+        // 布尔开关：会话内切换经 applyFlagSettings({ fastMode }) 即时生效
+        schema: z.boolean(),
+        bodyKey: 'fastMode',
+    },
     outputStyle: {
         apply: 'restart',
         // 不用 OUTPUT_STYLES 枚举：CLI 支持自定义 style（settings.cli.json），此处只挡空串，

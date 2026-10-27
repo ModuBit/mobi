@@ -27,6 +27,8 @@ export interface SpawnInput {
     agent?: AgentType
     model?: string
     effort?: EffortLevel
+    /** 快速模式预设（creation 时间点开启；undefined = 不指定，交给 SDK 默认） */
+    fastMode?: boolean
     /** CC output style（照 effort 全链路透传到 CLI Session 构造） */
     outputStyle?: string
     permissionMode?: PermissionMode
@@ -50,17 +52,18 @@ export function useSpawnSession(): {
     const mutation = useMutation({
         mutationFn: async (input: SpawnInput): Promise<SpawnResponse> => {
             try {
-                const res = await api.sessions.spawn(
-                    input.directory,
-                    input.agent,
-                    input.model,
-                    input.permissionMode,
-                    input.sessionType,
-                    input.worktreeName,
-                    input.effort,
-                    input.outputStyle,
-                    input.workspaceId
-                )
+                const res = await api.sessions.spawn({
+                    directory: input.directory,
+                    agent: input.agent,
+                    model: input.model,
+                    permissionMode: input.permissionMode,
+                    sessionType: input.sessionType,
+                    worktreeName: input.worktreeName,
+                    effort: input.effort,
+                    fastMode: input.fastMode,
+                    outputStyle: input.outputStyle,
+                    workspaceId: input.workspaceId,
+                })
 
                 // daemon spawnSession 失败时返回 { type:'error', message } 且 HTTP 仍 200，
                 // axios 对 200 不抛错——必须读取 body.type 判定，否则真实失败原因被吞，

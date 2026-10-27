@@ -172,6 +172,8 @@ export function NewSessionPage() {
     }, [selectableAgents, agent])
     const [model, setModel] = useState(() => loadPreferredModel())
     const [effort, setEffort] = useState<EffortLevel>(() => loadPreferredEffort())
+    // 快速模式：会话级预设，不落偏好（与 max 档同理——不写给 settings，也不跨会话记忆）
+    const [fastMode, setFastMode] = useState(false)
     const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => loadPreferredPermissionMode())
     // output style：默认「跟随 CC 设置」（不携带字段，spawn 后由 CLI 读用户 settings 默认值），
     // 显式选中任一项才随 spawn 透传到 CLI（无偏好持久化，每次从跟随起）
@@ -535,6 +537,7 @@ export function NewSessionPage() {
                 agent,
                 model: model === 'auto' ? undefined : model,
                 effort,
+                fastMode: fastMode || undefined,
                 // 空串哨兵 → 不携带字段：用户不主动选时 CC settings 默认 style 保持权威，
                 // 不被 flag 层静默覆盖（keep-alive 亦不报该字段，resume 不回放）
                 outputStyle: outputStyle || undefined,
@@ -650,8 +653,10 @@ export function NewSessionPage() {
                     model={model}
                     effort={effort}
                     models={hostModels}
+                    fastMode={fastMode}
                     onModelChange={setModel}
                     onEffortChange={setEffort}
+                    onFastModeChange={setFastMode}
                     disabled={inputDisabled}
                 />
             ),
@@ -674,7 +679,7 @@ export function NewSessionPage() {
             ),
         },
     ], [
-        t, inputDisabled, effort, model, permissionMode,
+        t, inputDisabled, effort, model, fastMode, permissionMode,
         permissionSelectOptions, hostModels,
         outputStyle, outputStyleOptions,
     ])

@@ -250,6 +250,7 @@ export class SessionReviver {
             permissionMode: session.permissionMode,
             resumeSessionId: resumeToken,
             effort: session.runtimeState?.effort ?? undefined,
+            fastMode: session.runtimeState?.fastMode ?? undefined,
             outputStyle: session.runtimeState?.outputStyle ?? undefined,
         }
         let spawnResult = await this.deps.executor.spawnSession(metadata.path, spawnOptions)

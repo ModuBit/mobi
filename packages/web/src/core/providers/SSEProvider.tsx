@@ -148,6 +148,10 @@ function patchSessionCache(
         if ('effort' in delta) {
             runtimeStatePatch = { ...runtimeStatePatch, effort: delta.effort }
         }
+        // 快速模式开关同属 runtimeState（心跳顶层字段，与 effort 同款归并）
+        if ('fastMode' in delta) {
+            runtimeStatePatch = { ...runtimeStatePatch, fastMode: delta.fastMode }
+        }
         // daemon runtimeState 完整更新（todos/tasks/teamState 等），直接替换
         if ('runtimeState' in delta && isObject(delta.runtimeState)) {
             runtimeStatePatch = delta.runtimeState as Record<string, unknown>

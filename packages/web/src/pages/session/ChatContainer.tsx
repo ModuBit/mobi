@@ -1544,6 +1544,15 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         await sessionActions.setEffort(effort)
     }
 
+    // 快速模式切换：界面值始终派生自 runtimeState（不做乐观更新），失败如实留在原状态
+    const handleFastModeChange = async (enabled: boolean) => {
+        try {
+            await sessionActions.setFastMode(enabled)
+        } catch {
+            messageApi.error(t('composer.modelPanel.fastSwitchFailed'))
+        }
+    }
+
     // 动作派发：只在点击时执行，经 ref 取最新闭包，避免把整条消息装配链的 memo 拖垮
     errorActionRef.current = (action, blockId) => {
         const target = precedingUserTextBlock(chatBlocks, blockId)
@@ -1780,11 +1789,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 mode={session?.mode}
                 workingDir={session?.metadata?.path}
                 effort={session?.runtimeState?.effort}
+                fastMode={session?.runtimeState?.fastMode}
+                fastModeState={session?.metadata?.sdkMetadata?.fastModeState}
                 contextUsage={session?.runtimeState?.contextUsage ?? null}
                 onCompact={() => handleSend({ ...emptySegments(), text: COMPACT_COMMAND })}
                 compactDisabled={session?.running ?? false}
                 goal={session?.runtimeState?.goalStatus ?? null}
                 onEffortChange={handleEffortChange}
+                onFastModeChange={handleFastModeChange}
                 onPermissionModeChange={handlePermissionModeChange}
                 onModelChange={handleModelChange}
                 onSend={handleSend}

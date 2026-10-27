@@ -61,7 +61,9 @@ export interface SpawnSessionOptions {
     approvedNewDirectoryCreation?: boolean
     agent?: 'claude'  // Mobi 当前仅支持 Claude
     model?: string
-    effort?: EffortLevel  // reasoning effort (low | medium | high | xhigh)
+    effort?: EffortLevel  // reasoning effort (low | medium | high | xhigh | max)
+    /** 快速模式预设（创建时携带）：经 flag 层注入，不写 settings 文件 */
+    fastMode?: boolean
     outputStyle?: string  // CC output style（Default/Proactive/Concise/Explanatory/Learning 或自定义名）
     permissionMode?: PermissionMode
     token?: string

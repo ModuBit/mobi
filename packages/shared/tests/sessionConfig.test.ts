@@ -23,13 +23,14 @@ import { SESSION_CONFIG_FIELDS } from '../src/sessionConfig'
  * 校验 schema、对外 body 字段名（路由兼容层，改动即 web 端 breaking）。
  */
 describe('SESSION_CONFIG_FIELDS', () => {
-    it('字段集合：三个 live 字段 + outputStyle（restart 语义）', () => {
+    it('字段集合：四个 live 字段 + outputStyle（restart 语义）', () => {
         expect(Object.keys(SESSION_CONFIG_FIELDS)).toEqual([
-            'permissionMode', 'model', 'effort', 'outputStyle',
+            'permissionMode', 'model', 'effort', 'fastMode', 'outputStyle',
         ])
         expect(SESSION_CONFIG_FIELDS.permissionMode.apply).toBe('live')
         expect(SESSION_CONFIG_FIELDS.model.apply).toBe('live')
         expect(SESSION_CONFIG_FIELDS.effort.apply).toBe('live')
+        expect(SESSION_CONFIG_FIELDS.fastMode.apply).toBe('live')
         // output style 切换是 /clear 语义（哨兵退轮重启生效），与 live 字段机制本质不同
         expect(SESSION_CONFIG_FIELDS.outputStyle.apply).toBe('restart')
     })
@@ -38,6 +39,7 @@ describe('SESSION_CONFIG_FIELDS', () => {
         expect(SESSION_CONFIG_FIELDS.permissionMode.bodyKey).toBe('mode')
         expect(SESSION_CONFIG_FIELDS.model.bodyKey).toBe('model')
         expect(SESSION_CONFIG_FIELDS.effort.bodyKey).toBe('effort')
+        expect(SESSION_CONFIG_FIELDS.fastMode.bodyKey).toBe('fastMode')
         expect(SESSION_CONFIG_FIELDS.outputStyle.bodyKey).toBe('style')
     })
 
@@ -50,6 +52,8 @@ describe('SESSION_CONFIG_FIELDS', () => {
         ['effort', 'xhigh', true],
         ['effort', 'max', true],                  // session-only 档位：flag 层原生支持，只是不落盘
         ['effort', 'turbo', false],               // 枚举外的档位名仍拦下
+        ['fastMode', true, true],
+        ['fastMode', 'yes', false],               // 只收布尔
         ['outputStyle', 'Explanatory', true],
         ['outputStyle', '', false],               // 只挡空串：自定义 style 合法性由 CLI 守卫
     ])('%s 接受 %j → %j', (field, value, ok) => {

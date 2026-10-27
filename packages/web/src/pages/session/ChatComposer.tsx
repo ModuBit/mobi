@@ -21,7 +21,7 @@ import { SwapOutlined, InboxOutlined } from '@ant-design/icons'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
-import type { AgentState, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, StopKind } from '@mobi/shared'
+import type { AgentState, ContextUsage, EffortLevel, FastModeState, GoalStatus, PermissionMode, Session, StopKind } from '@mobi/shared'
 import { getPermissionModeOptionsForFlavor } from '@mobi/shared'
 import {
     isSegmentEmpty,
@@ -122,6 +122,11 @@ interface ChatComposerProps {
     extraItems?: ActionItem[]
     effort?: EffortLevel
     onEffortChange?: (effort: EffortLevel) => void
+    /** 快速模式开关（运行时切换走会话配置 RPC） */
+    fastMode?: boolean
+    /** 快速模式运行态（会话元数据 fastModeState）：cooldown 时面板如实显示冷却 */
+    fastModeState?: FastModeState | null
+    onFastModeChange?: (enabled: boolean) => void
     onPermissionModeChange?: (mode: PermissionMode) => void
     onModelChange?: (model: string | null) => void
     /** 发送回调：入参为当前输入的完整分段（文本 + 附件双桶 + 引用），wire 格式由 useSendMessage 序列化 */
@@ -244,6 +249,9 @@ export function ChatComposer(props: ChatComposerProps) {
         workingDir,
         effort = 'medium',
         onEffortChange,
+        fastMode,
+        fastModeState,
+        onFastModeChange,
         extraLeftButtons,
         extraItems,
         onPermissionModeChange,
@@ -847,8 +855,11 @@ export function ChatComposer(props: ChatComposerProps) {
                                                 model={model ?? 'auto'}
                                                 effort={effort ?? 'medium'}
                                                 models={sdkMetadata?.models}
+                                                fastMode={fastMode}
+                                                fastModeState={fastModeState ?? null}
                                                 onModelChange={v => onModelChange(v)}
                                                 onEffortChange={onEffortChange ? e => onEffortChange(e) : undefined}
+                                                onFastModeChange={onFastModeChange}
                                                 disabled={controlsDisabled || showLocalModeCover}
                                             />
                                         ),

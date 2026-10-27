@@ -972,6 +972,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         } : undefined,
                         // output style：session 当前值，每轮循环读取（切换 RPC 更新后经哨兵重启生效）
                         outputStyle: session.getOutputStyle(),
+                        // 快速模式：session 当前值，每轮循环读取（运行中切换即时生效，无需重启）
+                        fastMode: session.getFastMode(),
                         // fork 激活（fork-session spec §5.2）：预检通过后携带激活计划，
                         // claudeRemote 据此组装 resume(parent)+forkSession+resumeSessionAt(锚点)+sessionId(预生成 id)
                         forkActivation: forkActivation ?? undefined,

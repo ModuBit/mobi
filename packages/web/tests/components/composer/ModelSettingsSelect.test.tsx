@@ -36,7 +36,7 @@ vi.mock('react-i18next', async () => {
 })
 
 const MODELS: ModelInfo[] = [
-    { value: 'opus', displayName: 'Opus', description: '最强', supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high', 'xhigh'] },
+    { value: 'opus', displayName: 'Opus', description: '最强', supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high', 'xhigh'], supportsFastMode: true },
     { value: 'sonnet', displayName: 'Sonnet', description: '日常' },
     { value: 'plain', displayName: 'Plain', description: '无 effort', supportsEffort: false },
 ]
@@ -46,25 +46,38 @@ function Harness({
     initialModel = 'opus',
     initialEffort = 'medium',
     models = MODELS,
+    initialFastMode = false,
+    fastModeState = null,
+    fastToggleable = true,
     onModelChange,
     onEffortChange,
+    onFastModeChange,
 }: {
     initialModel?: string
     initialEffort?: EffortLevel
     models?: ModelInfo[]
+    initialFastMode?: boolean
+    fastModeState?: 'off' | 'cooldown' | 'on' | null
+    /** false = 调用方不提供切换回调（面板不应渲染闪电钮） */
+    fastToggleable?: boolean
     onModelChange?: (m: string) => void
     onEffortChange?: (e: EffortLevel) => void
+    onFastModeChange?: (enabled: boolean) => void
 }) {
     const [model, setModel] = useState(initialModel)
     const [effort, setEffort] = useState<EffortLevel>(initialEffort)
+    const [fastMode, setFastMode] = useState(initialFastMode)
     return (
         <ModelSettingsSelect
             label="模型"
             model={model}
             effort={effort}
             models={models}
+            fastMode={fastMode}
+            fastModeState={fastModeState}
             onModelChange={(m) => { setModel(m); onModelChange?.(m) }}
             onEffortChange={(e) => { setEffort(e); onEffortChange?.(e) }}
+            onFastModeChange={fastToggleable ? (v) => { setFastMode(v); onFastModeChange?.(v) } : undefined}
         />
     )
 }
@@ -144,6 +157,43 @@ describe('ModelSettingsSelect', () => {
         render(<Harness models={withMax} />)
         openPanel()
         expect(screen.getByRole('button', { name: 'composer.effortLevels.max' })).toBeInTheDocument()
+    })
+
+    it('支持快速模式的模型渲染闪电钮，点击切换并点亮 pill', () => {
+        const onFastModeChange = vi.fn()
+        render(<Harness onFastModeChange={onFastModeChange} />)
+        openPanel()
+        const toggle = screen.getByRole('button', { name: 'composer.modelPanel.fastOff' })
+        expect(toggle).toHaveAttribute('aria-pressed', 'false')
+
+        fireEvent.click(toggle)
+        expect(onFastModeChange).toHaveBeenCalledWith(true)
+        expect(screen.getByRole('button', { name: 'composer.modelPanel.fastOn' })).toHaveAttribute('aria-pressed', 'true')
+    })
+
+    it('模型不支持快速模式或调用方无切换回调时不渲染闪电钮', () => {
+        const { unmount } = render(<Harness initialModel="plain" />)
+        openPanel()
+        expect(screen.queryByRole('button', { name: /composer\.modelPanel\.fast/ })).not.toBeInTheDocument()
+        unmount()
+
+        render(<Harness fastToggleable={false} />)
+        openPanel()
+        expect(screen.queryByRole('button', { name: /composer\.modelPanel\.fast/ })).not.toBeInTheDocument()
+    })
+
+    it('重置一并关闭快速模式', () => {
+        const onFastModeChange = vi.fn()
+        render(<Harness initialEffort="xhigh" initialFastMode onFastModeChange={onFastModeChange} />)
+        openPanel()
+        fireEvent.click(screen.getByRole('button', { name: 'composer.modelPanel.reset' }))
+        expect(onFastModeChange).toHaveBeenCalledWith(false)
+    })
+
+    it('冷却态如实显示为冷却而非开启', () => {
+        render(<Harness initialFastMode fastModeState="cooldown" />)
+        openPanel()
+        expect(screen.getByRole('button', { name: 'composer.modelPanel.fastCooldown' })).toBeInTheDocument()
     })
 
     it('兜底（无模型清单）时档位回落四档', () => {

@@ -198,6 +198,7 @@ export class SessionCache {
         if (payload.permissionMode !== undefined) configPatch.permissionMode = payload.permissionMode
         if (payload.model !== undefined) configPatch.model = payload.model
         if (payload.effort !== undefined) configPatch.effort = payload.effort
+        if (payload.fastMode !== undefined) configPatch.fastMode = payload.fastMode
         if (payload.outputStyle !== undefined) configPatch.outputStyle = payload.outputStyle
         const configChanged = Object.keys(configPatch).length > 0
             ? this.runtimeStateStore.merge(session, configPatch, t).changed
@@ -229,6 +230,7 @@ export class SessionCache {
                     endedAt: session.endedAt ?? null,
                     model: session.runtimeState?.model,
                     effort: session.runtimeState?.effort,
+                    fastMode: session.runtimeState?.fastMode,
                     outputStyle: session.runtimeState?.outputStyle
                 }
             })
@@ -448,7 +450,7 @@ export class SessionCache {
 
     /** live 字段的落库键（深化候选②：新增 live 字段在此追加即获得「落库+内存+广播」，
      *  restart 语义字段如 outputStyle 不在此列——不写缓存，权威值由重启后 init/keep-alive 回流） */
-    static readonly LIVE_CONFIG_KEYS = ['permissionMode', 'model', 'effort'] as const
+    static readonly LIVE_CONFIG_KEYS = ['permissionMode', 'model', 'effort', 'fastMode'] as const
 
     /**
      * 休眠会话配置暂存（dormancy spec §C）：进程不在无从推送，只落 DB runtimeState；
@@ -456,7 +458,7 @@ export class SessionCache {
      * outputStyle 也在此落库——活跃路径「重启后 init 上报权威值」在休眠下不存在，
      * 暂存值即唯一事实；活跃路径不经过本方法，outputStyle 的 restart 语义不变。
      */
-    applyDormantConfig(sessionId: string, config: { permissionMode?: PermissionMode; model?: string | null; effort?: EffortLevel; outputStyle?: string }): void {
+    applyDormantConfig(sessionId: string, config: { permissionMode?: PermissionMode; model?: string | null; effort?: EffortLevel; fastMode?: boolean; outputStyle?: string }): void {
         this.applyRuntimeStatePatch(sessionId, config, null)
     }
 
@@ -484,7 +486,7 @@ export class SessionCache {
         this.publisher.emit({ type: 'session-updated', sessionId, data: session })
     }
 
-    applySessionConfig(sessionId: string, config: { permissionMode?: PermissionMode; model?: string | null; effort?: EffortLevel }): void {
+    applySessionConfig(sessionId: string, config: { permissionMode?: PermissionMode; model?: string | null; effort?: EffortLevel; fastMode?: boolean }): void {
         this.applyRuntimeStatePatch(sessionId, config, new Set(SessionCache.LIVE_CONFIG_KEYS))
     }
 

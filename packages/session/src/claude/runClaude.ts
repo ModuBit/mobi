@@ -59,6 +59,8 @@ export interface StartOptions {
     model?: string
     permissionMode?: PermissionMode
     effort?: EffortLevel
+    /** 快速模式预设（Web spawn 透传；经 Session opts → applyStartupFastMode 注入） */
+    fastMode?: boolean
     /** CC output style（Web spawn 透传；经 Session opts → applyStartupOutputStyle 注入） */
     outputStyle?: string
     startingMode?: 'local' | 'remote'
@@ -382,6 +384,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
     // Forward messages to the queue
     let currentEffort: EffortLevel = options.effort ?? 'medium';
+    // undefined = 「从未指定」：不参与 keep-alive 上报与 diff，避免把 SDK 默认误报成显式关闭
+    let currentFastMode: boolean | undefined = options.fastMode;
     let currentPermissionMode: PermissionMode = options.permissionMode ?? 'default';
     let currentModel: SessionModel = initialModel;
     // 消息级 meta 覆盖五字段的会话级记忆（深化候选④票③：五段同构解析归 MESSAGE_META_FIELDS 表，
@@ -431,8 +435,8 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
     // live 配置字段的「session 状态读写 + 运行中动态 apply」接线表（深化候选②）：
     // 新增 live 字段在此注册一行，diff 与动态 apply 由 syncSessionModes 统一遍历；
     // 值校验 schema 同源 shared SESSION_CONFIG_FIELDS（daemon 路由与本文件 handler 共用）
-    type LiveConfigKey = 'permissionMode' | 'model' | 'effort'
-    type LiveConfigValue = PermissionMode | SessionModel | EffortLevel
+    type LiveConfigKey = 'permissionMode' | 'model' | 'effort' | 'fastMode'
+    type LiveConfigValue = PermissionMode | SessionModel | EffortLevel | boolean
     type LiveQueryControl = NonNullable<QueryControlRef['current']>
     const LIVE_CONFIG_APPLIERS: Record<LiveConfigKey, {
         get: (s: Session) => LiveConfigValue | undefined
@@ -455,6 +459,12 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
             // effort 不在 SDK Query 构造函数选项中，运行时只能通过 applyFlagSettings 修改
             applyLive: (c, v) => c.applyFlagSettings({ effortLevel: v as EffortLevel }),
         },
+        fastMode: {
+            get: (s) => s.getFastMode(),
+            set: (s, v) => s.setFastMode(v as boolean),
+            // 快速模式同理：只走 flag 层，不写 settings 文件（session-only）
+            applyLive: (c, v) => c.applyFlagSettings({ fastMode: v as boolean }),
+        },
     };
 
     const syncSessionModes = () => {
@@ -463,10 +473,11 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
             return;
         }
 
-        const nextConfig: Record<LiveConfigKey, LiveConfigValue> = {
+        const nextConfig: Record<LiveConfigKey, LiveConfigValue | undefined> = {
             permissionMode: currentPermissionMode,
             model: currentModel,
             effort: currentEffort,
+            fastMode: currentFastMode,
         };
         const changed = (Object.keys(LIVE_CONFIG_APPLIERS) as LiveConfigKey[])
             .filter((key) => LIVE_CONFIG_APPLIERS[key].get(sessionInstance) !== nextConfig[key]);
@@ -475,12 +486,12 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
         }
 
         for (const key of changed) {
-            LIVE_CONFIG_APPLIERS[key].set(sessionInstance, nextConfig[key]);
+            LIVE_CONFIG_APPLIERS[key].set(sessionInstance, nextConfig[key] as LiveConfigValue);
         }
 
         const control = queryControlRef.current;
         if (control) {
-            Promise.all(changed.map((key) => LIVE_CONFIG_APPLIERS[key].applyLive(control, nextConfig[key])))
+            Promise.all(changed.map((key) => LIVE_CONFIG_APPLIERS[key].applyLive(control, nextConfig[key] as LiveConfigValue)))
                 .catch(err => logger.debug(`[loop] dynamic config apply failed: ${err}`));
         }
 
@@ -584,7 +595,7 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
         if (!payload || typeof payload !== 'object') {
             throw new Error('Invalid session config payload');
         }
-        const config = payload as { permissionMode?: unknown; model?: unknown; effort?: unknown };
+        const config = payload as { permissionMode?: unknown; model?: unknown; effort?: unknown; fastMode?: unknown };
 
         if (config.permissionMode !== undefined) {
             currentPermissionMode = resolvePermissionMode(config.permissionMode);
@@ -604,8 +615,16 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
             currentEffort = parsed.data as EffortLevel;
         }
 
+        if (config.fastMode !== undefined) {
+            const parsed = SESSION_CONFIG_FIELDS.fastMode.schema.safeParse(config.fastMode);
+            if (!parsed.success) {
+                throw new Error('Invalid fast mode flag');
+            }
+            currentFastMode = parsed.data;
+        }
+
         syncSessionModes();
-        return { applied: { permissionMode: currentPermissionMode, model: currentModel, effort: currentEffort } };
+        return { applied: { permissionMode: currentPermissionMode, model: currentModel, effort: currentEffort, fastMode: currentFastMode } };
     });
 
     // Web UI 重命名 → daemon rename-session RPC → 回写 agent 侧标题（Mobi → agent 单向同步）
@@ -670,6 +689,7 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
             model: currentModel,
             permissionMode: options.permissionMode,
             effort: currentEffort,
+            fastMode: currentFastMode,
             outputStyle: options.outputStyle,
             startingMode,
             additionalDirectories,

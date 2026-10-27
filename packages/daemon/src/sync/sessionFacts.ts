@@ -33,6 +33,7 @@ export type SessionAlivePayload = {
     permissionMode?: PermissionMode
     model?: string | null
     effort?: EffortLevel
+    fastMode?: boolean
     outputStyle?: string
     /** 治理水位快照（票 1.2 搭车）：只进 SessionRegistry，不落库不广播 */
     governance?: SessionGovernanceSnapshot

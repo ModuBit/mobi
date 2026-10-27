@@ -970,7 +970,8 @@
       "reset": "重置为默认",
       "fastOn": "快速模式已开启",
       "fastOff": "快速模式已关闭",
-      "fastCooldown": "快速模式冷却中：限流临时不可用，稍后自动恢复"
+      "fastCooldown": "快速模式冷却中：限流临时不可用，稍后自动恢复",
+      "fastSwitchFailed": "快速模式切换失败，请重试"
     }
   },
   "status": {

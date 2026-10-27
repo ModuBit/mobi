@@ -672,6 +672,8 @@ export const RuntimeStateSchema = z.object({
     teamState: TeamStateSchema.optional(),
     model: z.string().nullable().optional(),
     effort: z.enum(EFFORT_SESSION_LEVELS).optional(),
+    /** 快速模式开关（用户意图 / 已应用值）：会话内切换即时生效，不落盘 */
+    fastMode: z.boolean().optional(),
     /** 当前权限模式（CLI keep-alive 上报落库，daemon 重启后 resume 回放；与 model/effort/outputStyle 持久化对齐）。
      * catch：CLI 新版本引入未知权限模式时单字段降级为 undefined（回落 default），不拖垮整条
      * runtimeState 解析——safeParse 全有全无会让 model/effort/outputStyle 等恢复字段一并丢失 */

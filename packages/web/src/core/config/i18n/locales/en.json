@@ -979,7 +979,8 @@
       "reset": "Reset to defaults",
       "fastOn": "Fast mode is on",
       "fastOff": "Fast mode is off",
-      "fastCooldown": "Fast mode cooling down: temporarily rate-limited, recovers automatically"
+      "fastCooldown": "Fast mode cooling down: temporarily rate-limited, recovers automatically",
+      "fastSwitchFailed": "Failed to switch fast mode, please retry"
     }
   },
   "status": {

@@ -38,3 +38,20 @@ describe('buildClaudeSpawnArgs --workspace', () => {
         expect(args.some(a => a === '--workspace')).toBe(false)
     })
 })
+
+describe('buildClaudeSpawnArgs --fast-mode', () => {
+    it('fastMode=true → 携带 [--fast-mode, true]', () => {
+        const args = buildClaudeSpawnArgs({ directory: '/a/mobi', fastMode: true })
+        expect(args[args.indexOf('--fast-mode') + 1]).toBe('true')
+    })
+
+    it('fastMode=false → 显式携带 false（与缺省「未指定」区分）', () => {
+        const args = buildClaudeSpawnArgs({ directory: '/a/mobi', fastMode: false })
+        expect(args[args.indexOf('--fast-mode') + 1]).toBe('false')
+    })
+
+    it('fastMode 缺省 → args 无 --fast-mode', () => {
+        const args = buildClaudeSpawnArgs({ directory: '/a/mobi' })
+        expect(args.some(a => a === '--fast-mode')).toBe(false)
+    })
+})

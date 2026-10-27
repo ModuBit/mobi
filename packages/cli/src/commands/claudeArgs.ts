@@ -85,6 +85,11 @@ export function parseStartOptions(args: string[]): {
             // 注入走 Session opts → applyStartupOutputStyle（applyFlagSettings））
             options.outputStyle = consumeFlagValue(args, i, '--output-style')
             i += 1
+        } else if (arg === '--fast-mode') {
+            // 快速模式（Web spawn 透传；mobi 自有 flag，不下传 claude 二进制——
+            // 注入走 Session opts → applyStartupFastMode（applyFlagSettings））
+            options.fastMode = z.enum(['true', 'false']).parse(consumeFlagValue(args, i, '--fast-mode')) === 'true'
+            i += 1
         } else if (arg === '--started-by') {
             // 设置启动来源
             options.startedBy = consumeFlagValue(args, i, arg) as 'daemon' | 'terminal'
