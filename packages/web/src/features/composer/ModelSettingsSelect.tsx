@@ -49,6 +49,17 @@ const DEFAULT_MODEL = 'auto'
 const DEFAULT_EFFORT: EffortLevel = 'medium'
 
 /**
+ * pill 收起态的宽度上限。
+ *
+ * 不能靠 `max-width: 100%`：pill 挂在 MorphSurface 的 inline-grid 里，隐式列按 max-content
+ * 定宽，百分比没有可约束的祖先，长模型名会把工具条整条撑开（2026-10-27 真机）。上限还必须
+ * 小于面板宽（320），否则展开时表面按 pill 宽长开、右侧多出一条空白。
+ */
+function pillMaxWidth(isMobile: boolean): number {
+    return isMobile ? 200 : 260
+}
+
+/**
  * 档位强调色：沿轨道渐变取色（首档 → 石青，末档 → 灰紫），与滑杆填充同源。
  * 顶栏大字与 pill 的档位名共用——「看到的颜色」始终对应「轨道上的位置」。
  */
@@ -194,7 +205,7 @@ export function ModelSettingsSelect({
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: 4,
-                        maxWidth: '100%',
+                        maxWidth: pillMaxWidth(isMobile),
                         height: 'var(--control-height-md)',
                         padding: '0 12px',
                         border: '1px solid var(--border)',
@@ -215,15 +226,17 @@ export function ModelSettingsSelect({
                     {fastEnabled && (
                         <Zap size={12} aria-hidden="true" fill="currentColor" style={{ flex: 'none', color: 'var(--primary)' }} />
                     )}
+                    {/* 省略号只吃模型名：档位是「模型 · 档位」里信息密度更高的一半，
+                        长模型名截断时不该把档位一起截掉 */}
                     <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {modelLabel}
-                        {showEffort && (
-                            <>
-                                {' · '}
-                                <span style={{ color: effortColor }}>{effortLabel(effort)}</span>
-                            </>
-                        )}
                     </span>
+                    {showEffort && (
+                        <>
+                            <span aria-hidden="true" style={{ flex: 'none', color: 'var(--text-muted)' }}>·</span>
+                            <span style={{ flex: 'none', color: effortColor }}>{effortLabel(effort)}</span>
+                        </>
+                    )}
                     <ChevronRight
                         size={14}
                         aria-hidden="true"

@@ -125,7 +125,10 @@ export function MorphSurface({ label, width, fullWidth = false, open, onOpenChan
         const frame = requestAnimationFrame(() => {
             const face = faceRef.current
             if (!face) return
-            const target = { w: Math.max(geo.triggerW, face.offsetWidth), h: face.offsetHeight }
+            // 宽以面板为准，不以 pill 为准：pill 比面板宽时（长模型名）取两者的 max 会让
+            // 表面长出内容之外，右侧空出一条背景（2026-10-27 真机）。面板宽是调用方给的定值，
+            // face 的实测只作兜底（首帧未量到时退回 panelW）。
+            const target = { w: face.offsetWidth || geo.panelW, h: face.offsetHeight }
             if (reducedRef.current) {
                 shapeW.jump(target.w)
                 shapeH.jump(target.h)

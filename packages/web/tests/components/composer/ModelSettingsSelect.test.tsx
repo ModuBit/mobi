@@ -91,7 +91,10 @@ describe('ModelSettingsSelect', () => {
 
     it('pill 显示「模型 · 档位」', () => {
         render(<Harness />)
-        expect(screen.getByRole('button', { name: '模型' })).toHaveTextContent('Opus · composer.effortLevels.medium')
+        const pill = screen.getByRole('button', { name: '模型' })
+        // 模型名与档位是两个兄弟 span（省略号只吃模型名），分别断言不锁分隔符形态
+        expect(pill).toHaveTextContent('Opus')
+        expect(pill).toHaveTextContent('composer.effortLevels.medium')
     })
 
     it('点开面板显示当前档位大字与滑杆', () => {
@@ -115,7 +118,9 @@ describe('ModelSettingsSelect', () => {
         // 列表收起（listFace 关闭态 aria-hidden），档位滑杆仍在原位
         expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
         expect(screen.getByRole('slider')).toBeInTheDocument()
-        expect(screen.getByRole('button', { name: '模型' })).toHaveTextContent('Sonnet · composer.effortLevels.medium')
+        const updated = screen.getByRole('button', { name: '模型' })
+        expect(updated).toHaveTextContent('Sonnet')
+        expect(updated).toHaveTextContent('composer.effortLevels.medium')
     })
 
     /** 轨道几何：桌面拇指 22 → 可走区间 = width - 22，起点偏移 11 */
