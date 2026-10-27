@@ -26,6 +26,11 @@ metadata:
 - **形变几何断言**（真机 `evaluate_script` 量 rect）：展开后 surface 的 `bottom` == pill 的
   `bottom`（收起动画结束回到 pill 尺寸且与 pill 完全重合）。面板在 composer 里必须走 portal——
   内联表面会被 composer 上方的工作区行（`z-index: 2`，`.ant-sender` 只有 1）压住穿模。
+- **面板内的裁切回归**（2026-10-27 实踩两次，都是 grid 隐式 auto 列按 max-content 定宽）：
+  量 `data-stretch` 的 root/anchor/shape 是否都在 `[role="dialog"]` 之内（长模型名
+  `claude-opus-5-5（apikey fun claude）` 最易触发），再量选中项的 `[class*="check"]`
+  右缘是否 ≤ shape 右缘、`[role="listbox"]` 的 `scrollWidth === clientWidth`。
+  只看 shape 尺寸看不出裁切——溢出的是行，被裁的是行尾的勾。
 - 点档位名与点按轨道走同一路径：`POST /api/sessions/<sid>/effort {"effort":"…"}`。
   读响应 + `GET /api/sessions/<sid>` 的 `session.runtimeState.effort` 做权威断言。
 - 重置 = 模型回 `auto`、档位回 `medium`；auto 无能力位，档位集合随之回落四档（UI 只剩低中高超高）。
