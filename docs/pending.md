@@ -1332,3 +1332,23 @@ HINDSIGHT_API_RERANKER_ALIBABA_API_KEY=sk-你的DashScope-key
 
 **顺带注意**：`setsid` 逃逸不了这层托管（实测 setsid 起的 daemon 同样被停），长驻 E2E 组件要么分段续拉，要么挂到 launchd/独立终端。
 
+
+---
+
+## 127. AskUserQuestion「跳过」标注（ask_user_question_unanswered_v1，2026-10-28 立项）
+
+用户批准立项（upstream-suggestions 2026-10-28 台账逐条评估后拍板）。spec 与两票定稿在
+`.scratch/askuserquestion-unanswered/spec.md`：approve 载荷加 `annotations[question].unanswered`
+（只做 skipped——dismissed/replied_in_chat 无交互对应不做），session permissionHandler
+「空 answers + 有 annotations → allow + updatedInput 携带」（原空答即 deny 废除于该分支），
+capability feature-detect 老 CLI 维持强制全答。票 02 含真机 E2E（tool result 回显断言）。
+
+---
+
+## 128. 唤醒原因可观测（lifecycle_wakeup_source_v1，2026-10-28 立项）
+
+用户批准立项。spec 与两票定稿在 `.scratch/wakeup-source-observability/spec.md`：
+CC 内建 ScheduleWakeup//loop/Cron 到点自醒的回合，经 command_lifecycle started 帧的
+`wakeup_source`/`scheduled_for`（untyped，防御性提取）进 runtimeState `lastWakeup`，
+web 消息流系统行呈现「循环唤醒/定时任务唤醒」。票 01 前置 PoC：真机确认本地形态该帧
+真实 emit（capability 广播已实证，帧 emit 未实证——不过则整票搁置）。
