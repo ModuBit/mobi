@@ -81,6 +81,8 @@ export function MorphSurface({ label, width, fullWidth = false, open, onOpenChan
     const radius = useMotionValue(OPEN_RADIUS)
     const reducedRef = useRef(reduced)
     useLayoutEffect(() => { reducedRef.current = reduced }, [reduced])
+    /** 下一次收起是否直接卸载（外部点击：不播动画，见收起 effect 的注释） */
+    const instantClose = useRef(false)
 
     /** 展开宽：调用方给的基准宽（满宽档直接顶到视口），超出视口时收窄 */
     const panelWidth = useCallback(() => {
@@ -165,6 +167,22 @@ export function MorphSurface({ label, width, fullWidth = false, open, onOpenChan
         if (open || !mounted) return
         const geo = measurePill()
         setExpanded(false)
+        // 外部点击关闭：不播收起动画，直接卸载。表面是 portal 到 body 的浮层（z = overlay 基线），
+        // 而「点外面」最常见的下一拍是打开**另一个**浮层（权限 / output style 的 morph-select 在
+        // composer 内的 z-index 只有 30）——缩回去的那 ~500ms 里，逐帧缩小的面板会盖在新开的
+        // 列表上面，看起来像「模型的 lid 还压在最上面」（2026-10-28 真机）。收起动画只在点 lid /
+        // Esc 这类「留在原地」的关闭里播放
+        if (instantClose.current) {
+            instantClose.current = false
+            if (geo) {
+                shapeW.jump(geo.triggerW)
+                shapeH.jump(geo.triggerH)
+                shapeLeft.jump(geo.rawLeft)
+                radius.jump(geo.triggerH / 2)
+            }
+            setMounted(false)
+            return
+        }
         if (reducedRef.current || !geo) {
             setMounted(false)
             return
@@ -224,8 +242,10 @@ export function MorphSurface({ label, width, fullWidth = false, open, onOpenChan
         }
     }, [open, measurePill, shapeLeft])
 
-    const close = useCallback(() => {
-        if (!disabled) onOpenChange(false)
+    const close = useCallback((instant = false) => {
+        if (disabled) return
+        if (instant) instantClose.current = true
+        onOpenChange(false)
     }, [disabled, onOpenChange])
 
     // 点外面 / Esc 收起（不是模态：不锁页面，只收起自己）
@@ -235,7 +255,8 @@ export function MorphSurface({ label, width, fullWidth = false, open, onOpenChan
             const target = event.target as Node
             if (rootRef.current?.contains(target)) return
             if (faceRef.current?.parentElement?.contains(target)) return
-            close()
+            // 外部点击的另一头往往是要打开的另一个浮层：不播收起动画，直接让位
+            close(true)
         }
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.key !== 'Escape') return
@@ -314,7 +335,7 @@ export function MorphSurface({ label, width, fullWidth = false, open, onOpenChan
                             aria-label={label}
                             aria-haspopup="dialog"
                             aria-expanded={open}
-                            onClick={close}
+                            onClick={() => close()}
                         >
                             {trigger({ open, toggle })}
                         </button>

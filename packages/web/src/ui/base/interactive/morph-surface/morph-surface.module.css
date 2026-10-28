@@ -31,18 +31,17 @@
     font-size: var(--text-sm);
 }
 
-/* 收起态 pill：外观与形态由本组件持有（调用方只给内容），展开时同一套值长成 lid */
-.pill {
+/* pill 外观单源：收起态 .pill 与展开态 .lidButton 是同一枚控件的两处 DOM（portal 表面的
+   lid 承接文档流里的 pill），任何只写在一边的样式都会在交接那一刻闪一下——「迟一拍」类
+   问题就是这么长出来的。共同部分全部收在这里；border / background / 宽高是两处本来就
+   不同的属性，留在各自规则里。新增外观先问：两处是不是该一样？是就写这。 */
+.pillChrome {
+    box-sizing: border-box;
     display: flex;
-    min-width: 0;
     align-items: center;
     gap: 4px;
-    height: var(--control-height-md);
     padding: 0 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-pill);
-    background: var(--surface);
-    color: var(--foreground);
+    color: inherit;
     font: inherit;
     font-size: var(--text-sm);
     font-weight: 500;
@@ -52,8 +51,26 @@
     -webkit-tap-highlight-color: transparent;
 }
 
+/* 收起态 pill：外观与形态由本组件持有（调用方只给内容），展开时同一套值长成 lid */
+.pill {
+    composes: pillChrome;
+    min-width: 0;
+    height: var(--control-height-md);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+}
+
 .pill[data-open] {
     background: var(--surface-raised);
+}
+
+/* 收起态悬停（与 morph-select 的 .shape:hover 同一语言）；展开期间 pill 隐去，规则自然不生效 */
+@media (hover: hover) and (pointer: fine) {
+    .root:not([data-open], [data-disabled]) .pill:hover {
+        background: var(--surface-muted);
+        border-color: var(--border-strong);
+    }
 }
 
 .pill:disabled {
@@ -76,6 +93,8 @@
     position: fixed;
     z-index: var(--mobi-z-overlay, 1000);
     box-sizing: border-box;
+    /* 与 .root 同色：交接的 lid 不该因为 portal 换了继承源而偏色 */
+    color: var(--foreground);
     background: var(--surface);
     transition: background-color var(--duration-fast) var(--ease-standard);
 }
@@ -95,13 +114,15 @@
     pointer-events: none;
 }
 
-/* 面板内容：宽度由组件按面板宽内联给出，坐落在 lid 之上；形变途中不可见，长完才淡入 */
+/* 面板内容：宽度由组件按面板宽内联给出，坐落在 lid 之上；形变途中不可见，长完才淡入。
+   退场 80ms 与 morph-select 列表面的退场同一时长——收起途中内容先散、表面再收完，
+   两者节奏对齐，读起来才是同一个动作 */
 .face {
     position: absolute;
     left: 0;
     opacity: 0;
     visibility: hidden;
-    transition: opacity var(--duration-fast) var(--ease-standard), visibility 0s linear var(--duration-fast);
+    transition: opacity 80ms var(--ease-standard), visibility 0s linear 80ms;
 }
 
 .surface[data-expanded] .face {
@@ -119,23 +140,12 @@
 }
 
 .lidButton {
-    display: flex;
+    composes: pillChrome;
     width: 100%;
     height: 100%;
-    align-items: center;
-    gap: 4px;
-    padding: 0 12px;
     border: 0;
     background: transparent;
-    color: inherit;
-    font: inherit;
-    font-size: var(--text-sm);
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
     text-align: left;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {

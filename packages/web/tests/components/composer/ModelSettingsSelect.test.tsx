@@ -127,6 +127,18 @@ describe('ModelSettingsSelect', () => {
         expect(restored).toHaveTextContent('Opus')
     })
 
+    it('点面板外面立即收起（不播收起动画）——另一头通常是要打开的另一个浮层', () => {
+        render(<Harness />)
+        openPanel()
+        expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+        // 外部点击：这一拍就卸载。播动画的话表面会以 overlay 层号压在新开的浮层上 ~500ms
+        // （2026-10-28 真机：点头权限选择后模型的 lid 还盖在列表最上面）
+        fireEvent.pointerDown(document.body)
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+        expect(screen.getByRole('button', { name: '模型' })).not.toHaveAttribute('aria-hidden')
+    })
+
     it('模型行走 MorphSelect 弹层：点开列出分组，选中后收起并更新 pill', () => {
         render(<Harness />)
         openPanel()
