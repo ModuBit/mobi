@@ -21,6 +21,8 @@ import {
     EFFORT_LABELS,
     resolveModelEffortLevels,
     reconcileSessionConfigForModel,
+    findCatalogModel,
+    reconcileModelChange,
     type EffortLevel,
     PERMISSION_MODES,
     CLAUDE_PERMISSION_MODES,
@@ -117,6 +119,52 @@ describe('reconcileSessionConfigForModel', () => {
     it('本来就是关闭状态 → 不回写 false（不制造无意义的变更）', () => {
         expect(reconcileSessionConfigForModel({}, { fastMode: false })).toEqual({})
         expect(reconcileSessionConfigForModel({}, {})).toEqual({})
+    })
+})
+
+describe('findCatalogModel', () => {
+    const models = [
+        { value: 'glm-5.3-flash', resolvedModel: 'glm-5.3-flash-20260101', supportsFastMode: true },
+        { value: 'claude-opus-5-5', supportsFastMode: false },
+    ]
+
+    it('按 value 命中', () => {
+        expect(findCatalogModel(models, 'glm-5.3-flash')?.value).toBe('glm-5.3-flash')
+    })
+
+    it('resolvedModel 全名同样命中（同一个模型，调用方从哪抄都可能）', () => {
+        expect(findCatalogModel(models, 'glm-5.3-flash-20260101')?.value).toBe('glm-5.3-flash')
+    })
+
+    it('auto 恒不命中：它是 CLI 默认别名，探针清单不保证列它（≠「没有能力的模型」）', () => {
+        expect(findCatalogModel(models, 'auto')).toBeNull()
+        expect(findCatalogModel([{ value: 'auto' }], 'auto')).toBeNull()
+    })
+
+    it('目录缺失 / 空值 → null', () => {
+        expect(findCatalogModel(null, 'glm-5.3-flash')).toBeNull()
+        expect(findCatalogModel(models, null)).toBeNull()
+        expect(findCatalogModel(models, '')).toBeNull()
+    })
+})
+
+describe('reconcileModelChange（目录查表 + 收敛一体）', () => {
+    const models = [
+        { value: 'opus-lite', supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high', 'xhigh'], supportsFastMode: false },
+    ]
+
+    it('命中目录 → 按该模型能力收敛（max 回落到 xhigh、快速模式关闭）', () => {
+        expect(reconcileModelChange(models, 'opus-lite', { effort: 'max', fastMode: true }))
+            .toEqual({ effort: 'xhigh', fastMode: false })
+    })
+
+    it('切到 auto → 能力未知，不动用户的档位与快速模式', () => {
+        expect(reconcileModelChange(models, 'auto', { effort: 'max', fastMode: true })).toEqual({})
+    })
+
+    it('目录里查不到（预设别名 / 探针没列它 / 目录未就绪）→ 同样不收敛', () => {
+        expect(reconcileModelChange(models, 'opus', { effort: 'max', fastMode: true })).toEqual({})
+        expect(reconcileModelChange(null, 'opus-lite', { effort: 'max', fastMode: true })).toEqual({})
     })
 })
 

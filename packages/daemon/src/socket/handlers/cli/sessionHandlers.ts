@@ -367,11 +367,14 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         }).passthrough(),
         'context-usage': z.object({ sid: z.string(), contextUsage: ContextUsageSchema.nullable() }),
         'cache-status': z.object({ sid: z.string(), cacheStatus: CacheStatusSchema.nullable() }),
-        // 快速模式权威执行态：state 可 null（清空），reason 只在非 on 时出现
+        // 快速模式权威执行态：state 可 null（清空），reason 只在非 on 时出现。
+        // 两个枚举都做**单字段降级**（.catch）：SDK 扩了新取值时只丢这一个字段（web 退回
+        // metadata.sdkMetadata 快照），不能让整条载荷校验失败被丢——那会让面板永远停在旧态。
+        // 口径与 RuntimeStateSchema.permissionMode 的 .catch 一致。
         'fast-mode-state': z.object({
             sid: z.string(),
-            fastModeState: FastModeStateSchema.nullable(),
-            fastModeDisabledReason: FastModeDisabledReasonSchema.optional(),
+            fastModeState: FastModeStateSchema.nullable().catch(null),
+            fastModeDisabledReason: FastModeDisabledReasonSchema.optional().catch(undefined),
         }),
         'run-started': z.object({ sid: z.string(), runStartedAt: z.number().finite().positive() }).passthrough(),
         // 两个字段都是判据本身，缺一不可（不是「其余字段透传」那一类）

@@ -462,7 +462,8 @@ describe('AgentSessionService — 模型目录（list_models 与建会话软校�
         if (answer.ok) throw new Error('expected failure')
         expect(answer.error).toContain('probe timed out')
         expect(answer.error).toContain('auto')
-        expect(answer.error).toContain('haiku')
+        // 预设别名（haiku 等）在目录里查不到，会被软校验换成默认模型——文案不能再建议它们
+        expect(answer.error).not.toContain('haiku')
     })
 
     test('listModels：空清单按不可用处理（不冒充「宿主没有模型」）', async () => {

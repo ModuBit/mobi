@@ -136,8 +136,14 @@ export function ModelSettingsSelect({
     )
 
     const showEffort = Boolean(onEffortChange) && effortLevels.length > 0
-    // 快速开关只在模型声明支持且调用方能承载切换时出现（创建页与会话内同规）
-    const showFast = Boolean(onFastModeChange) && modelInfo?.supportsFastMode === true
+    /**
+     * 快速开关的可见性（pill 的闪电与面板里的开关共用，避免「⚡ 亮着却关不掉」）。
+     *
+     * 只有模型**明确声明不支持**时才隐藏：能力未知（auto / 目录里没有它）时开关可见——
+     * `fastMode` 是用户意图，能不能生效由 SDK 回读的 `fastModeState` 说了算，
+     * 拿能力位去挡意图，会让已经开着快速模式的会话失去唯一关闭入口。
+     */
+    const showFast = Boolean(onFastModeChange) && modelInfo?.supportsFastMode !== false
     const fastEnabled = fastMode === true
 
     const handleReset = useCallback(() => {
@@ -212,7 +218,7 @@ export function ModelSettingsSelect({
                         WebkitTapHighlightColor: 'transparent',
                     }}
                 >
-                    {fastEnabled && (
+                    {showFast && fastEnabled && (
                         <Zap size={12} aria-hidden="true" fill="currentColor" style={{ flex: 'none', color: 'var(--primary)' }} />
                     )}
                     {/* 省略号只吃模型名：档位是「模型 · 档位」里信息密度更高的一半，

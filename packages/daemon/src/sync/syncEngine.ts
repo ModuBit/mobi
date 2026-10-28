@@ -16,7 +16,7 @@
 
 import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
 import type { ExecutorState } from '@mobi/node-core/api/types'
-import { DEFAULT_STOP_KIND, isCancelQueued, reconcileSessionConfigForModel, type PermissionAnswers, type PermissionUpdate, type SessionKillRequest, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, isCancelQueued, reconcileModelChange, type PermissionAnswers, type PermissionUpdate, type SessionKillRequest, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import { homedir } from 'node:os'
 import type { Store } from '../store'
@@ -329,7 +329,13 @@ export class SyncEngine {
         const affected = this.workspaceCache.deleteWorkspace(id, namespace)
         if (affected === null) return false
         for (const sessionId of affected) {
-            this.sessionCache.refreshSession(sessionId)
+            const session = this.sessionCache.refreshSession(sessionId)
+            // 解绑后逐会话广播完整 session（workspaceId 已置空）+ membership 声明：
+            // web 端据此 patch 会话本体并失效分组视图。载荷必须是**刷新后**的行——
+            // 刷新前发出去只会把旧的 workspaceId 再确认一遍
+            if (session) {
+                this.eventPublisher.emit({ type: 'session-updated', sessionId, data: session, affects: 'membership' })
+            }
         }
         return true
     }
@@ -754,7 +760,7 @@ export class SyncEngine {
 
     /**
      * 换模型时按目标模型能力收敛 effort / fastMode（规则单源在 `@mobi/shared` 的
-     * `reconcileSessionConfigForModel`）。放在 daemon 这一层是因为它同时是 web 与 agent/API
+     * `reconcileModelChange`）。放在 daemon 这一层是因为它同时是 web 与 agent/API
      * 的入口——只靠面板隐藏按钮挡不住直调 API 传 `effort:"max"` + 不支持该档位的模型。
      * 只在 config 显式带 model 时介入：单改 effort / fastMode 的路由不受影响。
      */
@@ -764,8 +770,9 @@ export class SyncEngine {
     ): T {
         if (config.model === undefined) return config
         const session = this.sessionCache.getSession(sessionId)
-        const target = session?.metadata?.sdkMetadata?.models?.find((m) => m.value === config.model) ?? null
-        const patch = reconcileSessionConfigForModel(target, {
+        // 目录查表与收敛一体（reconcileModelChange）：查不到目标模型（auto / 预设别名 /
+        // 探针没列它）就不收敛——能力未知不等于没有能力
+        const patch = reconcileModelChange(session?.metadata?.sdkMetadata?.models, config.model, {
             effort: config.effort ?? session?.runtimeState?.effort,
             fastMode: config.fastMode ?? session?.runtimeState?.fastMode,
         })

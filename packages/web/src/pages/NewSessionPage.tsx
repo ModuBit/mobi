@@ -25,7 +25,7 @@ import { Cpu } from 'lucide-react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
-import { DEFAULT_MODEL, OUTPUT_STYLE_FOLLOW_SETTING, reconcileSessionConfigForModel } from '@mobi/shared'
+import { DEFAULT_MODEL, OUTPUT_STYLE_FOLLOW_SETTING, reconcileModelChange } from '@mobi/shared'
 import { useDaemonStatus } from '@/core/data/hooks/queries/useDaemonStatus'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
@@ -610,12 +610,10 @@ export function NewSessionPage() {
     }, [hostModels, model])
 
     // 换模型时按目标模型能力收敛档位与快速模式：创建页没有 daemon 的配置下发环节，
-    // 越界值会原样进 spawn 请求体，所以这里必须自己收一次（规则与 daemon 同一函数）
+    // 越界值会原样进 spawn 请求体，所以这里必须自己收一次（规则与 daemon 同一函数；
+    // 查不到目标模型时它不收敛——auto 与预设别名在目录里必然查不到）
     const handleModelChange = useCallback((value: string) => {
-        const patch = reconcileSessionConfigForModel(
-            hostModels?.find(m => m.value === value) ?? null,
-            { effort, fastMode },
-        )
+        const patch = reconcileModelChange(hostModels, value, { effort, fastMode })
         setModel(value)
         if (patch.effort) setEffort(patch.effort)
         if (patch.fastMode !== undefined) setFastMode(patch.fastMode)

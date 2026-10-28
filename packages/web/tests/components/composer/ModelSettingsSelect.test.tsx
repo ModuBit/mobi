@@ -39,6 +39,7 @@ const MODELS: ModelInfo[] = [
     { value: 'opus', displayName: 'Opus', description: '最强', supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high', 'xhigh'], supportsFastMode: true },
     { value: 'sonnet', displayName: 'Sonnet', description: '日常' },
     { value: 'plain', displayName: 'Plain', description: '无 effort', supportsEffort: false },
+    { value: 'no-fast', displayName: 'NoFast', description: '明确不支持快速模式', supportsFastMode: false },
 ]
 
 /** 受控宿主：把回调落到本地 state，验证面板与 pill 的联动 */
@@ -245,8 +246,8 @@ describe('ModelSettingsSelect', () => {
         expect(screen.getByRole('button', { name: 'composer.modelPanel.fastOn' })).toHaveAttribute('aria-pressed', 'true')
     })
 
-    it('模型不支持快速模式或调用方无切换回调时不渲染闪电钮', () => {
-        const { unmount } = render(<Harness initialModel="plain" />)
+    it('模型明确不支持快速模式或调用方无切换回调时不渲染闪电钮', () => {
+        const { unmount } = render(<Harness initialModel="no-fast" />)
         openPanel()
         expect(screen.queryByRole('button', { name: /composer\.modelPanel\.fast/ })).not.toBeInTheDocument()
         unmount()
@@ -254,6 +255,12 @@ describe('ModelSettingsSelect', () => {
         render(<Harness fastToggleable={false} />)
         openPanel()
         expect(screen.queryByRole('button', { name: /composer\.modelPanel\.fast/ })).not.toBeInTheDocument()
+    })
+
+    it('能力未知（模型没声明 supportsFastMode）时仍渲染闪电钮——否则已开启的快速模式失去关闭入口', () => {
+        render(<Harness initialModel="plain" initialFastMode />)
+        openPanel()
+        expect(screen.getByRole('button', { name: 'composer.modelPanel.fastOn' })).toBeInTheDocument()
     })
 
     it('重置一并关闭快速模式', () => {

@@ -95,7 +95,7 @@ describe('WorkspaceCache', () => {
         expect(events).toHaveLength(count)
     })
 
-    test('deleteWorkspace 后广播 workspace-removed，名下会话逐个广播 session-updated', () => {
+    test('deleteWorkspace 后广播 workspace-removed，返回解绑会话 id（解绑广播归 syncEngine）', () => {
         const workspace = cache.createWorkspace('default', {
             name: 'a', folders: [{ path: '/a', primary: true }],
         })
@@ -115,12 +115,10 @@ describe('WorkspaceCache', () => {
         expect(removed).toHaveLength(1)
         expect(removed[0]).toMatchObject({ workspaceId: workspace.id, namespace: 'default' })
 
-        const updated = events.filter(e => e.type === 'session-updated')
-        expect(updated.map(e => (e as { sessionId: string }).sessionId).sort())
-            .toEqual([s1.id, s2.id].sort())
-        for (const e of updated) {
-            expect((e as { namespace?: string }).namespace).toBe('default')
-        }
+        // 逐会话广播**不在这里**：解绑结果此刻还没刷新进 sessionCache，发出去只能是旧值。
+        // 由 syncEngine 刷新缓存后带完整 session + affects:'membership' 广播
+        //（contract 见 syncEngine.deleteWorkspace）。
+        expect(events.filter(e => e.type === 'session-updated')).toHaveLength(0)
     })
 
     test('deleteWorkspace 不存在 / 跨 namespace → null 不发事件', () => {

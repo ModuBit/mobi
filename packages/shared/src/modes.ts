@@ -27,15 +27,6 @@ const CLAUDE_MODEL_PRESETS = ['sonnet', 'sonnet[1m]', 'opus', 'opus[1m]'] as con
 export type ClaudeModelPreset = typeof CLAUDE_MODEL_PRESETS[number]
 
 /**
- * 模型兜底清单（宿主能力探针不可用时使用）。
- *
- * 单源在 shared：web 创建页 / 会话面板拿它渲染下拉，daemon 的 MCP 失败文案拿它
- * 告诉 agent「目录不可用时还能填什么」——两处各写一份必然漂移。
- *
- * 项形状刻意宽于 `ModelInfo`（description 可选、无能力位）：它是**手写常量**，
- * 不是探针结果，能力位未知就如实缺省。
- */
-/**
  * 默认模型值（CLI 的默认模型别名）。
  *
  * 单源：偏好空值兜底、面板「重置」目标、创建页初始值、daemon 的「auto 恒合法」判据
@@ -44,6 +35,16 @@ export type ClaudeModelPreset = typeof CLAUDE_MODEL_PRESETS[number]
  */
 export const DEFAULT_MODEL = 'auto'
 
+/**
+ * 模型兜底清单（宿主能力探针不可用时使用）。
+ *
+ * 单源在 shared：web 创建页 / 会话面板拿它渲染下拉；daemon 的 MCP 软校验拿
+ * {@link DEFAULT_MODEL} 作「恒合法」判据（预设备选名字**不**在目录里，会被换成默认模型，
+ * 所以失败文案不再把它们当作可填值）。
+ *
+ * 项形状刻意宽于 `ModelInfo`（description 可选、无能力位）：它是**手写常量**，
+ * 不是探针结果，能力位未知就如实缺省。
+ */
 export const CLAUDE_MODEL_FALLBACK: readonly { value: string; displayName: string; description?: string }[] = [
     { value: DEFAULT_MODEL, displayName: 'Auto', description: 'Use the default model' },
     { value: 'opus', displayName: 'Opus', description: 'Most capable for complex work' },
@@ -222,4 +223,43 @@ export function reconcileSessionConfigForModel(
         reconciled.fastMode = false
     }
     return reconciled
+}
+
+/** 目录条目：模型名 + 全名 + 能力位（探针返回的 `ModelInfo` 天然满足） */
+export interface CatalogModelCapability extends ModelConfigCapability {
+    value: string
+    /** 同一个模型的完整名（如 `claude-opus-5-5-20260101`）：调用方从哪抄来的都可能 */
+    resolvedModel?: string
+}
+
+/**
+ * 在宿主模型目录里找目标模型；**查不到返回 null（能力未知）**。
+ *
+ * `auto` 恒返回 null：它是 CLI 的默认模型别名，探针清单不保证列它——把它当成
+ * 「一个没有能力的模型」会让收敛逻辑顺手改掉用户的档位与快速模式。
+ */
+export function findCatalogModel<T extends CatalogModelCapability>(
+    models: readonly T[] | null | undefined,
+    value: string | null | undefined,
+): T | null {
+    if (!models || !value || value === DEFAULT_MODEL) return null
+    return models.find(model => model.value === value || model.resolvedModel === value) ?? null
+}
+
+/**
+ * 换模型时按目录收敛 effort / fastMode（查表 + 收敛一体，调用方只给「目录 + 新模型名」）。
+ *
+ * 与 {@link reconcileSessionConfigForModel} 的差别只有一处，但很关键：**查不到目标模型
+ * 就不收敛**。没有能力信息（auto / 预设别名 / 探针没列它 / 目录未就绪）不等于没有能力，
+ * 按「无能力」去改会把用户的档位从 max 压到 xhigh、把快速模式关掉，且 auto 在面板里
+ * 没有闪电开关，关掉就再也打不开。
+ */
+export function reconcileModelChange(
+    models: readonly CatalogModelCapability[] | null | undefined,
+    modelValue: string | null | undefined,
+    current: { effort?: EffortLevel; fastMode?: boolean },
+): ReconciledSessionConfig {
+    const target = findCatalogModel(models, modelValue)
+    if (!target) return {}
+    return reconcileSessionConfigForModel(target, current)
 }

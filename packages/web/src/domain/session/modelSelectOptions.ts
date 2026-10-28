@@ -19,7 +19,7 @@
  * 宿主探针清单 → 选项；探针未就绪/失败时回落兜底四项；`auto` 恒为首位合成项。
  */
 
-import { CLAUDE_MODEL_FALLBACK, DEFAULT_MODEL, type ModelInfo } from '@mobi/shared'
+import { CLAUDE_MODEL_FALLBACK, DEFAULT_MODEL, findCatalogModel, type ModelInfo } from '@mobi/shared'
 
 export interface ModelSelectOption {
     value: string
@@ -79,6 +79,6 @@ export function buildModelSelectOptions(models?: readonly ModelInfo[] | null): M
  */
 export function reconcileStoredModel(stored: string, models?: readonly ModelInfo[] | null): string {
     if (!models || models.length === 0) return stored
-    if (models.some(m => m.value === stored)) return stored
-    return AUTO_MODEL_OPTION.value
+    // 查表规则单源在 shared：value 与 resolvedModel 都算「目录里有它」
+    return findCatalogModel(models, stored) ? stored : DEFAULT_MODEL
 }

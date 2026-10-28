@@ -73,8 +73,10 @@ export class WorkspaceCache {
     /**
      * 删除工作区（store 事务内解绑名下会话，workspace_id → NULL）。
      * 删除成功返回受影响的 session ID 列表（事务内枚举，无「先查后删」竞态窗口），
-     * 失败返回 null——调用方（syncEngine）据此刻意刷新 sessionCache 对应条目，
-     * 无需全 namespace 扫描。
+     * 失败返回 null。
+     *
+     * **逐会话广播不在这里**：解绑后的会话行此刻还没刷新进 sessionCache，发出去也只能
+     * 是旧值或空载荷；由调用方（syncEngine）刷新缓存后带完整 session 广播。
      */
     deleteWorkspace(id: string, namespace: string): string[] | null {
         const affectedSessionIds = this.store.workspaces.deleteWorkspace(id, namespace)
@@ -82,10 +84,6 @@ export class WorkspaceCache {
 
         this.workspaces.delete(id)
         this.publisher.emit({ type: 'workspace-removed', workspaceId: id, namespace })
-        // 名下会话已解绑（流入「最近」），逐个广播让 Web 端感知——这是真正的分组成员变化
-        for (const sessionId of affectedSessionIds) {
-            this.publisher.emit({ type: 'session-updated', sessionId, namespace, affects: 'membership' })
-        }
         return affectedSessionIds
     }
 

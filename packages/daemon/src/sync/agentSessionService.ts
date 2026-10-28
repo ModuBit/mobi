@@ -28,7 +28,7 @@
  * 依赖一律收成窄入参（不直接持 Store / MachineCache），便于单测用内存假件。
  */
 
-import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT, CLAUDE_MODEL_FALLBACK, DEFAULT_MODEL, normalizeUserContent, UserMessageContentSchema } from '@mobi/shared'
+import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT, DEFAULT_MODEL, findCatalogModel, normalizeUserContent, UserMessageContentSchema } from '@mobi/shared'
 import type {
     AgentCreateSessionAck,
     AgentCreateSessionReadiness,
@@ -538,14 +538,12 @@ function translateSpawnFailure(failure: RpcFailureKind, message: string): string
  * 请求的模型名是否在目录里。
  *
  * `auto` 恒真：它是 CLI 的默认模型别名，探针清单不保证列它（web 侧同样强制合成，
- * 见 modelSelectOptions.buildModelSelectOptions）。`resolvedModel` 也认——那是同一个
- * 模型的全名，调用方从哪里抄来的都可能。
+ * 见 modelSelectOptions.buildModelSelectOptions）。其余走 shared 的
+ * {@link findCatalogModel}：`value` 与 `resolvedModel` 都认——那是同一个模型的全名，
+ * 调用方从哪里抄来的都可能。
  */
 function isModelInCatalog(requested: string, models: readonly ModelInfo[]): boolean {
-    if (requested === DEFAULT_MODEL) {
-        return true
-    }
-    return models.some((model) => model.value === requested || model.resolvedModel === requested)
+    return requested === DEFAULT_MODEL || findCatalogModel(models, requested) !== null
 }
 
 /** 回落说明（建会话成功后的 `notice`）：说清「你给的名字不可用」+「现在是什么」+「能用什么」 */
@@ -558,13 +556,15 @@ function modelFallbackNotice(requested: string, models: readonly ModelInfo[]): s
 
 /**
  * 目录不可用时的失败文案（`list_models`）。必须同时给两条信息：**为什么拿不到**
- *（不是 agent 的错）与**还能填什么**（兜底四项是合法 CLI 值，建会话不必等目录）。
+ *（不是 agent 的错）与**还能怎么做**。
+ *
+ * 只建议「省略 model」/`auto`：预设别名（opus/sonnet/haiku）在目录恢复后不会被
+ * {@link isModelInCatalog} 接受——列出来就是把 agent 引向一次静默的模型替换。
  */
 function catalogUnavailableError(reason: string): string {
     return (
         `The host model catalog is unavailable (${reason}). You can still create sessions: omit model to take ` +
-        `the default, or pass one of the fallback names ` +
-        `${CLAUDE_MODEL_FALLBACK.map((model) => model.value).join(', ')}.`
+        `the host default, or pass "${DEFAULT_MODEL}".`
     )
 }
 
