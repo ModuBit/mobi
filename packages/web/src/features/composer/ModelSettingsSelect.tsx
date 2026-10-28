@@ -35,7 +35,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerE
 import { useTranslation } from 'react-i18next'
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
 import { ChevronRight, RotateCcw, Zap } from 'lucide-react'
-import { DEFAULT_EFFORT, DEFAULT_MODEL, resolveModelEffortLevels } from '@mobi/shared'
+import { DEFAULT_EFFORT, DEFAULT_MODEL, findCatalogModel, resolveModelEffortLevels } from '@mobi/shared'
 import type { EffortLevel, FastModeState, ModelInfo } from '@mobi/shared'
 import { MorphSelect, type MorphSelectItem } from '@/ui/base/interactive/morph-select/MorphSelect'
 import { MorphSurface } from '@/ui/base/interactive/morph-surface/MorphSurface'
@@ -108,10 +108,8 @@ export function ModelSettingsSelect({
     const [open, setOpen] = useState(false)
 
     const modelOptions = useMemo(() => buildModelSelectOptions(models), [models])
-    const modelInfo = useMemo(
-        () => models?.find(m => m.value === model),
-        [models, model],
-    )
+    // 目录查表单源（shared）：value 与 resolvedModel 都认，auto 恒为「能力未知」
+    const modelInfo = useMemo(() => findCatalogModel(models, model), [models, model])
     const effortLevels = useMemo(() => resolveModelEffortLevels(modelInfo), [modelInfo])
 
     /** MorphSelect 的分组清单：`auto` 单列默认组，其余为宿主真实模型（描述行参与搜索） */
@@ -137,13 +135,14 @@ export function ModelSettingsSelect({
 
     const showEffort = Boolean(onEffortChange) && effortLevels.length > 0
     /**
-     * 快速开关的可见性（pill 的闪电与面板里的开关共用，避免「⚡ 亮着却关不掉」）。
+     * 快速开关的可见性（pill 的闪电与面板里的开关共用同一判据，避免「⚡ 亮着却关不掉」）。
      *
-     * 只有模型**明确声明不支持**时才隐藏：能力未知（auto / 目录里没有它）时开关可见——
-     * `fastMode` 是用户意图，能不能生效由 SDK 回读的 `fastModeState` 说了算，
-     * 拿能力位去挡意图，会让已经开着快速模式的会话失去唯一关闭入口。
+     * 只在模型**明确声明支持**时出现：能力未知（auto / 目录里没有它）时点了也没用——
+     * SDK 不会对不支持它的模型打开快速模式，`fastModeState` 不会翻，按钮就是个死键
+     *（2026-10-28 真机：所有模型都有按钮、点了没反应）。存的 `fastMode` 是跨模型存续的
+     * 惰性值，换成支持的模型会重新生效，不需要在这里改它。
      */
-    const showFast = Boolean(onFastModeChange) && modelInfo?.supportsFastMode !== false
+    const showFast = Boolean(onFastModeChange) && modelInfo?.supportsFastMode === true
     const fastEnabled = fastMode === true
 
     const handleReset = useCallback(() => {
@@ -187,43 +186,17 @@ export function ModelSettingsSelect({
             open={open}
             onOpenChange={setOpen}
             disabled={disabled}
+            maxPillWidth={pillMaxWidth(isMobile)}
             content={panel}
-            trigger={({ open: isOpen, toggle }) => (
-                <button
-                    type="button"
-                    aria-label={label}
-                    aria-haspopup="dialog"
-                    aria-expanded={isOpen}
-                    disabled={disabled}
-                    onClick={toggle}
-                    style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        maxWidth: pillMaxWidth(isMobile),
-                        height: 'var(--control-height-md)',
-                        padding: '0 12px',
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--radius-pill)',
-                        background: isOpen ? 'var(--surface-raised)' : 'var(--surface)',
-                        color: 'var(--foreground)',
-                        font: 'inherit',
-                        fontSize: 'var(--text-sm)',
-                        fontWeight: 500,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        cursor: disabled ? 'not-allowed' : 'pointer',
-                        opacity: disabled ? 0.55 : 1,
-                        WebkitTapHighlightColor: 'transparent',
-                    }}
-                >
+            trigger={({ open: isOpen }) => (
+                <>
                     {showFast && fastEnabled && (
                         <Zap size={12} aria-hidden="true" fill="currentColor" style={{ flex: 'none', color: 'var(--primary)' }} />
                     )}
                     {/* 省略号只吃模型名：档位是「模型 · 档位」里信息密度更高的一半，
-                        长模型名截断时不该把档位一起截掉 */}
-                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        长模型名截断时不该把档位一起截掉。展开后这一行被拉成面板的 lid，
+                        模型名吃满剩余宽度、chevron 落在最右（与权限 pill 同一形态） */}
+                    <span style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {modelLabel}
                     </span>
                     {showEffort && (
@@ -235,9 +208,9 @@ export function ModelSettingsSelect({
                     <ChevronRight
                         size={14}
                         aria-hidden="true"
-                        style={{ flex: 'none', color: 'var(--text-muted)', transform: isOpen ? 'rotate(-90deg)' : undefined, transition: 'transform var(--duration-fast) var(--ease-standard)' }}
+                        style={{ flex: 'none', marginLeft: 'auto', color: 'var(--text-muted)', transform: isOpen ? 'rotate(-90deg)' : undefined, transition: 'transform var(--duration-fast) var(--ease-standard)' }}
                     />
-                </button>
+                </>
             )}
         />
     )

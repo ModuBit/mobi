@@ -82,6 +82,17 @@ export function toApiError(error: unknown): Error {
     return Object.assign(new Error(extractApiError(error)), { cause: error })
 }
 
+/**
+ * 业务错误码（daemon 可选下发 `{ error, code }`）：供 UI 按码选文案。
+ * 与 {@link extractApiError} 分开是因为两者用途不同——文案给人看、码给分支用；
+ * 只有确实带码的失败才返回，普通失败返回 null。
+ */
+export function extractApiErrorCode(error: unknown): string | null {
+    if (!axios.isAxiosError(error)) return null
+    const data = error.response?.data as { code?: unknown } | undefined
+    return typeof data?.code === 'string' ? data.code : null
+}
+
 export function createApiClient(): AxiosInstance {
     const client = axios.create({
         baseURL: window.location.origin,

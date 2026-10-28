@@ -25,6 +25,7 @@ import { resolve } from 'node:path'
 import { z } from 'zod'
 import { checkWorkspaceAssignable, type SyncEngine, type Session, type OutputStyleSwitchOutcome, type ForkSessionResult } from '../../sync/syncEngine'
 import { readRpcFailure } from '../../sync/rpcFailure'
+import { OutdatedSessionConfigError } from '../../sync/outdatedSessionConfigError'
 import { isSessionRowDeletable } from '../../sync/sessionDeleteGuard'
 import { daemonLogger } from '../../logger'
 import { createWorktreeLifecycleService } from '../../worktree/service'
@@ -170,7 +171,10 @@ function registerSessionConfigRoute<K extends SessionConfigFieldKey>(
             return c.json({ ok: true })
         } catch (error) {
             const message = error instanceof Error ? error.message : `Failed to apply ${opts.field}`
-            return c.json({ error: message }, 409)
+            // 业务失败可带结构化 code（如「会话进程版本落后」），web 按码选文案；
+            // 没码的是普通失败，保持既有形状
+            const code = error instanceof OutdatedSessionConfigError ? error.code : null
+            return c.json(code ? { error: message, code } : { error: message }, 409)
         }
     })
 }

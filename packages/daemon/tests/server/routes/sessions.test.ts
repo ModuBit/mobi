@@ -17,6 +17,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
 import type { SyncEngine } from '../../../src/sync/syncEngine'
+import { OutdatedSessionConfigError } from '../../../src/sync/outdatedSessionConfigError'
 import type { Session } from '@mobi/shared'
 
 const mockSession: Session = {
@@ -445,5 +446,41 @@ describe('Sessions API', () => {
             expect(res.status).toBe(404)
             setup.cleanup()
         })
+    })
+})
+
+/**
+ * 会话进程版本落后：CLI 回执缺字段（旧进程不认识后加的配置项）。
+ * daemon 必须如实失败并带结构化 code——静默 200 会让界面「点了没反应」且无从诊断。
+ */
+describe('POST /api/sessions/:id/fast-mode（会话进程版本落后）', () => {
+    test('回执核对失败 → 409 + code:session_process_outdated', async () => {
+        const engine = {
+            resolveSessionAccess: () => ({
+                ok: true as const,
+                sessionId: 'test-session-1',
+                session: mockSession,
+            }),
+            applySessionConfig: async () => {
+                throw new OutdatedSessionConfigError(['fastMode'])
+            },
+        } as unknown as SyncEngine
+
+        const setup = await setupTestApp(engine)
+        try {
+            const token = await getAuthToken(setup.app)
+            const res = await setup.app.request('/api/sessions/test-session-1/fast-mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ fastMode: true }),
+            })
+
+            expect(res.status).toBe(409)
+            const body = await res.json() as { error: string; code?: string }
+            expect(body.code).toBe('session_process_outdated')
+            expect(body.error).toContain('fastMode')
+        } finally {
+            setup.cleanup()
+        }
     })
 })

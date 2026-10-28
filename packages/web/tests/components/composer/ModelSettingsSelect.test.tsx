@@ -26,7 +26,7 @@
 import { useState } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, cleanup, fireEvent, screen } from '@testing-library/react'
+import { render, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import type { EffortLevel, ModelInfo } from '@mobi/shared'
 import { ModelSettingsSelect } from '@/features/composer/ModelSettingsSelect'
 
@@ -103,6 +103,28 @@ describe('ModelSettingsSelect', () => {
         openPanel()
         expect(screen.getAllByText('composer.effortLevels.medium').length).toBeGreaterThan(0)
         expect(screen.getByRole('slider')).toBeInTheDocument()
+    })
+
+    it('展开后 pill 隐去、面板底部由 lid 承接同一份内容，收起后交还给 pill', async () => {
+        render(<Harness />)
+        const pill = screen.getByRole('button', { name: '模型' })
+        expect(document.querySelectorAll('button[aria-label="模型"]')).toHaveLength(1)
+
+        openPanel()
+        // 表面里的 lid 与文档流里的 pill 是两份节点，但只有 lid 在无障碍树里
+        const nodes = document.querySelectorAll('button[aria-label="模型"]')
+        expect(nodes).toHaveLength(2)
+        expect(pill).toHaveAttribute('aria-hidden', 'true')
+        const accessible = screen.getAllByRole('button', { name: '模型' })
+        expect(accessible).toHaveLength(1)
+        expect(accessible[0]).toHaveTextContent('Opus')
+
+        fireEvent.click(accessible[0])
+        // 收起动画播完才卸载表面：之后只剩文档流里的 pill，且恢复可访问
+        await waitFor(() => expect(document.querySelectorAll('button[aria-label="模型"]')).toHaveLength(1))
+        const restored = screen.getByRole('button', { name: '模型' })
+        expect(restored).not.toHaveAttribute('aria-hidden')
+        expect(restored).toHaveTextContent('Opus')
     })
 
     it('模型行走 MorphSelect 弹层：点开列出分组，选中后收起并更新 pill', () => {
@@ -257,10 +279,10 @@ describe('ModelSettingsSelect', () => {
         expect(screen.queryByRole('button', { name: /composer\.modelPanel\.fast/ })).not.toBeInTheDocument()
     })
 
-    it('能力未知（模型没声明 supportsFastMode）时仍渲染闪电钮——否则已开启的快速模式失去关闭入口', () => {
+    it('能力未知（模型没声明 supportsFastMode）时不渲染闪电钮——点了 SDK 也不会生效', () => {
         render(<Harness initialModel="plain" initialFastMode />)
         openPanel()
-        expect(screen.getByRole('button', { name: 'composer.modelPanel.fastOn' })).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: /composer\.modelPanel\.fast/ })).not.toBeInTheDocument()
     })
 
     it('重置一并关闭快速模式', () => {

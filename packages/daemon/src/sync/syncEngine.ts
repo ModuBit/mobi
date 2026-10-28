@@ -37,6 +37,7 @@ import { MessageService, type SendMessagePayload } from './messageService'
 import { WorkspaceCache } from './workspaceCache'
 import { RpcGateway } from './rpcGateway'
 import { SessionCache } from './sessionCache'
+import { OutdatedSessionConfigError } from './outdatedSessionConfigError'
 import { SessionReviver, type ReviveOptions, type ReviveResult } from './sessionReviver'
 import { SessionRegistry } from './sessionRegistry'
 import { readRpcFailure } from './rpcFailure'
@@ -788,10 +789,8 @@ export class SyncEngine {
             fastMode?: boolean
         }
     ): Promise<void> {
-        const result = await this.rpcGateway.requestSessionConfig(
-            sessionId,
-            this.reconcileForModelChange(sessionId, config)
-        )
+        const requested = this.reconcileForModelChange(sessionId, config)
+        const result = await this.rpcGateway.requestSessionConfig(sessionId, requested)
         if (!result || typeof result !== 'object') {
             throw new Error('Invalid response from session config RPC')
         }
@@ -799,6 +798,17 @@ export class SyncEngine {
         const applied = obj.applied
         if (!applied || typeof applied !== 'object') {
             throw new Error('Missing applied session config')
+        }
+
+        // 回执核对：请求了哪几个字段，CLI 就必须逐个回ack。缺字段只可能是「对端不认识它」——
+        // 会话进程活得比 daemon 久，换二进制不重启会话时跑的仍是加字段之前的代码。照单全收
+        // 会让链路变成「HTTP 200 + 界面毫无变化 + 没有任何报错」（2026-10-28：Oct 25 起的会话
+        // 进程点快速模式无反应，DB 里 runtimeState.fastMode 从未出现）；如实失败，让 web 提示重启
+        const missing = Object.keys(requested)
+            .filter((key) => requested[key as keyof typeof requested] !== undefined)
+            .filter((key) => !(key in applied))
+        if (missing.length > 0) {
+            throw new OutdatedSessionConfigError(missing)
         }
 
         this.sessionCache.applySessionConfig(sessionId, applied)

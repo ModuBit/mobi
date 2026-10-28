@@ -75,7 +75,7 @@ import { QuoteCommentInput } from '@/features/chat/QuoteCommentInput'
 import { SelectionGhost } from '@/features/chat/SelectionGhost'
 import { useMobileQuoteSelection } from '@/features/chat/useMobileQuoteSelection'
 import { useKeyboardViewport } from '@/features/chat/useKeyboardViewport'
-import { useMobiApi } from '@/core/data/api/client'
+import { extractApiErrorCode, useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/features/composer/ResponsiveActionBar'
 import type { DecryptedMessage, SessionMetadataSummary } from '@/core/data/api/types'
 import { useForegroundTasksStore } from '@/core/data/stores/foregroundTasksStore'
@@ -1548,8 +1548,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const handleFastModeChange = async (enabled: boolean) => {
         try {
             await sessionActions.setFastMode(enabled)
-        } catch {
-            messageApi.error(t('composer.modelPanel.fastSwitchFailed'))
+        } catch (error) {
+            // 会话进程版本落后（旧进程不认识快速模式，daemon 回执核对后 409）→ 提示重启会话，
+            // 否则「切换失败，请重试」只会让人反复点；其余失败保持通用文案
+            messageApi.error(extractApiErrorCode(error) === 'session_process_outdated'
+                ? t('composer.modelPanel.fastNeedsRestart')
+                : t('composer.modelPanel.fastSwitchFailed'))
         }
     }
 
@@ -1804,7 +1808,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 onSend={handleSend}
                 onAbort={handleAbort}
                 abortPending={sessionActions.isAbortPending}
-                onActivate={() => sessionActions.resumeSession()}
+                onActivate={() => {
+                    // 与 composer 的恢复动作同款反馈：唤醒失败必须可见，否则按钮点了像没反应
+                    void sessionActions.resumeSession().catch(() => messageApi.error(t('chat.error.resumeFailed')))
+                }}
                 activatePending={sessionActions.isResumePending}
                 onSwitchToRemote={() => sessionActions.switchSession()}
                 switchPending={sessionActions.isSwitchPending}

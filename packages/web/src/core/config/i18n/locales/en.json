@@ -979,7 +979,8 @@
       "fastOn": "Fast mode is on",
       "fastOff": "Fast mode is off",
       "fastCooldown": "Fast mode cooling down: temporarily rate-limited, recovers automatically",
-      "fastSwitchFailed": "Failed to switch fast mode, please retry"
+      "fastSwitchFailed": "Failed to switch fast mode, please retry",
+      "fastNeedsRestart": "This session process predates fast mode; restart the session to enable it"
     }
   },
   "status": {

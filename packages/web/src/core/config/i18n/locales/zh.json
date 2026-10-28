@@ -970,7 +970,8 @@
       "fastOn": "快速模式已开启",
       "fastOff": "快速模式已关闭",
       "fastCooldown": "快速模式冷却中：限流临时不可用，稍后自动恢复",
-      "fastSwitchFailed": "快速模式切换失败，请重试"
+      "fastSwitchFailed": "快速模式切换失败，请重试",
+      "fastNeedsRestart": "这个会话进程版本较旧，重启会话后即可切换快速模式"
     }
   },
   "status": {

@@ -170,6 +170,13 @@ export class SessionReviver {
             if (!resolved.ok) return resolved.result
             const { session, targetId } = resolved
             if (this.isLive(session)) {
+                // 正常态（CLI 在线收消息）不落 info 级噪音；但 archived 行仍然 active+附着
+                // 是状态矛盾——CLI 退出前会写 archived，此刻却像活着，必须留痕
+                if (session.metadata?.lifecycleState === 'archived') {
+                    daemonLogger.warn(`[dormancy] revive no-op: session is active+attached but lifecycleState=archived (session=${sessionId}) — stale tracking?`)
+                } else {
+                    daemonLogger.debug(`[dormancy] revive no-op: CLI attached (session=${sessionId})`)
+                }
                 return { type: 'success', sessionId: targetId }
             }
             return await this.spawnRevived(session, targetId, opts.intent)
@@ -253,6 +260,9 @@ export class SessionReviver {
             fastMode: session.runtimeState?.fastMode ?? undefined,
             outputStyle: session.runtimeState?.outputStyle ?? undefined,
         }
+        // 进入真正 spawn 编排（未附着才会到这里）：记录目标与行状态，唤醒失败时这行是
+        // 与「有没有 spawn 过」唯一的事后证据（14:28 事故里 daemon 日志整段空白）
+        daemonLogger.info(`[dormancy] reviving (session=${sessionId}, resume=${resumeToken ?? '<new>'}, intent=${intent}, lifecycle=${metadata.lifecycleState ?? '<unset>'})`)
         let spawnResult = await this.deps.executor.spawnSession(metadata.path, spawnOptions)
 
         // 旧进程正在终结（CLI cleanup 先写 lifecycleState=archived 再退出）：此时 already-running
@@ -270,6 +280,11 @@ export class SessionReviver {
             // 未 spawn 新进程。旧进程断连中正无限重连（≤5s 间隔），恢复交给其重连 +
             // 附着补投（onCliAttached）收敛——daemon 零等待：不得落到
             // waitForActive，否则断连场景（重连遥遥无期）会干等满 15s
+            //
+            // 这里返回 success 但**没有任何进程被拉起**，是「点了恢复却没事发生」的
+            // 静默源之一：isLive 已判未附着，却仍有在册 child（进程活着但没连回来，
+            // 或追踪表残留）。留 warn 让下次可区分——不能靠 debug（不落文件）
+            daemonLogger.warn(`[dormancy] revive deduped: live child exists but CLI is not attached (session=${sessionId}, resume=${resumeToken ?? '<new>'}) — queued messages wait for reattach`)
             return { type: 'success', sessionId }
         }
 
@@ -279,12 +294,16 @@ export class SessionReviver {
         }
 
         if (spawnResult.type !== 'success') {
+            // 与 already-running 相对：这次真的没有进程在册。消息路由 fire-and-forget 调
+            // revive，返回值无人消费——错误文案只在这里落盘才不会丢
+            daemonLogger.warn(`[dormancy] revive spawn failed (session=${sessionId}, resume=${resumeToken ?? '<new>'}): ${spawnResult.message}`)
             this.deps.markActivationError(sessionId, 'activation-failed', spawnResult.message)
             return { type: 'error', message: spawnResult.message, code: 'resume_failed' }
         }
 
         const becameActive = await this.deps.waitForActive(spawnResult.sessionId)
         if (!becameActive) {
+            daemonLogger.warn(`[dormancy] resumed session did not become active within timeout (session=${sessionId}, spawned=${spawnResult.sessionId})`)
             this.deps.markActivationError(sessionId, 'activation-failed', 'session failed to become active')
             return { type: 'error', message: 'Session failed to become active', code: 'resume_failed' }
         }
