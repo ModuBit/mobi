@@ -180,7 +180,9 @@ export class TerminalManager {
                     }
                 },
                 onExit: (subprocess, exitCode) => {
-                    const signal = subprocess.signalCode ?? null
+                    // bun-types 1.4.4 起 signalCode 含数字信号分支，出口契约统一为字符串
+                    const raw = subprocess.signalCode ?? null
+                    const signal = raw == null ? null : String(raw)
                     this.onExit({
                         sessionId: this.sessionId,
                         terminalId,
