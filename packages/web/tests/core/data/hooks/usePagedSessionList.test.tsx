@@ -482,12 +482,26 @@ describe('P1：session-* SSE 事件失效工作区视图', () => {
         await assertWorkspaceViewsInvalidated({ type: 'session-removed', sessionId: 's1' })
     })
 
-    it('session-updated 完整 session 载荷（归属变更）→ workspaceViews 批量失效', async () => {
-        await assertWorkspaceViewsInvalidated({ type: 'session-updated', sessionId: 's1', data: { id: 's1', workspaceId: 'p1' } })
+    it('session-updated 声明 affects: membership（归属变更 / 置顶）→ workspaceViews 批量失效', async () => {
+        await assertWorkspaceViewsInvalidated({ type: 'session-updated', sessionId: 's1', data: { id: 's1', workspaceId: 'p1' }, affects: 'membership' })
     })
 
-    it('session-updated 无 data 载荷（删除工作区解绑）→ workspaceViews 批量失效', async () => {
-        await assertWorkspaceViewsInvalidated({ type: 'session-updated', sessionId: 's1' })
+    it('session-updated 声明 affects: membership 且无 data（删除工作区解绑）→ workspaceViews 批量失效', async () => {
+        await assertWorkspaceViewsInvalidated({ type: 'session-updated', sessionId: 's1', affects: 'membership' })
+    })
+
+    it('session-updated 未声明变更域（即便带完整 session 载荷）→ 不失效工作区视图', async () => {
+        // 语义以声明为准，不再按载荷形状推断：daemon 顺手发过一次完整对象（配置切换），
+        // 就会退化成每个轻操作重拉全部工作区视图
+        const { queryClient: qc } = await renderProvider()
+        const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+
+        sseListener.current!({ type: 'session-updated', sessionId: 's1', data: { id: 's1', effort: 'high' } })
+
+        await new Promise(r => setTimeout(r, 120))
+        const keys = invalidateSpy.mock.calls.map(c => (c[0] as { queryKey?: unknown }).queryKey)
+        expect(keys.some(k => Array.isArray(k) && k[0] === 'workspaces')).toBe(false)
+        invalidateSpy.mockRestore()
     })
 
     it('session-updated 轻载荷（心跳/指标/重命名）→ 不失效工作区视图（V2：防 refetch 风暴）', async () => {

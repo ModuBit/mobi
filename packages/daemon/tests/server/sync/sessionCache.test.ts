@@ -951,3 +951,45 @@ describe('SessionCache.markDetached — 心跳过期纠正陈旧 active', () => 
         store.close()
     })
 })
+
+describe('SessionCache.applySessionConfig 广播载荷形状', () => {
+    let store: Store
+    let emits: { type: string; sessionId: string; data: unknown }[]
+    let cache: SessionCache
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        emits = []
+        const rec = { emit: (e: { type: string; sessionId: string; data: unknown }) => emits.push(e) }
+        cache = new SessionCache(store, rec as unknown as EventPublisher)
+    })
+
+    afterEach(() => {
+        store.close()
+    })
+
+    test('只推 runtimeState，不发完整 session（完整对象是「分组归属变更」的信号）', () => {
+        // 载荷形状即语义：web 收到带 id 的完整 session 会连带重拉工作区/最近/置顶/各工作区间
+        // 会话分组——2026-10-28 实测一次档位切换 1 POST + 10 GET
+        const session = cache.getOrCreateSession('tag-cfg-payload-1', { path: '/tmp/p' }, null, 'default')
+        emits.length = 0
+
+        cache.applySessionConfig(session.id, { effort: 'high' })
+
+        const pushed = emits.find(e => e.type === 'session-updated')
+        expect(pushed).toBeTruthy()
+        expect(Object.keys(pushed!.data as Record<string, unknown>)).toEqual(['runtimeState'])
+        expect((pushed!.data as { runtimeState: Record<string, unknown> }).runtimeState.effort).toBe('high')
+    })
+
+    test('休眠会话配置暂存同样只推 runtimeState', () => {
+        const session = cache.getOrCreateSession('tag-cfg-payload-2', { path: '/tmp/p' }, null, 'default')
+        emits.length = 0
+
+        cache.applyDormantConfig(session.id, { model: 'opus' })
+
+        const pushed = emits.find(e => e.type === 'session-updated')
+        expect(pushed).toBeTruthy()
+        expect(Object.keys(pushed!.data as Record<string, unknown>)).toEqual(['runtimeState'])
+    })
+})

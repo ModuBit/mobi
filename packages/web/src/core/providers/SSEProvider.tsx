@@ -416,12 +416,12 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // runtimeState 变化（任务进度 / 上下文水位 / 运行状态翻转）是非消息的实时活动：
                 // 计入静默告警的活动时间，避免长工具/长任务期间模型不吐字时误报「长时间无响应」
                 if (delta?.runtimeState !== undefined) markSessionActivity(event.sessionId)
-                // 只有改变分组成员资格的载荷才失效工作区视图：
-                // - 完整 session 载荷（delta.id === sessionId，如 setSessionWorkspace 归属变更）
-                // - 无 data 载荷（workspaceCache 删除工作区后逐会话解绑广播）
-                // 心跳/指标/重命名等轻载荷只需上方 patchSessionCache——活跃会话流式期间
-                // 这类事件高频，若每次都失效 ['workspaces']+全部分组会造成 refetch 风暴（V2）
-                if (delta === undefined || ('id' in delta && delta.id === event.sessionId)) {
+                // 只有广播方**显式声明**「分组成员关系变了」（affects: 'membership'）才失效
+                // 工作区视图：归属变更 / 置顶切换 / 删除工作区后的逐会话解绑。心跳、指标、
+                // 重命名、配置切换只需上方 patchSessionCache——活跃会话流式期间这类事件高频，
+                // 而按载荷形状推断（此前是「带 id 的完整对象」）会把它们误判成分组变化，
+                // 一次配置切换就重拉全部工作区视图（V2 refetch 风暴，2026-10-28 实测）
+                if (event.affects === 'membership') {
                     scheduleInvalidation('workspaceViews')
                 }
                 break

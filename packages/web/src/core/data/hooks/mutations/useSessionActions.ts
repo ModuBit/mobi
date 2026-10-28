@@ -46,9 +46,22 @@ export function useSessionActions(sessionId: string | null): {
     const queryClient = useQueryClient()
     const navigate = useNavigate()
 
-    const invalidateSession = async () => {
+    /**
+     * 只失效会话详情。
+     *
+     * 配置/运行态类操作（中断、模式切换、档位、模型、快速模式）不改变列表的成员与排序，
+     * 列表条目由 SSE 的 patchSessionCache 就地更新；而 `['sessions']` 一次返回本 namespace
+     * 的**全部**会话（无 limit），是全站最贵的拉取之一，不该为这类操作重拉。
+     */
+    const invalidateSessionDetail = async () => {
         if (!sessionId) return
         await queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) })
+    }
+
+    /** 详情 + 全量列表：改变列表可见字段（名称）或成员的操作才需要 */
+    const invalidateSessionAndList = async () => {
+        if (!sessionId) return
+        await invalidateSessionDetail()
         await queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
     }
 
@@ -66,7 +79,7 @@ export function useSessionActions(sessionId: string | null): {
             if (!sessionId) return
             if (isCancelQueued(stopKind ?? DEFAULT_STOP_KIND)) removeQueuedMessages(sessionId)
         },
-        onSuccess: () => void invalidateSession(),
+        onSuccess: () => void invalidateSessionDetail(),
         onSettled: (_data, _error, stopKind) => {
             // 仅清队列档 refetch：daemon 已物理删除 queued 行，merge 不会复活，靠整页拉取清空
             // QueuedMessagesBar（spec §6.2）；普通停止的行更新由 SSE 增量到位，不再拉整页。
@@ -85,7 +98,7 @@ export function useSessionActions(sessionId: string | null): {
             }
             await api.sessions.switch(sessionId)
         },
-        onSuccess: () => void invalidateSession(),
+        onSuccess: () => void invalidateSessionDetail(),
     })
 
     // 恢复会话
@@ -112,7 +125,7 @@ export function useSessionActions(sessionId: string | null): {
             }
             await api.sessions.setPermissionMode(sessionId, mode)
         },
-        onSuccess: () => void invalidateSession(),
+        onSuccess: () => void invalidateSessionDetail(),
     })
 
     const effortMutation = useMutation({
@@ -122,7 +135,7 @@ export function useSessionActions(sessionId: string | null): {
             }
             await api.sessions.setEffort(sessionId, effort)
         },
-        onSuccess: () => void invalidateSession(),
+        onSuccess: () => void invalidateSessionDetail(),
     })
 
     // 设置模型模式
@@ -133,7 +146,7 @@ export function useSessionActions(sessionId: string | null): {
             }
             await api.sessions.setFastMode(sessionId, fastMode)
         },
-        onSuccess: () => void invalidateSession(),
+        onSuccess: () => void invalidateSessionDetail(),
     })
 
     const modelMutation = useMutation({
@@ -143,7 +156,7 @@ export function useSessionActions(sessionId: string | null): {
             }
             await api.sessions.setModelMode(sessionId, mode)
         },
-        onSuccess: () => void invalidateSession(),
+        onSuccess: () => void invalidateSessionDetail(),
     })
 
     // 重命名会话
@@ -154,7 +167,7 @@ export function useSessionActions(sessionId: string | null): {
             }
             await api.sessions.rename(sessionId, name)
         },
-        onSuccess: () => void invalidateSession(),
+        onSuccess: () => void invalidateSessionAndList(),
     })
 
     // 删除会话

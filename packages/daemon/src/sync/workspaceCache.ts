@@ -82,9 +82,9 @@ export class WorkspaceCache {
 
         this.workspaces.delete(id)
         this.publisher.emit({ type: 'workspace-removed', workspaceId: id, namespace })
-        // 名下会话已解绑（流入「最近」），逐个广播让 Web 端感知
+        // 名下会话已解绑（流入「最近」），逐个广播让 Web 端感知——这是真正的分组成员变化
         for (const sessionId of affectedSessionIds) {
-            this.publisher.emit({ type: 'session-updated', sessionId, namespace })
+            this.publisher.emit({ type: 'session-updated', sessionId, namespace, affects: 'membership' })
         }
         return affectedSessionIds
     }

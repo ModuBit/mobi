@@ -23,9 +23,17 @@ import type { ReactNode } from 'react'
 const abortSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const fetchLatestSpy = vi.hoisted(() => vi.fn())
 const removeQueuedSpy = vi.hoisted(() => vi.fn())
+const setEffortSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const renameSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('@/core/data/api/client', () => ({
-    useMobiApi: () => ({ sessions: { abort: abortSpy } }),
+    useMobiApi: () => ({
+        sessions: {
+            abort: abortSpy,
+            setEffort: setEffortSpy,
+            rename: renameSpy,
+        },
+    }),
 }))
 vi.mock('@/core/data/stores/messageWindowStore', () => ({
     fetchLatestMessages: fetchLatestSpy,
@@ -47,7 +55,7 @@ function renderActions() {
     const wrapper = ({ children }: { children: ReactNode }) => (
         <QueryClientProvider client={qc}>{children}</QueryClientProvider>
     )
-    return renderHook(() => useSessionActions('s1'), { wrapper })
+    return { ...renderHook(() => useSessionActions('s1'), { wrapper }), qc }
 }
 
 describe('useSessionActions abortSession —— onSettled refetch 仅清队列档触发', () => {
@@ -81,5 +89,41 @@ describe('useSessionActions abortSession —— onSettled refetch 仅清队列�
         const { result } = renderActions()
         await act(async () => { await result.current.abortSession('turn-queue-tasks') })
         expect(fetchLatestSpy).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('useSessionActions 配置切换 —— 失效范围', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        setEffortSpy.mockResolvedValue(undefined)
+        renameSpy.mockResolvedValue(undefined)
+    })
+    afterEach(() => cleanup())
+
+    const invalidatedKeys = (spy: { mock: { calls: unknown[][] } }) =>
+        spy.mock.calls.map(call => JSON.stringify((call[0] as { queryKey?: unknown })?.queryKey))
+
+    it('setEffort 只失效会话详情，不重拉全量会话列表', async () => {
+        // ['sessions'] 返回本 namespace 全部会话（无 limit），配置切换不改成员与排序，
+        // 列表条目由 SSE patchSessionCache 就地更新——重拉纯属浪费
+        const { result, qc } = renderActions()
+        const invalidate = vi.spyOn(qc, 'invalidateQueries')
+
+        await act(async () => { await result.current.setEffort('high') })
+
+        const keys = invalidatedKeys(invalidate)
+        expect(keys).toContain(JSON.stringify(['session', 's1']))
+        expect(keys).not.toContain(JSON.stringify(['sessions']))
+    })
+
+    it('rename 仍失效会话列表（名称是列表可见字段）', async () => {
+        const { result, qc } = renderActions()
+        const invalidate = vi.spyOn(qc, 'invalidateQueries')
+
+        await act(async () => { await result.current.renameSession('新名字') })
+
+        const keys = invalidatedKeys(invalidate)
+        expect(keys).toContain(JSON.stringify(['session', 's1']))
+        expect(keys).toContain(JSON.stringify(['sessions']))
     })
 })

@@ -513,7 +513,10 @@ export class SessionCache {
         if (Object.keys(patch).length > 0) {
             this.runtimeStateStore.merge(session, patch)
         }
-        this.publisher.emit({ type: 'session-updated', sessionId, data: session })
+        // 只推 runtimeState：配置切换不改变分组归属，发完整 session 会让 web 把它当成
+        // 「分组成员变了」而重拉工作区/最近/置顶/各工作区分组（2026-10-28 实测一次切换
+        // 连带 1 POST + 10 GET）。载荷形状即语义——完整对象只用于置顶/归属变更。
+        this.publisher.emit({ type: 'session-updated', sessionId, data: { runtimeState: session.runtimeState } })
     }
 
     applySessionConfig(sessionId: string, config: { permissionMode?: PermissionMode; model?: string | null; effort?: EffortLevel; fastMode?: boolean }): void {

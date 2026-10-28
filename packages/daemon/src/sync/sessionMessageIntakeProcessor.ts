@@ -50,8 +50,10 @@ export type SessionMessageIntakeInput = {
 export type SessionMessageIntakePublication =
     /** 落库完成、需广播的行（new-message 出口 + message-received SSE） */
     | { type: 'stored-messages'; sessionId: string; messages: StoredMessage[] }
-    /** 边界指针推进（web 的 fork/rewind 入口读会话摘要，必须广播驱动缓存失效） */
-    | { type: 'session-updated'; sessionId: string; data: StoredSession }
+    /** 边界指针推进（web 的 fork/rewind 入口读会话摘要，必须广播驱动缓存失效）。
+     *  只带 metadata：边界指针 contextBoundarySeq 落在 metadata 上，分组归属没变——
+     *  发完整 session 会被 web 误判成「分组成员变了」，连带重拉全部工作区视图 */
+    | { type: 'session-updated'; sessionId: string; data: { metadata: StoredSession['metadata'] } }
     /** 运行状态投影产出（todos/tasks/teamState 等摘要变化） */
     | { type: 'runtime-state-updated'; sessionId: string; data: { sid: string; runtimeState: RuntimeState } }
 
@@ -119,7 +121,7 @@ export class SessionMessageIntakeProcessor {
             this.store.contextBoundary.advance(sessionId, this.store.messages.getMaxSeq(sessionId))
             // advance 刚写过该会话行，行必在；类型上 getSession 可空，查不到则跳过广播（防御性）
             const stored = this.store.sessions.getSession(sessionId)
-            if (stored) yield { type: 'session-updated', sessionId, data: stored }
+            if (stored) yield { type: 'session-updated', sessionId, data: { metadata: stored.metadata } }
         }
 
         // 运行状态投影（注入实例：跨消息配对状态连接级，受理只负责编排顺序）

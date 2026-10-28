@@ -150,6 +150,9 @@ describe('SessionMessageIntakeProcessor：受理规则收口', () => {
         // 边界推进在 stored-messages 之前广播（与原 handler 顺序一致）
         expect(types(pubs)).toEqual(['session-updated', 'stored-messages'])
         expect(pubs[0]).toMatchObject({ type: 'session-updated', sessionId: sid })
+        // 载荷只带 metadata（contextBoundarySeq 落在 metadata 上）：发完整 session 会被 web
+        // 当成「分组成员变了」，连带重拉全部工作区维度视图
+        expect(Object.keys((pubs[0] as { data: object }).data)).toEqual(['metadata'])
     })
 
     test('非边界消息不产出 session-updated', () => {

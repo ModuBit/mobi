@@ -920,7 +920,20 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
     }),
     SessionChangedSchema.extend({
         type: z.literal('session-updated'),
-        data: z.unknown().optional()
+        data: z.unknown().optional(),
+        /**
+         * 变更域声明：Web 据此决定要不要连带刷新「工作区维度视图」
+         * （workspaces / recentSessions / pinnedSessions / workspaceSessions）。
+         *
+         * 只有真正改变**分组成员关系**的广播才标 `membership`——归属变更、置顶切换、
+         * 删除工作区后的逐会话解绑。配置切换（model/effort/fastMode）、心跳、指标上报、
+         * 消息落库等一律不标。
+         *
+         * 为什么要显式声明：#A 之前 Web 靠「载荷里有没有 id」反推语义，daemon 侧一旦
+         * 顺手发了完整 session 对象（配置切换就这么干过一次），就会退化成一次操作
+         * 重拉全部工作区视图。语义写进协议，新增广播点不必再靠记性避坑。
+         */
+        affects: z.literal('membership').optional()
     }),
     SessionEventBaseSchema.extend({
         type: z.literal('session-removed'),

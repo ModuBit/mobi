@@ -357,7 +357,7 @@ export class SyncEngine {
         if (result === 'noop') return true
         const session = this.sessionCache.refreshSession(sessionId)
         if (session) {
-            this.eventPublisher.emit({ type: 'session-updated', sessionId, data: session })
+            this.eventPublisher.emit({ type: 'session-updated', sessionId, data: session, affects: 'membership' })
         }
         return true
     }
@@ -373,7 +373,7 @@ export class SyncEngine {
         if (result === 'noop') return true
         const session = this.sessionCache.refreshSession(sessionId)
         if (session) {
-            this.eventPublisher.emit({ type: 'session-updated', sessionId, data: session })
+            this.eventPublisher.emit({ type: 'session-updated', sessionId, data: session, affects: 'membership' })
         }
         return true
     }

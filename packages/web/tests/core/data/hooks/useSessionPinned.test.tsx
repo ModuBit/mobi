@@ -145,7 +145,7 @@ describe('useSetSessionPinned success 后本地立即生效', () => {
         expect(qc.getQueryData<any>(queryKeys.recentSessions)!.pages[0].sessionIds).toEqual(['s1'])
     })
 
-    it('unpin：缓存不含该会话（归属未知）不本地插入，等 invalidate 收敛', async () => {
+    it('unpin：缓存不含该会话（归属未知）不本地插入，等 SSE membership 收敛', async () => {
         const { qc, result } = setup()
         // 全局缓存为空，置顶区有 s1
         qc.setQueryData<Session[]>(queryKeys.sessions, [])
