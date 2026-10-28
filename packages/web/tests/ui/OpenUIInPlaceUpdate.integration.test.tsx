@@ -34,6 +34,10 @@ vi.mock('@/ui/shared/useStreamingContent', async () =>
     (await import('../helpers/streamingContentMock')).streamingContentMock())
 
 const { Markdown } = await import('@/ui/base/markdown/Markdown')
+// 预热懒加载的渲染器 chunk（同 OpenUIBlock.integration 的理由）：冷 import 2s+ 落进首个
+// findByText 的 1000ms 窗口会随机超时。排在 Markdown 之后，保证 OpenUIBlock 顶层的
+// devtools 关停 flag 先于 react-lang 模块生效。
+await import('@/ui/openui/OpenUIRenderer')
 const { UiSendProvider, OpenUIAnchorProvider } = await import('@/ui/openui/actionContext')
 const { useOpenUIActionStore } = await import('@/ui/openui/actionStore')
 

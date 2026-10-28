@@ -32,6 +32,11 @@ vi.mock('@/ui/shared/useStreamingContent', async () =>
     (await import('../helpers/streamingContentMock')).streamingContentMock())
 
 const { Markdown } = await import('@/ui/base/markdown/Markdown')
+// 预热懒加载的渲染器 chunk：它首次 import 要 2s+（react-ui + 解析器 + 组件库 transform），
+// 而下方首个 findByText 只有 RTL 默认 1000ms 窗口——冷加载落进窗口里就会随机超时（全量
+// 并行跑时更容易踩线，表现为本文件第一条断言偶发失败）。挪到模块导入期等它，断言只等
+// Suspense 落地。必须排在 Markdown 之后：OpenUIBlock 模块顶层要先置 devtools 关停 flag。
+await import('@/ui/openui/OpenUIRenderer')
 
 const SAMPLE = `root = Stack([title, tbl])
 title = TextContent("拓扑语言", "large-heavy")
