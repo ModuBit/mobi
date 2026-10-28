@@ -51,8 +51,8 @@ export type SessionMessageIntakePublication =
     /** 落库完成、需广播的行（new-message 出口 + message-received SSE） */
     | { type: 'stored-messages'; sessionId: string; messages: StoredMessage[] }
     /** 边界指针推进（web 的 fork/rewind 入口读会话摘要，必须广播驱动缓存失效）。
-     *  只带 metadata：边界指针 contextBoundarySeq 落在 metadata 上，分组归属没变——
-     *  发完整 session 会被 web 误判成「分组成员变了」，连带重拉全部工作区视图 */
+     *  只带 metadata：边界指针 contextBoundarySeq 落在 metadata 上，分组归属没变
+     *  （不带 affects:'membership'，web 不会因此重拉工作区视图） */
     | { type: 'session-updated'; sessionId: string; data: { metadata: StoredSession['metadata'] } }
     /** 运行状态投影产出（todos/tasks/teamState 等摘要变化） */
     | { type: 'runtime-state-updated'; sessionId: string; data: { sid: string; runtimeState: RuntimeState } }

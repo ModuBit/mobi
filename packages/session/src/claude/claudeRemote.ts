@@ -879,36 +879,42 @@ export async function userInputLoop(
 }
 
 /**
- * 启动期 output style 接线：SDK Options 无顶层 outputStyle 字段（仅 Settings.outputStyle，
- * 且 Options.settings 槽位已被 hookSettings 占用，string|Settings 二选一不可叠加），
- * 改为 query 建立后经 applyFlagSettings 注入 session 级 flag layer。
+ * 启动期 flag 注入的共用实现：SDK Options 没有 outputStyle / fastMode 这类顶层字段
+ * （outputStyle 只在 Settings 里，而 Options.settings 槽位已被 hookSettings 占用，
+ * string|Settings 二选一不可叠加），改为 query 建立后经 applyFlagSettings 注入
+ * session 级 flag layer。
  *
- * 时序：caller 须在首条用户消息 push 进 SDK input stream 之前 await（attach 点紧后调用），
- * 保证首轮 prompt 即带 style。空值不调用（CC 读 settings 默认）。fire-and-forget 容错与
- * runClaude.ts 动态配置（setModel/applyFlagSettings effortLevel）一致：失败仅 debug 日志，
- * style 退化默认，不阻塞会话启动。
+ * 容错与 runClaude.ts 的动态配置（setModel / effortLevel）一致：失败仅 debug 日志，
+ * 退化为 SDK 默认值，**不阻塞会话启动**。
  */
+async function applyStartupFlag(response: Query, flags: Record<string, unknown>, label: string): Promise<void> {
+    try {
+        await response.applyFlagSettings(flags);
+    } catch (e) {
+        logger.debug(`[claudeRemote] applyFlagSettings(${label}) failed, keeping SDK default:`, e);
+    }
+}
+
+/** 快速模式接线（时序同 {@link applyStartupOutputStyle}：caller 须在首条用户消息 push 前 await） */
 export async function applyStartupFastMode(response: Query, fastMode: boolean | undefined): Promise<void> {
     // false 是有效值（显式关闭）：只有 undefined = 未指定才跳过
     if (fastMode === undefined) {
         return;
     }
-    try {
-        await response.applyFlagSettings({ fastMode });
-    } catch (e) {
-        logger.debug(`[claudeRemote] applyFlagSettings(fastMode=${fastMode}) failed, keeping SDK default:`, e);
-    }
+    await applyStartupFlag(response, { fastMode }, `fastMode=${fastMode}`);
 }
 
+/**
+ * 启动期 output style 接线。
+ *
+ * 时序：caller 须在首条用户消息 push 进 SDK input stream 之前 await（attach 点紧后调用），
+ * 保证首轮 prompt 即带 style。空值不调用（CC 读 settings 默认）。
+ */
 export async function applyStartupOutputStyle(response: Query, outputStyle: string | undefined): Promise<void> {
     if (!outputStyle) {
         return;
     }
-    try {
-        await response.applyFlagSettings({ outputStyle });
-    } catch (e) {
-        logger.debug(`[claudeRemote] applyFlagSettings(outputStyle=${outputStyle}) failed, falling back to settings default:`, e);
-    }
+    await applyStartupFlag(response, { outputStyle }, `outputStyle=${outputStyle}`);
 }
 
 /**

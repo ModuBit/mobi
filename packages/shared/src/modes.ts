@@ -35,8 +35,17 @@ export type ClaudeModelPreset = typeof CLAUDE_MODEL_PRESETS[number]
  * 项形状刻意宽于 `ModelInfo`（description 可选、无能力位）：它是**手写常量**，
  * 不是探针结果，能力位未知就如实缺省。
  */
+/**
+ * 默认模型值（CLI 的默认模型别名）。
+ *
+ * 单源：偏好空值兜底、面板「重置」目标、创建页初始值、daemon 的「auto 恒合法」判据
+ * 都引用它——各处各写一个 `'auto'` 字面量时，改默认模型就会分叉成
+ * 「面板显示 Auto、pill 裸显 auto」这类静默不一致。
+ */
+export const DEFAULT_MODEL = 'auto'
+
 export const CLAUDE_MODEL_FALLBACK: readonly { value: string; displayName: string; description?: string }[] = [
-    { value: 'auto', displayName: 'Auto', description: 'Use the default model' },
+    { value: DEFAULT_MODEL, displayName: 'Auto', description: 'Use the default model' },
     { value: 'opus', displayName: 'Opus', description: 'Most capable for complex work' },
     { value: 'sonnet', displayName: 'Sonnet', description: 'Best for everyday tasks' },
     { value: 'haiku', displayName: 'Haiku', description: 'Fastest for quick answers' },
@@ -133,6 +142,14 @@ export const EFFORT_SESSION_LEVELS = [...EFFORT_LEVELS, 'max'] as const
 
 /** effort 全部合法取值（类型与协议校验单源） */
 export type EffortLevel = typeof EFFORT_SESSION_LEVELS[number]
+
+/** 默认档位（偏好空值兜底 / 面板重置目标共用） */
+export const DEFAULT_EFFORT: EffortLevel = 'medium'
+
+/** 可落盘判定：`max` 是 session-only，写进偏好会跨会话失真 */
+export function isPersistableEffortLevel(v: string): v is EffortLevel {
+    return (EFFORT_LEVELS as readonly string[]).includes(v)
+}
 
 export const EFFORT_LABELS: Record<EffortLevel, string> = {
     low: 'Low',

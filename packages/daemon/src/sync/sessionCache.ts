@@ -238,6 +238,23 @@ export class SessionCache {
     }
 
     /**
+     * 「merge runtimeState → 确有变化才广播」的共用收口（CLI 采集类上报共用）。
+     *
+     * 只在 store 判定确有变化时广播：CLI 每轮 result 帧都会重报同一份
+     * fastModeState / cacheStatus，无条件广播等于每轮给所有 web 客户端推一遍整份
+     * runtimeState（数 KB，含 todos / tasks / contextUsage），还会触发客户端侧的
+     * 「会话有活动」打点。落库失败一律吞掉——采集路径不该阻塞 CLI，下次事件会重报。
+     */
+    private mergeAndBroadcastRuntime(session: Session, patch: Record<string, unknown>): void {
+        try {
+            if (!this.runtimeStateStore.merge(session, patch).changed) return
+        } catch {
+            return
+        }
+        this.publisher.emit({ type: 'session-updated', sessionId: session.id, data: { runtimeState: session.runtimeState } })
+    }
+
+    /**
      * 处理上下文用量上报（CLI 事件驱动采集）。
      * 落库到 runtimeState.contextUsage（RuntimeStateStore 单一收口）
      * + SSE 推 runtimeState patch 给 web。作为 runtimeState 字段落库，resume 时首屏从 DB
@@ -246,26 +263,16 @@ export class SessionCache {
     handleContextUsage(payload: { sid: string; contextUsage: ContextUsage | null }): void {
         const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)
         if (!session) return
-        try {
-            // 流式首轮 / 进程重启后：CLI 侧累计成本记忆还没建立（0），整对象覆盖会把 daemon
-            // 已持久化的真实累计成本刷成 $0.00，直到该 turn 的 result 才恢复——与窗口基线
-            // 同一类回退。/clear 会先显式上报 null 清空，故只需「新值为 0 且历史非 0」时续用历史值
-            const incoming = payload.contextUsage
-            const previousCost = session.runtimeState?.contextUsage?.costUsd ?? 0
-            const contextUsage = incoming && incoming.costUsd === 0 && previousCost > 0
-                ? { ...incoming, costUsd: previousCost }
-                : incoming ?? undefined
-            // contextUsage 为 null → 清空（/clear 后新会话从 0 开始）；否则落库覆盖
-            this.runtimeStateStore.merge(session, { contextUsage })
-        } catch {
-            // 落库失败不阻塞采集流程（CLI 下次事件会重试上报）
-            return
-        }
-        this.publisher.emit({
-            type: 'session-updated',
-            sessionId: session.id,
-            data: { runtimeState: session.runtimeState },
-        })
+        // 流式首轮 / 进程重启后：CLI 侧累计成本记忆还没建立（0），整对象覆盖会把 daemon
+        // 已持久化的真实累计成本刷成 $0.00，直到该 turn 的 result 才恢复——与窗口基线
+        // 同一类回退。/clear 会先显式上报 null 清空，故只需「新值为 0 且历史非 0」时续用历史值
+        const incoming = payload.contextUsage
+        const previousCost = session.runtimeState?.contextUsage?.costUsd ?? 0
+        const contextUsage = incoming && incoming.costUsd === 0 && previousCost > 0
+            ? { ...incoming, costUsd: previousCost }
+            : incoming ?? undefined
+        // contextUsage 为 null → 清空（/clear 后新会话从 0 开始）；否则落库覆盖
+        this.mergeAndBroadcastRuntime(session, { contextUsage })
     }
 
     /**
@@ -276,17 +283,7 @@ export class SessionCache {
     handleCacheStatus(payload: { sid: string; cacheStatus: CacheStatus | null }): void {
         const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)
         if (!session) return
-        try {
-            this.runtimeStateStore.merge(session, { cacheStatus: payload.cacheStatus ?? undefined })
-        } catch {
-            // 落库失败不阻塞 CLI 流程（提示缺失只损失 UI 提示，不影响会话）
-            return
-        }
-        this.publisher.emit({
-            type: 'session-updated',
-            sessionId: session.id,
-            data: { runtimeState: session.runtimeState },
-        })
+        this.mergeAndBroadcastRuntime(session, { cacheStatus: payload.cacheStatus ?? undefined })
     }
 
     /**
@@ -299,23 +296,13 @@ export class SessionCache {
     handleFastModeState(payload: FastModeStatePayload): void {
         const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)
         if (!session) return
-        try {
-            this.runtimeStateStore.merge(session, {
-                fastModeState: payload.fastModeState ?? undefined,
-                // 原因只在「有状态且不是 on」时有意义：state 为 on / null 时清掉旧原因，
-                // 否则会残留「已恢复 on 却还挂着 free」的假提示
-                fastModeDisabledReason: payload.fastModeState && payload.fastModeState !== 'on'
-                    ? payload.fastModeDisabledReason
-                    : undefined,
-            })
-        } catch {
-            // 落库失败不阻塞 CLI 流程（只影响 UI 显示，不影响会话）
-            return
-        }
-        this.publisher.emit({
-            type: 'session-updated',
-            sessionId: session.id,
-            data: { runtimeState: session.runtimeState },
+        this.mergeAndBroadcastRuntime(session, {
+            fastModeState: payload.fastModeState ?? undefined,
+            // 原因只在「有状态且不是 on」时有意义：state 为 on / null 时清掉旧原因，
+            // 否则会残留「已恢复 on 却还挂着 free」的假提示
+            fastModeDisabledReason: payload.fastModeState && payload.fastModeState !== 'on'
+                ? payload.fastModeDisabledReason
+                : undefined,
         })
     }
 
@@ -345,6 +332,8 @@ export class SessionCache {
             // 落库失败不阻塞 CLI 流程（下次翻转会重试上报）
             return
         }
+        // runStartedAt 是时间戳，同值重报（重连重投递）上面已按 running 分支拦掉；
+        // 走到这里必是新起点，直接广播
         this.publisher.emit({
             type: 'session-updated',
             sessionId: session.id,
@@ -513,9 +502,9 @@ export class SessionCache {
         if (Object.keys(patch).length > 0) {
             this.runtimeStateStore.merge(session, patch)
         }
-        // 只推 runtimeState：配置切换不改变分组归属，发完整 session 会让 web 把它当成
-        // 「分组成员变了」而重拉工作区/最近/置顶/各工作区分组（2026-10-28 实测一次切换
-        // 连带 1 POST + 10 GET）。载荷形状即语义——完整对象只用于置顶/归属变更。
+        // 只推 runtimeState：配置切换不改变分组归属。变更域的显式信号是 affects:'membership'
+        // （置顶/归属/删工作区解绑三处发出），配置类事件不带——web 端据此决定是否失效
+        // 工作区视图，不再按载荷形状推断（2026-10-28 前靠形状推断时，一次切换连带 10 个 GET）
         this.publisher.emit({ type: 'session-updated', sessionId, data: { runtimeState: session.runtimeState } })
     }
 

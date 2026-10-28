@@ -28,7 +28,7 @@
  * 依赖一律收成窄入参（不直接持 Store / MachineCache），便于单测用内存假件。
  */
 
-import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT, CLAUDE_MODEL_FALLBACK, normalizeUserContent, UserMessageContentSchema } from '@mobi/shared'
+import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT, CLAUDE_MODEL_FALLBACK, DEFAULT_MODEL, normalizeUserContent, UserMessageContentSchema } from '@mobi/shared'
 import type {
     AgentCreateSessionAck,
     AgentCreateSessionReadiness,
@@ -284,13 +284,13 @@ export class AgentSessionService {
                 ? await pending
                 : await Promise.race([
                     pending,
-                    new Promise<null>((resolve) => {
-                        timer = setTimeout(() => resolve(null), withinMs)
+                    new Promise<never>((_, reject) => {
+                        timer = setTimeout(
+                            () => reject(new Error(`the capability probe did not answer within ${withinMs}ms`)),
+                            withinMs,
+                        )
                     }),
                 ])
-            if (answer === null) {
-                return { ok: false, error: `the capability probe did not answer within ${withinMs}ms` }
-            }
             if (!answer.ok) {
                 return answer
             }
@@ -542,7 +542,7 @@ function translateSpawnFailure(failure: RpcFailureKind, message: string): string
  * 模型的全名，调用方从哪里抄来的都可能。
  */
 function isModelInCatalog(requested: string, models: readonly ModelInfo[]): boolean {
-    if (requested === 'auto') {
+    if (requested === DEFAULT_MODEL) {
         return true
     }
     return models.some((model) => model.value === requested || model.resolvedModel === requested)
