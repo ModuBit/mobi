@@ -1360,3 +1360,25 @@ CLI 层真实 emit 但 **SDK 白名单分发收不到**（sdk.mjs 零命中）�
 
 **2026-10-28 两票已交付**（10c4ce2b 上报通道 + runtimeState.lastWakeup；48350f06
 session event 落库 + web divider 系统行）。**待 E2E 真机验收**（造 loop 唤醒 → 消息流出系统行）。
+
+---
+
+## 129. 后台任务异常续跑的系统行标注（task_notification 档，2026-10-28 暂缓）
+
+后台任务 failed/stopped 后 CC 自动注入续跑回合，web 看到回合凭空跑起来不知原因——
+拟为 wakeup 系统行加第三档「后台任务失败，已自动继续」。用户裁决：**当前价值不高，
+暂不做**（正常完成的高频续跑不标、只标异常档的收窄已定，但异常续跑场景本身低频）。
+
+**PoC 已完成**（2026-10-28，headless 0.3.312 双对照，恢复时勿重跑）：
+
+- 后台任务 settle（failed/completed 实测）**必触发续跑回合**；注入 prompt 是结构化
+  XML 信封（`<task-notification>` 含 task-id/status/summary），status 三值枚举实锤
+- 该路径 UserPromptSubmit `source` **缺省**（灰度）——票 01 的 source 通道收不到，
+  信封文本解析是唯一实证判据（时间窗启发式作废）
+- 注入回合在消息流**无 user 消息行**（stream user 帧只有 tool_result），系统行是
+  唯一可交代来龙去脉的地方
+
+**方案已定稿**（单票：信封解析 util + launcher 接线 + WakeupSourceSchema 加值 +
+web divider 第三档两文案；通道层零新代码）——全文在
+`.scratch/wakeup-source-observability/spec.md`「扩展」节。恢复时按该方案实施，
+E2E 并入唤醒可观测真机批次。
