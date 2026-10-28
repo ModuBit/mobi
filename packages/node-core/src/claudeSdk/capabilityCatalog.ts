@@ -55,7 +55,8 @@ interface InitCapabilityFields {
     account?: SDKMetadata['account']
     fast_mode_state?: SDKMetadata['fastModeState']
     fast_mode_disabled_reason?: FastModeDisabledReason
-    /** 协议能力名（开放字符串集合，web feature-detect 用；CLI 2.1.312+ 可靠广播） */
+    /** 协议能力名（开放字符串集合，web feature-detect 用；CLI 2.1.312+ 广播——
+     *  注意 SDK 通道为收窄集合，2026-10-28 E2E 实锤，见 shared SDKMetadataSchema 注释） */
     capabilities?: string[]
 }
 

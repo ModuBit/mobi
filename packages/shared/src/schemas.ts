@@ -186,8 +186,10 @@ const SDKMetadataSchema = z.object({
     models: z.array(ModelInfoSchema).optional(),
     account: AccountInfoSchema.optional(),
     fastModeState: FastModeStateSchema.optional(),
-    /** 协议能力名集合（system/init.capabilities，开放集合——web 按 includes feature-detect，
-     *  未知值忽略；老 CLI / 未发现时缺省） */
+    /** 协议能力名集合（system/init.capabilities，开放集合）。**SDK 通道实为收窄集合**
+     *  （2026-10-28 E2E 实锤：initialize 控制响应只回基础值，新能力只在流侧 init 帧广播
+     *  而 SDK 流不透传）——经 SDK 取数的 mobi 拿不到新能力名，web 不应据此做新能力
+     *  feature-detect（mobi 的 claude 二进制随包分发、版本受控，恒以随包版本为准） */
     capabilities: z.array(z.string()).optional()
 })
 

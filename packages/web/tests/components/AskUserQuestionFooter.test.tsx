@@ -43,12 +43,6 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
     useIsMobile: () => true,
 }))
 
-// mock useSDKMetadata：capabilities 由用例控制（undefined = 老 CLI 无 skipped 能力，默认态）
-let mockCapabilities: string[] | undefined
-vi.mock('@/core/data/hooks/queries/useSDKMetadata', () => ({
-    useSDKMetadata: () => ({ data: { capabilities: mockCapabilities } }),
-}))
-
 const mockApprove = vi.fn()
 const mockDeny = vi.fn()
 const mockApi = {
@@ -122,11 +116,15 @@ function getSubmitButton(): HTMLElement {
     return screen.getByRole('button', { name: /提交/ })
 }
 
+/** 末题未填形态断言：主按钮文案切为「跳过并提交」且不放行禁用（未答=跳过语义，恒可点） */
+function expectSkipSubmitState(): void {
+    expect(screen.getByRole('button', { name: '跳过并提交' })).not.toBeDisabled()
+}
+
 describe('AskUserQuestionFooter', () => {
     beforeEach(() => {
         mockApprove.mockReset()
         mockDeny.mockReset()
-        mockCapabilities = undefined
     })
 
     afterEach(() => {
@@ -152,9 +150,9 @@ describe('AskUserQuestionFooter', () => {
             expect(getSubmitButton()).toBeInTheDocument()
         })
 
-        it('未选择时提交按钮禁用', () => {
+        it('未选择时末题为跳过并提交（未答放行）', () => {
             renderFooter(singleSelectTool)
-            expect(getSubmitButton()).toBeDisabled()
+            expectSkipSubmitState()
         })
 
         it('点击选项后提交按钮启用', () => {
@@ -215,11 +213,11 @@ describe('AskUserQuestionFooter', () => {
             expect(getSubmitButton()).not.toBeDisabled()
         })
 
-        it('再次点击已选项可取消', () => {
+        it('再次点击已选项可取消（回到未填=跳过并提交形态）', () => {
             renderFooter(multiSelectTool)
             fireEvent.click(findOptionBtn('Auth'))
             fireEvent.click(findOptionBtn('Auth'))
-            expect(getSubmitButton()).toBeDisabled()
+            expectSkipSubmitState()
         })
 
         it('提交多选答案', async () => {
@@ -254,14 +252,14 @@ describe('AskUserQuestionFooter', () => {
             },
         ])
 
-        it('多题模式未全答时提交禁用', () => {
+        it('多题模式末题未填为跳过并提交（未答放行）', () => {
             renderFooter(tool)
             // 只选第一题
             fireEvent.click(findOptionBtn('A1'))
-            // 切到最后一题 tab（Submit 只在最后一题显示）
+            // 切到最后一题 tab
             fireEvent.click(screen.getByRole('tab', { name: 'H2' }))
-            // 第二题未答，Submit 应禁用
-            expect(getSubmitButton()).toBeDisabled()
+            // 第二题未答，按钮为跳过并提交且可点
+            expectSkipSubmitState()
         })
 
         it('回答所有题后提交启用', () => {
@@ -307,11 +305,11 @@ describe('AskUserQuestionFooter', () => {
             expect(screen.queryByPlaceholderText('请输入自定义答案...')).not.toBeInTheDocument()
         })
 
-        it('单选模式下 Other 与常规选项互斥', () => {
+        it('单选模式下 Other 与常规选项互斥（空 Other=未填，跳过并提交形态）', () => {
             renderFooter(singleTool)
             fireEvent.click(findOptionBtn('Red'))
             fireEvent.click(findOptionBtn('其他'))
-            expect(getSubmitButton()).toBeDisabled()
+            expectSkipSubmitState()
         })
 
         it('单选模式下选常规选项时取消 Other', () => {
@@ -339,10 +337,10 @@ describe('AskUserQuestionFooter', () => {
             multiSelect: true,
         }])
 
-        it('单选模式下选中 Other 但不输入文字，提交禁用', () => {
+        it('单选模式下选中 Other 不输入文字=未填（跳过并提交形态）', () => {
             renderFooter(singleTool)
             fireEvent.click(findOptionBtn('其他'))
-            expect(getSubmitButton()).toBeDisabled()
+            expectSkipSubmitState()
         })
 
         it('单选模式下输入文字后提交启用', () => {
@@ -367,10 +365,10 @@ describe('AskUserQuestionFooter', () => {
             })
         })
 
-        it('多选模式下仅选中空 Other，提交禁用', () => {
+        it('多选模式下仅选中空 Other=未填（跳过并提交形态）', () => {
             renderFooter(multiTool)
             fireEvent.click(findOptionBtn('其他'))
-            expect(getSubmitButton()).toBeDisabled()
+            expectSkipSubmitState()
         })
     })
 
@@ -756,14 +754,13 @@ describe('AskUserQuestionFooter', () => {
             },
         ])
 
-        it('capability 会话：答 1 跳 1 可提交，approve 载荷携带 annotations', async () => {
-            mockCapabilities = ['ask_user_question_unanswered_v1']
+        it('答 1 跳 1 可提交，approve 载荷携带 annotations', async () => {
             mockApprove.mockResolvedValue(undefined)
             renderFooter(tool)
 
             fireEvent.click(findOptionBtn('A1'))
             fireEvent.click(screen.getByRole('tab', { name: 'H2' }))
-            // 第二题未答，有 capability 时提交不再禁用
+            // 第二题未答不阻断提交
             expect(getSubmitButton()).not.toBeDisabled()
             fireEvent.click(getSubmitButton())
 
@@ -775,8 +772,7 @@ describe('AskUserQuestionFooter', () => {
             })
         })
 
-        it('capability 会话：全答时载荷不含 annotations 键', async () => {
-            mockCapabilities = ['ask_user_question_unanswered_v1']
+        it('全答时载荷不含 annotations 键', async () => {
             mockApprove.mockResolvedValue(undefined)
             renderFooter(tool)
 
@@ -792,21 +788,12 @@ describe('AskUserQuestionFooter', () => {
             })
         })
 
-        it('无 capability（老 CLI）：未全答仍禁用（现状不变）', () => {
-            renderFooter(tool)
-            fireEvent.click(findOptionBtn('A1'))
-            fireEvent.click(screen.getByRole('tab', { name: 'H2' }))
-            expect(getSubmitButton()).toBeDisabled()
-        })
-
-        it('fallback 形态（空问题）即使有 capability，空文本仍禁用', () => {
-            mockCapabilities = ['ask_user_question_unanswered_v1']
+        it('fallback 形态（空问题）空文本仍禁用', () => {
             renderFooter(makeTool([]))
             expect(getSubmitButton()).toBeDisabled()
         })
 
-        it('capability 会话：非末题未填显示「跳过」，点击切下一题', () => {
-            mockCapabilities = ['ask_user_question_unanswered_v1']
+        it('非末题未填显示「跳过」，点击切下一题', () => {
             renderFooter(tool)
 
             // Q1 页有「跳过」按钮（无「下一步」）
@@ -818,8 +805,7 @@ describe('AskUserQuestionFooter', () => {
             expect(screen.getByRole('tab', { name: 'H2' })).toHaveAttribute('aria-selected', 'true')
         })
 
-        it('capability 会话：非末题已填显示「下一步」', () => {
-            mockCapabilities = ['ask_user_question_unanswered_v1']
+        it('非末题已填显示「下一步」', () => {
             renderFooter(tool)
 
             fireEvent.click(findOptionBtn('A1'))
@@ -827,8 +813,7 @@ describe('AskUserQuestionFooter', () => {
             expect(screen.queryByRole('button', { name: '跳过' })).not.toBeInTheDocument()
         })
 
-        it('capability 会话：末题未填显示「跳过并提交」，点击载荷全题标未答', async () => {
-            mockCapabilities = ['ask_user_question_unanswered_v1']
+        it('末题未填显示「跳过并提交」，点击载荷全题标未答', async () => {
             mockApprove.mockResolvedValue(undefined)
             renderFooter(tool)
 
@@ -848,8 +833,7 @@ describe('AskUserQuestionFooter', () => {
             })
         })
 
-        it('capability 会话：单题未填显示「跳过并提交」', () => {
-            mockCapabilities = ['ask_user_question_unanswered_v1']
+        it('单题未填显示「跳过并提交」', () => {
             renderFooter(makeTool([{
                 question: 'Only?',
                 header: 'H',

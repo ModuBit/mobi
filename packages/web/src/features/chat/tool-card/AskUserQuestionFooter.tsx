@@ -24,7 +24,6 @@ import { TabStrip, TabStripList, TabStripPanel, TabStripTab } from '@/ui/base/in
 import { useTranslation } from 'react-i18next'
 import { isAskUserQuestionToolName, parseAskUserQuestionInput, buildChatAboutThisReason, type AskUserQuestionQuestion } from '@/domain/tool/askUserQuestion'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
-import { useSDKMetadata } from '@/core/data/hooks/queries/useSDKMetadata'
 import { useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { queryKeys } from '@/core/lib/queryKeys'
@@ -114,10 +113,6 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
     const [pendingAction, setPendingAction] = useState<'submit' | 'chatAbout' | null>(null)
     const [error, setError] = useState<string | null>(null)
 
-    // skipped 标注能力面（ask_user_question_unanswered_v1）：老 CLI 缺 capability 时维持强制全答
-    const { data: sdkMetadata } = useSDKMetadata(props.sessionId)
-    const unansweredCapSupported = sdkMetadata?.capabilities?.includes('ask_user_question_unanswered_v1') === true
-
     useEffect(() => {
         setStep(0)
         setSelectedByQuestion(questions.map(() => []))
@@ -149,11 +144,11 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
     }
 
     // 提交门槛：fallback 单文本框形态（questions 为空）无题可标，恒要求非空；
-    // 有题形态下 canSubmit 只管无 capability 档（强制全答），capability 档末题
-    // 按钮文案自解释（未填 → 跳过并提交），恒可点
+    // 有题形态下末题按钮文案自解释（未填 → 跳过并提交），恒可点——mobi 的 claude
+    // 二进制随包分发、版本受控（≥ annotations 引入版本），skipped 标注恒可用
     const canSubmit = questions.length === 0
         ? fallbackText.trim().length > 0
-        : (unansweredCapSupported || questions.every((_, i) => validateQuestion(i) !== null))
+        : true
 
     /** 当前题是否已填（决定逐题按钮文案与末题提交/跳过并提交切换） */
     const isQuestionAnswered = (idx: number): boolean => validateQuestion(idx) !== null
@@ -163,10 +158,8 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
      * - 非末题：已填 →「下一步」（前进）；未填 →「跳过」（同样前进，提交时该题自动标未答）
      * - 末题：已填 →「提交」；未填 →「跳过并提交」——同一 submit，提交时统一按
      *   有答案 → answers / 无答案 → annotations 分发
-     * 仅 capability 档渲染（老 CLI 维持现状：非末题无按钮、末题强制全答禁用式提交）
      */
     const renderQuestionAction = (idx: number) => {
-        if (!unansweredCapSupported) return null
         const isLast = idx === questions.length - 1
         const answered = isQuestionAnswered(idx)
         const label = isLast
@@ -260,24 +253,14 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         const answers = collectAnswers(
             questions, selectedByQuestion, otherSelectedByQuestion, otherTextByQuestion, fallbackText
         )
-        // 跳过标注（ask_user_question_unanswered_v1）：capability 会话未答题不阻断提交，
-        // 按题面文本标 skipped 让模型得知「跳过」而非被拒；老 CLI（无 capability）维持强制全答
-        const skipSupported = unansweredCapSupported
-        if (!skipSupported) {
-            // 校验完整性：空问题需 fallback 文本；多问题每题至少一个答案
-            if (questions.length === 0) {
-                if (!answers['']?.length) {
-                    setError(t('chat.tool.selectOption'))
-                    return
-                }
-            } else {
-                for (let i = 0; i < questions.length; i += 1) {
-                    if (!answers[questions[i].question]?.length) {
-                        setError(t('chat.tool.selectOption'))
-                        setStep(i)
-                        return
-                    }
-                }
+        // 跳过标注（ask_user_question_unanswered_v1）：未答题不阻断提交，按题面文本标
+        // skipped 让模型得知「跳过」而非被拒。mobi 的 claude 二进制随包分发、版本受控
+        // （≥ annotations 引入版本），无老 CLI 分支——fallback 单文本框形态（questions
+        // 为空）无题可标，仍要求非空
+        if (questions.length === 0) {
+            if (!answers['']?.length) {
+                setError(t('chat.tool.selectOption'))
+                return
             }
             await run('submit', () => props.api.permissions.approve(props.sessionId, permission.id, { answers }))
             return
@@ -471,10 +454,10 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                     {renderSubmitButton()}
                 </div>
             ) : questions.length === 1 ? (
-                /* 单题：直接展示选项（capability 档按钮文案随填写切换，无档维持现状） */
+                /* 单题：直接展示选项，按钮文案随填写切换 */
                 <div>
                     {renderQuestionOptions(0)}
-                    {renderQuestionAction(0) ?? renderSubmitButton()}
+                    {renderQuestionAction(0)}
                 </div>
             ) : (
                 /* 多题：页签条 + 每题一个面板。面板不 keepMounted——每题内容只是选项列表，
@@ -497,8 +480,8 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                     {questions.map((_q, idx) => (
                         <TabStripPanel key={idx} value={String(idx)}>
                             {renderQuestionOptions(idx)}
-                            {/* capability 档每题都有前进按钮（末题兼提交行）；无档维持现状（仅末题提交行） */}
-                            {renderQuestionAction(idx) ?? (idx === questions.length - 1 ? renderSubmitButton() : null)}
+                            {/* 每题都有前进按钮（末题兼提交行） */}
+                            {renderQuestionAction(idx)}
                         </TabStripPanel>
                     ))}
                 </TabStrip>
