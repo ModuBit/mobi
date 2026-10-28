@@ -224,16 +224,16 @@ fi
 
 # ── 场景 2b/2c：三档隔离配置生成（open / isolated 路径规则，票 05/07）──
 
-echo "## 场景 2b：open 档（不打 tag + 全量召回）"
+echo "## 场景 2b：open 档（打 tag 溯源 + 无召回过滤；写路径与 normal 恒定单源）"
 set_memory '{"engine":"hindsight","endpoint":"http://127.0.0.1:'"$FAKE_PORT"'","apiToken":"fake-e2e-token","rules":[{"target":{"type":"path","path":"'"$DEMO_DIR"'"},"mode":"open"}]}'
 S2B=$(spawn_session "$DEMO_DIR")
 if [ -n "$S2B" ]; then ok "open 会话 spawn 成功 ($S2B)"; else bad "open 会话 spawn 失败"; fi
 if wait_for 10 bash -c "[ -f $MANAGED_OPEN_CFG ]"; then
-    if grep -q '"retainTags": \[\]' "$MANAGED_OPEN_CFG" && ! grep -q 'recallOptions' "$MANAGED_OPEN_CFG" \
+    if grep -q '"project:demo"' "$MANAGED_OPEN_CFG" && ! grep -q 'recallOptions' "$MANAGED_OPEN_CFG" \
         && grep -q 'mobi-global' "$MANAGED_OPEN_CFG"; then
-        ok "open：retainTags 空 + 无 recallOptions + 全局池"
+        ok "open：retainTags 带 project tag + 无 recallOptions + 全局池"
     else
-        bad "open：配置形状不对（$MANAGED_OPEN_CFG）"
+        bad "open：配置形状不对（${MANAGED_OPEN_CFG}）"
     fi
 else
     bad "open：配置文件未生成（$MANAGED_OPEN_CFG）"

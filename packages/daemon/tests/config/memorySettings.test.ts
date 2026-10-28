@@ -43,6 +43,22 @@ describe('resolveSessionMemory（会话级记忆裁决）', () => {
         expect(resolveSessionMemory({ engine: 'mem0' as never }, '/w', MANAGED)).toMatchObject({ active: false, reason: 'off' })
     })
 
+    it('off 判定显式中和 memory env 契约（spawn 以 ...process.env 为底，仅「不写入」挡不住宿主/用户 shell 同名值串入子进程）', () => {
+        for (const r of [
+            resolveSessionMemory(undefined, '/w', MANAGED),
+            resolveSessionMemory({ engine: 'off' }, '/w', MANAGED),
+            resolveSessionMemory({ engine: 'hindsight' }, '/w', MANAGED), // invalid-endpoint 同样不挂载
+        ]) {
+            expect(r.active).toBe(false)
+            expect(r.env).toEqual({
+                MOBI_MEMORY_ENGINE: '',
+                HINDSIGHT_API_URL: '',
+                HINDSIGHT_API_TOKEN: '',
+                HINDSIGHT_CONFIG: '',
+            })
+        }
+    })
+
     it('engine 开但 endpoint 缺失 → invalid-endpoint（不阻断会话，调用方记诊断）', () => {
         expect(resolveSessionMemory({ engine: 'hindsight' }, '/w', MANAGED)).toMatchObject({ active: false, reason: 'invalid-endpoint' })
         expect(resolveSessionMemory({ engine: 'hindsight', endpoint: '  ' }, '/w', MANAGED)).toMatchObject({ active: false, reason: 'invalid-endpoint' })
@@ -57,7 +73,7 @@ describe('resolveSessionMemory（会话级记忆裁决）', () => {
         expect(resolveSessionMemory({ ...active, disabledWorkspaces: [] }, '/w', MANAGED)).toMatchObject({ active: true })
     })
 
-    it('active 时注入 env 契约：挂载信号 + 连接信息 + 管理配置路径；无 token 不注入 token 键', () => {
+    it('active 时注入 env 契约四键齐备（无 token 置空而非缺键——同样为了盖过继承值）', () => {
         const r = resolveSessionMemory(active, '/w', MANAGED)
         expect(r).toMatchObject({
             active: true,
@@ -70,7 +86,7 @@ describe('resolveSessionMemory（会话级记忆裁决）', () => {
             },
         })
         const noToken = resolveSessionMemory({ engine: 'hindsight', endpoint: 'http://x' }, '/w', MANAGED)
-        expect(noToken.active && noToken.env).not.toHaveProperty('HINDSIGHT_API_TOKEN')
+        expect(noToken.active && noToken.env.HINDSIGHT_API_TOKEN).toBe('')
     })
 })
 

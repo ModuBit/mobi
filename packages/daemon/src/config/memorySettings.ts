@@ -34,6 +34,7 @@ import { homedir } from 'node:os'
 import type { MemorySettings, MemoryRule, MemoryIsolationMode } from '@mobi/shared'
 import { expandHomePath, isWithinDir } from '@mobi/shared/pathSecurity'
 import { writeFileAtomic } from '@mobi/node-core/git/atomicWrite'
+import { MEMORY_PLUGIN_ENV } from '@mobi/node-core/runtime/bundledPlugins'
 export type { MemorySettings, MemoryRule }
 
 /**
@@ -78,10 +79,24 @@ function encodePageRefreshInterval(turns: number): number {
  * 会话记忆裁决结果：
  * - active=false 携带原因（off / 配置非法 / workspace 被排除），会话正常启动不挂载
  * - active=true 携带注入子进程的 env
+ * 两侧 env 均含**全量四键**：spawn 以 `...process.env` 为底，仅「不写入」挡不住
+ * 宿主/用户 shell 同名值经继承串入子进程（2026-10-28 E2E 实踩：宿主会话的
+ * MOBI_MEMORY_ENGINE/HINDSIGHT_* 泄进 e2e 会话，off 会话照样挂载并指向生产 bank），
+ * 故降级态显式置空覆盖继承值；active 无 token 时 token 键同理置空。
  */
 export type SessionMemoryResolution =
-    | { active: false; reason: 'off' | 'invalid-endpoint' | 'workspace-excluded'; env: Record<string, never> }
+    | { active: false; reason: 'off' | 'invalid-endpoint' | 'workspace-excluded'; env: Record<string, string> }
     | { active: true; engine: 'hindsight'; env: Record<string, string> }
+
+/** memory env 契约的降级形态：全键置空（中性值，任何消费方判等都不命中） */
+function neutralizedMemoryEnv(): Record<string, string> {
+    return {
+        [MEMORY_PLUGIN_ENV]: '',
+        HINDSIGHT_API_URL: '',
+        HINDSIGHT_API_TOKEN: '',
+        HINDSIGHT_CONFIG: '',
+    }
+}
 
 /** workspace 排除匹配：前缀语义（`/a/b` 覆盖其下所有会话目录），~ 展开 */
 function isWorkspaceDisabled(disabled: string[] | undefined, directory: string): boolean {
@@ -141,22 +156,21 @@ export function resolveSessionMemory(
     managedConfigPath: string,
 ): SessionMemoryResolution {
     if (normalizeEngine(memory?.engine) !== 'hindsight') {
-        return { active: false, reason: 'off', env: {} }
+        return { active: false, reason: 'off', env: neutralizedMemoryEnv() }
     }
     // 配置非法降级：engine 开但 endpoint 缺——不阻断会话启动（调用方记诊断日志）
     if (!memory?.endpoint || !memory.endpoint.trim()) {
-        return { active: false, reason: 'invalid-endpoint', env: {} }
+        return { active: false, reason: 'invalid-endpoint', env: neutralizedMemoryEnv() }
     }
     if (isWorkspaceDisabled(memory.disabledWorkspaces, workspaceDirectory)) {
-        return { active: false, reason: 'workspace-excluded', env: {} }
+        return { active: false, reason: 'workspace-excluded', env: neutralizedMemoryEnv() }
     }
     const env: Record<string, string> = {
         MOBI_MEMORY_ENGINE: 'hindsight',
         HINDSIGHT_API_URL: memory.endpoint.trim(),
         HINDSIGHT_CONFIG: managedConfigPath,
-    }
-    if (memory.apiToken?.trim()) {
-        env.HINDSIGHT_API_TOKEN = memory.apiToken.trim()
+        // token 键恒存在（无 token 置空）：盖过继承值，防泄漏 token 被会话插件捡走
+        HINDSIGHT_API_TOKEN: memory.apiToken?.trim() ?? '',
     }
     return { active: true, engine: 'hindsight', env }
 }

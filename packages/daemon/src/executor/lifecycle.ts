@@ -139,7 +139,9 @@ function makeResolveMemoryEnv(): (workspaceDirectory: string, workspaceId: strin
                 if ('reason' in resolution && resolution.reason !== 'off') {
                     logger.debug(`[EXECUTOR] Memory plugin not mounted (${resolution.reason}) for ${workspaceDirectory}`);
                 }
-                return {};
+                // 降级也回传 resolution.env（全键置空的中和值）：spawn 以 ...process.env 为底，
+                // 返回 {} 挡不住宿主/shell 同名值经继承串入会话子进程（2026-10-28 E2E 实踩）
+                return resolution.env;
             }
             const rule = resolveMemoryRule(memory.rules, workspaceDirectory, workspaceId);
             const gitProject = await resolveGitProjectName(workspaceDirectory);
@@ -148,9 +150,10 @@ function makeResolveMemoryEnv(): (workspaceDirectory: string, workspaceId: strin
                 HINDSIGHT_CONFIG: await syncMemoryManagedConfig(config.dataDir, memory, gitProject, rule),
             };
         } catch (error) {
-            // 设置读取失败等异常：记忆是增强能力，任何故障都不得阻断会话 spawn
+            // 设置读取失败等异常：记忆是增强能力，任何故障都不得阻断会话 spawn；
+            // 同样回传中和 env（off 裁决不依赖设置内容），防继承值串入
             logger.debug('[EXECUTOR] Memory resolution failed; session continues without memory', error);
-            return {};
+            return resolveSessionMemory(undefined, workspaceDirectory, '').env;
         }
     };
 }

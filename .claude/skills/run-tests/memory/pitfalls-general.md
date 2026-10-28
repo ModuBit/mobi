@@ -3,7 +3,7 @@ name: pitfalls-general
 description: 跨任务通用误判（token 用途、诊断命令、工具禁用、短生命周期 DOM 验证、懒加载验证、React 控制的 inline style、claude 进程数观测归因）
 metadata:
   type: pitfall
-  last_verified: 2026-10-19
+  last_verified: 2026-10-28
 ---
 
 # 通用误判
@@ -303,6 +303,25 @@ Mobi 宿主里 spawn 的 Claude 会话 shell 自带 `MOBI_API_URL=http://127.0.0
 另：bootstrap 脚本 **SIGTERM 时会删掉 `~/.mobi-e2e` 数据目录**。想改库后重读（如直写 goalStatus）
 必须在 bootstrap 之前写种子，不能先起环境再改库再重启——重启即清库。
 （直写 runtimeState 的字段还须满足 schema：`goalStatus` 缺 `met` 会被 safeParse 整条丢弃。）
+
+**记忆 env 也在泄漏面里（2026-10-28 实踩）**：宿主生产会话（记忆插件开启时）env 带有
+`MOBI_MEMORY_ENGINE=hindsight` + `HINDSIGHT_API_URL/TOKEN/CONFIG`（指向生产 bank），
+`env -u` 剥离清单必须把它们加上（daemon 会把它们透传给会话 CLI 与内层 claude，造成
+e2e 的 off 会话也挂 memory 插件、hook 请求打到生产服务）。产品侧自 2026-10-28 起
+spawn 时会主动中和这四个键（memorySettings 的 neutralizedMemoryEnv），但 e2e 卫生上
+启动组件仍应显式剥离（双保险，且老二进制没有该修复）。
+
+## 审批断言的数据源：列表 API 是 SessionSummary 形状（2026-10-28 实踩）
+
+curl 直调验证权限审批链路时，**`GET /api/sessions` 列表返回的是 SessionSummary**——没有
+`agentState` 字段（读出来恒为空 `{}`，会误判成「审批请求没注册」）。正确取数：
+
+- 待审批**计数**：列表项的 `pendingRequestsCount` 字段（daemon 从 agentState 折算）
+- 待审批**明细**（requestId/tool）：`GET /api/sessions/:id` 详情（完整 Session，含 agentState.requests）
+- 审批动作：`POST /api/sessions/:id/permissions/:requestId/approve`（deny 同形）
+
+另一个排查弯路：审批挂在 runtime_state 的 DB 断言也查不到——`sessions.runtime_state`
+的 agentState 不落库（在 daemon 内存 sessionCache），DB 只存 permissionMode/contextUsage 等。
 
 ## Vite dev 里动态 import 到的可能是「另一个模块实例」（2026-10-19 实踩）
 
