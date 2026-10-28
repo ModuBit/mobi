@@ -784,6 +784,11 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 return message;
             }
             const umessage = message as SDKUserMessage;
+            // @anthropic-ai/sdk v1 起 MessageParam 按 role 判别 union（system 档只收 string|TextBlockParam[]，
+            // 带 tool_result 的只可能是 user 档）：非 user 帧原样透传，顺带收窄类型供下方 content 重建
+            if (umessage.message.role !== 'user') {
+                return message;
+            }
             if (!umessage.message.content || !Array.isArray(umessage.message.content)) {
                 return message;
             }

@@ -8059,11 +8059,11 @@ function datetimeRegex(args) {
   regex = `${regex}(${opts.join("|")})`;
   return new RegExp(`^${regex}$`);
 }
-function isValidIP(ip, version2) {
-  if ((version2 === "v4" || !version2) && ipv4Regex.test(ip)) {
+function isValidIP(ip, version3) {
+  if ((version3 === "v4" || !version3) && ipv4Regex.test(ip)) {
     return true;
   }
-  if ((version2 === "v6" || !version2) && ipv6Regex.test(ip)) {
+  if ((version3 === "v6" || !version3) && ipv6Regex.test(ip)) {
     return true;
   }
   return false;
@@ -8090,11 +8090,11 @@ function isValidJWT(jwt2, alg) {
     return false;
   }
 }
-function isValidCidr(ip, version2) {
-  if ((version2 === "v4" || !version2) && ipv4CidrRegex.test(ip)) {
+function isValidCidr(ip, version3) {
+  if ((version3 === "v4" || !version3) && ipv4CidrRegex.test(ip)) {
     return true;
   }
-  if ((version2 === "v6" || !version2) && ipv6CidrRegex.test(ip)) {
+  if ((version3 === "v6" || !version3) && ipv6CidrRegex.test(ip)) {
     return true;
   }
   return false;
@@ -12428,10 +12428,10 @@ var nanoid = /^[a-zA-Z0-9_-]{21}$/;
 var duration = /^P(?:(\d+W)|(?!.*W)(?=\d|T\d)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+([.,]\d+)?S)?)?)$/;
 var extendedDuration = /^[-+]?P(?!$)(?:(?:[-+]?\d+Y)|(?:[-+]?\d+[.,]\d+Y$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:(?:[-+]?\d+W)|(?:[-+]?\d+[.,]\d+W$))?(?:(?:[-+]?\d+D)|(?:[-+]?\d+[.,]\d+D$))?(?:T(?=[\d+-])(?:(?:[-+]?\d+H)|(?:[-+]?\d+[.,]\d+H$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:[-+]?\d+(?:[.,]\d+)?S)?)??$/;
 var guid = /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
-var uuid = (version2) => {
-  if (!version2)
+var uuid = (version3) => {
+  if (!version3)
     return /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/;
-  return new RegExp(`^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-${version2}[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$`);
+  return new RegExp(`^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-${version3}[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$`);
 };
 var uuid4 = /* @__PURE__ */ uuid(4);
 var uuid6 = /* @__PURE__ */ uuid(6);
@@ -23354,16 +23354,32 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
+function getDotPath(path) {
+  if (path.length === 0) {
+    return "object root";
+  }
+  return path.reduce((acc, seg, index) => {
+    if (index === 0) {
+      return String(seg);
+    }
+    if (typeof seg === "number") {
+      return `${acc}[${seg}]`;
+    }
+    return `${acc}.${seg}`;
+  }, "");
+}
 function getParseErrorMessage(error51) {
   if (error51 && typeof error51 === "object") {
+    if ("issues" in error51 && Array.isArray(error51.issues) && error51.issues.length > 0) {
+      return error51.issues.map((i) => {
+        if (!i.path?.length) {
+          return i.message;
+        }
+        return `${i.message} at ${getDotPath(i.path)}`;
+      }).join("\n");
+    }
     if ("message" in error51 && typeof error51.message === "string") {
       return error51.message;
-    }
-    if ("issues" in error51 && Array.isArray(error51.issues) && error51.issues.length > 0) {
-      const firstIssue = error51.issues[0];
-      if (firstIssue && typeof firstIssue === "object" && "message" in firstIssue) {
-        return String(firstIssue.message);
-      }
     }
     try {
       return JSON.stringify(error51);
@@ -25740,10 +25756,10 @@ function fromJSONSchema(schema, params) {
   } catch {
     throw new Error("fromJSONSchema input is not valid JSON (possibly cyclic); use $defs/$ref for recursive schemas");
   }
-  const version2 = detectVersion(normalized, params?.defaultTarget);
+  const version3 = detectVersion(normalized, params?.defaultTarget);
   const defs = normalized.$defs || normalized.definitions || {};
   const ctx = {
-    version: version2,
+    version: version3,
     defs,
     refs: /* @__PURE__ */ new Map(),
     processing: /* @__PURE__ */ new Set(),
@@ -28684,6 +28700,9 @@ var Protocol = class {
       this.setRequestHandler(GetTaskPayloadRequestSchema, async (request, extra) => {
         const handleTaskResult = async () => {
           const taskId = request.params.taskId;
+          if (!await this._taskStore.getTask(taskId, extra.sessionId)) {
+            throw new McpError(ErrorCode.InvalidParams, `Task not found: ${taskId}`);
+          }
           if (this._taskMessageQueue) {
             let queuedMessage;
             while (queuedMessage = await this._taskMessageQueue.dequeue(taskId, extra.sessionId)) {
@@ -28714,12 +28733,12 @@ var Protocol = class {
             throw new McpError(ErrorCode.InvalidParams, `Task not found: ${taskId}`);
           }
           if (!isTerminal(task.status)) {
-            await this._waitForTaskUpdate(taskId, extra.signal);
+            await this._waitForTaskUpdate(taskId, extra.signal, extra.sessionId);
             return await handleTaskResult();
           }
           if (isTerminal(task.status)) {
             const result = await this._taskStore.getTaskResult(taskId, extra.sessionId);
-            this._clearTaskQueue(taskId);
+            this._clearTaskQueue(taskId, extra.sessionId);
             return {
               ...result,
               _meta: {
@@ -28756,7 +28775,7 @@ var Protocol = class {
             throw new McpError(ErrorCode.InvalidParams, `Cannot cancel task in terminal status: ${task.status}`);
           }
           await this._taskStore.updateTaskStatus(request.params.taskId, "cancelled", "Client cancelled task execution.", extra.sessionId);
-          this._clearTaskQueue(request.params.taskId);
+          this._clearTaskQueue(request.params.taskId, extra.sessionId);
           const cancelledTask = await this._taskStore.getTask(request.params.taskId, extra.sessionId);
           if (!cancelledTask) {
             throw new McpError(ErrorCode.InvalidParams, `Task not found after cancellation: ${request.params.taskId}`);
@@ -28884,6 +28903,19 @@ var Protocol = class {
     const handler = this._requestHandlers.get(request.method) ?? this.fallbackRequestHandler;
     const capturedTransport = this._transport;
     const relatedTaskId = request.params?._meta?.[RELATED_TASK_META_KEY]?.taskId;
+    const sessionId = capturedTransport?.sessionId;
+    const store = this._taskStore;
+    let relatedTaskFound = true;
+    let relatedTaskLookup;
+    if (relatedTaskId && store && this._taskMessageQueue && sessionId !== void 0) {
+      relatedTaskFound = false;
+      relatedTaskLookup = (async () => {
+        if (!await store.getTask(relatedTaskId, sessionId)) {
+          throw new McpError(ErrorCode.InvalidParams, `Task not found: ${relatedTaskId}`);
+        }
+        relatedTaskFound = true;
+      })();
+    }
     if (handler === void 0) {
       const errorResponse = {
         jsonrpc: "2.0",
@@ -28893,7 +28925,10 @@ var Protocol = class {
           message: "Method not found"
         }
       };
-      if (relatedTaskId && this._taskMessageQueue) {
+      if (relatedTaskId && relatedTaskLookup) {
+        const queuedError = { type: "error", message: errorResponse, timestamp: Date.now() };
+        relatedTaskLookup.then(() => this._enqueueTaskMessage(relatedTaskId, queuedError, sessionId), () => capturedTransport?.send(errorResponse)).catch((error51) => this._onerror(new Error(`Failed to send an error response: ${error51}`)));
+      } else if (relatedTaskId && this._taskMessageQueue) {
         this._enqueueTaskMessage(relatedTaskId, {
           type: "error",
           message: errorResponse,
@@ -28944,7 +28979,10 @@ var Protocol = class {
       closeSSEStream: extra?.closeSSEStream,
       closeStandaloneSSEStream: extra?.closeStandaloneSSEStream
     };
-    Promise.resolve().then(() => {
+    (relatedTaskLookup ?? Promise.resolve()).then(() => {
+      if (relatedTaskLookup && abortController.signal.aborted) {
+        throw new McpError(ErrorCode.ConnectionClosed, "Request was cancelled");
+      }
       if (taskCreationParams) {
         this.assertTaskHandlerCapability(request.method);
       }
@@ -28979,7 +29017,7 @@ var Protocol = class {
           ...error51["data"] !== void 0 && { data: error51["data"] }
         }
       };
-      if (relatedTaskId && this._taskMessageQueue) {
+      if (relatedTaskId && this._taskMessageQueue && relatedTaskFound) {
         await this._enqueueTaskMessage(relatedTaskId, {
           type: "error",
           message: errorResponse,
@@ -29459,7 +29497,7 @@ var Protocol = class {
       throw new Error("Cannot enqueue task message: taskStore and taskMessageQueue are not configured");
     }
     const maxQueueSize = this._options?.maxTaskQueueSize;
-    await this._taskMessageQueue.enqueue(taskId, message, sessionId, maxQueueSize);
+    await this._taskMessageQueue.enqueue(taskId, message, sessionId ?? this._transport?.sessionId, maxQueueSize);
   }
   /**
    * Clears the message queue for a task and rejects any pending request resolvers.
@@ -29488,12 +29526,13 @@ var Protocol = class {
    * Uses polling to check for updates at the task's configured poll interval.
    * @param taskId The task ID to wait for
    * @param signal Abort signal to cancel the wait
+   * @param sessionId Session of the request that waits, passed to the task store
    * @returns Promise that resolves when an update occurs or rejects if aborted
    */
-  async _waitForTaskUpdate(taskId, signal) {
+  async _waitForTaskUpdate(taskId, signal, sessionId) {
     let interval = this._options?.defaultTaskPollInterval ?? 1e3;
     try {
-      const task = await this._taskStore?.getTask(taskId);
+      const task = await this._taskStore?.getTask(taskId, sessionId);
       if (task?.pollInterval) {
         interval = task.pollInterval;
       }
@@ -29979,16 +30018,7 @@ var Server = class extends Protocol {
     if (!methodSchema) {
       throw new Error("Schema is missing a method literal");
     }
-    let methodValue;
-    if (isZ4Schema(methodSchema)) {
-      const v4Schema = methodSchema;
-      const v4Def = v4Schema._zod?.def;
-      methodValue = v4Def?.value ?? v4Schema.value;
-    } else {
-      const v3Schema = methodSchema;
-      const legacyDef = v3Schema._def;
-      methodValue = legacyDef?.value ?? v3Schema.value;
-    }
+    const methodValue = getLiteralValue(methodSchema);
     if (typeof methodValue !== "string") {
       throw new Error("Schema method literal must be a string");
     }
@@ -30381,6 +30411,42 @@ var ExperimentalMcpServerTasks = class {
 };
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js
+function toolInputElementCount(value, max) {
+  let count = 0;
+  const stack = [value];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node === null || typeof node !== "object")
+      continue;
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        if (++count > max)
+          return count;
+        if (child !== null && typeof child === "object")
+          stack.push(child);
+      }
+    } else {
+      for (const key in node) {
+        if (!Object.prototype.hasOwnProperty.call(node, key))
+          continue;
+        if (++count > max)
+          return count;
+        const child = node[key];
+        if (child !== null && typeof child === "object")
+          stack.push(child);
+      }
+    }
+  }
+  return count;
+}
+function resolveMaxToolInputElements(value) {
+  if (value === void 0 || value === Infinity)
+    return void 0;
+  if (typeof value !== "number" || Number.isNaN(value) || value < 1) {
+    throw new RangeError(`maxToolInputElements must be a number of at least 1, or Infinity, got ${String(value)}`);
+  }
+  return value;
+}
 var McpServer = class {
   constructor(serverInfo, options) {
     this._registeredResources = {};
@@ -30392,6 +30458,7 @@ var McpServer = class {
     this._resourceHandlersInitialized = false;
     this._promptHandlersInitialized = false;
     this.server = new Server(serverInfo, options);
+    this._maxToolInputElements = resolveMaxToolInputElements(options?.maxToolInputElements);
   }
   /**
    * Access experimental features.
@@ -30522,12 +30589,15 @@ var McpServer = class {
    * Validates tool input arguments against the tool's input schema.
    */
   async validateToolInput(tool, args, toolName) {
+    if (this._maxToolInputElements !== void 0 && toolInputElementCount(args, this._maxToolInputElements) > this._maxToolInputElements) {
+      throw new McpError(ErrorCode.InvalidParams, `Invalid arguments for tool ${toolName}: arguments contain more than the maximum of ${this._maxToolInputElements} elements`);
+    }
     if (!tool.inputSchema) {
       return void 0;
     }
     const inputObj = normalizeObjectSchema(tool.inputSchema);
     const schemaToParse = inputObj ?? tool.inputSchema;
-    const parseResult = await safeParseAsync2(schemaToParse, args);
+    const parseResult = await safeParseAsync2(schemaToParse, args ?? {});
     if (!parseResult.success) {
       const error51 = "error" in parseResult ? parseResult.error : "Unknown error";
       const errorMessage = getParseErrorMessage(error51);
@@ -30765,7 +30835,7 @@ var McpServer = class {
       }
       if (prompt.argsSchema) {
         const argsObj = normalizeObjectSchema(prompt.argsSchema);
-        const parseResult = await safeParseAsync2(argsObj, request.params.arguments);
+        const parseResult = await safeParseAsync2(argsObj, request.params.arguments ?? {});
         if (!parseResult.success) {
           const error51 = "error" in parseResult ? parseResult.error : "Unknown error";
           const errorMessage = getParseErrorMessage(error51);
@@ -31176,8 +31246,17 @@ var EMPTY_COMPLETION_RESULT = {
 import process3 from "process";
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js
+var STDIO_DEFAULT_MAX_BUFFER_SIZE = 10 * 1024 * 1024;
 var ReadBuffer = class {
+  constructor(options) {
+    this._maxBufferSize = options?.maxBufferSize ?? STDIO_DEFAULT_MAX_BUFFER_SIZE;
+  }
   append(chunk) {
+    const newSize = (this._buffer?.length ?? 0) + chunk.length;
+    if (newSize > this._maxBufferSize) {
+      this.clear();
+      throw new Error(`ReadBuffer exceeded maximum size of ${this._maxBufferSize} bytes`);
+    }
     this._buffer = this._buffer ? Buffer.concat([this._buffer, chunk]) : chunk;
   }
   readMessage() {
@@ -31205,18 +31284,24 @@ function serializeMessage(message) {
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
 var StdioServerTransport = class {
-  constructor(_stdin = process3.stdin, _stdout = process3.stdout) {
+  constructor(_stdin = process3.stdin, _stdout = process3.stdout, options) {
     this._stdin = _stdin;
     this._stdout = _stdout;
-    this._readBuffer = new ReadBuffer();
     this._started = false;
     this._ondata = (chunk) => {
-      this._readBuffer.append(chunk);
-      this.processReadBuffer();
+      try {
+        this._readBuffer.append(chunk);
+        this.processReadBuffer();
+      } catch (error51) {
+        this.onerror?.(error51);
+        this.close().catch(() => {
+        });
+      }
     };
     this._onerror = (error51) => {
       this.onerror?.(error51);
     };
+    this._readBuffer = new ReadBuffer({ maxBufferSize: options?.maxBufferSize });
   }
   /**
    * Starts listening for messages on stdin.
@@ -31265,7 +31350,7 @@ var StdioServerTransport = class {
 };
 
 // src/core/config.ts
-import { readFileSync as readFileSync2 } from "fs";
+import { readFileSync as readFileSync3 } from "fs";
 import { homedir as homedir3 } from "os";
 import { join as join7 } from "path";
 
@@ -31281,6 +31366,7 @@ import { homedir as homedir2 } from "os";
 import { basename, dirname as dirname4, join as join5, normalize, sep } from "path";
 
 // src/core/diag.ts
+import { readFileSync } from "fs";
 import { join as join3 } from "path";
 
 // src/core/log.ts
@@ -31353,7 +31439,7 @@ function diag(harness, event, extra = {}) {
 }
 
 // src/core/git-layout.ts
-import { lstatSync, readFileSync, realpathSync } from "fs";
+import { lstatSync, readFileSync as readFileSync2, realpathSync } from "fs";
 import { dirname as dirname3, isAbsolute, join as join4, resolve } from "path";
 var TRANSIENT = /* @__PURE__ */ new Set(["EAGAIN", "EMFILE", "ENFILE", "EBUSY", "EINTR", "EIO", "ETIMEDOUT"]);
 var ATTEMPTS = 3;
@@ -31377,7 +31463,7 @@ function entryKind(path) {
 }
 function readTextOrNull(path) {
   try {
-    return readFileSync(path, "utf8");
+    return readFileSync2(path, "utf8");
   } catch (error51) {
     if (TRANSIENT.has(errorCode(error51))) throw new TransientProbeError(errorCode(error51));
     return null;
@@ -31592,6 +31678,19 @@ function deriveBankId(config2, directory, harness = "coding", sessionRoot) {
   };
   return applyTemplate(config2.bankIdTemplate || DEFAULT_TEMPLATE, resolvers, "bankIdTemplate");
 }
+function bankProjectName(config2, directory, sessionRoot) {
+  if (mappedBank(config2, directory, sessionRoot)) return void 0;
+  const dynamic = config2.dynamicBankId ?? !config2.bankId;
+  if (!dynamic) return void 0;
+  const template = config2.bankIdTemplate || DEFAULT_TEMPLATE;
+  if (!template.includes("{gitProject}")) return void 0;
+  try {
+    return gitProjectName(directory, config2.resolveWorktrees ?? true, sessionRoot);
+  } catch (error51) {
+    if (error51 instanceof BankResolutionError) return void 0;
+    throw error51;
+  }
+}
 function deriveBankIdOrSkip(config2, directory, harness = "coding", sessionRoot) {
   try {
     return deriveBankId(config2, directory, harness, sessionRoot);
@@ -31609,7 +31708,7 @@ function deriveBankIdOrSkip(config2, directory, harness = "coding", sessionRoot)
 // src/core/missions.ts
 import { createHash } from "crypto";
 var GIT_MISSION = "You are ingesting a single git commit: its message and its full diff. Extract the concrete technical DECISION and the CAUSE/INVARIANT it encodes, bound to the specific code entities (functions, methods, files) and behaviors it changes. Preserve exact identifiers, paths, and literal values verbatim. Preserve the 'REF-ID: <token>' marker verbatim in every fact. Capture both WHAT changed and WHY. Issue/PR references (#123, GH-123, PROJ-123) are load-bearing: keep them VERBATIM in the fact text and emit each as an ENTITY, so a later question about that issue or PR retrieves this decision.";
-var GITLOG_MISSION = "You are ingesting an aggregated block of git commit MESSAGES ONLY (no diffs) \u2014 the project's recent commit-message history, newest first. Extract the project's INITIATIVES, FEATURES, ENHANCEMENTS, and notable changes or THEMES over time \u2014 what the project has been working on and how it has evolved. Do NOT extract per-line code detail (there is no diff to draw it from). Group related commits into a coherent initiative/theme where the messages make that clear; preserve exact identifiers and literal values verbatim when quoting a subject line. Keep issue/PR references (#123, GH-123) VERBATIM and emit each as an ENTITY \u2014 they are how future sessions will ask about this work.";
+var GITLOG_MISSION = "You are ingesting an aggregated block of git commit MESSAGES ONLY (no diffs) \u2014 the project's recent commit-message history, oldest first. Extract the project's INITIATIVES, FEATURES, ENHANCEMENTS, and notable changes or THEMES over time \u2014 what the project has been working on and how it has evolved. Do NOT extract per-line code detail (there is no diff to draw it from). Group related commits into a coherent initiative/theme where the messages make that clear; preserve exact identifiers and literal values verbatim when quoting a subject line. Keep issue/PR references (#123, GH-123) VERBATIM and emit each as an ENTITY \u2014 they are how future sessions will ask about this work.";
 var CONVERSATION_MISSION = `You are ingesting a developer conversation as a JSONL transcript (one {role, content} turn per line): the user's requests, the assistant's narration, and compact 'action' turns naming each tool use and its target (e.g. "Edit boltons/strutils.py") with no arguments or outputs. It may be a SHORT decision chat or a LONG working session \u2014 scale the facts to the substance, never to the message count. Extract the FEWEST facts that capture the OUTCOME: the settled DECISIONS and their exact rules/values (quote literals VERBATIM); concrete CHANGES to specific code entities; problems and how they were resolved; conventions or invariants established; at most one fact for a notable REJECTED alternative ('initially proposed X, changed to Y because Z'). A short decision chat usually yields 1-2 facts; a substantial working session several. CRITICAL: a conversation REVISES itself \u2014 record ONLY the FINAL state as what is in effect; a superseded proposal appears ONLY inside the rejected fact, NEVER as its own 'decided' fact; if the same setting changes several times keep only the LAST, and make unmistakably clear which choice WON. Do NOT emit one fact per message, per intermediate proposal, or per action turn. Keep issue/PR references (#123, GH-123) VERBATIM and emit each as an ENTITY. Preserve the 'REF-ID: <token>' marker verbatim in every fact. Do not invent; capture only what was actually settled.`;
 var REFLECT_MISSION = "You are a debugging assistant with the project's past decisions in memory (git rationale and developer chats). Given a bug's SYMPTOM, find the past decision whose rationale explains the ROOT CAUSE \u2014 not one that merely shares vocabulary. Answer with the PRECISE fix: state the EXACT rule and the LITERAL values, identifiers, strings, numbers, or set members that were decided \u2014 quote them VERBATIM, never paraphrase, generalize, or omit them (give the actual decided value, not 'the project standard'). If memories CONFLICT on the same rule, the LATEST decision wins \u2014 prefer facts that explicitly amend or supersede an earlier one, state the superseded rule as no longer in effect, and never present it as the fix. Name the function/file to change and cite the REF-ID(s). If NOTHING in memory genuinely explains THIS symptom, say exactly that in one short sentence \u2014 a wrong-but-confident nearest match is worse than an honest miss; never stretch an unrelated decision to fit.";
 var DOCUMENT_MISSION = "You are ingesting a standalone document (notes, docs, or structural findings). Extract the concrete facts, concepts, and structure it describes.";
@@ -31685,6 +31784,8 @@ var KNOWLEDGE_LABELS = {
   ]
 };
 function pageScopeRule(project) {
+  if (project === void 0)
+    return ` This bank is shared by several projects: attribute each thing you include to the repository or project its sources name, and group by project where that helps. Leave out facts about external tools, libraries and services those projects merely use, configure, deploy or discuss \u2014 they belong to somebody else's codebase \u2014 including any commit SHA or identifier from such a dependency's repository.`;
   return ` Scope this page to ${project} ITSELF: the bank also holds facts about external tools, libraries and services that ${project} merely uses, configures, deploys or discusses, and those belong to somebody else's codebase. Include something only when its subject is ${project}'s own code, configuration or process; when it is about a dependency, leave it out however well-evidenced it looks \u2014 including any commit SHA or identifier that belongs to that dependency's repository rather than this one.`;
 }
 var PAGE_TAXONOMY = [
@@ -31866,16 +31967,19 @@ function codingBankManifest(overrides, mode = DEFAULT_RETAIN_EXTRACTION_MODE, de
   return Object.keys(bank).length > 0 ? { version: "1", bank } : void 0;
 }
 
+// package.json
+var version2 = "0.8.2";
+
 // src/core/util.ts
 import { accessSync, constants } from "fs";
 import { delimiter, join as join6 } from "path";
 var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-function semverGte(version2, min) {
+function semverGte(version3, min) {
   const parts = (v) => {
     const m = v.trim().match(/^(\d+)\.(\d+)(?:\.(\d+))?/);
     return m ? [Number(m[1]), Number(m[2]), Number(m[3] ?? 0)] : void 0;
   };
-  const a = version2 ? parts(version2) : void 0;
+  const a = version3 ? parts(version3) : void 0;
   const b = parts(min);
   if (!a || !b) return false;
   for (let i = 0; i < 3; i++) {
@@ -31900,6 +32004,7 @@ async function pool(items, n, fn, onError, onProgress) {
 }
 
 // src/core/hindsight.ts
+var USER_AGENT = `hindsight-coding-agents/${version2}`;
 function resolveRetainScopes(tags, configured) {
   if (configured !== "per_source") return configured;
   const sources = [...new Set((tags ?? []).filter((t) => t.startsWith("source:")))].sort();
@@ -31935,7 +32040,7 @@ async function isEndpointMissing(r) {
     const j = await r.json();
     return String(j?.detail ?? "").trim().toLowerCase() === "not found";
   } catch {
-    return true;
+    return false;
   }
 }
 var TERMINAL = /* @__PURE__ */ new Set(["completed", "failed", "cancelled", "error"]);
@@ -31954,6 +32059,12 @@ var ReflectError = class extends Error {
   get fallbackEligible() {
     return this.timedOut || this.status !== void 0 && this.status >= 500;
   }
+  /** A 4xx the next attempt would get again (bad key, missing bank, rejected body) — retrying it
+   *  only spends another doomed call (#5207). 408/429 are "not now", so they stay retryable. */
+  get permanent() {
+    const s = this.status;
+    return s !== void 0 && s >= 400 && s < 500 && s !== 408 && s !== 429;
+  }
 };
 var DEFAULT_MAX_PARALLEL_RETAINS = 10;
 var DEFAULT_PAGE_SEARCH_LIMIT = 10;
@@ -31964,8 +32075,10 @@ var DEFAULT_RECALL_OPTIONS = {
   include: { entities: null }
 };
 var POLL_CYCLE_MS = 5e3;
+var POLL_MAX_SERVER_ERRORS = 12;
 var RETRY_AFTER_FLOOR_MS = 10 * 1e3;
 var RETRY_AFTER_CEILING_MS = 60 * 1e3;
+var RATE_LIMIT_BACKOFF_MS = 1e3;
 function shapePage(page) {
   const p = page ?? {};
   const body = typeof p.body === "string" && p.body.trim() ? p.body : p.markdown;
@@ -31977,6 +32090,15 @@ function shapePage(page) {
     ...p.timestamp ? { last_updated_at: p.timestamp } : {},
     body
   };
+}
+var GLOBAL_DISPATCHER = /* @__PURE__ */ Symbol.for("undici.globalDispatcher.1");
+function signalOnlyDispatcher() {
+  void globalThis.Headers;
+  const d = globalThis[GLOBAL_DISPATCHER];
+  if (typeof d?.compose !== "function") return void 0;
+  return d.compose(
+    (dispatch) => (opts, handler) => dispatch({ ...opts, headersTimeout: 0, bodyTimeout: 0 }, handler)
+  );
 }
 var HindsightClient = class {
   apiUrl;
@@ -31997,6 +32119,7 @@ var HindsightClient = class {
   observationScopes;
   pageSearchLimit;
   recallOptions;
+  rateLimitPatienceMs;
   constructor(o) {
     this.apiUrl = o.apiUrl.replace(/\/$/, "");
     this.token = o.apiToken;
@@ -32009,6 +32132,7 @@ var HindsightClient = class {
     this.observationScopes = o.observationScopes ?? DEFAULT_OBSERVATION_SCOPES;
     this.pageSearchLimit = o.pageSearchLimit || DEFAULT_PAGE_SEARCH_LIMIT;
     this.recallOptions = { ...DEFAULT_RECALL_OPTIONS, ...o.recallOptions };
+    this.rateLimitPatienceMs = o.rateLimitPatienceMs ?? 0;
   }
   /** The credential in use, for diagnostics. Never log or report the VALUE — booleans only. */
   get apiToken() {
@@ -32017,7 +32141,8 @@ var HindsightClient = class {
   headers() {
     const h = {
       "Content-Type": "application/json",
-      "Accept-Encoding": "identity"
+      "Accept-Encoding": "identity",
+      "User-Agent": USER_AGENT
     };
     if (this.token) h["Authorization"] = `Bearer ${this.token}`;
     return h;
@@ -32049,7 +32174,8 @@ var HindsightClient = class {
    * bounds the whole call.
    */
   async fetchWithAuth(url2, init) {
-    const send = () => fetch(url2, { ...init, headers: this.headers() });
+    const dispatcher = init.signal ? signalOnlyDispatcher() : void 0;
+    const send = () => fetch(url2, { ...init, headers: this.headers(), ...dispatcher ? { dispatcher } : {} });
     const r = await send();
     if (r.status !== 401 || !this.refreshToken()) return r;
     return send();
@@ -32065,13 +32191,22 @@ var HindsightClient = class {
   }
   /** `tolerate` adds statuses that are returned to the caller instead of thrown (404 always is). */
   async req(method, url2, body, tolerate = [], timeoutMs = 15e3) {
-    const r = await this.fetchWithAuth(url2, {
-      method,
-      body: body ? JSON.stringify(body) : void 0,
-      signal: AbortSignal.timeout(timeoutMs)
-    });
-    if (r.status === 429 && !tolerate.includes(429))
-      throw new RateLimitedError(retryAfterMs(r.headers.get("retry-after")));
+    const payload = body ? JSON.stringify(body) : void 0;
+    let r;
+    for (let attempt = 0, waited = 0; ; attempt++) {
+      r = await this.fetchWithAuth(url2, {
+        method,
+        body: payload,
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      if (r.status !== 429 || tolerate.includes(429)) break;
+      const asked = retryAfterMs(r.headers.get("retry-after"));
+      const backoff = Math.min(RETRY_AFTER_CEILING_MS, RATE_LIMIT_BACKOFF_MS * 2 ** attempt);
+      const wait = Math.min(RETRY_AFTER_CEILING_MS, Math.max(asked, backoff)) * (1 + Math.random() / 2);
+      if (waited + wait > this.rateLimitPatienceMs) throw new RateLimitedError(asked);
+      await sleep(wait);
+      waited += wait;
+    }
     if (!r.ok && r.status !== 404 && !tolerate.includes(r.status))
       throw new Error(
         `${method} ${url2} -> ${r.status} ${await r.text()}${this.authHint(r.status)}`
@@ -32106,7 +32241,7 @@ var HindsightClient = class {
   }
   /**
    * Whether this server honours `operation_id` on an async retain, and can therefore be appended to
-   * safely (see MIN_IDEMPOTENT_RETAIN_VERSION). Probed once per client via GET /version; anything
+   * safely (see MIN_IDEMPOTENT_RETAIN_VERSION). Probed once per client via the version endpoint; anything
    * unreachable, unparseable or older answers "no", which costs efficiency, never correctness.
    */
   async supportsIdempotentRetain() {
@@ -32116,15 +32251,21 @@ var HindsightClient = class {
     }
     return this.idempotentRetain;
   }
+  /** `/v1/version` first: an ingress that routes only `/v1` to the API (the Helm chart's default)
+   *  hands a bare `/version` to the control plane, whose HTML 404 or login redirect read as "no",
+   *  so append silently never turned on (#5286). Servers that predate the alias still answer
+   *  `/version`, so that stays as the fallback. */
   async probeIdempotentRetain() {
-    try {
-      const r = await this.req("GET", `${this.apiUrl}/version`);
-      if (!r.ok) return false;
-      const j = await r.json();
-      return semverGte(j.api_version, MIN_IDEMPOTENT_RETAIN_VERSION);
-    } catch {
-      return false;
+    for (const path of ["/v1/version", "/version"]) {
+      try {
+        const r = await this.req("GET", `${this.apiUrl}${path}`);
+        if (!r.ok) continue;
+        const j = await r.json();
+        return semverGte(j.api_version, MIN_IDEMPOTENT_RETAIN_VERSION);
+      } catch {
+      }
     }
+    return false;
   }
   /**
    * Whether a session write-back may use `update_mode="append"`: the server must dedupe by
@@ -32185,6 +32326,14 @@ var HindsightClient = class {
       if (hit) return hit.tags ?? [];
       if (items.length < limit || offset + limit >= (j.total ?? 0)) return void 0;
     }
+  }
+  /** Whether the bank holds any document at all — a one-row listing. A bank that does not exist
+   *  yet (404) holds none; any other failure throws, so a caller can tell "empty" from "unknown". */
+  async hasDocuments() {
+    const r = await this.req("GET", this.bankUrl("/documents?limit=1"));
+    if (r.status === 404) return false;
+    const j = await r.json();
+    return (j.total ?? j.items?.length ?? 0) > 0;
   }
   /** Configure the bank: POST the coding bank manifest to /import (missions, retain strategies,
    *  entity labels), then seed knowledge pages when the server supports them. Both halves are
@@ -32267,7 +32416,13 @@ var HindsightClient = class {
     this.log(`[wait] draining ${ids.length} ${label} operations \u2026`);
     const start = Date.now();
     const pending = new Set(ids);
+    const serverErrors = /* @__PURE__ */ new Map();
     let failed = 0;
+    const giveUp = (id, status) => {
+      pending.delete(id);
+      failed++;
+      this.log(`  \u2026 ${label} op ${id} -> HTTP ${status}, counted as failed`);
+    };
     while (pending.size && Date.now() - start < maxMs) {
       let backoffMs = POLL_CYCLE_MS;
       await pool([...pending], this.maxParallelRetains, async (id) => {
@@ -32280,7 +32435,14 @@ var HindsightClient = class {
             );
             return;
           }
-          if (!r.ok) return;
+          if (r.status >= 500) {
+            const n = (serverErrors.get(id) ?? 0) + 1;
+            serverErrors.set(id, n);
+            if (n >= POLL_MAX_SERVER_ERRORS) giveUp(id, r.status);
+            return;
+          }
+          if (!r.ok) return giveUp(id, r.status);
+          serverErrors.delete(id);
           const st = ((await r.json()).status || "").toLowerCase();
           if (TERMINAL.has(st)) {
             pending.delete(id);
@@ -32464,7 +32626,7 @@ var HindsightClient = class {
    * which is how `pageScopeRule`'s repo name reaches banks seeded by an earlier version.
    */
   async seedPages(pageTrigger = buildPageTrigger(), pagesConfig = {}, customPages = {}) {
-    const pages = pagesFor(this.project ?? this.bank, pagesConfig, customPages);
+    const pages = pagesFor(this.project, pagesConfig, customPages);
     const existing = /* @__PURE__ */ new Map();
     let roots;
     try {
@@ -32539,7 +32701,7 @@ var HindsightClient = class {
     }
     const initiatives = await this.resyncInitiativeTriggers(roots, pageTrigger);
     this.log(
-      `[bank] knowledge pages seeded on ${this.bank} (scoped to ${this.project ?? this.bank}): ${created} created, ${updated} re-synced, ${pages.length - created - updated - vanished} unchanged` + (vanished ? `, ${vanished} deleted under us` : "") + (initiatives ? `, ${initiatives} initiative pages re-synced` : "")
+      `[bank] knowledge pages seeded on ${this.bank} (scoped to ${this.project ?? "the shared bank"}): ${created} created, ${updated} re-synced, ${pages.length - created - updated - vanished} unchanged` + (vanished ? `, ${vanished} deleted under us` : "") + (initiatives ? `, ${initiatives} initiative pages re-synced` : "")
     );
   }
   /**
@@ -32550,23 +32712,33 @@ var HindsightClient = class {
    * it: five taxonomy pages against one page per initiative, each an LLM synthesis per
    * consolidation under the auto-refresh that used to be the default (#3506).
    *
-   * Only the trigger is touched. Their `name` and `source_query` are written once, from the
-   * initiative's own title, and re-stating either would rebuild a page whose question never
-   * changed. The tree read above is reused rather than re-fetched.
+   * Their `name` and `source_query` are written once, from the initiative's own title, and
+   * re-stating either would rebuild a page whose question never changed. The one exception is
+   * the scope clause: a page captured while the clause named the BANK is scoped to a project no
+   * memory is about and comes out empty (#4490), so exactly that clause is swapped for the current
+   * one — the rest of the query, the user's wording included, is kept. The tree read above is
+   * reused rather than re-fetched.
    */
   async resyncInitiativeTriggers(roots, pageTrigger) {
     const folder = roots.find(
       (n) => n.kind === "folder" && (n.name || "").toLowerCase() === "initiatives"
     );
+    const bankScope = pageScopeRule(this.bank);
     let updated = 0;
     for (const page of folder?.children ?? []) {
-      if (page.kind !== "page" || page.trigger == null) continue;
-      const desired = pageTriggerFor(pageTrigger, this.bank, page.name);
-      if (!pageTriggerDrifted(page.trigger, desired)) continue;
+      if (page.kind !== "page") continue;
+      const patch = {};
+      const query = page.description?.replace(bankScope, pageScopeRule(this.project));
+      if (query !== page.description) patch.source_query = query;
+      if (page.trigger != null) {
+        const desired = pageTriggerFor(pageTrigger, this.bank, page.name);
+        if (pageTriggerDrifted(page.trigger, desired)) patch.trigger = pageTriggerPatch(desired);
+      }
+      if (!patch.trigger && !patch.source_query) continue;
       const r = await this.req(
         "PATCH",
         this.bankUrl(`/knowledge-base/nodes/${encodeURIComponent(page.id)}`),
-        { trigger: pageTriggerPatch(desired) }
+        patch
       );
       if (r.status === 404) continue;
       updated++;
@@ -32594,10 +32766,9 @@ var HindsightClient = class {
     let pageId = args.relatesToPageId;
     if (!pageId) {
       const folderId = await this.ensureFolder("Initiatives");
-      const subject = this.project ?? this.bank;
       const r = await this.req("POST", this.bankUrl("/knowledge-base/pages"), {
         name: args.title,
-        source_query: `Summarize the "${args.title}" initiative: what is being built or changed and why, and its current state \u2014 drawn from the project's memory.` + pageScopeRule(subject),
+        source_query: `Summarize the "${args.title}" initiative: what is being built or changed and why, and its current state \u2014 drawn from the project's memory.` + pageScopeRule(this.project),
         parent_id: folderId,
         tags: ["knowledge:feature-work"],
         max_tokens: PAGE_MAX_TOKENS,
@@ -32612,7 +32783,7 @@ var HindsightClient = class {
     }
     const verb = args.relatesToPageId ? "Update to an existing initiative" : "New initiative";
     const content = `${verb}: ${args.title}. ${args.summary}`;
-    const markerId = `initiative-marker-${this.slugify(args.title)}-${Date.now()}`;
+    const markerId = `initiative-marker-${this.slugify(pageId)}${args.relatesToPageId ? "-update" : ""}`;
     const tags = [.../* @__PURE__ */ new Set([...args.stamp?.tags ?? [], "knowledge:feature-work"])];
     const context = `initiative marker for [[page:${pageId}]]`;
     await this.retain(content, context, markerId, tags, "document", {
@@ -32849,7 +33020,7 @@ function resolveConfig(raw = {}) {
 }
 function readRaw(path) {
   try {
-    return JSON.parse(readFileSync2(path, "utf8"));
+    return JSON.parse(readFileSync3(path, "utf8"));
   } catch (e) {
     if (e?.code !== "ENOENT") {
       console.error(`hindsight: ignoring invalid config at ${path}: ${e?.message || e}`);
@@ -33036,10 +33207,12 @@ function resolveHostConfig(harness, directory) {
   if (cfg0.disabled) return { cfg: cfg0, bankId: "" };
   const bankId = deriveBankIdOrSkip(cfg0, directory, harness);
   if (bankId === null) return { cfg: { ...cfg0, disabled: true }, bankId: "" };
-  return applyBankConfig(cfg0, bankId, directory);
+  const resolved2 = applyBankConfig(cfg0, bankId, directory);
+  const project = resolved2.bankId === bankId ? bankProjectName(resolved2.cfg, directory) : void 0;
+  return { ...resolved2, project };
 }
 function resolveHostMemory(harness, directory) {
-  const { cfg, bankId } = resolveHostConfig(harness, directory);
+  const { cfg, bankId, project } = resolveHostConfig(harness, directory);
   return {
     cfg,
     bankId,
@@ -33047,6 +33220,8 @@ function resolveHostMemory(harness, directory) {
       apiUrl: cfg.apiUrl,
       apiToken: cfg.apiToken,
       bank: bankId,
+      // Names the repo in the initiative pages this host captures, as the seeded pages do.
+      project,
       maxParallelRetains: cfg.maxParallelRetains,
       observationScopes: cfg.observationScopes,
       pageSearchLimit: cfg.pageSearchLimit,
@@ -33066,19 +33241,27 @@ function resolveHostMemory(harness, directory) {
 }
 
 // src/core/knowledge-tools.ts
-import { createHash as createHash3 } from "crypto";
+import { createHash as createHash4 } from "crypto";
 import { existsSync as existsSync3 } from "fs";
 import { homedir as homedir5 } from "os";
 import { join as join10 } from "path";
 
 // src/core/status.ts
-import { execFileSync as execFileSync2 } from "child_process";
+import { execFileSync as execFileSync3 } from "child_process";
 
 // src/core/git.ts
 import { execFileSync } from "child_process";
 import { resolve as resolve2 } from "path";
+
+// src/core/uuid.ts
+import { createHash as createHash2 } from "crypto";
+
+// src/core/git.ts
+var US = "";
+var RS = "";
+var GITLOG_FORMAT = `--format=%h${US}%ad${US}%an${US}%s${US}%b${RS}`;
 function git(repo, ...args) {
-  return execFileSync("git", ["-C", repo, ...args], {
+  return execFileSync("git", ["-C", repo, "-c", "log.showSignature=false", ...args], {
     encoding: "utf8",
     maxBuffer: 1 << 28,
     windowsHide: true,
@@ -33114,8 +33297,8 @@ function parsePageList(raw) {
 }
 
 // src/core/survey.ts
-import { spawn as realSpawn3 } from "child_process";
-import { createHash as createHash2 } from "crypto";
+import { execFileSync as execFileSync2, spawn as realSpawn3 } from "child_process";
+import { createHash as createHash3 } from "crypto";
 import { existsSync as existsSync2 } from "fs";
 import { homedir as homedir4, tmpdir } from "os";
 import { dirname as dirname5, join as join9 } from "path";
@@ -33150,7 +33333,7 @@ var SURVEY_DOC_IDS = [
 var DEEPEN_DIFF_TARGET = 300;
 function commitCount(repoDir) {
   try {
-    const out = execFileSync2("git", ["-C", repoDir, "rev-list", "--count", "HEAD"], {
+    const out = execFileSync3("git", ["-C", repoDir, "rev-list", "--count", "HEAD"], {
       encoding: "utf8",
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"]
@@ -33374,7 +33557,7 @@ function buildKnowledgeTools(client, bankId, opts = {}) {
       annotations: NON_DESTRUCTIVE_WRITE_ANNOTATIONS,
       handler: guarded(async ({ title, content }) => {
         const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-        const docId = /[^\x00-\x7f]/.test(title) || !slug ? `${slug || "doc"}--${createHash3("sha256").update(title).digest("hex")}` : slug;
+        const docId = /[^\x00-\x7f]/.test(title) || !slug ? `${slug || "doc"}--${createHash4("sha256").update(title).digest("hex")}` : slug;
         const stamp = opts.stampFor?.();
         const metadata = {
           ...stamp?.metadata,

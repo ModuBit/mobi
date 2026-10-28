@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/deepen.ts
-import { execFileSync as execFileSync3 } from "child_process";
+import { execFileSync as execFileSync4 } from "child_process";
 import { tmpdir as tmpdir2 } from "os";
 import { join as join10 } from "path";
 
@@ -11,6 +11,7 @@ import { homedir as homedir2 } from "os";
 import { basename, dirname as dirname3, join as join4, normalize, sep } from "path";
 
 // src/core/diag.ts
+import { readFileSync } from "fs";
 import { join as join2 } from "path";
 
 // src/core/log.ts
@@ -86,7 +87,7 @@ function diag(harness, event, extra = {}) {
 }
 
 // src/core/git-layout.ts
-import { lstatSync, readFileSync, realpathSync } from "fs";
+import { lstatSync, readFileSync as readFileSync2, realpathSync } from "fs";
 import { dirname as dirname2, isAbsolute, join as join3, resolve } from "path";
 var TRANSIENT = /* @__PURE__ */ new Set(["EAGAIN", "EMFILE", "ENFILE", "EBUSY", "EINTR", "EIO", "ETIMEDOUT"]);
 var ATTEMPTS = 3;
@@ -110,7 +111,7 @@ function entryKind(path) {
 }
 function readTextOrNull(path) {
   try {
-    return readFileSync(path, "utf8");
+    return readFileSync2(path, "utf8");
   } catch (error) {
     if (TRANSIENT.has(errorCode(error))) throw new TransientProbeError(errorCode(error));
     return null;
@@ -355,7 +356,7 @@ function deriveBankIdOrSkip(config, directory, harness = "coding", sessionRoot) 
 // src/core/missions.ts
 import { createHash } from "crypto";
 var GIT_MISSION = "You are ingesting a single git commit: its message and its full diff. Extract the concrete technical DECISION and the CAUSE/INVARIANT it encodes, bound to the specific code entities (functions, methods, files) and behaviors it changes. Preserve exact identifiers, paths, and literal values verbatim. Preserve the 'REF-ID: <token>' marker verbatim in every fact. Capture both WHAT changed and WHY. Issue/PR references (#123, GH-123, PROJ-123) are load-bearing: keep them VERBATIM in the fact text and emit each as an ENTITY, so a later question about that issue or PR retrieves this decision.";
-var GITLOG_MISSION = "You are ingesting an aggregated block of git commit MESSAGES ONLY (no diffs) \u2014 the project's recent commit-message history, newest first. Extract the project's INITIATIVES, FEATURES, ENHANCEMENTS, and notable changes or THEMES over time \u2014 what the project has been working on and how it has evolved. Do NOT extract per-line code detail (there is no diff to draw it from). Group related commits into a coherent initiative/theme where the messages make that clear; preserve exact identifiers and literal values verbatim when quoting a subject line. Keep issue/PR references (#123, GH-123) VERBATIM and emit each as an ENTITY \u2014 they are how future sessions will ask about this work.";
+var GITLOG_MISSION = "You are ingesting an aggregated block of git commit MESSAGES ONLY (no diffs) \u2014 the project's recent commit-message history, oldest first. Extract the project's INITIATIVES, FEATURES, ENHANCEMENTS, and notable changes or THEMES over time \u2014 what the project has been working on and how it has evolved. Do NOT extract per-line code detail (there is no diff to draw it from). Group related commits into a coherent initiative/theme where the messages make that clear; preserve exact identifiers and literal values verbatim when quoting a subject line. Keep issue/PR references (#123, GH-123) VERBATIM and emit each as an ENTITY \u2014 they are how future sessions will ask about this work.";
 var CONVERSATION_MISSION = `You are ingesting a developer conversation as a JSONL transcript (one {role, content} turn per line): the user's requests, the assistant's narration, and compact 'action' turns naming each tool use and its target (e.g. "Edit boltons/strutils.py") with no arguments or outputs. It may be a SHORT decision chat or a LONG working session \u2014 scale the facts to the substance, never to the message count. Extract the FEWEST facts that capture the OUTCOME: the settled DECISIONS and their exact rules/values (quote literals VERBATIM); concrete CHANGES to specific code entities; problems and how they were resolved; conventions or invariants established; at most one fact for a notable REJECTED alternative ('initially proposed X, changed to Y because Z'). A short decision chat usually yields 1-2 facts; a substantial working session several. CRITICAL: a conversation REVISES itself \u2014 record ONLY the FINAL state as what is in effect; a superseded proposal appears ONLY inside the rejected fact, NEVER as its own 'decided' fact; if the same setting changes several times keep only the LAST, and make unmistakably clear which choice WON. Do NOT emit one fact per message, per intermediate proposal, or per action turn. Keep issue/PR references (#123, GH-123) VERBATIM and emit each as an ENTITY. Preserve the 'REF-ID: <token>' marker verbatim in every fact. Do not invent; capture only what was actually settled.`;
 var REFLECT_MISSION = "You are a debugging assistant with the project's past decisions in memory (git rationale and developer chats). Given a bug's SYMPTOM, find the past decision whose rationale explains the ROOT CAUSE \u2014 not one that merely shares vocabulary. Answer with the PRECISE fix: state the EXACT rule and the LITERAL values, identifiers, strings, numbers, or set members that were decided \u2014 quote them VERBATIM, never paraphrase, generalize, or omit them (give the actual decided value, not 'the project standard'). If memories CONFLICT on the same rule, the LATEST decision wins \u2014 prefer facts that explicitly amend or supersede an earlier one, state the superseded rule as no longer in effect, and never present it as the fix. Name the function/file to change and cite the REF-ID(s). If NOTHING in memory genuinely explains THIS symptom, say exactly that in one short sentence \u2014 a wrong-but-confident nearest match is worse than an honest miss; never stretch an unrelated decision to fit.";
 var DOCUMENT_MISSION = "You are ingesting a standalone document (notes, docs, or structural findings). Extract the concrete facts, concepts, and structure it describes.";
@@ -431,6 +432,8 @@ var KNOWLEDGE_LABELS = {
   ]
 };
 function pageScopeRule(project) {
+  if (project === void 0)
+    return ` This bank is shared by several projects: attribute each thing you include to the repository or project its sources name, and group by project where that helps. Leave out facts about external tools, libraries and services those projects merely use, configure, deploy or discuss \u2014 they belong to somebody else's codebase \u2014 including any commit SHA or identifier from such a dependency's repository.`;
   return ` Scope this page to ${project} ITSELF: the bank also holds facts about external tools, libraries and services that ${project} merely uses, configures, deploys or discusses, and those belong to somebody else's codebase. Include something only when its subject is ${project}'s own code, configuration or process; when it is about a dependency, leave it out however well-evidenced it looks \u2014 including any commit SHA or identifier that belongs to that dependency's repository rather than this one.`;
 }
 var PAGE_TAXONOMY = [
@@ -612,16 +615,19 @@ function codingBankManifest(overrides, mode = DEFAULT_RETAIN_EXTRACTION_MODE, de
   return Object.keys(bank).length > 0 ? { version: "1", bank } : void 0;
 }
 
+// package.json
+var version = "0.8.2";
+
 // src/core/util.ts
 import { accessSync, constants } from "fs";
 import { delimiter, join as join5 } from "path";
 var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-function semverGte(version, min) {
+function semverGte(version2, min) {
   const parts = (v) => {
     const m = v.trim().match(/^(\d+)\.(\d+)(?:\.(\d+))?/);
     return m ? [Number(m[1]), Number(m[2]), Number(m[3] ?? 0)] : void 0;
   };
-  const a = version ? parts(version) : void 0;
+  const a = version2 ? parts(version2) : void 0;
   const b = parts(min);
   if (!a || !b) return false;
   for (let i = 0; i < 3; i++) {
@@ -646,6 +652,7 @@ async function pool(items, n, fn, onError, onProgress) {
 }
 
 // src/core/hindsight.ts
+var USER_AGENT = `hindsight-coding-agents/${version}`;
 function resolveRetainScopes(tags, configured) {
   if (configured !== "per_source") return configured;
   const sources = [...new Set((tags ?? []).filter((t) => t.startsWith("source:")))].sort();
@@ -681,7 +688,7 @@ async function isEndpointMissing(r) {
     const j = await r.json();
     return String(j?.detail ?? "").trim().toLowerCase() === "not found";
   } catch {
-    return true;
+    return false;
   }
 }
 var TERMINAL = /* @__PURE__ */ new Set(["completed", "failed", "cancelled", "error"]);
@@ -700,6 +707,12 @@ var ReflectError = class extends Error {
   get fallbackEligible() {
     return this.timedOut || this.status !== void 0 && this.status >= 500;
   }
+  /** A 4xx the next attempt would get again (bad key, missing bank, rejected body) — retrying it
+   *  only spends another doomed call (#5207). 408/429 are "not now", so they stay retryable. */
+  get permanent() {
+    const s = this.status;
+    return s !== void 0 && s >= 400 && s < 500 && s !== 408 && s !== 429;
+  }
 };
 var DEFAULT_MAX_PARALLEL_RETAINS = 10;
 var DEFAULT_PAGE_SEARCH_LIMIT = 10;
@@ -710,8 +723,10 @@ var DEFAULT_RECALL_OPTIONS = {
   include: { entities: null }
 };
 var POLL_CYCLE_MS = 5e3;
+var POLL_MAX_SERVER_ERRORS = 12;
 var RETRY_AFTER_FLOOR_MS = 10 * 1e3;
 var RETRY_AFTER_CEILING_MS = 60 * 1e3;
+var RATE_LIMIT_BACKOFF_MS = 1e3;
 function shapePage(page) {
   const p = page ?? {};
   const body = typeof p.body === "string" && p.body.trim() ? p.body : p.markdown;
@@ -723,6 +738,15 @@ function shapePage(page) {
     ...p.timestamp ? { last_updated_at: p.timestamp } : {},
     body
   };
+}
+var GLOBAL_DISPATCHER = /* @__PURE__ */ Symbol.for("undici.globalDispatcher.1");
+function signalOnlyDispatcher() {
+  void globalThis.Headers;
+  const d = globalThis[GLOBAL_DISPATCHER];
+  if (typeof d?.compose !== "function") return void 0;
+  return d.compose(
+    (dispatch) => (opts, handler) => dispatch({ ...opts, headersTimeout: 0, bodyTimeout: 0 }, handler)
+  );
 }
 var HindsightClient = class {
   apiUrl;
@@ -743,6 +767,7 @@ var HindsightClient = class {
   observationScopes;
   pageSearchLimit;
   recallOptions;
+  rateLimitPatienceMs;
   constructor(o) {
     this.apiUrl = o.apiUrl.replace(/\/$/, "");
     this.token = o.apiToken;
@@ -755,6 +780,7 @@ var HindsightClient = class {
     this.observationScopes = o.observationScopes ?? DEFAULT_OBSERVATION_SCOPES;
     this.pageSearchLimit = o.pageSearchLimit || DEFAULT_PAGE_SEARCH_LIMIT;
     this.recallOptions = { ...DEFAULT_RECALL_OPTIONS, ...o.recallOptions };
+    this.rateLimitPatienceMs = o.rateLimitPatienceMs ?? 0;
   }
   /** The credential in use, for diagnostics. Never log or report the VALUE — booleans only. */
   get apiToken() {
@@ -763,7 +789,8 @@ var HindsightClient = class {
   headers() {
     const h = {
       "Content-Type": "application/json",
-      "Accept-Encoding": "identity"
+      "Accept-Encoding": "identity",
+      "User-Agent": USER_AGENT
     };
     if (this.token) h["Authorization"] = `Bearer ${this.token}`;
     return h;
@@ -795,7 +822,8 @@ var HindsightClient = class {
    * bounds the whole call.
    */
   async fetchWithAuth(url, init) {
-    const send = () => fetch(url, { ...init, headers: this.headers() });
+    const dispatcher = init.signal ? signalOnlyDispatcher() : void 0;
+    const send = () => fetch(url, { ...init, headers: this.headers(), ...dispatcher ? { dispatcher } : {} });
     const r = await send();
     if (r.status !== 401 || !this.refreshToken()) return r;
     return send();
@@ -811,13 +839,22 @@ var HindsightClient = class {
   }
   /** `tolerate` adds statuses that are returned to the caller instead of thrown (404 always is). */
   async req(method, url, body, tolerate = [], timeoutMs = 15e3) {
-    const r = await this.fetchWithAuth(url, {
-      method,
-      body: body ? JSON.stringify(body) : void 0,
-      signal: AbortSignal.timeout(timeoutMs)
-    });
-    if (r.status === 429 && !tolerate.includes(429))
-      throw new RateLimitedError(retryAfterMs(r.headers.get("retry-after")));
+    const payload = body ? JSON.stringify(body) : void 0;
+    let r;
+    for (let attempt = 0, waited = 0; ; attempt++) {
+      r = await this.fetchWithAuth(url, {
+        method,
+        body: payload,
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      if (r.status !== 429 || tolerate.includes(429)) break;
+      const asked = retryAfterMs(r.headers.get("retry-after"));
+      const backoff = Math.min(RETRY_AFTER_CEILING_MS, RATE_LIMIT_BACKOFF_MS * 2 ** attempt);
+      const wait = Math.min(RETRY_AFTER_CEILING_MS, Math.max(asked, backoff)) * (1 + Math.random() / 2);
+      if (waited + wait > this.rateLimitPatienceMs) throw new RateLimitedError(asked);
+      await sleep(wait);
+      waited += wait;
+    }
     if (!r.ok && r.status !== 404 && !tolerate.includes(r.status))
       throw new Error(
         `${method} ${url} -> ${r.status} ${await r.text()}${this.authHint(r.status)}`
@@ -852,7 +889,7 @@ var HindsightClient = class {
   }
   /**
    * Whether this server honours `operation_id` on an async retain, and can therefore be appended to
-   * safely (see MIN_IDEMPOTENT_RETAIN_VERSION). Probed once per client via GET /version; anything
+   * safely (see MIN_IDEMPOTENT_RETAIN_VERSION). Probed once per client via the version endpoint; anything
    * unreachable, unparseable or older answers "no", which costs efficiency, never correctness.
    */
   async supportsIdempotentRetain() {
@@ -862,15 +899,21 @@ var HindsightClient = class {
     }
     return this.idempotentRetain;
   }
+  /** `/v1/version` first: an ingress that routes only `/v1` to the API (the Helm chart's default)
+   *  hands a bare `/version` to the control plane, whose HTML 404 or login redirect read as "no",
+   *  so append silently never turned on (#5286). Servers that predate the alias still answer
+   *  `/version`, so that stays as the fallback. */
   async probeIdempotentRetain() {
-    try {
-      const r = await this.req("GET", `${this.apiUrl}/version`);
-      if (!r.ok) return false;
-      const j = await r.json();
-      return semverGte(j.api_version, MIN_IDEMPOTENT_RETAIN_VERSION);
-    } catch {
-      return false;
+    for (const path of ["/v1/version", "/version"]) {
+      try {
+        const r = await this.req("GET", `${this.apiUrl}${path}`);
+        if (!r.ok) continue;
+        const j = await r.json();
+        return semverGte(j.api_version, MIN_IDEMPOTENT_RETAIN_VERSION);
+      } catch {
+      }
     }
+    return false;
   }
   /**
    * Whether a session write-back may use `update_mode="append"`: the server must dedupe by
@@ -931,6 +974,14 @@ var HindsightClient = class {
       if (hit) return hit.tags ?? [];
       if (items.length < limit || offset + limit >= (j.total ?? 0)) return void 0;
     }
+  }
+  /** Whether the bank holds any document at all — a one-row listing. A bank that does not exist
+   *  yet (404) holds none; any other failure throws, so a caller can tell "empty" from "unknown". */
+  async hasDocuments() {
+    const r = await this.req("GET", this.bankUrl("/documents?limit=1"));
+    if (r.status === 404) return false;
+    const j = await r.json();
+    return (j.total ?? j.items?.length ?? 0) > 0;
   }
   /** Configure the bank: POST the coding bank manifest to /import (missions, retain strategies,
    *  entity labels), then seed knowledge pages when the server supports them. Both halves are
@@ -1013,7 +1064,13 @@ var HindsightClient = class {
     this.log(`[wait] draining ${ids.length} ${label} operations \u2026`);
     const start = Date.now();
     const pending = new Set(ids);
+    const serverErrors = /* @__PURE__ */ new Map();
     let failed = 0;
+    const giveUp = (id, status) => {
+      pending.delete(id);
+      failed++;
+      this.log(`  \u2026 ${label} op ${id} -> HTTP ${status}, counted as failed`);
+    };
     while (pending.size && Date.now() - start < maxMs) {
       let backoffMs = POLL_CYCLE_MS;
       await pool([...pending], this.maxParallelRetains, async (id) => {
@@ -1026,7 +1083,14 @@ var HindsightClient = class {
             );
             return;
           }
-          if (!r.ok) return;
+          if (r.status >= 500) {
+            const n = (serverErrors.get(id) ?? 0) + 1;
+            serverErrors.set(id, n);
+            if (n >= POLL_MAX_SERVER_ERRORS) giveUp(id, r.status);
+            return;
+          }
+          if (!r.ok) return giveUp(id, r.status);
+          serverErrors.delete(id);
           const st = ((await r.json()).status || "").toLowerCase();
           if (TERMINAL.has(st)) {
             pending.delete(id);
@@ -1210,7 +1274,7 @@ var HindsightClient = class {
    * which is how `pageScopeRule`'s repo name reaches banks seeded by an earlier version.
    */
   async seedPages(pageTrigger = buildPageTrigger(), pagesConfig = {}, customPages = {}) {
-    const pages = pagesFor(this.project ?? this.bank, pagesConfig, customPages);
+    const pages = pagesFor(this.project, pagesConfig, customPages);
     const existing = /* @__PURE__ */ new Map();
     let roots;
     try {
@@ -1285,7 +1349,7 @@ var HindsightClient = class {
     }
     const initiatives = await this.resyncInitiativeTriggers(roots, pageTrigger);
     this.log(
-      `[bank] knowledge pages seeded on ${this.bank} (scoped to ${this.project ?? this.bank}): ${created} created, ${updated} re-synced, ${pages.length - created - updated - vanished} unchanged` + (vanished ? `, ${vanished} deleted under us` : "") + (initiatives ? `, ${initiatives} initiative pages re-synced` : "")
+      `[bank] knowledge pages seeded on ${this.bank} (scoped to ${this.project ?? "the shared bank"}): ${created} created, ${updated} re-synced, ${pages.length - created - updated - vanished} unchanged` + (vanished ? `, ${vanished} deleted under us` : "") + (initiatives ? `, ${initiatives} initiative pages re-synced` : "")
     );
   }
   /**
@@ -1296,23 +1360,33 @@ var HindsightClient = class {
    * it: five taxonomy pages against one page per initiative, each an LLM synthesis per
    * consolidation under the auto-refresh that used to be the default (#3506).
    *
-   * Only the trigger is touched. Their `name` and `source_query` are written once, from the
-   * initiative's own title, and re-stating either would rebuild a page whose question never
-   * changed. The tree read above is reused rather than re-fetched.
+   * Their `name` and `source_query` are written once, from the initiative's own title, and
+   * re-stating either would rebuild a page whose question never changed. The one exception is
+   * the scope clause: a page captured while the clause named the BANK is scoped to a project no
+   * memory is about and comes out empty (#4490), so exactly that clause is swapped for the current
+   * one — the rest of the query, the user's wording included, is kept. The tree read above is
+   * reused rather than re-fetched.
    */
   async resyncInitiativeTriggers(roots, pageTrigger) {
     const folder = roots.find(
       (n) => n.kind === "folder" && (n.name || "").toLowerCase() === "initiatives"
     );
+    const bankScope = pageScopeRule(this.bank);
     let updated = 0;
     for (const page of folder?.children ?? []) {
-      if (page.kind !== "page" || page.trigger == null) continue;
-      const desired = pageTriggerFor(pageTrigger, this.bank, page.name);
-      if (!pageTriggerDrifted(page.trigger, desired)) continue;
+      if (page.kind !== "page") continue;
+      const patch = {};
+      const query = page.description?.replace(bankScope, pageScopeRule(this.project));
+      if (query !== page.description) patch.source_query = query;
+      if (page.trigger != null) {
+        const desired = pageTriggerFor(pageTrigger, this.bank, page.name);
+        if (pageTriggerDrifted(page.trigger, desired)) patch.trigger = pageTriggerPatch(desired);
+      }
+      if (!patch.trigger && !patch.source_query) continue;
       const r = await this.req(
         "PATCH",
         this.bankUrl(`/knowledge-base/nodes/${encodeURIComponent(page.id)}`),
-        { trigger: pageTriggerPatch(desired) }
+        patch
       );
       if (r.status === 404) continue;
       updated++;
@@ -1340,10 +1414,9 @@ var HindsightClient = class {
     let pageId = args.relatesToPageId;
     if (!pageId) {
       const folderId = await this.ensureFolder("Initiatives");
-      const subject = this.project ?? this.bank;
       const r = await this.req("POST", this.bankUrl("/knowledge-base/pages"), {
         name: args.title,
-        source_query: `Summarize the "${args.title}" initiative: what is being built or changed and why, and its current state \u2014 drawn from the project's memory.` + pageScopeRule(subject),
+        source_query: `Summarize the "${args.title}" initiative: what is being built or changed and why, and its current state \u2014 drawn from the project's memory.` + pageScopeRule(this.project),
         parent_id: folderId,
         tags: ["knowledge:feature-work"],
         max_tokens: PAGE_MAX_TOKENS,
@@ -1358,7 +1431,7 @@ var HindsightClient = class {
     }
     const verb = args.relatesToPageId ? "Update to an existing initiative" : "New initiative";
     const content = `${verb}: ${args.title}. ${args.summary}`;
-    const markerId = `initiative-marker-${this.slugify(args.title)}-${Date.now()}`;
+    const markerId = `initiative-marker-${this.slugify(pageId)}${args.relatesToPageId ? "-update" : ""}`;
     const tags = [.../* @__PURE__ */ new Set([...args.stamp?.tags ?? [], "knowledge:feature-work"])];
     const context = `initiative marker for [[page:${pageId}]]`;
     await this.retain(content, context, markerId, tags, "document", {
@@ -1392,6 +1465,24 @@ var PENDING_MAX_BYTES = 256 * 1024;
 
 // src/core/uuid.ts
 import { createHash as createHash3 } from "crypto";
+var HINDSIGHT_NAMESPACE = "e75686a4-e923-4326-a0d1-358f1c6c3eb4";
+function uuidV5(name, namespace = HINDSIGHT_NAMESPACE) {
+  const ns = Buffer.from(namespace.replace(/-/g, ""), "hex");
+  if (ns.length !== 16) throw new Error(`invalid UUID namespace: ${namespace}`);
+  const bytes = Buffer.from(
+    createHash3("sha1").update(ns).update(Buffer.from(name, "utf8")).digest().subarray(0, 16)
+  );
+  bytes[6] = bytes[6] & 15 | 80;
+  bytes[8] = bytes[8] & 63 | 128;
+  const hex = bytes.toString("hex");
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20)
+  ].join("-");
+}
 
 // src/core/chat.ts
 function withRefId(refId, turns, baseTs) {
@@ -1453,7 +1544,7 @@ async function ingestChats(client, sessions, opts = {}) {
 }
 
 // src/core/config.ts
-import { readFileSync as readFileSync2 } from "fs";
+import { readFileSync as readFileSync3 } from "fs";
 import { homedir as homedir3 } from "os";
 import { join as join7 } from "path";
 
@@ -1673,7 +1764,7 @@ function resolveConfig(raw = {}) {
 }
 function readRaw(path) {
   try {
-    return JSON.parse(readFileSync2(path, "utf8"));
+    return JSON.parse(readFileSync3(path, "utf8"));
   } catch (e) {
     if (e?.code !== "ENOENT") {
       console.error(`hindsight: ignoring invalid config at ${path}: ${e?.message || e}`);
@@ -1860,8 +1951,10 @@ import { resolve as resolve2 } from "path";
 var US = "";
 var RS = "";
 var GITLOG_HEAD = "gitlog-head:";
+var GITLOG_FORMAT = `--format=%h${US}%ad${US}%an${US}%s${US}%b${RS}`;
+var GITLOG_DIVIDER = "\n\n---\n\n";
 function git(repo, ...args) {
-  return execFileSync("git", ["-C", repo, ...args], {
+  return execFileSync("git", ["-C", repo, "-c", "log.showSignature=false", ...args], {
     encoding: "utf8",
     maxBuffer: 1 << 28,
     windowsHide: true,
@@ -1934,25 +2027,56 @@ ${diff}`;
 function gitLogText(repo, limit) {
   let raw;
   try {
+    const total = Number(git(repo, "rev-list", "--count", "--no-merges", "HEAD").trim());
+    const step = Math.max(1, Math.ceil(limit / 2));
+    const start = total > limit ? Math.ceil((total - limit) / step) * step : 0;
     raw = git(
       repo,
       "log",
       `-n`,
-      String(limit),
+      String(total - start),
       "--no-merges",
+      "--reverse",
+      // applied after -n: the newest N, printed oldest first
       "--date=short",
-      `--format=%h${US}%ad${US}%an${US}%s${US}%b${RS}`
+      GITLOG_FORMAT
     );
   } catch {
     return "";
   }
+  return gitLogRecords(raw).join(GITLOG_DIVIDER);
+}
+function gitLogRecords(raw) {
   return raw.split(RS).map((rec) => rec.trim()).filter(Boolean).map((rec) => {
     const [sha, date, author, subj, body] = rec.split(US);
     const header = `${sha} ${date} ${author}`;
     const msg = subj + (body?.trim() ? "\n\n" + body.trim() : "");
     return `${header}
 ${msg}`;
-  }).join("\n\n---\n\n");
+  });
+}
+function gitLogRecordsSince(repo, baseSha, head) {
+  if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(baseSha)) return null;
+  try {
+    git(repo, "merge-base", "--is-ancestor", baseSha, head);
+  } catch {
+    return null;
+  }
+  try {
+    return gitLogRecords(
+      git(
+        repo,
+        "log",
+        "--no-merges",
+        "--reverse",
+        "--date=short",
+        GITLOG_FORMAT,
+        `${baseSha}..${head}`
+      )
+    );
+  } catch {
+    return null;
+  }
 }
 function gitLogNewestAuthorDate(repo) {
   try {
@@ -1961,48 +2085,84 @@ function gitLogNewestAuthorDate(repo) {
     return null;
   }
 }
+async function retainGitLog(client, repo, content, opts, head, append) {
+  const repoName = repoNameOf(repo);
+  const stamp = opts.stampFor?.();
+  const tags = [
+    .../* @__PURE__ */ new Set([
+      ...stamp?.tags ?? [],
+      "source:git",
+      "source:git-log",
+      ...head ? [`${GITLOG_HEAD}${head}`] : []
+    ])
+  ];
+  await client.retain(
+    content,
+    // No commit count: an append makes the document longer than any count a replace wrote.
+    `git commit-message history for ${repoName}`,
+    `gitlog:${repoName}`,
+    tags,
+    "gitlog",
+    {
+      // Anchor the document in time on the newest commit it contains, so extraction can date the
+      // facts it pulls out of these messages. Previously no timestamp was passed at all: retain
+      // then stamped "now", the extraction prompt got `Event Date: Unknown`, and every fact landed
+      // with a null occurred_start/occurred_end — invisible to temporal search (#3602).
+      timestamp: gitLogNewestAuthorDate(repo) ?? void 0,
+      // `retain` only sets metadata when it is truthy, so an empty stamp sends none.
+      metadata: Object.keys(stamp?.metadata ?? {}).length ? stamp?.metadata : void 0,
+      ...append ? { updateMode: "append", operationId: append.operationId } : {}
+    }
+  );
+}
 async function ingestGitLog(client, repo, opts = { limit: 300 }) {
   const log3 = opts.log ?? (() => {
   });
+  const head = gitHeadSha(repo);
   const text = gitLogText(repo, opts.limit);
   if (!text) {
     log3("[gitlog] no commits found \u2014 skipping");
     return 0;
   }
   const repoName = repoNameOf(repo);
-  const n = text.split("\n\n---\n\n").length;
+  const n = text.split(GITLOG_DIVIDER).length;
   log3(`[gitlog] ingesting last ${n} commit messages for ${repoName} as ONE document \u2026`);
   try {
-    const head = gitHeadSha(repo);
-    const stamp = opts.stampFor?.();
-    const tags = [
-      .../* @__PURE__ */ new Set([
-        ...stamp?.tags ?? [],
-        "source:git",
-        "source:git-log",
-        ...head ? [`${GITLOG_HEAD}${head}`] : []
-      ])
-    ];
-    await client.retain(
-      text,
-      `git commit-message history (last ${n}) for ${repoName}`,
-      `gitlog:${repoName}`,
-      tags,
-      "gitlog",
-      {
-        // Anchor the document in time on the newest commit it contains, so extraction can date the
-        // facts it pulls out of these messages. Previously no timestamp was passed at all: retain
-        // then stamped "now", the extraction prompt got `Event Date: Unknown`, and every fact landed
-        // with a null occurred_start/occurred_end — invisible to temporal search (#3602).
-        timestamp: gitLogNewestAuthorDate(repo) ?? void 0,
-        // `retain` only sets metadata when it is truthy, so an empty stamp sends none.
-        metadata: Object.keys(stamp?.metadata ?? {}).length ? stamp?.metadata : void 0
-      }
-    );
+    await retainGitLog(client, repo, text, opts, head);
     log3(`[gitlog] done: ${n} commit messages ingested as 1 document under strategy 'gitlog'`);
     return 0;
   } catch (e) {
     log3(`  ! gitlog ingest failed: ${e.message?.slice(0, 120)}`);
+    return 1;
+  }
+}
+async function appendGitLog(client, repo, opts, head) {
+  const log3 = opts.log ?? (() => {
+  });
+  const canonical2 = `gitlog:${repoNameOf(repo)}`;
+  const tags = await client.documentTags?.(canonical2).catch(() => void 0);
+  const base = tags?.find((t) => t.startsWith(GITLOG_HEAD))?.slice(GITLOG_HEAD.length);
+  if (!base) return null;
+  const records = gitLogRecordsSince(repo, base, head);
+  if (records === null || records.length > opts.limit) return null;
+  if (!records.length) {
+    log3("[gitlog] no new non-merge commits \u2014 skipping");
+    return 0;
+  }
+  const appendable = await client.supportsAppendRetain?.().catch(() => false);
+  if (!appendable) return null;
+  const content = GITLOG_DIVIDER.slice(1) + records.join(GITLOG_DIVIDER);
+  const operationId = uuidV5(`${client.bank}
+${canonical2}
+append
+${base}
+${content}`);
+  log3(`[gitlog] appending ${records.length} new commit message(s) to ${canonical2} \u2026`);
+  try {
+    await retainGitLog(client, repo, content, opts, head, { operationId });
+    return 0;
+  } catch (e) {
+    log3(`  ! gitlog append failed: ${e.message?.slice(0, 120)}`);
     return 1;
   }
 }
@@ -2024,11 +2184,11 @@ async function syncGitLog(client, repo, opts) {
     log3("[gitlog] current with HEAD \u2014 skipping");
     return 0;
   }
-  return ingestGitLog(client, repo, opts);
+  return (head ? await appendGitLog(client, repo, opts, head) : null) ?? ingestGitLog(client, repo, opts);
 }
 
 // src/core/survey.ts
-import { spawn as realSpawn3 } from "child_process";
+import { execFileSync as execFileSync2, spawn as realSpawn3 } from "child_process";
 import { createHash as createHash4 } from "crypto";
 import { existsSync as existsSync2 } from "fs";
 import { homedir as homedir4, tmpdir } from "os";
@@ -2125,16 +2285,16 @@ var SURVEY_DOC_IDS = [
 ];
 
 // src/core/status.ts
-import { execFileSync as execFileSync2 } from "child_process";
+import { execFileSync as execFileSync3 } from "child_process";
 var DEEPEN_DIFF_TARGET = 300;
 
 // src/harness/registry.ts
-import { readFileSync as readFileSync3 } from "fs";
+import { readFileSync as readFileSync4 } from "fs";
 var jsonChatReader = (harness) => ({
   describe: `${harness} sessions via a normalized JSON export (--conversations file: [{ id, turns:[{role,text,timestamp?}] }])`,
   async read(opts) {
     if (!opts.conversations) return [];
-    return JSON.parse(readFileSync3(opts.conversations, "utf8"));
+    return JSON.parse(readFileSync4(opts.conversations, "utf8"));
   }
 });
 var noRuntimeAdapter = (name, hint) => ({
@@ -2178,7 +2338,15 @@ var HARNESS_NAMES = [
   "zcode",
   // TraeCode is a per-prompt HOOK host registered in ~/.trae-cn/hooks.json (see src/installer.ts).
   "traecode",
-  "kimi-code"
+  "kimi-code",
+  // WorkBuddy is a per-prompt HOOK host too: the installer wires ~/.workbuddy/settings.json and
+  // the stdio MCP registration in ~/.workbuddy/mcp.json (see src/installer.ts).
+  "workbuddy",
+  // CodeBuddy Code is the SAME @genie/agent-cli HOOK host, one product config apart (WorkBuddy only
+  // renames the home folder): the installer wires ~/.codebuddy/settings.json and the stdio MCP
+  // registration in CodeBuddy's priority-chained MCP file (see src/installer.ts). The CLI
+  // writes WorkBuddy's transcript format; the CodeBuddy IDE has a reader of its own.
+  "codebuddy"
 ];
 var HOOK_BINS = {
   "claude-code": "hindsight-claude-hook",
@@ -2193,7 +2361,9 @@ var HOOK_BINS = {
   "factory-droid": "hindsight-droid-hook",
   zcode: "hindsight-zcode-hook",
   traecode: "hindsight-traecode-hook",
-  "kimi-code": "hindsight-kimi-hook"
+  "kimi-code": "hindsight-kimi-hook",
+  workbuddy: "hindsight-workbuddy-hook",
+  codebuddy: "hindsight-codebuddy-hook"
   // more hook harnesses: add a HookSpec entry point (see src/cursor-hook.ts) + a registration here.
 };
 var PLUGIN_ENTRYPOINTS = {
@@ -2335,10 +2505,13 @@ async function main() {
       // outlive the session, so a bank several repos share must not be told it is whichever one
       // ran last (#4146). `bankProjectName` answers only when the bank IS this repo's; the
       // `banks.<id>.bank` rename below it can point many repos at one destination, so a renamed
-      // bank is not this repo's either. Undefined leaves the client to fall back to the bank id.
+      // bank is not this repo's either. Undefined gives the shared-bank scope (#4490).
       project: PAGE_PROJECT,
       maxParallelRetains: cfg.maxParallelRetains,
       observationScopes: cfg.observationScopes,
+      // Nobody waits on a background seed, and a 429 it gives up on is history missing from the
+      // bank until some later session happens to re-run it.
+      rateLimitPatienceMs: 10 * 60 * 1e3,
       log: log2
     });
     log2(`deepen -> ${client.apiUrl} bank=${FINAL_BANK} harness=${harness.name}`);
@@ -2387,7 +2560,7 @@ async function main() {
       gitFails += await syncGitLog(client, REPO, { limit: GITLOG_LIMIT, log: log2, stampFor });
       if (GIT_INGEST === "full") {
         try {
-          const shas = execFileSync3(
+          const shas = execFileSync4(
             "git",
             ["-C", REPO, "rev-list", `-n`, String(DEEPEN_DIFF_TARGET), "HEAD"],
             // `install` runs this with inherited stdio: an empty repo's HEAD error must not print.

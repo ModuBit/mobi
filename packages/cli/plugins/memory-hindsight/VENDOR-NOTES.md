@@ -7,7 +7,9 @@ coding-agent.json 携带；见 `.scratch/agent-memory/spec.md`）。
 ## 来源与裁剪
 
 - 上游：https://github.com/vectorize-io/hindsight （`hindsight-integrations/coding-agents`）
-- vendor 版本：**0.8.0**（2026-10-08，`npm pack @vectorize-io/hindsight-coding-agents`）
+- vendor 版本：**0.8.2**（2026-10-28，`npm pack @vectorize-io/hindsight-coding-agents`；0.8.0 → 0.8.2
+  升级核对：上游 hooks.json 三事件（SessionStart/UserPromptSubmit/Stop）与超时（30/30/60）无变化，
+  无新增 hook 事件；7 个裁剪文件全部存在；`pageRefreshEveryTurns || 1` 形态 6 入口保留（-1 哨兵有效））
 - dist 为 tsup 逐入口自包含打包（零运行时依赖，仅 node 内置模块），故按 claude-code 真实
   spawn 链裁剪，仅保留 7 个文件：
   - `claude-hook.js` / `claude-sessionstart-hook.js` / `claude-stop-hook.js` — 三个 CC hook 入口

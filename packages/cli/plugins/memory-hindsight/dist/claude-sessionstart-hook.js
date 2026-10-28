@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/core/hook.ts
-import { existsSync as existsSync2, readFileSync as readFileSync5 } from "fs";
+import { existsSync as existsSync2 } from "fs";
 
 // src/core/bank.ts
 import { existsSync } from "fs";
@@ -9,6 +9,7 @@ import { homedir as homedir2 } from "os";
 import { basename, dirname as dirname3, join as join4, normalize, sep } from "path";
 
 // src/core/diag.ts
+import { readFileSync } from "fs";
 import { join as join2 } from "path";
 
 // src/core/log.ts
@@ -82,9 +83,30 @@ function diag(harness, event, extra = {}) {
   } catch {
   }
 }
+function parseHookEvent(harness, raw) {
+  const text = raw.replace(/^(?:﻿|ï»¿)+/, "");
+  if (!text.trim()) return null;
+  try {
+    const ev = JSON.parse(text);
+    if (ev && typeof ev === "object" && !Array.isArray(ev)) return ev;
+    diag(harness, "hook_input_invalid", { error: "not a JSON object" });
+  } catch (e) {
+    diag(harness, "hook_input_invalid", { error: e.message });
+  }
+  return null;
+}
+function readHookEvent(harness) {
+  let raw;
+  try {
+    raw = readFileSync(0, "utf8");
+  } catch {
+    return null;
+  }
+  return parseHookEvent(harness, raw);
+}
 
 // src/core/git-layout.ts
-import { lstatSync, readFileSync, realpathSync } from "fs";
+import { lstatSync, readFileSync as readFileSync2, realpathSync } from "fs";
 import { dirname as dirname2, isAbsolute, join as join3, resolve } from "path";
 var TRANSIENT = /* @__PURE__ */ new Set(["EAGAIN", "EMFILE", "ENFILE", "EBUSY", "EINTR", "EIO", "ETIMEDOUT"]);
 var ATTEMPTS = 3;
@@ -108,7 +130,7 @@ function entryKind(path) {
 }
 function readTextOrNull(path) {
   try {
-    return readFileSync(path, "utf8");
+    return readFileSync2(path, "utf8");
   } catch (error) {
     if (TRANSIENT.has(errorCode(error))) throw new TransientProbeError(errorCode(error));
     return null;
@@ -323,6 +345,19 @@ function deriveBankId(config, directory, harness = "coding", sessionRoot) {
   };
   return applyTemplate(config.bankIdTemplate || DEFAULT_TEMPLATE, resolvers, "bankIdTemplate");
 }
+function bankProjectName(config, directory, sessionRoot) {
+  if (mappedBank(config, directory, sessionRoot)) return void 0;
+  const dynamic = config.dynamicBankId ?? !config.bankId;
+  if (!dynamic) return void 0;
+  const template = config.bankIdTemplate || DEFAULT_TEMPLATE;
+  if (!template.includes("{gitProject}")) return void 0;
+  try {
+    return gitProjectName(directory, config.resolveWorktrees ?? true, sessionRoot);
+  } catch (error) {
+    if (error instanceof BankResolutionError) return void 0;
+    throw error;
+  }
+}
 function deriveBankIdOrSkip(config, directory, harness = "coding", sessionRoot) {
   try {
     return deriveBankId(config, directory, harness, sessionRoot);
@@ -338,7 +373,7 @@ function deriveBankIdOrSkip(config, directory, harness = "coding", sessionRoot) 
 }
 
 // src/core/config.ts
-import { readFileSync as readFileSync2 } from "fs";
+import { readFileSync as readFileSync3 } from "fs";
 import { homedir as homedir3 } from "os";
 import { join as join7 } from "path";
 
@@ -378,7 +413,7 @@ function startBackgroundSeed(repoDir, opts = {}) {
 // src/core/missions.ts
 import { createHash } from "crypto";
 var GIT_MISSION = "You are ingesting a single git commit: its message and its full diff. Extract the concrete technical DECISION and the CAUSE/INVARIANT it encodes, bound to the specific code entities (functions, methods, files) and behaviors it changes. Preserve exact identifiers, paths, and literal values verbatim. Preserve the 'REF-ID: <token>' marker verbatim in every fact. Capture both WHAT changed and WHY. Issue/PR references (#123, GH-123, PROJ-123) are load-bearing: keep them VERBATIM in the fact text and emit each as an ENTITY, so a later question about that issue or PR retrieves this decision.";
-var GITLOG_MISSION = "You are ingesting an aggregated block of git commit MESSAGES ONLY (no diffs) \u2014 the project's recent commit-message history, newest first. Extract the project's INITIATIVES, FEATURES, ENHANCEMENTS, and notable changes or THEMES over time \u2014 what the project has been working on and how it has evolved. Do NOT extract per-line code detail (there is no diff to draw it from). Group related commits into a coherent initiative/theme where the messages make that clear; preserve exact identifiers and literal values verbatim when quoting a subject line. Keep issue/PR references (#123, GH-123) VERBATIM and emit each as an ENTITY \u2014 they are how future sessions will ask about this work.";
+var GITLOG_MISSION = "You are ingesting an aggregated block of git commit MESSAGES ONLY (no diffs) \u2014 the project's recent commit-message history, oldest first. Extract the project's INITIATIVES, FEATURES, ENHANCEMENTS, and notable changes or THEMES over time \u2014 what the project has been working on and how it has evolved. Do NOT extract per-line code detail (there is no diff to draw it from). Group related commits into a coherent initiative/theme where the messages make that clear; preserve exact identifiers and literal values verbatim when quoting a subject line. Keep issue/PR references (#123, GH-123) VERBATIM and emit each as an ENTITY \u2014 they are how future sessions will ask about this work.";
 var CONVERSATION_MISSION = `You are ingesting a developer conversation as a JSONL transcript (one {role, content} turn per line): the user's requests, the assistant's narration, and compact 'action' turns naming each tool use and its target (e.g. "Edit boltons/strutils.py") with no arguments or outputs. It may be a SHORT decision chat or a LONG working session \u2014 scale the facts to the substance, never to the message count. Extract the FEWEST facts that capture the OUTCOME: the settled DECISIONS and their exact rules/values (quote literals VERBATIM); concrete CHANGES to specific code entities; problems and how they were resolved; conventions or invariants established; at most one fact for a notable REJECTED alternative ('initially proposed X, changed to Y because Z'). A short decision chat usually yields 1-2 facts; a substantial working session several. CRITICAL: a conversation REVISES itself \u2014 record ONLY the FINAL state as what is in effect; a superseded proposal appears ONLY inside the rejected fact, NEVER as its own 'decided' fact; if the same setting changes several times keep only the LAST, and make unmistakably clear which choice WON. Do NOT emit one fact per message, per intermediate proposal, or per action turn. Keep issue/PR references (#123, GH-123) VERBATIM and emit each as an ENTITY. Preserve the 'REF-ID: <token>' marker verbatim in every fact. Do not invent; capture only what was actually settled.`;
 var REFLECT_MISSION = "You are a debugging assistant with the project's past decisions in memory (git rationale and developer chats). Given a bug's SYMPTOM, find the past decision whose rationale explains the ROOT CAUSE \u2014 not one that merely shares vocabulary. Answer with the PRECISE fix: state the EXACT rule and the LITERAL values, identifiers, strings, numbers, or set members that were decided \u2014 quote them VERBATIM, never paraphrase, generalize, or omit them (give the actual decided value, not 'the project standard'). If memories CONFLICT on the same rule, the LATEST decision wins \u2014 prefer facts that explicitly amend or supersede an earlier one, state the superseded rule as no longer in effect, and never present it as the fix. Name the function/file to change and cite the REF-ID(s). If NOTHING in memory genuinely explains THIS symptom, say exactly that in one short sentence \u2014 a wrong-but-confident nearest match is worse than an honest miss; never stretch an unrelated decision to fit.";
 var DOCUMENT_MISSION = "You are ingesting a standalone document (notes, docs, or structural findings). Extract the concrete facts, concepts, and structure it describes.";
@@ -454,6 +489,8 @@ var KNOWLEDGE_LABELS = {
   ]
 };
 function pageScopeRule(project) {
+  if (project === void 0)
+    return ` This bank is shared by several projects: attribute each thing you include to the repository or project its sources name, and group by project where that helps. Leave out facts about external tools, libraries and services those projects merely use, configure, deploy or discuss \u2014 they belong to somebody else's codebase \u2014 including any commit SHA or identifier from such a dependency's repository.`;
   return ` Scope this page to ${project} ITSELF: the bank also holds facts about external tools, libraries and services that ${project} merely uses, configures, deploys or discusses, and those belong to somebody else's codebase. Include something only when its subject is ${project}'s own code, configuration or process; when it is about a dependency, leave it out however well-evidenced it looks \u2014 including any commit SHA or identifier that belongs to that dependency's repository rather than this one.`;
 }
 var PAGE_TAXONOMY = [
@@ -635,6 +672,9 @@ function codingBankManifest(overrides, mode = DEFAULT_RETAIN_EXTRACTION_MODE, de
   return Object.keys(bank).length > 0 ? { version: "1", bank } : void 0;
 }
 
+// package.json
+var version = "0.8.2";
+
 // src/core/util.ts
 import { accessSync, constants } from "fs";
 import { delimiter, join as join6 } from "path";
@@ -658,12 +698,12 @@ function binOnPath(bin) {
   }
 }
 var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-function semverGte(version, min) {
+function semverGte(version2, min) {
   const parts = (v) => {
     const m = v.trim().match(/^(\d+)\.(\d+)(?:\.(\d+))?/);
     return m ? [Number(m[1]), Number(m[2]), Number(m[3] ?? 0)] : void 0;
   };
-  const a = version ? parts(version) : void 0;
+  const a = version2 ? parts(version2) : void 0;
   const b = parts(min);
   if (!a || !b) return false;
   for (let i = 0; i < 3; i++) {
@@ -697,6 +737,7 @@ function isOurMcpEntry(entry) {
 }
 
 // src/core/hindsight.ts
+var USER_AGENT = `hindsight-coding-agents/${version}`;
 function resolveRetainScopes(tags, configured) {
   if (configured !== "per_source") return configured;
   const sources = [...new Set((tags ?? []).filter((t) => t.startsWith("source:")))].sort();
@@ -732,7 +773,7 @@ async function isEndpointMissing(r) {
     const j = await r.json();
     return String(j?.detail ?? "").trim().toLowerCase() === "not found";
   } catch {
-    return true;
+    return false;
   }
 }
 var TERMINAL = /* @__PURE__ */ new Set(["completed", "failed", "cancelled", "error"]);
@@ -751,6 +792,12 @@ var ReflectError = class extends Error {
   get fallbackEligible() {
     return this.timedOut || this.status !== void 0 && this.status >= 500;
   }
+  /** A 4xx the next attempt would get again (bad key, missing bank, rejected body) — retrying it
+   *  only spends another doomed call (#5207). 408/429 are "not now", so they stay retryable. */
+  get permanent() {
+    const s = this.status;
+    return s !== void 0 && s >= 400 && s < 500 && s !== 408 && s !== 429;
+  }
 };
 var DEFAULT_MAX_PARALLEL_RETAINS = 10;
 var DEFAULT_PAGE_SEARCH_LIMIT = 10;
@@ -761,8 +808,10 @@ var DEFAULT_RECALL_OPTIONS = {
   include: { entities: null }
 };
 var POLL_CYCLE_MS = 5e3;
+var POLL_MAX_SERVER_ERRORS = 12;
 var RETRY_AFTER_FLOOR_MS = 10 * 1e3;
 var RETRY_AFTER_CEILING_MS = 60 * 1e3;
+var RATE_LIMIT_BACKOFF_MS = 1e3;
 function shapePage(page) {
   const p = page ?? {};
   const body = typeof p.body === "string" && p.body.trim() ? p.body : p.markdown;
@@ -774,6 +823,15 @@ function shapePage(page) {
     ...p.timestamp ? { last_updated_at: p.timestamp } : {},
     body
   };
+}
+var GLOBAL_DISPATCHER = /* @__PURE__ */ Symbol.for("undici.globalDispatcher.1");
+function signalOnlyDispatcher() {
+  void globalThis.Headers;
+  const d = globalThis[GLOBAL_DISPATCHER];
+  if (typeof d?.compose !== "function") return void 0;
+  return d.compose(
+    (dispatch) => (opts, handler) => dispatch({ ...opts, headersTimeout: 0, bodyTimeout: 0 }, handler)
+  );
 }
 var HindsightClient = class {
   apiUrl;
@@ -794,6 +852,7 @@ var HindsightClient = class {
   observationScopes;
   pageSearchLimit;
   recallOptions;
+  rateLimitPatienceMs;
   constructor(o) {
     this.apiUrl = o.apiUrl.replace(/\/$/, "");
     this.token = o.apiToken;
@@ -806,6 +865,7 @@ var HindsightClient = class {
     this.observationScopes = o.observationScopes ?? DEFAULT_OBSERVATION_SCOPES;
     this.pageSearchLimit = o.pageSearchLimit || DEFAULT_PAGE_SEARCH_LIMIT;
     this.recallOptions = { ...DEFAULT_RECALL_OPTIONS, ...o.recallOptions };
+    this.rateLimitPatienceMs = o.rateLimitPatienceMs ?? 0;
   }
   /** The credential in use, for diagnostics. Never log or report the VALUE — booleans only. */
   get apiToken() {
@@ -814,7 +874,8 @@ var HindsightClient = class {
   headers() {
     const h = {
       "Content-Type": "application/json",
-      "Accept-Encoding": "identity"
+      "Accept-Encoding": "identity",
+      "User-Agent": USER_AGENT
     };
     if (this.token) h["Authorization"] = `Bearer ${this.token}`;
     return h;
@@ -846,7 +907,8 @@ var HindsightClient = class {
    * bounds the whole call.
    */
   async fetchWithAuth(url, init) {
-    const send = () => fetch(url, { ...init, headers: this.headers() });
+    const dispatcher = init.signal ? signalOnlyDispatcher() : void 0;
+    const send = () => fetch(url, { ...init, headers: this.headers(), ...dispatcher ? { dispatcher } : {} });
     const r = await send();
     if (r.status !== 401 || !this.refreshToken()) return r;
     return send();
@@ -862,13 +924,22 @@ var HindsightClient = class {
   }
   /** `tolerate` adds statuses that are returned to the caller instead of thrown (404 always is). */
   async req(method, url, body, tolerate = [], timeoutMs = 15e3) {
-    const r = await this.fetchWithAuth(url, {
-      method,
-      body: body ? JSON.stringify(body) : void 0,
-      signal: AbortSignal.timeout(timeoutMs)
-    });
-    if (r.status === 429 && !tolerate.includes(429))
-      throw new RateLimitedError(retryAfterMs(r.headers.get("retry-after")));
+    const payload = body ? JSON.stringify(body) : void 0;
+    let r;
+    for (let attempt = 0, waited = 0; ; attempt++) {
+      r = await this.fetchWithAuth(url, {
+        method,
+        body: payload,
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      if (r.status !== 429 || tolerate.includes(429)) break;
+      const asked = retryAfterMs(r.headers.get("retry-after"));
+      const backoff = Math.min(RETRY_AFTER_CEILING_MS, RATE_LIMIT_BACKOFF_MS * 2 ** attempt);
+      const wait = Math.min(RETRY_AFTER_CEILING_MS, Math.max(asked, backoff)) * (1 + Math.random() / 2);
+      if (waited + wait > this.rateLimitPatienceMs) throw new RateLimitedError(asked);
+      await sleep(wait);
+      waited += wait;
+    }
     if (!r.ok && r.status !== 404 && !tolerate.includes(r.status))
       throw new Error(
         `${method} ${url} -> ${r.status} ${await r.text()}${this.authHint(r.status)}`
@@ -903,7 +974,7 @@ var HindsightClient = class {
   }
   /**
    * Whether this server honours `operation_id` on an async retain, and can therefore be appended to
-   * safely (see MIN_IDEMPOTENT_RETAIN_VERSION). Probed once per client via GET /version; anything
+   * safely (see MIN_IDEMPOTENT_RETAIN_VERSION). Probed once per client via the version endpoint; anything
    * unreachable, unparseable or older answers "no", which costs efficiency, never correctness.
    */
   async supportsIdempotentRetain() {
@@ -913,15 +984,21 @@ var HindsightClient = class {
     }
     return this.idempotentRetain;
   }
+  /** `/v1/version` first: an ingress that routes only `/v1` to the API (the Helm chart's default)
+   *  hands a bare `/version` to the control plane, whose HTML 404 or login redirect read as "no",
+   *  so append silently never turned on (#5286). Servers that predate the alias still answer
+   *  `/version`, so that stays as the fallback. */
   async probeIdempotentRetain() {
-    try {
-      const r = await this.req("GET", `${this.apiUrl}/version`);
-      if (!r.ok) return false;
-      const j = await r.json();
-      return semverGte(j.api_version, MIN_IDEMPOTENT_RETAIN_VERSION);
-    } catch {
-      return false;
+    for (const path of ["/v1/version", "/version"]) {
+      try {
+        const r = await this.req("GET", `${this.apiUrl}${path}`);
+        if (!r.ok) continue;
+        const j = await r.json();
+        return semverGte(j.api_version, MIN_IDEMPOTENT_RETAIN_VERSION);
+      } catch {
+      }
     }
+    return false;
   }
   /**
    * Whether a session write-back may use `update_mode="append"`: the server must dedupe by
@@ -982,6 +1059,14 @@ var HindsightClient = class {
       if (hit) return hit.tags ?? [];
       if (items.length < limit || offset + limit >= (j.total ?? 0)) return void 0;
     }
+  }
+  /** Whether the bank holds any document at all — a one-row listing. A bank that does not exist
+   *  yet (404) holds none; any other failure throws, so a caller can tell "empty" from "unknown". */
+  async hasDocuments() {
+    const r = await this.req("GET", this.bankUrl("/documents?limit=1"));
+    if (r.status === 404) return false;
+    const j = await r.json();
+    return (j.total ?? j.items?.length ?? 0) > 0;
   }
   /** Configure the bank: POST the coding bank manifest to /import (missions, retain strategies,
    *  entity labels), then seed knowledge pages when the server supports them. Both halves are
@@ -1064,7 +1149,13 @@ var HindsightClient = class {
     this.log(`[wait] draining ${ids.length} ${label} operations \u2026`);
     const start = Date.now();
     const pending = new Set(ids);
+    const serverErrors = /* @__PURE__ */ new Map();
     let failed = 0;
+    const giveUp = (id, status) => {
+      pending.delete(id);
+      failed++;
+      this.log(`  \u2026 ${label} op ${id} -> HTTP ${status}, counted as failed`);
+    };
     while (pending.size && Date.now() - start < maxMs) {
       let backoffMs = POLL_CYCLE_MS;
       await pool([...pending], this.maxParallelRetains, async (id) => {
@@ -1077,7 +1168,14 @@ var HindsightClient = class {
             );
             return;
           }
-          if (!r.ok) return;
+          if (r.status >= 500) {
+            const n = (serverErrors.get(id) ?? 0) + 1;
+            serverErrors.set(id, n);
+            if (n >= POLL_MAX_SERVER_ERRORS) giveUp(id, r.status);
+            return;
+          }
+          if (!r.ok) return giveUp(id, r.status);
+          serverErrors.delete(id);
           const st = ((await r.json()).status || "").toLowerCase();
           if (TERMINAL.has(st)) {
             pending.delete(id);
@@ -1261,7 +1359,7 @@ var HindsightClient = class {
    * which is how `pageScopeRule`'s repo name reaches banks seeded by an earlier version.
    */
   async seedPages(pageTrigger = buildPageTrigger(), pagesConfig = {}, customPages = {}) {
-    const pages = pagesFor(this.project ?? this.bank, pagesConfig, customPages);
+    const pages = pagesFor(this.project, pagesConfig, customPages);
     const existing = /* @__PURE__ */ new Map();
     let roots;
     try {
@@ -1336,7 +1434,7 @@ var HindsightClient = class {
     }
     const initiatives = await this.resyncInitiativeTriggers(roots, pageTrigger);
     this.log(
-      `[bank] knowledge pages seeded on ${this.bank} (scoped to ${this.project ?? this.bank}): ${created} created, ${updated} re-synced, ${pages.length - created - updated - vanished} unchanged` + (vanished ? `, ${vanished} deleted under us` : "") + (initiatives ? `, ${initiatives} initiative pages re-synced` : "")
+      `[bank] knowledge pages seeded on ${this.bank} (scoped to ${this.project ?? "the shared bank"}): ${created} created, ${updated} re-synced, ${pages.length - created - updated - vanished} unchanged` + (vanished ? `, ${vanished} deleted under us` : "") + (initiatives ? `, ${initiatives} initiative pages re-synced` : "")
     );
   }
   /**
@@ -1347,23 +1445,33 @@ var HindsightClient = class {
    * it: five taxonomy pages against one page per initiative, each an LLM synthesis per
    * consolidation under the auto-refresh that used to be the default (#3506).
    *
-   * Only the trigger is touched. Their `name` and `source_query` are written once, from the
-   * initiative's own title, and re-stating either would rebuild a page whose question never
-   * changed. The tree read above is reused rather than re-fetched.
+   * Their `name` and `source_query` are written once, from the initiative's own title, and
+   * re-stating either would rebuild a page whose question never changed. The one exception is
+   * the scope clause: a page captured while the clause named the BANK is scoped to a project no
+   * memory is about and comes out empty (#4490), so exactly that clause is swapped for the current
+   * one — the rest of the query, the user's wording included, is kept. The tree read above is
+   * reused rather than re-fetched.
    */
   async resyncInitiativeTriggers(roots, pageTrigger) {
     const folder = roots.find(
       (n) => n.kind === "folder" && (n.name || "").toLowerCase() === "initiatives"
     );
+    const bankScope = pageScopeRule(this.bank);
     let updated = 0;
     for (const page of folder?.children ?? []) {
-      if (page.kind !== "page" || page.trigger == null) continue;
-      const desired = pageTriggerFor(pageTrigger, this.bank, page.name);
-      if (!pageTriggerDrifted(page.trigger, desired)) continue;
+      if (page.kind !== "page") continue;
+      const patch = {};
+      const query = page.description?.replace(bankScope, pageScopeRule(this.project));
+      if (query !== page.description) patch.source_query = query;
+      if (page.trigger != null) {
+        const desired = pageTriggerFor(pageTrigger, this.bank, page.name);
+        if (pageTriggerDrifted(page.trigger, desired)) patch.trigger = pageTriggerPatch(desired);
+      }
+      if (!patch.trigger && !patch.source_query) continue;
       const r = await this.req(
         "PATCH",
         this.bankUrl(`/knowledge-base/nodes/${encodeURIComponent(page.id)}`),
-        { trigger: pageTriggerPatch(desired) }
+        patch
       );
       if (r.status === 404) continue;
       updated++;
@@ -1391,10 +1499,9 @@ var HindsightClient = class {
     let pageId = args.relatesToPageId;
     if (!pageId) {
       const folderId = await this.ensureFolder("Initiatives");
-      const subject = this.project ?? this.bank;
       const r = await this.req("POST", this.bankUrl("/knowledge-base/pages"), {
         name: args.title,
-        source_query: `Summarize the "${args.title}" initiative: what is being built or changed and why, and its current state \u2014 drawn from the project's memory.` + pageScopeRule(subject),
+        source_query: `Summarize the "${args.title}" initiative: what is being built or changed and why, and its current state \u2014 drawn from the project's memory.` + pageScopeRule(this.project),
         parent_id: folderId,
         tags: ["knowledge:feature-work"],
         max_tokens: PAGE_MAX_TOKENS,
@@ -1409,7 +1516,7 @@ var HindsightClient = class {
     }
     const verb = args.relatesToPageId ? "Update to an existing initiative" : "New initiative";
     const content = `${verb}: ${args.title}. ${args.summary}`;
-    const markerId = `initiative-marker-${this.slugify(args.title)}-${Date.now()}`;
+    const markerId = `initiative-marker-${this.slugify(pageId)}${args.relatesToPageId ? "-update" : ""}`;
     const tags = [.../* @__PURE__ */ new Set([...args.stamp?.tags ?? [], "knowledge:feature-work"])];
     const context = `initiative marker for [[page:${pageId}]]`;
     await this.retain(content, context, markerId, tags, "document", {
@@ -1646,7 +1753,7 @@ function resolveConfig(raw = {}) {
 }
 function readRaw(path) {
   try {
-    return JSON.parse(readFileSync2(path, "utf8"));
+    return JSON.parse(readFileSync3(path, "utf8"));
   } catch (e) {
     if (e?.code !== "ENOENT") {
       console.error(`hindsight: ignoring invalid config at ${path}: ${e?.message || e}`);
@@ -1888,7 +1995,7 @@ This tool guide and the page list are re-injected for you periodically as things
 }
 
 // src/core/session-cache.ts
-import { mkdirSync as mkdirSync2, readFileSync as readFileSync3, renameSync as renameSync2, rmSync, writeFileSync } from "fs";
+import { mkdirSync as mkdirSync2, readFileSync as readFileSync4, renameSync as renameSync2, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname as dirname5, join as join8 } from "path";
 function sessionCacheFile(harness, sessionId) {
@@ -1914,6 +2021,24 @@ function writeSessionCache(cacheFile, cache) {
   } catch {
   }
 }
+function pendingContextFile(harness, sessionId) {
+  return join8(tmpdir(), `hindsight-${harness}`, `${sessionId}.pending`);
+}
+function stashPendingContext(harness, sessionId, context) {
+  const path = pendingContextFile(harness, sessionId);
+  let existing = "";
+  try {
+    existing = readFileSync4(path, "utf8");
+  } catch {
+  }
+  if (existing.includes(context)) return;
+  try {
+    writeFileAtomic(path, existing ? `${existing}
+
+${context}` : context);
+  } catch {
+  }
+}
 function sessionRootFile(harness, sessionId) {
   return join8(tmpdir(), `hindsight-${harness}`, `${sessionId}.root`);
 }
@@ -1921,7 +2046,7 @@ function sessionRootDir(harness, sessionId, cwd) {
   if (!sessionId || !cwd) return cwd;
   const file = sessionRootFile(harness, sessionId);
   try {
-    const recorded = readFileSync3(file, "utf8").trim();
+    const recorded = readFileSync4(file, "utf8").trim();
     if (recorded) return recorded;
   } catch {
   }
@@ -1933,7 +2058,7 @@ function sessionRootDir(harness, sessionId, cwd) {
 }
 
 // src/core/turn-journal.ts
-import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync4, statSync as statSync2 } from "fs";
+import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync5, statSync as statSync2 } from "fs";
 import { tmpdir as tmpdir2 } from "os";
 import { dirname as dirname6, join as join9 } from "path";
 
@@ -1975,9 +2100,6 @@ function actionLine(tool, input) {
 // src/core/turn-journal.ts
 var JOURNAL_MAX_BYTES = 8 * 1024 * 1024;
 
-// src/core/retain-hook.ts
-import { readFileSync as readFileSync7 } from "fs";
-
 // src/core/retain-cursor.ts
 import { createHash as createHash2 } from "crypto";
 var PENDING_MAX_AGE_MS = 12 * 60 * 60 * 1e3;
@@ -1993,7 +2115,10 @@ import { fileURLToPath as fileURLToPath2 } from "url";
 var DAEMON_WAIT_SESSION_START_MS = 12e3;
 async function isServerHealthy(baseUrl, timeoutMs = 2e3) {
   try {
-    const res = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(timeoutMs) });
+    const res = await fetch(`${baseUrl}/health`, {
+      headers: { "User-Agent": USER_AGENT },
+      signal: AbortSignal.timeout(timeoutMs)
+    });
     return res.ok;
   } catch {
     return false;
@@ -2236,15 +2361,15 @@ function* readJsonl(path) {
 import { readFileSync as readFileSync6 } from "fs";
 import { join as join11 } from "path";
 
-// src/core/session-start.ts
-import { readFileSync as readFileSync11 } from "fs";
-
 // src/core/git.ts
 import { execFileSync as execFileSync2 } from "child_process";
 import { resolve as resolve2 } from "path";
+var US = "";
+var RS = "";
 var GITLOG_HEAD = "gitlog-head:";
+var GITLOG_FORMAT = `--format=%h${US}%ad${US}%an${US}%s${US}%b${RS}`;
 function git(repo, ...args) {
-  return execFileSync2("git", ["-C", repo, ...args], {
+  return execFileSync2("git", ["-C", repo, "-c", "log.showSignature=false", ...args], {
     encoding: "utf8",
     maxBuffer: 1 << 28,
     windowsHide: true,
@@ -2290,10 +2415,10 @@ async function gitLogIsCurrent(client, repo, head) {
 }
 
 // src/core/status.ts
-import { execFileSync as execFileSync3 } from "child_process";
+import { execFileSync as execFileSync4 } from "child_process";
 
 // src/core/survey.ts
-import { spawn as realSpawn4 } from "child_process";
+import { execFileSync as execFileSync3, spawn as realSpawn4 } from "child_process";
 import { createHash as createHash4 } from "crypto";
 import { existsSync as existsSync3 } from "fs";
 import { homedir as homedir4, tmpdir as tmpdir3 } from "os";
@@ -2306,7 +2431,9 @@ function resolveHostConfig(harness, directory) {
   if (cfg0.disabled) return { cfg: cfg0, bankId: "" };
   const bankId = deriveBankIdOrSkip(cfg0, directory, harness);
   if (bankId === null) return { cfg: { ...cfg0, disabled: true }, bankId: "" };
-  return applyBankConfig(cfg0, bankId, directory);
+  const resolved2 = applyBankConfig(cfg0, bankId, directory);
+  const project = resolved2.bankId === bankId ? bankProjectName(resolved2.cfg, directory) : void 0;
+  return { ...resolved2, project };
 }
 
 // src/core/survey-lease.ts
@@ -2409,6 +2536,19 @@ function resolveAgentBin(harness, claudeBin) {
       return process.env.HINDSIGHT_ANTIGRAVITY_BIN || "agy";
     case "opencode":
       return process.env.HINDSIGHT_OPENCODE_BIN || "opencode";
+  }
+}
+function opencodeCanDefineSurveyAgent(bin) {
+  try {
+    const out = execFileSync3(bin, ["--version"], {
+      encoding: "utf8",
+      timeout: 5e3,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "ignore"]
+    });
+    return Number(/(\d+)\./.exec(out)?.[1] ?? 0) >= 1;
+  } catch {
+    return false;
   }
 }
 var SURVEY_PROMPT = 'You are performing a one-time structural survey of THIS repository to seed its Hindsight memory. Work efficiently \u2014 DO NOT read every file; sample enough to understand the architecture: the directory layout, entry points, package manifests (package.json / pyproject.toml / Cargo.toml / go.mod), the README, and a few representative source files per major area. Use Glob (e.g. `**/*`) to see the directory layout \u2014 Read takes a FILE path only and errors on a directory; never call Read on a bare directory path.\nIMPORTANT \u2014 DO NOT read, quote, summarize, or ingest agent-instruction files: CLAUDE.md, AGENTS.md, GEMINI.md, .cursorrules, .cursor/rules/*, or .github/copilot-instructions.md. These are live, user-controlled instructions (not repository knowledge); capturing them as memory would let a stale copy override the user\'s current instructions. Exclude them entirely from your survey and from every ingested document.\nThen use the hindsight_ingest_document tool to save what you learned as separate documents (one call each), with these titles and factual, developer-oriented content grounded in what you actually saw:\n- "Repository component map": the top-level modules/directories, each one\'s responsibility, and how they connect (data flow / dependencies).\n- "Repository core concepts": the domain model and key abstractions a new contributor must understand.\n- "Repository conventions and patterns": naming, file/module organization, testing approach, error handling, and other recurring patterns.\n- "Repository tech stack and features": languages, frameworks, build/test tooling, and the notable features the project provides.\nKeep each a few hundred words. When done, stop.';
@@ -2524,6 +2664,8 @@ async function startCodebaseSurvey(repoDir, opts = {}) {
       seen.add(harness);
       const bin = resolveAgentBin(harness, opts.claudeBin);
       if (!exists(bin)) continue;
+      if (harness === "opencode" && !(opts.opencodeDefinesAgent ?? opencodeCanDefineSurveyAgent)(bin))
+        continue;
       const plan = buildSurveyPlan(harness, bin, repoDir, {
         model: opts.model,
         budgetUsd: opts.budgetUsd,
@@ -2584,7 +2726,7 @@ import { spawn as realSpawn5 } from "child_process";
 import {
   existsSync as existsSync4,
   mkdirSync as mkdirSync5,
-  readFileSync as readFileSync8,
+  readFileSync as readFileSync7,
   realpathSync as realpathSync2,
   unlinkSync as unlinkSync2,
   writeFileSync as writeFileSync3
@@ -2615,7 +2757,7 @@ function sameDir(a, b) {
 }
 function stagedVersion(pkgRoot) {
   try {
-    const pkg = JSON.parse(readFileSync8(join14(pkgRoot, "package.json"), "utf8"));
+    const pkg = JSON.parse(readFileSync7(join14(pkgRoot, "package.json"), "utf8"));
     return typeof pkg.version === "string" ? pkg.version : "";
   } catch {
     return "";
@@ -2640,7 +2782,7 @@ function isNewer(candidate, current2) {
 }
 function dueForCheck(file, now) {
   try {
-    const state = JSON.parse(readFileSync8(file, "utf8"));
+    const state = JSON.parse(readFileSync7(file, "utf8"));
     return typeof state.lastCheck !== "number" || now - state.lastCheck >= CHECK_INTERVAL_MS;
   } catch {
     return true;
@@ -2649,7 +2791,7 @@ function dueForCheck(file, now) {
 var ORIGIN_FILE = ".install-origin.json";
 function selfUpdatable(runtimeDir) {
   try {
-    const origin = JSON.parse(readFileSync8(join14(runtimeDir, ORIGIN_FILE), "utf8"));
+    const origin = JSON.parse(readFileSync7(join14(runtimeDir, ORIGIN_FILE), "utf8"));
     if (typeof origin.source !== "string" || !origin.source) return false;
     return origin.source.split(/[\\/]/).includes("_npx");
   } catch {
@@ -2662,7 +2804,7 @@ function lockFile() {
 }
 function acquireUpdateLock(file, now) {
   try {
-    const held = JSON.parse(readFileSync8(file, "utf8"));
+    const held = JSON.parse(readFileSync7(file, "utf8"));
     if (held.ts && now - held.ts < LOCK_STALE_MS) {
       let holderAlive = false;
       if (held.pid) {
@@ -2703,6 +2845,9 @@ function stampCheck(file, now, latest) {
   } catch {
   }
 }
+function spawnNpm(spawnImpl, bin, args, opts) {
+  return process.platform === "win32" ? spawnImpl([bin, ...args].join(" "), { ...opts, shell: true }) : spawnImpl(bin, args, opts);
+}
 async function npmViewVersion(pkg, spawnImpl = realSpawn5) {
   return new Promise((resolve3) => {
     let out = "";
@@ -2716,7 +2861,7 @@ async function npmViewVersion(pkg, spawnImpl = realSpawn5) {
       resolve3(v);
     };
     try {
-      const child = spawnImpl("npm", ["view", pkg, "version", "--json"], {
+      const child = spawnNpm(spawnImpl, "npm", ["view", pkg, "version", "--json"], {
         timeout: NPM_VIEW_TIMEOUT_MS,
         stdio: ["ignore", "pipe", "ignore"],
         windowsHide: true
@@ -2785,7 +2930,8 @@ async function maybeAutoUpdate(cfg, opts = {}) {
         return "";
       }
       log.info("auto-update", `updating the Hindsight runtime ${current2} -> ${latest}`);
-      const child = (opts.spawn ?? realSpawn5)(
+      const child = spawnNpm(
+        opts.spawn ?? realSpawn5,
         "npx",
         ["-y", `${PACKAGE_NAME}@${latest}`, "update"],
         {
@@ -2811,7 +2957,7 @@ async function maybeAutoUpdate(cfg, opts = {}) {
 }
 
 // src/core/skill-sync.ts
-import { cpSync, existsSync as existsSync6, readFileSync as readFileSync9 } from "fs";
+import { cpSync, existsSync as existsSync6, readFileSync as readFileSync8 } from "fs";
 import { homedir as homedir6 } from "os";
 import { dirname as dirname10, join as join16 } from "path";
 import { fileURLToPath as fileURLToPath5 } from "url";
@@ -2847,7 +2993,12 @@ var SKILL_DIRS = {
   // by fixed directory name, so installing to the shared one would make `uninstall pi` take Codex's
   // and dsh's copy with it.
   pi: [".pi", "agent", "skills"],
-  "prime-agent": [".prime", "agent", "skills"]
+  "prime-agent": [".prime", "agent", "skills"],
+  // WorkBuddy's own user-level skills root (the @genie/agent-cli engine reads ~/.workbuddy).
+  workbuddy: [".workbuddy", "skills"],
+  // CodeBuddy Code reads that SAME engine's default root, ~/.codebuddy — WorkBuddy only overrides
+  // its home folder (product config `dataLayout.configDir.userDirName`), so the two differ by config.
+  codebuddy: [".codebuddy", "skills"]
 };
 var TRAE_DOT_DIRS = [".trae-cn", ".trae"];
 var traecodeDotDirName = (home, exists = existsSync5) => {
@@ -2881,7 +3032,7 @@ function syncCompanionSkill(harness, opts = {}) {
     const dstMd = join16(dst, "SKILL.md");
     const installed = existsSync6(dstMd);
     if (!installed && !opts.install) return;
-    if (!installed || readFileSync9(srcMd, "utf8") !== readFileSync9(dstMd, "utf8")) {
+    if (!installed || readFileSync8(srcMd, "utf8") !== readFileSync8(dstMd, "utf8")) {
       cpSync(src, dst, { recursive: true });
     }
   } catch {
@@ -2889,7 +3040,7 @@ function syncCompanionSkill(harness, opts = {}) {
 }
 
 // src/core/legacy.ts
-import { existsSync as existsSync7, readFileSync as readFileSync10 } from "fs";
+import { existsSync as existsSync7, readFileSync as readFileSync9 } from "fs";
 import { homedir as homedir7 } from "os";
 import { join as join17, relative, isAbsolute as isAbsolute2 } from "path";
 var LEGACY_CLAUDE_PLUGIN = "hindsight-memory";
@@ -2914,7 +3065,7 @@ function detectLegacyClaudePlugin(cwd, claudeDir = join17(homedir7(), ".claude")
 }
 function readJson(path) {
   try {
-    const parsed = JSON.parse(readFileSync10(path, "utf8"));
+    const parsed = JSON.parse(readFileSync9(path, "utf8"));
     return parsed && typeof parsed === "object" ? parsed : void 0;
   } catch {
     return void 0;
@@ -2943,9 +3094,9 @@ async function gitSyncNote(args) {
   const deepened = [...gitIds].filter((id) => id.startsWith("git:")).length;
   let target = DEEPEN_DIFF_TARGET;
   try {
-    const { execFileSync: execFileSync5 } = await import("child_process");
+    const { execFileSync: execFileSync6 } = await import("child_process");
     const n = Number(
-      execFileSync5("git", ["-C", cwd, "rev-list", "--count", "HEAD"], {
+      execFileSync6("git", ["-C", cwd, "rev-list", "--count", "HEAD"], {
         encoding: "utf8",
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"]
@@ -2962,6 +3113,7 @@ async function buildSessionStartContext(args) {
   const t0 = Date.now();
   let cold;
   let gitDocIds;
+  let bankEmpty = false;
   const harness = args.harness ?? "claude-code";
   const hasGit = args.hasGit ?? hasGitHistory;
   const startSeed = args.startSeed ?? startBackgroundSeed;
@@ -3001,11 +3153,21 @@ async function buildSessionStartContext(args) {
         } catch {
           docIds = void 0;
         }
-        cold = docIds !== void 0 ? docIds.size === 0 : void 0;
+        let baselines;
+        if (docIds?.size === 0) {
+          baselines = await client.listDocumentIds(SURVEY_BASELINE_TAG, "all_strict").catch(() => void 0);
+        }
+        cold = docIds !== void 0 ? docIds.size === 0 && !baselines?.size : void 0;
         gitDocIds = docIds;
+        if (cold === true && client.hasDocuments) {
+          bankEmpty = await client.hasDocuments().then(
+            (has) => !has,
+            () => false
+          );
+        }
         if (docIds !== void 0) {
           startSeed(cwd, { limit: cfg.seedLimit, harness });
-          if (docIds.size === 0) {
+          if (cold) {
             if (cfg.codebaseSurvey !== false) {
               const started = await startSurvey(cwd, {
                 harness,
@@ -3019,7 +3181,7 @@ async function buildSessionStartContext(args) {
           } else if (cfg.codebaseSurvey !== false && cfg.surveyRefreshCommits > 0) {
             const sha = resolveHeadSha(cwd);
             if (sha) {
-              const markers = await client.listDocumentIds(SURVEY_BASELINE_TAG, "all_strict").catch(() => /* @__PURE__ */ new Set());
+              const markers = baselines ?? await client.listDocumentIds(SURVEY_BASELINE_TAG, "all_strict").catch(() => /* @__PURE__ */ new Set());
               const counts = [];
               for (const id of markers) {
                 if (!id.startsWith(SURVEY_BASELINE_PREFIX)) continue;
@@ -3053,10 +3215,8 @@ async function buildSessionStartContext(args) {
     }
   }
   let pages = [];
-  let pageListKnown = false;
   try {
     pages = parsePageList(await client.listPages());
-    pageListKnown = true;
   } catch {
     if (client.knowledgePagesSupported === false) {
       diag(harness, "knowledge_pages_unavailable", { bank: bankId });
@@ -3066,7 +3226,7 @@ async function buildSessionStartContext(args) {
     reflectOnNewGoals: cfg.autoInject !== "reflect",
     extra: cfg.toolGuideExtra
   });
-  const deferInitialReflect = cold === true || pageListKnown && pages.length === 0;
+  const deferInitialReflect = bankEmpty;
   let gitNote;
   if (gitDocIds) {
     gitNote = await gitSyncNote({
@@ -3091,12 +3251,8 @@ ${legacyClaudePluginWarning(legacyPlugin)}`;
 async function runSessionStartHook(spec, makeClient = (o) => new HindsightClient(o)) {
   if (process.env.HINDSIGHT_DISABLE_HOOKS) return;
   try {
-    let ev = {};
-    try {
-      ev = JSON.parse(readFileSync11(0, "utf8"));
-    } catch {
-      return;
-    }
+    const ev = readHookEvent(spec.harness);
+    if (!ev) return;
     if (spec.accept && !spec.accept(ev)) return;
     const { harness } = spec;
     const { cwd: rawCwd, sessionId } = spec.parse(ev);
@@ -3129,6 +3285,10 @@ ${mcpHint}` : mcpHint;
     if (out.deferInitialReflect && sessionId) {
       writeSessionCache(sessionCacheFile(harness, sessionId), { deferInitialReflect: true });
     }
+    if (spec.deferContextToToolHook && out.additionalContext && sessionId) {
+      stashPendingContext(harness, sessionId, out.additionalContext);
+      out.additionalContext = void 0;
+    }
     const payload = spec.emit(out);
     if (out.systemMessage || out.additionalContext) {
       process.stdout.write(JSON.stringify(payload));
@@ -3138,8 +3298,8 @@ ${mcpHint}` : mcpHint;
 }
 
 // src/core/traecode-mcp.ts
-import { execFileSync as execFileSync4 } from "child_process";
-import { existsSync as existsSync8, mkdirSync as mkdirSync6, readFileSync as readFileSync12, readdirSync as readdirSync2, rmSync as rmSync3, writeFileSync as writeFileSync4 } from "fs";
+import { execFileSync as execFileSync5 } from "child_process";
+import { existsSync as existsSync8, mkdirSync as mkdirSync6, readFileSync as readFileSync10, readdirSync as readdirSync2, rmSync as rmSync3, writeFileSync as writeFileSync4 } from "fs";
 import { homedir as homedir8 } from "os";
 import { dirname as dirname11, isAbsolute as isAbsolute3, join as join18 } from "path";
 import { fileURLToPath as fileURLToPath6 } from "url";
@@ -3176,7 +3336,7 @@ function gateStateFile() {
 }
 function readGateState(opts = {}) {
   try {
-    return JSON.parse(readFileSync12(opts.stateFile ?? gateStateFile(), "utf8"));
+    return JSON.parse(readFileSync10(opts.stateFile ?? gateStateFile(), "utf8"));
   } catch {
     return {};
   }
@@ -3184,7 +3344,7 @@ function readGateState(opts = {}) {
 function workspaceMcpGateState(settingsPath) {
   let raw;
   try {
-    raw = readFileSync12(settingsPath, "utf8");
+    raw = readFileSync10(settingsPath, "utf8");
   } catch {
     return "unknown";
   }
@@ -3224,7 +3384,7 @@ function gitignoreCovers(lines) {
 function ensureGitignored(repo) {
   const gitignore = join18(repo, ".gitignore");
   if (!existsSync8(gitignore)) return;
-  const current2 = readFileSync12(gitignore, "utf8");
+  const current2 = readFileSync10(gitignore, "utf8");
   if (gitignoreCovers(current2.split("\n"))) return;
   const addition = (current2.endsWith("\n") || current2 === "" ? "" : "\n") + "# hindsight MCP registration (machine-specific)\n.trae/mcp.json\n";
   writeFileSync4(gitignore, current2 + addition);
@@ -3245,7 +3405,7 @@ function registerTraecodeWorkspaceMcp(cwd, opts = {}) {
     let doc = {};
     let exists = false;
     try {
-      doc = JSON.parse(readFileSync12(file, "utf8"));
+      doc = JSON.parse(readFileSync10(file, "utf8"));
       exists = true;
     } catch {
       if (existsSync8(file)) return "skipped";
@@ -3301,7 +3461,7 @@ function findWorkspaceStorageDir(storage, repo) {
   }
   for (const name of entries) {
     try {
-      const doc = JSON.parse(readFileSync12(join18(storage, name, "workspace.json"), "utf8"));
+      const doc = JSON.parse(readFileSync10(join18(storage, name, "workspace.json"), "utf8"));
       if (typeof doc.folder !== "string") continue;
       let folder;
       try {
@@ -3324,7 +3484,7 @@ function ensureWorkspaceMcpEnabled(cwd, opts = {}) {
     if (!dir) return "failed";
     const db = join18(dir, "state.vscdb");
     if (!existsSync8(db)) return "failed";
-    const sqlite = opts.sqlite ?? execFileSync4;
+    const sqlite = opts.sqlite ?? execFileSync5;
     const run = (sql) => sqlite("sqlite3", [db, ".timeout 3000", sql], {
       encoding: "utf8",
       timeout: SQLITE_TIMEOUT_MS,
@@ -3372,6 +3532,14 @@ function isSyntheticUserText(text) {
   const s = text.trimStart();
   return s.startsWith("# AGENTS.md instructions for ") || s.startsWith("<environment_context>");
 }
+var AGENTS_BLOCK_HEADER = /^# AGENTS\.md instructions(?: for [^\n]*)?\n/;
+var STARTUP_TAG_BLOCK = /^<(recommended_plugins|environment_context)>(?:(?!<\1>)[\s\S])*<\/\1>$/;
+function isStartupItem(text) {
+  const s = text.trim();
+  if (AGENTS_BLOCK_HEADER.test(s))
+    return s.includes("<INSTRUCTIONS>") && s.includes("</INSTRUCTIONS>");
+  return STARTUP_TAG_BLOCK.test(s);
+}
 function contentText(content) {
   return (Array.isArray(content) ? content : []).filter((c) => c && typeof c.text === "string").map((c) => c.text).join("\n");
 }
@@ -3388,7 +3556,10 @@ function fallbackUserText(payload) {
   if (Array.isArray(content) && Array.isArray(kinds) && kinds.length === content.length && kinds.every((kind) => typeof kind === "string" && kind.length > 0)) {
     return contentText(content.filter((_, index) => !startupKinds.has(kinds[index])));
   }
-  const text = contentText(content);
+  const items = (Array.isArray(content) ? content : []).filter(
+    (c) => !(c && typeof c.text === "string" && isStartupItem(stripInjectedMemory(c.text)))
+  );
+  const text = contentText(items);
   return isSyntheticUserText(stripInjectedMemory(text)) ? "" : text;
 }
 function isUserMessageEvent(line) {
@@ -3565,7 +3736,7 @@ function readCopilotTranscript(path) {
 }
 
 // src/core/transcript-grok.ts
-import { existsSync as existsSync9, readFileSync as readFileSync13, readdirSync as readdirSync3 } from "fs";
+import { existsSync as existsSync9, readFileSync as readFileSync11, readdirSync as readdirSync3 } from "fs";
 import { homedir as homedir9 } from "os";
 import { join as join19 } from "path";
 var CHAT_HISTORY = "chat_history.jsonl";
@@ -3576,7 +3747,7 @@ function grokTranscriptPath(cwd, sessionId, grokHome = process.env.GROK_HOME || 
   try {
     for (const candidate of readdirSync3(sessionsDir)) {
       const directory = join19(sessionsDir, candidate);
-      if (readFileSync13(join19(directory, ".cwd"), "utf8").trim() === cwd) {
+      if (readFileSync11(join19(directory, ".cwd"), "utf8").trim() === cwd) {
         return join19(directory, sessionId, CHAT_HISTORY);
       }
     }
@@ -3927,7 +4098,7 @@ function readDroidTranscript(path) {
 }
 
 // src/core/transcript-zcode.ts
-import { readFileSync as readFileSync14 } from "fs";
+import { readFileSync as readFileSync12 } from "fs";
 function messageText(content) {
   if (typeof content === "string") return content.trim();
   if (!Array.isArray(content)) return "";
@@ -3937,7 +4108,7 @@ function readZcodeTranscript(path) {
   if (!path) return [];
   let body;
   try {
-    body = readFileSync14(path, "utf8");
+    body = readFileSync12(path, "utf8");
   } catch {
     return [];
   }
@@ -4096,6 +4267,135 @@ function readKimiTranscript(path) {
   return turns;
 }
 
+// src/core/transcript-workbuddy.ts
+function messageText2(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.filter((b) => b && typeof b.text === "string").map((b) => b.text).join("\n");
+}
+var USER_QUERY_RE = /^\s*<user_query>([\s\S]*?)<\/user_query>\s*(?:<image_local_path>[\s\S]*?<\/image_local_path>\s*)?$/;
+function unwrapUserQuery(text) {
+  const match = USER_QUERY_RE.exec(text);
+  return (match ? match[1] : text).trim();
+}
+function isSyntheticUserText2(text) {
+  const s = text.trimStart();
+  return s.startsWith("<cb_summary>") || s.startsWith("<conversation_history_summary>") || s.startsWith("Use the TaskOutput tool ");
+}
+function parseArgs2(raw) {
+  if (!raw) return void 0;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+function stampOf3(line) {
+  return typeof line.timestamp === "number" ? { timestamp: new Date(line.timestamp).toISOString() } : {};
+}
+function readWorkbuddyTranscript(path) {
+  const turns = [];
+  for (const rawLine of readJsonl(path)) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (typeof parsed !== "object" || parsed === null) continue;
+    const line = parsed;
+    const stamp = stampOf3(line);
+    if (line.type === "message") {
+      if (line.role !== "user" && line.role !== "assistant") continue;
+      let text = stripInjectedMemory(messageText2(line.content)).trim();
+      if (!text) continue;
+      if (line.role === "user") {
+        if (isSyntheticUserText2(text)) continue;
+        text = unwrapUserQuery(text);
+        if (!text) continue;
+      }
+      turns.push({ role: line.role, content: text, ...stamp });
+    } else if (line.type === "function_call" && typeof line.name === "string") {
+      turns.push({
+        role: "action",
+        content: actionLine(line.name, parseArgs2(line.arguments)),
+        ...stamp
+      });
+    }
+  }
+  return turns;
+}
+
+// src/core/transcript-codebuddy-ide.ts
+import { readFileSync as readFileSync13 } from "fs";
+import { basename as basename3, dirname as dirname12, join as join22 } from "path";
+var IDE_CONTEXT_RE = /<(user_info|git_status|additional_data|system_reminder)\b[\s\S]*?<\/\1>/g;
+function readJson2(path) {
+  try {
+    return JSON.parse(readFileSync13(path, "utf8"));
+  } catch {
+    return void 0;
+  }
+}
+function ideUserText(raw) {
+  let text = stripInjectedMemory(raw).replace(IDE_CONTEXT_RE, "").trim();
+  if (!text || isSyntheticUserText2(text)) return "";
+  return unwrapUserQuery(text).trim();
+}
+function readCodebuddyIdeTranscript(indexPath) {
+  const index = readJson2(indexPath);
+  const entries = index?.messages;
+  if (!Array.isArray(entries)) return [];
+  const messagesDir = join22(dirname12(indexPath), "messages");
+  const turns = [];
+  for (const entry of entries) {
+    const id = entry?.id;
+    if (typeof id !== "string") continue;
+    const file = readJson2(join22(messagesDir, `${id}.json`));
+    const encoded = file?.message;
+    if (typeof encoded !== "string") continue;
+    let inner;
+    try {
+      inner = JSON.parse(encoded);
+    } catch {
+      continue;
+    }
+    const role = typeof inner.role === "string" ? inner.role : file?.role;
+    const isUser = role === "user";
+    const isAssistant = role === "assistant";
+    const stamp = typeof file?.createdAt === "string" ? { timestamp: file.createdAt } : {};
+    const blocks = Array.isArray(inner.content) ? inner.content : [];
+    const texts = [];
+    const calls = [];
+    for (const block of blocks) {
+      if (!block || typeof block !== "object") continue;
+      const { type, text, toolName, args } = block;
+      if (type === "text" && typeof text === "string") texts.push(text);
+      else if (type === "tool-call" && typeof toolName === "string")
+        calls.push({ name: toolName, args });
+    }
+    if (texts.length) {
+      const raw = texts.join("\n");
+      if (isUser) {
+        const text = ideUserText(raw);
+        if (text) turns.push({ role: "user", content: text, ...stamp });
+      } else if (isAssistant) {
+        const text = stripInjectedMemory(raw).trim();
+        if (text) turns.push({ role: "assistant", content: text, ...stamp });
+      }
+    }
+    for (const call of calls) {
+      turns.push({ role: "action", content: actionLine(call.name, call.args), ...stamp });
+    }
+  }
+  return turns;
+}
+function readCodebuddyTranscript(path) {
+  return basename3(path) === "index.json" ? readCodebuddyIdeTranscript(path) : readWorkbuddyTranscript(path);
+}
+
 // src/harness/hook-lifecycle.ts
 var cursorCwd = (ev) => ev.cwd ?? ev.workspace_root ?? (Array.isArray(ev.workspace_roots) ? ev.workspace_roots[0] : void 0);
 var claudePrompt = {
@@ -4200,6 +4500,35 @@ var standardSessionStart = (harness) => ({
       ...out.additionalContext ? { additionalContext: out.additionalContext } : {}
     }
   })
+});
+var genieSessionStart = (harness) => {
+  const base = standardSessionStart(harness);
+  return {
+    ...base,
+    parse: (ev) => ({
+      cwd: ev.cwd || process.env.CODEBUDDY_PROJECT_DIR,
+      sessionId: ev.session_id
+    }),
+    emit: (out) => ({ ...base.emit(out), suppressOutput: true })
+  };
+};
+var geniePrompt = (harness) => ({
+  ...claudePrompt,
+  harness,
+  emit: (context, notice, ev) => ({
+    ...claudePrompt.emit(context, notice, ev),
+    suppressOutput: true
+  })
+});
+var genieRetain = (harness, readTranscript) => ({
+  hostTimeoutSec: 60,
+  harness,
+  parse: (ev) => ({
+    sessionId: ev.session_id,
+    transcriptPath: ev.transcript_path,
+    cwd: ev.cwd
+  }),
+  readTranscript
 });
 var notGrokHosted = () => !process.env.GROK_HOOK_EVENT;
 var HOOK_HARNESSES = {
@@ -4398,17 +4727,29 @@ var HOOK_HARNESSES = {
       prompt: { event: "UserPromptSubmit", entry: "grok-hook.js", timeout: 30 },
       stop: { event: "Stop", entry: "grok-stop-hook.js", timeout: 60 }
     },
+    // Grok hands the model `additionalContext` from TOOL hooks only: SessionStart is observe-only
+    // and UserPromptSubmit can only block (#5467). Both stash their context instead, and the
+    // prompt entry, also registered on PostToolUse, delivers it beside the next tool result.
+    additionalHooks: [{ event: "PostToolUse", entry: "grok-hook.js", timeout: 30 }],
     sessionStart: {
       ...standardSessionStart("grok-build"),
       // Grok's wire envelope is camelCase, unlike Claude's similarly named hook events.
       parse: (ev) => ({
         cwd: ev.cwd,
         sessionId: ev.sessionId
-      })
+      }),
+      deferContextToToolHook: true
     },
     prompt: {
       ...claudePrompt,
       harness: "grok-build",
+      toolHook: {
+        // Grok names the event twice: snake_case `hookEventName`, plus a Claude-named alias.
+        accept: (ev) => ev.hookEventName === "post_tool_use" || ev.hook_event_name === "PostToolUse",
+        emit: (context) => ({
+          hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: context }
+        })
+      },
       parse: (ev) => ({
         prompt: ev.prompt,
         cwd: ev.cwd,
@@ -4642,6 +4983,48 @@ var HOOK_HARNESSES = {
       },
       readTranscript: readKimiTranscript
     }
+  },
+  /**
+   * WorkBuddy (Tencent's AI workbench) keeps a durable transcript at
+   * ~/.workbuddy/projects/<cwd-encoded>/<uuid>.jsonl and speaks Claude's hook protocol —
+   * `session_id` / `transcript_path` / `cwd` in, hookSpecificOutput + systemMessage out — apart
+   * from the two quirks genieSessionStart/geniePrompt handle. The other host-specific piece is the
+   * transcript SCHEMA: `type:"message"` records carrying top-level `role`/`content`, which
+   * core/transcript-workbuddy.ts normalizes. Its Stop payload fills `transcript_path` for real (the
+   * engine's own getHookTranscriptPath), so it retains through `readTranscript` like every other
+   * file-backed host rather than the journal ZCode needs.
+   * CodeBuddy Code ships the same @genie/agent-cli engine and reuses this reader (see `codebuddy`).
+   */
+  workbuddy: {
+    configStyle: "nested",
+    install: {
+      sessionStart: { event: "SessionStart", entry: "workbuddy-sessionstart-hook.js", timeout: 30 },
+      prompt: { event: "UserPromptSubmit", entry: "workbuddy-hook.js", timeout: 30 },
+      stop: { event: "Stop", entry: "workbuddy-stop-hook.js", timeout: 60 }
+    },
+    sessionStart: genieSessionStart("workbuddy"),
+    prompt: geniePrompt("workbuddy"),
+    retain: genieRetain("workbuddy", readWorkbuddyTranscript)
+  },
+  /**
+   * CodeBuddy — the same `@genie/agent-cli` engine WorkBuddy ships, running under its own product
+   * config (`~/.codebuddy`; WorkBuddy only renames the home folder). Hook names and payload shape
+   * are identical, so this spec differs from `workbuddy` in the files the installer writes, the
+   * harness name stamped on what it retains — and ONE thing more: CodeBuddy ships in two hosts whose
+   * transcripts do NOT look alike. CodeBuddy Code (the CLI) writes the WorkBuddy JSONL, while the
+   * IDE hands the Stop hook its own `<conversation>/index.json` directory layout. So the reader is
+   * a dispatcher on the shape it was handed (core/transcript-codebuddy-ide.ts).
+   */
+  codebuddy: {
+    configStyle: "nested",
+    install: {
+      sessionStart: { event: "SessionStart", entry: "codebuddy-sessionstart-hook.js", timeout: 30 },
+      prompt: { event: "UserPromptSubmit", entry: "codebuddy-hook.js", timeout: 30 },
+      stop: { event: "Stop", entry: "codebuddy-stop-hook.js", timeout: 60 }
+    },
+    sessionStart: genieSessionStart("codebuddy"),
+    prompt: geniePrompt("codebuddy"),
+    retain: genieRetain("codebuddy", readCodebuddyTranscript)
   }
 };
 var runHarnessSessionStart = (harness) => runSessionStartHook(HOOK_HARNESSES[harness].sessionStart);

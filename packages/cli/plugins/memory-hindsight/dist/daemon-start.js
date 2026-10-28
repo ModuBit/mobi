@@ -27,8 +27,8 @@ function getEmbedCommand(opts = {}) {
   if (opts.embedPackagePath) {
     return ["uv", "run", "--directory", opts.embedPackagePath, "hindsight-embed"];
   }
-  const version = opts.embedVersion && opts.embedVersion.length > 0 ? opts.embedVersion : "latest";
-  return ["uvx", `hindsight-embed@${version}`];
+  const version2 = opts.embedVersion && opts.embedVersion.length > 0 ? opts.embedVersion : "latest";
+  return ["uvx", `hindsight-embed@${version2}`];
 }
 var silentLogger, consoleLogger, DEFAULT_PORT, DEFAULT_HOST, DEFAULT_PROFILE, DEFAULT_READY_TIMEOUT_MS, DEFAULT_READY_POLL_INTERVAL_MS, HindsightServer;
 var init_dist = __esm({
@@ -112,7 +112,7 @@ var init_dist = __esm({
           embedPackagePath: this.embedPackagePath
         });
         const args = [...baseArgs, "daemon", "--profile", this.profile, "stop"];
-        const child = spawn(cmd, args, { stdio: "pipe" });
+        const child = spawn(cmd, args, { stdio: "pipe", windowsHide: true });
         this.pipeOutput(child, "daemon.stop");
         await new Promise((resolve2) => {
           const timeout = setTimeout(() => {
@@ -231,7 +231,7 @@ var init_dist = __esm({
        * once it exits with code 0. Rejects on non-zero exit or spawn error.
        */
       async runCommand(cmd, args, env, label) {
-        const child = spawn(cmd, args, { stdio: "pipe", env });
+        const child = spawn(cmd, args, { stdio: "pipe", env, windowsHide: true });
         let output = "";
         child.stdout?.on("data", (data) => {
           const text = data.toString();
@@ -300,7 +300,7 @@ var init_dist = __esm({
 });
 
 // src/core/config.ts
-import { readFileSync as readFileSync2 } from "fs";
+import { readFileSync as readFileSync3 } from "fs";
 import { homedir as homedir3 } from "os";
 import { join as join7 } from "path";
 
@@ -316,6 +316,7 @@ import { homedir as homedir2 } from "os";
 import { basename, dirname as dirname4, join as join5, normalize, sep } from "path";
 
 // src/core/diag.ts
+import { readFileSync } from "fs";
 import { join as join3 } from "path";
 
 // src/core/log.ts
@@ -377,7 +378,7 @@ function diag(harness, event, extra = {}) {
 }
 
 // src/core/git-layout.ts
-import { lstatSync, readFileSync, realpathSync } from "fs";
+import { lstatSync, readFileSync as readFileSync2, realpathSync } from "fs";
 import { dirname as dirname3, isAbsolute, join as join4, resolve } from "path";
 
 // src/core/missions.ts
@@ -449,11 +450,15 @@ var PLUGIN_GOVERNED_BANK_FIELDS = [
   "retain_extraction_mode"
 ];
 
+// package.json
+var version = "0.8.2";
+
 // src/core/util.ts
 import { accessSync, constants } from "fs";
 import { delimiter, join as join6 } from "path";
 
 // src/core/hindsight.ts
+var USER_AGENT = `hindsight-coding-agents/${version}`;
 var DEFAULT_OBSERVATION_SCOPES = "shared";
 var DEFAULT_PAGE_SEARCH_LIMIT = 10;
 var RETRY_AFTER_FLOOR_MS = 10 * 1e3;
@@ -669,7 +674,7 @@ function resolveConfig(raw = {}) {
 }
 function readRaw(path) {
   try {
-    return JSON.parse(readFileSync2(path, "utf8"));
+    return JSON.parse(readFileSync3(path, "utf8"));
   } catch (e) {
     if (e?.code !== "ENOENT") {
       console.error(`hindsight: ignoring invalid config at ${path}: ${e?.message || e}`);
@@ -802,7 +807,10 @@ import { dirname as dirname5, join as join8 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 async function isServerHealthy(baseUrl, timeoutMs = 2e3) {
   try {
-    const res = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(timeoutMs) });
+    const res = await fetch(`${baseUrl}/health`, {
+      headers: { "User-Agent": USER_AGENT },
+      signal: AbortSignal.timeout(timeoutMs)
+    });
     return res.ok;
   } catch {
     return false;
