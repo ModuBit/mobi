@@ -32,11 +32,19 @@ const answersSchema = z.union([
     z.record(z.string(), z.object({ answers: z.array(z.string()) }))
 ])
 
+// AskUserQuestion 的 skipped 标注（ask_user_question_unanswered_v1）：按题面文本 key，
+// 未知枚举值在 schema 层即拒（400），session 侧另有剥除兜底
+const annotationsSchema = z.record(
+    z.string(),
+    z.object({ unanswered: z.enum(['skipped', 'replied_in_chat', 'dismissed']) })
+)
+
 const approveBodySchema = z.object({
     mode: PermissionModeSchema.optional(),
     updatedPermissions: z.array(PermissionUpdateSchema).optional(),
     decision: decisionSchema.optional(),
-    answers: answersSchema.optional()
+    answers: answersSchema.optional(),
+    annotations: annotationsSchema.optional()
 })
 
 const denyBodySchema = z.object({
@@ -85,7 +93,8 @@ export function createPermissionsRoutes(getSyncEngine: () => SyncEngine | null):
         const updatedPermissions = parsed.data.updatedPermissions
         const decision = parsed.data.decision
         const answers = parsed.data.answers
-        await engine.approvePermission(sessionId, requestId, mode, decision, answers, updatedPermissions)
+        const annotations = parsed.data.annotations
+        await engine.approvePermission(sessionId, requestId, mode, decision, answers, updatedPermissions, annotations)
         return c.json({ ok: true })
     })
 

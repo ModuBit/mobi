@@ -361,6 +361,8 @@ export function createMobiApi() {
                     updatedPermissions?: PermissionUpdate[]
                     decision?: string
                     answers?: PermissionAnswers
+                    /** AskUserQuestion skipped 标注（ask_user_question_unanswered_v1），按题面文本 key */
+                    annotations?: Record<string, { unanswered: 'skipped' | 'replied_in_chat' | 'dismissed' }>
                 },
             ) =>
                 client.post(`/api/sessions/${sessionId}/permissions/${requestId}/approve`, body),

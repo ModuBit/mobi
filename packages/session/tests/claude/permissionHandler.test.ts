@@ -731,4 +731,74 @@ describe('PermissionHandler — AskUserQuestion 聊一聊 reason 透传', () => 
         expect(result.behavior).toBe('deny')
         expect(result.message).toBe('No answers were provided.')
     })
+
+    it('AskUserQuestion 无 answers 有 annotations(skipped) → allow + updatedInput 携带 annotations', async () => {
+        const handler = new PermissionHandler(makeSession() as never)
+        const pending = makePending('AskUserQuestion', { questions: [{ question: 'Q?', options: [] }] })
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse(
+            { id: 't1', approved: true, annotations: { 'Q?': { unanswered: 'skipped' } } },
+            pending,
+        )
+        const result = pending.resolve.mock.calls[0][0]
+        expect(result.behavior).toBe('allow')
+        expect(result.updatedInput).toMatchObject({
+            answers: {},
+            annotations: { 'Q?': { unanswered: 'skipped' } },
+        })
+    })
+
+    it('AskUserQuestion 部分作答 → updatedInput 合流 answers 与 annotations', async () => {
+        const handler = new PermissionHandler(makeSession() as never)
+        const pending = makePending('AskUserQuestion', {
+            questions: [{ question: 'Q1?', options: [] }, { question: 'Q2?', options: [] }],
+        })
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse(
+            {
+                id: 't1', approved: true,
+                answers: { 'Q1?': ['A'] },
+                annotations: { 'Q2?': { unanswered: 'skipped' } },
+            },
+            pending,
+        )
+        const result = pending.resolve.mock.calls[0][0]
+        expect(result.behavior).toBe('allow')
+        expect(result.updatedInput).toMatchObject({
+            answers: { 'Q1?': 'A' },
+            annotations: { 'Q2?': { unanswered: 'skipped' } },
+        })
+    })
+
+    it('AskUserQuestion annotations 未知枚举值 → 剥除该键（纵深防御，CLI 侧亦有 catch(void 0)）', async () => {
+        const handler = new PermissionHandler(makeSession() as never)
+        const pending = makePending('AskUserQuestion', { questions: [{ question: 'Q?', options: [] }] })
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse(
+            {
+                id: 't1', approved: true,
+                annotations: {
+                    'Q?': { unanswered: 'hacked' as never },
+                    'R?': { unanswered: 'skipped' },
+                },
+            },
+            pending,
+        )
+        const result = pending.resolve.mock.calls[0][0]
+        expect(result.behavior).toBe('allow')
+        expect(result.updatedInput).toMatchObject({
+            annotations: { 'R?': { unanswered: 'skipped' } },
+        })
+        expect((result.updatedInput as Record<string, unknown>).annotations).not.toHaveProperty('Q?')
+    })
+
+    it('AskUserQuestion 无 answers 无 annotations → 维持 deny（原契约不变）', async () => {
+        const handler = new PermissionHandler(makeSession() as never)
+        const pending = makePending('AskUserQuestion')
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse({ id: 't1', approved: true }, pending)
+        const result = pending.resolve.mock.calls[0][0]
+        expect(result.behavior).toBe('deny')
+        expect(result.message).toBe('No answers were provided.')
+    })
 })

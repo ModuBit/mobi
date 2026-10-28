@@ -111,3 +111,38 @@ describe('approve answers 通道放宽', () => {
         expect(res.status).toBe(400)
     })
 })
+
+// ============ AskUserQuestion skipped 标注（ask_user_question_unanswered_v1）============
+
+describe('approve annotations 通道', () => {
+    test('annotations 三枚举值放行', async () => {
+        const res = await postApprove({
+            annotations: {
+                'Q1?': { unanswered: 'skipped' },
+                'Q2?': { unanswered: 'replied_in_chat' },
+                'Q3?': { unanswered: 'dismissed' },
+            },
+        })
+        await expectSchemaPassed(res)
+    })
+
+    test('annotations 与 answers 同载放行（部分作答）', async () => {
+        const res = await postApprove({
+            answers: { 'Q1?': ['A'] },
+            annotations: { 'Q2?': { unanswered: 'skipped' } },
+        })
+        await expectSchemaPassed(res)
+    })
+
+    test('未知 unanswered 枚举值拒绝 → 400（严格 CLI 会拒整答，schema 层先挡）', async () => {
+        const res = await postApprove({
+            annotations: { 'Q?': { unanswered: 'hacked' } },
+        })
+        expect(res.status).toBe(400)
+    })
+
+    test('annotations 缺 unanswered 键拒绝 → 400', async () => {
+        const res = await postApprove({ annotations: { 'Q?': {} } })
+        expect(res.status).toBe(400)
+    })
+})

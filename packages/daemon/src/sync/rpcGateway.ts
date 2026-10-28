@@ -44,7 +44,8 @@ export class RpcGateway {
         mode?: PermissionMode,
         decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
         answers?: PermissionAnswers,
-        updatedPermissions?: PermissionUpdate[]
+        updatedPermissions?: PermissionUpdate[],
+        annotations?: Record<string, { unanswered: 'skipped' | 'replied_in_chat' | 'dismissed' }>
     ): Promise<void> {
         await this.sessionRpc(sessionId, 'permission', {
             id: requestId,
@@ -52,7 +53,8 @@ export class RpcGateway {
             mode,
             decision,
             answers,
-            updatedPermissions
+            updatedPermissions,
+            annotations
         })
     }
 

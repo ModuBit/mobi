@@ -42,6 +42,8 @@ interface PermissionResponse {
     /** @deprecated 权限范围改由 updatedPermissions 表达，保留作后退字段 */
     allowTools?: string[];
     answers?: PermissionAnswers;
+    /** AskUserQuestion 的 skipped 标注（ask_user_question_unanswered_v1），按题面文本 key */
+    annotations?: Record<string, { unanswered: string }>;
     /** Web 回传的持久化放行建议，透传进 PermissionResult 让 SDK 持久化 */
     updatedPermissions?: MobiPermissionUpdate[];
     receivedAt?: number;
@@ -91,6 +93,31 @@ function buildAskUserQuestionUpdatedInput(input: unknown, answers: PermissionAns
         ...input,
         answers: sdkAnswers
     };
+}
+
+/**
+ * AskUserQuestion annotations 的合法 unanswered 枚举（CC ask_user_question_unanswered_v1：
+ * 'skipped' | 'replied_in_chat' | 'dismissed'；严格 CLI 对越界值拒整答，mobi 侧先剥一道
+ * 纵深防御——CLI 自己还有 .catch(void 0) 兜底）。
+ */
+const UNANSWERED_VALUES = new Set(['skipped', 'replied_in_chat', 'dismissed']);
+
+/**
+ * 剥除未知 unanswered 枚举值的 annotations（按题面文本 key，与 answers 同口径）。
+ * 返回 undefined = 全部无效或输入为空，调用方无需携带该键。
+ */
+function sanitizeUnansweredAnnotations(
+    annotations: unknown
+): Record<string, { unanswered: string }> | undefined {
+    if (!isObject(annotations)) return undefined;
+    const out: Record<string, { unanswered: string }> = {};
+    for (const [question, value] of Object.entries(annotations)) {
+        const unanswered = isObject(value) ? value.unanswered : undefined;
+        if (typeof unanswered === 'string' && UNANSWERED_VALUES.has(unanswered)) {
+            out[question] = { unanswered };
+        }
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**
@@ -344,14 +371,27 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
             }
 
             const answers = response.answers ?? {};
+            // skipped 标注（ask_user_question_unanswered_v1）：按题面文本标记「没答」的问题，
+            // CLI 回显进 tool result——模型得知「跳过」而非整体被拒。未知枚举先剥（纵深防御）
+            const annotations = sanitizeUnansweredAnnotations(response.annotations);
             if (Object.keys(answers).length === 0) {
-                pending.resolve({ behavior: 'deny', message: 'No answers were provided.' });
-                completion.status = 'denied';
-                completion.reason = completion.reason ?? 'No answers were provided.';
+                // 全部未答：有 skipped 标注 → allow 让模型知道是「跳过」而非拒绝；两者皆空维持 deny
+                if (!annotations) {
+                    pending.resolve({ behavior: 'deny', message: 'No answers were provided.' });
+                    completion.status = 'denied';
+                    completion.reason = completion.reason ?? 'No answers were provided.';
+                } else {
+                    pending.resolve({
+                        behavior: 'allow',
+                        updatedInput: { answers: {}, annotations }
+                    });
+                }
             } else {
+                // 部分作答：answers 照常归一，annotations 合入 updatedInput（无标注不携带该键）
+                const updatedInput = buildAskUserQuestionUpdatedInput(pending.input, answers);
                 pending.resolve({
                     behavior: 'allow',
-                    updatedInput: buildAskUserQuestionUpdatedInput(pending.input, answers)
+                    updatedInput: annotations ? { ...updatedInput, annotations } : updatedInput
                 });
             }
             return completion;

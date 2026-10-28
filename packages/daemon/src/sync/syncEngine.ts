@@ -581,9 +581,10 @@ export class SyncEngine {
         mode?: PermissionMode,
         decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
         answers?: PermissionAnswers,
-        updatedPermissions?: PermissionUpdate[]
+        updatedPermissions?: PermissionUpdate[],
+        annotations?: Record<string, { unanswered: 'skipped' | 'replied_in_chat' | 'dismissed' }>
     ): Promise<void> {
-        await this.rpcGateway.approvePermission(sessionId, requestId, mode, decision, answers, updatedPermissions)
+        await this.rpcGateway.approvePermission(sessionId, requestId, mode, decision, answers, updatedPermissions, annotations)
     }
 
     async denyPermission(
