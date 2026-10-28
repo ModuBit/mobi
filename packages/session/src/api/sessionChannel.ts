@@ -116,6 +116,8 @@ export type SessionEventPayload =
     | { type: 'compact-completed' }
     | { type: 'permission-mode-changed'; mode: SessionPermissionMode }
     | { type: 'ready' }
+    /** CC 内建定时任务/循环自醒（wakeup-source spec）：消息流系统行展示唤醒原因 */
+    | { type: 'wakeup'; source: WakeupSource }
 
 export type SessionChannelOptions = {    token: string
     session: Session

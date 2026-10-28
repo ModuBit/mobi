@@ -347,6 +347,10 @@
       "collapse": "收起"
     },
     "contextReset": "对话已重置",
+    "wakeup": {
+        "loop": "循环唤醒",
+        "schedule": "定时任务唤醒"
+    },
     "contextCompacted": "对话已优化",
     "contextMicrocompacted": "对话已精简",
     "compactSummary": "对话已优化",

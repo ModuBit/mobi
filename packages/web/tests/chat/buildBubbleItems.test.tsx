@@ -134,6 +134,8 @@ const defaultOptions = {
     rewindFailedLabel: 'Rewind failed',
     rewindFailedReasonLabel: 'Rewind not performed (range contains non-attributable entries)',
     skippedLinksLabel: '{{count}} path(s) skipped',
+    wakeupLoopLabel: 'Loop wakeup',
+    wakeupScheduleLabel: 'Scheduled task wakeup',
     // 渲染器注入（分层治理票 03）：装配器不再静态依赖渲染注册表，测试传入真实实现
     renderBlock: renderChatBlock,
     renderToolGroup: (p: never) => null,
@@ -400,6 +402,37 @@ describe('buildChatBubbleItems', () => {
     })
 
     /* ─── 4. context-cleared ─── */
+
+    describe('wakeup 系统行（wakeup-source spec）', () => {
+        it('loop_wakeup → divider + 循环唤醒文案', () => {
+            const blocks = [
+                createAgentEvent({ id: 'ev-wakeup', event: { type: 'wakeup', source: 'loop_wakeup' } }),
+            ]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            expect(items).toHaveLength(1)
+            expect(items[0].role).toBe('divider')
+            expect(items[0].key).toBe('ev-wakeup')
+            expect(childrenToText((items[0].content as React.ReactElement).props.children)).toBe('Loop wakeup')
+        })
+
+        it('schedule_wakeup → divider + 定时任务唤醒文案', () => {
+            const blocks = [
+                createAgentEvent({ id: 'ev-wakeup', event: { type: 'wakeup', source: 'schedule_wakeup' } }),
+            ]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            expect(items[0].role).toBe('divider')
+            expect(childrenToText((items[0].content as React.ReactElement).props.children)).toBe('Scheduled task wakeup')
+        })
+
+        it('未知 source（开放集合兜底）→ 按定时任务档渲染', () => {
+            const blocks = [
+                createAgentEvent({ id: 'ev-wakeup', event: { type: 'wakeup', source: 'future_kind' } as AgentEventBlock['event'] }),
+            ]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            expect(items[0].role).toBe('divider')
+            expect(childrenToText((items[0].content as React.ReactElement).props.children)).toBe('Scheduled task wakeup')
+        })
+    })
 
     describe('context-cleared', () => {
         it('context-cleared 事件 → role: divider', () => {

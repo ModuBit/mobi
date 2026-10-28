@@ -34,6 +34,9 @@ export type BuildBubbleOptions = {
     rewindFailedReasonLabel: string
     /** skippedLinks>0 时显示的安全护栏跳过提示（{{count}} 插值） */
     skippedLinksLabel: string
+    /** CC 内建自醒系统行文案（wakeup-source spec）：循环 / 定时任务两档 */
+    wakeupLoopLabel: string
+    wakeupScheduleLabel: string
     /**
      * 块渲染器（分层治理票 03 注入化破环：装配器不静态依赖渲染注册表 blocks/index，
      * 否则 blocks → tool-card → AgentDrawerContent → buildBubbleItems → blocks 成环；
@@ -209,6 +212,23 @@ export function buildChatBubbleItems(
                         {skippedLinks && skippedLinks > 0
                             ? ` · ${options.skippedLinksLabel.replace('{{count}}', String(skippedLinks))}`
                             : ''}
+                    </span>
+                ),
+                block,
+            })
+            continue
+        }
+
+        // CC 内建自醒系统行（wakeup-source spec）：divider 形态同 context-cleared——
+        // 回合级事件，一行说明「为什么这个回合开始了」，无持续状态语义
+        if (block.kind === 'agent-event' && block.event.type === 'wakeup') {
+            const source = (block.event as { source?: string }).source
+            items.push({
+                key: block.id,
+                role: 'divider',
+                content: (
+                    <span style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
+                        {source === 'loop_wakeup' ? options.wakeupLoopLabel : options.wakeupScheduleLabel}
                     </span>
                 ),
                 block,

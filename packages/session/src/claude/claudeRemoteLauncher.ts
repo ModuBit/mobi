@@ -877,11 +877,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         const handleInboundPrompt = (input: { prompt: string; source?: string }) => {
             try {
                 // CC 内建定时任务/循环自醒（wakeup-source spec）：source 经 shared 枚举 schema
-                // 甄别后上报 daemon，web 消息流据此展示唤醒原因。人工与跨会话消息不带 source，
-                // 未知取值（CC 未来扩展）safeParse 失败静默忽略——daemon 不认识的不报。
+                // 甄别后上报 daemon（runtimeState.lastWakeup 供状态消费）+ 发 session event
+                // 落库（消息流系统行，刷新不丢）。人工与跨会话消息不带 source，未知取值
+                // （CC 未来扩展）safeParse 失败静默忽略——daemon 不认识的不报。
                 const wakeup = WakeupSourceSchema.safeParse(input.source)
                 if (wakeup.success) {
                     session.client.reportWakeup(wakeup.data)
+                    session.client.sendSessionEvent({ type: 'wakeup', source: wakeup.data })
                 }
                 const turn = classifyInboundTurn(input);
                 if (turn) {

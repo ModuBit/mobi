@@ -1176,7 +1176,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             chatBlocks,
             renderCtx,
             !!session?.running,
-            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), rewindFailedReasonLabel: t(rewindFailedReasonKey(rewindCompletion?.error)), skippedLinksLabel: t('chat.rewind.skippedLinks'), renderBlock: renderChatBlock, renderToolGroup: (p) => <ToolCallGroupRenderer {...p} /> },
+            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), rewindFailedReasonLabel: t(rewindFailedReasonKey(rewindCompletion?.error)), skippedLinksLabel: t('chat.rewind.skippedLinks'), wakeupLoopLabel: t('chat.wakeup.loop'), wakeupScheduleLabel: t('chat.wakeup.schedule'), renderBlock: renderChatBlock, renderToolGroup: (p) => <ToolCallGroupRenderer {...p} /> },
         )
 
         // 移动端「⋯」菜单目标索引（key → 操作信息；判据与 footer 同源同帧计算）。

@@ -356,6 +356,10 @@
       "collapse": "Collapse"
     },
     "contextReset": "Conversation reset",
+    "wakeup": {
+        "loop": "Loop wakeup",
+        "schedule": "Scheduled task wakeup"
+    },
     "contextCompacted": "Conversation optimized",
     "contextMicrocompacted": "Conversation trimmed",
     "compactSummary": "Conversation optimized",

@@ -15,7 +15,7 @@
  */
 
 import type { MessageStatus } from '@/core/data/api/types'
-import type { CrossSessionMeta, TurnOrigin, PermissionUpdate, StopKind, UserContentBlock, ContentBlock, NormalizedErrorEvent } from '@mobi/shared'
+import type { CrossSessionMeta, TurnOrigin, WakeupSource, PermissionUpdate, StopKind, UserContentBlock, ContentBlock, NormalizedErrorEvent } from '@mobi/shared'
 
 /** 消息元数据。
  *
@@ -57,6 +57,8 @@ export type AgentEvent =
     // 压缩开始（手动 /compact 与自动压缩统一 started 信号，CLI 幂等收口后发出）
     | { type: 'compact-started' }
     | { type: 'compact-completed' }
+    // CC 内建定时任务/循环自醒（wakeup-source spec）：CLI UserPromptSubmit hook 甄别后发出
+    | { type: 'wakeup'; source: WakeupSource }
     // goal_progress：CLI 扫描 SDK ToolResult 原始 JSON 行提取的目标达成状态
     | { type: 'goal-progress'; met: boolean; condition: string; reason?: string; iterations?: number; durationMs?: number; tokens?: number }
     // aborted：CLI 批注入停止对账字段（缺省 = 旧格式，渲染与现状一致，spec §4.3）
