@@ -1343,12 +1343,20 @@ HINDSIGHT_API_RERANKER_ALIBABA_API_KEY=sk-你的DashScope-key
 「空 answers + 有 annotations → allow + updatedInput 携带」（原空答即 deny 废除于该分支），
 capability feature-detect 老 CLI 维持强制全答。票 02 含真机 E2E（tool result 回显断言）。
 
+**2026-10-28 两票已交付**（c20d2e32 通道 + 0792b4ec capability + 252ffde0 逐题前进按钮），
+交互终稿：非末题未填「跳过」/已填「下一步」，末题未填「跳过并提交」/已填「提交」，
+提交时未答题自动进 annotations。**待 E2E 真机验收**（2 问 1 未答提交 → tool result 回显）。
+
 ---
 
 ## 128. 唤醒原因可观测（lifecycle_wakeup_source_v1，2026-10-28 立项）
 
 用户批准立项。spec 与两票定稿在 `.scratch/wakeup-source-observability/spec.md`：
-CC 内建 ScheduleWakeup//loop/Cron 到点自醒的回合，经 command_lifecycle started 帧的
-`wakeup_source`/`scheduled_for`（untyped，防御性提取）进 runtimeState `lastWakeup`，
-web 消息流系统行呈现「循环唤醒/定时任务唤醒」。票 01 前置 PoC：真机确认本地形态该帧
-真实 emit（capability 广播已实证，帧 emit 未实证——不过则整票搁置）。
+CC 内建 ScheduleWakeup//loop/Cron 到点自醒的回合，web 消息流系统行呈现
+「循环唤醒/定时任务唤醒」。票 01 前置 PoC 已完成（2026-10-28）：command_lifecycle 帧
+CLI 层真实 emit 但 **SDK 白名单分发收不到**（sdk.mjs 零命中）——帧消费路线废弃，
+改走 UserPromptSubmit hook `source` 字段（同枚举，mobi 已有进程内回调），代价
+`scheduled_for` 降级不展示。
+
+**2026-10-28 两票已交付**（10c4ce2b 上报通道 + runtimeState.lastWakeup；48350f06
+session event 落库 + web divider 系统行）。**待 E2E 真机验收**（造 loop 唤醒 → 消息流出系统行）。
