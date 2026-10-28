@@ -24,6 +24,7 @@ import { TabStrip, TabStripList, TabStripPanel, TabStripTab } from '@/ui/base/in
 import { useTranslation } from 'react-i18next'
 import { isAskUserQuestionToolName, parseAskUserQuestionInput, buildChatAboutThisReason, type AskUserQuestionQuestion } from '@/domain/tool/askUserQuestion'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import { useSDKMetadata } from '@/core/data/hooks/queries/useSDKMetadata'
 import { useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { queryKeys } from '@/core/lib/queryKeys'
@@ -113,6 +114,10 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
     const [pendingAction, setPendingAction] = useState<'submit' | 'chatAbout' | null>(null)
     const [error, setError] = useState<string | null>(null)
 
+    // skipped 标注能力面（ask_user_question_unanswered_v1）：老 CLI 缺 capability 时维持强制全答
+    const { data: sdkMetadata } = useSDKMetadata(props.sessionId)
+    const unansweredCapSupported = sdkMetadata?.capabilities?.includes('ask_user_question_unanswered_v1') === true
+
     useEffect(() => {
         setStep(0)
         setSelectedByQuestion(questions.map(() => []))
@@ -143,9 +148,11 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         return answers.length > 0 ? answers : null
     }
 
+    // 提交门槛：有 skipped 能力时未答题放行（提交时自动标 skipped）；
+    // fallback 单文本框形态（questions 为空）无题可跳，两种模式都要求非空
     const canSubmit = questions.length === 0
         ? fallbackText.trim().length > 0
-        : questions.every((_, i) => validateQuestion(i) !== null)
+        : (unansweredCapSupported || questions.every((_, i) => validateQuestion(i) !== null))
 
     const renderSubmitButton = () => (
         <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'stretch' }}>
@@ -208,23 +215,36 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         const answers = collectAnswers(
             questions, selectedByQuestion, otherSelectedByQuestion, otherTextByQuestion, fallbackText
         )
-        // 校验完整性：空问题需 fallback 文本；多问题每题至少一个答案
-        if (questions.length === 0) {
-            if (!answers['']?.length) {
-                setError(t('chat.tool.selectOption'))
-                return
-            }
-        } else {
-            for (let i = 0; i < questions.length; i += 1) {
-                if (!answers[questions[i].question]?.length) {
+        // 跳过标注（ask_user_question_unanswered_v1）：capability 会话未答题不阻断提交，
+        // 按题面文本标 skipped 让模型得知「跳过」而非被拒；老 CLI（无 capability）维持强制全答
+        const skipSupported = unansweredCapSupported
+        if (!skipSupported) {
+            // 校验完整性：空问题需 fallback 文本；多问题每题至少一个答案
+            if (questions.length === 0) {
+                if (!answers['']?.length) {
                     setError(t('chat.tool.selectOption'))
-                    setStep(i)
                     return
                 }
+            } else {
+                for (let i = 0; i < questions.length; i += 1) {
+                    if (!answers[questions[i].question]?.length) {
+                        setError(t('chat.tool.selectOption'))
+                        setStep(i)
+                        return
+                    }
+                }
             }
+            await run('submit', () => props.api.permissions.approve(props.sessionId, permission.id, { answers }))
+            return
         }
 
-        await run('submit', () => props.api.permissions.approve(props.sessionId, permission.id, { answers }))
+        const annotations = Object.fromEntries(
+            questions
+                .filter(q => !answers[q.question]?.length)
+                .map(q => [q.question, { unanswered: 'skipped' as const }])
+        )
+        const body = Object.keys(annotations).length > 0 ? { answers, annotations } : { answers }
+        await run('submit', () => props.api.permissions.approve(props.sessionId, permission.id, body))
     }
 
     /** 聊一聊：不提交答案，deny 带 seed 文案引导 Claude 主动反问 */

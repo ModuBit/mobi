@@ -185,7 +185,10 @@ const SDKMetadataSchema = z.object({
     availableOutputStyles: z.array(z.string()).optional(),
     models: z.array(ModelInfoSchema).optional(),
     account: AccountInfoSchema.optional(),
-    fastModeState: FastModeStateSchema.optional()
+    fastModeState: FastModeStateSchema.optional(),
+    /** 协议能力名集合（system/init.capabilities，开放集合——web 按 includes feature-detect，
+     *  未知值忽略；老 CLI / 未发现时缺省） */
+    capabilities: z.array(z.string()).optional()
 })
 
 export type SDKMetadata = z.infer<typeof SDKMetadataSchema>

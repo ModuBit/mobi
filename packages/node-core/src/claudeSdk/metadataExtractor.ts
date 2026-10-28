@@ -82,6 +82,8 @@ interface InitCapabilityResponse {
     available_output_styles?: string[]
     account?: SDKMetadata['account']
     fast_mode_state?: SDKMetadata['fastModeState']
+    /** 协议能力名（开放字符串集合，web feature-detect 用；CLI 2.1.312+ 可靠广播） */
+    capabilities?: string[]
 }
 
 /** 空结果守卫：三件套全空说明发现不可信，不能当有效数据返回 */
@@ -98,6 +100,7 @@ function projectInit(init: InitCapabilityResponse): SDKMetadata {
         models: init.models,
         account: init.account,
         fastModeState: init.fast_mode_state,
+        capabilities: init.capabilities,
     }
 }
 

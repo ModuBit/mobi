@@ -55,6 +55,8 @@ interface InitCapabilityFields {
     account?: SDKMetadata['account']
     fast_mode_state?: SDKMetadata['fastModeState']
     fast_mode_disabled_reason?: FastModeDisabledReason
+    /** 协议能力名（开放字符串集合，web feature-detect 用；CLI 2.1.312+ 可靠广播） */
+    capabilities?: string[]
 }
 
 /** 快速模式的执行态快照（state + 此刻不可用的原因） */
@@ -102,6 +104,7 @@ export async function readLiveCapabilities(source: LiveCapabilitySource): Promis
         availableOutputStyles: init.available_output_styles,
         account: init.account,
         fastModeState: init.fast_mode_state,
+        capabilities: init.capabilities,
     }
 }
 

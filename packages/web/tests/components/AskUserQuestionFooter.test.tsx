@@ -40,6 +40,12 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
     useIsMobile: () => true,
 }))
 
+// mock useSDKMetadata：capabilities 由用例控制（undefined = 老 CLI 无 skipped 能力，默认态）
+let mockCapabilities: string[] | undefined
+vi.mock('@/core/data/hooks/queries/useSDKMetadata', () => ({
+    useSDKMetadata: () => ({ data: { capabilities: mockCapabilities } }),
+}))
+
 const mockApprove = vi.fn()
 const mockDeny = vi.fn()
 const mockApi = {
@@ -117,6 +123,7 @@ describe('AskUserQuestionFooter', () => {
     beforeEach(() => {
         mockApprove.mockReset()
         mockDeny.mockReset()
+        mockCapabilities = undefined
     })
 
     afterEach(() => {
@@ -727,6 +734,72 @@ describe('AskUserQuestionFooter', () => {
             await waitFor(() => {
                 expect(screen.queryByText('submit 失败')).not.toBeInTheDocument()
             })
+        })
+    })
+
+    describe('skipped 标注（ask_user_question_unanswered_v1）', () => {
+        const tool = makeTool([
+            {
+                question: 'Q1?',
+                header: 'H1',
+                options: [{ label: 'A1' }, { label: 'B1' }],
+                multiSelect: false,
+            },
+            {
+                question: 'Q2?',
+                header: 'H2',
+                options: [{ label: 'C2' }, { label: 'D2' }],
+                multiSelect: false,
+            },
+        ])
+
+        it('capability 会话：答 1 跳 1 可提交，approve 载荷携带 annotations', async () => {
+            mockCapabilities = ['ask_user_question_unanswered_v1']
+            mockApprove.mockResolvedValue(undefined)
+            renderFooter(tool)
+
+            fireEvent.click(findOptionBtn('A1'))
+            fireEvent.click(screen.getByRole('tab', { name: 'H2' }))
+            // 第二题未答，有 capability 时提交不再禁用
+            expect(getSubmitButton()).not.toBeDisabled()
+            fireEvent.click(getSubmitButton())
+
+            await waitFor(() => {
+                expect(mockApprove).toHaveBeenCalledWith('session-1', 'perm-1', {
+                    answers: { 'Q1?': ['A1'] },
+                    annotations: { 'Q2?': { unanswered: 'skipped' } },
+                })
+            })
+        })
+
+        it('capability 会话：全答时载荷不含 annotations 键', async () => {
+            mockCapabilities = ['ask_user_question_unanswered_v1']
+            mockApprove.mockResolvedValue(undefined)
+            renderFooter(tool)
+
+            fireEvent.click(findOptionBtn('A1'))
+            fireEvent.click(screen.getByRole('tab', { name: 'H2' }))
+            fireEvent.click(findOptionBtn('C2'))
+            fireEvent.click(getSubmitButton())
+
+            await waitFor(() => {
+                expect(mockApprove).toHaveBeenCalledWith('session-1', 'perm-1', {
+                    answers: { 'Q1?': ['A1'], 'Q2?': ['C2'] },
+                })
+            })
+        })
+
+        it('无 capability（老 CLI）：未全答仍禁用（现状不变）', () => {
+            renderFooter(tool)
+            fireEvent.click(findOptionBtn('A1'))
+            fireEvent.click(screen.getByRole('tab', { name: 'H2' }))
+            expect(getSubmitButton()).toBeDisabled()
+        })
+
+        it('fallback 形态（空问题）即使有 capability，空文本仍禁用', () => {
+            mockCapabilities = ['ask_user_question_unanswered_v1']
+            renderFooter(makeTool([]))
+            expect(getSubmitButton()).toBeDisabled()
         })
     })
 })
