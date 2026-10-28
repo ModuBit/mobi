@@ -128,6 +128,8 @@ export type BackgroundTaskIdsExtraction = {
 export type BackgroundTaskInfo = {
     description?: string
     taskType?: string
+    /** local_agent 任务的 agent 类型（SDK 0.3.293+，subagent 卡片标题的权威源） */
+    subagentType?: string
     toolUseId?: string | null
 }
 
@@ -157,6 +159,7 @@ export function extractTaskStartedInfo(
         taskId,
         description: asString(data.description) ?? undefined,
         taskType: asString(data.task_type) ?? undefined,
+        subagentType: asString(data.subagent_type) ?? undefined,
         toolUseId: asString(data.tool_use_id) ?? null,
     }
 }
@@ -190,7 +193,7 @@ export function extractBackgroundTaskIdsFromMessageContent(
     // 存活集合规则（task_id 非空字符串 + 跳过 ambient）单源于 shared 的 extractLiveBackgroundTaskIds
     const ids = extractLiveBackgroundTaskIds(data.tasks)
     // 被滤条目单独收集：ambient 家务任务对下游 deltas 是「不得复活」的黑名单而非不存在；
-    // 非被滤条目顺路收集元信息（description/task_type），供补建回填缓存使用
+    // 非被滤条目顺路收集元信息（description/task_type/subagent_type），供补建回填缓存使用
     const filteredIds = new Set<string>()
     const taskInfo = new Map<string, BackgroundTaskInfo>()
     const tasks = Array.isArray(data.tasks) ? data.tasks : []
@@ -205,6 +208,7 @@ export function extractBackgroundTaskIdsFromMessageContent(
         taskInfo.set(taskId, {
             description: asString(item.description) ?? undefined,
             taskType: asString(item.task_type) ?? undefined,
+            subagentType: asString(item.subagent_type) ?? undefined,
         })
     }
     return { ids, filteredIds, taskInfo }
@@ -429,6 +433,7 @@ export function extractBackgroundTaskDeltasFromMessageContent(
                         toolUseId: cachedToolUseId,
                         toolName,
                         description: info?.description || asString(patch.description) || '',
+                        subagentType: info?.subagentType,
                         status: rebuiltStatus,
                         isBackground: true,
                         startedAt: Date.now(),

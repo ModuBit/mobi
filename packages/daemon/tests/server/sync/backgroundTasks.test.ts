@@ -1099,22 +1099,32 @@ describe('task 元信息缓存与补建回填', () => {
         })
     })
 
+    test('extractTaskStartedInfo 提取 local_agent 的 subagent_type（SDK 0.3.293+）', () => {
+        const msg = makeSystemMessage('task_started', {
+            task_id: 'bt-9', task_type: 'local_agent', subagent_type: 'general-purpose',
+            description: '研究', is_backgrounded: false,
+        })
+        expect(extractTaskStartedInfo(msg)).toMatchObject({ subagentType: 'general-purpose' })
+    })
+
     test('非 task_started 消息 extractTaskStartedInfo 返回 null', () => {
         expect(extractTaskStartedInfo(makeSystemMessage('task_progress', { task_id: 'x' }))).toBeNull()
         expect(extractTaskStartedInfo(makeSystemMessage('task_updated', { task_id: 'x' }))).toBeNull()
         expect(extractTaskStartedInfo(null)).toBeNull()
     })
 
-    test('background_tasks_changed 提取携带 taskInfo（description/task_type）', () => {
+    test('background_tasks_changed 提取携带 taskInfo（description/task_type/subagent_type）', () => {
         const msg = makeSystemMessage('background_tasks_changed', {
             tasks: [
                 { task_id: 'bt-1', task_type: 'local_bash', description: '构建' },
-                { task_id: 'bt-2', task_type: 'local_agent', description: '研究' },
+                { task_id: 'bt-2', task_type: 'local_agent', description: '研究', subagent_type: 'researcher' },
             ],
         })
         const result = extractBackgroundTaskIdsFromMessageContent(msg)
         expect(result!.taskInfo.get('bt-1')).toEqual({ description: '构建', taskType: 'local_bash' })
-        expect(result!.taskInfo.get('bt-2')).toEqual({ description: '研究', taskType: 'local_agent' })
+        expect(result!.taskInfo.get('bt-2')).toEqual({
+            description: '研究', taskType: 'local_agent', subagentType: 'researcher',
+        })
     })
 
     test('task_updated 补建时用缓存回填 description/toolName/toolUseId（超时转后台场景）', () => {
@@ -1154,6 +1164,20 @@ describe('task 元信息缓存与补建回填', () => {
         if (delta?.type === 'started') {
             expect(delta.task.toolName).toBe('Agent')
             expect(delta.task.description).toBe('研究')
+        }
+    })
+
+    test('补建回填携带缓存中的 subagentType（subagent 卡片标题权威源）', () => {
+        const cache = new Map([['bt-4', {
+            taskId: 'bt-4', description: '研究', taskType: 'local_agent',
+            subagentType: 'researcher', toolUseId: null,
+        }]])
+        const delta = extractBackgroundTaskDeltasFromMessageContent(
+            makeSystemMessage('task_updated', { task_id: 'bt-4', patch: { is_backgrounded: true } }),
+            new Map(), new Set(), new Set(), new Set(), new Set(), cache,
+        )
+        if (delta?.type === 'started') {
+            expect(delta.task.subagentType).toBe('researcher')
         }
     })
 
