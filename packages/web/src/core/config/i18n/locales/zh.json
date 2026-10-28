@@ -470,7 +470,10 @@
         "fallback": "请输入你的回答：",
         "placeholder": "在此输入...",
         "otherPlaceholder": "输入自定义答案...",
-        "chatAbout": "聊一聊"
+        "chatAbout": "聊一聊",
+        "skip": "跳过",
+        "next": "下一步",
+        "skipSubmit": "跳过并提交"
       },
       "requestUserInput.noteLabel": "备注（可选）",
       "requestUserInput.notePlaceholder": "输入备注...",

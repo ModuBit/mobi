@@ -28,6 +28,9 @@ vi.mock('react-i18next', async (importOriginal) => {
                     'chat.tool.submit': '提交',
                     'chat.tool.submitting': '提交中...',
                     'chat.tool.askUserQuestion.chatAbout': '聊一聊',
+                    'chat.tool.askUserQuestion.skip': '跳过',
+                    'chat.tool.askUserQuestion.next': '下一步',
+                    'chat.tool.askUserQuestion.skipSubmit': '跳过并提交',
                 }
                 return map[key] ?? key
             },
@@ -800,6 +803,60 @@ describe('AskUserQuestionFooter', () => {
             mockCapabilities = ['ask_user_question_unanswered_v1']
             renderFooter(makeTool([]))
             expect(getSubmitButton()).toBeDisabled()
+        })
+
+        it('capability 会话：非末题未填显示「跳过」，点击切下一题', () => {
+            mockCapabilities = ['ask_user_question_unanswered_v1']
+            renderFooter(tool)
+
+            // Q1 页有「跳过」按钮（无「下一步」）
+            expect(screen.getByRole('button', { name: /跳过$/ })).toBeInTheDocument()
+            expect(screen.queryByRole('button', { name: '下一步' })).not.toBeInTheDocument()
+
+            fireEvent.click(screen.getByRole('button', { name: '跳过' }))
+            // 点击后切到 Q2 页
+            expect(screen.getByRole('tab', { name: 'H2' })).toHaveAttribute('aria-selected', 'true')
+        })
+
+        it('capability 会话：非末题已填显示「下一步」', () => {
+            mockCapabilities = ['ask_user_question_unanswered_v1']
+            renderFooter(tool)
+
+            fireEvent.click(findOptionBtn('A1'))
+            expect(screen.getByRole('button', { name: '下一步' })).toBeInTheDocument()
+            expect(screen.queryByRole('button', { name: '跳过' })).not.toBeInTheDocument()
+        })
+
+        it('capability 会话：末题未填显示「跳过并提交」，点击载荷全题标未答', async () => {
+            mockCapabilities = ['ask_user_question_unanswered_v1']
+            mockApprove.mockResolvedValue(undefined)
+            renderFooter(tool)
+
+            fireEvent.click(screen.getByRole('tab', { name: 'H2' }))
+            const actionBtn = screen.getByRole('button', { name: '跳过并提交' })
+            expect(actionBtn).toBeInTheDocument()
+            fireEvent.click(actionBtn)
+
+            await waitFor(() => {
+                expect(mockApprove).toHaveBeenCalledWith('session-1', 'perm-1', {
+                    answers: {},
+                    annotations: {
+                        'Q1?': { unanswered: 'skipped' },
+                        'Q2?': { unanswered: 'skipped' },
+                    },
+                })
+            })
+        })
+
+        it('capability 会话：单题未填显示「跳过并提交」', () => {
+            mockCapabilities = ['ask_user_question_unanswered_v1']
+            renderFooter(makeTool([{
+                question: 'Only?',
+                header: 'H',
+                options: [{ label: 'A' }],
+                multiSelect: false,
+            }]))
+            expect(screen.getByRole('button', { name: '跳过并提交' })).toBeInTheDocument()
         })
     })
 })

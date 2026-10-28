@@ -479,7 +479,10 @@
         "fallback": "Please enter your answer:",
         "placeholder": "Type here...",
         "otherPlaceholder": "Enter custom answer...",
-        "chatAbout": "Chat about this"
+        "chatAbout": "Chat about this",
+        "skip": "Skip",
+        "next": "Next",
+        "skipSubmit": "Skip & submit"
       },
       "requestUserInput.noteLabel": "Note (optional)",
       "requestUserInput.notePlaceholder": "Enter a note...",
