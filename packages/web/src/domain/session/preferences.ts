@@ -15,7 +15,15 @@
  */
 
 import type { AgentType } from './types'
-import { EFFORT_LEVELS, OUTPUT_STYLE_FOLLOW_SETTING, PERMISSION_MODES, type EffortLevel, type PermissionMode } from '@mobi/shared'
+import {
+    DEFAULT_EFFORT,
+    DEFAULT_MODEL,
+    isPersistableEffortLevel,
+    OUTPUT_STYLE_FOLLOW_SETTING,
+    PERMISSION_MODES,
+    type EffortLevel,
+    type PermissionMode,
+} from '@mobi/shared'
 
 const AGENT_STORAGE_KEY = 'mobi:newSession:agent'
 const MODEL_STORAGE_KEY = 'mobi:newSession:model'
@@ -68,7 +76,7 @@ export function savePreferredAgent(agent: AgentType): void {
  * （与会话内 model 切换同语义）。只有从未选择（空值）时回退 auto。
  */
 export function loadPreferredModel(): string {
-    return loadPreference(MODEL_STORAGE_KEY, (v): v is string => v.trim().length > 0, 'auto')
+    return loadPreference(MODEL_STORAGE_KEY, (v): v is string => v.trim().length > 0, DEFAULT_MODEL)
 }
 
 /**
@@ -78,16 +86,11 @@ export function savePreferredModel(model: string): void {
     savePreference(MODEL_STORAGE_KEY, model)
 }
 
-/** 偏好里只认可落盘四档（`max` 为 session-only，即使存过也不恢复） */
-function isPersistableEffort(v: string): v is EffortLevel {
-    return (EFFORT_LEVELS as readonly string[]).includes(v)
-}
-
 /**
  * 加载首选 Effort
  */
 export function loadPreferredEffort(): EffortLevel {
-    return loadPreference(EFFORT_STORAGE_KEY, isPersistableEffort, 'medium')
+    return loadPreference(EFFORT_STORAGE_KEY, isPersistableEffortLevel, DEFAULT_EFFORT)
 }
 
 /**
@@ -97,7 +100,7 @@ export function loadPreferredEffort(): EffortLevel {
  * 会带着一个“上次没落盘”的档位，语义失真。写入静默跳过，保留上次的可落盘档位。
  */
 export function savePreferredEffort(effort: EffortLevel): void {
-    if (!isPersistableEffort(effort)) return
+    if (!isPersistableEffortLevel(effort)) return
     savePreference(EFFORT_STORAGE_KEY, effort)
 }
 

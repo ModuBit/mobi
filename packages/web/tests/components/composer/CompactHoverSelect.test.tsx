@@ -18,9 +18,7 @@
  * CompactHoverSelect（morph-select 壳）行为契约：
  * ① onChange 单参归一（morph 的 (value, option) 双参在壳内吞掉）；
  * ② 展开方向/视口钳制交 morph auto 决策（展开内容恒在视窗内），壳不干预；
- * ③ loading 一并禁用触发器；
- * ④ effort-popover 全局样式注入（单点收口，首渲染即注入一次）；
- * ⑤ mobileFullWidth 仅移动端生效（PC 传了不放大面板，防撑出屏幕）。
+ * ③ loading 一并禁用触发器。
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -39,13 +37,9 @@ vi.mock('react-i18next', async () => {
     return i18nKeyStub()
 })
 
-// useIsMobile 可控桩（mobileFullWidth 收窄语义的断言面）
-const { isMobileMock, setIsMobile } = vi.hoisted(() => {
-    const isMobileMock = { value: false }
-    return { isMobileMock, setIsMobile: (v: boolean) => { isMobileMock.value = v } }
-})
+// 视口恒 PC（morph 的展开方向判定需要）
 vi.mock('@/core/data/hooks/useMediaQuery', () => ({
-    useIsMobile: () => isMobileMock.value,
+    useIsMobile: () => false,
     useHasFinePointer: () => true,
 }))
 
@@ -82,32 +76,10 @@ describe('CompactHoverSelect 壳行为', () => {
         expect(container.querySelector('[data-direction]')).toHaveAttribute('data-direction', 'down')
     })
 
-    it('mobileFullWidth 仅移动端生效：PC 面板宽保持默认 272，移动端走 morph 满宽槽位（视口减 2rem）', () => {
-        setIsMobile(false)
-        const { container } = render(<Harness mobileFullWidth />)
-        expect(container.querySelector('[data-direction]')?.getAttribute('style')).toContain('--ms-panel-w: 272px')
-        cleanup()
-
-        setIsMobile(true)
-        const { container: mobileContainer } = render(<Harness mobileFullWidth />)
-        expect(mobileContainer.querySelector('[data-direction]')?.getAttribute('style')).toContain('--ms-panel-w: calc(100vw - 2rem)')
-    })
-
     it('disabled 与 loading 都禁用触发器', () => {
         const { rerender } = render(<Harness disabled />)
         expect(screen.getByRole('combobox')).toBeDisabled()
         rerender(<Harness loading />)
         expect(screen.getByRole('combobox')).toBeDisabled()
-    })
-
-    it('effort-popover 全局样式首渲染即注入，且重复挂载只注入一次', () => {
-        render(<Harness />)
-        const injected = () => Array.from(document.querySelectorAll('style'))
-            .map(el => el.textContent ?? '')
-            .filter(text => text.includes('.effort-popover'))
-        expect(injected()).toHaveLength(1)
-        cleanup()
-        render(<Harness />)
-        expect(injected()).toHaveLength(1)
     })
 })

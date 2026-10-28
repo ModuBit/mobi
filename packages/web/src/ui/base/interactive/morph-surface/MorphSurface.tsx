@@ -32,14 +32,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { animate, motion, useMotionValue, useReducedMotion } from 'motion/react'
+import { animate, motion, useMotionValue } from 'motion/react'
 import { CLOSE_SETTLE_MS, GROW, NARROW, SHRINK } from '@/ui/base/interactive/morph-select/morphTiming'
+import { EDGE_MARGIN, OPEN_RADIUS, measureTriggerWidth, useReducedFlag } from '@/ui/base/interactive/morph-select/morphGeometry'
 import styles from './morph-surface.module.css'
-
-/** 面板与视窗边缘的最小留白（水平钳制边界），与 morph-select 一致 */
-const EDGE_MARGIN = 12
-/** 展开态圆角（面板语言；与 morph-select 的 OPEN_RADIUS 同值） */
-const OPEN_RADIUS = 22
 
 export interface MorphSurfaceProps {
     /** 展开面的可访问名（role="dialog"） */
@@ -57,15 +53,8 @@ export interface MorphSurfaceProps {
     disabled?: boolean
 }
 
-/** 读宽：getBoundingClientRect 带亚像素，offsetWidth 取整；差半像素内向上取整，避免标签被压出省略号 */
-function readWidth(el: HTMLElement): number {
-    const rect = el.getBoundingClientRect().width
-    const offset = el.offsetWidth
-    return Math.abs(rect - offset) <= 0.5 ? Math.ceil(rect - 0.01) : offset + 1
-}
-
 export function MorphSurface({ label, width, fullWidth = false, open, onOpenChange, trigger, content, disabled = false }: MorphSurfaceProps) {
-    const reduced = useReducedMotion() ?? false
+    const reduced = useReducedFlag()
     const rootRef = useRef<HTMLDivElement>(null)
     const pillRef = useRef<HTMLDivElement>(null)
     const faceRef = useRef<HTMLDivElement>(null)
@@ -100,7 +89,7 @@ export function MorphSurface({ label, width, fullWidth = false, open, onOpenChan
         return {
             left,
             bottom: window.innerHeight - rect.bottom,
-            triggerW: readWidth(pill),
+            triggerW: measureTriggerWidth(pill),
             triggerH: rect.height || pill.offsetHeight,
             panelW,
         }
@@ -157,16 +146,28 @@ export function MorphSurface({ label, width, fullWidth = false, open, onOpenChan
         return () => window.clearTimeout(timer)
     }, [mounted, open, measurePill, radius, shapeH, shapeW])
 
-    // 打开期间跟随 pill 的真位置（composer 换行、软键盘、窗口缩放都会挪它）
+    // 打开期间跟随 pill 的真位置（composer 换行、软键盘、窗口缩放、页面滚动都会挪它）。
+    // capture 阶段会收到**任何**滚动容器的 scroll——消息列表流式粘底时最频繁，而 pill 大多
+    // 根本没动。故同帧合并，且位置没变就返回原 state 让 React 跳过重渲染（否则每次 scroll
+    // 都要强制一次布局并重渲染整个面板子树）。
     useEffect(() => {
         if (!open) return
+        let frame = 0
         const sync = () => {
-            const geo = measurePill()
-            if (geo) setAnchor({ left: geo.left, bottom: geo.bottom })
+            if (frame) return
+            frame = requestAnimationFrame(() => {
+                frame = 0
+                const geo = measurePill()
+                if (!geo) return
+                setAnchor(prev => (prev.left === geo.left && prev.bottom === geo.bottom
+                    ? prev
+                    : { left: geo.left, bottom: geo.bottom }))
+            })
         }
         window.addEventListener('resize', sync)
         window.addEventListener('scroll', sync, true)
         return () => {
+            if (frame) cancelAnimationFrame(frame)
             window.removeEventListener('resize', sync)
             window.removeEventListener('scroll', sync, true)
         }

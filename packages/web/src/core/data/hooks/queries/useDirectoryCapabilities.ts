@@ -62,9 +62,9 @@ export interface DirectoryCapabilities {
  * 根据 CapabilityTarget 自动路由到 session 或 host 通道，
  * 返回统一的 DirectoryCapabilities 接口
  *
- * @param options.metadataEnabled 是否启用 metadata 查询（含 commands），
- *   默认 true。NewSessionPage 中可延迟到用户首次输入 '/' 时再启用，
- *   避免每输入一个目录字符就触发 metadata 请求
+ * @param options.metadataEnabled 是否启用 metadata 查询（含 commands），默认 true。
+ *   调用方用它把「目录已确认」的生命周期表达出来（创建页只在选定工作区后才置真），
+ *   避免输入过程中逐字符触发 metadata 请求
  */
 export function useDirectoryCapabilities(
     target: CapabilityTarget | null,

@@ -22,7 +22,7 @@ import { Button } from '@/ui/base/interactive/button/Button'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import type { AgentState, ContextUsage, EffortLevel, FastModeState, GoalStatus, PermissionMode, Session, StopKind } from '@mobi/shared'
-import { getPermissionModeOptionsForFlavor } from '@mobi/shared'
+import { DEFAULT_EFFORT, getPermissionModeOptionsForFlavor } from '@mobi/shared'
 import {
     isSegmentEmpty,
     QUOTE_MAX_COUNT,
@@ -247,7 +247,7 @@ export function ChatComposer(props: ChatComposerProps) {
         agentFlavor,
         mode,
         workingDir,
-        effort = 'medium',
+        effort = DEFAULT_EFFORT,
         onEffortChange,
         fastMode,
         fastModeState,
@@ -853,7 +853,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                             <ModelSettingsSelect
                                                 label={t('composer.model')}
                                                 model={model ?? 'auto'}
-                                                effort={effort ?? 'medium'}
+                                                effort={effort ?? DEFAULT_EFFORT}
                                                 models={sdkMetadata?.models}
                                                 fastMode={fastMode}
                                                 fastModeState={fastModeState ?? null}

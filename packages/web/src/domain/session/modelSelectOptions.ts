@@ -19,7 +19,7 @@
  * 宿主探针清单 → 选项；探针未就绪/失败时回落兜底四项；`auto` 恒为首位合成项。
  */
 
-import { CLAUDE_MODEL_FALLBACK, type ModelInfo } from '@mobi/shared'
+import { CLAUDE_MODEL_FALLBACK, DEFAULT_MODEL, type ModelInfo } from '@mobi/shared'
 
 export interface ModelSelectOption {
     value: string
@@ -28,10 +28,13 @@ export interface ModelSelectOption {
     description?: string
 }
 
+/** 兜底表里 auto 那一项——按 value 找而非按下标取，重排兜底清单不会换掉 auto 的文案 */
+const AUTO_FALLBACK = CLAUDE_MODEL_FALLBACK.find(m => m.value === DEFAULT_MODEL) ?? CLAUDE_MODEL_FALLBACK[0]
+
 const AUTO_MODEL_OPTION: ModelSelectOption = {
-    value: 'auto',
-    label: CLAUDE_MODEL_FALLBACK[0].displayName,
-    description: CLAUDE_MODEL_FALLBACK[0].description,
+    value: DEFAULT_MODEL,
+    label: AUTO_FALLBACK.displayName,
+    description: AUTO_FALLBACK.description,
 }
 
 /** 剥掉 displayName 尾部括注（如 `(1M context)`），窄容器里只留模型名 */

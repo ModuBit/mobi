@@ -23,13 +23,14 @@
 
 "use client";
 
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
-import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion } from "motion/react";
+import { AnimatePresence, animate, motion, useMotionValue } from "motion/react";
 import type { Variants } from "motion/react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 import { motionTokens } from "../../motion/motionTokens";
+import { EDGE_MARGIN, OPEN_RADIUS, measureTriggerWidth, useReducedFlag } from "./morphGeometry";
 import { GLIDE, GROW, NARROW, SHRINK, WIDTH } from "./morphTiming";
 import styles from "./morph-select.module.css";
 
@@ -40,8 +41,6 @@ export interface MorphSelectOption {
   icon?: ReactNode;
   /** A second line under the label (mobi 本地槽位)：12px 弱化文字，参与搜索匹配。 */
   description?: string;
-  /** Row trailing node before the check mark (mobi 本地槽位)：行内嵌套交互入口（如 effort 子菜单），点击代理由消费方自行 stopPropagation。 */
-  trailing?: ReactNode;
   /** Short trailing detail such as an offset or a count. Rendered with tabular numerals. */
   meta?: string;
   /** Extra words that match this option when searching. */
@@ -110,17 +109,9 @@ const { blur } = motionTokens;
 type Bezier = [number, number, number, number];
 const enter = [...motionTokens.ease.enter] as Bezier;
 const standard = [...motionTokens.ease.standard] as Bezier;
-const OPEN_RADIUS = 22;
-/** 面板/列表与视窗边缘的最小留白（展开定位的回拉边界）。**宽度上限不在这里**——
- *  那是 CSS `.listFace` 的 `max(trigger-w, min(panel-w, 100vw - 2rem))`，单源在那边 */
-const EDGE_MARGIN = 12;
 const TYPEAHEAD_RESET = 600, PAGE = 8;
 
-const subscribe = () => () => {};
-function useReducedFlag() {
-  const hydrated = useSyncExternalStore(subscribe, () => true, () => false);
-  return !!useReducedMotion() && hydrated;
-}
+// 几何与 reduced-motion 判定与 morph-surface 共用（单源，见 morphGeometry）
 
 const isGroup = (item: MorphSelectItem): item is MorphSelectGroup => "options" in item;
 
@@ -150,13 +141,6 @@ const valueVariants: Variants = {
   exit: { opacity: 0, filter: `blur(${blur.subtle}px)`, transition: { duration: .08, ease: standard } },
 };
 const valueFade: Variants = { enter: { opacity: 0 }, rest: { opacity: 1, x: 0, y: 0, filter: "blur(0px)" }, exit: { opacity: 0, transition: { duration: .08 } } };
-
-/** The closed trigger's width, rounded up. offsetWidth rounds to the nearest pixel, and half a pixel short is enough to ellipsize the label. */
-const triggerWidth = (node: HTMLElement) => {
-  const exact = node.getBoundingClientRect().width, rounded = node.offsetWidth;
-  // Under a scaled ancestor the rect is scaled too, so fall back to the layout width with a pixel of slack.
-  return Math.abs(exact - rounded) <= .5 ? Math.ceil(exact - .01) : rounded + 1;
-};
 
 export function MorphSelect({ label, hideLabel = false, iconOnly = false, direction = "auto", prefix, items, value, defaultValue = null, onValueChange, placeholder, searchable = "auto", searchPlaceholder,
   panelWidth = 272, fullWidth = false, stretch = false, maxListHeight = 296, align = "start", name, disabled = false, className, style }: MorphSelectProps) {
@@ -235,14 +219,14 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
 
   /**
    * 读一次几何：trigger 宽（顺手写回 CSS 变量，pill 占位宽与列表宽上限都挂在它上面）、
-   * lid 高、列表面尺寸。收口在这里的原因有二：① `triggerWidth` 内含一次
+   * lid 高、列表面尺寸。收口在这里的原因有二：① `measureTriggerWidth` 内含一次
    * getBoundingClientRect + 一次 offsetWidth，同帧连算两次就是两次强制布局；
    * ② 读齐 + 写变量的顺序在两个调用点（ResizeObserver / 开合）必须一模一样。
    */
   const readSizes = useCallback(() => {
     const measure = measureRef.current, face = listFaceRef.current;
     if (!measure || !face) return null;
-    const trigger = triggerWidth(measure);
+    const trigger = measureTriggerWidth(measure);
     rootRef.current?.style.setProperty("--ms-trigger-w", `${trigger}px`);
     return { trigger, lid: measure.offsetHeight, listW: face.offsetWidth, listH: face.offsetHeight };
   }, []);
@@ -535,7 +519,6 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
                       <span className={styles.optionValue}>{option.icon && <span className={styles.icon} aria-hidden="true">{option.icon}</span>}<span className={styles.valueText}>{option.label}</span></span>
                       {option.description && <span className={styles.optionDescription}>{option.description}</span>}
                     </span>
-                    {option.trailing && <span className={styles.trailing} onClick={event => event.stopPropagation()}>{option.trailing}</span>}
                     {option.meta && <span className={styles.meta}>{option.meta}</span>}
                     <span className={styles.check} data-on={isSelected || undefined} aria-hidden="true"><Check size={16} strokeWidth={1.75} /></span>
                   </div>;

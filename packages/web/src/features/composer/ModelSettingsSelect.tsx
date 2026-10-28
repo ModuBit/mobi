@@ -35,7 +35,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerE
 import { useTranslation } from 'react-i18next'
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
 import { ChevronRight, RotateCcw, Zap } from 'lucide-react'
-import { EFFORT_LABELS, resolveModelEffortLevels } from '@mobi/shared'
+import { DEFAULT_EFFORT, DEFAULT_MODEL, resolveModelEffortLevels } from '@mobi/shared'
 import type { EffortLevel, FastModeState, ModelInfo } from '@mobi/shared'
 import { MorphSelect, type MorphSelectItem } from '@/ui/base/interactive/morph-select/MorphSelect'
 import { MorphSurface } from '@/ui/base/interactive/morph-surface/MorphSurface'
@@ -43,10 +43,6 @@ import { spring } from '@/ui/base/motion/presets'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { buildModelSelectOptions } from '@/domain/session/modelSelectOptions'
 import styles from './effortSlider.module.css'
-
-/** 重置目标：默认模型 + 默认档（与偏好缺省值一致） */
-const DEFAULT_MODEL = 'auto'
-const DEFAULT_EFFORT: EffortLevel = 'medium'
 
 /**
  * pill 收起态的宽度上限。
@@ -111,8 +107,6 @@ export function ModelSettingsSelect({
     const isMobile = useIsMobile()
     const [open, setOpen] = useState(false)
 
-    const handleOpenChange = useCallback((next: boolean) => setOpen(next), [])
-
     const modelOptions = useMemo(() => buildModelSelectOptions(models), [models])
     const modelInfo = useMemo(
         () => models?.find(m => m.value === model),
@@ -122,16 +116,12 @@ export function ModelSettingsSelect({
 
     /** MorphSelect 的分组清单：`auto` 单列默认组，其余为宿主真实模型（描述行参与搜索） */
     const modelItems = useMemo<MorphSelectItem[]>(() => {
-        const toItem = (option: { value: string; label: string; description?: string }) => ({
-            value: option.value,
-            label: option.label,
-            description: option.description,
-        })
+        // ModelSelectOption 与 MorphSelectItem 同构（value/label/description），直接复用
         const auto = modelOptions.filter(o => o.value === DEFAULT_MODEL)
         const host = modelOptions.filter(o => o.value !== DEFAULT_MODEL)
         const items: MorphSelectItem[] = []
-        if (auto.length > 0) items.push({ label: t('composer.modelPanel.groupDefault'), options: auto.map(toItem) })
-        if (host.length > 0) items.push({ label: t('composer.modelPanel.groupHost'), options: host.map(toItem) })
+        if (auto.length > 0) items.push({ label: t('composer.modelPanel.groupDefault'), options: auto })
+        if (host.length > 0) items.push({ label: t('composer.modelPanel.groupHost'), options: host })
         return items
     }, [modelOptions, t])
 
@@ -141,7 +131,7 @@ export function ModelSettingsSelect({
     }, [modelOptions, model])
 
     const effortLabel = useCallback(
-        (level: EffortLevel) => t(`composer.effortLevels.${level}`, { defaultValue: EFFORT_LABELS[level] }),
+        (level: EffortLevel) => t(`composer.effortLevels.${level}`),
         [t],
     )
 
@@ -189,7 +179,7 @@ export function ModelSettingsSelect({
             width={320}
             fullWidth={isMobile}
             open={open}
-            onOpenChange={handleOpenChange}
+            onOpenChange={setOpen}
             disabled={disabled}
             content={panel}
             trigger={({ open: isOpen, toggle }) => (
@@ -328,7 +318,7 @@ function ModelSettingsPanel({
                 value={model}
                 // 当前模型不在宿主目录里（探针滞后 / 已下线的模型）时，如实显示原值而不是占位符
                 placeholder={modelLabel}
-                onValueChange={(next) => onModelSelect(next)}
+                onValueChange={onModelSelect}
                 // 模型清单短：不做搜索行，展开即全列表（typeahead 键盘检索仍可用）
                 searchable={false}
                 // 面板贴在 composer 上沿：列表恒向上展开，覆盖面板而不是压到输入框上
@@ -340,6 +330,7 @@ function ModelSettingsPanel({
                 <EffortSlider
                     levels={effortLevels}
                     value={effort}
+                    preview={preview}
                     label={effortLabel}
                     isMobile={isMobile}
                     onChange={(level) => onEffortChange?.(level)}
@@ -366,42 +357,34 @@ function FastModeButton({ enabled, state, size, onToggle }: {
         ? t('composer.modelPanel.fastCooldown')
         : enabled ? t('composer.modelPanel.fastOn') : t('composer.modelPanel.fastOff')
     return (
-        <button
-            type="button"
-            aria-label={label}
-            aria-pressed={enabled}
-            title={label}
+        <PanelIconButton
+            label={label}
+            size={size}
             onClick={onToggle}
-            style={{
-                display: 'grid',
-                placeItems: 'center',
-                width: size,
-                height: size,
-                padding: 0,
-                border: 0,
-                borderRadius: 'var(--radius-square)',
-                background: 'transparent',
-                color: cooldown ? 'var(--mobi-warning)' : enabled ? 'var(--primary)' : 'var(--text-muted)',
-                cursor: 'pointer',
-                WebkitTapHighlightColor: 'transparent',
-            }}
+            pressed={enabled}
+            color={cooldown ? 'var(--mobi-warning)' : enabled ? 'var(--primary)' : 'var(--text-muted)'}
         >
             <Zap size={size >= 36 ? 18 : 16} aria-hidden="true" fill={enabled ? 'currentColor' : 'none'} />
-        </button>
+        </PanelIconButton>
     )
 }
 
-/** 面板内图标钮（重置 / 返回）：触屏放大到 38，桌面 30 */
-function PanelIconButton({ label, size, onClick, children }: {
+/** 面板内图标钮（快速模式 / 重置）：触屏放大到 38，桌面 30 */
+function PanelIconButton({ label, size, onClick, color = 'var(--text-secondary)', pressed, children }: {
     label: string
     size: number
     onClick: () => void
+    /** 图标墨色，默认二级文字 */
+    color?: string
+    /** 切换类控件才传（带 aria-pressed） */
+    pressed?: boolean
     children: ReactNode
 }) {
     return (
         <button
             type="button"
             aria-label={label}
+            aria-pressed={pressed}
             title={label}
             onClick={onClick}
             style={{
@@ -413,7 +396,7 @@ function PanelIconButton({ label, size, onClick, children }: {
                 border: 0,
                 borderRadius: 'var(--radius-square)',
                 background: 'transparent',
-                color: 'var(--text-secondary)',
+                color,
                 cursor: 'pointer',
                 WebkitTapHighlightColor: 'transparent',
             }}
@@ -434,22 +417,26 @@ function PanelIconButton({ label, size, onClick, children }: {
  *   键盘左右键逐档提交；
  * - 拉到最高档时浮出星屑（纯装饰，reduced-motion 下退化为静态点）。
  */
-function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChange }: {
+function EffortSlider({ levels, value, preview, label, isMobile, onChange, onPreviewChange }: {
     levels: readonly EffortLevel[]
     value: EffortLevel
+    /** 拖动中的预览档位（父级持有，顶栏大字与滑杆共用同一份，避免两处状态分叉） */
+    preview: EffortLevel | null
     label: (level: EffortLevel) => string
     isMobile: boolean
     onChange: (level: EffortLevel) => void
-    /** 拖动中的预览档位（父级据此同步顶栏大字）；松手/取消回 null */
+    /** 拖动中跨档 / 松手回 null 时通知父级 */
     onPreviewChange?: (level: EffortLevel | null) => void
 }) {
     const trackRef = useRef<HTMLDivElement>(null)
     const reduced = useReducedMotion() ?? false
-    /** 拖动中的预览档位：只在跨档时 setState，逐像素移动不进 React */
-    const [preview, setPreview] = useState<EffortLevel | null>(null)
     const draggingRef = useRef(false)
     /** 当前吸附到的档位索引：拇指位置可能还在弹簧途中，松手要按「指针停在哪档」提交 */
     const snappedIndexRef = useRef(Math.max(0, levels.indexOf(value)))
+    /** 上次已启动动画的档位索引（null = 本次拖动尚未吸附），用于吞掉同档的重复动画 */
+    const lastSnappedRef = useRef<number | null>(null)
+    /** 本次拖动起始时量到的轨道矩形（拖动期间几何不变，逐事件不再强制布局） */
+    const dragRectRef = useRef<{ left: number; width: number } | null>(null)
     /** 轨道实测宽度：ResizeObserver 驱动，jsdom 下缺席则保持 0（测试只走比例换算） */
     const [trackWidth, setTrackWidth] = useState(0)
 
@@ -499,23 +486,20 @@ function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChang
         `calc(${ratio} * (100% - ${thumbSize}px) + ${thumbSize / 2}px)`
 
     /** 指针 x → 连续比例（按拇指留白折算）；量不到轨道尺寸时返回 null */
-    const ratioAt = useCallback((clientX: number): number | null => {
-        const el = trackRef.current
-        if (!el) return null
-        const rect = el.getBoundingClientRect()
-        const span = rect.width - thumbSize
+    const ratioAt = useCallback((clientX: number, rect?: { left: number; width: number }): number | null => {
+        const box = rect ?? trackRef.current?.getBoundingClientRect()
+        if (!box) return null
+        const span = box.width - thumbSize
         if (span <= 0) return null
-        return Math.min(1, Math.max(0, (clientX - rect.left - thumbSize / 2) / span))
+        return Math.min(1, Math.max(0, (clientX - box.left - thumbSize / 2) / span))
     }, [thumbSize])
 
     const levelAt = useCallback((ratio: number): EffortLevel | undefined =>
         levels[Math.round(ratio * Math.max(lastIndex, 0))], [levels, lastIndex])
 
-    /** 只在档位变化时同步预览（拖过 5 档最多 5 次 setState，逐像素移动零渲染） */
+    /** 预览档位直接交给父级：同值 setState 由 React 跳过，逐像素移动不产生渲染 */
     const updatePreview = useCallback((ratio: number) => {
-        const level = levelAt(ratio) ?? null
-        setPreview(prev => (prev === level ? prev : level))
-        onPreviewChange?.(level)
+        onPreviewChange?.(levelAt(ratio) ?? null)
     }, [levelAt, onPreviewChange])
 
     /** 拖动期间的 window 级监听清理句柄（松手/取消/卸载时摘除） */
@@ -531,6 +515,8 @@ function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChang
         if (!draggingRef.current) return
         draggingRef.current = false
         stopTracking()
+        dragRectRef.current = null
+        lastSnappedRef.current = null
         const settled = commit ? snappedIndexRef.current : currentIndex
         const target = ratioOf(settled)
         if (reduced) progress.set(target)
@@ -538,7 +524,6 @@ function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChang
         if (!reduced) animate(scale, 1, spring.ui)
         const level = levels[settled]
         snappedIndexRef.current = currentIndex
-        setPreview(null)
         onPreviewChange?.(null)
         if (commit && level && level !== value) onChange(level)
     }
@@ -549,15 +534,22 @@ function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChang
      * 连续跟手会让圆圈停在两个点之间，看起来像是能落在未定义的位置（拖动时空转、
      * 松手又弹回点上）；改成「跨过两点中点才换档、圆圈从点滑到点」后，视觉位置
      * 始终等于当前档位。
+     *
+     * 一次拖动 60~120 个 pointermove：它们共用 pointerdown 量到的轨道矩形（拖动期间
+     * 几何不变，不必逐事件强制布局），且**吸附档位没变就不重启动画**（重启动只会把
+     * 上一个弹簧顶掉，白建一批 playback controls）。
      */
     const moveTo = (clientX: number) => {
-        const ratio = ratioAt(clientX)
+        const ratio = ratioAt(clientX, dragRectRef.current ?? undefined)
         if (ratio === null) return
         const index = Math.round(ratio * Math.max(lastIndex, 0))
         snappedIndexRef.current = index
-        const snapped = ratioOf(index)
-        if (reduced) progress.set(snapped)
-        else animate(progress, snapped, spring.ui)
+        if (index !== lastSnappedRef.current) {
+            lastSnappedRef.current = index
+            const snapped = ratioOf(index)
+            if (reduced) progress.set(snapped)
+            else animate(progress, snapped, spring.ui)
+        }
         updatePreview(ratio)
     }
 
@@ -591,7 +583,11 @@ function EffortSlider({ levels, value, label, isMobile, onChange, onPreviewChang
     }
 
     const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-        if (ratioAt(event.clientX) === null) return
+        // 轨道几何在整个拖动期间不变：这里量一次，pointermove 全部复用
+        const rect = trackRef.current?.getBoundingClientRect()
+        if (!rect || rect.width - thumbSize <= 0) return
+        dragRectRef.current = { left: rect.left, width: rect.width }
+        lastSnappedRef.current = null
         draggingRef.current = true
         // 点按也走同一吸附：圆圈从当前档滑到被点的档，而不是瞬间跳到指针下方
         moveTo(event.clientX)

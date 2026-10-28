@@ -25,7 +25,7 @@ import { Cpu } from 'lucide-react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
-import { OUTPUT_STYLE_FOLLOW_SETTING, reconcileSessionConfigForModel } from '@mobi/shared'
+import { DEFAULT_MODEL, OUTPUT_STYLE_FOLLOW_SETTING, reconcileSessionConfigForModel } from '@mobi/shared'
 import { useDaemonStatus } from '@/core/data/hooks/queries/useDaemonStatus'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
@@ -194,9 +194,6 @@ export function NewSessionPage() {
     // 用于 metadata 请求，避免输入过程中每字符触发
     const [confirmedDirectory, setConfirmedDirectory] = useState('')
 
-    // 延迟加载 metadata：首次输入 '/' 时才请求，避免每输入一个目录字符就触发 metadata 请求
-    const [metadataNeeded, setMetadataNeeded] = useState(false)
-
     // 数据
     // 宿主身份（homeDir/显示名）与就绪源走 daemon status（机器列表层已随 machine 概念移除）
     const { status: daemonStatus, isLoading: isLoadingDaemonStatus } = useDaemonStatus()
@@ -275,10 +272,11 @@ export function NewSessionPage() {
         // host 通道单机即宿主，cwd 单参数
         return confirmedDirectory ? { kind: 'host', cwd: confirmedDirectory } : null
     }, [confirmedDirectory])
-    // 选定工作区（confirmedDirectory 就绪）即取宿主元数据：模型清单要在建会话前就可见，
-    // '/' 触发只是更早的时机；confirmedDirectory 仅在工作区提交时变化，不会逐字符触发
+    // 选定工作区（confirmedDirectory 就绪）即取宿主元数据：模型清单要在建会话前就可见。
+    // confirmedDirectory 仅在工作区提交时变化，不会逐字符触发；capTarget 为空时 hook 自身
+    // 也不会发请求，故无需额外的「延迟到首次 '/'」开关
     const capabilities = useDirectoryCapabilities(capTarget, {
-        metadataEnabled: metadataNeeded || Boolean(confirmedDirectory),
+        metadataEnabled: Boolean(confirmedDirectory),
     })
     const { data: commandsData, isLoading: commandsLoading } = useDirectoryCommands(capabilities)
 
@@ -422,11 +420,6 @@ export function NewSessionPage() {
     const handleChange = useCallback((value: string) => {
         setInputText(value)
 
-        // 首次输入 '/' 时触发 metadata 加载（slash commands 需要）
-        if (value.includes('/') && !metadataNeeded) {
-            setMetadataNeeded(true)
-        }
-
         const textarea = wrapperRef.current?.querySelector('textarea')
         const cursorPos = textarea?.selectionStart ?? value.length
 
@@ -441,7 +434,7 @@ export function NewSessionPage() {
             return
         }
         mention.close()
-    }, [mention, slash, metadataNeeded])
+    }, [mention, slash])
 
     // Tab 键选中
     const textRef = useRef(inputText)
@@ -536,7 +529,7 @@ export function NewSessionPage() {
             const input: SpawnInput = {
                 directory: selectedDirectory || '/',
                 agent,
-                model: model === 'auto' ? undefined : model,
+                model: model === DEFAULT_MODEL ? undefined : model,
                 effort,
                 fastMode: fastMode || undefined,
                 // 空串哨兵 → 不携带字段：用户不主动选时 CC settings 默认 style 保持权威，

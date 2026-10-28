@@ -24,6 +24,31 @@ import { clearMessageWindow, fetchLatestMessages, removeQueuedMessages } from '@
 import { clearSessionResources } from '@/core/lib/sessionResources'
 
 /**
+ * 配置类 mutation 的同形工厂（权限模式 / 档位 / 快速模式 / 模型）。
+ *
+ * 四者只差端点：断言会话存在 → 调端点 → **只失效会话详情**（列表条目由 SSE 就地
+ * 更新，见下方 invalidateSessionDetail 注释）。
+ */
+function useConfigMutation<T>(
+    sessionId: string | null,
+    send: (sessionId: string, value: T) => Promise<unknown>,
+) {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: async (value: T) => {
+            if (!sessionId) {
+                throw new Error('Session unavailable')
+            }
+            await send(sessionId, value)
+        },
+        onSuccess: () => {
+            if (!sessionId) return
+            void queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) })
+        },
+    })
+}
+
+/**
  * 会话操作 Hook
  * 提供所有会话相关的操作方法（归档、删除、中断、恢复等）
  */
@@ -61,8 +86,11 @@ export function useSessionActions(sessionId: string | null): {
     /** 详情 + 全量列表：改变列表可见字段（名称）或成员的操作才需要 */
     const invalidateSessionAndList = async () => {
         if (!sessionId) return
-        await invalidateSessionDetail()
-        await queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
+        // 两个键互不依赖：并行等待的总耗时取较大者，串行则是相加（全量列表是主导项）
+        await Promise.all([
+            invalidateSessionDetail(),
+            queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
+        ])
     }
 
     // 中断会话（stopKind 三档停止，缺省 'turn'）
@@ -118,46 +146,14 @@ export function useSessionActions(sessionId: string | null): {
     })
 
     // 设置权限模式
-    const permissionMutation = useMutation({
-        mutationFn: async (mode: string) => {
-            if (!sessionId) {
-                throw new Error('Session unavailable')
-            }
-            await api.sessions.setPermissionMode(sessionId, mode)
-        },
-        onSuccess: () => void invalidateSessionDetail(),
-    })
+    const permissionMutation = useConfigMutation(sessionId, (id: string, mode: string) => api.sessions.setPermissionMode(id, mode))
 
-    const effortMutation = useMutation({
-        mutationFn: async (effort: string) => {
-            if (!sessionId) {
-                throw new Error('Session unavailable')
-            }
-            await api.sessions.setEffort(sessionId, effort)
-        },
-        onSuccess: () => void invalidateSessionDetail(),
-    })
+    const effortMutation = useConfigMutation(sessionId, (id: string, effort: string) => api.sessions.setEffort(id, effort))
 
     // 设置模型模式
-    const fastModeMutation = useMutation({
-        mutationFn: async (fastMode: boolean) => {
-            if (!sessionId) {
-                throw new Error('Session unavailable')
-            }
-            await api.sessions.setFastMode(sessionId, fastMode)
-        },
-        onSuccess: () => void invalidateSessionDetail(),
-    })
+    const fastModeMutation = useConfigMutation(sessionId, (id: string, fastMode: boolean) => api.sessions.setFastMode(id, fastMode))
 
-    const modelMutation = useMutation({
-        mutationFn: async (mode: string) => {
-            if (!sessionId) {
-                throw new Error('Session unavailable')
-            }
-            await api.sessions.setModelMode(sessionId, mode)
-        },
-        onSuccess: () => void invalidateSessionDetail(),
-    })
+    const modelMutation = useConfigMutation(sessionId, (id: string, mode: string) => api.sessions.setModelMode(id, mode))
 
     // 重命名会话
     const renameMutation = useMutation({

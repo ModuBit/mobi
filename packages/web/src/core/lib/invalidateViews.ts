@@ -26,7 +26,8 @@ import { queryKeys } from '@/core/lib/queryKeys'
  *
  * 会话增删/归属变更/工作区删除都会改变各分组视图的 sessionIds 成员，
  * 三键必须连带刷新，否则新会话不出现 / 删除会话残留。
- * 收口此前的散布硬编码（SSEProvider 批处理、工作区 mutations、侧边栏/移动端列表）。
+ * 收口此前的散布硬编码（SSEProvider 批处理、侧边栏/移动端列表）。归属类 mutation
+ * 不再调用它——daemon 的 membership 事件是单一收敛路径（见 useWorkspaceMutations）。
  */
 export async function invalidateWorkspaceViews(queryClient: QueryClient): Promise<void> {
     await Promise.all([

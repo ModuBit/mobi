@@ -15,20 +15,17 @@
  */
 
 /**
- * composer 参数区共用的紧凑选择器（权限模式 / 模型 / output style / agent）。
+ * composer 参数区共用的紧凑选择器（权限模式 / output style / agent）。
  * 底座是 registry 件 morph-select（uiarc，见 registry.json）；本壳职责：
  * ① 选项 API 归一——调用方维持 `onChange(value)` 单参形态，morph 的
  *    `(value, option)` 双参在壳内吞掉；② composer 固定形态——展开方向/视口钳制
- *    交 morph auto 决策（展开内容恒在视窗内）、关闭 >8 项自动搜索；
- * ③ 满宽变体（NewSessionPage 698493a5）——仅移动端生效：panelWidth 顶到上限
- *    即满宽减 2rem 边距（PC 传了也无效果，防面板撑出屏幕）；
- * ④ effort-popover 全局样式注入（浮层面板形态归此单点，不随调用方复制）。
+ *    交 morph auto 决策（展开内容恒在视窗内）、关闭 >8 项自动搜索。
+ *
+ * 模型选择已迁到 `ModelSettingsSelect`（pill → 面板），本壳不再承载模型行。
  */
 
-import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { MorphSelect, type MorphSelectItem } from '@/ui/base/interactive/morph-select/MorphSelect'
-import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
 export interface CompactHoverSelectOption {
     value: string
@@ -37,8 +34,6 @@ export interface CompactHoverSelectOption {
     description?: string
     /** 列表项与触发器选中态的前置图标 */
     icon?: ReactNode
-    /** 行尾嵌套交互入口（如模型行的 effort 子菜单）；点击不触发选中已由 morph 收口 */
-    trailing?: ReactNode
     disabled?: boolean
 }
 
@@ -57,24 +52,6 @@ export interface CompactHoverSelectProps {
     title?: string
     /** 收起态仅图标 + chevron */
     iconOnly?: boolean
-    /** 满宽变体：面板宽顶到视口上限（NewSessionPage 模型下拉，698493a5） */
-    mobileFullWidth?: boolean
-}
-
-// effort 子菜单的面板样式注入（单点）：行 hover 高亮（内衬/箭头由 Popover 组件 props 承担）
-let effortStyleInjected = false
-function useEffortPopoverStyle() {
-    useEffect(() => {
-        if (effortStyleInjected || typeof document === 'undefined') return
-        const style = document.createElement('style')
-        style.textContent = `
-.effort-popover .effort-item:hover { background: var(--ant-color-bg-text-hover) !important; }
-.effort-popover .effort-arrow { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; border-radius: var(--radius-square); }
-.effort-popover .effort-arrow:hover { background: var(--ant-color-bg-text-hover); }
-`
-        document.head.appendChild(style)
-        effortStyleInjected = true
-    }, [])
 }
 
 export function CompactHoverSelect({
@@ -87,11 +64,8 @@ export function CompactHoverSelect({
     prefix,
     title,
     iconOnly,
-    mobileFullWidth,
 }: CompactHoverSelectProps) {
-    useEffortPopoverStyle()
-    const isMobile = useIsMobile()
-    // CompactHoverSelectOption 与 MorphSelectOption 结构同构（value/label/description/icon/trailing/disabled）
+    // CompactHoverSelectOption 与 MorphSelectOption 结构同构（value/label/description/icon/disabled）
     const items: MorphSelectItem[] = options
     // display:flex：span 若是 inline 级（含 inline-flex），在包裹 div 的行盒里按基线排版，
     // 基线下方的 descender 空隙会把包裹撑高、pill 顶在顶部——相对同行控件偏移 ~2.7px
@@ -111,9 +85,6 @@ export function CompactHoverSelect({
                 // 模型列表 >8 项时 morph 默认出搜索（searchable auto）——composer 不需要：
                 // 展开即全列表滚动选取，typeahead 键盘检索仍可用
                 searchable={false}
-                // 展开方向与视口钳制归 morph auto 决策（垂直翻转 + 水平钳制 + 列表高度收缩），
-                // 展开内容恒落在视窗内；composer 不再硬编码 up
-                fullWidth={mobileFullWidth && isMobile}
             />
         </span>
     )

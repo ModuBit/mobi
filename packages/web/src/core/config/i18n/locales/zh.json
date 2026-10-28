@@ -966,7 +966,6 @@
       "selectModel": "选择模型",
       "groupDefault": "默认",
       "groupHost": "宿主模型",
-      "back": "返回推理设置",
       "reset": "重置为默认",
       "fastOn": "快速模式已开启",
       "fastOff": "快速模式已关闭",
