@@ -650,6 +650,26 @@ export function parseGoalStatusAttachment(value: unknown): GoalStatus | null {
 }
 
 /**
+ * 会话自醒来源（SDK 0.3.312 UserPromptSubmit hook input `source` 字段）：CC 内建定时任务
+ * （ScheduleWakeup）/ 循环（/loop）到期后自动发起的回合。人工输入与跨会话消息不带该字段。
+ */
+export const WakeupSourceSchema = z.enum(['loop_wakeup', 'schedule_wakeup'])
+
+export type WakeupSource = z.infer<typeof WakeupSourceSchema>
+
+/**
+ * 最近一次自醒记录：web 消息流系统行展示「为什么这个回合开始了」。
+ * 只保留最近一次（覆盖写），历史归因靠消息流里的系统行。
+ */
+export const LastWakeupSchema = z.object({
+    source: WakeupSourceSchema,
+    /** 唤醒时刻（epoch ms，hook 回调时间） */
+    at: z.number(),
+})
+
+export type LastWakeup = z.infer<typeof LastWakeupSchema>
+
+/**
  * 会话恢复时的 prompt cache 状态（SDK 0.3.268 SessionStart hook input，仅 resume/fork 且
  * prompt_cache_likely_expired=true 时上报）。首 turn result 到达后 CLI 清空——过期提示只在
  * 「恢复后首轮前」有意义，常驻会误导。
@@ -706,6 +726,8 @@ export const RuntimeStateSchema = z.object({
     runStartedAt: z.number().optional(),
     /** 会话恢复（resume/fork）时的 prompt cache 状态；首 turn result 到达后 CLI 清空（删除字段） */
     cacheStatus: CacheStatusSchema.optional(),
+    /** 最近一次 CC 内建定时任务/循环自醒（覆盖写）；人工与跨会话消息不更新该字段 */
+    lastWakeup: LastWakeupSchema.optional(),
 })
 
 export type RuntimeState = z.infer<typeof RuntimeStateSchema>

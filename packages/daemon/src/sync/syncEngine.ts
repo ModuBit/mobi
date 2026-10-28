@@ -230,6 +230,7 @@ export class SyncEngine {
             handleRunStarted: (payload) => this.sessionCache.handleRunStarted(payload),
             handleCacheStatus: (payload) => this.sessionCache.handleCacheStatus(payload),
             handleFastModeState: (payload) => this.sessionCache.handleFastModeState(payload),
+            handleWakeup: (payload) => this.sessionCache.handleWakeup(payload),
             handleReceiveReadiness: (payload) => this.receiveReadiness.set(payload.sid, payload.canReceive),
         }
         this.warmupCache()

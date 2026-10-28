@@ -36,6 +36,8 @@ export type {
     TeamState,
     TeamTask,
     TodoItem,
+    LastWakeup,
+    WakeupSource,
     TaskItem,
     UiCommandAction,
     WorktreeMetadata

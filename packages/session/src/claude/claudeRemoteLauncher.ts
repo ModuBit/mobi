@@ -52,7 +52,7 @@ import { createSessionObservability } from "./sessionObservability";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
 import type { LauncherDormancyFacts } from "./utils/dormancyGate";
 import type { LiveCapabilityGetter } from '@mobi/node-core/handlers/commands';
-import { extractLiveBackgroundTaskIds, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
+import { WakeupSourceSchema, extractLiveBackgroundTaskIds, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
 import {
     resolveStopAction,
     resolvePostInterruptAction,
@@ -876,6 +876,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // 绝不影响会话主流程。
         const handleInboundPrompt = (input: { prompt: string; source?: string }) => {
             try {
+                // CC 内建定时任务/循环自醒（wakeup-source spec）：source 经 shared 枚举 schema
+                // 甄别后上报 daemon，web 消息流据此展示唤醒原因。人工与跨会话消息不带 source，
+                // 未知取值（CC 未来扩展）safeParse 失败静默忽略——daemon 不认识的不报。
+                const wakeup = WakeupSourceSchema.safeParse(input.source)
+                if (wakeup.success) {
+                    session.client.reportWakeup(wakeup.data)
+                }
                 const turn = classifyInboundTurn(input);
                 if (turn) {
                     session.client.sendInboundCrossSessionMessage(turn.text, turn.kind, turn.origin, randomUUID());

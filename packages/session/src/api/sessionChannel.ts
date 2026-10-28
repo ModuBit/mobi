@@ -47,6 +47,7 @@ import type {
     Update,
     SessionEndReason,
     SessionPauseTrigger,
+    WakeupSource,
 } from '@mobi/shared'
 import { classifyMessage, isMobiSentCrossSession, toCrossSessionMeta } from '@mobi/shared'
 import { AgentStateSchema, CliMessagesResponseSchema, MetadataSchema, UserMessageSchema } from '@mobi/node-core/api/types'
@@ -101,6 +102,8 @@ export type SessionChannelReport =
     | { kind: 'cache-status'; cacheStatus: CacheStatus | null }
     /** 快速模式的 SDK 权威执行态（每轮 result / 切换后 reinitialize 上报；null = 清空） */
     | { kind: 'fast-mode-state'; fastModeState: FastModeState | null; fastModeDisabledReason?: FastModeDisabledReason }
+    /** CC 内建定时任务/循环自醒（UserPromptSubmit hook source 甄别后上报） */
+    | { kind: 'wakeup'; source: WakeupSource }
 
 /** 自定义事件载荷（session-message event 信封的 data 形状；类型单源——
  *  ApiSessionClient.sendSessionEvent 门面直接引用，新增 variant 只改这里） */
@@ -687,6 +690,9 @@ export class SessionChannel {
                     fastModeState: event.fastModeState,
                     fastModeDisabledReason: event.fastModeDisabledReason,
                 })
+                return
+            case 'wakeup':
+                this.transport.emit('wakeup', { sid: this.sessionId, source: event.source })
                 return
         }
     }

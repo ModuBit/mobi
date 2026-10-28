@@ -21,7 +21,7 @@ import { clampAliveTime } from './aliveTime'
 import { isSessionRowDeletable } from './sessionDeleteGuard'
 import { EventPublisher } from './eventPublisher'
 import { applySessionEnd, projectSession } from './sessionProjection'
-import type { FastModeStatePayload, SessionAlivePayload, SessionEndPayload } from './sessionFacts'
+import type { FastModeStatePayload, SessionAlivePayload, SessionEndPayload, WakeupPayload } from './sessionFacts'
 import { RuntimeStateStore } from './runtimeStateStore'
 import { applyTeamStateDelta, handleTeamSessionEnd } from './teams'
 
@@ -339,6 +339,17 @@ export class SessionCache {
             sessionId: session.id,
             data: { runtimeState: session.runtimeState },
         })
+    }
+
+    /**
+     * 处理 CC 内建定时任务/循环自醒上报（UserPromptSubmit hook source 甄别后 CLI 上报）。
+     * 覆盖写 runtimeState.lastWakeup + SSE 推 runtimeState patch——web 消息流系统行展示
+     * 唤醒原因的权威来源。人工与跨会话消息不触发（CLI 侧甄别）。
+     */
+    handleWakeup(payload: WakeupPayload): void {
+        const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)
+        if (!session) return
+        this.mergeAndBroadcastRuntime(session, { lastWakeup: { source: payload.source, at: Date.now() } })
     }
 
     handleSessionEnd(payload: SessionEndPayload): void {

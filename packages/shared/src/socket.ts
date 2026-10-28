@@ -19,7 +19,7 @@ import type { PermissionMode, EffortLevel } from './modes'
 import type { MessageCategory } from './messageClassification'
 import type { MessageFact } from './messages'
 import type { CrossSessionOrigin } from './inboundOrigin'
-import type { CacheStatus, ContextUsage, FastModeDisabledReason, FastModeState, ModelInfo, SnapshotDeltaFrame, UiCommandAction } from './schemas'
+import type { CacheStatus, ContextUsage, FastModeDisabledReason, FastModeState, ModelInfo, SnapshotDeltaFrame, UiCommandAction, WakeupSource } from './schemas'
 import type { UserContentBlock, UserMessageContent } from './userContentSchema'
 
 export type SocketErrorReason = 'namespace-missing' | 'access-denied' | 'not-found'
@@ -464,6 +464,9 @@ export interface ClientToServerEvents {
      * **不落库**——只喂 daemon 的会话内 latch（等「建完即可用」），跨进程重启没有意义；
      * 且它会反复翻转，不是「会话还在不在」的判据。 */
     'receive-readiness': (data: { sid: string; canReceive: boolean }) => void
+    /** CLI 上报 CC 内建定时任务/循环自醒（daemon 落库到 runtimeState.lastWakeup + SSE 推 web）。
+     * 来源：UserPromptSubmit hook 的 source 字段（人工与跨会话消息不带，不上报） */
+    'wakeup': (data: { sid: string; source: WakeupSource }) => void
     /** CLI→daemon 的 UI 命令（agent 触达 mobi 界面，A 类）。ack 语义：delivered=true 表示已广播给活跃 Web 连接
      *  （非"用户已看到"，Web 不参与 ack）；无 Web 在线时 delivered=false（调用成功非错误，CLI 转平和反馈）。
      *  socket 断开/ack 超时由 emitWithAck reject 体现，属连接故障，与离线语义区分 */

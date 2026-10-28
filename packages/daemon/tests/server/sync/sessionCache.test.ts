@@ -397,6 +397,70 @@ describe('SessionCache.handleCacheStatus', () => {
     })
 })
 
+describe('SessionCache.handleWakeup（wakeup-source spec）', () => {
+    let store: Store
+    let emits: { type: string; sessionId: string; data: unknown }[]
+    let cache: SessionCache
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        emits = []
+        const rec = { emit: (e: { type: string; sessionId: string; data: unknown }) => emits.push(e) }
+        cache = new SessionCache(store, rec as unknown as EventPublisher)
+    })
+
+    afterEach(() => {
+        store.close()
+    })
+
+    test('落库到 runtimeState.lastWakeup 并 SSE 推送 runtimeState patch', () => {
+        const session = cache.getOrCreateSession('tag-wakeup-1', { path: '/tmp/p' }, null, 'default')
+
+        cache.handleWakeup({ sid: session.id, source: 'loop_wakeup' })
+
+        // 内存层
+        const rs = cache.getSession(session.id)?.runtimeState?.lastWakeup
+        expect(rs?.source).toBe('loop_wakeup')
+        expect(typeof rs?.at).toBe('number')
+        // 落库（直接读 store 绕过内存）
+        const stored = store.sessions.getSession(session.id)
+        expect((stored?.runtimeState as { lastWakeup?: { source: string } })?.lastWakeup?.source).toBe('loop_wakeup')
+        // SSE 推送
+        const pushed = emits.find(e => e.type === 'session-updated')
+        expect(pushed).toBeTruthy()
+        expect((pushed!.data as { runtimeState: { lastWakeup: { source: string } } }).runtimeState.lastWakeup.source).toBe('loop_wakeup')
+    })
+
+    test('覆盖写：第二次自醒替换第一次（只保留最近一次）', () => {
+        const session = cache.getOrCreateSession('tag-wakeup-2', { path: '/tmp/p' }, null, 'default')
+
+        cache.handleWakeup({ sid: session.id, source: 'loop_wakeup' })
+        cache.handleWakeup({ sid: session.id, source: 'schedule_wakeup' })
+
+        const rs = cache.getSession(session.id)?.runtimeState?.lastWakeup
+        expect(rs?.source).toBe('schedule_wakeup')
+        expect(store.sessions.getSession(session.id)?.runtimeState && (store.sessions.getSession(session.id)!.runtimeState as { lastWakeup?: { source: string } }).lastWakeup?.source).toBe('schedule_wakeup')
+    })
+
+    test('不影响 runtimeState 其他字段共存', () => {
+        const session = cache.getOrCreateSession(
+            'tag-wakeup-3', { path: '/tmp/p' }, null, 'default', 'remote', { model: 'opus', effort: 'high' }
+        )
+
+        cache.handleWakeup({ sid: session.id, source: 'schedule_wakeup' })
+
+        const rs = cache.getSession(session.id)?.runtimeState
+        expect(rs?.model).toBe('opus')
+        expect(rs?.effort).toBe('high')
+        expect(rs?.lastWakeup?.source).toBe('schedule_wakeup')
+    })
+
+    test('未知 sid 静默忽略（不抛错）', () => {
+        expect(() => cache.handleWakeup({ sid: 'no-such-session', source: 'loop_wakeup' })).not.toThrow()
+        expect(emits).toHaveLength(0)
+    })
+})
+
 describe('SessionCache.handleFastModeState', () => {
     let store: Store
     let emits: { type: string; sessionId: string; data: unknown }[]

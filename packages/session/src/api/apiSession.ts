@@ -30,6 +30,7 @@ import type {
     AgentSessionsAck,
     AgentSessionsRequest,
     CacheStatus,
+    WakeupSource,
     CommandLifecycleState,
     ContextUsage,
     CrossSessionOrigin,
@@ -374,6 +375,14 @@ export class ApiSessionClient extends EventEmitter {
      */
     reportCacheStatus(cacheStatus: CacheStatus): void {
         this.channel.report({ kind: 'cache-status', cacheStatus })
+    }
+
+    /**
+     * 上报 CC 内建定时任务/循环自醒（daemon 落库到 runtimeState.lastWakeup + SSE 推 web）。
+     * UserPromptSubmit hook 检出 source ∈ wakeup 枚举时调用（人工/跨会话消息不报）。
+     */
+    reportWakeup(source: WakeupSource): void {
+        this.channel.report({ kind: 'wakeup', source })
     }
 
     // ── rewind（会话协议）──

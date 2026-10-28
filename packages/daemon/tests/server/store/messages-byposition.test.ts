@@ -125,15 +125,18 @@ describe('lifecycle + position_at', () => {
         // 同毫秒 tie 时 seq 决胜（排队消息 seq 是入队旧值）必排到 result 之前。
         // 地板语义：position_at 严格大于时间线当前 max，排序正确性收归 hub 单点，不依赖时钟域。
         const resultMsg = addMessage(db, 's', { role: 'agent' }, undefined) // result 行，position = 落库时刻
-        addMessage(db, 's', WEBAPP_USER, 'loc-1') // 更早排队（position = 入队时刻）
+        const queued = addMessage(db, 's', WEBAPP_USER, 'loc-1') // 更早排队（position = 入队时刻）
         const staleFactAt = resultMsg.positionAt - 5 // CLI fact.at 早于 result 落库时刻
         const r = markMessagesPushed(db, 's', ['loc-1'], staleFactAt)
         expect(r.localIds).toEqual(['loc-1'])
-        expect(r.positionAt).toBe(resultMsg.positionAt + 1)
+        // 地板基准是时间线 max（不是 resultMsg）：两次 addMessage 跨毫秒时 queued 的
+        // position 会超过 resultMsg，max+1 随之 +1——断言对齐语义而非某一行的具体值
+        const timelineMax = Math.max(resultMsg.positionAt, queued.positionAt)
+        expect(r.positionAt).toBe(timelineMax + 1)
         const page = getMessages(db, 's', 10)
         const after = page[page.length - 1] // 跳变后排到时间线末尾（result 之后）
         expect(after.localId).toBe('loc-1')
-        expect(after.positionAt).toBe(resultMsg.positionAt + 1)
+        expect(after.positionAt).toBe(timelineMax + 1)
         // lifecycle_at 记录真实进入 pushed 时刻（pushedAt），只有 position_at 用地板修正值
         expect(after.lifecycleAt).toBe(staleFactAt)
     })
