@@ -15,7 +15,7 @@
  */
 
 import type React from 'react'
-import { CalendarClock, Repeat } from 'lucide-react'
+import { Timer } from 'lucide-react'
 import type { ChatBlock, CustomBlock, ToolCallBlock, AgentReasoningBlock } from '@/domain/chat'
 import { TURN_DIFF_EVENT } from '@mobi/shared'
 import { REWIND_COMMAND, isCompactStart } from '@/domain/chat/presentation'
@@ -220,17 +220,16 @@ export function buildChatBubbleItems(
             continue
         }
 
-        // CC 内建自醒系统行（wakeup-source spec）：system 行形态（左侧图标 + 文本，
-        // 独占整行，参照 GoalRow 的墨色标识语言）——不是居中虚线 divider：唤醒是
-        // 「为什么这个回合开始了」的事件说明，与 context-cleared 的「内容在此截断」
-        // 语义不同，后者才需要分隔线把前后内容切开。图标按档位：循环 → Repeat，
-        // 定时任务 → CalendarClock；颜色走 tertiary token（light/dark 自适应）。
+        // CC 内建自醒系统行（wakeup-source spec）：system 行靠左（bubble-event-align-left
+        // 布局类，与 agent-event 的 display.align 同一覆盖通道），统一 Timer 图标——
+        // 「倒计时到点触发」与自醒语义贴合，循环/定时两档同图标；文案区分档位。
+        // 唤醒是「为什么这个回合开始了」的事件说明，非 context-cleared 式内容截断线。
         if (block.kind === 'agent-event' && block.event.type === 'wakeup') {
             const source = (block.event as { source?: string }).source
-            const isLoop = source === 'loop_wakeup'
             items.push({
                 key: block.id,
                 role: 'system',
+                classNames: { root: 'bubble-event-align-left' },
                 content: (
                     <span
                         style={{
@@ -242,8 +241,8 @@ export function buildChatBubbleItems(
                             color: 'var(--ant-color-text-tertiary)',
                         }}
                     >
-                        {isLoop ? <Repeat size={14} aria-hidden="true" /> : <CalendarClock size={14} aria-hidden="true" />}
-                        {isLoop ? options.wakeupLoopLabel : options.wakeupScheduleLabel}
+                        <Timer size={14} aria-hidden="true" />
+                        {source === 'loop_wakeup' ? options.wakeupLoopLabel : options.wakeupScheduleLabel}
                     </span>
                 ),
                 block,

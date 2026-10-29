@@ -404,13 +404,14 @@ describe('buildChatBubbleItems', () => {
     /* ─── 4. context-cleared ─── */
 
     describe('wakeup 系统行（wakeup-source spec）', () => {
-        it('loop_wakeup → system 行（左侧图标+文本）+ 循环唤醒文案', () => {
+        it('loop_wakeup → system 行（靠左 + Timer 图标）+ 循环唤醒文案', () => {
             const blocks = [
                 createAgentEvent({ id: 'ev-wakeup', event: { type: 'wakeup', source: 'loop_wakeup' } }),
             ]
             const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
             expect(items).toHaveLength(1)
             expect(items[0].role).toBe('system')
+            expect(items[0].classNames?.root).toBe('bubble-event-align-left')
             expect(items[0].key).toBe('ev-wakeup')
             expect(childrenToText((items[0].content as React.ReactElement).props.children)).toBe('Loop wakeup')
         })

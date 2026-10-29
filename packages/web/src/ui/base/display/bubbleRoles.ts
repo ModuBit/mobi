@@ -29,13 +29,8 @@ export const BUBBLE_ROLES = {
         placement: 'end' as const,
     },
     system: {
-        // 显式 start + root 内联 justify：antdx 的 .ant-bubble-system 内置水平居中，
-        // 优先级压过 placement-start 类（wakeup 系统行实测仍居中）——内联样式胜出。
-        // 系统行语义是左侧标识行（参照 GoalRow）。loading 类居中内容不依赖此 center
-        // （其 content 自带全宽 div + justify-content:center，见 BubbleListChat）
-        placement: 'start' as const,
         variant: 'borderless' as const,
-        styles: { root: { justifyContent: 'flex-start' }, content: { paddingBlock: 0, minHeight: 'auto' } },
+        styles: { content: { paddingBlock: 0, minHeight: 'auto' } },
     },
     divider: {
         dividerProps: {
