@@ -742,7 +742,10 @@ describe('PermissionHandler — AskUserQuestion 聊一聊 reason 透传', () => 
         )
         const result = pending.resolve.mock.calls[0][0]
         expect(result.behavior).toBe('allow')
-        expect(result.updatedInput).toMatchObject({
+        // 全跳过分支同样保留原 input 字段（questions 等）——与部分作答分支（spread input）同形状，
+        // CC 工具以 updatedInput 执行时依赖原字段
+        expect(result.updatedInput).toEqual({
+            questions: [{ question: 'Q?', options: [] }],
             answers: {},
             annotations: { 'Q?': { unanswered: 'skipped' } },
         })

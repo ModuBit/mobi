@@ -147,13 +147,16 @@ const AskUserQuestionResultView: ToolViewComponent = (props: ToolViewProps) => {
     // 优先从 permission.answers 获取，fallback 从 result 文本解析
     const answers = normalizeAnswers(permission?.answers) ?? parseAnswersFromResultText(extractTextFromResult(props.block.tool.result))
     const hasAnswers = answers && Object.keys(answers).length > 0
+    const parsed = parseAskUserQuestionInput(props.block.tool.input)
 
-    if (hasAnswers) {
-        const parsed = parseAskUserQuestionInput(props.block.tool.input)
+    // 有结构化题面即按题渲染：全跳过时 answers 为空，逐题显示「已跳过」与部分跳过同口径
+    // （pending 态除外——题面已在但尚未作答，此刻不该预渲染 skipped）
+    const isPending = permission?.status === 'pending'
+    if (hasAnswers || (parsed.questions.length > 0 && !isPending)) {
         // 有结构化 questions 时按顺序展示
         const entries = parsed.questions.length > 0
-            ? parsed.questions.map(q => [q.question, answers[q.question] ?? []] as const)
-            : Object.entries(answers).map(([q, a]) => [q, a] as const)
+            ? parsed.questions.map(q => [q.question, answers?.[q.question] ?? []] as const)
+            : Object.entries(answers!).map(([q, a]) => [q, a] as const)
 
         return (
             <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc', display: 'flex', flexDirection: 'column', gap: 4 }}>

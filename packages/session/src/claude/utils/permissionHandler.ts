@@ -375,9 +375,14 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
                     completion.status = 'denied';
                     completion.reason = completion.reason ?? 'No answers were provided.';
                 } else {
+                    // 全跳过：updatedInput 与部分作答分支同形状（spread 原 input 保留 questions 等
+                    // 字段）——CC 工具以 updatedInput 执行，整替会丢原字段
                     pending.resolve({
                         behavior: 'allow',
-                        updatedInput: { answers: {}, annotations }
+                        updatedInput: {
+                            ...buildAskUserQuestionUpdatedInput(pending.input, {}),
+                            annotations
+                        }
                     });
                 }
             } else {

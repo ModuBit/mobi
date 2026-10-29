@@ -381,5 +381,13 @@ describe('AskUserQuestionView', () => {
             renderResultView(block)
             expect(screen.queryByText('chat.tool.skipped')).toBeNull()
         })
+
+        it('全部跳过（answers={}）→ 逐题显示 skipped，与部分跳过同口径（不退化为原始文本）', () => {
+            const block = makeBlock(input, {})
+            renderResultView(block)
+            expect(screen.getByText(/Language\? →/)).toBeInTheDocument()
+            expect(screen.getByText(/Framework\? →/)).toBeInTheDocument()
+            expect(screen.getAllByText('chat.tool.skipped')).toHaveLength(2)
+        })
     })
 })

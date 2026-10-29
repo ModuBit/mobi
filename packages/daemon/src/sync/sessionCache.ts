@@ -342,9 +342,11 @@ export class SessionCache {
     }
 
     /**
-     * 处理 CC 内建定时任务/循环自醒上报（UserPromptSubmit hook source 甄别后 CLI 上报）。
-     * 覆盖写 runtimeState.lastWakeup + SSE 推 runtimeState patch——web 消息流系统行展示
-     * 唤醒原因的权威来源。人工与跨会话消息不触发（CLI 侧甄别）。
+     * 处理 CC 内建定时任务/循环自醒上报（CLI reportWakeup：hook/tap 甄别 source 后上报）。
+     * 覆盖写 runtimeState.lastWakeup + SSE 推 runtimeState patch——会话级「最近一次唤醒」
+     * 状态事实（runtimeState 面板/诊断可读）。注意：消息流系统行**不走这里**，走
+     * reportWakeup 的第二个出口 sendSessionEvent（wakeup session event 落库 + SSE）；
+     * 当前 web/src 尚无 lastWakeup 消费点。人工与跨会话消息不触发（CLI 侧甄别）。
      */
     handleWakeup(payload: WakeupPayload): void {
         const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)

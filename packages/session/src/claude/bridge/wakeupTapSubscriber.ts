@@ -46,6 +46,11 @@ export function registerWakeupTapSubscriber(bridge: BridgeListener, opts: Wakeup
         tag: 'BRIDGE_WAKEUP',
         // 唤醒行低频，容量收紧（防 rewind/compact 重写极端场景无界增长）
         maxSeenUuids: 500,
+        // 严格模式：只认 uuid 与信号一致的行 + 不排补偿波。wakeup 事件 {sid, source}
+        // 无 uuid、daemon/web 无法去重，宽扫/补偿在进程重启后会把重启前旧唤醒行当新行
+        // 重报（假系统行 + lastWakeup 错误归因）；代价是 mod 出口丢信号时该行漏报（罕见，
+        // 行仍在 transcript 可对账）
+        signalRowExactMatch: true,
         resolveTranscriptPath: opts.resolveTranscriptPath,
         handleRow: (row) => {
             // 枚举外的取值（CC 未来扩展）safeParse 失败静默放弃——daemon 不认识的不报

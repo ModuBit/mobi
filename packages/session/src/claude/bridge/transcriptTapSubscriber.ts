@@ -67,6 +67,11 @@ export interface TranscriptTapSubscriberConfig {
     /** 真实信号重试窗口耗尽仍未见目标行（落盘慢/信号目标丢失）：goal=warn 供对账，
      * wakeup=debug（人工信号高频、多数为低价值场景）——档位由调用方定 */
     onMissed: (signalUuid: string, filePath: string) => void
+    /** 严格模式：只消费 uuid === 信号 uuid 的行，且不排补偿波。适用于消费结果无下游
+     * 去重面的订阅者——wakeup 事件 {sid, source} 无 uuid、seenUuids 仅内存，进程重启后
+     * 宽扫/补偿波会把重启前旧唤醒行当新行重报（假系统行 + lastWakeup 错误归因）；
+     * 有下游去重兜底的订阅者（goal 行透传有流侧 uuid 去重）保持缺省宽扫 + 补偿。 */
+    signalRowExactMatch?: boolean
 }
 
 /**
@@ -100,7 +105,9 @@ export function registerTranscriptTapSubscriber(bridge: BridgeListener, config: 
             return;
         }
         queue = queue.then(() => (stopped ? undefined : handleSignal(signal.uuid!, config, rules, seenUuids, mayMatchLine))).catch(() => {});
-        // 信号后置补偿：同一波信号只排一次（防抖），扫到未见行即处理
+        // 信号后置补偿：同一波信号只排一次（防抖），扫到未见行即处理。
+        // 严格模式不排——补偿波无信号 uuid 可匹配，会把重启前旧行当新行重报（见配置注释）
+        if (config.signalRowExactMatch) return;
         if (compensateTimer) clearTimeout(compensateTimer);
         compensateTimer = setTimeout(() => {
             compensateTimer = null;
@@ -137,6 +144,7 @@ async function handleSignal(
     }
 
     const isCompensate = signalUuid.startsWith(COMPENSATE_UUID_PREFIX);
+    const strict = config.signalRowExactMatch === true;
     for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
         if (attempt > 0) {
             await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt - 1]));
@@ -149,7 +157,7 @@ async function handleSignal(
             logger.warn(`[${config.tag}] tail scan failed, giving up: uuid=${signalUuid} file=${filePath}`, e);
             return;
         }
-        const { consumed, targetSeen } = consumeLines(scan.lines, signalUuid, rules, seenUuids, mayMatchLine, config);
+        const { consumed, targetSeen } = consumeLines(scan.lines, signalUuid, rules, seenUuids, mayMatchLine, config, strict);
         // 终止判定：补偿信号扫不到新行即稳态；真实信号以「目标行已在窗口」为准——
         // 事件 uuid == 落盘行 uuid（mods 契约），行已落盘即终态，消费与否不改判
         if (isCompensate ? consumed === 0 : targetSeen) {
@@ -169,6 +177,7 @@ function consumeLines(
     seenUuids: BoundedUuidSet,
     mayMatchLine: (line: string, signalUuid?: string) => boolean,
     config: TranscriptTapSubscriberConfig,
+    strict = false,
 ): { consumed: number; targetSeen: boolean } {
     let consumed = 0;
     let targetSeen = false;
@@ -182,6 +191,9 @@ function consumeLines(
         }
         const row = parsed as Record<string, unknown>;
         if (row.uuid === signalUuid) targetSeen = true;
+        // 严格模式：只认 uuid 与信号一致的行（信号与落盘行同 uuid 契约）——
+        // 窗口内其他规则命中行是重启前旧行，重报即假唤醒（见配置注释）
+        if (strict && row.uuid !== signalUuid) continue;
         const matched = rules.some((rule) => matchesTranscriptTapRule(row, transcriptTapRowMatcher(rule)));
         if (!matched) continue;
         const uuid = typeof row.uuid === 'string' ? row.uuid : undefined;

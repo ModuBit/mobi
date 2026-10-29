@@ -114,4 +114,20 @@ describe('wakeupTapSubscriber（bridge 信号 → 解析 wakeupSource）', () =>
         await new Promise((r) => setTimeout(r, 400));
         expect(onWakeup).toHaveBeenCalledTimes(1);
     });
+
+    it('进程重启场景（seenUuids 清零）：人工 prompt 信号不把重启前旧唤醒行当新行重报', async () => {
+        // 会话进程重启后 seenUuids 仅内存丢失；重启前旧唤醒行（w-1）仍在 transcript 尾窗。
+        // 重启后首个人工 prompt（m-1）触发宽触发信号，扫描不得重报 w-1——
+        // 事件 uuid == 落盘行 uuid 契约：wakeup 只认 uuid 与信号一致的行（严格模式，
+        // 补偿波一并停用——wakeup 事件 {sid, source} 无 uuid，daemon/web 无法去重）
+        const file = await makeTranscript([WAKEUP_LINE, MANUAL_LINE]);
+        bridge = await startBridgeListener({ socketPath: `/tmp/mobi-wakeup-tap-${randomUUID().slice(0, 8)}.sock` });
+        const onWakeup = vi.fn();
+        registerWakeupTapSubscriber(bridge, { resolveTranscriptPath: () => file, onWakeup });
+
+        await postSignal('m-1');
+        // 覆盖真实信号重试窗口 + 内部补偿波（若误报会在此窗口内出现）
+        await new Promise((r) => setTimeout(r, 2000));
+        expect(onWakeup).not.toHaveBeenCalled();
+    });
 });
