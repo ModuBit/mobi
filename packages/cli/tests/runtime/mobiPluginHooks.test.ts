@@ -82,11 +82,13 @@ describe('transcript tap (mod hooks module)', () => {
         expect(bridgeEnvelopeType).toBe('goal.append');
     });
 
-    it('register：规则跨多 door → 全量监听 session.append（无 matcher 预筛，行级判定兜底）', async () => {
+    it('register：全部规则 trigger 均有 door → 引擎侧 door 集合预筛（response 等多数行不进 worker）', async () => {
         const { register } = await loadRegister();
-        const { on } = setup(undefined);
+        const { on, handlers } = setup(undefined);
         register(on, {});
-        expect(on).toHaveBeenCalledWith('session.append', expect.any(Function));
+        expect(on).toHaveBeenCalledWith('session.append', { door: ['attachment', 'prompt'] }, expect.any(Function));
+        // 带 matcher 时 hook 仍注册可达（setup 的 handlers 兜底收集）
+        expect(handlers['session.append']).toHaveLength(1);
     });
 
     it('生产端判别式与 shared matchesTranscriptTapTrigger 语义等值（全部规则 × 事件夹具）', () => {
@@ -101,7 +103,7 @@ describe('transcript tap (mod hooks module)', () => {
         const { register } = await loadRegister();
         const { fetchImpl, on, handlers, $ } = setup('/tmp/bridge.sock');
         register(on, {});
-        expect(on).toHaveBeenCalledWith('session.append', expect.any(Function));
+        expect(on).toHaveBeenCalledWith('session.append', { door: ['attachment', 'prompt'] }, expect.any(Function));
 
         const next = vi.fn((e: unknown) => e);
         for (const h of handlers['session.append']) h($, GOAL_EVENT, next);

@@ -15,7 +15,11 @@
  */
 
 import { isPermissionModeAllowedForFlavor } from '@mobi/shared'
-import { PermissionModeSchema, PermissionUpdateSchema } from '@mobi/shared/schemas'
+import {
+    PermissionAnnotationsSchema,
+    PermissionModeSchema,
+    PermissionUpdateSchema
+} from '@mobi/shared/schemas'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { SyncEngine } from '../../sync/syncEngine'
@@ -33,11 +37,9 @@ const answersSchema = z.union([
 ])
 
 // AskUserQuestion 的 skipped 标注（ask_user_question_unanswered_v1）：按题面文本 key，
-// 未知枚举值在 schema 层即拒（400），session 侧另有剥除兜底
-const annotationsSchema = z.record(
-    z.string(),
-    z.object({ unanswered: z.enum(['skipped', 'replied_in_chat', 'dismissed']) })
-)
+// 未知枚举值在 schema 层即拒（400），session 侧另有剥除兜底。schema 单源在 shared
+// （PermissionAnnotationsSchema，与 session/web 同源），此处只引用
+const annotationsSchema = PermissionAnnotationsSchema
 
 const approveBodySchema = z.object({
     mode: PermissionModeSchema.optional(),
@@ -94,7 +96,15 @@ export function createPermissionsRoutes(getSyncEngine: () => SyncEngine | null):
         const decision = parsed.data.decision
         const answers = parsed.data.answers
         const annotations = parsed.data.annotations
-        await engine.approvePermission(sessionId, requestId, mode, decision, answers, updatedPermissions, annotations)
+        await engine.approvePermission({
+            sessionId,
+            requestId,
+            mode,
+            decision,
+            answers,
+            updatedPermissions,
+            annotations,
+        })
         return c.json({ ok: true })
     })
 

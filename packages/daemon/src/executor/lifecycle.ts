@@ -33,7 +33,7 @@ import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli';
 import { acquireDaemonLock, releaseDaemonLock } from '@mobi/node-core/persistence';
 import { getConfiguration } from '../configuration';
 import { readSettings } from '../config/settings';
-import { resolveSessionMemory, syncMemoryManagedConfig, resolveMemoryRule } from '../config/memorySettings';
+import { resolveSessionMemory, syncMemoryManagedConfig, resolveMemoryRule, neutralizedMemoryEnv } from '../config/memorySettings';
 import { resolveGitProjectName } from '../config/gitProject';
 import { DEFAULT_LISTEN_PORT, resolveHostPort } from '@mobi/node-core/hostChannel';
 import type { FileHandle } from 'node:fs/promises';
@@ -153,7 +153,7 @@ function makeResolveMemoryEnv(): (workspaceDirectory: string, workspaceId: strin
             // 设置读取失败等异常：记忆是增强能力，任何故障都不得阻断会话 spawn；
             // 同样回传中和 env（off 裁决不依赖设置内容），防继承值串入
             logger.debug('[EXECUTOR] Memory resolution failed; session continues without memory', error);
-            return resolveSessionMemory(undefined, workspaceDirectory, '').env;
+            return neutralizedMemoryEnv();
         }
     };
 }

@@ -88,14 +88,20 @@ export type SessionMemoryResolution =
     | { active: false; reason: 'off' | 'invalid-endpoint' | 'workspace-excluded'; env: Record<string, string> }
     | { active: true; engine: 'hindsight'; env: Record<string, string> }
 
-/** memory env 契约的降级形态：全键置空（中性值，任何消费方判等都不命中） */
-function neutralizedMemoryEnv(): Record<string, string> {
+/** memory env 四键表（契约单源）：键恒存在，值按裁决结果填——降级态全空（中性值，
+ * 任何消费方判等都不命中），active 态带真值。两形态共用此 builder，键表只此一份。 */
+function buildMemoryEnv(values?: { engine?: string; apiUrl?: string; token?: string; configPath?: string }): Record<string, string> {
     return {
-        [MEMORY_PLUGIN_ENV]: '',
-        HINDSIGHT_API_URL: '',
-        HINDSIGHT_API_TOKEN: '',
-        HINDSIGHT_CONFIG: '',
+        [MEMORY_PLUGIN_ENV]: values?.engine ?? '',
+        HINDSIGHT_API_URL: values?.apiUrl ?? '',
+        HINDSIGHT_API_TOKEN: values?.token ?? '',
+        HINDSIGHT_CONFIG: values?.configPath ?? '',
     }
+}
+
+/** memory env 契约的降级形态：全键置空（中性值）。catch 兜底等无 memory 输入的场景直接取用。 */
+export function neutralizedMemoryEnv(): Record<string, string> {
+    return buildMemoryEnv()
 }
 
 /** workspace 排除匹配：前缀语义（`/a/b` 覆盖其下所有会话目录），~ 展开 */
@@ -165,13 +171,13 @@ export function resolveSessionMemory(
     if (isWorkspaceDisabled(memory.disabledWorkspaces, workspaceDirectory)) {
         return { active: false, reason: 'workspace-excluded', env: neutralizedMemoryEnv() }
     }
-    const env: Record<string, string> = {
-        MOBI_MEMORY_ENGINE: 'hindsight',
-        HINDSIGHT_API_URL: memory.endpoint.trim(),
-        HINDSIGHT_CONFIG: managedConfigPath,
+    const env = buildMemoryEnv({
+        engine: 'hindsight',
+        apiUrl: memory.endpoint.trim(),
+        configPath: managedConfigPath,
         // token 键恒存在（无 token 置空）：盖过继承值，防泄漏 token 被会话插件捡走
-        HINDSIGHT_API_TOKEN: memory.apiToken?.trim() ?? '',
-    }
+        token: memory.apiToken?.trim() ?? '',
+    })
     return { active: true, engine: 'hindsight', env }
 }
 

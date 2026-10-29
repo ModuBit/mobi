@@ -370,6 +370,24 @@ export type PermissionAnswers =
     | Record<string, { answers: string[] }>
 
 /**
+ * AskUserQuestion 的 skipped 标注枚举（ask_user_question_unanswered_v1；CC 开放演进，
+ * 未来可能扩展第四值）。跨包 wire 契约（web→daemon HTTP、daemon→session RPC）单源——
+ * 曾在 4 包 5 处字面量双写，CC 扩枚举时漏改任意一处即各层判定不一致且难察觉
+ * （漏 session 剥除层=合法值被剥、漏 daemon 入口=整答 400、漏类型=编译器说谎）。
+ */
+export const UnansweredValueSchema = z.enum(['skipped', 'replied_in_chat', 'dismissed'])
+
+export type UnansweredValue = z.infer<typeof UnansweredValueSchema>
+
+/** annotations 整体形状（按题面文本 key，与 answers 同口径） */
+export const PermissionAnnotationsSchema = z.record(
+    z.string(),
+    z.object({ unanswered: UnansweredValueSchema })
+)
+
+export type PermissionAnnotations = z.infer<typeof PermissionAnnotationsSchema>
+
+/**
  * MCP elicitation 借道 agentState.requests 通道时使用的合成工具名（批次 C，spec D1）。
  * elicitation 条目与普通审批在类型上不可区分，cli/web 运行时都靠该名判断——
  * 单一来源在 shared，两端字面量漂移即编译错误（此前双字面量仅靠注释同步）。

@@ -92,12 +92,13 @@ function onAppend($, e, next) {
 
 export const register = (on, options) => {
     if (rules.length === 0) return;
-    // matcher 收缩触发面：全部规则的 trigger 都指向同一 door 时按 door 预筛（引擎侧
-    // 过滤，其余行不进 hook、不进 worker），有通配/多 door 规则则全量监听
-    const allSameDoor = rules.every((rule) => rule.trigger?.door !== undefined)
-        && new Set(rules.map((rule) => rule.trigger.door)).size === 1;
-    if (allSameDoor) {
-        on('session.append', { door: rules[0].door }, onAppend);
+    // 引擎侧 door 预筛（引擎 matcher 支持 door 数组，mobi-forked-tap 已实证）：全部
+    // 规则的 trigger 都有具体 door 时按 door 集合预筛——response/tool-result 等绝对
+    // 多数行在引擎侧拦截，不进 hook、不进 worker（worker 负载敏感）；规则级
+    // matchesAppendRule 兜底。仅当存在通配 trigger（door 缺省）才全量监听
+    const doors = rules.map((rule) => rule.trigger?.door);
+    if (doors.every((door) => door !== undefined)) {
+        on('session.append', { door: [...new Set(doors)] }, onAppend);
     } else {
         on('session.append', onAppend);
     }

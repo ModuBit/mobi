@@ -79,6 +79,18 @@ export function transcriptTapRowMatcher(rule: TranscriptTapSessionAppendRule): T
 }
 
 /**
+ * 按信封筛规则子集（tap 订阅者各认各的信封）。缺省回落 goal 信封的语义收口在此——
+ * 消费端不再各自手写 `(rule.envelope ?? GOAL) === X` 式过滤（测非 goal 信封时用
+ * goal 做缺省兜底，语义晦涩易错）。
+ */
+export function transcriptTapRulesForEnvelope(
+    rules: readonly TranscriptTapSessionAppendRule[],
+    envelope: string,
+): readonly TranscriptTapSessionAppendRule[] {
+    return rules.filter((rule) => (rule.envelope ?? TRANSCRIPT_TAP_GOAL_ENVELOPE_TYPE) === envelope)
+}
+
+/**
  * 当前订阅：goal_status 观测（goal 吊顶 + 聊天流标注）+ 唤醒行观测
  * （CC 内建 ScheduleWakeup//loop/Cron 自醒回合，行形如
  * `{type:'user', wakeupSource:'loop_wakeup', isMeta:true, ...}`）。

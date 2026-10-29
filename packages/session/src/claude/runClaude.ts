@@ -273,10 +273,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
                 const sessionId = currentSessionRef.current?.sessionId;
                 return sessionId ? join(getProjectPath(workingDirectory), `${sessionId}.jsonl`) : null;
             },
-            onWakeup: (source) => {
-                apiSession.reportWakeup(source);
-                apiSession.sendSessionEvent({ type: 'wakeup', source });
-            },
+            onWakeup: (source) => apiSession.reportWakeup(source),
         });
         logger.debug(`[START] Bridge listener ready at ${bridgeListener.socketPath}`);
     } catch (e) {

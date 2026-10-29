@@ -134,8 +134,7 @@ const defaultOptions = {
     rewindFailedLabel: 'Rewind failed',
     rewindFailedReasonLabel: 'Rewind not performed (range contains non-attributable entries)',
     skippedLinksLabel: '{{count}} path(s) skipped',
-    wakeupLoopLabel: 'Loop wakeup',
-    wakeupScheduleLabel: 'Scheduled task wakeup',
+    wakeupLabels: { loop_wakeup: 'Loop wakeup', schedule_wakeup: 'Scheduled task wakeup' },
     // 渲染器注入（分层治理票 03）：装配器不再静态依赖渲染注册表，测试传入真实实现
     renderBlock: renderChatBlock,
     renderToolGroup: (p: never) => null,

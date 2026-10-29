@@ -143,65 +143,24 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         return answers.length > 0 ? answers : null
     }
 
-    // 提交门槛：fallback 单文本框形态（questions 为空）无题可标，恒要求非空；
-    // 有题形态下末题按钮文案自解释（未填 → 跳过并提交），恒可点——mobi 的 claude
-    // 二进制随包分发、版本受控（≥ annotations 引入版本），skipped 标注恒可用
-    const canSubmit = questions.length === 0
-        ? fallbackText.trim().length > 0
-        : true
-
     /** 当前题是否已填（决定逐题按钮文案与末题提交/跳过并提交切换） */
     const isQuestionAnswered = (idx: number): boolean => validateQuestion(idx) !== null
 
     /**
-     * 逐题主按钮（2026-10-28 形态定稿）：
-     * - 非末题：已填 →「下一步」（前进）；未填 →「跳过」（同样前进，提交时该题自动标未答）
-     * - 末题：已填 →「提交」；未填 →「跳过并提交」——同一 submit，提交时统一按
-     *   有答案 → answers / 无答案 → annotations 分发
+     * 底部动作条（主按钮 + 「聊一聊」副按钮）：逐题前进/提交与 fallback 提交共用同一形态。
+     * 有题形态下按钮恒可点（未填 → 跳过并提交，文案自解释）——mobi 的 claude 二进制随包
+     * 分发、版本受控（≥ annotations 引入版本），无老 CLI 分支需要挡。
      */
-    const renderQuestionAction = (idx: number) => {
-        const isLast = idx === questions.length - 1
-        const answered = isQuestionAnswered(idx)
-        const label = isLast
-            ? (answered ? t('chat.tool.submit') : t('chat.tool.askUserQuestion.skipSubmit'))
-            : (answered ? t('chat.tool.askUserQuestion.next') : t('chat.tool.askUserQuestion.skip'))
-        const onClick = isLast ? submit : () => { setError(null); setStep(idx + 1) }
-        return (
-            <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'stretch' }}>
-                <Button
-                    variant="primary"
-                    loading={pendingAction === 'submit'}
-                    disabled={props.disabled || pendingAction != null}
-                    onClick={onClick}
-                    style={{ flex: 1, minHeight: actionMinHeight, justifyContent: 'center' }}
-                >
-                    <CheckOutlined /> {pendingAction === 'submit' ? t('chat.tool.submitting') : label}
-                </Button>
-                {isLast ? (
-                    <Button
-                        variant="secondary"
-                        loading={pendingAction === 'chatAbout'}
-                        disabled={props.disabled || pendingAction != null}
-                        onClick={chatAbout}
-                        style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
-                    >
-                        {t('chat.tool.askUserQuestion.chatAbout')}
-                    </Button>
-                ) : null}
-            </div>
-        )
-    }
-
-    const renderSubmitButton = () => (
+    const renderActionBar = (primary: { label: string; onClick: () => void; disabled?: boolean }) => (
         <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'stretch' }}>
             <Button
                 variant="primary"
                 loading={pendingAction === 'submit'}
-                disabled={props.disabled || pendingAction != null || !canSubmit}
-                onClick={submit}
+                disabled={props.disabled || pendingAction != null || primary.disabled}
+                onClick={primary.onClick}
                 style={{ flex: 1, minHeight: actionMinHeight, justifyContent: 'center' }}
             >
-                <CheckOutlined /> {pendingAction === 'submit' ? t('chat.tool.submitting') : t('chat.tool.submit')}
+                <CheckOutlined /> {pendingAction === 'submit' ? t('chat.tool.submitting') : primary.label}
             </Button>
             <Button
                 variant="secondary"
@@ -214,6 +173,30 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
             </Button>
         </div>
     )
+
+    /**
+     * 逐题主按钮（2026-10-28 形态定稿）：
+     * - 非末题：已填 →「下一步」（前进）；未填 →「跳过」（同样前进，提交时该题自动标未答）
+     * - 末题：已填 →「提交」；未填 →「跳过并提交」——同一 submit，提交时统一按
+     *   有答案 → answers / 无答案 → annotations 分发
+     */
+    const renderQuestionAction = (idx: number) => {
+        const isLast = idx === questions.length - 1
+        const answered = isQuestionAnswered(idx)
+        return renderActionBar({
+            label: isLast
+                ? (answered ? t('chat.tool.submit') : t('chat.tool.askUserQuestion.skipSubmit'))
+                : (answered ? t('chat.tool.askUserQuestion.next') : t('chat.tool.askUserQuestion.skip')),
+            onClick: isLast ? submit : () => { setError(null); setStep(idx + 1) },
+        })
+    }
+
+    /** fallback 单文本框形态的提交行（questions 为空）：无题可标 skipped，恒要求非空 */
+    const renderSubmitButton = () => renderActionBar({
+        label: t('chat.tool.submit'),
+        onClick: submit,
+        disabled: fallbackText.trim().length === 0,
+    })
 
     /**
      * 请求包装：清旧错误（setError null）+ pendingAction 管理 + 404 静默收起。

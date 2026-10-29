@@ -25,6 +25,7 @@ import { logger } from '@mobi/node-core/logger'
 import type { ElicitationRequest, ElicitationResult, SDKMessage, SDKTaskStartedMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { PermissionResult, PermissionUpdate, PermissionDecisionClassification } from "@mobi/node-core/claudeSdk/types";
 import type { PermissionAnswers, PermissionUpdate as MobiPermissionUpdate, SDKUIHints } from "@mobi/shared";
+import { UnansweredValueSchema, type PermissionAnnotations } from "@mobi/shared";
 import { Session } from "../session";
 import { PermissionMode } from "../types";
 import { isObject, ELICITATION_TOOL_NAME } from "@mobi/shared";
@@ -42,8 +43,8 @@ interface PermissionResponse {
     /** @deprecated 权限范围改由 updatedPermissions 表达，保留作后退字段 */
     allowTools?: string[];
     answers?: PermissionAnswers;
-    /** AskUserQuestion 的 skipped 标注（ask_user_question_unanswered_v1），按题面文本 key */
-    annotations?: Record<string, { unanswered: string }>;
+    /** AskUserQuestion 的 skipped 标注（ask_user_question_unanswered_v1），按题面文本 key；枚举单源 shared UnansweredValueSchema */
+    annotations?: PermissionAnnotations;
     /** Web 回传的持久化放行建议，透传进 PermissionResult 让 SDK 持久化 */
     updatedPermissions?: MobiPermissionUpdate[];
     receivedAt?: number;
@@ -96,25 +97,18 @@ function buildAskUserQuestionUpdatedInput(input: unknown, answers: PermissionAns
 }
 
 /**
- * AskUserQuestion annotations 的合法 unanswered 枚举（CC ask_user_question_unanswered_v1：
- * 'skipped' | 'replied_in_chat' | 'dismissed'；严格 CLI 对越界值拒整答，mobi 侧先剥一道
- * 纵深防御——CLI 自己还有 .catch(void 0) 兜底）。
- */
-const UNANSWERED_VALUES = new Set(['skipped', 'replied_in_chat', 'dismissed']);
-
-/**
  * 剥除未知 unanswered 枚举值的 annotations（按题面文本 key，与 answers 同口径）。
- * 返回 undefined = 全部无效或输入为空，调用方无需携带该键。
+ * 枚举合法性由 shared UnansweredValueSchema 判定（单源）。返回 undefined =
+ * 全部无效或输入为空，调用方无需携带该键。
  */
-function sanitizeUnansweredAnnotations(
-    annotations: unknown
-): Record<string, { unanswered: string }> | undefined {
+function sanitizeUnansweredAnnotations(annotations: unknown): PermissionAnnotations | undefined {
     if (!isObject(annotations)) return undefined;
-    const out: Record<string, { unanswered: string }> = {};
+    const out: PermissionAnnotations = {};
     for (const [question, value] of Object.entries(annotations)) {
         const unanswered = isObject(value) ? value.unanswered : undefined;
-        if (typeof unanswered === 'string' && UNANSWERED_VALUES.has(unanswered)) {
-            out[question] = { unanswered };
+        const parsed = UnansweredValueSchema.safeParse(unanswered);
+        if (parsed.success) {
+            out[question] = { unanswered: parsed.data };
         }
     }
     return Object.keys(out).length > 0 ? out : undefined;

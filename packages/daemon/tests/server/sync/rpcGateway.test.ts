@@ -132,14 +132,12 @@ describe('RpcGateway.approvePermission', () => {
                 destination: 'session',
             },
         ]
-        await gateway.approvePermission(
-            'sess-appr',
-            'req-1',
-            undefined,
-            'approved',
-            undefined,
+        await gateway.approvePermission({
+            sessionId: 'sess-appr',
+            requestId: 'req-1',
+            decision: 'approved',
             updatedPermissions,
-        )
+        })
 
         const envelope = payloadCaptor.value as { method: string; params: Record<string, unknown> }
         expect(envelope.method).toBe('sess-appr:permission')
@@ -157,7 +155,7 @@ describe('RpcGateway.approvePermission', () => {
         const registry = makeFakeRegistry(new Map([['sess-appr2:permission', 'sock-appr-2']]))
 
         const gateway = new RpcGateway(io, registry)
-        await gateway.approvePermission('sess-appr2', 'req-2', undefined, 'approved', undefined, undefined)
+        await gateway.approvePermission({ sessionId: 'sess-appr2', requestId: 'req-2', decision: 'approved' })
 
         const envelope = payloadCaptor.value as { method: string; params: Record<string, unknown> }
         expect(envelope.params.id).toBe('req-2')

@@ -880,10 +880,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 // 甄别后上报 daemon（runtimeState.lastWakeup 供状态消费）+ 发 session event
                 // 落库（消息流系统行，刷新不丢）。人工与跨会话消息不带 source，未知取值
                 // （CC 未来扩展）safeParse 失败静默忽略——daemon 不认识的不报。
+                // 与 local 模式的 mods transcript tap（runClaude → registerWakeupTapSubscriber）
+                // 是两种宿主形态各一条通路：remote 走 SDK 进程内 hook（此处，无 mods 观测面），
+                // local 走落盘行扫描（此文件不挂 bridge listener）。若未来 remote 也接 mods tap，
+                // 两条通路会对同一唤醒双报，需按行 uuid 去重——改动前先核对。
                 const wakeup = WakeupSourceSchema.safeParse(input.source)
                 if (wakeup.success) {
                     session.client.reportWakeup(wakeup.data)
-                    session.client.sendSessionEvent({ type: 'wakeup', source: wakeup.data })
                 }
                 const turn = classifyInboundTurn(input);
                 if (turn) {

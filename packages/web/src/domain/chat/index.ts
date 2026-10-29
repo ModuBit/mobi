@@ -19,6 +19,7 @@ export type {
     UsageData,
     AgentEvent,
     ErrorEvent,
+    WakeupEvent,
     ToolResultPermission,
     ToolUse,
     ToolResult,

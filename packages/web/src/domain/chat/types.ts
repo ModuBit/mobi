@@ -89,6 +89,9 @@ export type AgentEvent =
 /** 统一错误事件（判别成员；AgentEvent 末尾有 string 兜底成员，`type` 判别不足以收窄） */
 export type ErrorEvent = Extract<AgentEvent, { type: 'error' }>
 
+/** wakeup 事件（同上：string 兜底成员挡住判别收窄，渲染端经此取 source 档位） */
+export type WakeupEvent = Extract<AgentEvent, { type: 'wakeup' }>
+
 export type ToolResultPermission = {
     date: number
     result: 'approved' | 'denied'

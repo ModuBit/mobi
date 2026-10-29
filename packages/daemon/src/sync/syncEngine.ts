@@ -16,7 +16,7 @@
 
 import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
 import type { ExecutorState } from '@mobi/node-core/api/types'
-import { DEFAULT_STOP_KIND, isCancelQueued, reconcileModelChange, type PermissionAnswers, type PermissionUpdate, type SessionKillRequest, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, isCancelQueued, reconcileModelChange, type SessionKillRequest, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import { homedir } from 'node:os'
 import type { Store } from '../store'
@@ -35,7 +35,7 @@ import { buildHostMetadata } from '@mobi/node-core/hostMetadata'
 import { AgentSessionService } from './agentSessionService'
 import { MessageService, type SendMessagePayload } from './messageService'
 import { WorkspaceCache } from './workspaceCache'
-import { RpcGateway } from './rpcGateway'
+import { RpcGateway, type ApprovePermissionParams } from './rpcGateway'
 import { SessionCache } from './sessionCache'
 import { OutdatedSessionConfigError } from './outdatedSessionConfigError'
 import { SessionReviver, type ReviveOptions, type ReviveResult } from './sessionReviver'
@@ -576,16 +576,8 @@ export class SyncEngine {
         return this.messageService.getMessageSubmitState(sessionId, localId)
     }
 
-    async approvePermission(
-        sessionId: string,
-        requestId: string,
-        mode?: PermissionMode,
-        decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
-        answers?: PermissionAnswers,
-        updatedPermissions?: PermissionUpdate[],
-        annotations?: Record<string, { unanswered: 'skipped' | 'replied_in_chat' | 'dismissed' }>
-    ): Promise<void> {
-        await this.rpcGateway.approvePermission(sessionId, requestId, mode, decision, answers, updatedPermissions, annotations)
+    async approvePermission(params: ApprovePermissionParams): Promise<void> {
+        await this.rpcGateway.approvePermission(params)
     }
 
     async denyPermission(

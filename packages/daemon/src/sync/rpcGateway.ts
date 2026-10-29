@@ -22,11 +22,25 @@
  */
 
 import type { EffortLevel, PermissionMode } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, type AgentMessageDelivery, type AgentMessagePushResult, type PermissionAnswers, type PermissionUpdate, type SessionKillRequest, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, type AgentMessageDelivery, type AgentMessagePushResult, type PermissionAnnotations, type PermissionAnswers, type PermissionUpdate, type SessionKillRequest, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import type { RpcRefreshMetadataResponse } from '../executor/executorHost'
 import { SocketRpcCaller } from './rpcCaller'
+
+/** 审批决策四值（web 审批语义；routes 的 zod decisionSchema 与此对齐） */
+export type PermissionDecision = 'approved' | 'approved_for_session' | 'denied' | 'abort'
+
+/** approvePermission 参数对象（位置参数收口：7 参按名传递，防顺序错位与调用点噪音） */
+export interface ApprovePermissionParams {
+    sessionId: string
+    requestId: string
+    mode?: PermissionMode
+    decision?: PermissionDecision
+    answers?: PermissionAnswers
+    updatedPermissions?: PermissionUpdate[]
+    annotations?: PermissionAnnotations
+}
 
 export class RpcGateway {
     private readonly caller: SocketRpcCaller
@@ -38,15 +52,8 @@ export class RpcGateway {
         this.caller = new SocketRpcCaller(io, rpcRegistry)
     }
 
-    async approvePermission(
-        sessionId: string,
-        requestId: string,
-        mode?: PermissionMode,
-        decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
-        answers?: PermissionAnswers,
-        updatedPermissions?: PermissionUpdate[],
-        annotations?: Record<string, { unanswered: 'skipped' | 'replied_in_chat' | 'dismissed' }>
-    ): Promise<void> {
+    async approvePermission(params: ApprovePermissionParams): Promise<void> {
+        const { sessionId, requestId, mode, decision, answers, updatedPermissions, annotations } = params
         await this.sessionRpc(sessionId, 'permission', {
             id: requestId,
             approved: true,
@@ -61,7 +68,7 @@ export class RpcGateway {
     async denyPermission(
         sessionId: string,
         requestId: string,
-        decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
+        decision?: PermissionDecision,
         reason?: string
     ): Promise<void> {
         await this.sessionRpc(sessionId, 'permission', {

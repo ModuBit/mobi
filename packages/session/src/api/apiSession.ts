@@ -380,9 +380,12 @@ export class ApiSessionClient extends EventEmitter {
     /**
      * 上报 CC 内建定时任务/循环自醒（daemon 落库到 runtimeState.lastWakeup + SSE 推 web）。
      * UserPromptSubmit hook 检出 source ∈ wakeup 枚举时调用（人工/跨会话消息不报）。
+     * 双出口收口于此：runtimeState 上报 + session event 落库（消息流系统行，刷新不丢），
+     * 调用方一次调用两件事都齐——两出口分开曾靠各调用点人肉配对。
      */
     reportWakeup(source: WakeupSource): void {
         this.channel.report({ kind: 'wakeup', source })
+        this.sendSessionEvent({ type: 'wakeup', source })
     }
 
     // ── rewind（会话协议）──

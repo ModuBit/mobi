@@ -114,7 +114,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
             childrenBlocks,
             { metadata, isThinking: false, disableDrawer: true },
             isRunning,
-            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), rewindFailedReasonLabel: t('chat.rewind.filesFailed'), skippedLinksLabel: t('chat.rewind.skippedLinks'), wakeupLoopLabel: t('chat.wakeup.loop'), wakeupScheduleLabel: t('chat.wakeup.schedule'), renderBlock, renderToolGroup },
+            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), rewindFailedReasonLabel: t('chat.rewind.filesFailed'), skippedLinksLabel: t('chat.rewind.skippedLinks'), wakeupLabels: { loop_wakeup: t('chat.wakeup.loop'), schedule_wakeup: t('chat.wakeup.schedule') }, renderBlock, renderToolGroup },
         )
 
         const items = [...baseItems]

@@ -101,11 +101,11 @@ describe('Permissions API — POST /api/sessions/:id/permissions/:requestId/appr
         const body = await res.json() as { ok: boolean }
         expect(body.ok).toBe(true)
 
-        // approvePermission 必须被调用，第 6 参为 updatedPermissions 数组（第 7 参 annotations）
+        // approvePermission 必须被调用，入参为参数对象（updatedPermissions/annotations 按名断言）
         expect(approveCalls).toHaveLength(1)
-        const args = approveCalls[0]
-        expect(args[5]).toEqual(updatedPermissions)
-        expect(args[6]).toBeUndefined()
+        const params = approveCalls[0][0] as { updatedPermissions?: unknown; annotations?: unknown }
+        expect(params.updatedPermissions).toEqual(updatedPermissions)
+        expect(params.annotations).toBeUndefined()
     })
 
     test('body 不含 updatedPermissions 时透传 undefined', async () => {
@@ -125,8 +125,8 @@ describe('Permissions API — POST /api/sessions/:id/permissions/:requestId/appr
 
         expect(res.status).toBe(200)
         expect(approveCalls).toHaveLength(1)
-        const args = approveCalls[0]
-        expect(args[5]).toBeUndefined()
+        const params = approveCalls[0][0] as { updatedPermissions?: unknown }
+        expect(params.updatedPermissions).toBeUndefined()
     })
 
     test('requestId 不在 agentState.requests（已被处理）→ 404 + code:permission_request_gone', async () => {

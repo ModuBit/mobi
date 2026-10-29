@@ -16,8 +16,8 @@
 
 import type React from 'react'
 import { Timer } from 'lucide-react'
-import type { ChatBlock, CustomBlock, ToolCallBlock, AgentReasoningBlock } from '@/domain/chat'
-import { TURN_DIFF_EVENT } from '@mobi/shared'
+import type { ChatBlock, CustomBlock, ToolCallBlock, AgentReasoningBlock, WakeupEvent } from '@/domain/chat'
+import { TURN_DIFF_EVENT, type WakeupSource } from '@mobi/shared'
 import { REWIND_COMMAND, isCompactStart } from '@/domain/chat/presentation'
 import { getUserPlainText } from '@/domain/chat/userContent'
 import type { ChatBlockContext } from './blocks/types'
@@ -35,9 +35,8 @@ export type BuildBubbleOptions = {
     rewindFailedReasonLabel: string
     /** skippedLinks>0 时显示的安全护栏跳过提示（{{count}} 插值） */
     skippedLinksLabel: string
-    /** CC 内建自醒系统行文案（wakeup-source spec）：循环 / 定时任务两档 */
-    wakeupLoopLabel: string
-    wakeupScheduleLabel: string
+    /** CC 内建自醒系统行文案（wakeup-source spec）：按 source 档位取文案（键单源 WakeupSource 枚举，新增档位漏键即编译错） */
+    wakeupLabels: Record<WakeupSource, string>
     /**
      * 块渲染器（分层治理票 03 注入化破环：装配器不静态依赖渲染注册表 blocks/index，
      * 否则 blocks → tool-card → AgentDrawerContent → buildBubbleItems → blocks 成环；
@@ -225,7 +224,8 @@ export function buildChatBubbleItems(
         // 「倒计时到点触发」与自醒语义贴合，循环/定时两档同图标；文案区分档位。
         // 唤醒是「为什么这个回合开始了」的事件说明，非 context-cleared 式内容截断线。
         if (block.kind === 'agent-event' && block.event.type === 'wakeup') {
-            const source = (block.event as { source?: string }).source
+            // AgentEvent 末尾有 string 兜底成员，type 判别不收窄——经域类型 WakeupEvent 取 source
+            const source = (block.event as WakeupEvent).source
             items.push({
                 key: block.id,
                 role: 'system',
@@ -242,7 +242,8 @@ export function buildChatBubbleItems(
                         }}
                     >
                         <Timer size={14} aria-hidden="true" />
-                        {source === 'loop_wakeup' ? options.wakeupLoopLabel : options.wakeupScheduleLabel}
+                        {/* 未知 source（CC 未来扩展、web 未升级窗口）回落定时任务档——开放集合兜底 */}
+                        {options.wakeupLabels[source] ?? options.wakeupLabels.schedule_wakeup}
                     </span>
                 ),
                 block,

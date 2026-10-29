@@ -133,6 +133,16 @@ export type BackgroundTaskInfo = {
     toolUseId?: string | null
 }
 
+/** task 条目 → 元信息投影（description/taskType/subagentType 三键）：task_started 与
+ * background_tasks_changed 两处字段同形，投影收口一处防手写漂移 */
+function projectTaskInfo(data: Record<string, unknown>): Pick<BackgroundTaskInfo, 'description' | 'taskType' | 'subagentType'> {
+    return {
+        description: asString(data.description) ?? undefined,
+        taskType: asString(data.task_type) ?? undefined,
+        subagentType: asString(data.subagent_type) ?? undefined,
+    }
+}
+
 /**
  * 从 task_started 消息中提取任务元信息（**无论前后台**）。
  * 前台任务可能中途转后台（如 Bash 120s 超时自动后台化），届时不会再有 task_started，
@@ -157,9 +167,7 @@ export function extractTaskStartedInfo(
 
     return {
         taskId,
-        description: asString(data.description) ?? undefined,
-        taskType: asString(data.task_type) ?? undefined,
-        subagentType: asString(data.subagent_type) ?? undefined,
+        ...projectTaskInfo(data),
         toolUseId: asString(data.tool_use_id) ?? null,
     }
 }
@@ -205,11 +213,7 @@ export function extractBackgroundTaskIdsFromMessageContent(
             filteredIds.add(taskId)
             continue
         }
-        taskInfo.set(taskId, {
-            description: asString(item.description) ?? undefined,
-            taskType: asString(item.task_type) ?? undefined,
-            subagentType: asString(item.subagent_type) ?? undefined,
-        })
+        taskInfo.set(taskId, projectTaskInfo(item))
     }
     return { ids, filteredIds, taskInfo }
 }
