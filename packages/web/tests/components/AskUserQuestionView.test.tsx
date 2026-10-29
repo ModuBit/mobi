@@ -361,4 +361,25 @@ describe('AskUserQuestionView', () => {
             expect(screen.queryByText(/some unexpected reason/)).toBeNull()
         })
     })
+
+    describe('approved 部分作答的摘要回显', () => {
+        const input = { questions: [
+            { question: 'Language?', options: [{ label: 'TS' }, { label: 'Py' }], multiSelect: false },
+            { question: 'Framework?', options: [{ label: 'React' }, { label: 'Vue' }], multiSelect: false },
+        ]}
+
+        it('跳过的题（answers 无该题）→ 显示 chat.tool.skipped 而非空串', () => {
+            const block = makeBlock(input, { 'Language?': ['TS'] })
+            renderResultView(block)
+            expect(screen.getByText(/Language\? →/)).toBeInTheDocument()
+            expect(screen.getByText('TS')).toBeInTheDocument()
+            expect(screen.getByText('chat.tool.skipped')).toBeInTheDocument()
+        })
+
+        it('全部作答 → 不出现 skipped 标注', () => {
+            const block = makeBlock(input, { 'Language?': ['TS'], 'Framework?': ['React'] })
+            renderResultView(block)
+            expect(screen.queryByText('chat.tool.skipped')).toBeNull()
+        })
+    })
 })

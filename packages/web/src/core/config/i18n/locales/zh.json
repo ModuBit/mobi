@@ -461,6 +461,7 @@
       "planReadyForReview": "Claude 已完成规划，等待确认",
       "question": "问题",
       "selectOption": "请至少选择一个选项",
+      "skipped": "已跳过",
       "rejected": "已拒绝",
       "submit": "提交",
       "submitting": "提交中...",

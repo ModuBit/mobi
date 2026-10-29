@@ -160,9 +160,17 @@ const AskUserQuestionResultView: ToolViewComponent = (props: ToolViewProps) => {
                 {entries.map(([question, ans], idx) => (
                     <li key={idx} style={{ fontSize: 13 }}>
                         <span style={{ color: token.colorTextTertiary }}>{question} → </span>
-                        <span style={{ color: token.colorTextSecondary, fontWeight: 500 }}>
-                            {ans.join(', ')}
-                        </span>
+                        {ans.length > 0 ? (
+                            <span style={{ color: token.colorTextSecondary, fontWeight: 500 }}>
+                                {ans.join(', ')}
+                            </span>
+                        ) : (
+                            // 跳过的题：answers 无该题即 skipped（与提交端 annotations 同口径——
+                            // CC 的 result 文本不 echo unanswered，模型侧该题整行缺席）
+                            <span style={{ color: token.colorTextTertiary, fontStyle: 'italic' }}>
+                                {t('chat.tool.skipped')}
+                            </span>
+                        )}
                     </li>
                 ))}
             </ul>
