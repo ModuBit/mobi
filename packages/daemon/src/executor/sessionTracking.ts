@@ -82,6 +82,7 @@ export function applySessionTrackingSignal(
         MobiSessionId: signal.sessionId,
         pid,
         resumeSessionId,
+        registeredAt: Date.now(),
     }
     tracked.set(pid, entry)
     return { op: 'backfill', entry }

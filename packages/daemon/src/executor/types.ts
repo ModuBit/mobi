@@ -36,4 +36,6 @@ export interface TrackedSession {
   error?: string;
   directoryCreated?: boolean;
   message?: string;
+  /** 表项登记时刻（epoch ms）：诊断「幽灵行阻塞唤醒」时算年龄用（claimSpawn 命中日志） */
+  registeredAt: number;
 }

@@ -64,7 +64,7 @@ describe('applySessionTrackingSignal — 补登（daemon 重启后恢复追踪�
     })
 
     it('pid 已被其他会话占用 → skip pid-collision（不覆盖他人表项）', () => {
-        const map = makeMap([[4242, { startedBy: 'runner', pid: 4242, MobiSessionId: 'other' }]])
+        const map = makeMap([[4242, { startedBy: 'runner', registeredAt: 0, pid: 4242, MobiSessionId: 'other' }]])
         const result = applySessionTrackingSignal(map, { sessionId: 'sess-1', hostPid: 4242, nativeSessionId: 'n' }, alive)
         expect(result).toEqual({ op: 'skip', reason: 'pid-collision' })
         expect(map.get(4242)?.MobiSessionId).toBe('other')
@@ -73,7 +73,7 @@ describe('applySessionTrackingSignal — 补登（daemon 重启后恢复追踪�
 
 describe('applySessionTrackingSignal — 刷新（查重键随 nativeSessionId 演进）', () => {
     it('表项已存在（按 sessionId 命中）→ 刷新 resumeSessionId 为当前 nativeSessionId（/clear、fork 换链后）', () => {
-        const map = makeMap([[4242, { startedBy: 'runner', pid: 4242, MobiSessionId: 'sess-1', resumeSessionId: 'native-old' }]])
+        const map = makeMap([[4242, { startedBy: 'runner', registeredAt: 0, pid: 4242, MobiSessionId: 'sess-1', resumeSessionId: 'native-old' }]])
         const result = applySessionTrackingSignal(map, { sessionId: 'sess-1', hostPid: 4242, nativeSessionId: 'native-new' }, alive)
 
         expect(result).toEqual({ op: 'refresh', pid: 4242, resumeSessionId: 'native-new' })
@@ -81,14 +81,14 @@ describe('applySessionTrackingSignal — 刷新（查重键随 nativeSessionId �
     })
 
     it('刷新不依赖 hostPid 与存活判定（在册表项的存活由既有清理保证）', () => {
-        const map = makeMap([[4242, { startedBy: 'terminal', pid: 4242, MobiSessionId: 'sess-1' }]])
+        const map = makeMap([[4242, { startedBy: 'terminal', registeredAt: 0, pid: 4242, MobiSessionId: 'sess-1' }]])
         const result = applySessionTrackingSignal(map, { sessionId: 'sess-1', nativeSessionId: 'native-x' }, dead)
         expect(result.op).toBe('refresh')
         expect(map.get(4242)?.resumeSessionId).toBe('native-x')
     })
 
     it('nativeSessionId 为空 → 刷新为 undefined（表项退出查重）', () => {
-        const map = makeMap([[4242, { startedBy: 'runner', pid: 4242, MobiSessionId: 'sess-1', resumeSessionId: 'native-old' }]])
+        const map = makeMap([[4242, { startedBy: 'runner', registeredAt: 0, pid: 4242, MobiSessionId: 'sess-1', resumeSessionId: 'native-old' }]])
         const result = applySessionTrackingSignal(map, { sessionId: 'sess-1', nativeSessionId: null }, alive)
         expect(result).toEqual({ op: 'refresh', pid: 4242, resumeSessionId: undefined })
         expect(map.get(4242)?.resumeSessionId).toBeUndefined()
@@ -98,8 +98,8 @@ describe('applySessionTrackingSignal — 刷新（查重键随 nativeSessionId �
 describe('pruneDeadTrackedSessions — pid 退出清理（非子进程表项）', () => {
     it('清除死 pid 表项，保留活表项', () => {
         const map = makeMap([
-            [1, { startedBy: 'runner', pid: 1 }],
-            [2, { startedBy: 'backfill', pid: 2, MobiSessionId: 'sess-2' }],
+            [1, { startedBy: 'runner', registeredAt: 0, pid: 1 }],
+            [2, { startedBy: 'backfill', registeredAt: 0, pid: 2, MobiSessionId: 'sess-2' }],
         ])
         const pruned = pruneDeadTrackedSessions(map, (pid) => pid !== 1) // pid 1 已死
         expect(pruned).toEqual([1])

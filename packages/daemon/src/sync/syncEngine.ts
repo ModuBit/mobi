@@ -242,6 +242,7 @@ export class SyncEngine {
             clearInterval(this.inactivityTimer)
             this.inactivityTimer = null
         }
+        this.reviver.dispose()
     }
 
     subscribe(listener: SyncEventListener): () => void {

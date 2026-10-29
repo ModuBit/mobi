@@ -29,6 +29,7 @@ import type { TrackedSession } from '@/executor/types'
 
 const tracked = (overrides: Partial<TrackedSession> = {}): TrackedSession => ({
   startedBy: 'runner',
+  registeredAt: 0,
   pid: 100,
   ...overrides,
 })

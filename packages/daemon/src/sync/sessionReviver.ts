@@ -110,7 +110,22 @@ export class SessionReviver {
      */
     private readonly inFlight = new Map<string, InFlightRevive>()
 
-    constructor(private readonly deps: SessionReviverDeps) {}
+    /**
+     * 幽灵行善后（ghost recovery）：dedup 命中但 CLI 未附着时安排的延迟复查。
+     * 间隔 5s、上限 10min（120 次）——上限依据：幽灵行最常见来源是 daemon 重启后的
+     * 孤儿 CLI，它会在断连超时（10min）内自行退场、表项随 exit 清理，复查即可放行。
+     * 每次复查走完整 revive（在途闸共用）：会话已活则 no-op 自停，无需额外取消协议。
+     */
+    private static readonly GHOST_RETRY_DELAY_MS = 5_000
+    private static readonly GHOST_RETRY_MAX_ATTEMPTS = 120
+    private readonly ghostRetryLeft = new Map<string, number>()
+    private readonly ghostTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+    constructor(
+        private readonly deps: SessionReviverDeps,
+        /** ghostRetryDelayMs / ghostRetryMaxAttempts 测试注入（默认 5s × 120 次）；其余行为不因注入改变 */
+        private readonly opts: { ghostRetryDelayMs?: number; ghostRetryMaxAttempts?: number } = {},
+    ) {}
 
     /**
      * 唯一的苏醒入口。返回结构化结果；**永不 reject**——消息路由 fire-and-forget 调用，
@@ -177,6 +192,8 @@ export class SessionReviver {
                 } else {
                     daemonLogger.debug(`[dormancy] revive no-op: CLI attached (session=${sessionId})`)
                 }
+                // 会话已活 = 幽灵善后使命完成（附着补投已/将送达排队消息）
+                this.clearGhostRecovery(targetId)
                 return { type: 'success', sessionId: targetId }
             }
             return await this.spawnRevived(session, targetId, opts.intent)
@@ -281,10 +298,16 @@ export class SessionReviver {
             // 附着补投（onCliAttached）收敛——daemon 零等待：不得落到
             // waitForActive，否则断连场景（重连遥遥无期）会干等满 15s
             //
-            // 这里返回 success 但**没有任何进程被拉起**，是「点了恢复却没事发生」的
-            // 静默源之一：isLive 已判未附着，却仍有在册 child（进程活着但没连回来，
-            // 或追踪表残留）。留 warn 让下次可区分——不能靠 debug（不落文件）
-            daemonLogger.warn(`[dormancy] revive deduped: live child exists but CLI is not attached (session=${sessionId}, resume=${resumeToken ?? '<new>'}) — queued messages wait for reattach`)
+            // 但「去重命中 + CLI 未附着」大概率是幽灵行（进程已死/失联的陈旧表项，或
+            // 在途 spawn 卡住）——2026-10-29 生产事故：18:48 daemon 重启后 AUQ 唤醒连续
+            // dedup 整整 10s（retry loop 上限）后放弃，消息滞留 queued 直到用户手动恢复。
+            // 附着补投只在「附着」时触发，幽灵行永远等不到——必须自己安排善后：
+            // 延迟复查唤醒，幽灵行退场（exit 清理表项）后即可正常 spawn。
+            daemonLogger.warn(
+                `[dormancy] revive deduped: live child exists but CLI is not attached ` +
+                `(session=${sessionId}, resume=${resumeToken ?? '<new>'}) — queued messages wait for reattach; ghost recovery scheduled`
+            )
+            this.scheduleGhostRecovery(sessionId, intent)
             return { type: 'success', sessionId }
         }
 
@@ -320,6 +343,51 @@ export class SessionReviver {
             this.deps.redeliverQueued(spawnResult.sessionId)
         }
 
+        // 真 spawn 成功 = 幽灵已放行，善后计数清零
+        this.clearGhostRecovery(sessionId)
         return { type: 'success', sessionId: spawnResult.sessionId }
+    }
+
+    /**
+     * 安排幽灵行善后复查：5s 后重走一次 revive（共用在途闸）。只在 activate 意图做——
+     * prewarm 是预热不是承诺，放弃即止（下次查看重新触发，warmOnOpen 既有哲学）。
+     * 计数按会话累计（多次 dedup 不重置窗口），到顶放弃并留 warn。
+     */
+    private scheduleGhostRecovery(sessionId: string, intent: ReviveIntent): void {
+        if (intent !== 'activate') return
+        if (this.ghostTimers.has(sessionId)) return // 已有在途复查，在途闸会合流
+
+        const left = this.ghostRetryLeft.get(sessionId) ?? this.opts.ghostRetryMaxAttempts ?? SessionReviver.GHOST_RETRY_MAX_ATTEMPTS
+        if (left <= 0) {
+            daemonLogger.warn(
+                `[dormancy] ghost recovery gave up (session=${sessionId}) — ghost row outlived retry window; ` +
+                'next message send or manual resume retries'
+            )
+            this.ghostRetryLeft.delete(sessionId)
+            return
+        }
+        this.ghostRetryLeft.set(sessionId, left - 1)
+
+        const timer = setTimeout(() => {
+            this.ghostTimers.delete(sessionId)
+            daemonLogger.info(`[dormancy] ghost recovery retry (session=${sessionId}, attemptsLeft=${left - 1})`)
+            // 不带 namespace：access 已在首次唤醒校验过，这是 daemon 自己的投递善后
+            void this.revive(sessionId, { intent: 'activate' })
+        }, this.opts.ghostRetryDelayMs ?? SessionReviver.GHOST_RETRY_DELAY_MS)
+        this.ghostTimers.set(sessionId, timer)
+    }
+
+    private clearGhostRecovery(sessionId: string): void {
+        const timer = this.ghostTimers.get(sessionId)
+        if (timer) clearTimeout(timer)
+        this.ghostTimers.delete(sessionId)
+        this.ghostRetryLeft.delete(sessionId)
+    }
+
+    /** engine.stop / 测试收尾：清全部善后定时器，不留悬挂回调 */
+    dispose(): void {
+        for (const timer of this.ghostTimers.values()) clearTimeout(timer)
+        this.ghostTimers.clear()
+        this.ghostRetryLeft.clear()
     }
 }

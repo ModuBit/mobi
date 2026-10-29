@@ -33,7 +33,7 @@ import type { Metadata } from '@mobi/node-core/api/types';
 import { isProcessAlive } from '@mobi/node-core/utils/process';
 import type { TrackedSession } from './types';
 import { applySessionTrackingSignal, pruneDeadTrackedSessions, type SessionTrackingSignal } from './sessionTracking';
-import { createSpawnDedupGuard, dedupKeys, type SpawnClaim, type SpawnDedupKey } from './spawnDedup';
+import { createSpawnDedupGuard, dedupKeys, findRunningDuplicate, type SpawnClaim, type SpawnDedupKey } from './spawnDedup';
 
 /** waitForWebhook 的结果：webhook 到达（成功）或 exit/error/超时（失败） */
 export type WebhookWaitResult =
@@ -77,12 +77,28 @@ export class SessionTrackingTable {
      *
      * 登记追踪表行后立即 release（交接：表行接管去重），失败路径由调用方 finally 释放。
      * 无键（Web 新会话）不预约，行为与既有查重一致。
+     *
+     * 命中必须落 INFO：spawn/dormancy 事故（幽灵行阻塞唤醒，2026-10-29）在生产日志
+     * 不可考的根因就是这条路径只写 debug。命中行详情（pid/年龄/来源）是事后定位
+     * 「幽灵从哪来」的唯一证据。
      */
     claimSpawn(key: SpawnDedupKey): SpawnClaim | null {
-        if (this.checkSpawnDedup(key)) return null;
+        const duplicate = findRunningDuplicate(this.sessions.values(), key);
+        if (duplicate) {
+            const ageS = Math.round((Date.now() - duplicate.registeredAt) / 1000);
+            logger.info(
+                `[EXECUTOR] spawn deduped by tracked row (key=${dedupKeys(key).join(',') || '<none>'}, ` +
+                `hit pid=${duplicate.pid}, mobi=${duplicate.MobiSessionId ?? '<unset>'}, ` +
+                `resume=${duplicate.resumeSessionId ?? '<unset>'}, startedBy=${duplicate.startedBy}, age=${ageS}s)`
+            );
+            return null;
+        }
 
         const keys = dedupKeys(key);
-        if (keys.some((k) => this.pendingSpawnClaims.has(k))) return null;
+        if (keys.some((k) => this.pendingSpawnClaims.has(k))) {
+            logger.info(`[EXECUTOR] spawn deduped by in-flight claim (key=${keys.join(',')})`);
+            return null;
+        }
 
         const token = Symbol('spawn-claim');
         for (const k of keys) this.pendingSpawnClaims.set(k, token);
@@ -137,7 +153,8 @@ export class SessionTrackingTable {
                 startedBy: 'mobi directly - likely by user from terminal',
                 MobiSessionId: sessionId,
                 MobiSessionMetadataFromLocalWebhook: sessionMetadata,
-                pid
+                pid,
+                registeredAt: Date.now()
             };
             this.sessions.set(pid, trackedSession);
             logger.debug(`[EXECUTOR] Registered externally-started session ${sessionId}`);

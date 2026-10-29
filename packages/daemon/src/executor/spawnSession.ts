@@ -279,6 +279,11 @@ export async function spawnSession(options: SpawnRequest, deps: SpawnSessionDeps
         };
 
         try {
+            // 分段计时（观测落盘，2026-10-29）：spawn/dormancy 事故此前在生产不可考
+            // （debug 走 console、stdout→/dev/null）。每条 spawn 一个 INFO 汇总行 +
+            // 各阶段耗时，用户级事件频度，不构成日志噪音
+            const spawnStartedAt = Date.now();
+
             // Resolve authentication token if provided
             let extraEnv: Record<string, string> = {};
             if (options.token) {
@@ -320,6 +325,10 @@ export async function spawnSession(options: SpawnRequest, deps: SpawnSessionDeps
                 logger.debug('[EXECUTOR] resolveMemoryEnv failed; session continues without memory', error);
                 return {};
             });
+            // preSpawn = 目录检查/worktree/args/memoryEnv 全部前置段；此后到 webhook
+            // 返回是 webhookWait（子进程启动+回执，15s 上限）
+            const preSpawnMs = Date.now() - spawnStartedAt;
+            const spawnedAt = Date.now();
 
             MobiProcess = deps.spawn(args, {
                 cwd: spawnDirectory,
@@ -384,6 +393,7 @@ export async function spawnSession(options: SpawnRequest, deps: SpawnSessionDeps
                 // 也能按行 id 命中；webhook 到达后 applyWebhook 会用 CLI 上报值对齐
                 MobiSessionId: options.sessionId,
                 directoryCreated,
+                registeredAt: Date.now(),
                 message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined
             };
 
@@ -423,6 +433,21 @@ export async function spawnSession(options: SpawnRequest, deps: SpawnSessionDeps
                 logStderrTail();
                 return buildFailure('timeout');
             });
+            const webhookWaitMs = Date.now() - spawnedAt;
+            const totalMs = Date.now() - spawnStartedAt;
+            // 结果落 INFO（成功/超时各一行，含分段耗时）：webhook 超时是「进程起了但
+            // 15s 没报到」——没有这行，生产侧永远不知道慢在哪一段
+            if (waitResult.ok) {
+                logger.info(
+                    `[EXECUTOR] spawn ok (session=${waitResult.sessionId}, pid=${pid}, ` +
+                    `total=${totalMs}ms, preSpawn=${preSpawnMs}ms, webhookWait=${webhookWaitMs}ms, dir=${directory})`
+                );
+            } else {
+                logger.warn(
+                    `[EXECUTOR] spawn failed (pid=${pid}, total=${totalMs}ms, preSpawn=${preSpawnMs}ms, ` +
+                    `webhookWait=${webhookWaitMs}ms, dir=${directory}): ${waitResult.errorMessage}`
+                );
+            }
             const spawnResult: SpawnSessionResult = waitResult.ok
                 ? { type: 'success', sessionId: waitResult.sessionId }
                 : { type: 'error', errorMessage: waitResult.errorMessage };

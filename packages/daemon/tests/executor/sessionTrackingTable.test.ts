@@ -25,7 +25,7 @@ import { SessionTrackingTable } from '@/executor/sessionTrackingTable'
 import type { TrackedSession } from '@/executor/types'
 
 function daemonRow(pid: number): TrackedSession {
-    return { startedBy: 'daemon', pid } as TrackedSession
+    return { startedBy: 'daemon', pid, registeredAt: Date.now() } as TrackedSession
 }
 
 function webhookMetadata(pid: number) {

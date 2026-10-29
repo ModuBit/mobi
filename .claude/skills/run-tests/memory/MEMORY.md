@@ -65,3 +65,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [worktree 生命周期验证](worktree-verify.md) — worktree 会话创建（Segmented 原生 input 点击）/ 合回 no-ff 与 squash / 脏保留 toast→设置页丢弃 / 冲突诚实失败 / **active 会话即「运行中」须先休眠** / 列表缓存 5s stale 须 reload（2026-10-25）
 - [模型目录验收](model-catalog-verify.md) — 创建页/会话内面板（换模型·换档·重置）路径与断言 / **滑杆拖动只预览、松手吸附才提交；setPointerCapture 被收回会丢 pointerup** / 手机视口 innerWidth=500 / max 落库 / agent list_models + create_session 未知模型回落 notice / 快速模式创建预设双证据与 useCallback 依赖坑（2026-10-27）
 - [快速模式执行态验证](fast-mode-state-verify.md) — result 帧 vs 切换后 reinitialize 两来源判别（reason 有无）/ **claudeRemote 事件白名单漏转发坑** / 只有 opus-5-5 支持快速模式 / DB 注入验 web 优先级与兜底（2026-10-27）
+- [spawn 链路计时](spawn-chain-timing.md) — API 分段计时 + lstart 定位；role 在 content.role(agent 非 assistant)/日志文件名≠进程启动/prod debug 不落盘不可考
