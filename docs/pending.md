@@ -1381,6 +1381,14 @@ session event 落库 + web divider 系统行）。
 command_lifecycle 帧（或 hook 真发 source）**——升 SDK 时查 changelog，
 拿到流侧 wakeup_source 后全链路即通，无需重做设计。
 
+**2026-10-29 已解——mods transcript tap 通道落地并真机验收通过**（8f459d05）：
+mods session.append tap 观测落盘层（事件是序列化前输入 `{message,door,origin,uuid}`，
+wakeupSource 事件层拿不到——生产端按 door:'prompt' 宽触发、消费端按落盘行
+wakeupSource 权威判定，trigger/row 双匹配器契约单源在 shared/transcriptTap.ts）。
+真机验收：真实唤醒 → 「循环唤醒」divider + lastWakeup 落库 + 消息流无注入 user 行。
+SDK 流通道恢复后可与 mods 通道并存（幂等）。本条目事实层结论（三通道堵点）仍有效，
+仅作历史档案。
+
 ---
 
 ## 129. 后台任务异常续跑的系统行标注（task_notification 档，2026-10-28 暂缓）
