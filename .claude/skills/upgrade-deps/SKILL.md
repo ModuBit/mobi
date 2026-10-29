@@ -79,6 +79,16 @@ bun run lint       # ESLint 检查
 3. **处理类型变更**：如果升级导致类型不兼容，需要同步修改项目代码
 4. **新增依赖**：如果新版本将内嵌依赖提升为 peerDependency，需要在 package.json 中显式添加
 
+#### 升级 `@openuidev/*` 后重生成 openui prompt/catalog
+
+`@openuidev/*`（shared 的 `lang-core`，web/session 的 `react-headless` / `react-lang` / `react-ui`）升级后，必须重跑 codegen 同步两份生成文件：
+
+```bash
+bun run packages/session/scripts/generate-openui-prompt.ts
+```
+
+产出 `packages/session/src/claude/utils/openuiCorePrompt.generated.ts`（system prompt 核心段，常驻）+ `openuiCatalog.generated.ts`（组件目录，`openui_components` 工具按需检索用）。不重跑的话，依赖升了但注入给会话的 openui-lang 规范/组件签名还是旧版口径，两端口径漂移。生成文件头标注「勿手改」，验证以 `bun run typecheck` + prompt/catalog diff 审查为准。
+
 ### 第六步：最终确认
 
 - 运行 `bun outdated` 确认无遗漏
@@ -237,4 +247,5 @@ changelog 里涉及下表方向的变化必须重点评估（代码定位 → �
 - **anthropic/claude 包强制 changelog 检查**：升任何 `@anthropic-ai/*` 包必须执行第八步——拉 SDK + Claude Code 两个 changelog，对照 mobi SDK 使用面评估影响（防御）+ 挖掘可引入的新功能并产出建议表（进攻），typecheck 拦不住的运行时行为用 E2E 回归
 - **changelog 抓取规范**：必须 WebFetch + URL 逐字符照抄第八步表格（禁止 webReader、禁止改写 URL）+ 拿到后与 npm latest 交叉验证（详见第八步第 1 小节）
 - **vendored 资产检查**：每次升级必须执行第九步——hindsight plugin（`@vectorize-io/hindsight-coding-agents` 的 vendor 落位）不在任何 package.json 里，依赖扫描与 `bun outdated` 均不可见，只能显式查 npm 对比 VENDOR-NOTES 版本；有新版须按 VENDOR-NOTES 重新 vendor + diff 上游 plugin.json 协议面 + 跑 bundledPlugins 测试与 memory E2E
+- **openui 生成文件同步**：升任何 `@openuidev/*` 包必须重跑 `bun run packages/session/scripts/generate-openui-prompt.ts` 重生成 prompt/catalog（详见第五步末尾小节）
 - **提交规范**：commit message 使用 `chore:` 前缀，列出关键变更
