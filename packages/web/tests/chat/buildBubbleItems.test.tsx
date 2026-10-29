@@ -404,23 +404,23 @@ describe('buildChatBubbleItems', () => {
     /* ─── 4. context-cleared ─── */
 
     describe('wakeup 系统行（wakeup-source spec）', () => {
-        it('loop_wakeup → divider + 循环唤醒文案', () => {
+        it('loop_wakeup → system 行（左侧图标+文本）+ 循环唤醒文案', () => {
             const blocks = [
                 createAgentEvent({ id: 'ev-wakeup', event: { type: 'wakeup', source: 'loop_wakeup' } }),
             ]
             const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
             expect(items).toHaveLength(1)
-            expect(items[0].role).toBe('divider')
+            expect(items[0].role).toBe('system')
             expect(items[0].key).toBe('ev-wakeup')
             expect(childrenToText((items[0].content as React.ReactElement).props.children)).toBe('Loop wakeup')
         })
 
-        it('schedule_wakeup → divider + 定时任务唤醒文案', () => {
+        it('schedule_wakeup → system 行（左侧图标+文本）+ 定时任务唤醒文案', () => {
             const blocks = [
                 createAgentEvent({ id: 'ev-wakeup', event: { type: 'wakeup', source: 'schedule_wakeup' } }),
             ]
             const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
-            expect(items[0].role).toBe('divider')
+            expect(items[0].role).toBe('system')
             expect(childrenToText((items[0].content as React.ReactElement).props.children)).toBe('Scheduled task wakeup')
         })
 
@@ -429,7 +429,7 @@ describe('buildChatBubbleItems', () => {
                 createAgentEvent({ id: 'ev-wakeup', event: { type: 'wakeup', source: 'future_kind' } as AgentEventBlock['event'] }),
             ]
             const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
-            expect(items[0].role).toBe('divider')
+            expect(items[0].role).toBe('system')
             expect(childrenToText((items[0].content as React.ReactElement).props.children)).toBe('Scheduled task wakeup')
         })
     })

@@ -358,7 +358,9 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
                 key: '__loading-more__',
                 role: 'system' as const,
                 content: (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
+                    // 全宽：system role 的 root justify 已改 flex-start（wakeup 系统行靠左），
+                    // loading 居中靠本 div 自身 100% 宽 + justify-content:center
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', padding: '8px 0' }}>
                         <MobiLogo size={40} />
                     </div>
                 ),
