@@ -1359,7 +1359,27 @@ CLI 层真实 emit 但 **SDK 白名单分发收不到**（sdk.mjs 零命中）�
 `scheduled_for` 降级不展示。
 
 **2026-10-28 两票已交付**（10c4ce2b 上报通道 + runtimeState.lastWakeup；48350f06
-session event 落库 + web divider 系统行）。**待 E2E 真机验收**（造 loop 唤醒 → 消息流出系统行）。
+session event 落库 + web divider 系统行）。
+
+**2026-10-29 E2E 真机验收不通过——票 01 的 hook source 通道在 CC 2.1.312 上收不到信号**。
+真机 5 轮唤醒实证（诊断日志 + transcript 对照），根因链完整：
+
+1. **hook `source` 恒 undefined**：CC 2.1.312 的 UserPromptSubmit hook input schema
+   声明了 source 枚举（`user/sdk/system/loop_wakeup/schedule_wakeup/poll_event`），
+   但唤醒注入回合派发 hook 时 source 位置被压缩为恒 false 展开——**schema 有枚举 ≠
+   实际派发**。人工消息同样 undefined（人工路径本就不带）。
+2. **SDK 流不透传唤醒注入的 user 消息**：transcript jsonl 里唤醒 user 行带
+   `wakeupSource:'loop_wakeup'` + `turnOrigin:'scheduled'` + `isMeta:true`（黄金证据），
+   但 SDK for-await 流里该消息根本不出现（web 上唤醒回合只见 assistant 回复，无 user 行）。
+3. **command_lifecycle 帧（wakeup_source 的正主通道）SDK 也不透传**：CC 侧
+   `commandLifecycleForwarderInstalled` 已自动安装（init 帧 capabilities 广播
+   `lifecycle_wakeup_source_v1` 实锤），CC enqueue 了帧，但 SDK 0.3.312 的
+   SDKMessage union 没有该帧型——流侧收不到（与 PoC 结论一致，PoC 已废弃过一次）。
+
+**现状**：票 01 的 hook 甄别代码保留（forward-compatible：CC 未来真发 source 即生效，
+无害）；票 02 的 web 系统行渲染完好（数据源缺失而已）。**恢复条件：SDK 透传
+command_lifecycle 帧（或 hook 真发 source）**——升 SDK 时查 changelog，
+拿到流侧 wakeup_source 后全链路即通，无需重做设计。
 
 ---
 
