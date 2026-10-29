@@ -3,7 +3,7 @@ name: env-bootstrap
 description: E2E 环境启动 / 清理 / 就绪判断 / profile 检查 / 端口隔离 / 故障恢复 / daemon 单独重启
 metadata:
   type: recipe
-  last_verified: 2026-10-26
+  last_verified: 2026-10-29
 ---
 
 # 环境启动
@@ -117,6 +117,12 @@ daemon spawn 的会话 CLI 是 `bun packages/cli/src/index.ts` 源码直跑，�
 边界校验等）前必须 cleanup + bootstrap 重启环境；否则表现为「修复无效」，极易误判为代码 bug。
 判别手段：`ps -eo pid,ppid,command | grep "packages/cli/src/index.ts claude"` 看会话 CLI 启动时间。
 
+**kill 会话 CLI = 会话被归档删除（2026-10-29 实踩）**：对会话 CLI 发 SIGTERM，daemon 视为
+正常退出并把 sessions 行**归档删掉**——随后 `POST /messages` 404 `Session not found`，
+DB `count(*)=0`，浏览器刷新会话消失。与 daemon 死亡不同（daemon 死时 CLI 断连，行保留，
+发消息可复活）。验证 CLI 新代码需要新进程时：接受重建（重新 spawn + 造素材），
+**不要指望 kill 后发消息复活**。kill 前先 `ps` 三条归属验证（禁全局 pkill）。
+
 ## daemon 单独重启（保留数据目录）
 
 不 cleanup 整环境，只重启 daemon（触发 CLI socket 断连→重连，snapshot delta 场景实测 forceFull 重发）。
@@ -141,6 +147,9 @@ logs 目录尚在无需 mkdir，即可带着既有 workspace/会话/消息继续
 2. `kill -TERM <daemon pid>` → 轮询 `lsof -nP -iTCP:2224 -sTCP:LISTEN` 直到端口释放（实测 1s）
 3. `run_in_background` 套 **setsid** 拉起同命令，日志 `>> logs/daemon.log` 追加：
    `perl -e 'use POSIX qw(setsid); setsid(); exec @ARGV' bash -c 'exec bun run <repo>/packages/cli/src/index.ts --profile e2e daemon start-sync --host 127.0.0.1 --port 2224 >>"$HOME/.mobi-e2e/logs/daemon.log" 2>&1'`
+   **必须同时给 `timeout: 7200000`（2h 上限）**（2026-10-29 实踩）：run_in_background 默认
+   30 分钟超时，到点连 setsid 会话一起 SIGTERM（exits.log 见 uptime≈1799s）——长验收中途
+   daemon 消失、curl 000 即此因。timeout 是该后台任务的上限参数，拉起时一次给足
 4. 轮询 `/health` 就绪
 
 § 重启后的 daemon 父进程不是 bootstrap，`ready.flag` 也早就在——**别拿 ready.flag 判断**，直接 `curl /health`。
