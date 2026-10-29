@@ -147,9 +147,10 @@ logs 目录尚在无需 mkdir，即可带着既有 workspace/会话/消息继续
 2. `kill -TERM <daemon pid>` → 轮询 `lsof -nP -iTCP:2224 -sTCP:LISTEN` 直到端口释放（实测 1s）
 3. `run_in_background` 套 **setsid** 拉起同命令，日志 `>> logs/daemon.log` 追加：
    `perl -e 'use POSIX qw(setsid); setsid(); exec @ARGV' bash -c 'exec bun run <repo>/packages/cli/src/index.ts --profile e2e daemon start-sync --host 127.0.0.1 --port 2224 >>"$HOME/.mobi-e2e/logs/daemon.log" 2>&1'`
-   **必须同时给 `timeout: 7200000`（2h 上限）**（2026-10-29 实踩）：run_in_background 默认
-   30 分钟超时，到点连 setsid 会话一起 SIGTERM（exits.log 见 uptime≈1799s）——长验收中途
-   daemon 消失、curl 000 即此因。timeout 是该后台任务的上限参数，拉起时一次给足
+   ⚠️ **30 分钟硬上限（2026-10-29 两次实踩）**：run_in_background 到点 SIGTERM 连 setsid
+   会话一起杀（exits.log 见 uptime≈1799s），**`timeout: 7200000` 参数实测不生效**——
+   长验收要么在 30 分钟窗口内完成，要么接受中途重拉（daemon+web 各自任务到点即死，
+   任务通知会报 killed；重拉后 web 登录 cookie 仍有效，daemon 数据目录保留）
 4. 轮询 `/health` 就绪
 
 § 重启后的 daemon 父进程不是 bootstrap，`ready.flag` 也早就在——**别拿 ready.flag 判断**，直接 `curl /health`。
@@ -161,9 +162,20 @@ logs 目录尚在无需 mkdir，即可带着既有 workspace/会话/消息继续
 
 `POST /api/auth` body 字段是 **`accessToken`**（不是 token）：`curl -c jar -d '{"accessToken":"e2e-test-token-mobi"}'` 换 httpOnly cookie，后续 `-b jar`。SSE 直接 `curl -N -b jar "http://localhost:2224/api/events?all=1[&snapshotDelta=1]"`（后者协商 delta，模拟新 web；缺省模拟老 web）。
 
+API 造工作区/会话（2026-10-29 实测；库文件 `~/.mobi-e2e/mobi.db`）：
+
+```bash
+# 建工作区：body 是 {name, folders:[{path, primary:true}]}——不是 {path}，缺 primary 报 400
+curl -b jar -X POST .../api/workspaces -d '{"name":"E2E Demo","folders":[{"path":"'$HOME'/workspace/demo","primary":true}]}'
+# spawn 会话：directory 须在 homeDir 内；缺 workspaceId 会产 loose session（禁）
+curl -b jar -X POST .../api/sessions/spawn -d '{"directory":"'$HOME'/workspace/demo","workspaceId":"<ws-id>","permissionMode":"default"}'
+# 发消息
+curl -b jar -X POST .../api/sessions/<sid>/messages -d '{"content":"..."}'
+```
+
 ## 坑（误判）
 
-- **web dev 先于 daemon state 就绪启动 → 登录 404（2026-10-11）** — web dev.ts 的 MOBI_API_URL 从 daemon.state.json 的 hostPort 派生，daemon 未就绪时 fallback 到默认 12222（生产宿主端口）→ e2e web 的 `POST /api/auth` 404。症状：登录页点 Connect 无反应，network 里 /api/auth 404。修法：等 `ready.flag` 后按 PID 杀掉 5175 的 bun，`env -u MOBI_LISTEN_PORT -u MOBI_API_URL bun run src/dev.ts --profile e2e` 重启 web dev（setsid 后台）。
+- **web dev 先于 daemon state 就绪启动 → 登录 404（2026-10-11）** — web dev.ts 的 MOBI_API_URL 从 daemon.state.json 的 hostPort 派生，daemon 未就绪时 fallback 到默认 12222（生产宿主端口）→ e2e web 的 `POST /api/auth` 404。症状：登录页点 Connect 无反应，network 里 /api/auth 404。修法：等 daemon `/health` 就绪后杀掉 5175 的 bun，`env -u MOBI_LISTEN_PORT -u MOBI_API_URL bun run src/app/dev.ts --profile e2e` 重启 web dev（**路径是 `src/app/dev.ts`**，2026-10-29 实踩：`src/dev.ts` 已不存在报 Module not found；run_in_background 直跑即可，不必 setsid）。
 
 - **bootstrap 依赖 shell PATH 里的 bun** — 脚本内部裸调 `bun`；Claude 会话的 shell 常无 `~/.bun/bin`，表现为「等待 Daemon 就绪超时 + 日志 `bun: command not found`」且静默失败。先 `export PATH="$HOME/.bun/bin:$PATH"` 再跑 bootstrap（2026-09-03）
 - **bootstrap 被沙箱按进程组回收（2026-09-11）** — 工具调用结束时沙箱可能 SIGTERM 整个进程组：`nohup &` 内联跑和 `run_in_background` 跑都被回收过（脚本有 TERM trap → cleanup → exit 0，exits.log 见 signal-term，uptime 10-40s 不等；同形状调用存活与否不确定）。**稳定解法：`perl -e 'use POSIX qw(setsid); setsid(); exec @ARGV' bash …/e2e-bootstrap.sh`**——setsid 脱离进程组，组杀不可及；READY 后必须 `curl /health` 复核 daemon 真活
