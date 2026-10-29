@@ -21,7 +21,13 @@
 // 认行规则来自 shared 契约单源（与 mod 生产端 config.mjs 等值，cli 测试锁定），
 // 规则演进只改 shared——此处与生产端的字面量双写已收口。
 
-import { TRANSCRIPT_TAP_GOAL_ENVELOPE_TYPE, TRANSCRIPT_TAP_SESSION_APPEND_RULES } from '@mobi/shared';
+import {
+    TRANSCRIPT_TAP_GOAL_ENVELOPE_TYPE,
+    TRANSCRIPT_TAP_SESSION_APPEND_RULES,
+    matchesTranscriptTapRule,
+    transcriptTapRowMatcher,
+    type TranscriptTapMatcher,
+} from '@mobi/shared';
 import { logger } from '@mobi/node-core/logger';
 import type { BridgeListener } from './bridgeListener';
 import { BoundedUuidSet } from './boundedUuidSet';
@@ -141,25 +147,30 @@ async function handleSignal(
     }
 }
 
-/** 廉价子串门卫（parse 前预筛）：hitTest 与透传循环共用的唯一实现（防两处判别式漂移） */
+/** goal 订阅者认的规则（shared 单源中本信封的子集）——hitTest 与透传判定共用。
+ * 按信封收窄是硬约束：契约里还有其他信封的规则（如 wakeup），其行匹配器若混进来，
+ * 唤醒行会被本订阅者误透传进聊天流。 */
+const GOAL_RULES = TRANSCRIPT_TAP_SESSION_APPEND_RULES.filter(
+    (rule) => (rule.envelope ?? TRANSCRIPT_TAP_GOAL_ENVELOPE_TYPE) === TRANSCRIPT_TAP_GOAL_ENVELOPE_TYPE,
+);
+
+/** 廉价子串门卫（parse 前预筛）：本信封规则的行匹配器字段名直接出现在行文本里 */
 function mayMatchAnyRule(line: string): boolean {
-    return TRANSCRIPT_TAP_SESSION_APPEND_RULES.some((rule) => rule.name === undefined || line.includes(rule.name));
+    return GOAL_RULES.some((rule) => {
+        const matcher: TranscriptTapMatcher = transcriptTapRowMatcher(rule);
+        return (matcher.name !== undefined && line.includes(matcher.name)) || (matcher.field !== undefined && line.includes(matcher.field));
+    });
 }
 
 /** attachment 行变体（uuid 必有，供匹配后收窄） */
 type AttachmentRow = Extract<RawJSONLines, { type: 'attachment' }>;
 
 /**
- * 行匹配（由 shared tap 契约单源推导）：door 与 transcript 行 type 同名
- * （票 06 实锤形状），attachment door 的类型名在 attachment.type。
+ * 行匹配：本信封规则的行侧匹配器（shared 单源推导——door 同行 type；name 在
+ * attachment.type；field 要求行顶层字段存在）。其他信封的行（如唤醒行）天然排除。
  */
 function matchesTapRules(row: RawJSONLines): row is AttachmentRow {
-    return TRANSCRIPT_TAP_SESSION_APPEND_RULES.some((rule) => {
-        if (rule.door !== undefined && row.type !== rule.door) return false;
-        if (rule.name === undefined) return true;
-        const payloadType = row.attachment ? (row.attachment as { type?: unknown }).type : undefined;
-        return payloadType === rule.name;
-    });
+    return GOAL_RULES.some((rule) => matchesTranscriptTapRule(row, transcriptTapRowMatcher(rule)));
 }
 
 /**

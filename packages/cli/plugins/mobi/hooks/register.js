@@ -28,12 +28,22 @@ import { bridgeEnvelopeType, sessionAppendRules } from './config.mjs';
  * 注意：$.env.get 的名字参数必须是字符串字面量（校验器据此点名），常量仅作文档。 */
 const BRIDGE_SOCK_ENV = 'MOBI_BRIDGE_SOCK';
 
-/** 过滤规则判定：规则字段缺省表示通配。规则单源在同目录 config.mjs（见其头注释）。
- * 事件形状（SessionAppendInput）：door 在顶层，attachment 类型名在 e.message.name。 */
-export function matchesAppendRule(rule, event) {
-    if (rule.door !== undefined && event?.door !== rule.door) return false;
-    if (rule.name !== undefined && event?.message?.name !== rule.name) return false;
+/** 过滤规则判定（生产端触发面）：规则字段缺省表示通配。规则单源在同目录
+ *  config.mjs（见其头注释）。事件形状（SessionAppendInput，落盘序列化前的输入）：
+ *  只有 {message, door, origin, uuid}——wakeupSource 等字段落盘时才盖上，事件层
+ *  拿不到，故判定只看 trigger 三维（door/message.name/顶层 field）。
+ *  与 shared 契约的 matchesTranscriptTapTrigger 同语义（等值由 cli 测试锁定，
+ *  沙箱内无法 import shared）。 */
+export function matchesAppendRule(matcher, event) {
+    if (matcher.door !== undefined && event?.door !== matcher.door) return false;
+    if (matcher.name !== undefined && event?.message?.name !== matcher.name) return false;
+    if (matcher.field !== undefined && event?.[matcher.field] === undefined) return false;
     return true;
+}
+
+/** 命中规则的信封 type：规则自带 envelope 优先，缺省回落单一信封（历史规则兼容） */
+export function envelopeForRule(rule) {
+    return rule.envelope ?? bridgeEnvelopeType;
 }
 
 /** 过滤规则（模块级：校验器要求 on() 的 hook 是顶层声明，hook 及其依赖须在顶层可解析） */
@@ -47,7 +57,8 @@ let cachedSock;
 /** 解析并推送单条信号（fire-and-forget 调用，任何失败静默） */
 function pushSignal($, e) {
     // 规则判定同步前置：海量非命中行在 env 解析前即返回（worker 负载敏感，见缓存注释）
-    if (!rules.some((rule) => matchesAppendRule(rule, e))) return;
+    const hit = rules.find((rule) => matchesAppendRule(rule.trigger, e));
+    if (!hit) return;
     const sock = cachedSock !== undefined ? Promise.resolve(cachedSock) : $.env.get("MOBI_BRIDGE_SOCK").then((sockPath) => {
         // 仅缓存真值：bridge env 未注入的会话（命中行才走到这）不把 undefined 钉进缓存
         if (sockPath) cachedSock = sockPath;
@@ -60,7 +71,7 @@ function pushSignal($, e) {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({
-                    type: bridgeEnvelopeType,
+                    type: envelopeForRule(hit),
                     payload: { door: e.door, name: e.message?.name, uuid: e.uuid },
                 }),
                 socketPath: sockPath,
@@ -81,10 +92,10 @@ function onAppend($, e, next) {
 
 export const register = (on, options) => {
     if (rules.length === 0) return;
-    // matcher 收缩触发面：全部规则都带同一 door 时按 door 预筛（引擎侧过滤，
-    // 非 attachment 行不再进 hook、不进 worker），有通配/多 door 规则则全量监听
-    const allSameDoor = rules.every((rule) => rule.door !== undefined)
-        && new Set(rules.map((rule) => rule.door)).size === 1;
+    // matcher 收缩触发面：全部规则的 trigger 都指向同一 door 时按 door 预筛（引擎侧
+    // 过滤，其余行不进 hook、不进 worker），有通配/多 door 规则则全量监听
+    const allSameDoor = rules.every((rule) => rule.trigger?.door !== undefined)
+        && new Set(rules.map((rule) => rule.trigger.door)).size === 1;
     if (allSameDoor) {
         on('session.append', { door: rules[0].door }, onAppend);
     } else {
