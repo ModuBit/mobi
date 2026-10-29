@@ -176,12 +176,26 @@ function makeResolveTelemetryEnv(): () => Promise<Record<string, string>> {
       const otelHeaders = encodeOtelHeaders(telemetry.headers);
       const env: Record<string, string> = {
         CLAUDE_CODE_ENABLE_TELEMETRY: '1',
-        // traces 是 beta 信号，必需这把钥匙；metrics/logs 不导出（隐私红线见 shared 协议注释）
+        // traces 是 beta 信号，必需这把钥匙；metrics 不导出
         CLAUDE_CODE_ENHANCED_TELEMETRY_BETA: '1',
         OTEL_TRACES_EXPORTER: 'otlp',
         OTEL_EXPORTER_OTLP_PROTOCOL: 'http/protobuf',
         OTEL_EXPORTER_OTLP_ENDPOINT: telemetry.endpoint.trim(),
       };
+      // 档②隐含档①（raw API 请求体已含 prompt/回复/工具内容，事件面照样开门保 Langfuse 聚合）
+      const withContent = telemetry.includeContent || telemetry.includeRawApiBodies;
+      if (withContent) {
+        // 内容走 logs 信号：四门全开（用户消息/助手回复/工具出入参/工具输出）
+        env.OTEL_LOGS_EXPORTER = 'otlp';
+        env.OTEL_LOG_USER_PROMPTS = '1';
+        env.OTEL_LOG_ASSISTANT_RESPONSES = '1';
+        env.OTEL_LOG_TOOL_DETAILS = '1';
+        env.OTEL_LOG_TOOL_CONTENT = '1';
+      }
+      if (telemetry.includeRawApiBodies) {
+        // 档②：完整 Messages API 请求/响应 JSON（含 system prompt 与全部对话历史，60KB 截断）
+        env.OTEL_LOG_RAW_API_BODIES = '1';
+      }
       if (otelHeaders) env.OTEL_EXPORTER_OTLP_HEADERS = otelHeaders;
       return env;
     } catch (error) {

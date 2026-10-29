@@ -48,6 +48,8 @@ export function mergeTelemetrySubmission(
     const next: TelemetrySettings = { ...current }
     if (submission.enabled !== undefined) next.enabled = submission.enabled
     if (submission.endpoint !== undefined) next.endpoint = submission.endpoint.trim() || undefined
+    if (submission.includeContent !== undefined) next.includeContent = submission.includeContent
+    if (submission.includeRawApiBodies !== undefined) next.includeRawApiBodies = submission.includeRawApiBodies
     if (submission.headers !== undefined) {
         const cleaned = Object.fromEntries(
             Object.entries(submission.headers)

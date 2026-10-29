@@ -89,6 +89,8 @@ export function TelemetrySection() {
     // 表单草稿（可变输入——最小标识外状态，非派生对象）
     const [enabled, setEnabled] = useState(false)
     const [endpoint, setEndpoint] = useState('')
+    const [includeContent, setIncludeContent] = useState(false)
+    const [includeRawApiBodies, setIncludeRawApiBodies] = useState(false)
     // 认证头草稿：OTEL 标准形态字符串 `K=V,K2=V2`（write-only，回读只知 headersSet）
     const [headersDraft, setHeadersDraft] = useState('')
 
@@ -98,6 +100,8 @@ export function TelemetrySection() {
         if (!loaded || initialized) return
         setEnabled(settings?.enabled ?? false)
         setEndpoint(settings?.endpoint ?? '')
+        setIncludeContent(settings?.includeContent ?? false)
+        setIncludeRawApiBodies(settings?.includeRawApiBodies ?? false)
         setInitialized(true)
     }, [loaded, initialized, settings])
 
@@ -139,6 +143,9 @@ export function TelemetrySection() {
         const submission: TelemetrySettingsSubmission = {
             enabled,
             endpoint: endpoint.trim(),
+            // 内容档位是非敏感布尔：恒显式提交（无在场性协议）
+            includeContent,
+            includeRawApiBodies,
             ...(headersDraft.trim() ? { headers: parsedHeaders } : {}),
         }
         const result = await save(submission)
@@ -185,6 +192,18 @@ export function TelemetrySection() {
                                 aria-label={t('settings.telemetry.endpointLabel')}
                             />
                         </div>
+
+                        <EnabledRow>
+                            <Switch checked={includeContent} onChange={(v) => { setIncludeContent(v); if (!v) setIncludeRawApiBodies(false) }} aria-label={t('settings.telemetry.contentLabel')} />
+                            <span style={{ fontSize: 13 }}>{t('settings.telemetry.contentLabel')}</span>
+                        </EnabledRow>
+                        <Hint $token={token}>{t('settings.telemetry.contentHint')}</Hint>
+
+                        <EnabledRow>
+                            <Switch checked={includeRawApiBodies} onChange={(v) => { setIncludeRawApiBodies(v); if (v) setIncludeContent(true) }} aria-label={t('settings.telemetry.rawLabel')} />
+                            <span style={{ fontSize: 13 }}>{t('settings.telemetry.rawLabel')}</span>
+                        </EnabledRow>
+                        <Hint $token={token}>{t('settings.telemetry.rawHint')}</Hint>
 
                         <div>
                             <FieldLabel $token={token}>{t('settings.telemetry.headersLabel')}</FieldLabel>

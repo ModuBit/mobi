@@ -44,6 +44,18 @@ export const TelemetrySettingsSchema = z.object({
      * 协议面只收非空键值——语义化校验（是否像 token）不在此层。
      */
     headers: z.record(z.string(), z.string().min(1)).optional(),
+    /**
+     * 档①消息与工具内容（缺省 false）：用户消息/助手回复全文、工具出入参、工具输出
+     * （OTEL_LOG_USER_PROMPTS/ASSISTANT_RESPONSES/TOOL_DETAILS/TOOL_CONTENT 四门全开）。
+     * 对话内容出网到 collector——隐私档位高于纯时延 trace。
+     */
+    includeContent: z.boolean().optional(),
+    /**
+     * 档②完整 API 请求体（缺省 false，隐含档①）：完整 Messages API 请求/响应 JSON
+     * （OTEL_LOG_RAW_API_BODIES）——含 system prompt 与全部对话历史，体积大
+     * （60KB 截断）且敏感度最高，独立开关让用户显式知情。
+     */
+    includeRawApiBodies: z.boolean().optional(),
 })
 export type TelemetrySettings = z.infer<typeof TelemetrySettingsSchema>
 
@@ -56,6 +68,8 @@ export const TelemetrySettingsSubmissionSchema = z.object({
     enabled: z.boolean().optional(),
     endpoint: z.string().optional(),
     headers: z.record(z.string(), z.string().min(1)).optional(),
+    includeContent: z.boolean().optional(),
+    includeRawApiBodies: z.boolean().optional(),
 })
 export type TelemetrySettingsSubmission = z.infer<typeof TelemetrySettingsSubmissionSchema>
 

@@ -125,6 +125,8 @@ describe('TelemetrySection 开启态与保存', () => {
         await waitFor(() => expect(stableApi.telemetry.set).toHaveBeenCalledWith({
             enabled: true,
             endpoint: 'http://localhost:4318',
+            includeContent: false,
+            includeRawApiBodies: false,
             headers: { 'DD-API-KEY': 'secret', k2: 'v2' },
         }))
     })
@@ -142,8 +144,8 @@ describe('TelemetrySection 开启态与保存', () => {
     it('启用但未填 endpoint → 拦截提交', async () => {
         stableApi.telemetry.get.mockResolvedValue({ data: { settings: { enabled: false, headersSet: false } } })
         renderSection()
-        await waitFor(() => expect(screen.getByRole('switch')).toBeInTheDocument())
-        fireEvent.click(screen.getByRole('switch')) // 开启 → endpoint 输入出现（空）
+        await waitFor(() => expect(screen.getAllByRole('switch')[0]).toBeInTheDocument())
+        fireEvent.click(screen.getAllByRole('switch')[0]) // 开启 → endpoint 输入出现（空）
         fireEvent.click(screen.getByText(i18nMap['settings.telemetry.saveButton']))
 
         await waitFor(() => expect(screen.getByText(i18nMap['settings.telemetry.endpointRequired'])).toBeInTheDocument())
@@ -156,5 +158,42 @@ describe('TelemetrySection 开启态与保存', () => {
         fireEvent.click(screen.getByText(i18nMap['settings.telemetry.headersClear']))
 
         await waitFor(() => expect(stableApi.telemetry.set).toHaveBeenCalledWith({ headers: {} }))
+    })
+
+    it('内容档位：开关状态随草稿回显并恒提交', async () => {
+        stableApi.telemetry.get.mockResolvedValue({
+            data: { settings: { enabled: true, endpoint: 'http://e', headersSet: false, includeContent: true } },
+        })
+        renderSection()
+        const switches = await waitFor(() => {
+            const els = screen.getAllByRole('switch')
+            expect(els.length).toBe(3)
+            return els
+        })
+        // enabled / 档① / 档② = checked/false/true
+        expect(switches[0]).toBeChecked()
+        expect(switches[1]).toBeChecked()
+        expect(switches[2]).not.toBeChecked()
+        // 点保存：布尔恒提交
+        fireEvent.click(screen.getByText(i18nMap['settings.telemetry.saveButton']))
+        await waitFor(() => expect(stableApi.telemetry.set).toHaveBeenCalledWith(
+            expect.objectContaining({ includeContent: true, includeRawApiBodies: false }),
+        ))
+    })
+
+    it('开档②自动带档①；关档①联动关档②', async () => {
+        stableApi.telemetry.get.mockResolvedValue({ data: { settings: { enabled: true, endpoint: 'http://e', headersSet: false } } })
+        renderSection()
+        const switches = await waitFor(() => {
+            const els = screen.getAllByRole('switch')
+            expect(els.length).toBe(3)
+            return els
+        })
+        // 开档② → 档①联动开
+        fireEvent.click(switches[2])
+        expect(switches[1]).toBeChecked()
+        // 关档① → 档②联动关
+        fireEvent.click(switches[1])
+        expect(switches[2]).not.toBeChecked()
     })
 })
