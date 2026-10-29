@@ -56,6 +56,11 @@ export const TelemetrySettingsSchema = z.object({
      * （60KB 截断）且敏感度最高，独立开关让用户显式知情。
      */
     includeRawApiBodies: z.boolean().optional(),
+    /**
+     * 指标导出（缺省 false）：token 用量/cost/会话/工具决策等计数器
+     * （OTEL_METRICS_EXPORTER=otlp）——纯数字无内容，按天看消耗趋势用。
+     */
+    includeMetrics: z.boolean().optional(),
 })
 export type TelemetrySettings = z.infer<typeof TelemetrySettingsSchema>
 
@@ -70,6 +75,7 @@ export const TelemetrySettingsSubmissionSchema = z.object({
     headers: z.record(z.string(), z.string().min(1)).optional(),
     includeContent: z.boolean().optional(),
     includeRawApiBodies: z.boolean().optional(),
+    includeMetrics: z.boolean().optional(),
 })
 export type TelemetrySettingsSubmission = z.infer<typeof TelemetrySettingsSubmissionSchema>
 

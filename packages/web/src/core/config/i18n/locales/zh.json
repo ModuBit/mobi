@@ -827,6 +827,8 @@
       "contentHint": "用户消息与助手回复全文、工具出入参与输出都会发到 collector——对话内容出网，请确认你信任该 endpoint。关闭时仅导出时延。",
       "rawLabel": "导出完整 API 请求体",
       "rawHint": "含 system prompt 与全部对话历史的原始请求/响应 JSON（单条 60KB 截断），敏感度最高；开启将自动带上消息内容导出。",
+      "metricsLabel": "导出指标（token/成本计数）",
+      "metricsHint": "token 用量、成本、会话与工具决策的计数器——纯数字不含任何内容，适合看消耗趋势。",
       "headersCleared": "认证头已清除",
       "loadFailed": "遥测设置加载失败（daemon 不可达）",
       "saveFailed": "保存失败",

@@ -127,6 +127,7 @@ describe('TelemetrySection 开启态与保存', () => {
             endpoint: 'http://localhost:4318',
             includeContent: false,
             includeRawApiBodies: false,
+            includeMetrics: false,
             headers: { 'DD-API-KEY': 'secret', k2: 'v2' },
         }))
     })
@@ -167,7 +168,7 @@ describe('TelemetrySection 开启态与保存', () => {
         renderSection()
         const switches = await waitFor(() => {
             const els = screen.getAllByRole('switch')
-            expect(els.length).toBe(3)
+            expect(els.length).toBe(4)
             return els
         })
         // enabled / 档① / 档② = checked/false/true
@@ -186,7 +187,7 @@ describe('TelemetrySection 开启态与保存', () => {
         renderSection()
         const switches = await waitFor(() => {
             const els = screen.getAllByRole('switch')
-            expect(els.length).toBe(3)
+            expect(els.length).toBe(4)
             return els
         })
         // 开档② → 档①联动开

@@ -91,6 +91,7 @@ export function TelemetrySection() {
     const [endpoint, setEndpoint] = useState('')
     const [includeContent, setIncludeContent] = useState(false)
     const [includeRawApiBodies, setIncludeRawApiBodies] = useState(false)
+    const [includeMetrics, setIncludeMetrics] = useState(false)
     // 认证头草稿：OTEL 标准形态字符串 `K=V,K2=V2`（write-only，回读只知 headersSet）
     const [headersDraft, setHeadersDraft] = useState('')
 
@@ -102,6 +103,7 @@ export function TelemetrySection() {
         setEndpoint(settings?.endpoint ?? '')
         setIncludeContent(settings?.includeContent ?? false)
         setIncludeRawApiBodies(settings?.includeRawApiBodies ?? false)
+        setIncludeMetrics(settings?.includeMetrics ?? false)
         setInitialized(true)
     }, [loaded, initialized, settings])
 
@@ -146,6 +148,7 @@ export function TelemetrySection() {
             // 内容档位是非敏感布尔：恒显式提交（无在场性协议）
             includeContent,
             includeRawApiBodies,
+            includeMetrics,
             ...(headersDraft.trim() ? { headers: parsedHeaders } : {}),
         }
         const result = await save(submission)
@@ -204,6 +207,12 @@ export function TelemetrySection() {
                             <span style={{ fontSize: 13 }}>{t('settings.telemetry.rawLabel')}</span>
                         </EnabledRow>
                         <Hint $token={token}>{t('settings.telemetry.rawHint')}</Hint>
+
+                        <EnabledRow>
+                            <Switch checked={includeMetrics} onChange={setIncludeMetrics} aria-label={t('settings.telemetry.metricsLabel')} />
+                            <span style={{ fontSize: 13 }}>{t('settings.telemetry.metricsLabel')}</span>
+                        </EnabledRow>
+                        <Hint $token={token}>{t('settings.telemetry.metricsHint')}</Hint>
 
                         <div>
                             <FieldLabel $token={token}>{t('settings.telemetry.headersLabel')}</FieldLabel>

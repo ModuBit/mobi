@@ -836,6 +836,8 @@
       "contentHint": "Full user prompts and assistant responses, tool inputs/outputs are sent to the collector — conversation content leaves this machine; make sure you trust the endpoint. When off, only timing spans are exported.",
       "rawLabel": "Export full API request bodies",
       "rawHint": "Raw request/response JSON including the system prompt and entire conversation history (60 KB truncation per item); highest sensitivity. Turning this on enables message & tool content as well.",
+      "metricsLabel": "Export metrics (token/cost counters)",
+      "metricsHint": "Token usage, cost, session and tool-decision counters — numbers only, no content. Good for usage trends.",
       "headersCleared": "Headers cleared",
       "loadFailed": "Failed to load telemetry settings (daemon unreachable)",
       "saveFailed": "Failed to save",

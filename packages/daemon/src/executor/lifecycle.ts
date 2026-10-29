@@ -196,6 +196,10 @@ function makeResolveTelemetryEnv(): () => Promise<Record<string, string>> {
         // 档②：完整 Messages API 请求/响应 JSON（含 system prompt 与全部对话历史，60KB 截断）
         env.OTEL_LOG_RAW_API_BODIES = '1';
       }
+      if (telemetry.includeMetrics) {
+        // 指标：token/cost/会话/工具决策计数器（纯数字无内容）
+        env.OTEL_METRICS_EXPORTER = 'otlp';
+      }
       if (otelHeaders) env.OTEL_EXPORTER_OTLP_HEADERS = otelHeaders;
       return env;
     } catch (error) {

@@ -50,6 +50,7 @@ export function mergeTelemetrySubmission(
     if (submission.endpoint !== undefined) next.endpoint = submission.endpoint.trim() || undefined
     if (submission.includeContent !== undefined) next.includeContent = submission.includeContent
     if (submission.includeRawApiBodies !== undefined) next.includeRawApiBodies = submission.includeRawApiBodies
+    if (submission.includeMetrics !== undefined) next.includeMetrics = submission.includeMetrics
     if (submission.headers !== undefined) {
         const cleaned = Object.fromEntries(
             Object.entries(submission.headers)
