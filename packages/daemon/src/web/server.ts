@@ -38,6 +38,7 @@ import { createHostRoutes } from './routes/host'
 import { createWebToolsRoutes } from './routes/webTools'
 import { createWorktreesRoutes } from './routes/worktrees'
 import { createMemoryRoutes } from './routes/memory'
+import { createTelemetryRoutes } from './routes/telemetry'
 import { createMapRoutes } from './routes/map'
 import { createCliRoutes } from './routes/cli'
 import { createPushRoutes } from './routes/push'
@@ -167,6 +168,8 @@ export function createWebApp(options: WebAppDeps): Hono<WebAppEnv> {
     app.route('/api', createWebToolsRoutes(options.getSyncEngine))
     // 记忆设置（真相源本进程 settings.daemon.json，无 executor 依赖）
     app.route('/api', createMemoryRoutes())
+    // 会话遥测设置（OpenTelemetry；同上，spawn 时注入会话子进程）
+    app.route('/api', createTelemetryRoutes())
     // 地图设置 + 静态图代理（key 只在服务端；静态图按参数缓存）
     app.route('/api', createMapRoutes())
     app.route('/api', createPushRoutes(options))

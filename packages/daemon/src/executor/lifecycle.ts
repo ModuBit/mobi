@@ -27,6 +27,7 @@ import fs from 'fs/promises';
 
 import { ExecutorState, Metadata } from '@mobi/node-core/api/types';
 import { SpawnSessionResult } from '@mobi/shared/hostProtocol';
+import { encodeOtelHeaders } from '@mobi/shared';
 import type { SpawnRequest } from './executorHost';
 import { logger } from '@mobi/node-core/logger';
 import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli';
@@ -158,6 +159,38 @@ function makeResolveMemoryEnv(): (workspaceDirectory: string, workspaceId: strin
     };
 }
 
+/**
+ * 会话遥测 env 求值（OpenTelemetry 设置票）：每次 spawn 现读设置文件（「下个新会话
+ * 生效」语义，与 makeResolveMemoryEnv 同款）。裁决先行：enabled 关 / endpoint 未配 /
+ * 任何故障都返回空对象（零注入，不阻断 spawn）。v1 traces-only：beta 开关 + otlp
+ * exporter + 固定 http/protobuf 协议；认证头经 encodeOtelHeaders 单源编码。
+ */
+function makeResolveTelemetryEnv(): () => Promise<Record<string, string>> {
+  return async () => {
+    try {
+      const config = getConfiguration();
+      const telemetry = (await readSettings(config.settingsFile))?.telemetry;
+      if (!telemetry?.enabled || !telemetry.endpoint?.trim()) {
+        return {};
+      }
+      const otelHeaders = encodeOtelHeaders(telemetry.headers);
+      const env: Record<string, string> = {
+        CLAUDE_CODE_ENABLE_TELEMETRY: '1',
+        // traces 是 beta 信号，必需这把钥匙；metrics/logs 不导出（隐私红线见 shared 协议注释）
+        CLAUDE_CODE_ENHANCED_TELEMETRY_BETA: '1',
+        OTEL_TRACES_EXPORTER: 'otlp',
+        OTEL_EXPORTER_OTLP_PROTOCOL: 'http/protobuf',
+        OTEL_EXPORTER_OTLP_ENDPOINT: telemetry.endpoint.trim(),
+      };
+      if (otelHeaders) env.OTEL_EXPORTER_OTLP_HEADERS = otelHeaders;
+      return env;
+    } catch (error) {
+      logger.debug('[EXECUTOR] Telemetry resolution failed; session continues without telemetry', error);
+      return {};
+    }
+  };
+}
+
 export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHandle> {
   // Acquire exclusive lock (proves the executor is running)
   const daemonLockHandle: FileHandle | null = await acquireDaemonLock(5, 200);
@@ -197,6 +230,7 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
     governor: sessionGovernor,
     hostPort: resolveSpawnHostPort(),
     resolveMemoryEnv: makeResolveMemoryEnv(),
+    resolveTelemetryEnv: makeResolveTelemetryEnv(),
     reportOutcome: (outcome: SpawnOutcome) => { reportSpawnOutcomeToHub?.(outcome); },
     fs,
     spawn: spawnMobiCli,

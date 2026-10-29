@@ -69,6 +69,7 @@ function makeDeps(overrides: Partial<SpawnSessionDeps> = {}) {
         disposeWorktree: vi.fn().mockResolvedValue({ removed: true, branchDeleted: true, state: 'clean', dirtyFileCount: 0 }),
         isProcessAlive: vi.fn().mockReturnValue(false),
         resolveMemoryEnv: vi.fn().mockResolvedValue({}),
+        resolveTelemetryEnv: vi.fn().mockResolvedValue({}),
         ...overrides,
     }
     return { deps, table, spawnFn }
@@ -301,6 +302,60 @@ describe('spawnSession 记忆 env 注入（agent-memory 票 02）', () => {
             const spawnEnv = (spawnFn.mock.calls[0] as unknown as [unknown, { env: Record<string, string> }])[1].env
             expect(spawnEnv.MOBI_MEMORY_ENGINE).toBeUndefined()
         }
+        } finally {
+            vi.unstubAllEnvs()
+        }
+    })
+})
+
+describe('spawnSession 遥测 env 注入（OpenTelemetry 设置票）', () => {
+    it('enabled 时 OTEL env 并入 spawn env（覆盖继承值）', async () => {
+        const child = new FakeProcess()
+        child.pid = 62
+        const resolveTelemetryEnv = vi.fn().mockResolvedValue({
+            CLAUDE_CODE_ENABLE_TELEMETRY: '1',
+            CLAUDE_CODE_ENHANCED_TELEMETRY_BETA: '1',
+            OTEL_TRACES_EXPORTER: 'otlp',
+            OTEL_EXPORTER_OTLP_PROTOCOL: 'http/protobuf',
+            OTEL_EXPORTER_OTLP_ENDPOINT: 'http://127.0.0.1:4318',
+        })
+        const spawnFn = vi.fn((..._params: Parameters<SpawnSessionDeps['spawn']>) => child)
+        const { deps, table } = makeDeps({ spawn: spawnFn, resolveTelemetryEnv })
+
+        const pending = spawnSession(simpleOptions, deps)
+        await vi.waitFor(() => expect(table.get(62)).toBeDefined())
+        table.applyWebhook('sess-otel', { hostPid: 62 } as never)
+        const result = await pending
+
+        expect(result).toEqual({ type: 'success', sessionId: 'sess-otel' })
+        // 遥测不按 workspace 区分：无参调用
+        expect(resolveTelemetryEnv).toHaveBeenCalledWith()
+        const spawnEnv = (spawnFn.mock.calls[0] as unknown as [unknown, { env: Record<string, string> }])[1].env
+        expect(spawnEnv.OTEL_EXPORTER_OTLP_ENDPOINT).toBe('http://127.0.0.1:4318')
+        expect(spawnEnv.OTEL_TRACES_EXPORTER).toBe('otlp')
+    })
+
+    it('off/未配置（空对象）与求值异常都不阻断 spawn、env 不含遥测键', async () => {
+        vi.stubEnv('CLAUDE_CODE_ENABLE_TELEMETRY', undefined)
+        try {
+            for (const resolveTelemetryEnv of [
+                vi.fn().mockResolvedValue({}),
+                vi.fn().mockRejectedValue(new Error('settings read failed')),
+            ]) {
+                const child = new FakeProcess()
+                child.pid = 63
+                const spawnFn = vi.fn((..._params: Parameters<SpawnSessionDeps['spawn']>) => child)
+                const { deps, table } = makeDeps({ spawn: spawnFn, resolveTelemetryEnv })
+
+                const pending = spawnSession(simpleOptions, deps)
+                await vi.waitFor(() => expect(table.get(63)).toBeDefined())
+                table.applyWebhook('sess-otel-2', { hostPid: 63 } as never)
+                const result = await pending
+
+                expect(result).toEqual({ type: 'success', sessionId: 'sess-otel-2' })
+                const spawnEnv = (spawnFn.mock.calls[0] as unknown as [unknown, { env: Record<string, string> }])[1].env
+                expect(spawnEnv.OTEL_EXPORTER_OTLP_ENDPOINT).toBeUndefined()
+            }
         } finally {
             vi.unstubAllEnvs()
         }

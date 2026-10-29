@@ -707,6 +707,10 @@
         "title": "Long-term Memory",
         "desc": "Mobi remembers across sessions"
       },
+      "telemetry": {
+        "title": "Telemetry",
+        "desc": "OpenTelemetry trace export"
+      },
       "map": {
         "title": "Map",
         "desc": "AMap keys and render mode"
@@ -814,6 +818,25 @@
       "injectNoneHint": "No automatic injection; memory tools remain for on-demand use",
       "pageRefreshLabel": "Knowledge-page refresh interval (turns)",
       "pageRefreshHint": "Refresh the index block every N turns; 0 = never (the block is injected every turn by default, ~2KB)"
+    },
+    "telemetry": {
+        "saveButton": "Save",
+      "cardTitle": "Session telemetry (OpenTelemetry)",
+      "enabledLabel": "Enable trace export",
+      "privacyHint": "Exports trace spans only (latency and names of interactions / model requests / tool calls / hooks); conversation content is never included, and prompt-level log events are not exported. Applies to the next new session after saving.",
+      "endpointLabel": "OTLP Endpoint",
+      "endpointRequired": "OTLP endpoint is required when enabled",
+      "headersLabel": "Auth headers",
+      "headersPlaceholder": "K=V,K2=V2 (e.g. DD-API-KEY=xxx)",
+      "headersSetPlaceholder": "Set — enter a new value to overwrite",
+      "headersHint": "Auth headers for your observability backend, sent with every export request",
+      "headersInvalid": "Headers must be K=V,K2=V2 (comma separated, non-empty key and value)",
+      "headersClear": "Clear saved headers",
+      "headersCleared": "Headers cleared",
+      "loadFailed": "Failed to load telemetry settings (daemon unreachable)",
+      "saveFailed": "Failed to save",
+      "savedHint": "Saved — applies to the next new session",
+      "effectiveNextSession": "Applies to next new session"
     },
     "map": {
       "title": "Map",

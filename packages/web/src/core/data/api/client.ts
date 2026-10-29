@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, DaemonStatus, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse } from './types'
-import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, MapSettingsSubmission, MapSettingsView, PermissionAnnotations, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin, WorktreeListResponse, MergeBackResult, MergeBackRequest, DiscardResult, DeleteSessionResponse } from '@mobi/shared'
+import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, RedactedTelemetrySettings, TelemetrySettingsSubmission, MapSettingsSubmission, MapSettingsView, PermissionAnnotations, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin, WorktreeListResponse, MergeBackResult, MergeBackRequest, DiscardResult, DeleteSessionResponse } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
 // 全局 401 处理回调（由外部设置）
@@ -503,6 +503,14 @@ export function createMobiApi() {
             // 健康检查（草稿 endpoint/token，token 缺省 daemon 用已存值兜底）
             check: (input: { endpoint: string; apiToken?: string }) =>
                 client.post<MemoryEndpointCheckResult | { error: string }>('/api/memory/check', input),
+        },
+
+        // 会话遥测设置（OpenTelemetry；daemon 本地 settings.daemon.json；headers 脱敏回显只回 set 标记）
+        telemetry: {
+            get: () => client.get<{ settings: RedactedTelemetrySettings } | { error: string }>('/api/telemetry'),
+            // headers 在场性协议：不在场 = 保持旧值；空对象 = 清除；非空 = 覆盖
+            set: (submission: TelemetrySettingsSubmission) =>
+                client.post<{ settings: RedactedTelemetrySettings } | { error: string }>('/api/telemetry', submission),
         },
 
         // 地图设置（daemon 本地 settings.daemon.json；JS key/安全密钥回显，服务端 key 只回 set 标记）

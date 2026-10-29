@@ -34,6 +34,7 @@ const NotificationsSection = lazyRoute(routeChunkLoaders.NotificationsSection)
 const SettingsIndex = lazyRoute(routeChunkLoaders.SettingsIndex)
 const WebToolsSection = lazyRoute(routeChunkLoaders.WebToolsSection)
 const MemorySection = lazyRoute(routeChunkLoaders.MemorySection)
+const TelemetrySection = lazyRoute(routeChunkLoaders.TelemetrySection)
 const MapSection = lazyRoute(routeChunkLoaders.MapSection)
 const WorktreeSection = lazyRoute(routeChunkLoaders.WorktreeSection)
 const DebugSectionRoute = lazyRoute(routeChunkLoaders.DebugSectionRoute)
@@ -130,6 +131,12 @@ const settingsMemoryRoute = createRoute({
     path: 'memory',
     component: MemorySection,
 })
+// 会话遥测分区（OpenTelemetry trace 导出）
+const settingsTelemetryRoute = createRoute({
+    getParentRoute: () => settingsRoute,
+    path: 'telemetry',
+    component: TelemetrySection,
+})
 // 地图分区
 const settingsMapRoute = createRoute({
     getParentRoute: () => settingsRoute,
@@ -175,6 +182,7 @@ export const router = createRouter({
                 settingsNotificationsRoute,
                 settingsWebToolsRoute,
                 settingsMemoryRoute,
+                settingsTelemetryRoute,
                 settingsMapRoute,
                 settingsWorktreesRoute,
                 settingsDebugRoute,

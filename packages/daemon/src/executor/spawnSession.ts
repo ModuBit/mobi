@@ -75,6 +75,10 @@ export type SpawnSessionDeps = {
      *  （MOBI_MEMORY_ENGINE + HINDSIGHT_*），降级（off/非法/排除）返回空对象。
      *  装配层负责读 daemon 设置、解析隔离规则与同步管理配置文件；求值放装配、执行放 spawn */
     resolveMemoryEnv: (workspaceDirectory: string, workspaceId: string | undefined) => Promise<Record<string, string>>;
+    /** 会话遥测裁决（OpenTelemetry 设置票）：读 daemon 设置求值——enabled+endpoint 齐
+     *  备返回 OTEL_* env（v1 traces-only），否则空对象。求值放装配、执行放 spawn；
+     *  无参数（遥测不按 workspace 区分，全局一档） */
+    resolveTelemetryEnv: () => Promise<Record<string, string>>;
 };
 
 /** spawn 前 error 捕获的字符串化（error 事件负载到错误文案） */
@@ -325,6 +329,11 @@ export async function spawnSession(options: SpawnRequest, deps: SpawnSessionDeps
                 logger.debug('[EXECUTOR] resolveMemoryEnv failed; session continues without memory', error);
                 return {};
             });
+            // 遥测 env 求值（OpenTelemetry）：off/未配置返回空对象，故障降级为空对象，同样不阻断 spawn
+            const telemetryEnv = await deps.resolveTelemetryEnv().catch((error) => {
+                logger.debug('[EXECUTOR] resolveTelemetryEnv failed; session continues without telemetry', error);
+                return {};
+            });
             // preSpawn = 目录检查/worktree/args/memoryEnv 全部前置段；此后到 webhook
             // 返回是 webhookWait（子进程启动+回执，15s 上限）
             const preSpawnMs = Date.now() - spawnStartedAt;
@@ -342,6 +351,8 @@ export async function spawnSession(options: SpawnRequest, deps: SpawnSessionDeps
                     MOBI_API_URL: hostChannelUrl(deps.hostPort),
                     // 记忆 env 覆盖继承值（用户 shell 自有的 HINDSIGHT_* 不得串入 mobi 挂载的记忆会话）
                     ...memoryEnv,
+                    // 遥测 env 同理覆盖继承值（用户 shell 自有的 OTEL_* 不得串入 mobi 会话）
+                    ...telemetryEnv,
                 }
             });
 

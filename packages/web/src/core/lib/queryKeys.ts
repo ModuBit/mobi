@@ -75,6 +75,8 @@ export const queryKeys = {
     gitReviewCommits: (sessionId: string) => ['git-review-v2-commits', sessionId] as const,
     /** 记忆设置（daemon settings.daemon.json memory 段脱敏回显） */
     memorySettings: ['memory-settings'] as const,
+    /** 会话遥测设置（daemon settings.daemon.json telemetry 段脱敏回显） */
+    telemetrySettings: ['telemetry-settings'] as const,
     mapSettings: ['map-settings'] as const,
     /** SDK 元数据（commands, models, agents 等） */
     sdkMetadata: (sessionId: string) => ['sdkMetadata', sessionId] as const,

@@ -20,7 +20,7 @@ import { mkdir, readFile, rename, writeFile, chmod } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { withFileLock } from '@mobi/node-core/persistence'
 import type { MemorySettings } from './memorySettings'
-import type { MapSettings } from '@mobi/shared'
+import type { MapSettings, TelemetrySettings } from '@mobi/shared'
 
 /**
  * Daemon 专属设置（settings.daemon.json）。
@@ -48,6 +48,8 @@ export interface Settings {
     daemonName?: string
     /** 长期记忆设置块（agent-memory 票 02）：引擎三态 + endpoint + 例外映射 + workspace 排除 */
     memory?: MemorySettings
+    /** 会话遥测设置块（OpenTelemetry）：开关 + OTLP endpoint + 认证头（spawn 时注入会话子进程） */
+    telemetry?: TelemetrySettings
     /** 地图设置块：高德 JS API（交互）与 Web 服务 key（静态图代理） */
     map?: MapSettings
     /** 会话治理设置块（票 2.1）：maxActive 覆盖 cap 公式（钳下限 6） */

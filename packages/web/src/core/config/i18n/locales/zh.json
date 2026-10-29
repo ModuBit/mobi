@@ -698,6 +698,10 @@
         "title": "长期记忆",
         "desc": "让 mobi 越聊越了解你"
       },
+      "telemetry": {
+        "title": "遥测",
+        "desc": "OpenTelemetry trace 导出"
+      },
       "map": {
         "title": "地图",
         "desc": "高德地图 key 与渲染档位"
@@ -805,6 +809,25 @@
       "injectNoneHint": "完全不自动注入，仅保留记忆工具供模型按需调用",
       "pageRefreshLabel": "知识页目录刷新间隔（轮）",
       "pageRefreshHint": "每 N 轮刷新一次目录块；0 = 从不刷新（该块默认每轮注入，约 2KB）"
+    },
+    "telemetry": {
+        "saveButton": "保存",
+      "cardTitle": "会话遥测（OpenTelemetry）",
+      "enabledLabel": "启用 trace 导出",
+      "privacyHint": "仅导出 trace span（每次交互 / 模型请求 / 工具调用 / hook 的时延与名称），不含对话内容；prompt 级事件不导出。保存后下个新会话生效。",
+      "endpointLabel": "OTLP Endpoint",
+      "endpointRequired": "启用时必须填写 OTLP Endpoint",
+      "headersLabel": "认证头",
+      "headersPlaceholder": "K=V,K2=V2（如 DD-API-KEY=xxx）",
+      "headersSetPlaceholder": "已设置——输入新值覆盖",
+      "headersHint": "云产品接入的认证 header，随导出请求一并发送",
+      "headersInvalid": "认证头格式应为 K=V,K2=V2（逗号分隔，键值均非空）",
+      "headersClear": "清除已存认证头",
+      "headersCleared": "认证头已清除",
+      "loadFailed": "遥测设置加载失败（daemon 不可达）",
+      "saveFailed": "保存失败",
+      "savedHint": "已保存，下个新会话生效",
+      "effectiveNextSession": "下个新会话生效"
     },
     "map": {
       "title": "地图配置",
