@@ -372,10 +372,11 @@ packages/session/src/
 │   ├── model.ts                          # 模型名称规范化
 │   ├── registerKillSessionHandler.ts     # 注册 kill-session RPC
 │   ├── types.ts                          # 类型定义
-│   ├── bridge/                           # CLI↔session 事件桥（type 精确路由；goal / forked skill tap）
+│   ├── bridge/                           # CLI↔session 事件桥（type 精确路由；goal / wakeup / forked skill tap）
 │   │   ├── bridgeListener.ts             # per-session HTTP-over-UDS listener（信封按 type 分发）
 │   │   ├── tailReader.ts                 # transcript 尾部反向分块扫（64KB 首块/256KB 封顶）
 │   │   ├── goalTapSubscriber.ts          # goal_status 信号订阅：尾扫读原始行透传 + 补偿扫描（goal.append）
+│   │   ├── wakeupTapSubscriber.ts        # 唤醒行订阅：尾扫解析 wakeupSource 走上报链路，不透传行（wakeup.append）
 │   │   ├── forkedSkillTapSubscriber.ts   # forked /code-review 行装配为主对话行入流（forked-skill.append）
 │   │   ├── forkedSkillTapState.ts        # 会话级已消费 uuid 集合（SDK 流末尾重放的抑制判定）
 │   │   └── boundedUuidSet.ts             # 有容量上限的 uuid 集合（两个订阅者的去重共用）

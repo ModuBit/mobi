@@ -19,7 +19,7 @@
 | `src/quoteProtocol.ts` | quote 协议单源：进出同形引用协议（标签族常量、index 合法性与去重键、进向 XML 组装、批注↔回复配对 uuid 优先+线性兜底、XML 转义原语；出向扫描/去重/截断走 mobiXml 族通用原语） |
 | `src/streamingToolInputPreview.ts` | 流式工具入参预览单一来源：半截 JSON 尽力解析 + 白名单字段抓取 + 8KB 扫描窗口 |
 | `src/socket.ts` | Socket.IO 事件类型定义（含 `snapshot-stream-end`） |
-| `src/transcriptTap.ts` | transcript tap 生产/消费契约单源（`TRANSCRIPT_TAP_SESSION_APPEND_RULES` / 信封 type `goal.append`；mod 生产端 config.mjs 由 cli 测试锁定等值） |
+| `src/transcriptTap.ts` | transcript tap 生产/消费契约单源（`TRANSCRIPT_TAP_SESSION_APPEND_RULES`，trigger/row 双匹配器——事件层宽触发 + 落盘行权威判定；信封按 type 精确路由 `goal.append` / `wakeup.append`；mod 生产端 config.mjs 由 cli 测试锁定等值） |
 | `src/forkedSkillTap.ts` | forked skill tap 契约单源（信封 `forked-skill.append` + 载荷 schema + 流侧抑制纯函数 `shouldSuppressStreamMessage`） |
 | `src/snapshotDelta.ts` | Snapshot delta 协议 apply 端共享逻辑（buildSnapshotMessage / locateSnapshotBlocks / applySnapshotBlockDeltas） |
 | `src/modes.ts` | 权限模式定义（PermissionMode 等） |
