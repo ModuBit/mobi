@@ -130,6 +130,10 @@ function bubbleLayoutClass(block: ChatBlock | GroupedBlock): string | undefined 
         const align = block.display?.align
         return align === 'left' || align === 'right' ? `bubble-event-align-${align}` : undefined
     }
+    // system-notice 横幅（CC informational）/ custom 消息（fork 溯源等）：过程性系统行靠左，
+    // 走 agent-event display.align 同一覆盖通道（title-changed / switch 仍居中）。
+    // turn-diff 审核卡同为 custom kind，走下方 fullwidth 通道，不在此列
+    if (block.kind === 'system-notice' || (block.kind === 'custom' && !isTurnDiffCard(block))) return 'bubble-event-align-left'
     // turn-diff 卡：内容链撑满气泡（borderless 内容默认 shrink-to-fit）
     if (isTurnDiffCard(block)) return 'bubble-turn-diff-fullwidth'
     return undefined

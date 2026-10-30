@@ -434,8 +434,60 @@ describe('buildChatBubbleItems', () => {
         })
     })
 
-    describe('context-cleared', () => {
-        it('context-cleared 事件 → role: divider', () => {
+    /* ─── 5. 过程性系统行靠左（2026-10-30 定稿：仅 title-changed / switch / divider 保持居中） ─── */
+
+    describe('系统行对齐', () => {
+        it('agent-event display.align left → bubble-event-align-left（microcompact 等过程行）', () => {
+            const blocks = [
+                createAgentEvent({ id: 'ev-mc', event: { type: 'microcompact', trigger: 'auto', preTokens: 1, tokensSaved: 2 }, display: { align: 'left' } }),
+            ]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            expect(items[0].classNames?.root).toBe('bubble-event-align-left')
+        })
+
+        it('title-changed / switch（无 display.align）不挂对齐类，保持 system 默认居中', () => {
+            const blocks = [
+                createAgentEvent({ id: 'ev-title', event: { type: 'title-changed', title: 'T' } }),
+                createAgentEvent({ id: 'ev-switch', event: { type: 'switch', mode: 'local' } }),
+            ]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            expect(items[0].classNames?.root).toBeUndefined()
+            expect(items[1].classNames?.root).toBeUndefined()
+        })
+
+        it('system-notice 横幅 → 靠左', () => {
+            const blocks = [{
+                kind: 'system-notice' as const,
+                id: 'notice-1',
+                createdAt: 1000,
+                content: 'Model degraded',
+                level: 'warning' as const,
+            }]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            expect(items[0].role).toBe('system')
+            expect(items[0].classNames?.root).toBe('bubble-event-align-left')
+        })
+
+        it('custom 消息（fork 溯源等非审核卡）→ 靠左；turn-diff 审核卡仍走 fullwidth 不受牵连', () => {
+            const forkRow: ChatBlock = {
+                kind: 'custom',
+                id: 'custom-fork',
+                createdAt: 1000,
+                blocks: [{ type: 'custom-event', name: 'fork-origin', value: { from: 's1' } }],
+            }
+            const diffCard: ChatBlock = {
+                kind: 'custom',
+                id: 'custom-diff',
+                createdAt: 1001,
+                blocks: [{ type: 'custom-event', name: TURN_DIFF_EVENT, value: { turnIndex: 1 } }],
+            }
+            const items = buildChatBubbleItems([forkRow, diffCard], defaultCtx, false, defaultOptions)
+            expect(items[0].classNames?.root).toBe('bubble-event-align-left')
+            expect(items[1].classNames?.root).toBe('bubble-turn-diff-fullwidth')
+        })
+    })
+
+    describe('context-cleared', () => {        it('context-cleared 事件 → role: divider', () => {
             const blocks = [
                 createAgentEvent({
                     id: 'ev-ctx',
