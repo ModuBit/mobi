@@ -118,14 +118,21 @@ export class SessionReviver {
      */
     private static readonly GHOST_RETRY_DELAY_MS = 5_000
     private static readonly GHOST_RETRY_MAX_ATTEMPTS = 120
-    private readonly ghostRetryLeft = new Map<string, number>()
-    private readonly ghostTimers = new Map<string, ReturnType<typeof setTimeout>>()
+    /** 幽灵善后条目：timer = 在途复查（null = 等待窗口内未排程），left = 剩余复查次数 */
+    private readonly ghostRecovery = new Map<string, { timer: ReturnType<typeof setTimeout> | null; left: number }>()
+
+    /** 规范化后的善后参数（构造时字段级兜底——测试只注入一个字段时另一个仍取默认） */
+    private readonly opts: { ghostRetryDelayMs: number; ghostRetryMaxAttempts: number }
 
     constructor(
         private readonly deps: SessionReviverDeps,
-        /** ghostRetryDelayMs / ghostRetryMaxAttempts 测试注入（默认 5s × 120 次）；其余行为不因注入改变 */
-        private readonly opts: { ghostRetryDelayMs?: number; ghostRetryMaxAttempts?: number } = {},
-    ) {}
+        opts: { ghostRetryDelayMs?: number; ghostRetryMaxAttempts?: number } = {},
+    ) {
+        this.opts = {
+            ghostRetryDelayMs: opts.ghostRetryDelayMs ?? SessionReviver.GHOST_RETRY_DELAY_MS,
+            ghostRetryMaxAttempts: opts.ghostRetryMaxAttempts ?? SessionReviver.GHOST_RETRY_MAX_ATTEMPTS,
+        }
+    }
 
     /**
      * 唯一的苏醒入口。返回结构化结果；**永不 reject**——消息路由 fire-and-forget 调用，
@@ -355,39 +362,52 @@ export class SessionReviver {
      */
     private scheduleGhostRecovery(sessionId: string, intent: ReviveIntent): void {
         if (intent !== 'activate') return
-        if (this.ghostTimers.has(sessionId)) return // 已有在途复查，在途闸会合流
+        if (this.ghostRecovery.get(sessionId)?.timer) return // 已有在途复查，在途闸会合流
 
-        const left = this.ghostRetryLeft.get(sessionId) ?? this.opts.ghostRetryMaxAttempts ?? SessionReviver.GHOST_RETRY_MAX_ATTEMPTS
+        const left = this.ghostRecovery.get(sessionId)?.left ?? this.opts.ghostRetryMaxAttempts
         if (left <= 0) {
             daemonLogger.warn(
                 `[dormancy] ghost recovery gave up (session=${sessionId}) — ghost row outlived retry window; ` +
                 'next message send or manual resume retries'
             )
-            this.ghostRetryLeft.delete(sessionId)
+            this.ghostRecovery.delete(sessionId)
             return
         }
-        this.ghostRetryLeft.set(sessionId, left - 1)
+        this.ghostRecovery.set(sessionId, { timer: null, left: left - 1 })
 
         const timer = setTimeout(() => {
-            this.ghostTimers.delete(sessionId)
+            const entry = this.ghostRecovery.get(sessionId)
+            if (entry) entry.timer = null
             daemonLogger.info(`[dormancy] ghost recovery retry (session=${sessionId}, attemptsLeft=${left - 1})`)
-            // 不带 namespace：access 已在首次唤醒校验过，这是 daemon 自己的投递善后
-            void this.revive(sessionId, { intent: 'activate' })
-        }, this.opts.ghostRetryDelayMs ?? SessionReviver.GHOST_RETRY_DELAY_MS)
-        this.ghostTimers.set(sessionId, timer)
+            // 不带 namespace：access 已在首次唤醒校验过，这是 daemon 自己的投递善后。
+            // 复查 revive 返回 error（session_not_found / spawn 异常等）时既不重排也
+            // 不会走 success 清零——按放弃处理：warn 落盘（善后终止原因可考，不再静默）
+            // 并删掉条目防计数滞留泄漏。激活失败已由 markActivationError 落给用户，
+            // 下次发消息/手动恢复会重试
+            void this.revive(sessionId, { intent: 'activate' }).then((result) => {
+                if (result.type === 'error') {
+                    daemonLogger.warn(
+                        `[dormancy] ghost recovery stopped (session=${sessionId}): retry revive failed — ${result.message}`,
+                    )
+                    this.ghostRecovery.delete(sessionId)
+                }
+            })
+        }, this.opts.ghostRetryDelayMs)
+        const entry = this.ghostRecovery.get(sessionId)
+        if (entry) entry.timer = timer
     }
 
     private clearGhostRecovery(sessionId: string): void {
-        const timer = this.ghostTimers.get(sessionId)
-        if (timer) clearTimeout(timer)
-        this.ghostTimers.delete(sessionId)
-        this.ghostRetryLeft.delete(sessionId)
+        const entry = this.ghostRecovery.get(sessionId)
+        if (entry?.timer) clearTimeout(entry.timer)
+        this.ghostRecovery.delete(sessionId)
     }
 
     /** engine.stop / 测试收尾：清全部善后定时器，不留悬挂回调 */
     dispose(): void {
-        for (const timer of this.ghostTimers.values()) clearTimeout(timer)
-        this.ghostTimers.clear()
-        this.ghostRetryLeft.clear()
+        for (const entry of this.ghostRecovery.values()) {
+            if (entry.timer) clearTimeout(entry.timer)
+        }
+        this.ghostRecovery.clear()
     }
 }

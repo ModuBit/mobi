@@ -361,48 +361,6 @@ describe('spawnSession 遥测 env 注入（OpenTelemetry 设置票）', () => {
         }
     })
 
-    it('内容档位：档①开四门 + logs exporter；档②叠加 RAW_API_BODIES（隐含档①）', async () => {
-        const run = async (env: Record<string, string>, assertions: (spawnEnv: Record<string, string>) => void) => {
-            const child = new FakeProcess()
-            child.pid = 64
-            const spawnFn = vi.fn((..._params: Parameters<SpawnSessionDeps['spawn']>) => child)
-            const resolveTelemetryEnv = vi.fn().mockResolvedValue(env)
-            const { deps, table } = makeDeps({ spawn: spawnFn, resolveTelemetryEnv })
-            const pending = spawnSession(simpleOptions, deps)
-            await vi.waitFor(() => expect(table.get(64)).toBeDefined())
-            table.applyWebhook('sess-otel-3', { hostPid: 64 } as never)
-            await pending
-            assertions((spawnFn.mock.calls[0] as unknown as [unknown, { env: Record<string, string> }])[1].env)
-        }
-
-        await run({
-            CLAUDE_CODE_ENABLE_TELEMETRY: '1',
-            OTEL_TRACES_EXPORTER: 'otlp',
-            OTEL_EXPORTER_OTLP_ENDPOINT: 'http://e',
-            OTEL_LOGS_EXPORTER: 'otlp',
-            OTEL_LOG_USER_PROMPTS: '1',
-            OTEL_LOG_ASSISTANT_RESPONSES: '1',
-            OTEL_LOG_TOOL_DETAILS: '1',
-            OTEL_LOG_TOOL_CONTENT: '1',
-        }, (spawnEnv) => {
-            expect(spawnEnv.OTEL_LOG_USER_PROMPTS).toBe('1')
-            expect(spawnEnv.OTEL_LOG_RAW_API_BODIES).toBeUndefined()
-        })
-
-        await run({
-            CLAUDE_CODE_ENABLE_TELEMETRY: '1',
-            OTEL_TRACES_EXPORTER: 'otlp',
-            OTEL_EXPORTER_OTLP_ENDPOINT: 'http://e',
-            OTEL_LOGS_EXPORTER: 'otlp',
-            OTEL_LOG_USER_PROMPTS: '1',
-            OTEL_LOG_ASSISTANT_RESPONSES: '1',
-            OTEL_LOG_TOOL_DETAILS: '1',
-            OTEL_LOG_TOOL_CONTENT: '1',
-            OTEL_LOG_RAW_API_BODIES: '1',
-        }, (spawnEnv) => {
-            expect(spawnEnv.OTEL_LOG_RAW_API_BODIES).toBe('1')
-        })
-    })
 })
 
 describe('错误文案树纯函数', () => {

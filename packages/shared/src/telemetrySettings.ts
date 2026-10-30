@@ -28,10 +28,11 @@
 import { z } from 'zod'
 
 /**
- * 遥测设置块。v1 信号面固定 traces-only：
- * - span 只含时延与名称（交互/模型请求/工具/hook），不含对话正文；
- * - log events 会携带 prompt/工具结果内容出网，属隐私红线，不提供开关；
- * - metrics 用处小，不为它扩协议面（未来需要时加 signals 字段）。
+ * 会话遥测（OpenTelemetry）设置块。信号面：traces 恒导出（时延与名称，不含对话
+ * 正文）；内容类信号分档显式知情：
+ * - 档① includeContent：用户消息/助手回复全文、工具出入参、工具输出（log events 四门）
+ * - 档② includeRawApiBodies：完整 Messages API 请求体（含 system prompt 与全部历史）
+ * - includeMetrics：token/cost 等纯数字计数器
  */
 export const TelemetrySettingsSchema = z.object({
     /** 总开关（缺省 false）：off 时 spawn 不注入任何 OTEL env */
@@ -65,19 +66,12 @@ export const TelemetrySettingsSchema = z.object({
 export type TelemetrySettings = z.infer<typeof TelemetrySettingsSchema>
 
 /**
- * 提交方向 schema（web → daemon POST /api/telemetry 请求体）：
- * headers 在场性协议与 memory 的 apiToken 一致——不在场 = 保持旧值；
- * 空对象 = 显式清除；非空 = 整体替换。
+ * 提交方向 schema（web → daemon POST /api/telemetry 请求体）：与设置块同形（全字段
+ * optional，落哪个字段由合并写决定）。headers 在场性协议与 memory 的 apiToken 一致——
+ * 不在场 = 保持旧值；空对象 = 显式清除；非空 = 整体替换。
  */
-export const TelemetrySettingsSubmissionSchema = z.object({
-    enabled: z.boolean().optional(),
-    endpoint: z.string().optional(),
-    headers: z.record(z.string(), z.string().min(1)).optional(),
-    includeContent: z.boolean().optional(),
-    includeRawApiBodies: z.boolean().optional(),
-    includeMetrics: z.boolean().optional(),
-})
-export type TelemetrySettingsSubmission = z.infer<typeof TelemetrySettingsSubmissionSchema>
+export const TelemetrySettingsSubmissionSchema = TelemetrySettingsSchema
+export type TelemetrySettingsSubmission = TelemetrySettings
 
 /** 回显方向：headers 脱敏为「设没设」标记（write-only——密码态输入无需掩码提示内容） */
 export type RedactedTelemetrySettings = Omit<TelemetrySettings, 'headers'> & {
@@ -91,13 +85,28 @@ export function redactTelemetrySettings(telemetry: TelemetrySettings | undefined
 }
 
 /**
+ * header record 规范化（键值 trim，全空段剔除）——daemon 写入与导出编码共用的单一
+ * 事实：落盘的 headers 恒为 trim 过的非空对，编码侧重跑一遍只是手动编辑
+ * settings 文件时的廉价防御。
+ */
+export function normalizeOtelHeaderRecord(
+    headers: Record<string, string>,
+): Record<string, string> {
+    return Object.fromEntries(
+        Object.entries(headers)
+            .map(([k, v]) => [k.trim(), v.trim()])
+            .filter(([k, v]) => k !== '' && v !== ''),
+    )
+}
+
+/**
  * OTEL_EXPORTER_OTLP_HEADERS 编码（daemon spawn 注入单源）：
- * record → `k=v,k2=v2`（OTel 标准形态；值内逗号不在遥测 header 的现实场景里，不转义）。
+ * record → `k=v,k2=v2`。值按 OTel 规范 URL 编码——token 含 `,`/`=` 等字符时不编码
+ * 会被拆成多个错误 header，认证静默失败；OTel SDK 读取侧会对值做 URL 解码。
+ * 键是 header 名（来自 web 侧 K=V 草稿解析，天然无逗号/等号），不另编码。
  */
 export function encodeOtelHeaders(headers: Record<string, string> | undefined): string | undefined {
     if (!headers) return undefined
-    const pairs = Object.entries(headers)
-        .filter(([k, v]) => k.trim() !== '' && v.trim() !== '')
-        .map(([k, v]) => `${k.trim()}=${v.trim()}`)
+    const pairs = Object.entries(normalizeOtelHeaderRecord(headers)).map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
     return pairs.length > 0 ? pairs.join(',') : undefined
 }

@@ -130,7 +130,7 @@ describe('SessionTrackingTable.claimSpawn（在途预约：查重与占用同步
         second?.release()
     })
 
-    it('活表项已存在时直接拒绝（与 checkSpawnDedup 同判据）', () => {
+    it('活表项已存在时直接拒绝（判据与 spawnDedup 决策单源一致）', () => {
         const table = new SessionTrackingTable()
         table.registerDaemon({ startedBy: 'daemon', pid: 701, resumeSessionId: 'resume-1' } as TrackedSession)
 
@@ -146,14 +146,6 @@ describe('SessionTrackingTable.claimSpawn（在途预约：查重与占用同步
 })
 
 describe('SessionTrackingTable 纯函数转发', () => {
-    it('checkSpawnDedup 命中活行（决策单源在 spawnDedup，此处只验证接线）', () => {
-        const table = new SessionTrackingTable()
-        table.registerDaemon({ startedBy: 'daemon', pid: 700, resumeSessionId: 'resume-1' } as TrackedSession)
-        const hit = table.checkSpawnDedup({ resumeSessionId: 'resume-1' })
-        expect(hit).toBeDefined()
-        expect(table.checkSpawnDedup({ resumeSessionId: 'no-such' })).toBeNull()
-    })
-
     it('pruneDead 清死行并返回 pid（决策单源在 sessionTracking）', () => {
         const table = new SessionTrackingTable()
         // pid 999_999 极大概率不存在 → 视为死行

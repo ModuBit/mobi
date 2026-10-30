@@ -324,16 +324,18 @@ export async function spawnSession(options: SpawnRequest, deps: SpawnSessionDeps
                 logger.debug('[EXECUTOR] Child stderr tail', trimmed);
             };
 
-            // 记忆 env 求值自带防御：任何故障（设置读取失败等）降级为空对象，不阻断 spawn
-            const memoryEnv = await deps.resolveMemoryEnv(options.directory, options.workspaceId).catch((error) => {
-                logger.debug('[EXECUTOR] resolveMemoryEnv failed; session continues without memory', error);
-                return {};
-            });
-            // 遥测 env 求值（OpenTelemetry）：off/未配置返回空对象，故障降级为空对象，同样不阻断 spawn
-            const telemetryEnv = await deps.resolveTelemetryEnv().catch((error) => {
-                logger.debug('[EXECUTOR] resolveTelemetryEnv failed; session continues without telemetry', error);
-                return {};
-            });
+            // 记忆/遥测 env 求值各读一次设置文件，互不依赖——并行取（各求值自带防御：
+            // 任何故障降级为空对象，不阻断 spawn）
+            const [memoryEnv, telemetryEnv] = await Promise.all([
+                deps.resolveMemoryEnv(options.directory, options.workspaceId).catch((error) => {
+                    logger.debug('[EXECUTOR] resolveMemoryEnv failed; session continues without memory', error);
+                    return {};
+                }),
+                deps.resolveTelemetryEnv().catch((error) => {
+                    logger.debug('[EXECUTOR] resolveTelemetryEnv failed; session continues without telemetry', error);
+                    return {};
+                }),
+            ]);
             // preSpawn = 目录检查/worktree/args/memoryEnv 全部前置段；此后到 webhook
             // 返回是 webhookWait（子进程启动+回执，15s 上限）
             const preSpawnMs = Date.now() - spawnStartedAt;

@@ -66,21 +66,19 @@ export function useTelemetrySettings(): TelemetrySettingsState {
                 if (!('settings' in res.data)) {
                     return { ok: false, error: res.data.error ?? '' }
                 }
+                // 缓存失效放 mutationFn 内（卸载后仍完整执行）——per-call onSuccess 在
+                // 组件卸载时被丢弃，保存后立即切走会留下旧缓存（react-query 已知陷阱）
+                await queryClient.invalidateQueries({ queryKey: queryKeys.telemetrySettings })
                 return { ok: true }
             } catch {
                 return { ok: false, error: '' }
-            }
-        },
-        onSuccess: (result) => {
-            if (result.ok) {
-                void queryClient.invalidateQueries({ queryKey: queryKeys.telemetrySettings })
             }
         },
     })
 
     return {
         settings: query.data?.status === 'ok' ? query.data.settings : null,
-        offline: !query.isPending && query.data?.status === 'offline',
+        offline: query.data?.status === 'offline',
         loaded: query.data?.status === 'ok',
         saving: saveMutation.isPending,
         save: (submission) => saveMutation.mutateAsync(submission),

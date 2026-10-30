@@ -79,7 +79,7 @@ export function findRunningDuplicate(
  * 本次 spawn 的比对键，返回可释放的预约凭证。调用方登记追踪表行后应立即 release
  * （交接给追踪表），任何失败路径由 finally 幂等释放。
  *
- * 为什么需要：`checkSpawnDedup` 与 `registerDaemon` 之间隔着目录检查/mkdir/进程创建
+ * 为什么需要：`claimSpawn` 的查重与 `registerDaemon` 之间隔着目录检查/mkdir/进程创建
  * 等多个 await，并发的两个激活请求（手动 resume + 消息唤醒）都能通过查重又都去 spawn，
  * 最终得到两个 `--resume <同一 native id>` 的进程互相抢 socket（2026-10-21 分叉闪烁）。
  */

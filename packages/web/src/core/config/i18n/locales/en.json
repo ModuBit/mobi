@@ -823,7 +823,7 @@
         "saveButton": "Save",
       "cardTitle": "Session telemetry (OpenTelemetry)",
       "enabledLabel": "Enable trace export",
-      "privacyHint": "Exports trace spans only (latency and names of interactions / model requests / tool calls / hooks); conversation content is never included, and prompt-level log events are not exported. Applies to the next new session after saving.",
+      "privacyHint": "By default exports trace spans only (latency and names of interactions / model requests / tool calls / hooks), with no conversation content; the content tiers below send conversation content to the collector once enabled. Applies to the next new session after saving.",
       "endpointLabel": "OTLP Endpoint",
       "endpointRequired": "OTLP endpoint is required when enabled",
       "headersLabel": "Auth headers",

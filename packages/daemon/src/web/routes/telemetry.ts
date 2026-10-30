@@ -22,6 +22,7 @@
 import { Hono } from 'hono'
 import {
     TelemetrySettingsSubmissionSchema,
+    normalizeOtelHeaderRecord,
     redactTelemetrySettings,
     type TelemetrySettings,
     type TelemetrySettingsSubmission,
@@ -52,11 +53,8 @@ export function mergeTelemetrySubmission(
     if (submission.includeRawApiBodies !== undefined) next.includeRawApiBodies = submission.includeRawApiBodies
     if (submission.includeMetrics !== undefined) next.includeMetrics = submission.includeMetrics
     if (submission.headers !== undefined) {
-        const cleaned = Object.fromEntries(
-            Object.entries(submission.headers)
-                .map(([k, v]) => [k.trim(), v.trim()])
-                .filter(([k, v]) => k !== '' && v !== ''),
-        )
+        // 规范化单源在 shared（trim 剔空）：落盘恒为干净的非空对
+        const cleaned = normalizeOtelHeaderRecord(submission.headers)
         next.headers = Object.keys(cleaned).length > 0 ? cleaned : undefined
     }
     return next

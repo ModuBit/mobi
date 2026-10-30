@@ -814,7 +814,7 @@
         "saveButton": "保存",
       "cardTitle": "会话遥测（OpenTelemetry）",
       "enabledLabel": "启用 trace 导出",
-      "privacyHint": "仅导出 trace span（每次交互 / 模型请求 / 工具调用 / hook 的时延与名称），不含对话内容；prompt 级事件不导出。保存后下个新会话生效。",
+      "privacyHint": "默认仅导出 trace span（每次交互 / 模型请求 / 工具调用 / hook 的时延与名称），不含对话内容；下方内容档位开启后，对话内容将发送到 collector。保存后下个新会话生效。",
       "endpointLabel": "OTLP Endpoint",
       "endpointRequired": "启用时必须填写 OTLP Endpoint",
       "headersLabel": "认证头",

@@ -76,9 +76,10 @@ const EnabledRow = styled.div`
 `
 
 /**
- * 会话遥测子页（OpenTelemetry 设置票）：总开关 / OTLP endpoint / 认证头。
- * v1 traces-only（span 不含对话正文；prompt 级 log events 不提供导出）。显式保存
- * （保存后「下个新会话生效」——daemon spawn 时现读注入 OTEL_* env）。
+ * 会话遥测子页（OpenTelemetry 设置票）：总开关 / OTLP endpoint / 认证头 / 内容与指标档位。
+ * traces 恒导出（span 只含时延与名称）；内容分档显式知情——档①消息与工具内容、
+ * 档②完整 API 请求体（隐含档①）、指标计数器。显式保存（保存后「下个新会话生效」
+ * ——daemon spawn 时现读注入 OTEL_* env）。
  */
 export function TelemetrySection() {
     const { token } = useToken()

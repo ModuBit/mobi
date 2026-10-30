@@ -33,7 +33,7 @@ import type { Metadata } from '@mobi/node-core/api/types';
 import { isProcessAlive } from '@mobi/node-core/utils/process';
 import type { TrackedSession } from './types';
 import { applySessionTrackingSignal, pruneDeadTrackedSessions, type SessionTrackingSignal } from './sessionTracking';
-import { createSpawnDedupGuard, dedupKeys, findRunningDuplicate, type SpawnClaim, type SpawnDedupKey } from './spawnDedup';
+import { dedupKeys, findRunningDuplicate, type SpawnClaim, type SpawnDedupKey } from './spawnDedup';
 
 /** waitForWebhook 的结果：webhook 到达（成功）或 exit/error/超时（失败） */
 export type WebhookWaitResult =
@@ -62,18 +62,12 @@ export class SessionTrackingTable {
         this.sessions.set(session.pid, session);
     }
 
-    /** 唤醒去重（.scratch/wake-dedup + #108 双键）：同机已有活 child 属于同一会话时命中——
-     *  resume 目标相同，或 mobi 行 id 相同（覆盖 webhook 前在途窗口）。
-     *  传快照而非内部 Map 活引用——spawnDedup 只做一次性决策，不应对表内部结构形成依赖 */
-    checkSpawnDedup(key: SpawnDedupKey) {
-        return createSpawnDedupGuard(new Map(this.sessions))(key);
-    }
-
     /**
      * spawn 在途预约（同步）：查重命中（活表项或别的在途 spawn 已占同一会话键）返回
      * null；否则当场占用比对键并返回释放凭证。查重与占用之间没有 await——这是收口
-     * check-then-act 竞态的关键：registerDaemon 之前隔着目录检查/mkdir/进程创建，
-     * 并发激活请求都能通过 checkSpawnDedup。
+     * check-then-act 竞态的关键：查重决策单源在 spawnDedup（server 侧 contract 测试
+     * 直接消费 createSpawnDedupGuard），登记表行之前隔着目录检查/mkdir/进程创建，
+     * 并发激活请求都能通过 findRunningDuplicate。
      *
      * 登记追踪表行后立即 release（交接：表行接管去重），失败路径由调用方 finally 释放。
      * 无键（Web 新会话）不预约，行为与既有查重一致。
@@ -85,11 +79,16 @@ export class SessionTrackingTable {
     claimSpawn(key: SpawnDedupKey): SpawnClaim | null {
         const duplicate = findRunningDuplicate(this.sessions.values(), key);
         if (duplicate) {
+            // backfill 行的 registeredAt 是 daemon 重启后的补登时刻，不是进程真实启动
+            // 时刻（重启后 metadata 无原始启动时间可回溯）——age 系统性低估，事故定位
+            // 时最忌据此排除「陈旧行」假设，故标注来源与下界语义
+            const backfilled = duplicate.startedBy.startsWith('backfill');
             const ageS = Math.round((Date.now() - duplicate.registeredAt) / 1000);
             logger.info(
                 `[EXECUTOR] spawn deduped by tracked row (key=${dedupKeys(key).join(',') || '<none>'}, ` +
                 `hit pid=${duplicate.pid}, mobi=${duplicate.MobiSessionId ?? '<unset>'}, ` +
-                `resume=${duplicate.resumeSessionId ?? '<unset>'}, startedBy=${duplicate.startedBy}, age=${ageS}s)`
+                `resume=${duplicate.resumeSessionId ?? '<unset>'}, startedBy=${duplicate.startedBy}, ` +
+                (backfilled ? `age>=${ageS}s since backfill, true age unknown)` : `age=${ageS}s)`)
             );
             return null;
         }

@@ -165,7 +165,7 @@ function makeResolveMemoryEnv(): (workspaceDirectory: string, workspaceId: strin
  * 任何故障都返回空对象（零注入，不阻断 spawn）。v1 traces-only：beta 开关 + otlp
  * exporter + 固定 http/protobuf 协议；认证头经 encodeOtelHeaders 单源编码。
  */
-function makeResolveTelemetryEnv(): () => Promise<Record<string, string>> {
+export function makeResolveTelemetryEnv(): () => Promise<Record<string, string>> {
   return async () => {
     try {
       const config = getConfiguration();
