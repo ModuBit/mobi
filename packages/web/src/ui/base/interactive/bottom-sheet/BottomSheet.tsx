@@ -375,6 +375,14 @@ function Sheet({
     /** 首次入场是否已起跳：收敛等待只该发生在第一次；起跳前的内容收缩不得触发 RO
      *  重定位（见 RO 回调注释） */
     const enterDoneRef = useRef(false)
+    /** 入场是否已落位（弹入动画到达档位）：呈现途中的外部点按不得关闭——sheet 上升
+     *  的零点几秒里，用户瞄准的条目还没被盖住，点按暂时落在遮罩上，此刻关掉面板
+     *  就是「点了会话，菜单却收走了」（2026-10-30 移动端菜单导航丢失的主因）。 */
+    const presentedRef = useRef(false)
+    /** 入场落位标记（弹入动画的 onArrive；reduced-motion 路径直接置真） */
+    const markPresented = useCallback(() => {
+        presentedRef.current = true
+    }, [])
     const onCloseRef = useRef(onClose)
     onCloseRef.current = onClose
     const onExitedRef = useRef(onExited)
@@ -561,6 +569,7 @@ function Sheet({
                 // 「起跳前不重定位」门（enterDoneRef）会永远关着，内容收缩 / 旋转后 sheet
                 // 停在按旧高度算出的错位上
                 enterDoneRef.current = true
+                presentedRef.current = true
                 y.jump(detentY(detentRef.current))
                 animate(presence, 1, { duration: 0.16 })
                 return undefined
@@ -580,13 +589,13 @@ function Sheet({
             // 父直调重开（已起跳过）立即起跳——收敛等待已走过，高度早已稳定。
             if (enterDoneRef.current) {
                 y.jump(closedY())
-                go(detentY(detentRef.current))
+                go(detentY(detentRef.current), undefined, markPresented)
                 return undefined
             }
             const startEnter = () => {
                 enterDoneRef.current = true
                 y.jump(closedY())
-                go(detentY(detentRef.current))
+                go(detentY(detentRef.current), undefined, markPresented)
             }
             return waitForContentSettle(sheet, startEnter)
         }
@@ -616,7 +625,7 @@ function Sheet({
         takeVelocity()
         deferUnmount(finishExit)
         return undefined
-    }, [closedY, detentY, finishExit, go, height, isPresent, presence, reduced, takeVelocity, y])
+    }, [closedY, detentY, finishExit, go, height, isPresent, markPresented, presence, reduced, takeVelocity, y])
 
     // 视口变化（旋转 / 移动端工具栏收起 / 内容增减）后重测高度，并把 sheet 重新对齐到
     // **当前档**——档位是像素值，内容一变 peekY 就变了，不重定位会停在半截位置
@@ -688,10 +697,13 @@ function Sheet({
             const current = y.get()
             // 已拉伸（负位移）的释放不继承速度，免得弹簧把 sheet 弹过拉伸极限
             const velocity = current < 0 ? 0 : dragVelocity(state.samples, time)
+            // 手指真实行程（起手档到当前位置）：「快甩」判据的成立门槛之一——高瞬时
+            // 速度可能是抖动点按的收尾，行程不足不得借速度关面板（见 MIN_FLICK_TRAVEL_PX）
+            const travel = current - state.origin
             const full = height.get()
             if (!full) {
                 // 高度不可测（首帧）：退回两档判定，避免档位表退化成「任何位移都算关闭」
-                const disposition = resolveDragDisposition({ offset: current, velocity, height: window.innerHeight })
+                const disposition = resolveDragDisposition({ offset: current, velocity, height: window.innerHeight, travel })
                 if (disposition === 'close') {
                     requestCloseRef.current?.(velocity)
                     return
@@ -702,7 +714,7 @@ function Sheet({
             // 三档：top(0) → peek → closed。两档重合时 peek 与 top 同值，等价于原来的两档判定
             const detents = [0, peekY(), closedY()]
             const from = detentRef.current === 'top' ? 0 : 1
-            const landed = resolveDetentRelease({ offset: current, velocity, detents, from })
+            const landed = resolveDetentRelease({ offset: current, velocity, detents, from, travel })
             if (landed === detents.length - 1) {
                 requestCloseRef.current?.(velocity)
                 return
@@ -852,9 +864,10 @@ function Sheet({
                     event.preventDefault()
                     const { present, at } = presenceChange.current
                     if (!present || event.detail.originalEvent.timeStamp < at) return
-                    // 收敛等待期内 sheet 还没露过面（屏下 + 遮罩全透明），点遮罩/触发钮
-                    // 不该关掉一个用户从未见过的面板——等待最长 2s，误关窗口同倍放大
-                    if (!enterDoneRef.current) return
+                    // 呈现途中（屏下收敛等待 + 弹入上升）不关：sheet 还没「到位」，点按
+                    // 落在遮罩上只是差了零点几秒，用户瞄准的是即将盖住的条目。收敛等待
+                    // 最长 2s，误关窗口同倍放大
+                    if (!presentedRef.current) return
                     requestCloseRef.current?.()
                 }}
             >

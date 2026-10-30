@@ -145,6 +145,8 @@ export function useHeaderPullClose({ enabled, open, onPullClose, measureHeight, 
             offset: dropped,
             velocity: dragVelocity(drag.samples, event.timeStamp),
             height: measureRef.current(),
+            // 本手势只吃向下、从 0 起算：行程与位移同源（甩动门槛判据见 MIN_FLICK_TRAVEL_PX）
+            travel: dropped,
         })
         // 判为关闭时**位移留着**：退场从这继续；被判为回位（或关闭被否决）才复位
         if (disposition === 'close') {

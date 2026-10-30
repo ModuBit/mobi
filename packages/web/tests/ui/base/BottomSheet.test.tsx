@@ -279,6 +279,30 @@ describe('BottomSheet', () => {
         expect(onClose).toHaveBeenCalledTimes(1)
     })
 
+    it('弹入途中点外部不关闭（上升中的 sheet 尚未覆盖到落点，用户瞄准的是即将到位的内容），落位后恢复', async () => {
+        const onClose = vi.fn()
+        const restore = forceOffsetHeightOnPrototype(LONG_SURFACE_H)
+        try {
+            render(<Host onClose={onClose} />)
+            const outsideDown = () => {
+                const event = new Event('pointerdown', { bubbles: true, cancelable: true })
+                document.dispatchEvent(event)
+            }
+            // 等起跳（弹入目标 peek 已登记）但动画未落定：此刻 sheet 在半空，点在它
+            // 尚未覆盖到的区域＝点在遮罩上——菜单一开就点条目时，差的就是这零点几秒
+            await waitFor(() => expect(animateCalls.some((call) => call.target === PEEK_Y)).toBe(true), { interval: 5 })
+            outsideDown()
+            expect(onClose).not.toHaveBeenCalled()
+
+            // 落位后外部点按照常关闭
+            await waitFor(() => expect(offsetY()).toBeCloseTo(PEEK_Y, 1))
+            outsideDown()
+            expect(onClose).toHaveBeenCalledTimes(1)
+        } finally {
+            restore()
+        }
+    })
+
     it('收敛等待期内滚动展开被忽略，起跳落初始档后照常生效', async () => {
         const restore = forceOffsetHeightOnPrototype(LONG_SURFACE_H)
         try {

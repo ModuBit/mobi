@@ -25,8 +25,9 @@ import { resolveDetentRelease } from '@/ui/base/interactive/resolveDetentRelease
 /** 三档：0 = 全展开，300 = peek，900 = 滑出关闭位 */
 const DETENTS = [0, 300, 900]
 
-const release = (offset: number, velocity: number, from: number) =>
-    resolveDetentRelease({ offset, velocity, detents: DETENTS, from })
+/** 缺省行程 100：既有用例都是「真甩」，够门槛；微行程用例显式传小值 */
+const release = (offset: number, velocity: number, from: number, travel = 100) =>
+    resolveDetentRelease({ offset, velocity, detents: DETENTS, from, travel })
 
 describe('resolveDetentRelease', () => {
     it('慢速释放：按投影位置落最近的档', () => {
@@ -61,14 +62,25 @@ describe('resolveDetentRelease', () => {
         expect(release(0, -900, 0)).toBe(0)
     })
 
+    it('微行程的高速释放不是甩（抖动点按的收尾）：不得借速度跨档', () => {
+        // 触摸采样合并后，10~20px 的落点滚动在 80ms 窗里能算出 >320px/s 的瞬时速度；
+        // 只看速度会把一次普通点按判成「快甩」（真机表现：点会话行，菜单被甩走、
+        // click 被吞）。行程不足甩动门槛时速度地板不参与，落档只看投影
+        expect(release(320, 400, 1, 15)).toBe(1)
+        expect(release(320, -400, 1, 15)).toBe(1)
+        // 行程到达门槛：快甩语义照旧
+        expect(release(320, 400, 1, 32)).toBe(2)
+        expect(release(320, -400, 1, 32)).toBe(0)
+    })
+
     it('两档（矮面板 / peek={false}）：档位重合时行为退化成关闭或回位', () => {
         const two = [0, 900]
-        expect(resolveDetentRelease({ offset: 100, velocity: 0, detents: two, from: 0 })).toBe(0)
-        expect(resolveDetentRelease({ offset: 800, velocity: 0, detents: two, from: 0 })).toBe(1)
+        expect(resolveDetentRelease({ offset: 100, velocity: 0, detents: two, from: 0, travel: 100 })).toBe(0)
+        expect(resolveDetentRelease({ offset: 800, velocity: 0, detents: two, from: 0, travel: 100 })).toBe(1)
         // 从唯一起手档往下快甩 → 关闭
-        expect(resolveDetentRelease({ offset: 100, velocity: 500, detents: two, from: 0 })).toBe(1)
+        expect(resolveDetentRelease({ offset: 100, velocity: 500, detents: two, from: 0, travel: 100 })).toBe(1)
         // 往上快甩已被钳在最上档
-        expect(resolveDetentRelease({ offset: 100, velocity: -500, detents: two, from: 0 })).toBe(0)
+        expect(resolveDetentRelease({ offset: 100, velocity: -500, detents: two, from: 0, travel: 100 })).toBe(0)
     })
 
     it('投影正好落在两档中间：取更靠前的档（平局不下跳）', () => {

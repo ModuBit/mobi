@@ -18,6 +18,15 @@
 const VELOCITY_THRESHOLD = 500
 
 /**
+ * 甩动成立的最小行程（px）：从起手到松手手指真实走过的距离。低于它的「高速度」不是甩，
+ * 是抖动点按的收尾——触摸采样合并后，10~20px 的落点滚动在 80ms 窗里能算出 300~600px/s
+ * 的瞬时速度，只看速度会把一次普通点按判成「快甩关闭」（真机表现：点会话行，菜单被甩走、
+ * click 被吞，2026-10-30 移动端菜单导航丢导航的根因之一）。32 = 4× 手势起手阈
+ * （GESTURE_SLOP_PX），真甩（≥50px）远在其上。速度判据的两个使用方共用这一个门槛。
+ */
+export const MIN_FLICK_TRAVEL_PX = 32
+
+/**
  * 「这一落点不归拖拽」的选择器：落在真控件上的按下不接管手势——按钮 / 链接 / 输入要能按，
  * 标题上的长按选择也要能选。
  *
@@ -58,11 +67,14 @@ export function dragVelocity(samples: readonly DragSample[], now: number): numbe
  * 快甩（大幅向下速度）即使位移小也应关闭（用户的意图是扔出去）；
  * 快速上推（负速度）即使拖过阈值也应回位（用户改变了主意）。
  * 速度不显著时回落到位置阈值（sheet 高度 1/3）。
+ *
+ * 「快甩」必须两个条件同时成立：速度显著 **且** 行程达 `MIN_FLICK_TRAVEL_PX`——
+ * 高瞬时速度只证明松手那一下快，不证明用户甩了。
  */
 export function resolveDragDisposition(
-    { offset, velocity, height }: { offset: number; velocity: number; height: number },
+    { offset, velocity, height, travel }: { offset: number; velocity: number; height: number; travel: number },
 ): 'close' | 'settle' {
-    if (velocity > VELOCITY_THRESHOLD) return 'close'
+    if (velocity > VELOCITY_THRESHOLD && travel >= MIN_FLICK_TRAVEL_PX) return 'close'
     if (velocity < -VELOCITY_THRESHOLD) return 'settle'
     return offset > height / 3 ? 'close' : 'settle'
 }
