@@ -29,8 +29,9 @@ const spinKf = keyframes`
 `
 
 /**
- * 停止态外圈：旋转的 loading ring（轨道淡橙 + 顶部暖橙头）
- * 可见性 tuned：2.5→3px 边框、轨道 30%→35%——原参数太细太淡，用户感知不到"有动效"
+ * 停止态外圈：旋转的 loading ring（轨道淡灰 + 顶部灰头，随主题 --ant-color-text-tertiary
+ * 双档自适应）。可见性 tuned：2.5→3px 边框、轨道 30%→35%——原参数太细太淡，用户感知不到"有动效"。
+ * 曾用 warning 橙：运行态是持续存在的常驻态而非告警，橙色在小按钮上喧宾夺主（2026-10-30 用户定稿换灰）。
  * 仅在方块态（非 abortPending）显示——abortPending 时 Button 自身 loading 转圈，
  * 双重转圈视觉冗余，故此时 $ring=false 隐藏光环
  */
@@ -43,8 +44,8 @@ const StopWrap = styled.span<{ $ring: boolean }>`
         position: absolute;
         inset: -4px;
         border-radius: 50%;
-        border: 3px solid color-mix(in srgb, var(--ant-color-warning) 35%, transparent);
-        border-top-color: var(--ant-color-warning);
+        border: 3px solid color-mix(in srgb, var(--ant-color-text-tertiary) 35%, transparent);
+        border-top-color: var(--ant-color-text-tertiary);
         animation: ${spinKf} 1s linear infinite;
         pointer-events: none;
         /* abortPending 时 Button 自身转圈，光环隐藏 */

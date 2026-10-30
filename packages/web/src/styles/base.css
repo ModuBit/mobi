@@ -41,6 +41,16 @@ html {
     -webkit-tap-highlight-color: transparent;
 }
 
+/* 键盘焦点环基线：浏览器默认蓝框（对 div[role=button] 这类非原生控件，鼠标点击
+   也会触发 :focus-visible）与全站用色冲突。统一为主题中性灰环——随 --ant-* 变量
+   双主题自适应；只收编用色，不取消指示，键盘导航的可见性保留。
+   自带 focus 样式的组件（antd 多数控件、自管 uiarc Button）在其自身层级覆盖，
+   这条只兜底「没有自己 focus 样式」的元素 */
+:focus-visible {
+    outline: 2px solid var(--ant-color-text-tertiary);
+    outline-offset: 1px;
+}
+
 /* 移动端：按压反馈
    移除 tap-highlight 后，自定义可点击元素（div/span + onClick）无按压反馈。
    用 :active + opacity 补充，**限定到可交互语义元素**（a/button/role/.tappable）。

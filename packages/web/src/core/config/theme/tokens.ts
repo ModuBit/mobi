@@ -127,14 +127,15 @@ export type ContextRingTone = 'idle' | 'notice' | 'warn' | 'danger'
 /**
  * 水位环四档色。**双档共用一组**（产品定稿：浅色主题也用 dark 档这组更亮、彩度更低的色，
  * 不按主题分叉）：
- * - `notice` 取图表石青 dark 档：60% 只是「过半」，不该示警
+ * - `notice` 与 `idle` 同灰（2026-10-30 用户定稿）：过半（50%）不构成示警，蓝色档反而
+ *   在小环上喧宾夺主；视觉分界保留在 warn（70%）
  * - `warn` 取语义 warning dark 档：满饱和的浅色赤陶（彩度 135，与 danger 砖红持平）
  *   在 2.5px 细环上过重
  * - `idle` / `danger` 取中性阶与语义 danger 的 dark 档
  */
 export const CONTEXT_RING_TONES: Record<ContextRingTone, string> = {
     idle: NEUTRAL_DARK.inkTertiary,
-    notice: CHART_DARK[4], // 石青
+    notice: NEUTRAL_DARK.inkTertiary,
     warn: SEMANTIC_DARK.warning,
     danger: SEMANTIC_DARK.danger,
 }

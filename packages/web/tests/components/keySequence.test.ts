@@ -63,7 +63,7 @@ describe('buildKeySequence', () => {
 
     it('Esc / Enter / Backspace / Space', () => {
         expect(buildKeySequence([], 'esc')).toEqual({ label: 'Esc', data: '\x1b' })
-        expect(buildKeySequence([], 'enter')).toEqual({ label: '↵', data: '\r' })
+        expect(buildKeySequence([], 'enter')).toEqual({ label: 'Enter', data: '\r' })
         expect(buildKeySequence([], 'backspace')).toEqual({ label: '⌫', data: '\x7f' })
         expect(buildKeySequence([], 'space')).toEqual({ label: 'Space', data: ' ' })
     })

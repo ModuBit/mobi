@@ -59,7 +59,7 @@ export const MAIN_KEY_GROUPS: MainKeyGroup[] = [
         keys: [
             { id: 'tab', label: 'Tab' },
             { id: 'esc', label: 'Esc' },
-            { id: 'enter', label: '↵' },
+            { id: 'enter', label: 'Enter' },
             { id: 'backspace', label: '⌫' },
             { id: 'space', label: 'Space' },
         ],
@@ -158,7 +158,8 @@ export function buildKeySequence(mods: Modifier[], keyId: string): BuiltKey | nu
     if (keyId === 'enter') {
         let data = '\r'
         if (has('alt')) data = '\x1b\r'
-        return { label: join('↵'), data }
+        // label 用文字而非 ↵（U+21B5）：Android Noto 字体该字形偏小贴基线，与 Tab/Esc/Space 并排时格格不入
+        return { label: join('Enter'), data }
     }
     if (keyId === 'backspace') {
         // Ctrl+Backspace 部分终端用 \x08，其余 \x7f
