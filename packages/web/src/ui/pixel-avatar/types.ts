@@ -69,6 +69,11 @@ export interface PixelAvatarProps {
     status: AgentStatus;
     size?: number;
     showLabel?: boolean;
+    /**
+     * 是否播放动画，默认 false（仅静态形象）。动画循环是常驻 CPU 消耗，
+     * 由调用方按场景显式开启——目前 mobi 内所有场景均不开启
+     */
+    animated?: boolean;
     /** 状态样式映射，可覆盖各状态的背景/边框/发光/动画 */
     statusStyles?: Partial<Record<AgentStatus, StatusStyle>>;
 }

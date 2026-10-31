@@ -90,12 +90,12 @@ function getContainerStyle(status: AgentStatus, size: number, overrides?: Status
     return style;
 }
 
-function PixelAvatarInner({ name, character: characterProp, status, size = 36, showLabel = false, statusStyles }: PixelAvatarProps) {
+function PixelAvatarInner({ name, character: characterProp, status, size = 36, showLabel = false, statusStyles, animated = false }: PixelAvatarProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     const character = characterProp ?? useMemo(() => generateCharacter(name ?? ''), [name]);
 
-    useAnimationLoop(canvasRef, character, status, size);
+    useAnimationLoop(canvasRef, character, status, size, animated);
 
     const override = statusStyles?.[status];
     const containerStyle = useMemo(
