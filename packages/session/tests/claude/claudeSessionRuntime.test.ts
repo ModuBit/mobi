@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { SessionStreamRuntime } from '@/claude/claudeSessionRuntime'
+import { SessionStreamRuntime, isEmptyShellResult } from '@/claude/claudeSessionRuntime'
 import type { RawJSONLines } from '@/claude/types'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 
@@ -119,6 +119,72 @@ describe('SessionStreamRuntime.dispatch 顺序契约', () => {
 
         expect(enqueueSpy).toHaveBeenCalledTimes(1)
         expect(enqueueSpy).toHaveBeenCalledWith({ type: 'assistant' })
+    })
+})
+
+describe('SessionStreamRuntime.dispatch 空壳 result 过滤', () => {
+    /**
+     * 空壳 result 形状按 2026-10-31 真实事故行实证（mobi.db seq 1055）：CC 对被合并的
+     * task-notification 唤醒各发一条零信息回执，落库即被 web 渲染成「42ms」幽灵轮次行。
+     * 注意 duration_ms（墙钟 42ms）非零——谓词只看 duration_api_ms，此字段是活锁。
+     */
+    function makeShellResult(overrides: Record<string, unknown> = {}): RawJSONLines {
+        return {
+            type: 'result',
+            subtype: 'success',
+            is_error: false,
+            duration_api_ms: 0,
+            num_turns: 0,
+            stop_reason: null,
+            result: '',
+            usage: { input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 },
+            duration_ms: 42,
+            ...overrides,
+        } as unknown as RawJSONLines
+    }
+
+    it('空壳 result → 不入列、不触发合成、不消费 result 标志（标志留给真 result）', () => {
+        const { runtime } = makeRuntime()
+        const { order, hooks } = makeHooks()
+        const enqueueSpy = vi.spyOn(runtime.queue, 'enqueue')
+
+        runtime.dispatch(makeShellResult(), RESULT_MSG, hooks)
+
+        expect(enqueueSpy).not.toHaveBeenCalled()
+        // 未走到 consumeResultFlags：撤回抑制 / pendingAbortInfo 只应绑在会被转发的行上
+        expect(order).toEqual(['observe'])
+    })
+
+    it('零回合但带非空文本（fork code-review 报告等真内容）→ 照常入列', () => {
+        const { runtime } = makeRuntime()
+        const { order, hooks } = makeHooks()
+        const enqueueSpy = vi.spyOn(runtime.queue, 'enqueue')
+
+        runtime.dispatch(makeShellResult({ result: '评审范围：…8 项 findings' }), RESULT_MSG, hooks)
+
+        expect(enqueueSpy).toHaveBeenCalledTimes(1)
+        expect(order).toEqual(['observe', 'consumeResultFlags', 'onResultEnqueued'])
+    })
+
+    it.each([
+        ['is_error 报错', { is_error: true }],
+        ['stop_reason 终止', { stop_reason: 'end_turn' }],
+        ['terminal_reason 中断回执', { terminal_reason: 'interrupted' }],
+        ['duration_api_ms 有 API 耗时', { duration_api_ms: 123 }],
+        ['usage.output_tokens 有产出', { usage: { output_tokens: 7 } }],
+    ])('零回合空文本但 %s → 照常入列（谓词 fail-safe：拿不准就保留）', (_label, override) => {
+        const { runtime } = makeRuntime()
+        const { hooks } = makeHooks()
+        const enqueueSpy = vi.spyOn(runtime.queue, 'enqueue')
+
+        runtime.dispatch(makeShellResult(override), RESULT_MSG, hooks)
+
+        expect(enqueueSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('isEmptyShellResult：正常 result 与非 result 行恒 false', () => {
+        expect(isEmptyShellResult(makeShellResult({ num_turns: 5 }))).toBe(false)
+        expect(isEmptyShellResult({ type: 'assistant' } as unknown as RawJSONLines)).toBe(false)
     })
 })
 

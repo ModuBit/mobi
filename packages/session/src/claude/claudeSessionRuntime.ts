@@ -59,6 +59,40 @@ export type StreamDispatchHooks = {
 }
 
 /**
+ * 空壳 result：CC 对「被合并掉」的唤醒（典型：同批多条 task-notification 各自唤醒、
+ * 实际合并进一个回合执行）逐条发出的零信息回执——num_turns=0、无文本、无错误、
+ * 无终止原因、零 API 用量。落库后 web 会按普通 turn-result 渲染成只剩「42ms + 时间」
+ * 的幽灵轮次行（2026-10-31 实证：三条后台任务同时完成 → 两条空壳混进消息流）。
+ *
+ * 谓词 fail-safe：任一字段缺失或命中「有信息」形态（fork code-review 报告、compact
+ * 提示等零回合但带文本的行）都返回 false 保留落库——误杀真 result 的代价远高于漏放空壳。
+ * 注意只看 duration_api_ms：空壳的 duration_ms（墙钟）非零。
+ */
+export function isEmptyShellResult(logMessage: RawJSONLines): boolean {
+    // RawJSONLines 的 TS union 未收编 result 变体（schema 历史缺口），与 dispatch 同款
+    // 宽化读取；字段形状以落库行实证为准（CC 原样透传 SDK result 字段）
+    if ((logMessage as { type?: string }).type !== 'result') return false
+    const m = logMessage as {
+        num_turns?: number
+        result?: string
+        is_error?: boolean
+        stop_reason?: string | null
+        terminal_reason?: string | null
+        duration_api_ms?: number
+        usage?: { output_tokens?: number } | null
+    }
+    return (
+        m.num_turns === 0 &&
+        !m.result &&
+        m.is_error === false &&
+        m.duration_api_ms === 0 &&
+        !m.stop_reason &&
+        !m.terminal_reason &&
+        m.usage?.output_tokens === 0
+    )
+}
+
+/**
  * 会话流装配 module（深化候选④票③）：转换链的单一归属。
  *
  * converter（SDK 消息 → 落库行）、出站排队（OutgoingMessageQueue 的 tool_use 配对延迟与
@@ -83,8 +117,8 @@ export class SessionStreamRuntime {
     }
 
     /**
-     * 转换尾段：observe → discard 过滤 → result 语义钩子 → 权限回填写入 →
-     * tool_use 延迟排队 → 入列 → result 合成触发。
+     * 转换尾段：observe → discard 过滤 → result 空壳过滤 → result 语义钩子 →
+     * 权限回填写入 → tool_use 延迟排队 → 入列 → result 合成触发。
      *
      * 「result 先入列再触发合成」两行顺序不可换（FIFO 时间线顺序）：非 git 投影口径的
      * 合成是同步快路径（无 await），先触发会让卡片抢先注册进队列；撤回路径
@@ -101,8 +135,11 @@ export class SessionStreamRuntime {
             return
         }
 
-        // result 帧：中断处理（撤回抑制 / stopKind 注入）与标志清理归 launcher 停止语义
+        // result 帧：中断处理（撤回抑制 / stopKind 注入）与标志清理归 launcher 停止语义。
+        // 空壳 result 在标志消费「之前」剪掉：撤回抑制 / pendingAbortInfo 只应绑在
+        // 会被转发的行上——空壳若先行消费标志，真中断回执会被漏抑制 / 丢 stopKind
         if ((logMessage as { type?: string }).type === 'result') {
+            if (isEmptyShellResult(logMessage)) return
             if (hooks.consumeResultFlags(logMessage)) return
         }
 
