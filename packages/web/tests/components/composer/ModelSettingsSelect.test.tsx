@@ -20,7 +20,9 @@
  * ② 模型行是 MorphSelect 弹层：点开原地长成列表（auto 单列默认组），选中后收起并更新 pill；
  * ③ 档位来自模型能力：不支持 effort 时不渲染滑杆，声明档位不足五档时不出现多余档；
  * ④ 滑杆点按轨道 / 点档位名产生同一结果（同一 onEffortChange 值）；
- * ⑤ 重置一次恢复默认模型 + 默认档。
+ * ⑤ 重置一次恢复默认模型 + 默认档；
+ * ⑥ 外点关闭分两路：点空白处播收起动画（与 morph-select 同一行为），
+ *    命中可交互控件立即让位（那一拍要开新浮层，见 MorphSurface 的 YIELD_SELECTOR）。
  */
 
 import { useState } from 'react'
@@ -127,16 +129,39 @@ describe('ModelSettingsSelect', () => {
         expect(restored).toHaveTextContent('Opus')
     })
 
-    it('点面板外面立即收起（不播收起动画）——另一头通常是要打开的另一个浮层', () => {
+    it('点空白处收起：播收起动画，播完才卸载交还 pill（与 morph-select 同一行为）', async () => {
         render(<Harness />)
         openPanel()
         expect(screen.getByRole('dialog')).toBeInTheDocument()
 
-        // 外部点击：这一拍就卸载。播动画的话表面会以 overlay 层号压在新开的浮层上 ~500ms
-        // （2026-10-28 真机：点头权限选择后模型的 lid 还盖在列表最上面）
+        // 空白处没有新浮层要开，收起走弹簧：表面在播完前保持挂载（pill 仍隐去、lid 仍在）
         fireEvent.pointerDown(document.body)
-        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-        expect(screen.getByRole('button', { name: '模型' })).not.toHaveAttribute('aria-hidden')
+        expect(document.querySelectorAll('button[aria-label="模型"]')).toHaveLength(2)
+
+        // 收起动画播完才卸载，之后只剩文档流里的 pill 且恢复可访问
+        await waitFor(() => expect(document.querySelectorAll('button[aria-label="模型"]')).toHaveLength(1))
+        const restored = screen.getByRole('button', { name: '模型' })
+        expect(restored).not.toHaveAttribute('aria-hidden')
+        expect(restored).toHaveTextContent('Opus')
+    })
+
+    it('外点命中可交互控件立即收起让位（不播收起动画）——那一拍要开新浮层', () => {
+        render(<Harness />)
+        openPanel()
+        expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+        // 模拟点另一枚浮层触发器：命中 button 的外点。这一拍同步卸载——播动画的话表面会以
+        // overlay 层号压住 z 更低的新开浮层 ~500ms（2026-10-28 真机：点权限选择后模型的
+        // lid 还盖在列表最上面）
+        const outside = document.createElement('button')
+        document.body.appendChild(outside)
+        try {
+            fireEvent.pointerDown(outside)
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+            expect(screen.getByRole('button', { name: '模型' })).not.toHaveAttribute('aria-hidden')
+        } finally {
+            outside.remove()
+        }
     })
 
     it('模型行走 MorphSelect 弹层：点开列出分组，选中后收起并更新 pill', () => {

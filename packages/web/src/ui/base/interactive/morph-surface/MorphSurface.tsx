@@ -40,6 +40,17 @@ import { CLOSE_SETTLE_MS, GROW, NARROW, SHRINK, WIDTH } from '@/ui/base/interact
 import { EDGE_MARGIN, OPEN_RADIUS, measureTriggerWidth, useReducedFlag } from '@/ui/base/interactive/morph-select/morphGeometry'
 import styles from './morph-surface.module.css'
 
+/**
+ * 外点关闭的「快速让位」判据：命中可交互控件 = 这一拍几乎总会开出新的交互面
+ * （composer 里的另一枚 morph pill、发送钮、输入框…），立即卸载让位、不播收起动画
+ * （缘由见收起 effect 的注释）；点在空白处照播收起动画——与 morph-select 的外点收起
+ * 同一行为（2026-10-31 用户反馈「点空白收起没动画」）。
+ */
+const YIELD_SELECTOR = [
+    'button', 'a', 'input', 'textarea', 'select', 'label',
+    '[role="button"]', '[role="combobox"]', '[role="option"]', '[role="menuitem"]', '[role="slider"]', '[role="tab"]',
+].join(', ')
+
 export interface MorphSurfaceProps {
     /** 展开面的可访问名（role="dialog"） */
     label: string
@@ -81,7 +92,7 @@ export function MorphSurface({ label, width, fullWidth = false, open, onOpenChan
     const radius = useMotionValue(OPEN_RADIUS)
     const reducedRef = useRef(reduced)
     useLayoutEffect(() => { reducedRef.current = reduced }, [reduced])
-    /** 下一次收起是否直接卸载（外部点击：不播动画，见收起 effect 的注释） */
+    /** 下一次收起是否跳过动画直接卸载（外点命中交互控件时置位，见收起 effect 的注释） */
     const instantClose = useRef(false)
 
     /** 展开宽：调用方给的基准宽（满宽档直接顶到视口），超出视口时收窄 */
@@ -167,11 +178,12 @@ export function MorphSurface({ label, width, fullWidth = false, open, onOpenChan
         if (open || !mounted) return
         const geo = measurePill()
         setExpanded(false)
-        // 外部点击关闭：不播收起动画，直接卸载。表面是 portal 到 body 的浮层（z = overlay 基线），
-        // 而「点外面」最常见的下一拍是打开**另一个**浮层（权限 / output style 的 morph-select 在
-        // composer 内的 z-index 只有 30）——缩回去的那 ~500ms 里，逐帧缩小的面板会盖在新开的
-        // 列表上面，看起来像「模型的 lid 还压在最上面」（2026-10-28 真机）。收起动画只在点 lid /
-        // Esc 这类「留在原地」的关闭里播放
+        // 外点命中交互控件（YIELD_SELECTOR）时走这条快速让位通道：立即卸载，不播收起动画。
+        // 表面是 portal 到 body 的浮层（z = overlay 基线），而被点开的新浮层多半在更低的层
+        // （权限 / output style 的 morph-select 在 composer 内 z-index 只有 30）——缩回去的
+        // 那 ~500ms 里，逐帧缩小的面板会盖在新开的列表上面，看起来像「模型的 lid 还压在
+        // 最上面」（2026-10-28 真机）。点空白处 / 点 lid / Esc 的关闭不进这条通道，收起
+        // 动画照播
         if (instantClose.current) {
             instantClose.current = false
             if (geo) {
@@ -255,11 +267,15 @@ export function MorphSurface({ label, width, fullWidth = false, open, onOpenChan
             const target = event.target as Node
             if (rootRef.current?.contains(target)) return
             if (faceRef.current?.parentElement?.contains(target)) return
-            // 外部点击的另一头往往是要打开的另一个浮层：不播收起动画，直接让位
-            close(true)
+            // 空白处：没有新浮层要开，收起动画照播（与 morph-select 的外点收起同一行为）；
+            // 可交互控件：这一拍几乎总会开出新交互面，立即让位（判据与缘由见 YIELD_SELECTOR）
+            const yields = target instanceof Element && target.closest(YIELD_SELECTOR) !== null
+            close(yields)
         }
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.key !== 'Escape') return
+            // preventDefault 与 morph-select 对齐：Esc 不再触发父层的默认关闭行为
+            event.preventDefault()
             event.stopPropagation()
             close()
             pillRef.current?.focus({ preventScroll: true })
@@ -336,6 +352,8 @@ export function MorphSurface({ label, width, fullWidth = false, open, onOpenChan
                             aria-haspopup="dialog"
                             aria-expanded={open}
                             onClick={() => close()}
+                            // Tab 出走即折叠（morph-select 的 lid 同款）；Shift+Tab 是回面板内容，不折叠
+                            onKeyDown={(event) => { if (event.key === 'Tab' && !event.shiftKey) close(false) }}
                         >
                             {trigger({ open, toggle })}
                         </button>
