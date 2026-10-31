@@ -23,7 +23,7 @@
  * 遮罩随位移的连续变暗、进离场动效观感、iOS/Android 的安全区与返回手势。
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest'
 import { render, cleanup, waitFor, fireEvent, screen } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -213,7 +213,15 @@ function drag(steps: Array<{ y: number; t: number }>, releaseLag = 20) {
 
 describe('BottomSheet', () => {
     beforeEach(() => {
-        __resetHistoryGuardForTest()
+        // keepIdCounter：guardId 全局唯一——上一用例拖欠的 disposer 微任务（RTL 同步
+        // cleanup() 不 flush React 拖欠的卸载 passive effects，会拖到本用例 render 前才执行）
+        // 读到的 history.state 是新哨兵的新 id，永不匹配它的旧 id，拖欠链空转；
+        // 若重置计数器则 id 撞号、拖欠链复活（suppress 残留吞掉本用例的手动 popstate）
+        __resetHistoryGuardForTest(true)
+        // 再抹掉当前 entry 的哨兵 state：拖欠 disposer 匹配的是「它自己哨兵的 state」，
+        // 抹掉后（本用例新 push 会覆盖位置，但 id 唯一性保证覆盖后也不匹配）双保险空转。
+        // replaceState 无遍历、无 popstate，jsdom 位置不动
+        window.history.replaceState({}, '')
         __resetBodyScrollLockForTest()
         animateCalls.length = 0
     })
@@ -221,6 +229,7 @@ describe('BottomSheet', () => {
     // vitest 未开 globals，须显式 cleanup：portal 跨用例累积会让 querySelector 抓到上一用例的 sheet
     afterEach(() => {
         cleanup()
+        __resetHistoryGuardForTest(true)
         motionFlags.reduced = false
     })
 
@@ -248,6 +257,32 @@ describe('BottomSheet', () => {
 
         window.dispatchEvent(new PopStateEvent('popstate'))
         await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    })
+
+    it('哨兵存活期 = 在场期：open 翻 false 滑出起手即摘哨兵（不等卸载），离场途中重开重推', async () => {
+        // back 用 noop spy：只断言「disposer 主动 back 弹哨兵」的动作发生。不走 jsdom 真实
+        // 遍历——它会在共享 window + 哨兵模块单例的用例间制造 back→popstate→closeFrom→
+        // disposer 的振荡链（实测单次 afterEach 内 19 个 back），遗留微任务打挂后续用例
+        const pushed = trackGuardPushes()
+        const backSpy = vi.spyOn(window.history, 'back').mockImplementation(() => {})
+        const { rerender, unmount } = render(<BottomSheet open onClose={vi.fn()} title="测试" />)
+        expect(pushed).toHaveLength(1)
+
+        // 关闭（isPresent 翻 false）：滑出动画进行中（尚未卸载）哨兵就已被弹掉——
+        // 此刻之后的延迟导航 push 落在干净栈上，不会被 disposer 的 back() 顶回「未来」位
+        rerender(<BottomSheet open={false} onClose={vi.fn()} title="测试" />)
+        expect(surface()).not.toBeNull()
+        await waitFor(() => expect(backSpy).toHaveBeenCalledTimes(1))
+
+        // 离场途中重开（isPresent 翻回 true）：effect 重跑重推新哨兵，折返的覆盖物仍有拦截
+        rerender(<BottomSheet open onClose={vi.fn()} title="测试" />)
+        await waitFor(() => expect(pushed).toHaveLength(2))
+
+        // 显式收尾：noop back 不产生遍历链，但 disposer 微任务排过队、suppress 加过——
+        // 卸载后清掉模块状态与 spy，零遗留交给下一用例
+        unmount()
+        __resetHistoryGuardForTest()
+        vi.restoreAllMocks()
     })
 
     it('进场：首帧即置于屏外（位移取初值 4000，远在屏下），弹入动画目标 0', async () => {
@@ -497,7 +532,7 @@ describe('BottomSheet', () => {
         await waitFor(() => expect(surface()).toBeNull())
     })
 
-    it('滑出动画窗口内哨兵仍存活：手势返回被本 sheet 拦截（onClose 幂等再调）', async () => {
+    it('滑出动画窗口内哨兵已摘（死标记只摘不回调）：手势返回不再被本 sheet 拦截', async () => {
         const onClose = vi.fn()
         const { rerender } = render(<BottomSheet open onClose={onClose} title="测试" />)
         forceHeight(surface())
@@ -505,21 +540,30 @@ describe('BottomSheet', () => {
 
         rerender(<BottomSheet open={false} onClose={onClose} title="测试" />)
         expect(surface()?.style.transform).not.toBe(`translateY(${CLOSED_TARGET}px)`) // 滑出未落定
+        // 哨兵已随 isPresent=false 即刻降为死标记：滑出窗口内的手势返回属于路由层，
+        // 离场中的 sheet 不再消费它（closeFrom 对死标记只摘除、不回调）——
+        // 修复前哨兵存活到卸载，这里会 onClose 再调、与延迟导航抢返回键
         window.dispatchEvent(new PopStateEvent('popstate'))
 
-        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+        // 等滑出落定卸载（自弹 back 的异步 popstate 也已落定），确认全程零 onClose
+        await waitFor(() => expect(surface()).toBeNull())
+        expect(onClose).not.toHaveBeenCalled()
     })
 
     it('否决后哨兵重臂：第二次手势返回仍关闭 sheet 而非穿透路由', async () => {
         const onClose = vi.fn()
+        const pushed = trackGuardPushes()
         render(<Host veto onClose={onClose} />)
         forceHeight(surface())
         await waitSettled()
+        expect(pushed).toHaveLength(1)
 
         window.dispatchEvent(new PopStateEvent('popstate'))
         await waitFor(() => expect(animateCalls.some((call) => call.target === 0)).toBe(true))
-        // 重臂：guardId 递增（首推 1 → 重臂 2）
-        await waitFor(() => expect(window.history.state).toMatchObject({ mobiHistoryGuard: true, guardId: 2 }))
+        // 重臂：guardId 递增（重臂新哨兵 ≠ 首推那条；guardId 全局唯一，断言用相对值）
+        await waitFor(() =>
+            expect(window.history.state).toMatchObject({ mobiHistoryGuard: true, guardId: pushed[0] + 1 }),
+        )
 
         window.dispatchEvent(new PopStateEvent('popstate'))
         await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2))
@@ -579,6 +623,14 @@ describe('BottomSheet', () => {
         window.dispatchEvent(new PopStateEvent('popstate', { state: { mobiHistoryGuard: true, guardId: pushed[0] } }))
         await waitFor(() => expect(childClose).toHaveBeenCalled())
         expect(parentClose).not.toHaveBeenCalled()
+
+        // 等上一用例拖欠的哨兵遗留链（disposer 微任务 → back 遍历 → popstate）落地消化：
+        // RTL 的同步 cleanup() 不 flush React 拖欠的卸载 passive effects，拖欠链会拖到本
+        // 用例的第一个 await 之后才执行。它落地时 suppress 会随自己的 popstate 归零——
+        // 若不等，残留 suppress 会把下面「落点非哨兵」的手动 popstate 判成 selfPopped 吞掉
+        // （落点是哨兵的上一条不受影响）。真实浏览器无此问题：每页面独立 history，
+        // disposer 的 back 遍历与 popstate 同步闭环；这只是测试基建对齐生产前提
+        await new Promise((resolve) => setTimeout(resolve, 30))
 
         // 第二次返回（真机诉求：二级与一级各由一个返回关掉，而不是第二次直接退出应用）：
         // 落点已到路由层 → 按落点整段对齐收起剩下的一级，且不再补推哨兵

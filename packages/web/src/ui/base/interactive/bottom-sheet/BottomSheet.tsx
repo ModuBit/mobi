@@ -523,16 +523,23 @@ function Sheet({
     requestCloseRef.current = requestClose
 
     // 手势返回（iOS 边缘滑动 / Android 返回键 / 浏览器 back）关闭本 sheet 而非穿透到
-    // 路由层。哨兵存活期 = 组件挂载期（含滑出动画窗口）；markGuardConsumed 记「本次关闭由
-    // 手势返回发起」（哨兵已被 popstate 消费），供否决检测决定是否重臂。
+    // 路由层。哨兵存活期 = **在场期（isPresent）**：离场一开始（open=false、滑出起手）就弹掉，
+    // 不等卸载——卸载要等滑出动画 + onExited 链，而菜单的延迟导航恰在 onExited 才 push：
+    // disposer 的 back()（微任务）与导航 push（onNextPaint）之间隔着浏览器回退遍历的落地，
+    // 遍历若晚于 push 落地，会把刚 push 的会话 entry 留在未来位置、当前位置弹回原页——
+    // 真机表现「URL 已变、页面弹回原页」（2026-10-31 nav-diag 日志实锤的 committed 震荡）。
+    // 离场即摘哨兵后，push 落在干净栈上，无遍历可竞态。
+    // markGuardConsumed 记「本次关闭由手势返回发起」（哨兵已被 popstate 消费），供否决检测
+    // 决定是否重臂。
     //
     // **为什么不做「滑出窗口重臂」（2026-10-13 删）**：早期实现于此在滑出起手再 push 一条
     // 哨兵覆盖动画窗口。真机上这踩中 Chromium #330744614——popstate 里再补 history entry，
     // 下一次返回既不来 popstate 也不来 navigate（真机 Navigation API 观测 `idx=4 hl=6`
     // 却零事件），浏览器直接把应用关掉。删掉后不需要它：按落点整段对齐的记账本就让第二次
     // 返回落到下一层哨兵并收起对应覆盖物（见 drawerHistoryGuard 文件头）。
+    // 离场途中重开（isPresent 翻回 true）：effect 重跑自动重推新哨兵，折返的覆盖物仍有拦截。
     useHistoryGuard(
-        true,
+        isPresent,
         () => {
             markGuardConsumed()
             requestCloseRef.current?.()

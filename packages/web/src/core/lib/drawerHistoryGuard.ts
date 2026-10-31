@@ -203,10 +203,13 @@ export function pushHistoryGuard(onBackPressed: () => void): () => void {
     }
 }
 
-/** @internal 测试专用：重置模块级状态（生产代码不要调用） */
-export function __resetHistoryGuardForTest(): void {
+/** @internal 测试专用：重置模块级状态（生产代码不要调用）
+ *  @param keepIdCounter 保留 guardId 自增计数器。跨用例共享 window 的测试套件（BottomSheet）
+ *  应传 true：id 全局唯一后，上一用例拖欠的 disposer 微任务读到的 history.state（新哨兵的
+ *  新 id）永远不会匹配它的旧 id，拖欠链天然空转——重置计数器会让 id 撞号、拖欠链复活 */
+export function __resetHistoryGuardForTest(keepIdCounter?: boolean): void {
     stack.length = 0
     suppressCount = 0
-    nextGuardId = 1
+    if (!keepIdCounter) nextGuardId = 1
     // installed 保留：addEventListener 重复注册反而有害；模块状态已清，监听器读到空栈是 no-op
 }
