@@ -24,8 +24,9 @@ import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 
 interface OverflowContainerProps {
-    /** 容器最大高度（px） */
-    maxHeight: number
+    /** 容器最大高度（px）；缺省 = 不限高、不做溢出检测（纯透传容器，永不出「查看详情」）
+     *  ——内容必须完整可见的场景用（如问答卡全量展示，2026-10-31 用户决策） */
+    maxHeight?: number
     /** 子内容 */
     children: ReactNode
     /** 渐变遮罩高度，默认 48 */
@@ -77,6 +78,11 @@ function OverflowContainerInner({
         observer.observe(el)
         return () => observer.disconnect()
     }, [])
+
+    // 不限高模式：不挂测量、不做裁切，纯透传（hooks 须全部先执行完，此处才可分流）
+    if (maxHeight === undefined) {
+        return <div className={className} style={style}>{children}</div>
+    }
 
     return (
         <div className={className} style={{ position: 'relative', maxHeight, overflow: 'hidden', ...style }} ref={contentRef}>

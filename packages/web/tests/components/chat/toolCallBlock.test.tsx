@@ -24,12 +24,21 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import type { ChatBlock } from '@/domain/chat'
 
-// mock antd X 的 Think（jsdom 下太重），返回简单容器
+// mock antd X 的 Think（jsdom 下太重）：收起隐藏内容 + 标题点击切换，贴合真实组件
+// 语义（CSSMotion visible=expanded）——默认展开/收起的行为锁依赖这个保真度
 vi.mock('@ant-design/x', () => ({
-    Think: ({ children, title }: { children?: React.ReactNode; title?: React.ReactNode }) => (
-        <div data-testid="tool-call-think">
-            <div data-testid="tool-call-title">{title}</div>
-            {children}
+    Think: ({ children, title, expanded, onExpand }: {
+        children?: React.ReactNode
+        title?: React.ReactNode
+        expanded?: boolean
+        onExpand?: (v: boolean) => void
+    }) => (
+        <div data-testid="tool-call-think" data-expanded={String(expanded)}>
+            <div
+                data-testid="tool-call-title"
+                onClick={() => onExpand?.(!expanded)}
+            >{title}</div>
+            {expanded ? <div data-testid="tool-call-content">{children}</div> : null}
         </div>
     ),
 }))
@@ -258,8 +267,9 @@ describe('ToolCallBlock 后台 Agent drawer（批次 B，spec D5）', () => {
             />,
         )
 
-        // 初始不打开 drawer
+        // 初始不打开 drawer；「查看详情」在卡片内容里，先点标题展开（真实 Think 语义）
         expect(screen.queryByTestId('tool-detail-drawer')).not.toBeInTheDocument()
+        fireEvent.click(screen.getByTestId('tool-call-title'))
         // 点击「查看详情」入口（stopPropagation 后走 handleViewDetail）
         fireEvent.click(screen.getByTestId('tool-view-detail'))
         expect(screen.getByTestId('tool-detail-drawer')).toBeInTheDocument()
@@ -275,8 +285,90 @@ describe('ToolCallBlock 后台 Agent drawer（批次 B，spec D5）', () => {
             />,
         )
 
-        // 入口隐藏：drawer 内点击本就无响应的死链不再渲染
+        // 入口隐藏：展开后也不渲染（drawer 内点击本就无响应的死链不再渲染）
+        fireEvent.click(screen.getByTestId('tool-call-title'))
         expect(screen.queryByTestId('tool-view-detail')).not.toBeInTheDocument()
         expect(screen.queryByTestId('tool-detail-drawer')).not.toBeInTheDocument()
+    })
+})
+
+describe('ToolCallRenderer 问答卡（AskUserQuestion）默认展开（2026-10-31 用户决策）', () => {
+    afterEach(cleanup)
+
+    function makeAskBlock(): Extract<ChatBlock, { kind: 'tool-call' }> {
+        return {
+            kind: 'tool-call',
+            id: 'tool-ask',
+            localId: null,
+            createdAt: 1000,
+            tool: {
+                id: 'tool-ask',
+                name: 'AskUserQuestion',
+                input: {
+                    questions: [
+                        { header: '修法确认', question: '根因修正后，按哪个方案修？', multiSelect: false, options: [{ label: '按修正方案修（推荐）', description: null, preview: null }] },
+                        { header: '发布', question: '顺带报上游吗？', multiSelect: false, options: [{ label: '报', description: null, preview: null }] },
+                    ],
+                },
+                state: 'completed',
+                createdAt: 1000,
+                startedAt: 1000,
+                completedAt: 2000,
+                description: null,
+                permission: {
+                    id: 'tool-ask',
+                    status: 'approved',
+                    answers: { '根因修正后，按哪个方案修？': ['按修正方案修（推荐）'] },
+                },
+                result: '"根因修正后，按哪个方案修？"="按修正方案修（推荐）"',
+            },
+            children: [],
+        } as unknown as Extract<ChatBlock, { kind: 'tool-call' }>
+    }
+
+    it('挂载即展开：问题与答案直接可见，无需点击', () => {
+        render(<ToolCallRenderer block={makeAskBlock()} metadata={null} sessionId="s1" />)
+
+        const content = screen.getByTestId('tool-call-content')
+        expect(content.textContent).toContain('根因修正后，按哪个方案修？')
+        expect(content.textContent).toContain('按修正方案修（推荐）')
+    })
+
+    it('问题一行答案一行：不再用「→」连接', () => {
+        render(<ToolCallRenderer block={makeAskBlock()} metadata={null} sessionId="s1" />)
+
+        const content = screen.getByTestId('tool-call-content')
+        expect(content.textContent).not.toContain('→')
+        // 问题与答案是同一 li 下相邻的两个 div（问题行 → 答案行）
+        const q = screen.getByText('根因修正后，按哪个方案修？')
+        const a = screen.getByText('按修正方案修（推荐）')
+        expect(q.tagName).toBe('DIV')
+        expect(a.tagName).toBe('DIV')
+        expect(a).not.toBe(q)
+        expect(q.nextElementSibling).toBe(a)
+    })
+
+    it('未回答的题独占答案行：skipped 标注渲染在答案行位置', () => {
+        render(<ToolCallRenderer block={makeAskBlock()} metadata={null} sessionId="s1" />)
+
+        // 两题各一个 li；第二题无 answers → 答案行是 skipped 标注（i18n 文案不锁字面，锁结构）
+        const items = screen.getAllByRole('listitem')
+        expect(items).toHaveLength(2)
+        const q2Lines = items[1]!.querySelectorAll('div')
+        expect(q2Lines).toHaveLength(2)
+        expect(q2Lines[0]!.textContent).toContain('顺带报上游吗？')
+        expect(q2Lines[1]!.textContent!.length).toBeGreaterThan(0)
+    })
+
+    it('其他工具默认收起：内容不渲染，点标题后才展开', () => {
+        const block = makeWriteBlock({ state: 'completed' })
+        block.tool.result = 'wrote 1 line'
+        block.tool.permission = undefined
+
+        render(<ToolCallRenderer block={block} metadata={null} sessionId="s1" />)
+
+        expect(screen.queryByTestId('tool-call-content')).not.toBeInTheDocument()
+        fireEvent.click(screen.getByTestId('tool-call-title'))
+        expect(screen.getByTestId('tool-call-content')).toBeInTheDocument()
     })
 })

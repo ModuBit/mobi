@@ -371,7 +371,8 @@ describe('AskUserQuestionView', () => {
         it('跳过的题（answers 无该题）→ 显示 chat.tool.skipped 而非空串', () => {
             const block = makeBlock(input, { 'Language?': ['TS'] })
             renderResultView(block)
-            expect(screen.getByText(/Language\? →/)).toBeInTheDocument()
+            // 问题行/答案行分离（2026-10-31）：问题独占一行，答案行给 TS，跳过行给 skipped
+            expect(screen.getByText('Language?')).toBeInTheDocument()
             expect(screen.getByText('TS')).toBeInTheDocument()
             expect(screen.getByText('chat.tool.skipped')).toBeInTheDocument()
         })
@@ -385,8 +386,8 @@ describe('AskUserQuestionView', () => {
         it('全部跳过（answers={}）→ 逐题显示 skipped，与部分跳过同口径（不退化为原始文本）', () => {
             const block = makeBlock(input, {})
             renderResultView(block)
-            expect(screen.getByText(/Language\? →/)).toBeInTheDocument()
-            expect(screen.getByText(/Framework\? →/)).toBeInTheDocument()
+            expect(screen.getByText('Language?')).toBeInTheDocument()
+            expect(screen.getByText('Framework?')).toBeInTheDocument()
             expect(screen.getAllByText('chat.tool.skipped')).toHaveLength(2)
         })
     })

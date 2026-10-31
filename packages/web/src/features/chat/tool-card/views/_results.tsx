@@ -159,20 +159,21 @@ const AskUserQuestionResultView: ToolViewComponent = (props: ToolViewProps) => {
             : Object.entries(answers!).map(([q, a]) => [q, a] as const)
 
         return (
+            // 2026-10-31 用户决策：问题一行、答案一行，不再「→」同行连接
             <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc', display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {entries.map(([question, ans], idx) => (
                     <li key={idx} style={{ fontSize: 13 }}>
-                        <span style={{ color: token.colorTextTertiary }}>{question} → </span>
+                        <div style={{ color: token.colorTextTertiary, wordBreak: 'break-word' }}>{question}</div>
                         {ans.length > 0 ? (
-                            <span style={{ color: token.colorTextSecondary, fontWeight: 500 }}>
+                            <div style={{ color: token.colorTextSecondary, fontWeight: 500, wordBreak: 'break-word' }}>
                                 {ans.join(', ')}
-                            </span>
+                            </div>
                         ) : (
                             // 跳过的题：answers 无该题即 skipped（与提交端 annotations 同口径——
                             // CC 的 result 文本不 echo unanswered，模型侧该题整行缺席）
-                            <span style={{ color: token.colorTextTertiary, fontStyle: 'italic' }}>
+                            <div style={{ color: token.colorTextTertiary, fontStyle: 'italic' }}>
                                 {t('chat.tool.skipped')}
-                            </span>
+                            </div>
                         )}
                     </li>
                 ))}

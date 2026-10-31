@@ -25,6 +25,7 @@ import type { MobiApi } from '@/core/data/api/client'
 import type { ToolPermission } from '@/domain/tool/types'
 import { StatusToolIcon } from '@/ui/base/display/toolIcons'
 import { getToolPresentation, isTerminalTool, isAgentTool, isBackgroundAgentTool, isBackgroundTool, isTeamAgentTool } from '@/features/chat/tool-card/knownTools'
+import { isAskUserQuestionToolName } from '@/domain/tool/askUserQuestion'
 import { getToolResultViewComponent } from '@/features/chat/tool-card/views/_results'
 import { getToolViewComponent } from '@/features/chat/tool-card/views/_all'
 import { ToolDetailDrawer } from '@/features/chat/tool-card/ToolDetailDrawer'
@@ -244,6 +245,10 @@ function ToolCallPreviewContent({
 
     if (!ViewComponent) return null
 
+    // 问答卡全量展示（2026-10-31 用户决策）：不限高、不出「查看详情」——
+    // 问题/答案是用户必须完整看到的决策信息，裁切对它不是降噪是残缺
+    const unboundedPreview = isAskUserQuestionToolName(tool.name)
+
     return (
         <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
             {/* tool_use_summary：SDK 对工具组的人话摘要，挂在 result preview 上方 */}
@@ -256,7 +261,7 @@ function ToolCallPreviewContent({
                     {tool.summary}
                 </div>
             )}
-            <OverflowContainer maxHeight={maxHeight} onClickExpand={onViewDetail}>
+            <OverflowContainer maxHeight={unboundedPreview ? undefined : maxHeight} onClickExpand={onViewDetail}>
                 <ViewComponent block={adaptedBlock} metadata={metadata} />
             </OverflowContainer>
         </div>
@@ -295,8 +300,10 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
     const agentRunning = isAgent && (tool.state === 'running' || tool.state === 'pending')
     // 所有工具卡片默认收起（2026-08-21 用户降噪决策）：不再按工具名/失败态/审批态
     // 自动展开，失败也收起——用户想看再点开（thinking 块同理，见 ReasoningBlock）。
-    // 「终端工具失败必展开」的安全不变式随之废弃（git 历史可溯）
-    const [expanded, setExpanded] = useState(false)
+    // 「终端工具失败必展开」的安全不变式随之废弃（git 历史可溯）。
+    // 唯一例外 AskUserQuestion（2026-10-31 用户决策）：问答卡默认展开全量可见，
+    // 问答内容是用户自己的决策记录，折叠它等于每次都要多点一下才看得到自己选了什么
+    const [expanded, setExpanded] = useState(() => isAskUserQuestionToolName(tool.name))
     const prevIsError = useRef(isError)
     // 手动展开的卡片执行失败时自动收起（失败也应降噪，终端工具不再例外）
     useEffect(() => {
