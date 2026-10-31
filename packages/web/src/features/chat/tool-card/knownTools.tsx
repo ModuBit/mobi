@@ -99,6 +99,9 @@ export type ToolPresentation = {
     minimal: boolean
     /** 预览卡片最大高度（px） */
     previewMaxHeight?: number
+    /** 问答记录类工具卡全量展示（2026-10-31 用户决策）：消息列表默认展开 + 预览不限高
+     *  （不出「查看详情」）——问答内容是用户自己的决策记录，折叠/裁切都不是降噪是残缺 */
+    fullPreview?: boolean
     /** 工具行新形态（动词+chip，toolRow.ts 推导单源）；null = 维持 title 形态渲染 */
     row: ToolRow | null
 }
@@ -188,12 +191,14 @@ function askUserQuestionSubtitle(opts: ToolOpts): string | null {
     return question.length > 0 ? truncate(question, 120) : null
 }
 
-// AskUserQuestion 和 ask_user_question 共用配置（基于 header 字段）
+// AskUserQuestion 和 ask_user_question 共用配置（基于 header 字段）。
+// request_user_input 刻意不带 fullPreview：它的卡片是待填表单入口而非已答决策记录
 const askUserQuestionConfig = {
     icon: () => renderToolIcon('AskUserQuestion'),
     title: (opts: ToolOpts) => askUserQuestionTitle(opts, 'header'),
     subtitle: (opts: ToolOpts) => askUserQuestionSubtitle(opts),
-    minimal: true
+    minimal: true,
+    fullPreview: true,
 }
 
 export const knownTools: Record<string, {
@@ -203,6 +208,8 @@ export const knownTools: Record<string, {
     minimal?: boolean | ((opts: ToolOpts) => boolean)
     /** 预览卡片最大高度（px） */
     previewMaxHeight?: number
+    /** 问答记录类工具卡全量展示（默认展开 + 预览不限高，语义见 ToolPresentation） */
+    fullPreview?: boolean
 }> = {
     Task: {
         icon: () => renderToolIcon('Task'),
@@ -557,6 +564,7 @@ export function getToolPresentation(opts: Omit<ToolOpts, 'metadata'> & { metadat
             subtitle: known.subtitle ? known.subtitle(opts) : null,
             minimal,
             previewMaxHeight: known.previewMaxHeight,
+            fullPreview: known.fullPreview,
             row,
         }
     }

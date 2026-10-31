@@ -38,6 +38,7 @@ import { createPortal } from 'react-dom'
 import { animate, motion, useMotionValue } from 'motion/react'
 import { CLOSE_SETTLE_MS, GROW, NARROW, SHRINK, WIDTH } from '@/ui/base/interactive/morph-select/morphTiming'
 import { EDGE_MARGIN, OPEN_RADIUS, measureTriggerWidth, useReducedFlag } from '@/ui/base/interactive/morph-select/morphGeometry'
+import { DRAG_EXEMPT_SELECTOR } from '@/ui/base/interactive/resolveDragDisposition'
 import styles from './morph-surface.module.css'
 
 /**
@@ -45,10 +46,15 @@ import styles from './morph-surface.module.css'
  * （composer 里的另一枚 morph pill、发送钮、输入框…），立即卸载让位、不播收起动画
  * （缘由见收起 effect 的注释）；点在空白处照播收起动画——与 morph-select 的外点收起
  * 同一行为（2026-10-31 用户反馈「点空白收起没动画」）。
+ *
+ * 基底复用 DRAG_EXEMPT_SELECTOR（拖拽落点判据，含 contenteditable）——两份清单的
+ * 「可交互控件」核心必须同源：该常量文档记录过各写一份分叉的翻车（漏 contenteditable
+ * 让长按选字失效），本清单在其上追加 morph 面板特有的语义 role 与 label。
  */
 const YIELD_SELECTOR = [
-    'button', 'a', 'input', 'textarea', 'select', 'label',
-    '[role="button"]', '[role="combobox"]', '[role="option"]', '[role="menuitem"]', '[role="slider"]', '[role="tab"]',
+    DRAG_EXEMPT_SELECTOR,
+    'label',
+    '[role="combobox"]', '[role="option"]', '[role="menuitem"]', '[role="slider"]', '[role="tab"]',
 ].join(', ')
 
 export interface MorphSurfaceProps {
@@ -330,7 +336,17 @@ export function MorphSurface({ label, width, fullWidth = false, open, onOpenChan
                 <motion.div
                     className={styles.surface}
                     data-expanded={expanded || undefined}
-                    style={{ width: shapeW, height: shapeH, borderRadius: radius, left: shapeLeft, bottom: anchor.bottom }}
+                    style={{
+                        width: shapeW,
+                        height: shapeH,
+                        borderRadius: radius,
+                        left: shapeLeft,
+                        bottom: anchor.bottom,
+                        // 收起动画期（open=false 而 mounted 仍真，~CLOSE_SETTLE_MS+80ms）表面
+                        // 对点击必须透明：收缩矩形还压在 composer 上（overlay 层号），不屏蔽
+                        // 会吞掉用户紧接着的第二下点击（发 Send 钮/另一枚 pill）
+                        pointerEvents: open ? undefined : 'none',
+                    }}
                 >
                     <div
                         ref={faceRef}

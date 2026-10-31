@@ -25,7 +25,6 @@ import type { MobiApi } from '@/core/data/api/client'
 import type { ToolPermission } from '@/domain/tool/types'
 import { StatusToolIcon } from '@/ui/base/display/toolIcons'
 import { getToolPresentation, isTerminalTool, isAgentTool, isBackgroundAgentTool, isBackgroundTool, isTeamAgentTool } from '@/features/chat/tool-card/knownTools'
-import { isAskUserQuestionToolName } from '@/domain/tool/askUserQuestion'
 import { getToolResultViewComponent } from '@/features/chat/tool-card/views/_results'
 import { getToolViewComponent } from '@/features/chat/tool-card/views/_all'
 import { ToolDetailDrawer } from '@/features/chat/tool-card/ToolDetailDrawer'
@@ -93,7 +92,8 @@ function ToolCallPreviewContent({
     metadata: SessionMetadataSummary | null
     onViewDetail: () => void
     showInput?: boolean
-    maxHeight: number
+    /** undefined = 不限高（fullPreview 问答卡）：OverflowContainer 走纯透传，不出「查看详情」 */
+    maxHeight: number | undefined
     /** drawer 内嵌套块（disableDrawer 上下文）不渲染「查看详情」入口，消除点击无响应死链 */
     drawerDisabled?: boolean
 }) {
@@ -245,10 +245,6 @@ function ToolCallPreviewContent({
 
     if (!ViewComponent) return null
 
-    // 问答卡全量展示（2026-10-31 用户决策）：不限高、不出「查看详情」——
-    // 问题/答案是用户必须完整看到的决策信息，裁切对它不是降噪是残缺
-    const unboundedPreview = isAskUserQuestionToolName(tool.name)
-
     return (
         <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
             {/* tool_use_summary：SDK 对工具组的人话摘要，挂在 result preview 上方 */}
@@ -261,7 +257,11 @@ function ToolCallPreviewContent({
                     {tool.summary}
                 </div>
             )}
-            <OverflowContainer maxHeight={unboundedPreview ? undefined : maxHeight} onClickExpand={onViewDetail}>
+            {/* 不限高（maxHeight undefined）时「查看详情」入口不存在，不传死 prop */}
+            <OverflowContainer
+                maxHeight={maxHeight}
+                onClickExpand={maxHeight === undefined ? undefined : onViewDetail}
+            >
                 <ViewComponent block={adaptedBlock} metadata={metadata} />
             </OverflowContainer>
         </div>
@@ -301,9 +301,12 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
     // 所有工具卡片默认收起（2026-08-21 用户降噪决策）：不再按工具名/失败态/审批态
     // 自动展开，失败也收起——用户想看再点开（thinking 块同理，见 ReasoningBlock）。
     // 「终端工具失败必展开」的安全不变式随之废弃（git 历史可溯）。
-    // 唯一例外 AskUserQuestion（2026-10-31 用户决策）：问答卡默认展开全量可见，
-    // 问答内容是用户自己的决策记录，折叠它等于每次都要多点一下才看得到自己选了什么
-    const [expanded, setExpanded] = useState(() => isAskUserQuestionToolName(tool.name))
+    // 唯一例外 = 注册表 fullPreview（问答记录类，2026-10-31 用户决策）：默认展开全量
+    // 可见——但只认已答记录（completed）。pending 题面与 ComposerInfoPanel 审批面板
+    // 同屏双份，长题面还会把 composer 顶出视口，折叠它才是降噪
+    const [expanded, setExpanded] = useState(
+        () => toolPresentation.fullPreview === true && tool.state === 'completed',
+    )
     const prevIsError = useRef(isError)
     // 手动展开的卡片执行失败时自动收起（失败也应降噪，终端工具不再例外）
     useEffect(() => {
@@ -321,6 +324,16 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
         }
         prevAgentRunning.current = agentRunning
     }, [agentRunning, isBgAgent])
+
+    // 问答卡挂载后才被作答完成（pending → completed，历史恢复则走 initial 态）：
+    // fullPreview 只认已答记录，完成瞬间自动展开，与「挂载即展开」同口径
+    const prevToolState = useRef(tool.state)
+    useEffect(() => {
+        if (toolPresentation.fullPreview === true && tool.state === 'completed' && prevToolState.current !== 'completed') {
+            setExpanded(true)
+        }
+        prevToolState.current = tool.state
+    }, [tool.state, toolPresentation.fullPreview])
 
     const [drawerOpen, setDrawerOpen] = useState(false)
     // 后台 agent 不再禁用 drawer（批次 B，spec D5）：前后台入口统一。
@@ -391,9 +404,11 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
                     onViewDetail={handleViewDetail}
                     showInput={hasPermission}
                     drawerDisabled={disableDrawer}
-                    maxHeight={toolPresentation.previewMaxHeight
-                        ?? (isTerminalTool(tool.name) ? PREVIEW_MAX_HEIGHT.TERMINAL
-                        : PREVIEW_MAX_HEIGHT.DEFAULT)}
+                    maxHeight={toolPresentation.fullPreview
+                        ? undefined
+                        : (toolPresentation.previewMaxHeight
+                            ?? (isTerminalTool(tool.name) ? PREVIEW_MAX_HEIGHT.TERMINAL
+                            : PREVIEW_MAX_HEIGHT.DEFAULT))}
                 />
             </Think>
             {!disableDrawer && (

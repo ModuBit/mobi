@@ -59,7 +59,8 @@ function OverflowContainerInner({
     const onOverflowChangeRef = useRef(onOverflowChange)
     onOverflowChangeRef.current = onOverflowChange
 
-    // ResizeObserver 只需挂载一次，由浏览器自动监听尺寸变化
+    // ResizeObserver 按需挂载；依赖 maxHeight：挂载时走不限高分支（ref 未挂、effect 空退）
+    // 的实例，之后转为限高时必须补挂观察者，否则溢出检测永不生效、「查看详情」永不出
     useEffect(() => {
         const el = contentRef.current
         if (!el) return
@@ -77,7 +78,7 @@ function OverflowContainerInner({
         const observer = new ResizeObserver(update)
         observer.observe(el)
         return () => observer.disconnect()
-    }, [])
+    }, [maxHeight])
 
     // 不限高模式：不挂测量、不做裁切，纯透传（hooks 须全部先执行完，此处才可分流）
     if (maxHeight === undefined) {

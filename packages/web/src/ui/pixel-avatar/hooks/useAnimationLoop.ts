@@ -37,8 +37,16 @@ function tick() {
     timeoutId = null;
     let minDelay = Infinity;
     for (const fn of listeners) {
-        const delay = fn();
-        if (delay < minDelay) minDelay = delay;
+        // 单听者异常隔离：渲染器抛错（canvas 上下文丢失等）一不得沿同步调用链炸进
+        // React effect 树（status effect → wakeUp → tick，会把整棵应用树换成本地兜底页），
+        // 二不得中断循环拖停其余头像、或跳过 schedule 使全局动画永久停摆——
+        // 抛错者按「本轮不参与」处理，调度照常续命
+        try {
+            const delay = fn();
+            if (delay < minDelay) minDelay = delay;
+        } catch (e) {
+            console.error('[pixel-avatar] animation listener failed', e);
+        }
     }
     if (minDelay < Infinity) schedule(minDelay);
 }

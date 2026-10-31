@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { SDKMessage, SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { SDKMessage, SDKAssistantMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk'
 import { classifyMessage } from '@mobi/shared'
 import type { ClaudePermissionMode } from '@mobi/shared/types'
 import { SDKToLogConverter } from './utils/sdkToLogConverter'
@@ -67,27 +67,23 @@ export type StreamDispatchHooks = {
  * 谓词 fail-safe：任一字段缺失或命中「有信息」形态（fork code-review 报告、compact
  * 提示等零回合但带文本的行）都返回 false 保留落库——误杀真 result 的代价远高于漏放空壳。
  * 注意只看 duration_api_ms：空壳的 duration_ms（墙钟）非零。
+ *
+ * 入口的 type 检查在 dispatch 调用点（已收窄到 result 分支）恒真——它是独立导出契约的
+ * 一部分（外部直调时 fail-safe），非冗余。字段形状经 SDKResultMessage 收窄（RawJSONLines
+ * 的 TS union 未收编 result 变体，schema 历史缺口），SDK 升级字段变化在此处可见。
  */
 export function isEmptyShellResult(logMessage: RawJSONLines): boolean {
-    // RawJSONLines 的 TS union 未收编 result 变体（schema 历史缺口），与 dispatch 同款
-    // 宽化读取；字段形状以落库行实证为准（CC 原样透传 SDK result 字段）
     if ((logMessage as { type?: string }).type !== 'result') return false
-    const m = logMessage as {
-        num_turns?: number
-        result?: string
-        is_error?: boolean
-        stop_reason?: string | null
-        terminal_reason?: string | null
-        duration_api_ms?: number
-        usage?: { output_tokens?: number } | null
-    }
+    const m = logMessage as unknown as SDKResultMessage
     return (
         m.num_turns === 0 &&
-        !m.result &&
+        // result 文本只在 success 变体上（error 变体无此字段——报错回执天然非空壳）
+        !('result' in m && m.result) &&
         m.is_error === false &&
         m.duration_api_ms === 0 &&
         !m.stop_reason &&
         !m.terminal_reason &&
+        // 运行时 fail-safe：schema 缺口下 usage 链路可能缺席，缺失 = 保留不丢行（不抛错）
         m.usage?.output_tokens === 0
     )
 }

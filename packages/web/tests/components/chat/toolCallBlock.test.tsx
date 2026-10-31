@@ -326,38 +326,14 @@ describe('ToolCallRenderer 问答卡（AskUserQuestion）默认展开（2026-10-
         } as unknown as Extract<ChatBlock, { kind: 'tool-call' }>
     }
 
-    it('挂载即展开：问题与答案直接可见，无需点击', () => {
+    it('挂载即展开：问题与答案直接可见，无需点击（问答摘要两行形态在 AskUserQuestionView.test 锁）', () => {
         render(<ToolCallRenderer block={makeAskBlock()} metadata={null} sessionId="s1" />)
 
         const content = screen.getByTestId('tool-call-content')
         expect(content.textContent).toContain('根因修正后，按哪个方案修？')
         expect(content.textContent).toContain('按修正方案修（推荐）')
-    })
-
-    it('问题一行答案一行：不再用「→」连接', () => {
-        render(<ToolCallRenderer block={makeAskBlock()} metadata={null} sessionId="s1" />)
-
-        const content = screen.getByTestId('tool-call-content')
+        // 旧「→ 同行连接」形态不再出现（问题/答案分离的 DOM 结构归视图层测试）
         expect(content.textContent).not.toContain('→')
-        // 问题与答案是同一 li 下相邻的两个 div（问题行 → 答案行）
-        const q = screen.getByText('根因修正后，按哪个方案修？')
-        const a = screen.getByText('按修正方案修（推荐）')
-        expect(q.tagName).toBe('DIV')
-        expect(a.tagName).toBe('DIV')
-        expect(a).not.toBe(q)
-        expect(q.nextElementSibling).toBe(a)
-    })
-
-    it('未回答的题独占答案行：skipped 标注渲染在答案行位置', () => {
-        render(<ToolCallRenderer block={makeAskBlock()} metadata={null} sessionId="s1" />)
-
-        // 两题各一个 li；第二题无 answers → 答案行是 skipped 标注（i18n 文案不锁字面，锁结构）
-        const items = screen.getAllByRole('listitem')
-        expect(items).toHaveLength(2)
-        const q2Lines = items[1]!.querySelectorAll('div')
-        expect(q2Lines).toHaveLength(2)
-        expect(q2Lines[0]!.textContent).toContain('顺带报上游吗？')
-        expect(q2Lines[1]!.textContent!.length).toBeGreaterThan(0)
     })
 
     it('其他工具默认收起：内容不渲染，点标题后才展开', () => {
