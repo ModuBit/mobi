@@ -99,6 +99,12 @@ const PageContainer = styled.div`
     height: 100%;
     position: relative;
     overflow-y: auto;
+    /* 页面级滚动容器只纵滚，横向恒裁（clip 不建滚动容器，语义即「横向溢出不可达」，
+       且与 overflow-y: auto 组合不发生 visible→auto 的隐式转化）。不裁的话，ToolStrip
+       这类「视觉裁剪」组件（clip-path 只管画布、不参与滚动溢出计算）会把 Row 的布局
+       溢出（pill 自然宽 > 条宽，窄屏必现）一路传到本容器，隐式 overflow-x: auto 让
+       整页横向可滚（2026-10-31 移动端真机：出现横向滚动条、内容被滚出左缘） */
+    overflow-x: clip;
 `
 
 const SidebarToggleWrapper = styled.div`
