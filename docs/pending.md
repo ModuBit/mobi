@@ -1410,3 +1410,16 @@ SDK 流通道恢复后可与 mods 通道并存（幂等）。本条目事实层�
 web divider 第三档两文案；通道层零新代码）——全文在
 `.scratch/wakeup-source-observability/spec.md`「扩展」节。恢复时按该方案实施，
 E2E 并入唤醒可观测真机批次。
+
+---
+
+## 130. 会话自动归档定时任务（随「自动化」档位一起做，2026-10-30 暂缓）
+
+用户裁决：归档/删除/豁免先做，**自动归档等自动化档位一起实施**。方案已定稿，恢复时照此落地：
+
+- **配置**：`settings.daemon.json` → `sessions.autoArchiveAfterDays`，缺省/0 = 关闭，最小 1；Web 设置页下拉（关/7/14/30/60/90），走 settingsWatcher 热更新
+- **调度**：启动后 60s 首跑 + 0–60s 抖动，之后每 6h 一轮；单飞锁；`unref()`；配置变更只重排、不立即执行（防把 90 改成 1 时瞬间归档一大批）
+- **候选**：`archived_at IS NULL` + `pinned = 0` + 粗筛 SQL `COALESCE((SELECT MAX(created_at) FROM messages WHERE session_id=s.id), s.created_at) < cutoff`；**禁用 `updated_at`**（改标题/写 runtimeState 会 bump，会话将永不被归档）；粗筛后逐条过内存判据（无活 CLI、无后台任务、无 queued 消息、无在途 fork）
+- **执行**：逐条走 `engine.archiveSession(id)`（与手动归档同路径，天然先休眠），串行、每轮上限 50，失败记 debug 跳过
+- **观测**：每轮一行 `[retention] auto-archive: candidates=n archived=m skipped=k`，不通知用户
+- 前置：新增 `sessions.archived_at` 列（归档票内落地）
