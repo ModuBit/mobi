@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next'
 import { QUOTE_COMMENT_MAX } from '@mobi/shared'
 import { computeQuoteLayerPlacement } from './quoteLayerPlacement'
 import { CommentField } from '@/ui/shared/CommentField'
-import { useKeyboardViewport } from './useKeyboardViewport'
+import { useKeyboardViewportSelector } from './useKeyboardViewport'
 
 /** 浮层宽度：多行评论输入条 */
 const POPOVER_WIDTH = 280
@@ -67,9 +67,11 @@ export const QuoteCommentInput = memo(function QuoteCommentInput({
     // 键盘弹出（inset > 0）时改挂键盘上缘、全宽减边距：虚拟键盘压缩视口后原选区几何失效，
     // 浮层继续锚选区会脱离视线/被键盘遮挡（2026-09-23 真机：ghost 糊在 composer 上）
     const { top, left, above } = computeQuoteLayerPlacement(rect, POPOVER_WIDTH, FLIP_THRESHOLD_PX, ESTIMATED_HEIGHT_PX)
-    // layoutInset = 当前 layout viewport 内被键盘占据的高度（resize 模式 ≈0，bottom 基准已
-    // 是键盘上方；iOS 模型 = 键盘高），直接用键盘全高会在 Android 上抬出屏幕
-    const { keyboardInset, layoutInset } = useKeyboardViewport()
+    // layoutInset = 当前 layout viewport 内被键盘占据的高度（overlay 模式 = 键盘全高，
+    // 与 iOS 模型同语义；resize 模式 ≈0，bottom 基准已是键盘上方），直接用键盘全高
+    // 会在 resize 模式下把浮层抬出屏幕。本组件是键盘跟随浮层，订数值切片逐帧跟动画
+    const keyboardInset = useKeyboardViewportSelector(s => s.keyboardInset)
+    const layoutInset = useKeyboardViewportSelector(s => s.layoutInset)
     const { t } = useTranslation()
 
     return (

@@ -758,9 +758,14 @@ export function ChatComposer(props: ChatComposerProps) {
         // composer 永远不贴左右边缘：统一 16px 侧边距。不依赖 CHAT_MAX_WIDTH 居中兜底——
         // 视口减去侧栏/面板不足 1200 时聊天列按 100% 宽渲染，无侧边距即贴边
         // （16px 内衬 − 白卡悬挑 8px = 任何视口宽度下与屏幕边保底 8px 缝）
+        // 底衬 = safe-area 减去键盘 inset：键盘弹出（overlay 模式）时 inset 覆盖了 home
+        // 指示条区域，safe-area 若照常生效会与 MainLayout 的 env(keyboard-inset-height)
+        // 叠出双缝——白卡直接落在键盘上沿，只保 12px 最小呼吸。无键盘时 inset=0，回落原值。
         // data-perf-region：dev-only layout-shift 归因观测器；位于 chat 区域内部，
         // 归因时内层标注优先（composer 内位移源归 composer 不归 chat）
-        <div style={{ padding: '0 16px max(12px, env(safe-area-inset-bottom))' }} data-perf-region="composer">
+        <div style={{
+            padding: '0 16px max(12px, calc(env(safe-area-inset-bottom, 0px) - env(keyboard-inset-height, 0px)))',
+        }} data-perf-region="composer">
             {/* Dock 的进退场（ComposerDock 的 :has(> :only-child)）依赖此处的结构契约：
                 InfoPanel 与 goal 行空态必须渲染 null——直接子元素只剩 wrapper 一个时
                 Dock 背后无内容层，整体退场；多出任何一个非 null 孩子即现身 */}

@@ -74,7 +74,7 @@ import { QuoteSelectionPopover, type QuoteSelectionPopoverState } from '@/featur
 import { QuoteCommentInput } from '@/features/chat/QuoteCommentInput'
 import { SelectionGhost } from '@/features/chat/SelectionGhost'
 import { useMobileQuoteSelection } from '@/features/chat/useMobileQuoteSelection'
-import { useKeyboardViewport } from '@/features/chat/useKeyboardViewport'
+import { useKeyboardViewportSelector } from '@/features/chat/useKeyboardViewport'
 import { extractApiErrorCode, useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/features/composer/ResponsiveActionBar'
 import type { DecryptedMessage, SessionMetadataSummary } from '@/core/data/api/types'
@@ -753,8 +753,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // actionsTarget 只由 MessageActionsTrigger 点击置位（见 decoratedItems footer）
     // ──────────────────────────────────────────────────────────────
     const isMobile = useIsMobile()
-    // 虚拟键盘是否弹出（keyboardInset>0）：ghost 隐藏判据（QuoteCommentInput 同源做键盘跟随）
-    const { keyboardInset: kbInset } = useKeyboardViewport()
+    // 虚拟键盘是否弹出（inset>0 布尔）：ghost 隐藏判据（QuoteCommentInput 同源做键盘跟随）。
+    // 订布尔切片而非数值——overlay 模式 inset 逐帧变化，整页组件不能跟着键盘动画逐帧重渲染
+    const kbInsetOpen = useKeyboardViewportSelector(s => s.keyboardInset > 0)
     const [actionsTarget, setActionsTarget] = useState<MessageActionTarget | null>(null)
     // key → 消息操作信息索引（decoratedItems 内重建，判据与 footer 同源）
     const actionsInfoByRef = useRef<Map<string, MessageActionTarget>>(new Map())
@@ -1719,7 +1720,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 <>
                     {/* 选区 ghost：原生选区已被输入框夺焦清掉，用冻结 rects 保持选中观感。
                         键盘弹出后视口被压缩、冻结坐标全部失效（会糊到 composer 上），隐藏 */}
-                    {!kbInset && <SelectionGhost rects={quoteCommentDraft.rects} />}
+                    {!kbInsetOpen && <SelectionGhost rects={quoteCommentDraft.rects} />}
                     <QuoteCommentInput
                         initialComment={quoteCommentDraft.initialComment}
                         rect={quoteCommentDraft.rect}

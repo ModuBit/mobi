@@ -84,9 +84,14 @@ export function MainLayout() {
             {/* 移动端顶栏悬浮更新胶囊（MainLayout 挂载即全局）；PC 端入口在 SidebarHeader / WcoTitleBar。
                 关闭 = 清空 reload 状态，SW 下次更新才再提示 */}
             {isMobile && <UpdatePrompt onUpdate={updateReload} onClose={() => setUpdateReload(null)} />}
-            {/* 外层 column 容器：WCO 标题栏在上（独立于下方 row Layout 的横向流），不受 AppSidebar overflow 裁剪 */}
+            {/* 外层 column 容器：WCO 标题栏在上（独立于下方 row Layout 的横向流），不受 AppSidebar overflow 裁剪。
+                键盘 overlay 模式（index.html 早期脚本开启）：100dvh 恒为全屏高，键盘高度经
+                env(keyboard-inset-height) 逐帧跟随系统键盘动画——整棵布局平滑腾出空间
+                （border-box 由 base.css 全局规则承担，padding 内收不撑高）。无此 API 的
+                浏览器 env 恒走 0px 兜底，回落 resizes-content 视口收缩路径 */}
             <div style={{
                 height: '100dvh',
+                paddingBottom: 'env(keyboard-inset-height, 0px)',
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
