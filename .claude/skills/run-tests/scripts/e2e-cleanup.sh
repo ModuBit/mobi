@@ -103,6 +103,11 @@ main() {
         e2e_log_info "无 --profile e2e 残留进程"
     fi
 
+    # 3.6 验收残留 headless Chrome 清扫：会话期手动起的验收浏览器（/tmp profile）不归
+    # 端口/pattern 管，孤儿化后连着 E2E 页面空转数周（2026-10-31 实锤：4 棵树烧 15-18 天）
+    e2e_log_info "验收残留 headless Chrome 清扫..."
+    bash "$(dirname "$0")/sweep-verify-browsers.sh" 2>/dev/null || e2e_log_warn "浏览器清扫执行失败（不阻塞其余清理）"
+
     # 4. 清理数据目录（含日志）
     if [[ -d "${E2E_TMPDIR}" ]]; then
         e2e_log_info "清理数据目录: ${E2E_TMPDIR}"
