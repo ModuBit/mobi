@@ -120,7 +120,22 @@ export function MobileMenuDrawer() {
      *  这里只管把登记的闭包取走执行 */
     const handleExited = useCallback(() => {
         setMenuSheetPresent(false)
-        takeMenuNavigation()?.()
+        // 2026-10-31 临时诊断埋点：真机「URL 已变但页面视觉不切」排查——go 执行即打点，
+        // 随后 8 秒心跳（每秒一条 = 主线程存活；断流 = 主线程被长任务/死循环卡死）。
+        // 与 SessionDetailPage 的 committed 埋点配对：有 go 无 committed = 渲染未提交。定位后删除
+        const t0 = Date.now()
+        const go = takeMenuNavigation()
+        if (go) {
+            console.info(`[nav-diag] menu go() firing @${t0} path=${location.pathname}`)
+            let beats = 0
+            const beat = () => {
+                beats += 1
+                console.info(`[nav-diag] alive +${Date.now() - t0}ms`)
+                if (beats < 8) setTimeout(beat, 1000)
+            }
+            setTimeout(beat, 1000)
+            go()
+        }
     }, [setMenuSheetPresent, takeMenuNavigation])
 
     // 关闭菜单

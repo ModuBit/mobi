@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { useEffect } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { SessionDetail } from '@/pages/session/SessionDetail'
 
@@ -24,6 +25,13 @@ import { SessionDetail } from '@/pages/session/SessionDetail'
 export function SessionDetailPage() {
     const params = useParams({ strict: false })
     const sessionId = params.sessionId as string
+
+    // 2026-10-31 临时诊断埋点：移动端菜单导航「URL 已变但页面视觉不切」真机排查——
+    // 此 log 出现 = React 树已提交本页（与 mobileMenu.tsx handleExited 的埋点配对；
+    // 配对失败的一段即断点所在）。定位后删除
+    useEffect(() => {
+        console.info(`[nav-diag] session-page committed +${Math.round(performance.now())}ms sessionId=${sessionId}`)
+    }, [sessionId])
 
     return <SessionDetail sessionId={sessionId} />
 }
