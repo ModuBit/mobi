@@ -227,7 +227,25 @@
     "ungrouped": "未归入工作区",
     "unknownWorkspace": "未知工作区",
     "archivedAt": "归档于 {{time}}",
-    "unarchiveBlocked": "无法取消归档：{{reasons}}"
+    "unarchiveBlocked": "无法取消归档：{{reasons}}",
+    "batch": {
+      "selected": "已选 {{count}} 项",
+      "clearSelection": "取消选择",
+      "deleteAll": "全部删除 ({{count}})",
+      "unarchiveGroup": "全部取消归档 ({{count}})",
+      "deleteGroup": "删除全部 ({{count}})",
+      "selectRow": "选择 {{name}}",
+      "deleteConfirmTitle": "确认批量删除",
+      "deleteConfirmGroupDesc": "将删除项目「{{name}}」中的 {{count}} 个归档会话，包含其消息与 Claude Code 对话记录，此操作无法撤销。",
+      "deleteConfirmPageDesc": "将删除 {{count}} 个归档会话，包含其消息与 Claude Code 对话记录，此操作无法撤销。",
+      "typeGroupName": "输入项目名「{{name}}」以确认",
+      "typeDelete": "输入 DELETE 以确认",
+      "deleteConfirmOk": "删除",
+      "resultTitle": "批量操作完成",
+      "unarchiveSuccess": "已取消归档 {{count}} 项",
+      "deleteSuccess": "已删除 {{count}} 项",
+      "itemFailed": "「{{name}}」失败：{{reason}}"
+    }
   },
   "chat": {
     "error": {
