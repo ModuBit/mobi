@@ -547,6 +547,8 @@ export type SessionStatusWrite = {
     status: SessionStatus
     /** 迁移时刻（缺省 now）；同时作为 status_updated_at */
     at?: number
+    /** 归档时同语句清除置顶（归档会话不占「置顶」分组） */
+    clearPinned?: boolean
 }
 
 /**
@@ -564,9 +566,9 @@ export function setSessionStatus(
     const archivedAt = write.status === 'archived' ? at : null
     const result = db.prepare(
         `UPDATE sessions
-         SET status = ?, status_updated_at = ?, archived_at = ?
+         SET status = ?, status_updated_at = ?, archived_at = ?, pinned = CASE WHEN ? THEN 0 ELSE pinned END
          WHERE id = ? AND namespace = ?`
-    ).run(write.status, at, archivedAt, id, namespace)
+    ).run(write.status, at, archivedAt, write.clearPinned ? 1 : 0, id, namespace)
     return result.changes > 0
 }
 
@@ -658,7 +660,8 @@ function paginateSessions(
 
 /**
  * 按工作区分页查询会话（SQL 按 updated_at 游标；前端再按 active→updatedAt 排序展示）。
- * 置顶会话不进「工作区」分组（在「置顶」区展示）。
+ * 置顶会话不进「工作区」分组（在「置顶」区展示）；归档会话从所有主列表分组消失
+ * （数据源是归档页，见 getArchivedSessions）。
  * 快照一致语义见 paginateSessions 注释。
  */
 export function getSessionsByWorkspace(
@@ -669,12 +672,12 @@ export function getSessionsByWorkspace(
     limit: number = 20
 ): WorkspaceSessionsResult {
     return paginateSessions(
-        db, 'namespace = ? AND workspace_id = ? AND pinned = 0', [namespace, workspaceId], cursor, limit)
+        db, 'namespace = ? AND workspace_id = ? AND pinned = 0 AND status != \'archived\'', [namespace, workspaceId], cursor, limit)
 }
 
 /**
  * 游离会话分页查询（workspace_id IS NULL），「最近」区数据源。
- * 置顶会话不进「最近」（在「置顶」区展示）。
+ * 置顶会话不进「最近」（在「置顶」区展示）；归档会话不进任何主列表分组。
  * 快照一致语义见 paginateSessions 注释。
  */
 export function getUnboundSessions(
@@ -684,11 +687,12 @@ export function getUnboundSessions(
     limit: number = 20
 ): WorkspaceSessionsResult {
     return paginateSessions(
-        db, 'namespace = ? AND workspace_id IS NULL AND pinned = 0', [namespace], cursor, limit)
+        db, 'namespace = ? AND workspace_id IS NULL AND pinned = 0 AND status != \'archived\'', [namespace], cursor, limit)
 }
 
 /**
  * 置顶会话分页查询（跨工作区/游离），「置顶」区数据源。
+ * 归档会在同语句清除置顶，理论上不会有归档行残留；条件仍显式排除以防改库/旧数据。
  * 快照一致语义见 paginateSessions 注释。
  */
 export function getPinnedSessions(
@@ -697,7 +701,15 @@ export function getPinnedSessions(
     cursor: number | null,
     limit: number = 20
 ): WorkspaceSessionsResult {
-    return paginateSessions(db, 'namespace = ? AND pinned = 1', [namespace], cursor, limit)
+    return paginateSessions(db, 'namespace = ? AND pinned = 1 AND status != \'archived\'', [namespace], cursor, limit)
+}
+
+/** 归档会话列表（归档页数据源）：按归档时间倒序，全量不分页（归档是低频收纳动作） */
+export function getArchivedSessions(db: Database, namespace: string): StoredSession[] {
+    const rows = db.prepare(
+        'SELECT * FROM sessions WHERE namespace = ? AND status = \'archived\' ORDER BY archived_at DESC'
+    ).all(namespace) as DbSessionRow[]
+    return rows.map(toStoredSession)
 }
 
 /** setSessionWorkspace 的三态结果（幂等语义见函数注释） */

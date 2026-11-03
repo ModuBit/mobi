@@ -185,6 +185,56 @@ export class SessionCache {
     }
 
     /**
+     * 用户归档（session-retention 票 04）：status=archived 与 archived_at 同事务落库，
+     * 同语句清除置顶（归档会话不占「置顶」分组）。前置休眠由 SyncEngine 编排，这里只管状态落位。
+     * 广播完整 summary 级载荷（status/pinned/archivedAt），web 据此把行从主列表移除。
+     */
+    archiveSession(sessionId: string, at: number = Date.now()): boolean {
+        const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
+        if (!session) return false
+        try {
+            this.store.sessions.setSessionStatus(session.id, session.namespace, {
+                status: 'archived', at, clearPinned: true,
+            })
+        } catch (error) {
+            daemonLogger.warn(`[sessionCache] archiveSession 落库失败 (id=${sessionId}): ${(error as Error).message}`)
+            return false
+        }
+        session.status = 'archived'
+        session.archivedAt = at
+        session.pinned = false
+        this.publisher.emit({
+            type: 'session-updated',
+            sessionId,
+            data: { status: 'archived', archivedAt: at, pinned: false, active: false },
+        })
+        return true
+    }
+
+    /**
+     * 取消归档：回 dormant（不自动唤醒），archived_at 随语句清空；置顶不恢复（用户重定）。
+     */
+    unarchiveSession(sessionId: string, at: number = Date.now()): boolean {
+        const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
+        if (!session) return false
+        if (session.status !== 'archived') return true
+        try {
+            this.store.sessions.setSessionStatus(session.id, session.namespace, { status: 'dormant', at })
+        } catch (error) {
+            daemonLogger.warn(`[sessionCache] unarchiveSession 落库失败 (id=${sessionId}): ${(error as Error).message}`)
+            return false
+        }
+        session.status = 'dormant'
+        session.archivedAt = null
+        this.publisher.emit({
+            type: 'session-updated',
+            sessionId,
+            data: { status: 'dormant', archivedAt: null },
+        })
+        return true
+    }
+
+    /**
      * 保留状态迁移（DB + 内存同写，唯一写入口在 store）。
      *
      * `archived` 是用户终态：进程事件（附着/结束/心跳过期）一律不得把它翻回——

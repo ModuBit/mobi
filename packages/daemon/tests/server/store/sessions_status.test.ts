@@ -74,6 +74,56 @@ describe('setSessionStatus（唯一写入口）', () => {
         const s = store.sessions.getOrCreateSession('status-4', { path: '/x' }, {}, 'default')
         expect(store.sessions.getSession(s.id)?.status).toBe('dormant')
     })
+
+    it('clearPinned 与归档同语句生效', () => {
+        const s = store.sessions.getOrCreateSession('status-5', { path: '/x' }, {}, 'default')
+        store.sessions.setSessionPinned(s.id, true, 'default')
+        expect(store.sessions.getSession(s.id)?.pinned).toBe(true)
+
+        store.sessions.setSessionStatus(s.id, 'default', { status: 'archived', clearPinned: true })
+        expect(store.sessions.getSession(s.id)?.pinned).toBe(false)
+    })
+})
+
+describe('主列表分页排除归档 + 归档列表（票 04）', () => {
+    function seedList() {
+        const ws = store.workspaces.createWorkspace({ namespace: 'default', name: 'ws', folders: [{ path: '/tmp/ws', primary: true }] })
+        const normal = store.sessions.getOrCreateSession('list-normal', { path: '/x' }, {}, 'default', undefined, ws.id)
+        const archived = store.sessions.getOrCreateSession('list-archived', { path: '/x' }, {}, 'default', undefined, ws.id)
+        store.sessions.setSessionStatus(archived.id, 'default', { status: 'archived', at: 1000 })
+        return { archivedId: archived.id, normalId: normal.id, workspaceId: ws.id }
+    }
+
+    it('工作区 / 最近 / 置顶三个分组都不含归档行', () => {
+        const { archivedId, normalId, workspaceId } = seedList()
+
+        const byWorkspace = store.sessions.getSessionsByWorkspace('default', workspaceId, null)
+        expect(byWorkspace.sessions.map(s => s.id)).toEqual([normalId])
+
+        const unbound = store.sessions.getUnboundSessions('default', null)
+        expect(unbound.sessions.map(s => s.id)).not.toContain(archivedId)
+
+        store.sessions.setSessionPinned(normalId, true, 'default')
+        const pinned = store.sessions.getPinnedSessions('default', null)
+        expect(pinned.sessions.map(s => s.id)).toEqual([normalId])
+    })
+
+    it('getArchivedSessions 按归档时间倒序且只含归档行', () => {
+        const a = store.sessions.getOrCreateSession('arc-a', { path: '/x' }, {}, 'default')
+        const b = store.sessions.getOrCreateSession('arc-b', { path: '/x' }, {}, 'default')
+        const normal = store.sessions.getOrCreateSession('arc-normal', { path: '/x' }, {}, 'default')
+        store.sessions.setSessionStatus(a.id, 'default', { status: 'archived', at: 1000 })
+        store.sessions.setSessionStatus(b.id, 'default', { status: 'archived', at: 2000 })
+
+        const list = store.sessions.getArchivedSessions('default')
+        expect(list.map(s => s.id)).toEqual([b.id, a.id])
+        expect(list.map(s => s.archivedAt)).toEqual([2000, 1000])
+
+        // 取消归档后立即从归档列表消失
+        store.sessions.setSessionStatus(b.id, 'default', { status: 'dormant', at: 3000 })
+        expect(store.sessions.getArchivedSessions('default').map(s => s.id)).toEqual([a.id])
+        expect(normal.status).toBe('dormant')
+    })
 })
 
 describe('reconcileStartupSessionStatus（启动自愈）', () => {

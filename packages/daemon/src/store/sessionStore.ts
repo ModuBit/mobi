@@ -38,6 +38,7 @@ import {
     clearSessionEnd,
     setSessionStatus,
     reconcileStartupSessionStatus,
+    getArchivedSessions,
     type SessionStatusWrite,
     mergeRuntimeState,
     updateSessionAgentState,
@@ -175,6 +176,11 @@ export class SessionStore {
         limit?: number
     ): WorkspaceSessionsResult {
         return getUnboundSessionsFromDb(this.db, namespace, cursor, limit)
+    }
+
+    /** 归档会话列表（归档页数据源，按归档时间倒序） */
+    getArchivedSessions(namespace: string): StoredSession[] {
+        return getArchivedSessions(this.db, namespace)
     }
 
     setSessionWorkspace(id: string, workspaceId: string | null, namespace: string): SetSessionWorkspaceResult {

@@ -725,6 +725,32 @@ export class SyncEngine {
     }
 
     /**
+     * 用户归档（session-retention 票 04）：先把在线会话休眠（gate 阻塞原样透出 blockers，
+     * 语义与手动休眠一致），再落 archived 状态（清置顶）。已归档幂等成功。
+     */
+    async archiveSession(sessionId: string): Promise<{ ok: boolean; blockers?: string[] }> {
+        const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
+        if (!session) return { ok: false, blockers: ['Session not found'] }
+        if (session.status === 'archived') return { ok: true }
+
+        // 前置休眠：归档必须是 dormant。在线会话走既有休眠管线（gate 自查 + RPC kill）；
+        // 阻塞时原样透出，不做任何强制路径（close 语义已作废）
+        if (session.active) {
+            const dormant = await this.dormantSession(sessionId)
+            if (!dormant.ok) return dormant
+        }
+        if (!this.sessionCache.archiveSession(sessionId)) {
+            return { ok: false, blockers: ['Session not found'] }
+        }
+        return { ok: true }
+    }
+
+    /** 取消归档：回 dormant（不自动唤醒、不恢复置顶）。非归档行幂等成功 */
+    unarchiveSession(sessionId: string): boolean {
+        return this.sessionCache.unarchiveSession(sessionId)
+    }
+
+    /**
      * 终止会话并合成 session-end 事实（手动休眠 / Governor 逐出共用同一收尾口径）。
      * DB 终态已退出 → 跳过必然 unreachable 的 killSession，只补收尾
      * （handleSessionEnd 翻掉悬挂的 active）；RPC 失败由调用方收口，这里不吞。

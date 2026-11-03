@@ -282,7 +282,11 @@ export function createSessionsRoutes(
         const getPendingCount = (s: Session) => s.agentState?.requests ? Object.keys(s.agentState.requests).length : 0
 
         const namespace = c.get('namespace')
+        // 归档会话从主列表消失（数据源是归档页）；includeArchived=1 才返回全部。
+        // 缓存是全量投影，过滤在响应边界做，不动缓存内容
+        const includeArchived = c.req.query('includeArchived') === '1'
         const sessions = engine.getSessionsByNamespace(namespace)
+            .filter(s => includeArchived || s.status !== 'archived')
             .sort((a, b) => {
                 // Active sessions first
                 if (a.active !== b.active) {
@@ -640,6 +644,50 @@ export function createSessionsRoutes(
 
         await engine.switchSession(sessionResult.sessionId, 'remote')
         return c.json({ ok: true })
+    })
+
+    // 用户归档（session-retention 票 04）：前置休眠 + status=archived（清置顶）。
+    // 不要求 requireActive——休眠后的会话、已归档的会话（幂等）都要能响应；
+    // 会话不存在/越权由 engine.archiveSession 内部的缓存解析判定（404 语义走 blockers 之外的分支）
+    app.post('/sessions/:id/archive', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionId = c.req.param('id')
+        try {
+            const result = await engine.archiveSession(sessionId)
+            if (!result.ok) {
+                // blockers 是休眠 gate 的逐项原因（透传给 web toast）；Session not found
+                // 不是阻塞而是定位失败，编成 404
+                if (result.blockers?.includes('Session not found')) {
+                    return c.json({ error: 'Session not found' }, 404)
+                }
+                return c.json({ error: 'Session has work in progress', blockers: result.blockers ?? [] }, 409)
+            }
+            return c.json({ ok: true })
+        } catch (error) {
+            // 与 /dormant 同口径：归档未确认完成一律按冲突反馈，不穿透 500
+            const message = error instanceof Error ? error.message : 'Failed to archive the session'
+            return c.json({ error: message }, 409)
+        }
+    })
+
+    // 取消归档：回 dormant（不自动唤醒、不恢复置顶）。非归档行幂等成功
+    app.post('/sessions/:id/unarchive', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const ok = engine.unarchiveSession(sessionResult.sessionId)
+        return ok ? c.json({ ok: true }) : c.json({ error: 'Failed to unarchive the session' }, 409)
     })
 
     registerSessionConfigRoute(app, getSyncEngine, {
