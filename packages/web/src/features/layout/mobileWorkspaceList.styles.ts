@@ -128,49 +128,6 @@ export const SessionListWrapper = styled.div<{ $expanded: boolean }>`
     transition: grid-template-rows 0.2s ease, opacity 0.15s ease;
 `
 
-// 「已归档」入口行（票 05）：「最近」之后的同形一行，整页打开归档页
-export const ArchivedEntryRow = styled.button<{ $token: SidebarToken }>`
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    min-height: 48px;
-    padding: 0 20px;
-    margin-top: 4px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    transition: background 0.15s;
-    text-align: left;
-    color: ${props => props.$token.colorText};
-
-    &:active {
-        background: ${props => props.$token.colorPrimaryBg};
-    }
-`
-
-// 入口行图标
-export const ArchivedEntryIcon = styled.span<{ $token: SidebarToken }>`
-    display: inline-flex;
-    color: ${props => props.$token.colorTextTertiary};
-`
-
-// 入口行名称
-export const ArchivedEntryName = styled.span<{ $token: SidebarToken }>`
-    flex: 1;
-    font-size: 15px;
-    font-weight: 500;
-    color: ${props => props.$token.colorText};
-`
-
-// 入口行数量
-export const ArchivedEntryCount = styled.span<{ $token: SidebarToken }>`
-    flex-shrink: 0;
-    font-size: 12px;
-    color: ${props => props.$token.colorTextQuaternary};
-    font-variant-numeric: tabular-nums;
-`
-
 export const SessionListInner = styled.div`
     position: relative;
     overflow: hidden;

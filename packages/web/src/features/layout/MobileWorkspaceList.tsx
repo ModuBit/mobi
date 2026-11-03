@@ -48,11 +48,9 @@ import { clearSessionResources } from '@/core/lib/sessionResources'
 import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
 import { pushHistoryGuard } from '@/core/lib/drawerHistoryGuard'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
-import { useArchivedSessions } from '@/core/data/hooks/queries/useArchivedSessions'
 import {
     Container, SectionHeader, SectionTitleText, SectionChevron, NewSessionBtn,
     SessionListWrapper, SessionListInner,
-    ArchivedEntryRow, ArchivedEntryIcon, ArchivedEntryName, ArchivedEntryCount,
 } from './mobileWorkspaceList.styles'
 import { MobileWorkspaceGroup } from './MobileWorkspaceGroup'
 import { MobileRecentGroup } from './MobileRecentGroup'
@@ -131,8 +129,6 @@ export function MobileWorkspaceList() {
     } = usePagedSectionList(workspaces)
     // 获取所有会话（用于查找 ActionSheet 对应 session）
     const { data: allSessions } = useSessions()
-    // 「已归档」入口数量（票 05：与归档页共用缓存，入口挂载即拉）
-    const { data: archivedSessions = [] } = useArchivedSessions()
 
     const findSession = useCallback((sessionId: string): Session | undefined => {
         return allSessions?.find(s => s.id === sessionId)
@@ -379,16 +375,6 @@ export function MobileWorkspaceList() {
                     activeSessionId={activeSessionId}
                     onSessionAction={setActionSessionId}
                 />
-                {/* 「已归档」入口：最近之后的同形一行，整页打开归档页（票 05） */}
-                <ArchivedEntryRow
-                    $token={token}
-                    onClick={() => navigateFromMenu(() => navigate({ to: '/archived' }))}
-                    aria-label={t('nav.archived')}
-                >
-                    <ArchivedEntryIcon $token={token}><Archive size={16} /></ArchivedEntryIcon>
-                    <ArchivedEntryName $token={token}>{t('nav.archived')}</ArchivedEntryName>
-                    <ArchivedEntryCount $token={token}>{archivedSessions.length}</ArchivedEntryCount>
-                </ArchivedEntryRow>
             </Container>
 
             {/* 会话操作菜单（重命名 / 置顶 / 归属 / 休眠·恢复 / 删除 / 取消）

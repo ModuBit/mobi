@@ -41,7 +41,6 @@ import {
 import { WorkspaceGroup } from './WorkspaceGroup'
 import { RecentGroup } from './RecentGroup'
 import { PinnedGroup } from './PinnedGroup'
-import { ArchivedGroupEntry } from './ArchivedGroupEntry'
 import { useSessionDelete } from './useSessionDelete'
 import { SessionListFooter } from './SessionListFooter'
 import { useSectionExpanded } from './useSectionExpanded'
@@ -288,8 +287,6 @@ export function SidebarWorkspaces() {
                 onAssign={handleOpenAssign}
                 assignPendingSessionId={assignPendingSessionId}
             />
-            {/* 「已归档」入口：最近之后的唯一一行，右侧主内容区打开归档页（票 05） */}
-            <ArchivedGroupEntry />
 
             {/* 新建/编辑工作区弹窗 */}
             <WorkspaceFormModal
