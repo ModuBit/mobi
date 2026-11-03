@@ -32,6 +32,28 @@ _Avoid_: 原生会话
 归属唯一会话行；metadata.nativeId 是其在 native transcript 上的锚、metadata.nativeSessionId 记录所在链。去重键是会话行 + localId，范围限单会话行。
 _Avoid_: message（与 native transcript entry 混用）
 
+### 会话保留
+
+**会话状态**:
+会话行的持久保留状态，三态：`online`（会话子进程附着，含空闲与执行中）、`dormant`（无进程可唤醒）、`archived`（休眠 + 从主列表隐藏 + 禁收发）。按事件迁移、心跳不写；「正在执行回合」是瞬时事实，不进此状态。
+_Avoid_: running（有歧义：轮次结束待输入也算 online）、close/closed（概念整体作废）、把 lifecycleState 当用户可见状态
+
+**休眠**:
+把会话子进程停下、进程内状态落盘、可随时唤醒的动作；会话仍留在主列表。
+_Avoid_: 关闭、停止
+
+**归档**:
+休眠 + 从主列表隐藏的收纳动作；归档期间不可查看内容、不可收发消息，取消归档后回到休眠态。
+_Avoid_: 与休眠混称（归档必然先休眠，休眠不一定归档）
+
+**删除**:
+不可恢复的清理动作：会话行、消息、native transcript 与干净 worktree 一并移除；脏 worktree 保留并告知。
+_Avoid_: 归档（归档可逆、不回收磁盘）
+
+**退出态**（lifecycleState='exited'）:
+会话子进程每次退出时写入的内部事实，与用户可见的会话状态无关。存量行的旧值 `archived` 读时按 `exited` 处理。
+_Avoid_: 与「会话状态」的 archived 混用
+
 ### 消息投递
 
 **投递队列**:

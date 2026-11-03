@@ -104,13 +104,13 @@ export function SidebarWorkspaces() {
         }
     }, [renameValue, renamingSessionId, renameActions, t, queryClient, cancelRename, messageApi])
 
-    // 手动休眠（dormancy spec §D.11）：动作流收口在 sessionDormancy（gate 阻塞时弹
-    // 「仍要退出」确认，archive 作为强制兜底），这里只管 pending 态
+    // 手动休眠（dormancy spec §D.11）：动作流收口在 sessionDormancy（gate 阻塞时展示
+    // 逐项原因，无强制退出路径），这里只管 pending 态
     const [dormantPendingId, setDormantPendingId] = useState<string | null>(null)
     const handleDormant = useCallback((session: Session) => {
         setDormantPendingId(session.id)
-        void dormantSessionWithFeedback({ api, queryClient, t, modal, message: messageApi }, session.id, () => setDormantPendingId(null))
-    }, [api, t, queryClient, modal, messageApi])
+        void dormantSessionWithFeedback({ api, queryClient, t, message: messageApi }, session.id, () => setDormantPendingId(null))
+    }, [api, t, queryClient, messageApi])
 
     // 恢复会话（未活跃时），成功后跳转详情页
     const handleResume = useCallback(async (session: Session) => {

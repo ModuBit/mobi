@@ -126,7 +126,7 @@ export class RpcGateway {
 
     /**
      * 终止会话进程。可选终结语义（票 2.2）：Governor 逐出带 pause/governor_evict——
-     * 会话进程先记因再走单出口退出；缺省载荷沿用既有 stop 语义（archiveSession 等）
+     * 会话进程先记因再走单出口退出；缺省载荷沿用既有 stop 语义（手动休眠显式传 pause）
      */
     async killSession(
         sessionId: string,

@@ -160,8 +160,6 @@
     },
     "dormancy": {
       "blocked": "无法休眠：{{reasons}}",
-      "forceExitTitle": "无法休眠",
-      "forceExitOk": "仍要退出",
       "failed": "休眠失败，请重试",
       "blockerSeparator": "、",
       "blocker": {

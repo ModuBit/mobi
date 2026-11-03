@@ -41,6 +41,7 @@ import { OutdatedSessionConfigError } from './outdatedSessionConfigError'
 import { SessionReviver, type ReviveOptions, type ReviveResult } from './sessionReviver'
 import { SessionRegistry } from './sessionRegistry'
 import { readRpcFailure } from './rpcFailure'
+import { isExitedLifecycleState } from './lifecycleState'
 import { SessionReceiveReadiness } from './sessionReceiveReadiness'
 import { daemonLogger } from '../logger'
 
@@ -668,9 +669,9 @@ export class SyncEngine {
         // 不报「RPC handler not registered」这类与语义无关的错
         const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
         if (!session || !session.active) return { ok: true }
-        // DB 终态已 archived（CLI 自行归档但 session-end 丢失）→ 幂等成功：再走 RPC
+        // DB 终态已退出（CLI 自行退出但 session-end 丢失）→ 幂等成功：再走 RPC
         // 必然 unreachable，还会把传输故障伪装成 "work in progress"（2026-09-30 事故）
-        if (this.isArchivedInDb(sessionId)) return { ok: true }
+        if (this.isExitedInDb(sessionId)) return { ok: true }
         let check: { ok: boolean; blockers: string[] }
         try {
             check = await this.rpcGateway.dormancyCheck(sessionId)
@@ -686,23 +687,19 @@ export class SyncEngine {
         return { ok: true }
     }
 
-    /** DB 里的生命周期终态：CLI 自行归档后 metadata 落 archived，daemon 缓存可能仍悬挂 active */
-    private isArchivedInDb(sessionId: string): boolean {
+    /** DB 里的退出终态：CLI 退出后 metadata 落 exited（存量行为 archived），缓存可能仍悬挂 active */
+    private isExitedInDb(sessionId: string): boolean {
         const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
-        return session?.metadata?.lifecycleState === 'archived'
-    }
-
-    async archiveSession(sessionId: string): Promise<void> {
-        await this.killAndEndSession(sessionId)
+        return isExitedLifecycleState(session?.metadata?.lifecycleState)
     }
 
     /**
-     * 终止会话并合成 session-end 事实（archive / 手动休眠共用同一收尾口径）。
-     * DB 终态已 archived → 跳过必然 unreachable 的 killSession，只补收尾
+     * 终止会话并合成 session-end 事实（手动休眠 / Governor 逐出共用同一收尾口径）。
+     * DB 终态已退出 → 跳过必然 unreachable 的 killSession，只补收尾
      * （handleSessionEnd 翻掉悬挂的 active）；RPC 失败由调用方收口，这里不吞。
      */
     private async killAndEndSession(sessionId: string, end?: SessionKillRequest): Promise<void> {
-        if (!this.isArchivedInDb(sessionId)) {
+        if (!this.isExitedInDb(sessionId)) {
             await this.rpcGateway.killSession(sessionId, end)
         }
         this.factsSink.handleSessionEnd?.({ sid: sessionId, time: Date.now(), ...end })

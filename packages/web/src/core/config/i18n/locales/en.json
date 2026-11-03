@@ -160,8 +160,6 @@
     },
     "dormancy": {
       "blocked": "Cannot dorm: {{reasons}}",
-      "forceExitTitle": "Cannot dorm",
-      "forceExitOk": "Exit anyway",
       "failed": "Failed to dorm the session. Please retry",
       "blockerSeparator": ", ",
       "blocker": {

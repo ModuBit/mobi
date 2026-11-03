@@ -44,7 +44,7 @@ interface SessionRowProps {
     onRenameLoading: boolean
     onClick: () => void
     onRename: () => void
-    /** 手动休眠（dormancy spec §D.11）：gate 阻塞时弹「仍要退出」确认，行内不再有独立退出按钮 */
+    /** 手动休眠（dormancy spec §D.11）：gate 阻塞时展示逐项原因，行内不再有独立退出按钮 */
     onDormant: () => void
     dormantLoading?: boolean
     onResume: () => void

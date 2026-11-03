@@ -24,7 +24,6 @@ import { Hono, type Context } from 'hono'
 import { resolve } from 'node:path'
 import { z } from 'zod'
 import { checkWorkspaceAssignable, type SyncEngine, type Session, type OutputStyleSwitchOutcome, type ForkSessionResult } from '../../sync/syncEngine'
-import { readRpcFailure } from '../../sync/rpcFailure'
 import { OutdatedSessionConfigError } from '../../sync/outdatedSessionConfigError'
 import { isSessionRowDeletable } from '../../sync/sessionDeleteGuard'
 import { daemonLogger } from '../../logger'
@@ -628,30 +627,6 @@ export function createSessionsRoutes(
         return c.json({ ok: true })
     })
 
-    app.post('/sessions/:id/archive', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) {
-            return engine
-        }
-
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
-        if (sessionResult instanceof Response) {
-            return sessionResult
-        }
-
-        try {
-            await engine.archiveSession(sessionResult.sessionId)
-        } catch (error) {
-            // 与 /dormant 同口径：归档未确认完成一律按冲突反馈，不穿透 500（2026-09-30
-            // 事故：killSession RpcFailure 直接打成 Internal Server Error）。unreachable/
-            // timeout 的框架句子不透给 web，分类语义 = 会话此刻不可达（timeout 按「可能
-            // 已送达」说，但 HTTP 层只有「未确认完成」可表）
-            const { kind, message } = readRpcFailure(error)
-            return c.json({ error: kind === 'other' ? message : 'Session is not reachable' }, 409)
-        }
-        return c.json({ ok: true })
-    })
-
     app.post('/sessions/:id/switch', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
@@ -906,7 +881,7 @@ export function createSessionsRoutes(
         // 守卫单一来源 sessionDeleteGuard：fork 行未激活（forkFrom 在场且非 running）不算 active，可删。
         // 常规 active 会话不再直接 409——删除是明确意图，先自动休眠（CLI gate 自查会挡住
         // 运行中/审批待处理的会话，blockers 逐项透传给 web toast）；休眠成功即翻 inactive
-        // （archiveSession 同步 handleSessionEnd），随后删除自然过 sessionCache 的同源守卫。
+        // （休眠收尾经 handleSessionEnd 同步翻 inactive），随后删除自然过 sessionCache 的同源守卫。
         // 阻塞/异常响应编排与 /dormant 路由共用 attemptDormancyOrRespond
         if (!isSessionRowDeletable(sessionResult.session)) {
             const blocked = await attemptDormancyOrRespond(c, engine, sessionResult.sessionId)

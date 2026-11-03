@@ -37,6 +37,7 @@
 import type { GovernorAcquireReason } from '../executor/sessionGovernor'
 import type { LocalExecutor } from '../executor/localExecutor'
 import { daemonLogger } from '../logger'
+import { isExitedLifecycleState } from './lifecycleState'
 import type { SessionCache } from './sessionCache'
 import type { Session } from '@mobi/shared/types'
 
@@ -192,10 +193,11 @@ export class SessionReviver {
             if (!resolved.ok) return resolved.result
             const { session, targetId } = resolved
             if (this.isLive(session)) {
-                // 正常态（CLI 在线收消息）不落 info 级噪音；但 archived 行仍然 active+附着
-                // 是状态矛盾——CLI 退出前会写 archived，此刻却像活着，必须留痕
-                if (session.metadata?.lifecycleState === 'archived') {
-                    daemonLogger.warn(`[dormancy] revive no-op: session is active+attached but lifecycleState=archived (session=${sessionId}) — stale tracking?`)
+                // 正常态（CLI 在线收消息）不落 info 级噪音；但已退出（lifecycleState=exited，
+                // 存量行为 archived）的行仍然 active+附着是状态矛盾——CLI 退出前会写该事实，
+                // 此刻却像活着，必须留痕
+                if (isExitedLifecycleState(session.metadata?.lifecycleState)) {
+                    daemonLogger.warn(`[dormancy] revive no-op: session is active+attached but lifecycleState=exited (session=${sessionId}) — stale tracking?`)
                 } else {
                     daemonLogger.debug(`[dormancy] revive no-op: CLI attached (session=${sessionId})`)
                 }
@@ -289,10 +291,10 @@ export class SessionReviver {
         daemonLogger.info(`[dormancy] reviving (session=${sessionId}, resume=${resumeToken ?? '<new>'}, intent=${intent}, lifecycle=${metadata.lifecycleState ?? '<unset>'})`)
         let spawnResult = await this.deps.executor.spawnSession(metadata.path, spawnOptions)
 
-        // 旧进程正在终结（CLI cleanup 先写 lifecycleState=archived 再退出）：此时 already-running
+        // 旧进程正在终结（CLI cleanup 先写 lifecycleState=exited 再退出）：此时 already-running
         // 的去重命中不是「重连中」而是「即将退场」，直接返回 success 会让入站消息滞留 queued。
         // 去重表行由 exit 事件清理，短轮询等它退场后重新 spawn（上限 ~10s，超时退回既有语义）。
-        if (spawnResult.type === 'already-running' && session.metadata?.lifecycleState === 'archived') {
+        if (spawnResult.type === 'already-running' && isExitedLifecycleState(session.metadata?.lifecycleState)) {
             for (let i = 0; i < 20 && spawnResult.type === 'already-running'; i++) {
                 await new Promise((resolve) => { setTimeout(resolve, 500) })
                 spawnResult = await this.deps.executor.spawnSession(metadata.path, spawnOptions)

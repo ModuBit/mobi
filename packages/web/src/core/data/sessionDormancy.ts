@@ -21,22 +21,12 @@ import type { TFunction } from 'i18next'
 import type { MobiApi } from '@/core/data/api/client'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 
-type AppModal = ReturnType<typeof App.useApp>['modal']
 type AppMessage = ReturnType<typeof App.useApp>['message']
 
 export interface DormancyActionDeps {
     api: MobiApi
     queryClient: QueryClient
     t: TFunction
-    /** App.useApp() 的 modal 实例：gate 阻塞时承载「仍要退出」确认弹窗（受主题上下文） */
-    modal: AppModal
-    /** 「仍要退出」确认弹窗的层号取值函数（调用方给 `() => nextOverlayLayer()`，见
-     *  ui/base/layout/overlayLayer）。**叠在已打开的浮层之上时必须给**：移动端休眠入口就在
-     *  操作菜单 sheet（z ≥1080）里，antd 弹窗默认 z 1000 会被 sheet 整个盖住——按钮点不到、
-     *  await 永不落定，菜单又被 pending 态拦着关不掉 = 卡死。取函数而不是取值是为了
-     *  **在真的要弹的时候才领号**（与层号分配器「号在打开时领」同一条纪律）。
-     *  PC 侧没有叠层，可省（走 antd 默认值） */
-    confirmZIndex?: () => number
     /** App.useApp() 的 message 实例：反馈 toast 与 modal 同走主题上下文，不用静态方法 */
     message: AppMessage
 }
@@ -72,52 +62,29 @@ export function deleteBlockedText(error: unknown, t: TFunction): string | null {
 
 /**
  * 手动休眠动作流（dormancy spec §D.11）：调 API → 成功 toast + 失效会话视图。
- * gate 阻塞（409 blockers）→ 确认弹窗给出「仍要退出」强制兜底（archive，无 gate
- * 直杀进程）；取消或非 blocker 失败 → 文案 toast。侧边栏 / 移动端列表共用，
- * 调用方只管 pending 态。
+ * gate 阻塞（409 blockers）→ 逐项展示阻塞原因，不提供强制退出路径（close 语义已作废，
+ * spec session-retention 票 01）；非 blocker 失败 → 通用文案 toast。
+ * 侧边栏 / 移动端列表共用，调用方只管 pending 态。
  */
 export async function dormantSessionWithFeedback(
     deps: DormancyActionDeps,
     sessionId: string,
     onDone: () => void,
 ): Promise<void> {
-    const { api, queryClient, t, modal, message } = deps
-    const invalidate = () => invalidateSessionViews(queryClient, [sessionId])
-    // 成功仪式两路共用（休眠 / 强制退出 archive）。⚠️ 只包成功后的反馈——不能包住
-    // API 调用本身，否则 409 blockers 被这里吞掉，gate 阻塞的强制退出弹窗成死代码
-    const reportSuccess = async () => {
-        void message.success(t('common.success'))
-        await invalidate()
-    }
+    const { api, queryClient, t, message } = deps
     try {
         await api.sessions.dormant(sessionId)
-        await reportSuccess()
+        void message.success(t('common.success'))
+        await invalidateSessionViews(queryClient, [sessionId])
     } catch (error) {
         const blockers = extractBlockers(error)
         if (blockers.length === 0) {
-            // 无 blocker 的失败（RPC 断连等）：通用失败文案（阻塞文案由下方确认弹窗承载）
+            // 无 blocker 的失败（RPC 断连等）：通用失败文案
             void message.warning(t('session.dormancy.failed'))
             return
         }
-        const forceExit = await new Promise<boolean>((resolve) => {
-            modal.confirm({
-                zIndex: deps.confirmZIndex?.(),
-                title: t('session.dormancy.forceExitTitle'),
-                content: dormancyBlockedText(blockers, t),
-                okText: t('session.dormancy.forceExitOk'),
-                okButtonProps: { danger: true },
-                cancelText: t('common.cancel'),
-                onOk: () => resolve(true),
-                onCancel: () => resolve(false),
-            })
-        })
-        if (!forceExit) return
-        try {
-            await api.sessions.archive(sessionId)
-            await reportSuccess()
-        } catch {
-            void message.error(t('common.error'))
-        }
+        // gate 阻塞：只展示原因，用户可自行处理阻塞项后重试
+        void message.warning(dormancyBlockedText(blockers, t))
     } finally {
         onDone()
     }

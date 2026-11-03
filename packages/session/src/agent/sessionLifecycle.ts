@@ -48,13 +48,15 @@ export function createSessionLifecycle(options: SessionLifecycleOptions): Sessio
 
     const logPrefix = `[${options.logTag}]`
 
-    const archiveAndClose = async () => {
+    const recordExitAndClose = async () => {
         // 终结事实只经 session-end 载荷上报（daemon 落库 sessions.end_state 单列）。
         // 此前 metadata 里也重复写了一份 endReason/pauseTrigger，但 MetadataSchema 未声明
         // （Zod strip）、全仓无消费点——双份事实源只制造漂移风险，已移除
+        // lifecycleState 是「进程已退出」的内部事实（新值 exited，存量行为 archived），
+        // 与用户可见的会话状态（online/dormant/archived）无关，不进入任何用户文案
         options.apiSession.updateMetadata((currentMetadata) => ({
             ...currentMetadata,
-            lifecycleState: 'archived',
+            lifecycleState: 'exited',
             lifecycleStateSince: Date.now(),
             archivedBy: 'cli',
             archiveReason,
@@ -79,7 +81,7 @@ export function createSessionLifecycle(options: SessionLifecycleOptions): Sessio
             try {
                 options.stopKeepAlive?.()
                 await options.onBeforeClose?.()
-                await archiveAndClose()
+                await recordExitAndClose()
                 logger.debug(`${logPrefix} Cleanup complete`)
             } finally {
                 try {

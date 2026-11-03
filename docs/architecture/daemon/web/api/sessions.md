@@ -18,7 +18,6 @@
 | POST | `/sessions/:id/upload` | 上传文件 | 会话活跃 |
 | POST | `/sessions/:id/upload/delete` | 删除上传文件 | 会话活跃 |
 | POST | `/sessions/:id/abort` | 中止会话（body 可带 `stopKind`：`turn`/`turn-queue`/`turn-queue-tasks`，缺省 `turn`） | 会话活跃 |
-| POST | `/sessions/:id/archive` | 归档会话 | 会话活跃 |
 | POST | `/sessions/:id/switch` | 切换到远程模式 | 会话活跃 |
 | POST | `/sessions/:id/permission-mode` | 设置权限模式 | 会话活跃 |
 | POST | `/sessions/:id/model` | 设置模型 | 会话活跃 |
@@ -95,18 +94,6 @@
 ```
 
 **换模型会连带收敛 effort / fastMode**：daemon 按目标模型的能力位（`metadata.sdkMetadata.models` 的 `supportedEffortLevels` / `supportsFastMode`）把越界值改掉后再下发——当前档位不被支持时回落到该模型支持的最高档（如 `max` → `xhigh`），模型未声明 `supportsFastMode: true` 时把 `fastMode` 置 false。规则单源在 `@mobi/shared` 的 `reconcileSessionConfigForModel`，休眠会话的暂存路径同样经过它（唤醒时不会把越界值带上天）。
-
-### POST /sessions/:id/archive — 归档会话
-
-错误经 `readRpcFailure` 分类收口，不再裸 500：
-
-```json
-// Error
-{ "error": "Session is not reachable" }   // 409（unreachable / timeout 等传输类故障）
-{ "error": "<RPC 故障原文>" }             // 409（其他故障，透传 message）
-```
-
-会话已落库 `lifecycleState: 'archived'` 时幂等成功（不再发起 killSession），用于翻掉 `session-end` 丢失造成的悬挂活跃态。
 
 ### PATCH /sessions/:id — 重命名 / 归入工作区
 

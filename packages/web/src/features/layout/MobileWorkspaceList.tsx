@@ -32,7 +32,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
-import { nextOverlayLayer, useOpenOverlayLayer } from '@/ui/base/layout/overlayLayer'
+import { useOpenOverlayLayer } from '@/ui/base/layout/overlayLayer'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinned'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
@@ -73,7 +73,7 @@ const { useToken } = antTheme
 export function MobileWorkspaceList() {
     const { token } = useToken()
     const { t } = useTranslation()
-    const { message: messageApi, modal, notification } = AntdApp.useApp()
+    const { message: messageApi, notification } = AntdApp.useApp()
     const navigate = useNavigate()
     const navigateFromMenu = useMenuNavigate()
     const queryClient = useQueryClient()
@@ -213,23 +213,21 @@ export function MobileWorkspaceList() {
     // 操作菜单（BottomSheet）自带层号分配，不在此领。
     const renameModalZ = useOpenOverlayLayer(!!renameSessionId)
 
-    // 手动休眠（dormancy spec §D.11）：动作流收口在 sessionDormancy（gate 阻塞时弹
-    // 「仍要退出」确认，archive 作为强制兜底），这里只管 pending 态。
-    // 确认弹窗必须领号：它要叠在**本菜单 sheet** 之上（菜单在 await 期间保持打开），
-    // 不领号就会被 sheet 的 1080+ 盖住（见 dormantSessionWithFeedback 的 confirmZIndex）
+    // 手动休眠（dormancy spec §D.11）：动作流收口在 sessionDormancy（gate 阻塞时展示
+    // 逐项原因，无强制退出路径），这里只管 pending 态。
     const handleDormant = useCallback(async () => {
         if (!actionSessionId) return
         setActionLoading('dormant')
         const target = actionSessionId
         await dormantSessionWithFeedback(
-            { api, queryClient, t, modal, message: messageApi, confirmZIndex: nextOverlayLayer },
+            { api, queryClient, t, message: messageApi },
             target,
             () => {
                 setActionLoading(null)
                 setActionSessionId(null)
             },
         )
-    }, [actionSessionId, api, queryClient, t, modal, messageApi])
+    }, [actionSessionId, api, queryClient, t, messageApi])
 
     // 恢复
     const handleResume = useCallback(async () => {

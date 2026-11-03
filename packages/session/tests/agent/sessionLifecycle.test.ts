@@ -20,7 +20,7 @@ import type { ApiSessionClient } from '@/api/apiSession'
 import type { SessionEndReason, SessionPauseTrigger } from '@mobi/shared'
 
 /**
- * archiveAndClose 的 session-end 顺序契约（2026-09-30 事故）：sendSessionDeath 改为
+ * recordExitAndClose 的 session-end 顺序契约（2026-09-30 事故）：sendSessionDeath 改为
  * ack 制后，close 必须等它确认落达（或超时兜底）才执行——裸 emit + 立即 close 会把
  * 事件丢在本地缓冲，hub 收不到 session-end，active 永久悬挂。
  *
@@ -28,6 +28,9 @@ import type { SessionEndReason, SessionPauseTrigger } from '@mobi/shared'
  * 载荷单通道上报（daemon 落库 sessions.end_state 单列）；metadata 只保留人读归档信息
  * （lifecycleState/archiveReason），不再重复写 endReason/pauseTrigger——那份从未被任何
  * 消费点读取，双份事实源只制造漂移风险。
+ *
+ * lifecycleState 值（session-retention 票 01）：新值为 exited；存量行的 archived 由
+ * daemon 侧 isExitedLifecycleState 读旧写新兼容。
  */
 
 type DeathPayload = { endReason: SessionEndReason; pauseTrigger?: SessionPauseTrigger }
@@ -77,10 +80,10 @@ describe('SessionEndReason 单出口（票 1.1）', () => {
         await lifecycle.cleanup()
 
         expect(captures.death[0]).toEqual({ endReason: 'stop', pauseTrigger: undefined })
-        const archived = captures.metadata.at(-1)!
-        expect(archived.lifecycleState).toBe('archived')
+        const metadata = captures.metadata.at(-1)!
+        expect(metadata.lifecycleState).toBe('exited')
         // 终结事实不再进 metadata（单通道契约）
-        expect(archived.endReason).toBeUndefined()
+        expect(metadata.endReason).toBeUndefined()
     })
 
     it('setEndReason(pause, idle_timeout) → 载荷携带结构化字段，archiveReason 文本不丢', async () => {
@@ -95,10 +98,10 @@ describe('SessionEndReason 单出口（票 1.1）', () => {
         await lifecycle.cleanup()
 
         expect(captures.death[0]).toEqual({ endReason: 'pause', pauseTrigger: 'idle_timeout' })
-        const archived = captures.metadata.at(-1)!
-        expect(archived.archiveReason).toBe('Idle timeout')
-        expect(archived.endReason).toBeUndefined()
-        expect(archived.pauseTrigger).toBeUndefined()
+        const metadata = captures.metadata.at(-1)!
+        expect(metadata.archiveReason).toBe('Idle timeout')
+        expect(metadata.endReason).toBeUndefined()
+        expect(metadata.pauseTrigger).toBeUndefined()
     })
 
     it('markCrash → endReason=crash', async () => {
