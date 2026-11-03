@@ -39,7 +39,10 @@ import {
     setSessionStatus,
     reconcileStartupSessionStatus,
     getArchivedSessions,
+    addSessionTombstone,
+    getSessionTombstone,
     type SessionStatusWrite,
+    type SessionTombstone,
     mergeRuntimeState,
     updateSessionAgentState,
     updateSessionMetadata,
@@ -157,6 +160,15 @@ export class SessionStore {
     /** 启动自愈：宽限期后把未重连的 online 行回落 dormant，返回受影响 id */
     reconcileStartupSessionStatus(startupAt: number, now?: number): string[] {
         return reconcileStartupSessionStatus(this.db, startupAt, now)
+    }
+
+    /** 删除墓碑（惰性建表）：事后排查与 native id 复用识别 */
+    addSessionTombstone(tombstone: SessionTombstone): void {
+        addSessionTombstone(this.db, tombstone)
+    }
+
+    getSessionTombstone(sessionId: string): SessionTombstone | null {
+        return getSessionTombstone(this.db, sessionId)
     }
 
     // ============ 工作区归属相关 ============

@@ -145,6 +145,10 @@ export type RetainedWorktree = z.infer<typeof RetainedWorktreeSchema>
 /** DELETE /api/sessions/:id 响应（保持既有 ok 形状，附加保留事实） */
 export const DeleteSessionResponseSchema = z.object({
     ok: z.literal(true),
-    retainedWorktree: RetainedWorktreeSchema.optional()
+    retainedWorktree: RetainedWorktreeSchema.optional(),
+    /** transcript 是否已随删除移除；false 时 transcriptRetainedReason 说明原因 */
+    transcriptDeleted: z.boolean().optional(),
+    /** transcript 保留原因（路径不可解析 / 文件本就不存在 / 删除失败），透传给用户 */
+    transcriptRetainedReason: z.string().optional()
 })
 export type DeleteSessionResponse = z.infer<typeof DeleteSessionResponseSchema>

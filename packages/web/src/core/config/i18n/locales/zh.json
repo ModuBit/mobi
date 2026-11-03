@@ -148,12 +148,16 @@
       "delete": "删除",
       "resume": "恢复",
       "deleteConfirmTitle": "删除会话",
-      "deleteConfirmContent": "确定要删除此会话吗？此操作无法撤销。",
+      "deleteConfirmContent": "确定要删除此会话吗？将同时删除 Claude Code 对话记录，此操作无法撤销。",
       "deleteBlocked": "无法删除：{{reasons}}",
       "nameRequired": "请输入会话名称",
       "pin": "置顶",
       "unpin": "取消置顶",
       "dormant": "休眠"
+    },
+    "delete": {
+      "transcriptRetainedTitle": "对话记录未删除",
+      "transcriptRetainedDesc": "Claude Code 对话记录未删除：{{reason}}"
     },
     "state": {
       "dormant": "休眠"

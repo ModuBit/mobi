@@ -148,12 +148,16 @@
       "delete": "Delete",
       "resume": "Resume",
       "deleteConfirmTitle": "Delete Session",
-      "deleteConfirmContent": "Are you sure you want to delete this session? This action cannot be undone.",
+      "deleteConfirmContent": "Are you sure you want to delete this session? The Claude Code transcript will also be deleted. This action cannot be undone.",
       "deleteBlocked": "Cannot delete: {{reasons}}",
       "nameRequired": "Please enter a session name",
       "pin": "Pin",
       "unpin": "Unpin",
       "dormant": "Dormant"
+    },
+    "delete": {
+      "transcriptRetainedTitle": "Transcript not deleted",
+      "transcriptRetainedDesc": "The Claude Code transcript was not deleted: {{reason}}"
     },
     "state": {
       "dormant": "Dormant"

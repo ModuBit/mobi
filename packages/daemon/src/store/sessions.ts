@@ -591,6 +591,46 @@ export function reconcileStartupSessionStatus(
     return rows.map(row => row.id)
 }
 
+// ============ 删除墓碑（session-retention 票 07） ============
+
+export type SessionTombstone = {
+    sessionId: string
+    nativeSessionId: string | null
+    deletedAt: number
+}
+
+/**
+ * 删除墓碑表。**惰性建表**（INSERT 前CREATE IF NOT EXISTS）：加入 REQUIRED_TABLES 会要求
+ * 全部存量库再做一次迁移引导，而墓碑是事后排查用的辅助事实，不值得那个成本。
+ */
+export function addSessionTombstone(
+    db: Database,
+    tombstone: SessionTombstone
+): void {
+    db.run(`CREATE TABLE IF NOT EXISTS session_tombstones (
+        session_id TEXT PRIMARY KEY,
+        native_session_id TEXT,
+        deleted_at INTEGER NOT NULL
+    )`)
+    db.prepare(
+        'INSERT OR REPLACE INTO session_tombstones (session_id, native_session_id, deleted_at) VALUES (?, ?, ?)'
+    ).run(tombstone.sessionId, tombstone.nativeSessionId, tombstone.deletedAt)
+}
+
+/** 查墓碑（native id 复用识别 / 事后排查）；表不存在视为空 */
+export function getSessionTombstone(db: Database, sessionId: string): SessionTombstone | null {
+    try {
+        const row = db.prepare(
+            'SELECT session_id, native_session_id, deleted_at FROM session_tombstones WHERE session_id = ?'
+        ).get(sessionId) as { session_id: string; native_session_id: string | null; deleted_at: number } | undefined
+        return row
+            ? { sessionId: row.session_id, nativeSessionId: row.native_session_id, deletedAt: row.deleted_at }
+            : null
+    } catch {
+        return null
+    }
+}
+
 // ============ 工作区归属相关 ============
 
 export type WorkspaceSessionsResult = {

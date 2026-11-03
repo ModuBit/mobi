@@ -193,7 +193,9 @@ describe('DELETE /api/sessions/:id fork 删除守卫（isSessionRowDeletable）'
                 session: { ...mockSession, ...session } as Session,
             }),
             deleteSession: (_sessionId: string) =>
-                deleteResult === 'ok' ? Promise.resolve() : Promise.reject(deleteResult),
+                deleteResult === 'ok'
+                    ? Promise.resolve({ transcriptDeleted: true })
+                    : Promise.reject(deleteResult),
             dormantSession: () => Promise.resolve(dormantResult),
         } as unknown as SyncEngine
         return setupTestApp(engine).then(s => {

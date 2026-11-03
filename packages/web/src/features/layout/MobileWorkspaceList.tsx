@@ -58,7 +58,7 @@ import { useMenuNavigate } from './useMenuNavigate'
 import { WorkspaceFormModal } from '@/ui/shared/WorkspaceFormModal'
 import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
 import { AssignWorkspaceModal } from '@/features/layout/AssignWorkspaceModal'
-import { notifyRetainedWorktree } from './retainedWorktreeNotice'
+import { notifyRetainedWorktree, notifyTranscriptRetained } from './retainedWorktreeNotice'
 import { SessionListFooter } from './SessionListFooter'
 import { useSectionExpanded } from './useSectionExpanded'
 import { usePagedSectionList } from './usePagedSectionList'
@@ -264,6 +264,15 @@ export function MobileWorkspaceList() {
                     retained: deleted.data.retainedWorktree,
                     onManage: () => navigateFromMenu(() => navigate({ to: '/settings/worktrees' }))
                 })
+            } else if (deleted.data.transcriptDeleted === false) {
+                // transcript 诚实告知（票 07）：与桌面端 SidebarWorkspaces 同形
+                notifyTranscriptRetained({
+                    notification,
+                    t,
+                    reason: deleted.data.transcriptRetainedReason ?? '',
+                })
+            } else {
+                messageApi.success(t('common.success'))
             }
             queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
             clearMessageWindow(sessionId)

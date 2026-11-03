@@ -29,6 +29,24 @@ type Translate = (key: string, options?: Record<string, unknown>) => string
 
 const NOTICE_KEY = 'session-retained-worktree'
 
+/**
+ * 会话删除后「Claude Code 对话记录未删除」诚实告知（session-retention 票 07）：
+ * transcript 保留时如实说明原因，不假装删干净了。
+ */
+export function notifyTranscriptRetained(options: {
+    notification: NotificationApi
+    t: Translate
+    reason: string
+}): void {
+    const { notification, t, reason } = options
+    notification.warning({
+        key: 'session-transcript-retained',
+        message: t('session.delete.transcriptRetainedTitle'),
+        description: t('session.delete.transcriptRetainedDesc', { reason }),
+        duration: 8,
+    })
+}
+
 export function notifyRetainedWorktree(options: {
     notification: NotificationApi
     t: Translate

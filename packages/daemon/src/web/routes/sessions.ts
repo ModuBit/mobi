@@ -941,7 +941,7 @@ export function createSessionsRoutes(
         try {
             // 删除前留住 worktree 元数据（删后 store 无行可查）；处置在行清理后触发
             const deletedMetadata = sessionResult.session.metadata
-            await engine.deleteSession(sessionResult.sessionId)
+            const { transcriptDeleted, transcriptRetainedReason } = await engine.deleteSession(sessionResult.sessionId)
             const disposal = await worktreeService.disposeAfterSessionDelete({
                 id: sessionResult.sessionId,
                 metadata: deletedMetadata
@@ -951,7 +951,10 @@ export function createSessionsRoutes(
             }
             return c.json({
                 ok: true,
-                ...(disposal.retained ? { retainedWorktree: disposal.retained } : {})
+                ...(disposal.retained ? { retainedWorktree: disposal.retained } : {}),
+                // transcript 诚实告知（票 07）：未删除时前端展示原因
+                transcriptDeleted,
+                ...(transcriptRetainedReason ? { transcriptRetainedReason } : {})
             })
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to delete session'

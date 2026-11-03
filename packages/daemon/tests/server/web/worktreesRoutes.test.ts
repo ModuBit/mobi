@@ -191,8 +191,18 @@ describe('worktree 生命周期 REST 路由', () => {
         const res = await app.request(`/api/sessions/${session.id}`, { method: 'DELETE', headers })
 
         expect(res.status).toBe(200)
-        const body = await res.json() as { ok: boolean; retainedWorktree?: unknown }
-        expect(body).toEqual({ ok: true })
+        const body = await res.json() as {
+            ok: boolean
+            retainedWorktree?: unknown
+            transcriptDeleted?: boolean
+            transcriptRetainedReason?: string
+        }
+        // 票 07：删除响应带 transcript 处置事实；测试会话无 nativeSessionId → 保留并说明
+        expect(body).toEqual({
+            ok: true,
+            transcriptDeleted: false,
+            transcriptRetainedReason: expect.stringContaining('missing-native-session-id'),
+        })
         expect(body.retainedWorktree).toBeUndefined()
         expect(await exists(worktreePath)).toBe(false)
         expect((await git(temp.repo, ['branch', '--list', 'mobi-idle'])).trim()).toBe('')
@@ -211,7 +221,12 @@ describe('worktree 生命周期 REST 路由', () => {
         const res = await app.request(`/api/sessions/${session.id}`, { method: 'DELETE', headers })
 
         expect(res.status).toBe(200)
-        expect(await res.json()).toEqual({ ok: true })
+        // 票 07：删除响应带 transcript 处置事实；无 nativeSessionId → 保留并说明
+        expect(await res.json()).toEqual({
+            ok: true,
+            transcriptDeleted: false,
+            transcriptRetainedReason: expect.stringContaining('missing-native-session-id'),
+        })
         // 主仓库不受影响
         expect(await exists(temp.repo)).toBe(true)
     })

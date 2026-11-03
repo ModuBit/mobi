@@ -126,6 +126,29 @@ describe('主列表分页排除归档 + 归档列表（票 04）', () => {
     })
 })
 
+describe('删除墓碑（票 07）', () => {
+    it('写入可查；native id 为 null 也落行；重复写覆盖', () => {
+        store.sessions.addSessionTombstone({ sessionId: 't-1', nativeSessionId: 'native-1', deletedAt: 1000 })
+        expect(store.sessions.getSessionTombstone('t-1')).toEqual({
+            sessionId: 't-1', nativeSessionId: 'native-1', deletedAt: 1000,
+        })
+
+        // 未绑定 native id 的会话（未激活 fork 等）
+        store.sessions.addSessionTombstone({ sessionId: 't-2', nativeSessionId: null, deletedAt: 2000 })
+        expect(store.sessions.getSessionTombstone('t-2')?.nativeSessionId).toBeNull()
+
+        // 行删除后墓碑仍在（独立表，不 cascade）
+        const s = store.sessions.getOrCreateSession('t-3', { path: '/x' }, {}, 'default')
+        store.sessions.addSessionTombstone({ sessionId: s.id, nativeSessionId: null, deletedAt: 3000 })
+        store.sessions.deleteSession(s.id, 'default')
+        expect(store.sessions.getSessionTombstone(s.id)?.deletedAt).toBe(3000)
+        expect(store.sessions.getSession(s.id)).toBeNull()
+
+        // 查不存在的墓碑
+        expect(store.sessions.getSessionTombstone('nope')).toBeNull()
+    })
+})
+
 describe('reconcileStartupSessionStatus（启动自愈）', () => {
     it('只回落时间戳早于启动时刻的 online 行；重连过的与 archived 行不动', () => {
         const stale = store.sessions.getOrCreateSession('recon-stale', { path: '/x' }, {}, 'default')

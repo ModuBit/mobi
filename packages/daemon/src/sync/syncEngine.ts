@@ -42,6 +42,7 @@ import { SessionReviver, type ReviveOptions, type ReviveResult } from './session
 import { SessionRegistry } from './sessionRegistry'
 import { readRpcFailure } from './rpcFailure'
 import { isExitedLifecycleState } from './lifecycleState'
+import { disposeTranscript } from './transcriptDisposal'
 import { SessionReceiveReadiness } from './sessionReceiveReadiness'
 import { daemonLogger } from '../logger'
 
@@ -793,12 +794,32 @@ export class SyncEngine {
         })
     }
 
-    async deleteSession(sessionId: string): Promise<void> {
-        // 删除前读执行定位（删后 store 无行可查）；metadata 缺失不阻塞删除。
+    async deleteSession(sessionId: string): Promise<{
+        transcriptDeleted: boolean
+        transcriptRetainedReason?: string
+    }> {
+        // 删除前读执行定位与 transcript 定位（删后 store 无行可查）；metadata 缺失不阻塞删除。
         // 寻址规则单源在 executionAccess（store 直读）
         const cwd = this.executionAccess.tryResolveCwd(sessionId)
         const located = cwd !== null ? { cwd } : null
+        const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
+        // CLI 已退出 = 连接事实（active 心跳）或退出事实（lifecycleState，读旧写新）任一成立。
+        // 走到这里路由已先自动休眠成功，active 恒 false；lifecycleState 是防呆双保险
+        const cliExited = !session?.active || isExitedLifecycleState(session?.metadata?.lifecycleState)
+        const nativeSessionId = session?.metadata?.nativeSessionId ?? null
+
         await this.sessionCache.deleteSession(sessionId)
+
+        // transcript 处置（票 07）：闸不满足时保留文件并带回原因（诚实告知）
+        const transcript = disposeTranscript(nativeSessionId, cwd, cliExited)
+
+        // 墓碑（best-effort）：事后排查与 native id 复用识别；写失败不影响删除结果
+        try {
+            this.store.sessions.addSessionTombstone({ sessionId, nativeSessionId, deletedAt: Date.now() })
+        } catch (error) {
+            daemonLogger.warn(`[deleteSession] 墓碑写入失败 (best-effort): ${(error as Error).message}`)
+        }
+
         // best-effort 清理轮次快照引用（ADR 0008 refs 治理 / pending #87）：CLI 离线时
         // 引用暂留——不消费不转发，仅占本机 .git 空间，不影响正确性
         if (located) {
@@ -806,6 +827,9 @@ export class SyncEngine {
                 daemonLogger.warn(`[deleteSession] 清理轮次快照引用失败 (best-effort，忽略): ${(error as Error).message}`)
             })
         }
+        return transcript.deleted
+            ? { transcriptDeleted: true }
+            : { transcriptDeleted: false, transcriptRetainedReason: transcript.retainedReason }
     }
 
     /**
