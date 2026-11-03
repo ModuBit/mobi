@@ -146,6 +146,33 @@ describe('POST /api/sessions/:id/unarchive', () => {
     })
 })
 
+describe('归档会话禁收发（票 06）', () => {
+    test('POST /sessions/:id/messages 对 archived → 409 session_archived', async () => {
+        const archived: Session = { ...mockSession, status: 'archived', archivedAt: 1234 }
+        const engine = {
+            resolveSessionAccess: (id: string) => ({
+                ok: true as const,
+                sessionId: id,
+                session: archived,
+            }),
+        } as unknown as SyncEngine
+        const setup = await setupTestApp(engine)
+        try {
+            const token = await getAuthToken(setup.app)
+            const res = await setup.app.request('/api/sessions/test-session-1/messages', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: [{ type: 'text', text: 'hi' }] }),
+            })
+            expect(res.status).toBe(409)
+            const body = await res.json() as { code?: string }
+            expect(body.code).toBe('session_archived')
+        } finally {
+            setup.cleanup()
+        }
+    })
+})
+
 describe('GET /api/sessions 的归档过滤', () => {
     function makeListEngine(session: Session): SyncEngine {
         return {

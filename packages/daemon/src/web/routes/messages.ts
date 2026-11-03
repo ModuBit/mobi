@@ -119,7 +119,13 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (sessionResult instanceof Response) {
             return sessionResult
         }
-        const { sessionId } = sessionResult
+        const { sessionId, session } = sessionResult
+
+        // 归档会话禁收发（session-retention 票 06）：明确拒绝而不是悄悄投进一个
+        // 看不见的会话。code 随响应体给出，web 端映射文案
+        if (session.status === 'archived') {
+            return c.json({ error: 'Session is archived', code: 'session_archived' }, 409)
+        }
 
         const body = await c.req.json().catch(() => null)
         const parsed = sendMessageBodySchema.safeParse(body)

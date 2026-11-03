@@ -818,6 +818,20 @@ describe('AgentSessionService.sendMessageToSessions — 扇出', () => {
         expect(stored).toHaveLength(0)
     })
 
+    test('目标已归档 → 说「已归档」而不是「没在运行」，不投递也不落库（票 06）', async () => {
+        // 归档必然先休眠（active=false）；active=true 是防竞态窗口的防御分支，
+        // 语义仍优先归档——归档的会话哪怕挂着活跃心跳也不该收消息
+        const archived = makeSession({ id: 'V', namespace: 'ns', active: false, status: 'archived' })
+        const { service, pushed, stored } = makeService([sender, archived])
+
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['V'], content: 'hi' })
+
+        expect(results[0].ok).toBe(false)
+        expect(results[0].error).toContain('is archived')
+        expect(pushed).toHaveLength(0)
+        expect(stored).toHaveLength(0)
+    })
+
     test('落库失败仍报成功：投递已经发生，报失败会诱导 agent 重发一遍', async () => {
         const { service, pushed } = makeService([sender, targetB], { storeFailure: 'disk is full' })
 

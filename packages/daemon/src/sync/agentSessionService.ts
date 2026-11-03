@@ -412,6 +412,17 @@ export class AgentSessionService {
                     'Call list_sessions to get the ids of sessions that exist.',
             }
         }
+        // 归档会话禁收发（session-retention 票 06）：归档语义优先于活性——哪怕行还挂着
+        // active（归档必然先休眠，这里防御竞态窗口），也说「已归档」而不是「没在运行」
+        if (target.status === 'archived') {
+            return {
+                sessionId: targetSessionId,
+                ok: false,
+                error:
+                    `Session "${targetSessionId}" is archived, so it cannot receive messages. ` +
+                    'Unarchive it first (from the web UI) if it should join the conversation.',
+            }
+        }
         // 未激活 = 进程已退，投过去必然掉进黑洞。必须明确失败——静默成功会让 agent
         // 以为话带到了，而对面永远不会回应（它等的那个回复不会来）
         if (!target.active) {
