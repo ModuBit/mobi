@@ -48,12 +48,11 @@ import { normalizeContinueArg } from './utils/normalizeContinueArg';
 import { registerRewindHandlers } from './utils/rewindHandlers';
 import { applyOutputStyleSwitch } from './utils/outputStyleSwitch';
 import { resolveForkActivation } from './utils/forkActivation';
-import { join } from 'node:path';
 import { MOBI_BRIDGE_SOCK_ENV, startBridgeListener, type BridgeListener } from './bridge/bridgeListener';
 import { registerGoalTapSubscriber } from './bridge/goalTapSubscriber';
 import { registerWakeupTapSubscriber } from './bridge/wakeupTapSubscriber';
 import { registerForkedSkillTapSubscriber } from './bridge/forkedSkillTapSubscriber';
-import { getProjectPath } from './utils/path';
+import { resolveTranscriptPath } from '@mobi/node-core/claudeSdk/transcriptPath';
 import type { Settings } from '@anthropic-ai/claude-agent-sdk';
 
 export interface StartOptions {
@@ -246,6 +245,13 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     let stopGoalTap: (() => void) | null = null;
     let stopForkedSkillTap: (() => void) | null = null;
     let stopWakeupTap: (() => void) | null = null;
+    /** 当前会话 transcript 路径（native id 未就绪 / 解析失败返回 null，信号侧丢弃） */
+    const resolveCurrentTranscriptPath = (): string | null => {
+        const sessionId = currentSessionRef.current?.sessionId;
+        if (!sessionId) return null;
+        const resolved = resolveTranscriptPath(sessionId, workingDirectory);
+        return resolved.ok ? resolved.path : null;
+    };
     try {
         bridgeListener = await startBridgeListener();
         // session 进程级 env：local（claudeLocal 展开 process.env）与 remote
@@ -253,10 +259,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         process.env[MOBI_BRIDGE_SOCK_ENV] = bridgeListener.socketPath;
         // goal 订阅者：信号 → transcript 尾部读原始行 → 与 query 消息同一管道透传
         stopGoalTap = registerGoalTapSubscriber(bridgeListener, {
-            resolveTranscriptPath: () => {
-                const sessionId = currentSessionRef.current?.sessionId;
-                return sessionId ? join(getProjectPath(workingDirectory), `${sessionId}.jsonl`) : null;
-            },
+            resolveTranscriptPath: resolveCurrentTranscriptPath,
             sendMessage: (message) => apiSession.sendClaudeSessionMessage(message),
         });
         // forked skill tap 订阅者：fork 的过程行拼成主对话行，与 query 消息同一管道
@@ -269,10 +272,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         // 上报链路（runtimeState.lastWakeup + session event 落库 → web divider 系统行）。
         // 不透传原始行——SDK 流本就不透传该行，消息流不凭空多 user 行
         stopWakeupTap = registerWakeupTapSubscriber(bridgeListener, {
-            resolveTranscriptPath: () => {
-                const sessionId = currentSessionRef.current?.sessionId;
-                return sessionId ? join(getProjectPath(workingDirectory), `${sessionId}.jsonl`) : null;
-            },
+            resolveTranscriptPath: resolveCurrentTranscriptPath,
             onWakeup: (source) => apiSession.reportWakeup(source),
         });
         logger.debug(`[START] Bridge listener ready at ${bridgeListener.socketPath}`);

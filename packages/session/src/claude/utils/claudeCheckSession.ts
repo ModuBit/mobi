@@ -15,15 +15,16 @@
  */
 
 import { logger } from "@mobi/node-core/logger";
+import { resolveTranscriptPath } from "@mobi/node-core/claudeSdk/transcriptPath";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { getProjectPath } from "./path";
 
 export function claudeCheckSession(sessionId: string, path: string) {
-    const projectDir = getProjectPath(path);
-
-    // Check if session id is in the project dir
-    const sessionFile = join(projectDir, `${sessionId}.jsonl`);
+    const resolved = resolveTranscriptPath(sessionId, path);
+    if (!resolved.ok) {
+        logger.debug(`[claudeCheckSession] Cannot resolve transcript path (${resolved.reason})`);
+        return false;
+    }
+    const sessionFile = resolved.path;
     const sessionExists = existsSync(sessionFile);
     if (!sessionExists) {
         logger.debug(`[claudeCheckSession] Path ${sessionFile} does not exist`);

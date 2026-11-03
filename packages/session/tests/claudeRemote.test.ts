@@ -341,14 +341,17 @@ describe('sdkOutputLoop contextUsage 分发', () => {
     })
 
     it('conversation_reset → 对 new_conversation_id 走 onSessionFound（transcript 挂接：converter/scanner 切到新对话文件）', async () => {
-        // awaitFileExist 按真实路径等文件：临时目录预置 <id>.jsonl 使其立即命中
-        const { mkdtempSync, writeFileSync } = await import('node:fs')
+        // awaitFileExist 按真实路径等文件：临时 CLAUDE_CONFIG_DIR 下预置
+        // projects/<cwd 编码>/<id>.jsonl（baseOpts.path = /tmp → 编码为 -tmp）
+        const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs')
         const { tmpdir } = await import('node:os')
         const { join } = await import('node:path')
-        const dir = mkdtempSync(join(tmpdir(), 'mobi-conv-reset-'))
-        writeFileSync(join(dir, 'new-conv-id.jsonl'), '')
-        const sessionPaths = await import('../src/claude/utils/path')
-        const pathSpy = vi.spyOn(sessionPaths, 'getProjectPath').mockReturnValue(dir)
+        const root = mkdtempSync(join(tmpdir(), 'mobi-conv-reset-'))
+        const projectDir = join(root, 'projects', '-tmp')
+        mkdirSync(projectDir, { recursive: true })
+        writeFileSync(join(projectDir, 'new-conv-id.jsonl'), '')
+        const previousConfigDir = process.env.CLAUDE_CONFIG_DIR
+        process.env.CLAUDE_CONFIG_DIR = root
 
         try {
             const onSessionFound = vi.fn()
@@ -369,7 +372,8 @@ describe('sdkOutputLoop contextUsage 分发', () => {
             }
             expect(onSessionFound).toHaveBeenCalledWith('new-conv-id')
         } finally {
-            pathSpy.mockRestore()
+            if (previousConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR
+            else process.env.CLAUDE_CONFIG_DIR = previousConfigDir
         }
     })
 

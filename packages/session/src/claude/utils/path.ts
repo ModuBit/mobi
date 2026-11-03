@@ -14,22 +14,10 @@
  * limitations under the License.
  */
 
-import { join, resolve } from "node:path";
-import { resolveClaudeConfigDir } from "@mobi/node-core/claudeSdk/claudeConfigDir";
-
 /**
- * 根据 workingDirectory 获取 Claude 项目配置目录路径。
+ * 工作目录 → Claude Code 项目目录。
  *
- * 将工作目录的绝对路径转换为安全的目录名：
- * - 先通过 resolve() 获取绝对路径
- * - 再将所有非字母数字字符替换为 '-'，生成合法的 projectId
- *
- * 例如：/home/user/my-project → home-user-my-project
- * 最终返回：~/.claude/projects/home-user-my-project
+ * 实现已下沉 node-core（`claudeSdk/transcriptPath`）——daemon 删除 transcript 与
+ * session 侧读写必须共用同一份编码规则，这里只保留既有导入路径的转发。
  */
-export function getProjectPath(workingDirectory: string) {
-    // 将绝对路径转换为安全的目录名（仅保留字母数字，其余替换为 '-'）
-    const projectId = resolve(workingDirectory).replace(/[^a-zA-Z0-9]/g, '-');
-    const claudeConfigDir = resolveClaudeConfigDir();
-    return join(claudeConfigDir, 'projects', projectId);
-}
+export { getClaudeProjectPath as getProjectPath } from '@mobi/node-core/claudeSdk/transcriptPath'

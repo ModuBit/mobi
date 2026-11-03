@@ -19,6 +19,7 @@ import { basename, join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { logger } from "@mobi/node-core/logger";
 import { getProjectPath } from "./path";
+import { resolveTranscriptPath } from "@mobi/node-core/claudeSdk/transcriptPath";
 import { BaseSessionScanner, SessionFileScanEntry, SessionFileScanResult, SessionFileScanStats } from "../../modules/common/session/BaseSessionScanner";
 
 /**
@@ -68,6 +69,8 @@ export type SessionScanner = ReturnType<typeof createSessionScanner>;
 
 class ClaudeSessionScanner extends BaseSessionScanner<RawJSONLines> {
     private readonly projectDir: string;
+    /** 原始工作目录：transcript 路径解析经 node-core 单源（项目目录由它编码） */
+    private readonly workingDirectory: string;
     private readonly onMessage?: (message: RawJSONLines) => void;
     /** 已完成扫描的会话ID集合，用于避免重复处理已扫描过的会话 */
     private readonly finishedSessions = new Set<string>();
@@ -84,6 +87,7 @@ class ClaudeSessionScanner extends BaseSessionScanner<RawJSONLines> {
         onMessage?: (message: RawJSONLines) => void;
     }) {
         super({ intervalMs: 3000 });
+        this.workingDirectory = opts.workingDirectory;
         this.projectDir = getProjectPath(opts.workingDirectory);
         this.onMessage = opts.onMessage;
         this.currentSessionId = opts.sessionId;
@@ -186,7 +190,9 @@ class ClaudeSessionScanner extends BaseSessionScanner<RawJSONLines> {
     }
 
     private sessionFilePath(sessionId: string): string {
-        return join(this.projectDir, `${sessionId}.jsonl`);
+        const resolved = resolveTranscriptPath(sessionId, this.workingDirectory);
+        // CC 产出的 id 必然合法（UUID）；防御性回退到项目目录内拼接，保持扫描不中断
+        return resolved.ok ? resolved.path : join(this.projectDir, `${sessionId}.jsonl`);
     }
 }
 

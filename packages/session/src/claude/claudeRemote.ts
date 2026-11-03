@@ -43,7 +43,7 @@ import { parseSpecialCommand, checkDangerousCommand } from "../parsers/specialCo
 import { logger } from '@mobi/node-core/logger'
 import { configuration } from '@mobi/node-core/configuration'
 import { PushableAsyncIterable } from "@mobi/node-core/utils/PushableAsyncIterable";
-import { getProjectPath } from "./utils/path";
+import { resolveTranscriptPath } from "@mobi/node-core/claudeSdk/transcriptPath";
 import { awaitFileExist } from "../modules/watcher/awaitFileExist";
 import { buildAppendSystemPrompt } from "./utils/systemPrompt";
 import type { PermissionResult } from "@mobi/node-core/claudeSdk/types";
@@ -550,8 +550,12 @@ export async function sdkOutputLoop(
      */
     const trackSessionFile = (sessionId: string): void => {
         logger.debug(`[sdkOutputLoop] Waiting for session file: ${sessionId}`);
-        const projectDir = getProjectPath(opts.path);
-        void awaitFileExist(join(projectDir, `${sessionId}.jsonl`))
+        const resolved = resolveTranscriptPath(sessionId, opts.path);
+        if (!resolved.ok) {
+            logger.debug(`[sdkOutputLoop] Cannot resolve transcript path (${resolved.reason}): ${sessionId}`);
+            return;
+        }
+        void awaitFileExist(resolved.path)
             .then((found) => {
                 logger.debug(`[sdkOutputLoop] Session file found: ${sessionId} ${found}`);
                 opts.onSessionFound(sessionId);
