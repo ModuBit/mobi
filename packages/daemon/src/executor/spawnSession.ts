@@ -348,6 +348,16 @@ export async function spawnSession(options: SpawnRequest, deps: SpawnSessionDeps
                 env: {
                     ...process.env,
                     ...extraEnv,
+                    // transcript 豁免（session-retention 票 09）：Claude Code 的 retention
+                    // sweep（cleanupPeriodDays 清扫）按 transcript 首尾 4KB 的 entrypoint
+                    // 白名单放行——claude-desktop / claude-desktop-3p / local-agent（CC 源码
+                    // `_xn` 常量，2026-10 实测）。mobi 选 3p：副作用面最小（不改认证判定），
+                    // 四功能面（收发/唤醒/权限/MCP）与基线一致、sweep 豁免生效（E2E recipe
+                    // 见 run-tests skill memory retention-entrypoint-verify）。
+                    // ⚠️ CC 升级回归点：白名单常量名/行为可能变，升级后须重跑 entrypoint
+                    // 四组矩阵。唯一注入点在此（executor spawn env）；用户手工启动的 CLI
+                    // 不经此路径，属已知边界。历史 transcript 不回填，新会话起生效
+                    CLAUDE_CODE_ENTRYPOINT: 'claude-desktop-3p',
                     // 宿主通道端口（ticket-21）：会话子进程必须连 loopback 宿主 listener——
                     // 显式注入覆盖继承值（profile/legacy env 可能还指向主端口），不依赖 settings 猜测
                     MOBI_API_URL: hostChannelUrl(deps.hostPort),

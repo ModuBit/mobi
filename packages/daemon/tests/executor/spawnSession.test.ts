@@ -279,6 +279,21 @@ describe('spawnSession 记忆 env 注入（agent-memory 票 02）', () => {
         expect(spawnEnv.MOBI_API_URL).toContain('12222')
     })
 
+    it('entrypoint 豁免常量注入（session-retention 票 09）：每次 spawn 携带 claude-desktop-3p', async () => {
+        const child = new FakeProcess()
+        child.pid = 63
+        const spawnFn = vi.fn((..._params: Parameters<SpawnSessionDeps['spawn']>) => child)
+        const { deps, table } = makeDeps({ spawn: spawnFn })
+
+        const pending = spawnSession(simpleOptions, deps)
+        await vi.waitFor(() => expect(table.get(63)).toBeDefined())
+        table.applyWebhook('sess-ep', { hostPid: 63 } as never)
+        await pending
+
+        const spawnEnv = (spawnFn.mock.calls[0] as unknown as [unknown, { env: Record<string, string> }])[1].env
+        expect(spawnEnv.CLAUDE_CODE_ENTRYPOINT).toBe('claude-desktop-3p')
+    })
+
     it('降级（空对象）时 spawn env 不含记忆键；env 求值异常不阻断 spawn', async () => {
         // 隔离开发者 shell 可能导出的真实信号（spawn env 继承 process.env，
         // hindsight 部署机器带 MOBI_MEMORY_ENGINE 会让「不含记忆键」断言对环境敏感）
