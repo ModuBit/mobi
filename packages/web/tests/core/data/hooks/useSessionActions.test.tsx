@@ -92,6 +92,47 @@ describe('useSessionActions abortSession —— onSettled refetch 仅清队列�
     })
 })
 
+describe('useSessionActions 配置切换 —— 乐观 patch', () => {
+    const seededSession = { id: 's1', runtimeState: { effort: 'medium' } }
+
+    beforeEach(() => {
+        vi.clearAllMocks()
+        setEffortSpy.mockResolvedValue(undefined)
+        renameSpy.mockResolvedValue(undefined)
+    })
+    afterEach(() => cleanup())
+
+    it('setEffort 提交后、请求落定前，详情缓存已显示新档位（乐观 patch）', async () => {
+        const { result, qc } = renderActions()
+        qc.setQueryData(['session', 's1'], seededSession)
+        // 手动挂起 send：验证乐观 patch 不依赖请求完成
+        let resolveSend!: () => void
+        setEffortSpy.mockImplementationOnce(() => new Promise<void>(resolve => { resolveSend = resolve }))
+
+        let pending!: Promise<void>
+        await act(async () => {
+            pending = result.current.setEffort('xhigh')
+            // 让 onMutate 的乐观 patch 落进缓存（send 仍挂起）
+            await new Promise(resolve => setTimeout(resolve, 0))
+            expect(qc.getQueryData(['session', 's1'])).toMatchObject({ runtimeState: { effort: 'xhigh' } })
+        })
+
+        await act(async () => { resolveSend(); await pending })
+    })
+
+    it('请求失败 → 回滚到提交前的快照', async () => {
+        const { result, qc } = renderActions()
+        qc.setQueryData(['session', 's1'], seededSession)
+        setEffortSpy.mockRejectedValueOnce(new Error('boom'))
+
+        await act(async () => {
+            await expect(result.current.setEffort('xhigh')).rejects.toThrow('boom')
+        })
+
+        expect(qc.getQueryData(['session', 's1'])).toMatchObject({ runtimeState: { effort: 'medium' } })
+    })
+})
+
 describe('useSessionActions 配置切换 —— 失效范围', () => {
     beforeEach(() => {
         vi.clearAllMocks()

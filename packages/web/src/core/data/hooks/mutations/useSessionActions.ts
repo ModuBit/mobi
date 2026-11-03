@@ -18,20 +18,43 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { isCancelQueued, DEFAULT_STOP_KIND, type StopKind } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
+import type { Session } from '@/core/data/api/types'
 import { resumeSession as resumeSessionModule } from '@/core/data/sessionResume'
 import { queryKeys } from '@/core/lib/queryKeys'
 import { clearMessageWindow, fetchLatestMessages, removeQueuedMessages } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
+
+/** 参与乐观 patch 的会话配置字段（与 daemon SESSION_CONFIG_FIELDS 的 live 四项对齐） */
+type ConfigField = 'permissionMode' | 'model' | 'effort' | 'fastMode'
+
+/**
+ * 乐观 patch 的唯一落点：permissionMode 是会话顶层字段，其余在 runtimeState。
+ * 值经 zod 校验后才提交（daemon 端点 + 会话进程双重校验），这里原样写入缓存。
+ */
+function applyConfigOptimisticPatch(session: Session, field: ConfigField, value: unknown): Session {
+    if (field === 'permissionMode') {
+        return { ...session, permissionMode: value as Session['permissionMode'] }
+    }
+    return {
+        ...session,
+        runtimeState: { ...session.runtimeState, [field]: value } as Session['runtimeState'],
+    }
+}
 
 /**
  * 配置类 mutation 的同形工厂（权限模式 / 档位 / 快速模式 / 模型）。
  *
  * 四者只差端点：断言会话存在 → 调端点 → **只失效会话详情**（列表条目由 SSE 就地
  * 更新，见下方 invalidateSessionDetail 注释）。
+ *
+ * 提交即乐观 patch 会话详情缓存：受理链路是 POST → daemon RPC → 会话进程受理 →
+ * SSE 广播回填，权威值落地前 UI 一直读旧缓存，肉眼可见地回跳（档位滑杆松手后
+ * 显示弹回旧档再跳回来）。失败时按 onMutate 快照回滚。
  */
 function useConfigMutation<T>(
     sessionId: string | null,
     send: (sessionId: string, value: T) => Promise<unknown>,
+    field: ConfigField,
 ) {
     const queryClient = useQueryClient()
     return useMutation({
@@ -40,6 +63,20 @@ function useConfigMutation<T>(
                 throw new Error('Session unavailable')
             }
             await send(sessionId, value)
+        },
+        onMutate: async (value: T) => {
+            if (!sessionId) return
+            // 挡掉在途 refetch：它携带的旧权威值会在请求返回前把乐观 patch 盖回去
+            await queryClient.cancelQueries({ queryKey: queryKeys.session(sessionId) })
+            const previous = queryClient.getQueryData<Session>(queryKeys.session(sessionId))
+            queryClient.setQueryData<Session>(queryKeys.session(sessionId), (old) =>
+                old ? applyConfigOptimisticPatch(old, field, value) : old,
+            )
+            return { previous }
+        },
+        onError: (_error, _value, context) => {
+            if (!sessionId || !context?.previous) return
+            queryClient.setQueryData(queryKeys.session(sessionId), context.previous)
         },
         onSuccess: () => {
             if (!sessionId) return
@@ -146,14 +183,14 @@ export function useSessionActions(sessionId: string | null): {
     })
 
     // 设置权限模式
-    const permissionMutation = useConfigMutation(sessionId, (id: string, mode: string) => api.sessions.setPermissionMode(id, mode))
+    const permissionMutation = useConfigMutation(sessionId, (id: string, mode: string) => api.sessions.setPermissionMode(id, mode), 'permissionMode')
 
-    const effortMutation = useConfigMutation(sessionId, (id: string, effort: string) => api.sessions.setEffort(id, effort))
+    const effortMutation = useConfigMutation(sessionId, (id: string, effort: string) => api.sessions.setEffort(id, effort), 'effort')
 
     // 设置模型模式
-    const fastModeMutation = useConfigMutation(sessionId, (id: string, fastMode: boolean) => api.sessions.setFastMode(id, fastMode))
+    const fastModeMutation = useConfigMutation(sessionId, (id: string, fastMode: boolean) => api.sessions.setFastMode(id, fastMode), 'fastMode')
 
-    const modelMutation = useConfigMutation(sessionId, (id: string, mode: string) => api.sessions.setModelMode(id, mode))
+    const modelMutation = useConfigMutation(sessionId, (id: string, mode: string) => api.sessions.setModelMode(id, mode), 'model')
 
     // 重命名会话
     const renameMutation = useMutation({
