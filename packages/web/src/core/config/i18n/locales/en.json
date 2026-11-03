@@ -84,6 +84,7 @@
     "collapse": "Collapse",
     "pinned": "Pinned",
     "recent": "Recent",
+    "archived": "Archived",
     "noSessions": "No sessions yet",
     "workspaces": "Workspaces",
     "newWorkspace": "New Workspace"
@@ -153,7 +154,17 @@
       "nameRequired": "Please enter a session name",
       "pin": "Pin",
       "unpin": "Unpin",
+      "archive": "Archive",
+      "unarchive": "Unarchive",
       "dormant": "Dormant"
+    },
+    "archive": {
+      "blocked": "Cannot archive: {{reasons}}"
+    },
+    "archived": {
+      "title": "This session is archived",
+      "desc": "Archived sessions don't load message content. Unarchive it to continue viewing.",
+      "unarchive": "Unarchive"
     },
     "delete": {
       "transcriptRetainedTitle": "Transcript not deleted",
@@ -209,6 +220,14 @@
       "unavailableHint": "This worktree is not in the scan list (it may have been removed)",
       "mergeBack": "Merge back into main"
     }
+  },
+  "archived": {
+    "title": "Archived Sessions",
+    "empty": "No archived sessions",
+    "ungrouped": "Unassigned",
+    "unknownWorkspace": "Unknown workspace",
+    "archivedAt": "Archived {{time}}",
+    "unarchiveBlocked": "Cannot unarchive: {{reasons}}"
   },
   "chat": {
     "error": {
@@ -359,8 +378,8 @@
     },
     "contextReset": "Conversation reset",
     "wakeup": {
-        "loop": "Loop wakeup",
-        "schedule": "Scheduled task wakeup"
+      "loop": "Loop wakeup",
+      "schedule": "Scheduled task wakeup"
     },
     "contextCompacted": "Conversation optimized",
     "contextMicrocompacted": "Conversation trimmed",
@@ -822,7 +841,7 @@
       "pageRefreshHint": "Refresh the index block every N turns; 0 = never (the block is injected every turn by default, ~2KB)"
     },
     "telemetry": {
-        "saveButton": "Save",
+      "saveButton": "Save",
       "cardTitle": "Session telemetry (OpenTelemetry)",
       "enabledLabel": "Enable trace export",
       "privacyHint": "By default exports trace spans only (latency and names of interactions / model requests / tool calls / hooks), with no conversation content; the content tiers below send conversation content to the collector once enabled. Applies to the next new session after saving.",

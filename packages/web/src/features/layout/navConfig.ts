@@ -51,6 +51,7 @@ export const logoutNavItem: NavItemConfig = {
 export const navPathMap: Record<string, string> = {
     'new-session': '/sessions/new',
     sessions: '/sessions',
+    archived: '/archived',
     settings: '/settings',
 }
 

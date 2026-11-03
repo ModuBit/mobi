@@ -29,6 +29,7 @@ const MainLayout = lazyRoute(routeChunkLoaders.MainLayout)
 const SessionsLayout = lazyRoute(routeChunkLoaders.SessionsLayout)
 const SessionDetailPage = lazyRoute(routeChunkLoaders.SessionDetailPage)
 const NewSessionPage = lazyRoute(routeChunkLoaders.NewSessionPage)
+const ArchivedPage = lazyRoute(routeChunkLoaders.ArchivedPage)
 const SettingsPage = lazyRoute(routeChunkLoaders.SettingsPage)
 const NotificationsSection = lazyRoute(routeChunkLoaders.NotificationsSection)
 const SettingsIndex = lazyRoute(routeChunkLoaders.SettingsIndex)
@@ -99,6 +100,13 @@ const newSessionRoute = createRoute({
     validateSearch: (search: Record<string, unknown>): { workspaceId?: string } => ({
         workspaceId: (search.workspaceId as string) || undefined,
     }),
+})
+
+// 已归档会话页（session-retention 票 05）：侧栏「已归档」/ 移动端汉堡菜单整页打开
+const archivedRoute = createRoute({
+    getParentRoute: () => mainLayoutRoute,
+    path: 'archived',
+    component: ArchivedPage,
 })
 
 // 设置页 layout 路由（左侧分区导航 / mobile 子页由 SettingsPage 响应式分流）
@@ -176,6 +184,7 @@ export const router = createRouter({
                 sessionDetailRoute,
             ]),
             newSessionRoute,
+            archivedRoute,
             ...(pocDiffRoute ? [pocDiffRoute] : []),
             settingsRoute.addChildren([
                 settingsIndexRoute,

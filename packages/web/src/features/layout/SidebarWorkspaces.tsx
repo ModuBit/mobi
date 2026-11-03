@@ -24,16 +24,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useAssignSessionWorkspace, useDeleteWorkspace } from '@/core/data/hooks/mutations/useWorkspaceMutations'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
-import { notifyRetainedWorktree, notifyTranscriptRetained } from './retainedWorktreeNotice'
 import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinned'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { resumeSession } from '@/core/data/sessionResume'
-import { dormantSessionWithFeedback, deleteBlockedText } from '@/core/data/sessionDormancy'
-import { queryKeys } from '@/core/lib/queryKeys'
+import { dormantSessionWithFeedback, dormancyBlockedText, extractBlockers } from '@/core/data/sessionDormancy'
+import { useSessionArchive } from '@/core/data/hooks/mutations/useSessionArchive'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
-import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
-import { clearSessionResources } from '@/core/lib/sessionResources'
 import { WorkspaceFormModal } from '@/ui/shared/WorkspaceFormModal'
 import { AssignWorkspaceModal } from '@/features/layout/AssignWorkspaceModal'
 import type { Session, Workspace } from '@/core/data/api/types'
@@ -44,6 +41,8 @@ import {
 import { WorkspaceGroup } from './WorkspaceGroup'
 import { RecentGroup } from './RecentGroup'
 import { PinnedGroup } from './PinnedGroup'
+import { ArchivedGroupEntry } from './ArchivedGroupEntry'
+import { useSessionDelete } from './useSessionDelete'
 import { SessionListFooter } from './SessionListFooter'
 import { useSectionExpanded } from './useSectionExpanded'
 import { usePagedSectionList } from './usePagedSectionList'
@@ -59,7 +58,7 @@ export function SidebarWorkspaces() {
     const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
-    const { message: messageApi, modal, notification } = App.useApp()
+    const { message: messageApi, modal } = App.useApp()
     const queryClient = useQueryClient()
     const api = useMobiApi()
     const params = useParams({ strict: false })
@@ -112,6 +111,25 @@ export function SidebarWorkspaces() {
         void dormantSessionWithFeedback({ api, queryClient, t, message: messageApi }, session.id, () => setDormantPendingId(null))
     }, [api, t, queryClient, messageApi])
 
+    // 归档（session-retention 票 04）：在线会话 daemon 先自动休眠，gate 阻塞 409 透出原因；
+    // 成功后会话从主列表消失（行消失本身即反馈，不再 toast）
+    const { archive } = useSessionArchive()
+    const [archivePendingId, setArchivePendingId] = useState<string | null>(null)
+    const handleArchive = useCallback((session: Session) => {
+        setArchivePendingId(session.id)
+        archive.mutate(session.id, {
+            onError: (error) => {
+                const blockers = extractBlockers(error)
+                if (blockers.length > 0) {
+                    messageApi.warning(dormancyBlockedText(blockers, t, 'session.archive.blocked'))
+                } else {
+                    messageApi.error(t('common.error'))
+                }
+            },
+            onSettled: () => setArchivePendingId(null),
+        })
+    }, [archive, t, messageApi])
+
     // 恢复会话（未活跃时），成功后跳转详情页
     const handleResume = useCallback(async (session: Session) => {
         try {
@@ -123,49 +141,8 @@ export function SidebarWorkspaces() {
         }
     }, [api, queryClient, t, navigate, messageApi])
 
-    // 删除会话
-    const handleDelete = useCallback((session: Session) => {
-        modal.confirm({
-            title: t('session.actions.deleteConfirmTitle'),
-            content: t('session.actions.deleteConfirmContent'),
-            okText: t('common.confirm'),
-            okButtonProps: { danger: true },
-            cancelText: t('common.cancel'),
-            onOk: async () => {
-                try {
-                    const deleted = await api.sessions.delete(session.id)
-                    if (deleted.data.retainedWorktree) {
-                        notifyRetainedWorktree({
-                            notification,
-                            t,
-                            retained: deleted.data.retainedWorktree,
-                            onManage: () => { void navigate({ to: '/settings/worktrees' }) }
-                        })
-                    } else if (deleted.data.transcriptDeleted === false) {
-                        // transcript 诚实告知（票 07）：删了 mobi 记录但 CC 对话记录还在，说明原因
-                        notifyTranscriptRetained({
-                            notification,
-                            t,
-                            reason: deleted.data.transcriptRetainedReason ?? '',
-                        })
-                    } else {
-                        messageApi.success(t('common.success'))
-                    }
-                    queryClient.removeQueries({ queryKey: queryKeys.session(session.id) })
-                    clearMessageWindow(session.id)
-                    await invalidateSessionViews(queryClient, [session.id])
-                    // 清理检视面板状态 + 缓存终端（顺带关闭后端 PTY）
-                    clearSessionResources(session.id)
-                    if (activeSessionId === session.id) {
-                        navigate({ to: '/sessions' })
-                    }
-                } catch (error) {
-                    // gate 阻塞（daemon 删除前自动休眠被挡）→ 逐项原因文案；其余通用错误
-                    messageApi.error(deleteBlockedText(error, t) ?? t('common.error'))
-                }
-            },
-        })
-    }, [api, t, queryClient, activeSessionId, navigate, messageApi, notification])
+    // 删除会话（动作流收口在 useSessionDelete，与归档页共用）
+    const handleDelete = useSessionDelete()
 
     // ===== 工作区管理 =====
 
@@ -246,6 +223,8 @@ export function SidebarWorkspaces() {
         onRenameCancel: cancelRename,
         onDormant: handleDormant,
         dormantPendingSessionId: dormantPendingId,
+        onArchive: handleArchive,
+        archivePendingSessionId: archivePendingId,
         onResume: handleResume,
         onDelete: handleDelete,
         onRenameStart: startRename,
@@ -309,6 +288,8 @@ export function SidebarWorkspaces() {
                 onAssign={handleOpenAssign}
                 assignPendingSessionId={assignPendingSessionId}
             />
+            {/* 「已归档」入口：最近之后的唯一一行，右侧主内容区打开归档页（票 05） */}
+            <ArchivedGroupEntry />
 
             {/* 新建/编辑工作区弹窗 */}
             <WorkspaceFormModal

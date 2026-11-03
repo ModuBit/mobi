@@ -15,11 +15,13 @@
  */
 
 import { Result } from 'antd'
+import { Archive } from 'lucide-react'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useSession } from '@/core/data/hooks/queries/useSession'
+import { useSessionArchive } from '@/core/data/hooks/mutations/useSessionArchive'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { ChatPane } from '@/pages/session/ChatPane'
 import { InspectorPane } from '@/pages/session/InspectorPane'
@@ -37,6 +39,8 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const { data: session, isLoading, error } = useSession(sessionId)
+    // 归档会话深链接状态页的原地取消归档（hooks 须在条件 return 之前）
+    const { unarchive } = useSessionArchive()
 
     // 进入 session 详情页时清零未读角标
     const clearBadge = useNotificationBadgeStore((s) => s.clearBadge)
@@ -74,6 +78,27 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                 extra={
                     <Button variant="primary" onClick={() => navigate({ to: '/' })}>
                         {t('common.backHome')}
+                    </Button>
+                }
+            />
+        )
+    }
+
+    // 深链接进入归档会话（session-retention 票 05）：状态页替消息内容，
+    // 原地取消归档后 status 更新、详情自然切回正常渲染
+    if (session.status === 'archived') {
+        return (
+            <Result
+                icon={<Archive size={48} />}
+                title={t('session.archived.title')}
+                subTitle={t('session.archived.desc')}
+                extra={
+                    <Button
+                        variant="primary"
+                        loading={unarchive.isPending && unarchive.variables === session.id}
+                        onClick={() => unarchive.mutate(session.id)}
+                    >
+                        {t('session.archived.unarchive')}
                     </Button>
                 }
             />

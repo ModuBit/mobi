@@ -49,6 +49,8 @@ export const queryKeys = {
     recentSessions: ['recentSessions'] as const,
     /** 置顶会话（跨工作区/游离，「置顶」区数据源） */
     pinnedSessions: ['pinnedSessions'] as const,
+    /** 归档会话（归档页数据源；归档/取消归档动作共用失效前缀） */
+    archivedSessions: ['archivedSessions'] as const,
     /** 机器列表 */
     machines: ['machines'] as const,
     /** daemon 状态（单机：GET /api/daemon/status，取代机器列表作为宿主身份/就绪源） */

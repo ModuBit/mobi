@@ -16,7 +16,7 @@
 
 import { Badge, Input, theme as antTheme } from 'antd'
 import { EditOutlined, DeleteOutlined, MoonOutlined, MoreOutlined, PlayCircleOutlined } from '@ant-design/icons'
-import { Pin, PinOff } from 'lucide-react'
+import { Archive, Pin, PinOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { DropdownMenu, type DropdownItem } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
@@ -47,6 +47,9 @@ interface SessionRowProps {
     /** 手动休眠（dormancy spec §D.11）：gate 阻塞时展示逐项原因，行内不再有独立退出按钮 */
     onDormant: () => void
     dormantLoading?: boolean
+    /** 归档（session-retention 票 04）：进归档页，主列表消失 */
+    onArchive: () => void
+    archiveLoading?: boolean
     onResume: () => void
     onDelete: () => void
     /** 置顶 / 取消置顶（所有分组通用的行内操作） */
@@ -62,7 +65,7 @@ interface SessionRowProps {
 export function SessionRow({
     session, active, isRenaming,
     renameValue, onRenameValueChange, onRenameConfirm, onRenameCancel, onRenameLoading,
-    onClick, onRename, onDormant, dormantLoading, onResume, onDelete, onTogglePin, pinLoading,
+    onClick, onRename, onDormant, dormantLoading, onArchive, archiveLoading, onResume, onDelete, onTogglePin, pinLoading,
     extraMenuItems,
 }: SessionRowProps) {
     const { token } = useToken()
@@ -84,6 +87,12 @@ export function SessionRow({
         : { label: t('session.actions.resume'), icon: <PlayCircleOutlined />, onSelect: onResume }
     const builtinItems: DropdownItem[] = [
         { ...primaryItem, separatorBefore: extraItems.length > 0 },
+        {
+            label: t('session.actions.archive'),
+            icon: <Archive size={11} />,
+            disabled: archiveLoading,
+            onSelect: onArchive,
+        },
         { label: t('session.actions.delete'), icon: <DeleteOutlined />, destructive: true, onSelect: onDelete },
     ]
     const menuItems: DropdownItem[] = [...extraItems, ...builtinItems]

@@ -22,10 +22,11 @@ import { queryKeys } from '@/core/lib/queryKeys'
  * - ['workspaces']：工作区列表本身
  * - ['recentSessions']：「最近」分组
  * - ['pinnedSessions']：「置顶」分组
+ * - ['archivedSessions']：「已归档」列表（归档/删除等动作都会改变其成员）
  * - ['workspaceSessions', *]：所有工作区的会话分组（根前缀匹配）
  *
  * 会话增删/归属变更/工作区删除都会改变各分组视图的 sessionIds 成员，
- * 三键必须连带刷新，否则新会话不出现 / 删除会话残留。
+ * 各键必须连带刷新，否则新会话不出现 / 删除会话残留。
  * 收口此前的散布硬编码（SSEProvider 批处理、侧边栏/移动端列表）。归属类 mutation
  * 不再调用它——daemon 的 membership 事件是单一收敛路径（见 useWorkspaceMutations）。
  */
@@ -34,6 +35,7 @@ export async function invalidateWorkspaceViews(queryClient: QueryClient): Promis
         queryClient.invalidateQueries({ queryKey: queryKeys.workspaces }),
         queryClient.invalidateQueries({ queryKey: queryKeys.recentSessions }),
         queryClient.invalidateQueries({ queryKey: queryKeys.pinnedSessions }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.archivedSessions }),
         queryClient.invalidateQueries({ queryKey: queryKeys.workspaceSessionsRoot }),
     ])
 }

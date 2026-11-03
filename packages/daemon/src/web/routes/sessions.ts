@@ -334,6 +334,20 @@ export function createSessionsRoutes(
         })
     })
 
+    // GET /sessions/archived - 归档会话全量（归档页数据源，归档时间倒序）。
+    // 同 /sessions/pinned 的坑：必须注册在 /sessions/:id 之前
+    app.get('/sessions/archived', (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const namespace = c.get('namespace')
+        const sessions = engine.getArchivedSessions(namespace).map(stored => toSummaryWithLiveState(engine, stored))
+
+        return c.json({ sessions })
+    })
+
     app.get('/sessions/:id', (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {

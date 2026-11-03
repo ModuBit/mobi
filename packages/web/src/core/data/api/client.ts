@@ -209,6 +209,11 @@ export function createMobiApi() {
                         limit: limit ?? 20,
                     },
                 }),
+            // 归档会话全量（归档页数据源，归档时间倒序）
+            archivedSessions: () => client.get<{ sessions: Session[] }>('/api/sessions/archived'),
+            // 归档 / 取消归档（票 04：归档 409 带 blockers——active 会话须先休眠）
+            archive: (sessionId: string) => client.post(`/api/sessions/${sessionId}/archive`),
+            unarchive: (sessionId: string) => client.post(`/api/sessions/${sessionId}/unarchive`),
             // 上传文件（二进制流式 + 进度 + 取消，替换 FormData→multipart）
             upload: (
                 sessionId: string,

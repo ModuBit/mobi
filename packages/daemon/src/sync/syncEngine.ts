@@ -388,6 +388,11 @@ export class SyncEngine {
         return this.store.sessions.getPinnedSessions(namespace, cursor, limit)
     }
 
+    /** 归档会话全量（归档时间倒序，归档页数据源；量级可控不分页） */
+    getArchivedSessions(namespace: string) {
+        return this.store.sessions.getArchivedSessions(namespace)
+    }
+
     /**
      * 置顶 / 取消置顶（纯展示维度分组，不改归属）。置顶态变化时刷新内存缓存并广播
      * session-updated，Web 端连带失效「置顶」「工作区」「最近」三个分组视图；

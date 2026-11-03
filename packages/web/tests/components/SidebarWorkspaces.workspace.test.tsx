@@ -75,6 +75,7 @@ vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => navigateSpy,
     useParams: () => ({}),
     useSearch: () => ({}),
+    useLocation: () => ({ pathname: '/' }),
 }))
 
 vi.mock('react-i18next', async (orig) => {

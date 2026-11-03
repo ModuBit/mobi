@@ -212,3 +212,26 @@ describe('GET /api/sessions 的归档过滤', () => {
         }
     })
 })
+
+describe('GET /api/sessions/archived（票 05 归档页数据源）', () => {
+    test('返回归档全量且叠内存态；注册顺序不被 /:id 拦截', async () => {
+        const archived: Session = { ...mockSession, status: 'archived', archivedAt: 1234 }
+        const engine = {
+            getArchivedSessions: (_ns: string) => [archived],
+            getSession: (_id: string) => null,
+        } as unknown as SyncEngine
+        const { app, cleanup, token } = await authorizedApp(engine)
+        try {
+            const res = await app.request('/api/sessions/archived', {
+                headers: { Authorization: `Bearer ${token}` },
+            })
+            expect(res.status).toBe(200)
+            const sessions = ((await res.json()) as { sessions: Session[] }).sessions
+            expect(sessions).toHaveLength(1)
+            expect(sessions[0].status).toBe('archived')
+            expect(sessions[0].archivedAt).toBe(1234)
+        } finally {
+            cleanup()
+        }
+    })
+})

@@ -26,8 +26,9 @@ import {
     SwapOutlined,
     ImportOutlined,
 } from '@ant-design/icons'
-import { ChevronRight, Plus } from 'lucide-react'
-import { dormantSessionWithFeedback, deleteBlockedText } from '@/core/data/sessionDormancy'
+import { ChevronRight, Plus, Archive } from 'lucide-react'
+import { dormantSessionWithFeedback, deleteBlockedText, dormancyBlockedText, extractBlockers } from '@/core/data/sessionDormancy'
+import { useSessionArchive } from '@/core/data/hooks/mutations/useSessionArchive'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -47,9 +48,11 @@ import { clearSessionResources } from '@/core/lib/sessionResources'
 import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
 import { pushHistoryGuard } from '@/core/lib/drawerHistoryGuard'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
+import { useArchivedSessions } from '@/core/data/hooks/queries/useArchivedSessions'
 import {
     Container, SectionHeader, SectionTitleText, SectionChevron, NewSessionBtn,
     SessionListWrapper, SessionListInner,
+    ArchivedEntryRow, ArchivedEntryIcon, ArchivedEntryName, ArchivedEntryCount,
 } from './mobileWorkspaceList.styles'
 import { MobileWorkspaceGroup } from './MobileWorkspaceGroup'
 import { MobileRecentGroup } from './MobileRecentGroup'
@@ -128,6 +131,8 @@ export function MobileWorkspaceList() {
     } = usePagedSectionList(workspaces)
     // 获取所有会话（用于查找 ActionSheet 对应 session）
     const { data: allSessions } = useSessions()
+    // 「已归档」入口数量（票 05：与归档页共用缓存，入口挂载即拉）
+    const { data: archivedSessions = [] } = useArchivedSessions()
 
     const findSession = useCallback((sessionId: string): Session | undefined => {
         return allSessions?.find(s => s.id === sessionId)
@@ -228,6 +233,27 @@ export function MobileWorkspaceList() {
             },
         )
     }, [actionSessionId, api, queryClient, t, messageApi])
+
+    // 归档（session-retention 票 04）：在线会话 daemon 先自动休眠，gate 阻塞 409 透出原因；
+    // 成功后会话从主列表消失（行消失即反馈）
+    const { archive } = useSessionArchive()
+    const handleArchive = useCallback(async () => {
+        if (!actionSessionId) return
+        setActionLoading('archive')
+        try {
+            await archive.mutateAsync(actionSessionId)
+            setActionSessionId(null)
+        } catch (error) {
+            const blockers = extractBlockers(error)
+            if (blockers.length > 0) {
+                messageApi.warning(dormancyBlockedText(blockers, t, 'session.archive.blocked'))
+            } else {
+                messageApi.error(t('common.error'))
+            }
+        } finally {
+            setActionLoading(null)
+        }
+    }, [actionSessionId, archive, t, messageApi])
 
     // 恢复
     const handleResume = useCallback(async () => {
@@ -353,6 +379,16 @@ export function MobileWorkspaceList() {
                     activeSessionId={activeSessionId}
                     onSessionAction={setActionSessionId}
                 />
+                {/* 「已归档」入口：最近之后的同形一行，整页打开归档页（票 05） */}
+                <ArchivedEntryRow
+                    $token={token}
+                    onClick={() => navigateFromMenu(() => navigate({ to: '/archived' }))}
+                    aria-label={t('nav.archived')}
+                >
+                    <ArchivedEntryIcon $token={token}><Archive size={16} /></ArchivedEntryIcon>
+                    <ArchivedEntryName $token={token}>{t('nav.archived')}</ArchivedEntryName>
+                    <ArchivedEntryCount $token={token}>{archivedSessions.length}</ArchivedEntryCount>
+                </ArchivedEntryRow>
             </Container>
 
             {/* 会话操作菜单（重命名 / 置顶 / 归属 / 休眠·恢复 / 删除 / 取消）
@@ -491,6 +527,18 @@ export function MobileWorkspaceList() {
                                 <PlayCircleOutlined /> {t('session.actions.resume')}
                             </Button>
                         )}
+
+                        {/* 归档：在线会话 daemon 先自动休眠（票 04），被挡时 409 透出原因 */}
+                        <Button
+                            variant="ghost"
+                            disabled={!!actionLoading}
+                            loading={actionLoading === 'archive'}
+                            block
+                            style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                            onClick={handleArchive}
+                        >
+                            <Archive size={14} /> {t('session.actions.archive')}
+                        </Button>
 
                         <div style={{ height: 1, background: token.colorBorderSecondary, margin: '4px 16px' }} />
 

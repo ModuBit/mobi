@@ -46,6 +46,10 @@ export interface SessionListSharedProps {
     onDormant: (session: Session) => void
     /** 正在休眠的会话 id（仅该行禁用按钮） */
     dormantPendingSessionId?: string | null
+    /** 归档（session-retention 票 04：在线会话 daemon 先自动休眠，被挡时 409 透出原因） */
+    onArchive: (session: Session) => void
+    /** 正在归档的会话 id（仅该行禁用，其余行不受牵连） */
+    archivePendingSessionId?: string | null
     onResume: (session: Session) => void
     onDelete: (session: Session) => void
     onRenameStart: (sessionId: string, currentName: string) => void
@@ -76,7 +80,8 @@ interface SessionRowsListProps extends SessionListSharedProps {
 /** 分组内会话列表：骨架 / 空态 / 会话行 / 底部展开收起链接 */
 export function SessionRowsList({
     activeSessionId, renamingSessionId, renameValue, setRenameValue,
-    onRenameConfirm, onRenameCancel, onDormant, dormantPendingSessionId, onResume, onDelete, onRenameStart, renameLoading,
+    onRenameConfirm, onRenameCancel, onDormant, dormantPendingSessionId, onArchive, archivePendingSessionId,
+    onResume, onDelete, onRenameStart, renameLoading,
     onTogglePin, pinPendingSessionId,
     sessions, visibleSessions, isLoadingInitial, isLoadingMore,
     showCollapse, canShowMore, remainingCount, showMore, collapse,
@@ -115,6 +120,8 @@ export function SessionRowsList({
                     onRename={() => onRenameStart(session.id, getSessionName(session))}
                     onDormant={() => onDormant(session)}
                     dormantLoading={session.id === dormantPendingSessionId}
+                    onArchive={() => onArchive(session)}
+                    archiveLoading={session.id === archivePendingSessionId}
                     onResume={() => onResume(session)}
                     onDelete={() => onDelete(session)}
                     onTogglePin={() => onTogglePin(session)}
