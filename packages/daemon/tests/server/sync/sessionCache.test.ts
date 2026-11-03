@@ -986,8 +986,10 @@ describe('SessionCache.markDetached — 心跳过期纠正陈旧 active', () => 
 
         expect(cache.getSession(session.id)?.active).toBe(false)
         expect(cache.getSession(session.id)?.running).toBe(false)
+        // 心跳过期即无进程可唤醒：保留状态同步落 dormant 并随广播携带
+        expect(cache.getSession(session.id)?.status).toBe('dormant')
         expect(emitted).toEqual([
-            { type: 'session-updated', sessionId: session.id, data: { active: false } },
+            { type: 'session-updated', sessionId: session.id, data: { active: false, status: 'dormant', archivedAt: null } },
         ])
         store.close()
     })

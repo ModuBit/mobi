@@ -91,15 +91,22 @@ const SESSIONS_NEW_DDL = `
         workspace_id TEXT,
         pinned INTEGER DEFAULT 0,
         seq INTEGER DEFAULT 0,
+        -- 会话保留状态三列（session-retention，与 createSchema 一致；缺失会被新 Store 的
+        -- 启动引导检测拒启。存量行一律 dormant，活会话由 daemon 重启后的重连翻回 online）
+        status TEXT NOT NULL DEFAULT 'dormant' CHECK (status IN ('online', 'dormant', 'archived')),
+        status_updated_at INTEGER,
+        archived_at INTEGER,
         end_state TEXT
     )
 `
 
-/** sessions 原有 3 个索引（与 createSchema 一致） */
+/** sessions 索引（与 createSchema 一致） */
 const SESSIONS_INDEX_DDL = `
     CREATE INDEX IF NOT EXISTS idx_sessions_tag ON sessions(tag);
     CREATE INDEX IF NOT EXISTS idx_sessions_tag_namespace ON sessions(tag, namespace);
     CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_namespace_status ON sessions(namespace, status);
+    CREATE INDEX IF NOT EXISTS idx_sessions_namespace_archived ON sessions(namespace, archived_at);
 `
 
 /** 表是否存在 */

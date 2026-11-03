@@ -27,6 +27,7 @@ export type {
     Metadata,
     RuntimeState,
     Session,
+    SessionStatus,
     SnapshotBlock,
     SnapshotBlockDelta,
     SnapshotDeltaFrame,

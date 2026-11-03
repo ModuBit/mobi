@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { MessageLifecycle, NativeMessageMetadata, Workspace } from '@mobi/shared'
+import type { MessageLifecycle, NativeMessageMetadata, SessionStatus, Workspace } from '@mobi/shared'
 
 export type StoredSession = {
     id: string
@@ -33,6 +33,12 @@ export type StoredSession = {
     /** 会话置顶（true = 进「置顶」分组，同时从「工作区」「最近」过滤掉） */
     pinned: boolean
     seq: number
+    /** 保留状态（online | dormant | archived）；存量库迁移后为 dormant */
+    status: SessionStatus
+    /** 最近一次状态迁移时刻（启动自愈判活依据） */
+    statusUpdatedAt: number | null
+    /** 归档时刻；非归档为 null */
+    archivedAt: number | null
     /** 会话终结原因（票 1.1）：null = 进程仍在或老数据未回填 */
     endReason: string | null
     /** pause 的触发来源（仅 endReason=pause 有值） */

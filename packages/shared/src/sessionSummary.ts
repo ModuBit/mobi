@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ForkedFromMetadata, ForkFromMetadata, Session, WorktreeMetadata } from './schemas'
+import type { ForkedFromMetadata, ForkFromMetadata, Session, SessionStatus, WorktreeMetadata } from './schemas'
 import type { SessionEndReason, SessionPauseTrigger } from './sessionEnd'
 
 export type SessionSummaryMetadata = {
@@ -58,6 +58,10 @@ export type SessionSummary = {
     endReason?: SessionEndReason | null
     pauseTrigger?: SessionPauseTrigger | null
     endedAt?: number | null
+    /** 保留状态（online | dormant | archived）：列表过滤与归档页数据源 */
+    status: SessionStatus
+    /** 归档时刻（epoch ms）；非归档为 null */
+    archivedAt?: number | null
 }
 
 export function toSessionSummary(session: Session): SessionSummary {
@@ -102,5 +106,7 @@ export function toSessionSummary(session: Session): SessionSummary {
         endReason: session.endReason ?? null,
         pauseTrigger: session.pauseTrigger ?? null,
         endedAt: session.endedAt ?? null,
+        status: session.status ?? 'dormant',
+        archivedAt: session.archivedAt ?? null,
     }
 }

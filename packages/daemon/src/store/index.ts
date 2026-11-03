@@ -188,6 +188,12 @@ export class Store {
                 workspace_id TEXT,
                 pinned INTEGER DEFAULT 0,
                 seq INTEGER DEFAULT 0,
+                -- 会话保留状态（session-retention）：online（进程附着）/ dormant / archived
+                status TEXT NOT NULL DEFAULT 'dormant' CHECK (status IN ('online', 'dormant', 'archived')),
+                -- 最近一次状态迁移时刻：启动自愈的判活依据（重连过的行时间戳会被刷新）
+                status_updated_at INTEGER,
+                -- 归档时刻；非归档为 NULL
+                archived_at INTEGER,
                 -- 终结快照单列（{reason, trigger?, at?}）：终结原因/触发来源/时刻同生同灭，
                 -- 是一个聚合事实而非三个查询维度，合并承载以防「来一个需求加几列」
                 end_state TEXT
@@ -195,6 +201,8 @@ export class Store {
             CREATE INDEX IF NOT EXISTS idx_sessions_tag ON sessions(tag);
             CREATE INDEX IF NOT EXISTS idx_sessions_tag_namespace ON sessions(tag, namespace);
             CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_id);
+            CREATE INDEX IF NOT EXISTS idx_sessions_namespace_status ON sessions(namespace, status);
+            CREATE INDEX IF NOT EXISTS idx_sessions_namespace_archived ON sessions(namespace, archived_at);
 
             CREATE TABLE IF NOT EXISTS workspaces (
                 id TEXT PRIMARY KEY,
@@ -352,6 +360,17 @@ export class Store {
             throw new Error(
                 `Detected legacy sessions schema (sessions has no end_state column) at ${this.dbPath}. `
                 + `Stop the daemon, then run ${command} and restart.`
+            )
+        }
+
+        // 会话保留状态三列（session-retention）：早于该特性的存量库 user_version 同为 1，
+        // 版本号无法区分，列存在性是唯一判别器。部署前人工补列（scripts/migrate-session-status.ts）。
+        // 刻意放在检查链末尾——更老时代的迁移（workspaces/native_id/metadata/machine/end_state）
+        // 引导优先触发，跑完那些迁移再由本引导收尾（migrate-remove-machine 重建的表已含三列）
+        if (!sessionColumns.some(column => column.name === 'status')) {
+            throw new Error(
+                `Detected sessions schema without retention columns (sessions has no status column) at ${this.dbPath}. ` +
+                'Stop the daemon, then run `bun scripts/migrate-session-status.ts` to migrate the database before starting this version.'
             )
         }
     }

@@ -18,7 +18,7 @@ import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
 import { CLEARABLE_RUNTIME_STATE_FIELDS as CLEARABLE_FIELDS, isObject } from '@mobi/shared'
-import type { ClearableRuntimeStateField } from '@mobi/shared/types'
+import type { ClearableRuntimeStateField, SessionStatus } from '@mobi/shared/types'
 
 import type { StoredSession, VersionedUpdateResult } from './types'
 import { safeJsonParse } from './json'
@@ -39,6 +39,12 @@ type DbSessionRow = {
     workspace_id: string | null
     pinned: number
     seq: number
+    /** 保留状态（CHECK 约束保证三值） */
+    status: string
+    /** 最近一次状态迁移时刻 */
+    status_updated_at: number | null
+    /** 归档时刻；非归档为 null */
+    archived_at: number | null
     /** 终结快照 JSON（{reason, trigger?, at?}）；null = 进程仍在或老数据未回填 */
     end_state: string | null
 }
@@ -78,6 +84,11 @@ function serializeEndState(fields: { endReason: string; pauseTrigger?: string; e
     } satisfies StoredEndState)
 }
 
+/** DB CHECK 已限定三值；脏值（人工改库/旧库）按 dormant 窄化，防扩散 */
+function toSessionStatus(value: string): SessionStatus {
+    return value === 'online' || value === 'archived' ? value : 'dormant'
+}
+
 function toStoredSession(row: DbSessionRow): StoredSession {
     const endState = parseEndState(row.end_state)
     return {
@@ -95,6 +106,9 @@ function toStoredSession(row: DbSessionRow): StoredSession {
         workspaceId: row.workspace_id,
         pinned: row.pinned === 1,
         seq: row.seq,
+        status: toSessionStatus(row.status),
+        statusUpdatedAt: row.status_updated_at,
+        archivedAt: row.archived_at,
         endReason: endState?.reason ?? null,
         pauseTrigger: endState?.trigger ?? null,
         endedAt: endState?.at ?? null
@@ -525,6 +539,54 @@ export function clearSessionEnd(
          WHERE id = ? AND namespace = ?`
     ).run(id, namespace)
     return result.changes > 0
+}
+
+// ============ 会话保留状态（session-retention） ============
+
+export type SessionStatusWrite = {
+    status: SessionStatus
+    /** 迁移时刻（缺省 now）；同时作为 status_updated_at */
+    at?: number
+}
+
+/**
+ * 会话保留状态的唯一写入口。`archived_at` 与 `status` 同语句写入：
+ * 归档写时刻，任何非归档迁移清空。刻意不动 `updated_at`——保留状态不是
+ * 「最近一次真实交互」，顶新会把归档/取消归档混进列表排序。
+ */
+export function setSessionStatus(
+    db: Database,
+    id: string,
+    namespace: string,
+    write: SessionStatusWrite
+): boolean {
+    const at = write.at ?? Date.now()
+    const archivedAt = write.status === 'archived' ? at : null
+    const result = db.prepare(
+        `UPDATE sessions
+         SET status = ?, status_updated_at = ?, archived_at = ?
+         WHERE id = ? AND namespace = ?`
+    ).run(write.status, at, archivedAt, id, namespace)
+    return result.changes > 0
+}
+
+/**
+ * 启动自愈：daemon 重启后，宽限期结束时仍是 online 且时间戳早于启动时刻的行
+ * （没等到会话子进程重连）才回落 dormant。重连过的行由附着事件刷新时间戳，
+ * 不会被误降；archived 行不参与。
+ */
+export function reconcileStartupSessionStatus(
+    db: Database,
+    startupAt: number,
+    now: number = Date.now()
+): string[] {
+    const rows = db.prepare(
+        `UPDATE sessions
+         SET status = 'dormant', status_updated_at = ?
+         WHERE status = 'online' AND (status_updated_at IS NULL OR status_updated_at < ?)
+         RETURNING id`
+    ).all(now, startupAt) as Array<{ id: string }>
+    return rows.map(row => row.id)
 }
 
 // ============ 工作区归属相关 ============

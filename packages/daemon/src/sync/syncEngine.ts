@@ -87,6 +87,12 @@ export type OutputStyleSwitchOutcome =
     | { accepted: false; reason: string; confirmed: true }
     | { accepted: false; reason: string; confirmed: false; cause?: string }
 
+/**
+ * 启动状态自愈宽限期（session-retention）：活着的会话子进程在 daemon 重启后自动重连，
+ * 这段时间足够它们刷新 status_updated_at；宽限期后仍是旧时间戳的 online 行才判定为崩溃遗留。
+ */
+const STARTUP_STATUS_GRACE_MS = 15_000
+
 export class SyncEngine {
     private readonly eventPublisher: EventPublisher
     private readonly sessionCache: SessionCache
@@ -116,6 +122,8 @@ export class SyncEngine {
     /** rewind 软删除上界（受理时写 / 截断回报消费；与 CLI socket handler 共用实例，index.ts 注入） */
     private readonly rewindDeleteBounds: RewindDeleteBoundTracker
     private inactivityTimer: NodeJS.Timeout | null = null
+    /** 启动状态自愈定时器（宽限期后回落未重连的 online 行） */
+    private startupStatusTimer: NodeJS.Timeout | null = null
     /** 会话苏醒编排（候选④）：resume 组装/唤醒去重/容错/预算意图的单源 */
     private readonly reviver: SessionReviver
     /**
@@ -234,7 +242,9 @@ export class SyncEngine {
             handleWakeup: (payload) => this.sessionCache.handleWakeup(payload),
             handleReceiveReadiness: (payload) => this.receiveReadiness.set(payload.sid, payload.canReceive),
         }
+        const startupAt = Date.now()
         this.warmupCache()
+        this.scheduleStartupStatusReconcile(startupAt)
         this.inactivityTimer = setInterval(() => this.expireInactive(), 5_000)
     }
 
@@ -243,7 +253,28 @@ export class SyncEngine {
             clearInterval(this.inactivityTimer)
             this.inactivityTimer = null
         }
+        if (this.startupStatusTimer) {
+            clearTimeout(this.startupStatusTimer)
+            this.startupStatusTimer = null
+        }
         this.reviver.dispose()
+    }
+
+    /** 启动自愈（宽限后执行一次）：只回落启动后未重连的 online 行，见 STARTUP_STATUS_GRACE_MS */
+    private scheduleStartupStatusReconcile(startupAt: number): void {
+        this.startupStatusTimer = setTimeout(() => {
+            this.startupStatusTimer = null
+            try {
+                const changed = this.sessionCache.reconcileStartupStatus(startupAt)
+                if (changed > 0) {
+                    daemonLogger.info(`[retention] startup status reconcile: online→dormant=${changed}`)
+                }
+            } catch (error) {
+                daemonLogger.warn(`[retention] startup status reconcile failed: ${(error as Error).message}`)
+            }
+        }, STARTUP_STATUS_GRACE_MS)
+        // 不吊住进程退出（短命进程/测试直接 exit）
+        this.startupStatusTimer.unref?.()
     }
 
     subscribe(listener: SyncEventListener): () => void {

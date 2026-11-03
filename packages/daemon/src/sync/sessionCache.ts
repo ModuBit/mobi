@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { CacheStatus, ContextUsage, EffortLevel, PermissionMode, RuntimeState, SDKMetadata, Session, SessionEndReason } from '@mobi/shared/types'
+import type { CacheStatus, ContextUsage, EffortLevel, PermissionMode, RuntimeState, SDKMetadata, Session, SessionEndReason, SessionStatus } from '@mobi/shared/types'
 import type { Store } from '../store'
 import { daemonLogger } from '../logger'
 import { clampAliveTime } from './aliveTime'
@@ -162,6 +162,46 @@ export class SessionCache {
         }
     }
 
+    /**
+     * 启动自愈：宽限期后把「没等到重连」的 online 行回落 dormant。
+     *
+     * 判活靠 status_updated_at：活着的会话子进程在宽限期内重连，handleSessionAlive
+     * 会刷新时间戳；时间戳仍早于启动时刻的才是 daemon 崩溃遗留。archived 行不参与。
+     * 返回值只用于日志。
+     */
+    reconcileStartupStatus(startupAt: number): number {
+        const changedIds = this.store.sessions.reconcileStartupSessionStatus(startupAt, Date.now())
+        for (const sessionId of changedIds) {
+            const session = this.sessions.get(sessionId)
+            if (!session) continue
+            session.status = 'dormant'
+            this.publisher.emit({
+                type: 'session-updated',
+                sessionId,
+                data: { status: 'dormant', archivedAt: null },
+            })
+        }
+        return changedIds.length
+    }
+
+    /**
+     * 保留状态迁移（DB + 内存同写，唯一写入口在 store）。
+     *
+     * `archived` 是用户终态：进程事件（附着/结束/心跳过期）一律不得把它翻回——
+     * 否则归档会话会被一个迟到的存活事实悄悄「复活」。返回是否写入。
+     */
+    private setStatus(session: Session, status: SessionStatus, at: number): boolean {
+        if (session.status === 'archived') return false
+        try {
+            this.store.sessions.setSessionStatus(session.id, session.namespace, { status, at })
+        } catch {
+            // 落库失败不阻塞内存收尾（行消失/列缺失仅损失持久状态，内存事实照常广播）
+            daemonLogger.debug(`[sessionCache] setSessionStatus failed (id=${session.id}, status=${status})`)
+        }
+        session.status = status
+        return true
+    }
+
     handleSessionAlive(payload: SessionAlivePayload): void {
         const t = clampAliveTime(payload.time)
         if (!t) return
@@ -177,6 +217,9 @@ export class SessionCache {
         session.activeAt = Math.max(session.activeAt, t)
         session.running = Boolean(payload.running)
         session.runningAt = t
+        // 保留状态：每次「从非活跃到附着」都写 online 并刷新 status_updated_at（不逐心跳写，
+        // 但 daemon 重启后的首次重连必须刷新——启动宽限期自愈靠这个时间戳判定它存活）
+        if (!wasActive) this.setStatus(session, 'online', t)
         // 唤醒收口：激活心跳到达即清终结字段（DB + 内存行）。clearSessionEnd 此前
         // 生产零调用——唤醒后 DB 残留 pause，daemon 重启后 Web 误显休眠、
         // warm-on-open 可对已唤醒会话重复触发。仅终结态时写，避免高频心跳重复落库
@@ -221,6 +264,8 @@ export class SessionCache {
                     active: true,
                     activeAt: session.activeAt,
                     running: session.running,
+                    status: session.status,
+                    archivedAt: session.archivedAt ?? null,
                     mode: session.mode,
                     permissionMode: session.permissionMode,
                     // 唤醒收口：显式带 null 清掉 Web 缓存的休眠标记（缺字段的增量载荷
@@ -377,6 +422,8 @@ export class SessionCache {
         // 内存行同步终结字段（与落库同值；pause 态消费方如 WarmOnOpen 即时可判）。
         // 早退分支与正常收尾同值，统一在分支前写
         applySessionEnd(session, { reason: endedReason, trigger: payload.pauseTrigger ?? null, at: t })
+        // 进程结束 = 无进程可唤醒；archived 行保持归档（迟到的结束事实不翻状态）
+        this.setStatus(session, 'dormant', t)
 
         if (!session.active && !session.running) {
             return
@@ -425,6 +472,8 @@ export class SessionCache {
             data: {
                 active: false,
                 running: false,
+                status: session.status,
+                archivedAt: session.archivedAt ?? null,
                 mode: session.mode,
                 // 恒带（缺省值已按 stop 归一）：Web 增量补丁需要确定值区分休眠/终结
                 endReason: endedReason,
@@ -477,7 +526,13 @@ export class SessionCache {
         if (!session?.active) return
         session.active = false
         session.running = false
-        this.publisher.emit({ type: 'session-updated', sessionId, data: { active: false } })
+        // 心跳过期 = 进程已被强杀/崩溃，无进程可唤醒；archived 行保持归档
+        this.setStatus(session, 'dormant', Date.now())
+        this.publisher.emit({
+            type: 'session-updated',
+            sessionId,
+            data: { active: false, status: session.status, archivedAt: session.archivedAt ?? null },
+        })
     }
 
     /** live 字段的落库键（深化候选②：新增 live 字段在此追加即获得「落库+内存+广播」，

@@ -42,6 +42,9 @@ function makeStored(overrides: Partial<StoredSession> = {}): StoredSession {
         workspaceId: 'ws-1',
         pinned: true,
         seq: 7,
+        status: 'dormant',
+        statusUpdatedAt: null,
+        archivedAt: null,
         endReason: null,
         pauseTrigger: null,
         endedAt: null,
@@ -50,6 +53,16 @@ function makeStored(overrides: Partial<StoredSession> = {}): StoredSession {
 }
 
 describe('projectSession — stored → 内存 Session', () => {
+    test('保留状态与归档时刻原样投影（列表/归档页数据源）', () => {
+        const session = projectSession(makeStored({
+            status: 'archived',
+            archivedAt: 4321,
+        }))
+
+        expect(session.status).toBe('archived')
+        expect(session.archivedAt).toBe(4321)
+    })
+
     test('终结快照三字段投影齐全（warm-on-open 判 pause 的供数面）', () => {
         const session = projectSession(makeStored({
             endReason: 'pause',

@@ -36,6 +36,9 @@ import {
     type ClearRuntimeStateFieldsResult,
     markSessionEnded,
     clearSessionEnd,
+    setSessionStatus,
+    reconcileStartupSessionStatus,
+    type SessionStatusWrite,
     mergeRuntimeState,
     updateSessionAgentState,
     updateSessionMetadata,
@@ -143,6 +146,16 @@ export class SessionStore {
     /** 会话复活（唤醒）时清终结字段 */
     clearSessionEnd(id: string, namespace: string): boolean {
         return clearSessionEnd(this.db, id, namespace)
+    }
+
+    /** 保留状态唯一写入口（status / status_updated_at / archived_at 同语句） */
+    setSessionStatus(id: string, namespace: string, write: SessionStatusWrite): boolean {
+        return setSessionStatus(this.db, id, namespace, write)
+    }
+
+    /** 启动自愈：宽限期后把未重连的 online 行回落 dormant，返回受影响 id */
+    reconcileStartupSessionStatus(startupAt: number, now?: number): string[] {
+        return reconcileStartupSessionStatus(this.db, startupAt, now)
     }
 
     // ============ 工作区归属相关 ============

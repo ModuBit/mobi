@@ -96,6 +96,9 @@ export function projectSession(stored: StoredSession, existing?: Session): Sessi
         // toSessionSummary 读 session.pinned 恒 undefined → 全局缓存反复抹掉 pinned，
         // 「置顶」分组按钮态/成员资格与分页查询打架（见 sessions_pinned 回归）
         pinned: stored.pinned,
+        // 保留状态：列表过滤 / 归档页判据直接读它（不在 web 侧按 endReason 猜）
+        status: stored.status,
+        archivedAt: stored.archivedAt,
         // 终结快照：store 层是 string | null，经 schema 校验窄化（脏值按 null，防扩散）
         endReason: EndReasonOrNull.parse(stored.endReason),
         pauseTrigger: PauseTriggerOrNull.parse(stored.pauseTrigger),

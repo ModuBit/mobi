@@ -864,6 +864,17 @@ export const SnapshotDeltaFrameSchema = z.object({
 
 export type SnapshotDeltaFrame = z.infer<typeof SnapshotDeltaFrameSchema>
 
+/**
+ * 会话保留状态（session-retention spec）：
+ * - online：会话子进程附着，含空闲与执行中
+ * - dormant：无进程，可随时唤醒
+ * - archived：休眠 + 从主列表隐藏 + 禁收发
+ *
+ * 「正在执行回合」是瞬时事实（running），不并入此状态。
+ */
+export const SessionStatusSchema = z.enum(['online', 'dormant', 'archived'])
+export type SessionStatus = z.infer<typeof SessionStatusSchema>
+
 export const SessionSchema = z.object({
     id: z.string(),
     namespace: z.string(),
@@ -872,6 +883,10 @@ export const SessionSchema = z.object({
     updatedAt: z.number(),
     active: z.boolean(),
     activeAt: z.number(),
+    /** 持久保留状态；active 仍独立表示「进程是否附着」的连接事实 */
+    status: SessionStatusSchema.optional(),
+    /** 归档时刻（epoch ms）；非归档为 null */
+    archivedAt: z.number().nullable().optional(),
     metadata: MetadataSchema.nullable(),
     metadataVersion: z.number(),
     agentState: AgentStateSchema.nullable(),
