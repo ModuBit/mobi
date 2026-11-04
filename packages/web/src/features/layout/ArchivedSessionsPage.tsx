@@ -17,7 +17,7 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { App, Input, Modal, theme as antTheme } from 'antd'
-import { Archive as ArchiveIcon, ArchiveRestore, Folder, MoreHorizontal, Search, Trash2 } from 'lucide-react'
+import { Archive as ArchiveIcon, ArchiveRestore, Clock, Folder, MoreHorizontal, Search, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { useArchivedSessions } from '@/core/data/hooks/queries/useArchivedSessions'
@@ -74,10 +74,7 @@ const TitleRow = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['toke
     }
 
     .title-delete-all {
-        position: absolute;
-        right: 0;
-        top: 50%;
-        transform: translateY(-50%);
+        margin-left: auto;
     }
 `
 
@@ -225,16 +222,27 @@ const RowName = styled.span`
 `
 
 const RowTime = styled.span<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     font-size: 12px;
     color: ${p => p.$token.colorTextQuaternary};
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
 
     /* 移动端双时间挤不下 12px：缩字号保两段完整（断点同 SETTINGS_WIDE_QUERY） */
     @media (max-width: 991.98px) {
         font-size: 11.5px;
+        gap: 6px;
     }
+`
+
+/** 单段时间：icon 标注语义 + 时间文本（icon 与文本同色，title 承载悬停说明） */
+const TimeChunk = styled.span`
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
 `
 
 const RowActions = styled.span`
@@ -544,11 +552,19 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                                 <ArchivedRow key={session.id} $token={token}>
                                     <RowMain>
                                         <RowName>{getSessionDisplayName(session)}</RowName>
-                                        {/* 副行双时间：最后活跃（同 session 列表口径）+ 归档时间；formatMessageTime 非当天自动带日期 */}
+                                        {/* 副行双时间（icon 标注语义，同 session 列表口径）：最后活跃 + 归档；非当天自动带日期 */}
                                         <RowTime $token={token}>
-                                            {t('archived.lastActiveAt', { time: formatMessageTime(session.updatedAt) })}
-                                            {' · '}
-                                            {session.archivedAt && t('archived.archivedAtLabel', { time: formatMessageTime(session.archivedAt) })}
+                                            <TimeChunk title={t('archived.lastActiveAt')}>
+                                                <Clock size={12} />
+                                                {formatMessageTime(session.updatedAt)}
+                                            </TimeChunk>
+                                            <span aria-hidden="true">·</span>
+                                            {session.archivedAt && (
+                                                <TimeChunk title={t('archived.archivedAtLabel')}>
+                                                    <ArchiveIcon size={12} />
+                                                    {formatMessageTime(session.archivedAt)}
+                                                </TimeChunk>
+                                            )}
                                         </RowTime>
                                     </RowMain>
                                     <RowActions>
