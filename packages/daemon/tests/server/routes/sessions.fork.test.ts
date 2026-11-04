@@ -185,6 +185,8 @@ describe('DELETE /api/sessions/:id fork 删除守卫（isSessionRowDeletable）'
         deleteResult: 'ok' | Error,
         /** 守卫不过时删除路由会先尝试休眠（gate 自查）；按此 mock engine.dormantSession */
         dormantResult: { ok: true } | { ok: false; blockers: string[] } = { ok: true },
+        /** engine.deleteSession 的附加处置结果（票 10：retainedWorktree 等透传断言用） */
+        deletePayload: Record<string, unknown> = {},
     ) {
         const engine = {
             resolveSessionAccess: (_id: string, _ns: string) => ({
@@ -194,7 +196,7 @@ describe('DELETE /api/sessions/:id fork 删除守卫（isSessionRowDeletable）'
             }),
             deleteSession: (_sessionId: string) =>
                 deleteResult === 'ok'
-                    ? Promise.resolve({ transcriptDeleted: true })
+                    ? Promise.resolve({ transcriptDeleted: true, ...deletePayload })
                     : Promise.reject(deleteResult),
             dormantSession: () => Promise.resolve(dormantResult),
         } as unknown as SyncEngine
@@ -233,6 +235,19 @@ describe('DELETE /api/sessions/:id fork 删除守卫（isSessionRowDeletable）'
 
         const res = await del(token)
         expect(res.status).toBe(200)
+    })
+
+    test('engine 处置结果透传：retainedWorktree 原样进响应（票 10，routes 不再感知 worktree）', async () => {
+        await setupWithSession({ active: false, running: false }, 'ok', { ok: true }, {
+            retainedWorktree: { name: 'w', branch: 'mobi-w', worktreePath: '/tmp/wt/w', state: 'dirty', dirtyFileCount: 1 },
+        })
+        const token = await getAuthToken(app)
+
+        const res = await del(token)
+        expect(res.status).toBe(200)
+        const body = await res.json() as { retainedWorktree?: { name: string }; transcriptDeleted: boolean }
+        expect(body.retainedWorktree?.name).toBe('w')
+        expect(body.transcriptDeleted).toBe(true)
     })
 
     test('active 常规会话：休眠被 gate 阻塞（运行中/审批中）→ 409 带 blockers', async () => {

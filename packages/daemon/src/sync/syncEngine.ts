@@ -17,6 +17,7 @@
 import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
 import type { ExecutorState } from '@mobi/node-core/api/types'
 import { DEFAULT_STOP_KIND, isCancelQueued, reconcileModelChange, type SessionKillRequest, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
+import type { RetainedWorktree } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import { homedir } from 'node:os'
 import type { Store } from '../store'
@@ -29,6 +30,7 @@ import type { SSEManager } from '../sse/sseManager'
 import { EventPublisher, type SyncEventListener } from './eventPublisher'
 import { LocalExecutor } from '../executor/localExecutor'
 import { SessionExecutionAccess } from '../executor/sessionExecutionAccess'
+import { createWorktreeLifecycleService, type SessionWorktreeDisposal } from '../worktree/service'
 import { isUnexpectedAlreadyRunning, UNEXPECTED_ALREADY_RUNNING, type RpcRefreshMetadataResponse, type SpawnSessionOptions } from '../executor/executorHost'
 import { getExecutorState } from './executorRuntime'
 import { buildHostMetadata } from '@mobi/node-core/hostMetadata'
@@ -136,6 +138,8 @@ export class SyncEngine {
     /** daemon 主 namespace（setDaemonNamespace 由 hubServer 盖章）：daemon-status 事件无
      *  sessionId 可解析，投递路由（SSE shouldSend namespace 匹配）靠它 */
     private daemonNamespace: string | null = null
+    /** 会话删除的 worktree 处置（票 10）：删除编排的一部分，routes 不再感知 */
+    private readonly worktreeLifecycle: SessionWorktreeDisposal
 
     constructor(
         store: Store,
@@ -143,9 +147,12 @@ export class SyncEngine {
         rpcRegistry: RpcRegistry,
         sseManager: SSEManager,
         rewindDeleteBounds?: RewindDeleteBoundTracker,
-        executor?: LocalExecutor
+        executor?: LocalExecutor,
+        /** 会话删除的 worktree 处置（票 10 编排归位）：缺省自建服务；测试注入 fake */
+        worktreeLifecycle?: SessionWorktreeDisposal
     ) {        this.eventPublisher = new EventPublisher(sseManager, (event) => this.resolveNamespace(event))
         this.sessionCache = new SessionCache(store, this.eventPublisher)
+        this.worktreeLifecycle = worktreeLifecycle ?? createWorktreeLifecycleService({ store, getSyncEngine: () => this })
         this.agentSessions = new AgentSessionService({
             getSessionsByNamespace: (namespace) => this.sessionCache.getSessionsByNamespace(namespace),
             // 与 Web 侧 spawn 路由共用同一个实现——工作区归属规则只写一份
@@ -802,6 +809,7 @@ export class SyncEngine {
     async deleteSession(sessionId: string): Promise<{
         transcriptDeleted: boolean
         transcriptRetainedReason?: string
+        retainedWorktree?: RetainedWorktree
     }> {
         // 删除前读执行定位与 transcript 定位（删后 store 无行可查）；metadata 缺失不阻塞删除。
         // 寻址规则单源在 executionAccess（store 直读）
@@ -818,6 +826,19 @@ export class SyncEngine {
         // transcript 处置（票 07）：闸不满足时保留文件并带回原因（诚实告知）
         const transcript = disposeTranscript(nativeSessionId, cwd, cliExited)
 
+        // worktree 处置（票 10 编排归位，原 routes 层）：删行后触发（服务读 store 判
+        // 「同一 worktree 是否仍被其他行引用」）；干净删、脏保留带回事实、失败不阻塞删除
+        let retainedWorktree: RetainedWorktree | undefined
+        try {
+            const disposal = await this.worktreeLifecycle.disposeAfterSessionDelete({ id: sessionId, metadata: session?.metadata ?? {} })
+            retainedWorktree = disposal.retained
+            if (disposal.warning) {
+                daemonLogger.warn(`[deleteSession] worktree 处置降级 (${sessionId}): ${disposal.warning}`)
+            }
+        } catch (error) {
+            daemonLogger.warn(`[deleteSession] worktree 处置失败 (best-effort，忽略): ${(error as Error).message}`)
+        }
+
         // 墓碑（best-effort）：事后排查与 native id 复用识别；写失败不影响删除结果
         try {
             this.store.sessions.addSessionTombstone({ sessionId, nativeSessionId, deletedAt: Date.now() })
@@ -833,8 +854,8 @@ export class SyncEngine {
             })
         }
         return transcript.deleted
-            ? { transcriptDeleted: true }
-            : { transcriptDeleted: false, transcriptRetainedReason: transcript.retainedReason }
+            ? { transcriptDeleted: true, ...(retainedWorktree ? { retainedWorktree } : {}) }
+            : { transcriptDeleted: false, transcriptRetainedReason: transcript.retainedReason, ...(retainedWorktree ? { retainedWorktree } : {}) }
     }
 
     /**

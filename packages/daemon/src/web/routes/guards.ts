@@ -68,6 +68,19 @@ export function requireSessionFromParam(
 }
 
 /**
+ * 归档禁写闸（session-retention 票 11）：域规则「归档期间不可收发、不可写资源」的
+ * 单一承载。写端点在 requireSessionFromParam 之后挂此守卫——归档 → 409 +
+ * code 'session_archived'（web 按 code 映射文案）。挂点清单见票 11；读端点与
+ * archive/unarchive/delete 动作本身不挂（它们就是对归档态的操作）。
+ */
+export function requireWritableSession(c: Context<WebAppEnv>, session: Session): Response | null {
+    if (session.status === 'archived') {
+        return c.json({ error: 'Session is archived', code: 'session_archived' }, 409)
+    }
+    return null
+}
+
+/**
  * 宿主 homeDir 单源（ticket 202）：daemon 即宿主，homeDir 直源宿主静态身份，
  * 不再经 machines 行 metadata 中转（buildHostMetadata 为 602 改名目标）。
  */

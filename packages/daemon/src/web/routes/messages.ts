@@ -20,7 +20,7 @@ import { AttachmentMetadataSchema } from '@mobi/shared/schemas'
 import { z } from 'zod'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
-import { requireSessionFromParam, requireSyncEngine } from './guards'
+import { requireSessionFromParam, requireSyncEngine, requireWritableSession } from './guards'
 
 const querySchema = z.object({
     limit: z.coerce.number().int().min(1).max(200).optional(),
@@ -121,10 +121,11 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
         const { sessionId, session } = sessionResult
 
-        // 归档会话禁收发（session-retention 票 06）：明确拒绝而不是悄悄投进一个
-        // 看不见的会话。code 随响应体给出，web 端映射文案
-        if (session.status === 'archived') {
-            return c.json({ error: 'Session is archived', code: 'session_archived' }, 409)
+        // 归档会话禁收发（票 06/11：守卫收口 requireWritableSession）：
+        // 明确拒绝而不是悄悄投进一个看不见的会话。code 随响应体给出，web 端映射文案
+        const writeBlocked = requireWritableSession(c, session)
+        if (writeBlocked) {
+            return writeBlocked
         }
 
         const body = await c.req.json().catch(() => null)
@@ -177,6 +178,12 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return sessionResult
         }
 
+        // 归档会话禁写（票 11）：撤排队消息也是「发」的撤销面
+        const writeBlocked = requireWritableSession(c, sessionResult.session)
+        if (writeBlocked) {
+            return writeBlocked
+        }
+
         const sessionId = sessionResult.sessionId
         const localId = c.req.param('messageId')
 
@@ -219,6 +226,12 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const sessionResult = requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) {
             return sessionResult
+        }
+
+        // 归档会话禁写（票 11）：steer 是提交排队消息的「发」变体
+        const writeBlocked = requireWritableSession(c, sessionResult.session)
+        if (writeBlocked) {
+            return writeBlocked
         }
 
         const sessionId = sessionResult.sessionId

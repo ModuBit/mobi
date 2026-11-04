@@ -132,6 +132,9 @@ export function createWorktreeLifecycleService(deps: {
     })
 }
 
+/** 会话删除编排消费的 worktree 处置面（票 10）：engine 只依赖这个窄形状 */
+export type SessionWorktreeDisposal = Pick<WorktreeLifecycleService, 'disposeAfterSessionDelete'>
+
 export class WorktreeLifecycleService {
     private readonly store: WorktreeStoreSource
     private readonly isSessionRunning: (sessionId: string) => boolean

@@ -26,12 +26,10 @@ import { z } from 'zod'
 import { checkWorkspaceAssignable, type SyncEngine, type Session, type OutputStyleSwitchOutcome, type ForkSessionResult } from '../../sync/syncEngine'
 import { OutdatedSessionConfigError } from '../../sync/outdatedSessionConfigError'
 import { isSessionRowDeletable } from '../../sync/sessionDeleteGuard'
-import { daemonLogger } from '../../logger'
-import { createWorktreeLifecycleService } from '../../worktree/service'
 import type { WebAppEnv } from '../middleware/auth'
 import type { WebAppDeps } from '../appDeps'
 import { toSummaryWithLiveState } from '../utils/sessionSummary'
-import { requireSessionFromParam, requireSyncEngine } from './guards'
+import { requireSessionFromParam, requireSyncEngine, requireWritableSession } from './guards'
 import { fileMetaHttpStatus, serveFileContent, type FileContentReader } from './serveFileContent'
 import { serveVizDocument } from './serveVizDocument'
 
@@ -184,12 +182,6 @@ export function createSessionsRoutes(
 ): Hono<WebAppEnv> {
     const { getSyncEngine, backgroundTaskTracker } = deps
     const app = new Hono<WebAppEnv>()
-
-    /**
-     * 会话删除后的 worktree 处置（worktree-lifecycle 票 03）：干净 → 删 worktree +
-     * `-d` 删分支；脏/unknown → 保留并在响应里带回事实。运行态判据由服务工厂收口。
-     */
-    const worktreeService = createWorktreeLifecycleService({ store: deps.store, getSyncEngine })
 
     /**
      * dormancy 阻塞响应的单一收口（/sessions/:id/dormant 与 DELETE /sessions/:id 两路由共用）：
@@ -373,6 +365,12 @@ export function createSessionsRoutes(
             return sessionResult
         }
 
+        // 归档会话禁唤醒（票 11）：取消归档才是回到 dormant 的唯一路径
+        const writeBlocked = requireWritableSession(c, sessionResult.session)
+        if (writeBlocked) {
+            return writeBlocked
+        }
+
         const namespace = c.get('namespace')
         const result = await engine.reviveSession(sessionResult.sessionId, { namespace })
         if (result.type === 'error') {
@@ -415,6 +413,12 @@ export function createSessionsRoutes(
         const sessionResult = requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) {
             return sessionResult
+        }
+
+        // 归档会话禁写资源（票 11）
+        const writeBlocked = requireWritableSession(c, sessionResult.session)
+        if (writeBlocked) {
+            return writeBlocked
         }
 
         const sessionId = sessionResult.sessionId
@@ -464,6 +468,10 @@ export function createSessionsRoutes(
         // 休眠会话放行（dormancy：冷编辑器自动保存不唤醒；写边界由 daemon 注入 cwd）
         const sessionResult = requireSessionFromParam(c, engine, { requireActive: false })
         if (sessionResult instanceof Response) return sessionResult
+
+        // 归档会话禁写文件（票 11；休眠会话仍放行，与上注释语义分层）
+        const writeBlocked = requireWritableSession(c, sessionResult.session)
+        if (writeBlocked) return writeBlocked
 
         const path = safeDecodeHeader(c.req.header('X-Mobi-Path'))
         const baseEtag = c.req.header('X-Mobi-Base-Etag') ?? ''
@@ -530,6 +538,12 @@ export function createSessionsRoutes(
             return sessionResult
         }
 
+        // 归档会话禁写资源（票 11）
+        const writeBlocked = requireWritableSession(c, sessionResult.session)
+        if (writeBlocked) {
+            return writeBlocked
+        }
+
         const body = await c.req.json().catch(() => null)
         const parsed = uploadDeleteSchema.safeParse(body)
         if (!parsed.success) {
@@ -562,6 +576,12 @@ export function createSessionsRoutes(
         const sessionResult = requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) {
             return sessionResult
+        }
+
+        // 归档会话禁写资源（票 11）
+        const writeBlocked = requireWritableSession(c, sessionResult.session)
+        if (writeBlocked) {
+            return writeBlocked
         }
 
         const path = safeDecodeHeader(c.req.header('X-Mobi-Path'))
@@ -651,9 +671,17 @@ export function createSessionsRoutes(
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        // 归档禁写（票 11）优先于 active 检查
+        const sessionResult = requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) {
             return sessionResult
+        }
+        const writeBlocked = requireWritableSession(c, sessionResult.session)
+        if (writeBlocked) {
+            return writeBlocked
+        }
+        if (!sessionResult.session.active) {
+            return c.json({ error: 'Session is inactive' }, 409)
         }
 
         await engine.switchSession(sessionResult.sessionId, 'remote')
@@ -754,8 +782,14 @@ export function createSessionsRoutes(
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        // 归档禁写（票 11）优先于 active 检查——归档会话的 409 语义是 session_archived
+        const sessionResult = requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) return sessionResult
+        const writeBlocked = requireWritableSession(c, sessionResult.session)
+        if (writeBlocked) return writeBlocked
+        if (!sessionResult.session.active) {
+            return c.json({ error: 'Session is inactive' }, 409)
+        }
 
         const body = await c.req.json().catch(() => null)
         const parsed = rewindDryRunSchema.safeParse(body)
@@ -778,8 +812,14 @@ export function createSessionsRoutes(
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        // 归档禁写（票 11）优先于 active 检查
+        const sessionResult = requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) return sessionResult
+        const writeBlocked = requireWritableSession(c, sessionResult.session)
+        if (writeBlocked) return writeBlocked
+        if (!sessionResult.session.active) {
+            return c.json({ error: 'Session is inactive' }, 409)
+        }
 
         const body = await c.req.json().catch(() => null)
         const parsed = rewindSchema.safeParse(body)
@@ -953,19 +993,12 @@ export function createSessionsRoutes(
         }
 
         try {
-            // 删除前留住 worktree 元数据（删后 store 无行可查）；处置在行清理后触发
-            const deletedMetadata = sessionResult.session.metadata
-            const { transcriptDeleted, transcriptRetainedReason } = await engine.deleteSession(sessionResult.sessionId)
-            const disposal = await worktreeService.disposeAfterSessionDelete({
-                id: sessionResult.sessionId,
-                metadata: deletedMetadata
-            })
-            if (disposal.warning) {
-                daemonLogger.warn(`[sessions/delete] worktree 处置降级 (${sessionResult.sessionId}): ${disposal.warning}`)
-            }
+            // 删除语义的唯一编排点在 engine（票 10）：transcript / worktree / 墓碑 /
+            // 快照清理全部由 engine.deleteSession 编排，routes 只做响应组装
+            const { transcriptDeleted, transcriptRetainedReason, retainedWorktree } = await engine.deleteSession(sessionResult.sessionId)
             return c.json({
                 ok: true,
-                ...(disposal.retained ? { retainedWorktree: disposal.retained } : {}),
+                ...(retainedWorktree ? { retainedWorktree } : {}),
                 // transcript 诚实告知（票 07）：未删除时前端展示原因
                 transcriptDeleted,
                 ...(transcriptRetainedReason ? { transcriptRetainedReason } : {})
