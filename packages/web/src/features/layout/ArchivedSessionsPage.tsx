@@ -230,6 +230,11 @@ const RowTime = styled.span<{ $token: ReturnType<typeof antTheme.useToken>['toke
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+
+    /* 移动端双时间挤不下 12px：缩字号保两段完整（断点同 SETTINGS_WIDE_QUERY） */
+    @media (max-width: 991.98px) {
+        font-size: 11.5px;
+    }
 `
 
 const RowActions = styled.span`
@@ -237,6 +242,10 @@ const RowActions = styled.span`
     align-items: center;
     gap: 8px;
     flex-shrink: 0;
+
+    @media (max-width: 991.98px) {
+        gap: 6px;
+    }
 `
 
 const RowDeleteButton = styled.button<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
@@ -535,8 +544,11 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                                 <ArchivedRow key={session.id} $token={token}>
                                     <RowMain>
                                         <RowName>{getSessionDisplayName(session)}</RowName>
+                                        {/* 副行双时间：最后活跃（同 session 列表口径）+ 归档时间；formatMessageTime 非当天自动带日期 */}
                                         <RowTime $token={token}>
-                                            {session.archivedAt ? formatMessageTime(session.archivedAt) : ''}
+                                            {t('archived.lastActiveAt', { time: formatMessageTime(session.updatedAt) })}
+                                            {' · '}
+                                            {session.archivedAt && t('archived.archivedAtLabel', { time: formatMessageTime(session.archivedAt) })}
                                         </RowTime>
                                     </RowMain>
                                     <RowActions>
