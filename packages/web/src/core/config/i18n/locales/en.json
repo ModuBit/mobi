@@ -222,6 +222,10 @@
     }
   },
   "archived": {
+    "searchPlaceholder": "Search archived chats",
+    "allWorkspaces": "All projects",
+    "noMatch": "No matching archived chats",
+    "groupCount": "{{count}} sessions",
     "title": "Archived Sessions",
     "empty": "No archived sessions",
     "ungrouped": "Unassigned",
@@ -231,7 +235,7 @@
     "batch": {
       "selected": "{{count}} selected",
       "clearSelection": "Clear selection",
-      "deleteAll": "Delete all ({{count}})",
+      "deleteAll": "Delete All",
       "unarchiveGroup": "Unarchive all ({{count}})",
       "deleteGroup": "Delete all ({{count}})",
       "selectRow": "Select {{name}}",

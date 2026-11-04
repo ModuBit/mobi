@@ -222,6 +222,10 @@
     }
   },
   "archived": {
+    "searchPlaceholder": "搜索已归档的会话",
+    "allWorkspaces": "所有项目",
+    "noMatch": "无匹配的归档会话",
+    "groupCount": "{{count}} 个会话",
     "title": "已归档会话",
     "empty": "暂无归档会话",
     "ungrouped": "未归入工作区",
@@ -231,7 +235,7 @@
     "batch": {
       "selected": "已选 {{count}} 项",
       "clearSelection": "取消选择",
-      "deleteAll": "全部删除 ({{count}})",
+      "deleteAll": "全部删除",
       "unarchiveGroup": "全部取消归档 ({{count}})",
       "deleteGroup": "删除全部 ({{count}})",
       "selectRow": "选择 {{name}}",

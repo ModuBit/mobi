@@ -14,33 +14,34 @@
  * limitations under the License.
  */
 
-import { Typography } from 'antd'
-import { useTranslation } from 'react-i18next'
+import styled from '@emotion/styled'
 import { ArchivedSessionsPage } from '@/features/layout/ArchivedSessionsPage'
 import { MobileMenuButton } from '@/features/layout/mobileMenu'
 import { SidebarToggle } from '@/features/layout/SidebarToggle'
 import { PageHeader } from '@/features/layout/PageHeader'
 
-const { Title } = Typography
+/** 页面根容器：MainLayout.Content 是 row 方向 flex——页面必须自带纵向列容器并
+ *  flex:1 占满，否则 PageHeader 被拉伸成全高竖条、内容列塌缩成内容宽 */
+const ArchivedContainer = styled.div`
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+`
 
 /**
- * 已归档会话页（session-retention 票 05）：独立整页路由（非抽屉/弹窗），
- * 桌面从侧栏「已归档」入口进入、移动端从汉堡菜单整页打开。列表本体在
- * features/layout/ArchivedSessionsPage，此处只做头部与骨架组装。
+ * 已归档会话页（session-retention 票 05，形态一比一对齐 ChatGPT 归档页）：
+ * 头部横条只承载侧栏/菜单开关锚位，大标题与批量动作在内容区内（ArchivedSessionsPage）。
  */
 export function ArchivedPage() {
-    const { t } = useTranslation()
-
     return (
-        <>
-            <PageHeader
-                left={<>
-                    <SidebarToggle />
-                    <MobileMenuButton />
-                    <Title level={5} style={{ margin: 0 }}>{t('archived.title')}</Title>
-                </>}
-            />
+        <ArchivedContainer>
+            <PageHeader left={<>
+                <SidebarToggle />
+                <MobileMenuButton />
+            </>} />
             <ArchivedSessionsPage />
-        </>
+        </ArchivedContainer>
     )
 }

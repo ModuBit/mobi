@@ -15,18 +15,16 @@
  */
 
 import { useMemo, useState } from 'react'
-import type { MouseEvent as ReactMouseEvent } from 'react'
-import { App, Checkbox, Input, Modal, theme as antTheme } from 'antd'
-import { Archive as ArchiveIcon, ArchiveRestore } from 'lucide-react'
-import { DeleteOutlined, MoreOutlined } from '@ant-design/icons'
+import { App, Input, Modal, theme as antTheme } from 'antd'
+import { Archive as ArchiveIcon, ArchiveRestore, Folder, Search, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { useArchivedSessions } from '@/core/data/hooks/queries/useArchivedSessions'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useSessionArchive } from '@/core/data/hooks/mutations/useSessionArchive'
-import { DropdownMenu, type DropdownItem } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
 import { Button } from '@/ui/base/interactive/button/Button'
-import { formatRelativeTime } from '@/core/utils/timeFormat'
+import { Select } from '@/ui/base/interactive/select/Select'
+import { formatMessageTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { reportBlockedError } from '@/core/data/sessionDormancy'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
@@ -51,34 +49,72 @@ const Inner = styled.div`
     margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 4px;
 `
 
-/* 批量工具行：无选中时右侧是页面级「全部删除」，有选中时整条切换为选择动作条 */
-const BatchBar = styled.div`
+/* 页面大标题行：标题居中、「全部删除」钉右缘同一基线 */
+const TitleRow = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 0 8px 8px;
+    justify-content: center;
+    padding: 18px 0 20px;
+
+    .title-delete-all {
+        position: absolute;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+    }
 `
 
-const BatchBarInfo = styled.span<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+const PageTitle = styled.h1<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    color: ${p => p.$token.colorText};
+`
+
+/* 工具条：搜索（占位，功能后续接入）+ 项目过滤 */
+const ToolBar = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 18px;
+`
+
+const SearchSlot = styled(Input)`
     flex: 1;
-    font-size: 12px;
-    color: ${p => p.$token.colorTextSecondary};
+    min-width: 0;
 `
 
-const GroupLabel = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+const WorkspaceFilter = styled(Select)`
+    width: 160px;
+    flex-shrink: 0;
+`
+
+/* 组卡：组头 + 行列表包在同一个圆角卡里，行间 hairline 分隔 */
+const GroupCard = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+    border: 1px solid ${p => p.$token.colorBorderSecondary};
+    border-radius: var(--radius-panel);
+    background: ${p => p.$token.colorBgContainer};
+    overflow: hidden;
+
+    & + & {
+        margin-top: 20px;
+    }
+`
+
+const GroupHeader = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 12px;
+    padding: 12px 16px;
+    font-size: 13px;
     font-weight: 500;
-    color: ${p => p.$token.colorTextQuaternary};
-    padding: 12px 8px 6px;
+    color: ${p => p.$token.colorText};
     user-select: none;
 
-    /* 组级批量动作：hover 显示 */
+    /* 组级批量动作：hover 显示（复刻形态不占视觉，能力保留） */
     .group-actions {
         visibility: hidden;
     }
@@ -87,81 +123,21 @@ const GroupLabel = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['to
     }
 `
 
+const GroupCount = styled.span<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+    margin-left: auto;
+    font-weight: 400;
+    font-size: 12px;
+    color: ${p => p.$token.colorTextQuaternary};
+`
+
 const GroupActions = styled.span`
     display: inline-flex;
     align-items: center;
     gap: 2px;
+    margin-left: 4px;
 `
 
 const GroupActionButton = styled.button<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    height: 20px;
-    padding: 0 6px;
-    border: none;
-    background: transparent;
-    color: ${p => p.$token.colorTextTertiary};
-    border-radius: var(--radius-icon);
-    cursor: pointer;
-    font-size: 11px;
-    transition: color 0.15s, background 0.15s;
-
-    &:hover {
-        color: ${p => p.$token.colorText};
-        background: ${p => p.$token.colorBgTextHover};
-    }
-`
-
-const ArchivedRow = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token']; $selected?: boolean }>`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    height: 34px;
-    padding: 0 8px;
-    border-radius: var(--radius-control);
-    font-size: 12.5px;
-    color: ${p => p.$token.colorText};
-    background: ${p => p.$selected ? p.$token.colorPrimaryBg : 'transparent'};
-
-    &:hover {
-        background: ${p => p.$selected ? p.$token.colorPrimaryBg : p.$token.colorBgTextHover};
-
-        /* hover 时隐藏归档时间、显出菜单锚点（与主列表行同语义） */
-        .archived-time {
-            display: none;
-        }
-    }
-`
-
-const RowCheckbox = styled(Checkbox)`
-    flex-shrink: 0;
-    font-size: 13px;
-`
-
-const RowName = styled.span`
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-`
-
-const RowTime = styled.span<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
-    flex-shrink: 0;
-    font-size: 11px;
-    color: ${p => p.$token.colorTextQuaternary};
-    white-space: nowrap;
-`
-
-const RowActions = styled.span`
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    flex-shrink: 0;
-`
-
-const RowMenuButton = styled.button<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -179,6 +155,81 @@ const RowMenuButton = styled.button<{ $token: ReturnType<typeof antTheme.useToke
         color: ${p => p.$token.colorText};
         background: ${p => p.$token.colorBgTextHover};
     }
+`
+
+const ArchivedRow = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    color: ${p => p.$token.colorText};
+
+    /* 行间 hairline（首行不画，紧贴组头） */
+    & + & {
+        border-top: 1px solid ${p => p.$token.colorBorderSecondary};
+    }
+
+    &:hover {
+        background: ${p => p.$token.colorBgTextHover};
+    }
+`
+
+/** 名称主行 + 归档时间副行（时间是名称的补充信息，窄屏不再挤压名称） */
+const RowMain = styled.div`
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+`
+
+const RowName = styled.span`
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+`
+
+const RowTime = styled.span<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+    font-size: 11.5px;
+    color: ${p => p.$token.colorTextQuaternary};
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+`
+
+const RowActions = styled.span`
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+`
+
+const RowDeleteButton = styled.button<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: ${p => p.$token.colorTextTertiary};
+    border-radius: var(--radius-icon);
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+
+    &:hover {
+        color: ${p => p.$token.colorError};
+        background: ${p => p.$token.colorBgTextHover};
+    }
+`
+
+const NoMatchRow = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+    padding: 32px 0;
+    text-align: center;
+    font-size: 12.5px;
+    color: ${p => p.$token.colorTextQuaternary};
 `
 
 const EmptyState = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
@@ -206,11 +257,14 @@ interface PendingBatchDelete {
     sessions: Session[]
 }
 
+const WORKSPACE_ALL = '__all__'
+
 /**
- * 归档页本体（票 05 + 票 08）：按工作区分组列出归档会话（标题 + 归档时间；归属由组头承载），
- * 行内取消归档 / 删除、行首多选、组级与页面级批量操作（删除须输入项目名或 DELETE 确认，
- * 逐条执行、部分失败不回滚整批并逐条报告）。不做搜索（票 05 明确）。
- * 组装壳（头部 / 返回键）在 pages/ArchivedPage，本组件只管列表呈现。
+ * 归档页本体（票 05/08，形态一比一对齐 ChatGPT 归档页）：内容区大标题居中 + 右缘
+ * 「全部删除」同基线；工具条（搜索占位 + 项目过滤）；归档会话按项目分组成卡——
+ * 组头「项目名 + 计数（+ hover 组级动作）」，行「名称 + 归档时间副行 + 常驻
+ * 取消归档/删除动作」。删除（单条/组级/页面级）保留输入确认与逐条报告。
+ * 组装壳（头部开关锚位）在 pages/ArchivedPage，本组件只管列表呈现。
  */
 export function ArchivedSessionsPage() {
     const { token } = useToken()
@@ -223,16 +277,21 @@ export function ArchivedSessionsPage() {
     const { unarchive } = useSessionArchive()
     const confirmDelete = useSessionDelete()
 
-    // ── 多选（票 08）──
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+    // ── 过滤（搜索占位待接入，先只有项目维度）──
+    const [workspaceFilter, setWorkspaceFilter] = useState<string>(WORKSPACE_ALL)
     // ── 批量删除确认（自管 Modal：antd modal.confirm 的受控 Input 联动 fragile）──
     const [pendingDelete, setPendingDelete] = useState<PendingBatchDelete | null>(null)
     const [batchRunning, setBatchRunning] = useState(false)
 
+    const filtered = useMemo(() => {
+        if (workspaceFilter === WORKSPACE_ALL) return archived
+        return archived.filter(s => (s.workspaceId ?? null) === (workspaceFilter === '__none__' ? null : workspaceFilter))
+    }, [archived, workspaceFilter])
+
     const groups = useMemo<ArchivedGroup[]>(() => {
         const workspaceName = new Map(workspaces.map(w => [w.id, w.name]))
         const byWorkspace = new Map<string | null, Session[]>()
-        for (const session of archived) {
+        for (const session of filtered) {
             const key = session.workspaceId ?? null
             const bucket = byWorkspace.get(key)
             if (bucket) bucket.push(session)
@@ -243,21 +302,7 @@ export function ArchivedSessionsPage() {
             workspaceName: workspaceId ? (workspaceName.get(workspaceId) ?? t('archived.unknownWorkspace')) : t('archived.ungrouped'),
             sessions,
         }))
-    }, [archived, workspaces, t])
-
-    const toggleSelect = (sessionId: string) => {
-        setSelectedIds(old => {
-            const next = new Set(old)
-            if (next.has(sessionId)) next.delete(sessionId)
-            else next.add(sessionId)
-            return next
-        })
-    }
-
-    const selectedSessions = useMemo(
-        () => archived.filter(s => selectedIds.has(s.id)),
-        [archived, selectedIds],
-    )
+    }, [filtered, workspaces, t])
 
     // 取消归档：409（gate）原样透出逐项原因，其余通用错误
     const handleUnarchive = (session: Session) => {
@@ -270,13 +315,12 @@ export function ArchivedSessionsPage() {
         })
     }
 
-    // 批量取消归档（选中项 / 组级）：可逆动作不设输入门槛，聚合报告
+    // 批量取消归档（组级）：可逆动作不设输入门槛，聚合报告
     const runBatchUnarchive = async (sessions: Session[]) => {
         setBatchRunning(true)
         try {
             const results = await runBatch(sessions, id => api.sessions.unarchive(id))
             await invalidateSessionViews(queryClient, results.filter(r => r.ok).map(r => r.sessionId))
-            setSelectedIds(new Set())
             notification.info({
                 key: 'archived-batch-result',
                 message: t('archived.batch.resultTitle'),
@@ -298,7 +342,6 @@ export function ArchivedSessionsPage() {
             const okIds: string[] = []
             const results = await runBatch(sessions, id => api.sessions.delete(id), id => okIds.push(id))
             void evictSession(queryClient, okIds)
-            setSelectedIds(new Set())
             const okCount = results.filter(r => r.ok).length
             if (okCount === results.length) {
                 notification.success({
@@ -328,29 +371,12 @@ export function ArchivedSessionsPage() {
         setPendingDelete({ scope, sessions })
     }
 
-    const renderMenuItems = (session: Session): DropdownItem[] => [
-        {
-            key: 'unarchive',
-            icon: <ArchiveRestore size={11} />,
-            label: t('session.actions.unarchive'),
-            disabled: unarchive.isPending && unarchive.variables === session.id,
-            onSelect: () => handleUnarchive(session),
-        },
-        {
-            key: 'delete',
-            icon: <DeleteOutlined />,
-            label: t('session.actions.delete'),
-            destructive: true,
-            onSelect: () => confirmDelete(session),
-        },
-    ]
-
-    // 加载中先给占位：不渲染批量工具行（「全部删除 (0)」的空跑确认 Modal 是噪音）
+    // 加载中先给占位：不渲染工具行与列表（「全部删除」空跑确认 Modal 是噪音）
     if (isLoading) {
         return (
             <PageScroll $token={token}>
                 <Inner>
-                    <BatchBar><BatchBarInfo $token={token}>{t('common.loading')}</BatchBarInfo></BatchBar>
+                    <ToolBar><SearchSlot disabled placeholder={t('common.loading')} /></ToolBar>
                 </Inner>
             </PageScroll>
         )
@@ -365,55 +391,68 @@ export function ArchivedSessionsPage() {
         )
     }
 
+    const workspaceOptions = [
+        { value: WORKSPACE_ALL, label: t('archived.allWorkspaces') },
+        ...workspaces.map(w => ({ value: w.id, label: w.name })),
+        ...(groups.some(g => g.workspaceId === null) || filtered.some(s => !s.workspaceId)
+            ? [{ value: '__none__', label: t('archived.ungrouped') }]
+            : []),
+    ]
+
     return (
         <PageScroll $token={token}>
             <Inner>
-                {/* 批量工具行：选中动作条 / 页面级全部删除（票 08：范围严格限当前列表） */}
-                <BatchBar>
-                    {selectedSessions.length > 0 ? (
-                        <>
-                            <BatchBarInfo $token={token}>{t('archived.batch.selected', { count: selectedSessions.length })}</BatchBarInfo>
-                            <Button variant="secondary" size="sm" disabled={batchRunning} onClick={() => { void runBatchUnarchive(selectedSessions) }}>
-                                <ArchiveRestore size={12} /> {t('session.actions.unarchive')}
-                            </Button>
-                            <Button variant="secondary" danger size="sm" disabled={batchRunning} onClick={() => openBatchDelete({ kind: 'page' }, selectedSessions)}>
-                                <DeleteOutlined style={{ fontSize: 12 }} /> {t('session.actions.delete')}
-                            </Button>
-                            <Button variant="ghost" size="sm" disabled={batchRunning} onClick={() => setSelectedIds(new Set())}>
-                                {t('archived.batch.clearSelection')}
-                            </Button>
-                        </>
-                    ) : (
-                        <>
-                            <BatchBarInfo $token={token} />
-                            <Button
-                                variant="secondary"
-                                danger
-                                size="sm"
-                                disabled={batchRunning}
-                                onClick={() => openBatchDelete({ kind: 'page' }, archived)}
-                            >
-                                <DeleteOutlined style={{ fontSize: 12 }} /> {t('archived.batch.deleteAll', { count: archived.length })}
-                            </Button>
-                        </>
-                    )}
-                </BatchBar>
+                {/* 大标题居中 + 右缘全部删除（「所见即所删」：范围限当前过滤结果） */}
+                <TitleRow $token={token}>
+                    <PageTitle $token={token}>{t('archived.title')}</PageTitle>
+                    <Button
+                        className="title-delete-all"
+                        variant="secondary"
+                        danger
+                        size="sm"
+                        disabled={batchRunning || filtered.length === 0}
+                        onClick={() => openBatchDelete({ kind: 'page' }, filtered)}
+                    >
+                        <Trash2 size={12} /> {t('archived.batch.deleteAll')}
+                    </Button>
+                </TitleRow>
 
-                {groups.map(group => (
-                    <div key={group.workspaceId ?? '__ungrouped'}>
-                        <GroupLabel $token={token}>
+                {/* 工具条：搜索占位（功能后续接入）+ 项目过滤 */}
+                <ToolBar>
+                    <SearchSlot
+                        disabled
+                        placeholder={t('archived.searchPlaceholder')}
+                        prefix={<Search size={13} style={{ color: token.colorTextQuaternary }} />}
+                        allowClear={false}
+                    />
+                    <WorkspaceFilter
+                        value={workspaceFilter}
+                        onValueChange={(v) => setWorkspaceFilter(v)}
+                        options={workspaceOptions}
+                        ariaLabel={t('archived.allWorkspaces')}
+                    />
+                </ToolBar>
+
+                {groups.length === 0 ? (
+                    <NoMatchRow $token={token}>{t('archived.noMatch')}</NoMatchRow>
+                ) : groups.map(group => (
+                    <GroupCard key={group.workspaceId ?? '__ungrouped'} $token={token}>
+                        <GroupHeader $token={token}>
+                            <Folder size={14} style={{ color: token.colorTextQuaternary, flexShrink: 0 }} />
                             {group.workspaceName}
                             <GroupActions className="group-actions">
                                 <GroupActionButton
                                     $token={token}
                                     disabled={batchRunning}
+                                    title={t('archived.batch.unarchiveGroup', { count: group.sessions.length })}
                                     onClick={() => { void runBatchUnarchive(group.sessions) }}
                                 >
-                                    <ArchiveRestore size={11} /> {t('archived.batch.unarchiveGroup', { count: group.sessions.length })}
+                                    <ArchiveRestore size={14} />
                                 </GroupActionButton>
                                 <GroupActionButton
                                     $token={token}
                                     disabled={batchRunning}
+                                    title={t('archived.batch.deleteGroup', { count: group.sessions.length })}
                                     onClick={() => openBatchDelete(
                                         group.workspaceId
                                             ? { kind: 'group', groupName: group.workspaceName }
@@ -421,35 +460,39 @@ export function ArchivedSessionsPage() {
                                         group.sessions,
                                     )}
                                 >
-                                    <DeleteOutlined style={{ fontSize: 11 }} /> {t('archived.batch.deleteGroup', { count: group.sessions.length })}
+                                    <Trash2 size={14} />
                                 </GroupActionButton>
                             </GroupActions>
-                        </GroupLabel>
+                            <GroupCount $token={token}>{t('archived.groupCount', { count: group.sessions.length })}</GroupCount>
+                        </GroupHeader>
                         {group.sessions.map(session => (
-                            <ArchivedRow key={session.id} $token={token} $selected={selectedIds.has(session.id) || undefined}>
-                                <RowCheckbox
-                                    checked={selectedIds.has(session.id)}
-                                    onChange={() => toggleSelect(session.id)}
-                                    onClick={(e: ReactMouseEvent) => e.stopPropagation()}
-                                    aria-label={t('archived.batch.selectRow', { name: getSessionDisplayName(session) })}
-                                />
-                                <RowName>{getSessionDisplayName(session)}</RowName>
-                                <RowTime $token={token} className="archived-time">
-                                    {session.archivedAt ? t('archived.archivedAt', { time: formatRelativeTime(session.archivedAt, t) }) : ''}
-                                </RowTime>
+                            <ArchivedRow key={session.id} $token={token}>
+                                <RowMain>
+                                    <RowName>{getSessionDisplayName(session)}</RowName>
+                                    <RowTime $token={token}>
+                                        {session.archivedAt ? formatMessageTime(session.archivedAt) : ''}
+                                    </RowTime>
+                                </RowMain>
                                 <RowActions>
-                                    <DropdownMenu
-                                        trigger={
-                                            <RowMenuButton $token={token} title={t('common.more')} onClick={e => e.stopPropagation()}>
-                                                <MoreOutlined style={{ fontSize: 12 }} />
-                                            </RowMenuButton>
-                                        }
-                                        items={renderMenuItems(session)}
-                                    />
+                                    <RowDeleteButton
+                                        $token={token}
+                                        title={t('session.actions.delete')}
+                                        onClick={() => confirmDelete(session)}
+                                    >
+                                        <Trash2 size={15} />
+                                    </RowDeleteButton>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        disabled={unarchive.isPending && unarchive.variables === session.id}
+                                        onClick={() => handleUnarchive(session)}
+                                    >
+                                        {t('session.actions.unarchive')}
+                                    </Button>
                                 </RowActions>
                             </ArchivedRow>
                         ))}
-                    </div>
+                    </GroupCard>
                 ))}
             </Inner>
 
