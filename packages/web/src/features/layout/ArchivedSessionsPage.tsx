@@ -15,6 +15,7 @@
  */
 
 import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { App, Input, Modal, theme as antTheme } from 'antd'
 import { Archive as ArchiveIcon, ArchiveRestore, Folder, MoreHorizontal, Search, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -52,12 +53,25 @@ const Inner = styled.div`
     flex-direction: column;
 `
 
-/* 页面大标题行：标题左对齐（ChatGPT 形态）、「全部删除」钉右缘同一基线 */
+/** 空态变体：撑满视口高让 EmptyState 垂直居中 */
+const InnerFill = styled(Inner)`
+    min-height: 100%;
+`
+
+/* 页面标题行（兼头部锚位行）：左侧锚位（PC 侧栏开关 / 移动端汉堡）+ 大标题，
+ * 「全部删除」钉右缘同一基线——单行承载，不再单独占一条头部横条 */
 const TitleRow = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
     position: relative;
     display: flex;
     align-items: center;
-    padding: 18px 0 20px;
+    gap: 12px;
+    min-height: 48px;
+    padding: 10px 0 16px;
+
+    /* 移动端 PWA standalone 顶部贴状态栏，避让刘海区域（对齐 PageHeader 的避让规则） */
+    @media (hover: none) and (pointer: coarse) {
+        padding-top: max(10px, env(safe-area-inset-top));
+    }
 
     .title-delete-all {
         position: absolute;
@@ -67,11 +81,23 @@ const TitleRow = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['toke
     }
 `
 
+const TitleAnchorSlot = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+`
+
 const PageTitle = styled.h1<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
     margin: 0;
     font-size: 28px;
     font-weight: 600;
     color: ${p => p.$token.colorText};
+
+    /* 移动端对齐设置页头部标题（Title level 5 = 16px），断点同 SETTINGS_WIDE_QUERY */
+    @media (max-width: 991.98px) {
+        font-size: 16px;
+    }
 `
 
 /* 工具条：搜索（占位，功能后续接入）+ 项目过滤 */
@@ -267,15 +293,21 @@ interface PendingBatchDelete {
 
 const WORKSPACE_ALL = '__all__'
 
+interface ArchivedSessionsPageProps {
+    /** 头部锚位（PC 侧栏开关 / 移动端汉堡），渲染进标题行左缘——本页无独立头部横条 */
+    headerLeft?: ReactNode
+}
+
 /**
- * 归档页本体（票 05/08，形态一比一对齐 ChatGPT 归档页）：大标题左对齐 + 右缘
- * 「全部删除」同基线；工具条（搜索占位 + 项目过滤）；归档会话按项目分组——
- * 组头「项目名 + 计数 + ⋯ 菜单（批量取消归档/删除）」裸排在页面背景上（色块外），
- * 色块卡只包行列表，行「名称 + 归档时间副行 + 常驻取消归档/删除动作」。
+ * 归档页本体（票 05/08，PC 形态一比一对齐 ChatGPT 归档页）：标题行左锚位 + 大标题
+ * 左对齐（移动端字号对齐设置页头部）+ 右缘「全部删除」同基线，单行承载、无独立头部
+ * 横条；工具条（搜索占位 + 项目过滤）；归档会话按项目分组——组头「项目名 + 计数 +
+ * ⋯ 菜单（批量取消归档/删除）」裸排在页面背景上（色块外），色块卡只包行列表，
+ * 行「名称 + 归档时间副行 + 常驻取消归档/删除动作」。
  * 删除（单条/组级/页面级）保留输入确认与逐条报告。
- * 组装壳（头部开关锚位）在 pages/ArchivedPage，本组件只管列表呈现。
+ * 组装壳（页面容器）在 pages/ArchivedPage，本组件只管列表呈现。
  */
-export function ArchivedSessionsPage() {
+export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) {
     const { token } = useToken()
     const { t } = useTranslation()
     const { message: messageApi, notification } = App.useApp()
@@ -380,11 +412,15 @@ export function ArchivedSessionsPage() {
         setPendingDelete({ scope, sessions })
     }
 
-    // 加载中先给占位：不渲染工具行与列表（「全部删除」空跑确认 Modal 是噪音）
+    // 加载中先给占位：标题行（含头部锚位）恒渲染，列表区给加载占位
     if (isLoading) {
         return (
             <PageScroll $token={token}>
                 <Inner>
+                    <TitleRow $token={token}>
+                        {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
+                        <PageTitle $token={token}>{t('archived.title')}</PageTitle>
+                    </TitleRow>
                     <ToolBar><SearchSlot disabled placeholder={t('common.loading')} /></ToolBar>
                 </Inner>
             </PageScroll>
@@ -393,10 +429,18 @@ export function ArchivedSessionsPage() {
 
     if (archived.length === 0) {
         return (
-            <EmptyState $token={token}>
-                <ArchiveIcon size={32} />
-                <div>{t('archived.empty')}</div>
-            </EmptyState>
+            <PageScroll $token={token}>
+                <InnerFill>
+                    <TitleRow $token={token}>
+                        {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
+                        <PageTitle $token={token}>{t('archived.title')}</PageTitle>
+                    </TitleRow>
+                    <EmptyState $token={token}>
+                        <ArchiveIcon size={32} />
+                        <div>{t('archived.empty')}</div>
+                    </EmptyState>
+                </InnerFill>
+            </PageScroll>
         )
     }
 
@@ -411,8 +455,9 @@ export function ArchivedSessionsPage() {
     return (
         <PageScroll $token={token}>
             <Inner>
-                {/* 大标题居中 + 右缘全部删除（「所见即所删」：范围限当前过滤结果） */}
+                {/* 标题行：左锚位 + 大标题 + 右缘全部删除（「所见即所删」：范围限当前过滤结果） */}
                 <TitleRow $token={token}>
+                    {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
                     <PageTitle $token={token}>{t('archived.title')}</PageTitle>
                     <Button
                         className="title-delete-all"

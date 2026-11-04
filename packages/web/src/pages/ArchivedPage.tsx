@@ -18,7 +18,6 @@ import styled from '@emotion/styled'
 import { ArchivedSessionsPage } from '@/features/layout/ArchivedSessionsPage'
 import { MobileMenuButton } from '@/features/layout/mobileMenu'
 import { SidebarToggle } from '@/features/layout/SidebarToggle'
-import { PageHeader } from '@/features/layout/PageHeader'
 
 /** 页面根容器：MainLayout.Content 是 row 方向 flex——页面必须自带纵向列容器并
  *  flex:1 占满，否则 PageHeader 被拉伸成全高竖条、内容列塌缩成内容宽 */
@@ -31,17 +30,19 @@ const ArchivedContainer = styled.div`
 `
 
 /**
- * 已归档会话页（session-retention 票 05，形态一比一对齐 ChatGPT 归档页）：
- * 头部横条只承载侧栏/菜单开关锚位，大标题与批量动作在内容区内（ArchivedSessionsPage）。
+ * 已归档会话页（session-retention 票 05，PC 形态一比一对齐 ChatGPT 归档页）：
+ * 无独立头部横条——侧栏/菜单开关锚位并进标题行（ArchivedSessionsPage 的
+ * headerLeft），避免 PC 侧栏展开时整行空占高度、移动端标题行再省一行。
  */
 export function ArchivedPage() {
     return (
         <ArchivedContainer>
-            <PageHeader left={<>
-                <SidebarToggle />
-                <MobileMenuButton />
-            </>} />
-            <ArchivedSessionsPage />
+            <ArchivedSessionsPage
+                headerLeft={<>
+                    <SidebarToggle />
+                    <MobileMenuButton />
+                </>}
+            />
         </ArchivedContainer>
     )
 }
