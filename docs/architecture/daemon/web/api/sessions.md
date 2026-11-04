@@ -14,17 +14,29 @@
 |------|------|------|------|
 | GET | `/sessions` | 获取会话列表 | - |
 | GET | `/sessions/:id` | 获取会话详情 | - |
+| GET | `/sessions/archived` | 归档会话全量（归档页数据源，归档时间倒序） | - |
 | POST | `/sessions/:id/resume` | 恢复会话 | - |
-| POST | `/sessions/:id/upload` | 上传文件 | 会话活跃 |
-| POST | `/sessions/:id/upload/delete` | 删除上传文件 | 会话活跃 |
+| POST | `/sessions/:id/upload` | 上传文件 | 未归档 |
+| POST | `/sessions/:id/upload/delete` | 删除上传文件 | 未归档 |
+| POST | `/sessions/:id/upload/replace` | 替换上传文件 | 未归档 |
+| POST | `/sessions/:id/save-file` | 保存文件到会话 | 未归档 |
 | POST | `/sessions/:id/abort` | 中止会话（body 可带 `stopKind`：`turn`/`turn-queue`/`turn-queue-tasks`，缺省 `turn`） | 会话活跃 |
-| POST | `/sessions/:id/switch` | 切换到远程模式 | 会话活跃 |
-| POST | `/sessions/:id/permission-mode` | 设置权限模式 | 会话活跃 |
-| POST | `/sessions/:id/model` | 设置模型 | 会话活跃 |
+| POST | `/sessions/:id/switch` | 切换到远程模式 | 会话活跃 + 未归档 |
+| POST | `/sessions/:id/rewind/dry-run` | rewind 预检 | 会话活跃 + 未归档 |
+| POST | `/sessions/:id/rewind` | 执行 rewind | 会话活跃 + 未归档 |
+| POST | `/sessions/:id/permission-mode` | 设置权限模式 | 未归档 |
+| POST | `/sessions/:id/model` | 设置模型 | 未归档 |
+| POST | `/sessions/:id/effort` | 设置推理档位 | 未归档 |
+| POST | `/sessions/:id/fast-mode` | 设置 fastMode | 未归档 |
+| PATCH | `/sessions/:id/runtime-state` | 清除 runtimeState 指定字段 | 未归档 |
+| POST | `/sessions/:id/archive` | 归档会话（见「归档与保留」） | - |
+| POST | `/sessions/:id/unarchive` | 取消归档（回 dormant） | - |
 | PATCH | `/sessions/:id` | 重命名会话 / 归入工作区 | - |
 | DELETE | `/sessions/:id` | 删除会话 | 会话非活跃 |
 | GET | `/sessions/:id/slash-commands` | 获取斜杠命令 | - |
 | GET | `/sessions/:id/skills` | 获取技能列表 | - |
+
+「未归档」= 挂了 `requireWritableSession` 归档禁写闸（409 + `code: 'session_archived'`）；休眠会话可写配置（暂存 DB）。「会话活跃 + 未归档」= 归档 409 优先于 inactive 409（守卫选项 `{ requireActive: true, requireWritable: true }`）。
 
 ### GET /sessions — 获取会话列表
 
@@ -125,6 +137,31 @@
 ]
 ```
 
+## 归档与保留（session-retention）
+
+会话三态：`online | dormant | archived`（`status` 字段）。归档是用户终态：休眠 + 主列表隐藏 + 禁收发；取消归档回 dormant（不自动唤醒、不恢复置顶）。
+
+### POST /sessions/:id/archive — 归档会话
+
+在线会话先走休眠管线（dormancy gate 阻塞原样透出），再落 `archived`（同语句清置顶）。已归档幂等成功。
+
+- `200 { ok: true }`
+- `404 { error: 'Session not found' }` — 会话不存在（engine 判别联合 `reason: 'not-found'`）
+- `409 { error, blockers: string[] }` — 前置休眠被 gate 阻塞（`reason: 'blocked'`），blockers 为逐项原因 code，web 按 `session.dormancy.blocker.*` 映射文案
+
+### POST /sessions/:id/unarchive — 取消归档
+
+回 dormant。`200 { ok: true }`；非归档行幂等成功；落库失败 `409`。
+
+### GET /sessions/archived — 归档会话全量
+
+`200 { sessions: Session[] }`（归档时间倒序）。归档页数据源，单页全量（无分页）。
+
+### 守卫与广播语义
+
+- 归档禁写闸 `requireWritableSession`：全部会话写端点（messages / upload / save-file / rewind / switch / 配置写 / runtime-state）对归档会话返回 `409 { error: 'Session is archived', code: 'session_archived' }`，web 按 code 映射文案
+- `archive` / `unarchive` 的 `session-updated` 广播显式带 `affects: 'membership'`——改变主列表三分组成员，对端（第二标签页/设备）据此失效分组视图
+
 ## 权限模式
 
 ```mermaid
@@ -145,7 +182,8 @@ flowchart TB
 | 函数 | 作用 |
 |------|------|
 | `requireSyncEngine` | 确保 SyncEngine 可用 |
-| `requireSessionFromParam` | 确保会话存在且属于当前 namespace |
+| `requireSessionFromParam` | 确保会话存在且属于当前 namespace（选项 `requireActive` / `requireWritable`：归档 409 优先于 inactive 409） |
+| `requireWritableSession` | 归档禁写闸：409 + `code: 'session_archived'` 单源（挂点清单见票 11） |
 
 ## 文件访问端点
 

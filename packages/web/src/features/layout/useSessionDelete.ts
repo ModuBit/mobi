@@ -56,14 +56,17 @@ export function useSessionDelete() {
                             retained: deleted.data.retainedWorktree,
                             onManage: () => { void navigate({ to: '/settings/worktrees' }) }
                         })
-                    } else if (deleted.data.transcriptDeleted === false) {
-                        // transcript 诚实告知（票 07）：删了 mobi 记录但 CC 对话记录还在，说明原因
+                    }
+                    if (deleted.data.transcriptDeleted === false) {
+                        // transcript 诚实告知（票 07）：删了 mobi 记录但 CC 对话记录还在，说明原因。
+                        // 与 worktree 保留独立告知——两者可同现（fork 行脏 worktree + 未绑 native id），
+                        // 互斥链会吞掉一边
                         notifyTranscriptRetained({
                             notification,
                             t,
                             reason: deleted.data.transcriptRetainedReason ?? '',
                         })
-                    } else {
+                    } else if (!deleted.data.retainedWorktree) {
                         messageApi.success(t('common.success'))
                     }
                     await evictSession(queryClient, [session.id])

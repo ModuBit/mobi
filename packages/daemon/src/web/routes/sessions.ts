@@ -683,17 +683,22 @@ export function createSessionsRoutes(
     })
 
     // 用户归档（session-retention 票 04）：前置休眠 + status=archived（清置顶）。
-    // 不要求 requireActive——休眠后的会话、已归档的会话（幂等）都要能响应；
-    // 会话不存在/越权由 engine.archiveSession 内部的缓存解析判定（404 语义走 blockers 之外的分支）
+    // namespace 越权校验在此（requireSessionFromParam 单源）；不要求 requireActive——
+    // 休眠后的会话、已归档的会话（幂等）都要能响应；前置休眠的 gate 阻塞由
+    // engine.archiveSession 判定后以 409 blockers 透出
     app.post('/sessions/:id/archive', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
             return engine
         }
 
-        const sessionId = c.req.param('id')
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
         try {
-            const result = await engine.archiveSession(sessionId)
+            const result = await engine.archiveSession(sessionResult.sessionId)
             if (!result.ok) {
                 if (result.reason === 'not-found') {
                     return c.json({ error: 'Session not found' }, 404)

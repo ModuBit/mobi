@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Result } from 'antd'
+import { App, Result } from 'antd'
 import { Archive } from 'lucide-react'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { useEffect, useMemo } from 'react'
@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useSessionArchive } from '@/core/data/hooks/mutations/useSessionArchive'
+import { reportBlockedError } from '@/core/data/sessionDormancy'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { ChatPane } from '@/pages/session/ChatPane'
 import { InspectorPane } from '@/pages/session/InspectorPane'
@@ -37,6 +38,7 @@ interface SessionDetailProps {
 
 export function SessionDetail({ sessionId }: SessionDetailProps) {
     const { t } = useTranslation()
+    const { message: messageApi } = App.useApp()
     const navigate = useNavigate()
     const { data: session, isLoading, error } = useSession(sessionId)
     // 归档会话深链接状态页的原地取消归档（hooks 须在条件 return 之前）
@@ -96,7 +98,14 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                     <Button
                         variant="primary"
                         loading={unarchive.isPending && unarchive.variables === session.id}
-                        onClick={() => unarchive.mutate(session.id)}
+                        onClick={() => unarchive.mutate(session.id, {
+                            // 失败必须有反馈（409 gate 逐项原因 / 其余通用错误），与归档页同口径
+                            onError: (error) => reportBlockedError(messageApi, t, error, {
+                                blockedKey: 'archived.unarchiveBlocked',
+                                fallbackKey: 'common.error',
+                                fallbackVariant: 'error',
+                            }),
+                        })}
                     >
                         {t('session.archived.unarchive')}
                     </Button>

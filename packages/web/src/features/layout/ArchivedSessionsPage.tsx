@@ -345,7 +345,18 @@ export function ArchivedSessionsPage() {
         },
     ]
 
-    if (!isLoading && archived.length === 0) {
+    // 加载中先给占位：不渲染批量工具行（「全部删除 (0)」的空跑确认 Modal 是噪音）
+    if (isLoading) {
+        return (
+            <PageScroll $token={token}>
+                <Inner>
+                    <BatchBar><BatchBarInfo $token={token}>{t('common.loading')}</BatchBarInfo></BatchBar>
+                </Inner>
+            </PageScroll>
+        )
+    }
+
+    if (archived.length === 0) {
         return (
             <EmptyState $token={token}>
                 <ArchiveIcon size={32} />

@@ -27,6 +27,7 @@
 
 import { rmSync, existsSync } from 'node:fs'
 import { resolveTranscriptPath } from '@mobi/node-core/claudeSdk/transcriptPath'
+import { daemonLogger } from '../logger'
 
 export type TranscriptDisposition = {
     deleted: boolean
@@ -38,11 +39,14 @@ export type TranscriptDisposition = {
 export interface TranscriptFsDeps {
     exists: (path: string) => boolean
     remove: (path: string) => void
+    /** 降级事实日志（附属目录删除失败等 best-effort 清理）；缺省 no-op */
+    warn?: (message: string) => void
 }
 
 const nodeFsDeps: TranscriptFsDeps = {
     exists: (path) => existsSync(path),
     remove: (path) => rmSync(path, { recursive: true, force: false }),
+    warn: (message) => daemonLogger.warn(`[transcriptDisposal] ${message}`),
 }
 
 /**
@@ -66,16 +70,32 @@ export function disposeTranscript(
         return { deleted: false, retainedReason: `Cannot resolve transcript path (${resolved.reason})` }
     }
     const transcriptFile = resolved.path
-    // 同名目录（CC 为部分会话写的附属目录）与 jsonl 同生同灭；两者都不在场 = 无记录可删
-    if (!deps.exists(transcriptFile)) {
+    // 同名附属目录（CC 为部分会话写的 tool-results 等，实测可达 MB 级）与 jsonl
+    // 同生同灭——只在场但不同生是清理缺口，不是「无记录可删」的判据
+    const transcriptDir = transcriptFile.replace(/\.jsonl$/, '')
+    const filePresent = deps.exists(transcriptFile)
+    const dirPresent = deps.exists(transcriptDir)
+    // 两者都不在场 = 无记录可删（从未物化的 fork 行等），按「已删除」口径返回
+    if (!filePresent && !dirPresent) {
         return { deleted: true }
     }
-    try {
-        deps.remove(transcriptFile)
-    } catch (error) {
-        return {
-            deleted: false,
-            retainedReason: `Failed to delete transcript: ${error instanceof Error ? error.message : String(error)}`,
+    if (filePresent) {
+        try {
+            deps.remove(transcriptFile)
+        } catch (error) {
+            return {
+                deleted: false,
+                retainedReason: `Failed to delete transcript: ${error instanceof Error ? error.message : String(error)}`,
+            }
+        }
+    }
+    // 附属目录 best-effort：jsonl（对话本体）已删净，目录残留只占磁盘不影响正确性，
+    // 失败降级为日志事实而非「未删除」（deleted 语义绑定对话记录本身）
+    if (dirPresent) {
+        try {
+            deps.remove(transcriptDir)
+        } catch (error) {
+            deps.warn?.(`transcript 附属目录删除失败 (best-effort，残留于 ${transcriptDir}): ${error instanceof Error ? error.message : String(error)}`)
         }
     }
     return { deleted: true }

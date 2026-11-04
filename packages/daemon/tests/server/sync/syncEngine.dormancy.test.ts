@@ -290,6 +290,22 @@ describe('dormantSession 的退出态悬挂兜底', () => {
         },
     )
 
+    test.each(['exited', 'archived'] as const)(
+        'DB 已 %s 且缓存悬挂 active → dormantSession 翻掉 active（2026-09-30 事故回归守卫）',
+        async (lifecycleState) => {
+            const h = makeWakeEngine()
+            try {
+                const session = seedStaleActiveExitedSession(h, lifecycleState)
+                const result = await h.engine.dormantSession(session.id)
+                expect(result).toEqual({ ok: true })
+                // 悬挂的 active 必须被收尾翻掉：归档等下游动作依赖 active 反映真实
+                expect(session.active).toBe(false)
+            } finally {
+                h.cleanup()
+            }
+        },
+    )
+
     test('RPC unreachable → blockers 用分类语义（Session is not reachable），不透框架句子', async () => {
         const h = makeWakeEngine()
         try {

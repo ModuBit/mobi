@@ -714,8 +714,15 @@ export class SyncEngine {
         const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
         if (!session || !session.active) return { ok: true }
         // DB 终态已退出（CLI 自行退出但 session-end 丢失）→ 幂等成功：再走 RPC
-        // 必然 unreachable，还会把传输故障伪装成 "work in progress"（2026-09-30 事故）
-        if (this.isExitedInDb(sessionId)) return { ok: true }
+        // 必然 unreachable，还会把传输故障伪装成 "work in progress"（2026-09-30 事故）。
+        // 悬挂的 active 在此一并翻掉（killAndEndSession 的 isExitedInDb 分支只补
+        // handleSessionEnd 收尾、不走 RPC）——归档等下游动作依赖 active 反映真实
+        if (this.isExitedInDb(sessionId)) {
+            if (session.active) {
+                await this.killAndEndSession(sessionId, { endReason: 'pause', pauseTrigger: 'manual' })
+            }
+            return { ok: true }
+        }
         let check: { ok: boolean; blockers: string[] }
         try {
             check = await this.rpcGateway.dormancyCheck(sessionId)

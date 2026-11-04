@@ -214,7 +214,9 @@ flowchart LR
 | `abortSession()` | 中止会话（`stopKind` 三档：`turn`/`turn-queue`/`turn-queue-tasks`，缺省 `turn`） |
 | `switchSession()` | 切换本地/远程模式 |
 | `renameSession()` | 重命名会话（更新 daemon DB 后 best-effort 同步 CC customTitle） |
-| `deleteSession()` | 删除会话 |
+| `deleteSession()` | 删除会话（编排收口：删前定位 → 删行 → transcript 处置 → worktree 处置 → 墓碑 → 快照清理） |
+| `archiveSession()` | 归档会话：前置休眠（gate 阻塞透出 blockers）→ 落 archived 清置顶；判别联合 `{ok} / {reason:'not-found'} / {reason:'blocked', blockers}` |
+| `unarchiveSession()` | 取消归档：回 dormant（不自动唤醒、不恢复置顶），非归档行幂等成功 |
 
 ### 权限操作
 

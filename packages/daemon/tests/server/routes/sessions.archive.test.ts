@@ -49,13 +49,16 @@ const mockSession: Session = {
 function makeArchiveEngine(overrides: {
     archiveResult?: { ok: true } | { ok: false; reason: 'not-found' } | { ok: false; reason: 'blocked'; blockers: string[] }
     unarchiveResult?: boolean
+    accessDenied?: boolean
 } = {}): SyncEngine {
     return {
-        resolveSessionAccess: (id: string) => ({
-            ok: true as const,
-            sessionId: id,
-            session: mockSession,
-        }),
+        resolveSessionAccess: (id: string) => (overrides.accessDenied
+            ? { ok: false as const, reason: 'access-denied' }
+            : {
+                ok: true as const,
+                sessionId: id,
+                session: mockSession,
+            }),
         archiveSession: async () => overrides.archiveResult ?? { ok: true },
         unarchiveSession: () => overrides.unarchiveResult ?? true,
         getSessionsByNamespace: (_ns: string) => [mockSession],
@@ -114,6 +117,19 @@ describe('POST /api/sessions/:id/archive（用户归档）', () => {
                 headers: { Authorization: `Bearer ${token}` },
             })
             expect(res.status).toBe(404)
+        } finally {
+            cleanup()
+        }
+    })
+
+    test('跨 namespace 越权 → 403（不触碰目标会话）', async () => {
+        const { app, cleanup, token } = await authorizedApp(makeArchiveEngine({ accessDenied: true }))
+        try {
+            const res = await app.request('/api/sessions/test-session-1/archive', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            })
+            expect(res.status).toBe(403)
         } finally {
             cleanup()
         }

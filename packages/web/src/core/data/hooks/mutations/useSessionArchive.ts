@@ -39,7 +39,10 @@ export function useSessionArchive() {
         mutationFn: async (sessionId: string) => {
             await api.sessions.archive(sessionId)
         },
-        onSuccess: (_data, sessionId) => {
+        onSuccess: async (_data, sessionId) => {
+            // 在途 refetch 携旧权威值落地会盖回乐观 patch（useSessionActions 同款防线）
+            await queryClient.cancelQueries({ queryKey: queryKeys.session(sessionId) })
+            await queryClient.cancelQueries({ queryKey: queryKeys.sessions })
             patchSessionStatus(queryClient, sessionId, 'archived', Date.now())
             // 从所有分组移除（归档会话不属于主列表任何分组；置顶被一并清掉）
             queryClient.setQueryData<GroupPages>(queryKeys.pinnedSessions, old =>
@@ -53,7 +56,9 @@ export function useSessionArchive() {
         mutationFn: async (sessionId: string) => {
             await api.sessions.unarchive(sessionId)
         },
-        onSuccess: (_data, sessionId) => {
+        onSuccess: async (_data, sessionId) => {
+            await queryClient.cancelQueries({ queryKey: queryKeys.session(sessionId) })
+            await queryClient.cancelQueries({ queryKey: queryKeys.sessions })
             patchSessionStatus(queryClient, sessionId, 'dormant', Date.now())
             // 回原归属分组（归属未知时不插，交 invalidate 收敛）
             restoreToGroup(queryClient, sessionId, resolveGroupRestoreKey(queryClient, sessionId))

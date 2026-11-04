@@ -283,14 +283,16 @@ export function MobileWorkspaceList() {
                     retained: deleted.data.retainedWorktree,
                     onManage: () => navigateFromMenu(() => navigate({ to: '/settings/worktrees' }))
                 })
-            } else if (deleted.data.transcriptDeleted === false) {
-                // transcript 诚实告知（票 07）：与桌面端 SidebarWorkspaces 同形
+            }
+            if (deleted.data.transcriptDeleted === false) {
+                // transcript 诚实告知（票 07）：与桌面端 SidebarWorkspaces 同形；与 worktree
+                // 保留独立告知（两者可同现，互斥链会吞一边）
                 notifyTranscriptRetained({
                     notification,
                     t,
                     reason: deleted.data.transcriptRetainedReason ?? '',
                 })
-            } else {
+            } else if (!deleted.data.retainedWorktree) {
                 messageApi.success(t('common.success'))
             }
             await evictSession(queryClient, [sessionId])

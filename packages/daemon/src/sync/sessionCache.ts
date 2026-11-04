@@ -203,10 +203,16 @@ export class SessionCache {
         session.status = 'archived'
         session.archivedAt = at
         session.pinned = false
+        // 内存 active 同步翻掉：广播带 active:false 但不改内存会让列表快照仍挂
+        // active:true（前置休眠走早退分支时无人翻它），revive 反复打 stale 警告
+        session.active = false
         this.publisher.emit({
             type: 'session-updated',
             sessionId,
+            // 归档改变主列表三分组成员（行要从置顶/最近/工作区组消失）——对端视图
+            // 失效依赖显式变更域声明（对照 syncEngine 置顶/归属变更三处）
             data: { status: 'archived', archivedAt: at, pinned: false, active: false },
+            affects: 'membership',
         })
         return true
     }
@@ -229,7 +235,9 @@ export class SessionCache {
         this.publisher.emit({
             type: 'session-updated',
             sessionId,
+            // 取消归档让会话回主列表三分组——同 archive 显式声明 membership 变更域
             data: { status: 'dormant', archivedAt: null },
+            affects: 'membership',
         })
         return true
     }
@@ -268,8 +276,10 @@ export class SessionCache {
         session.running = Boolean(payload.running)
         session.runningAt = t
         // 保留状态：每次「从非活跃到附着」都写 online 并刷新 status_updated_at（不逐心跳写，
-        // 但 daemon 重启后的首次重连必须刷新——启动宽限期自愈靠这个时间戳判定它存活）
-        if (!wasActive) this.setStatus(session, 'online', t)
+        // 但 daemon 重启后的首次重连必须刷新——启动宽限期自愈靠这个时间戳判定它存活）。
+        // 时间戳必须用 daemon 时钟：自愈拿它与 daemon 的 startupAt 比较，写 CLI 心跳的
+        // 时钟会让偏慢的活会话在重启后被误降 dormant（跨时钟源比较无意义）
+        if (!wasActive) this.setStatus(session, 'online', Date.now())
         // 唤醒收口：激活心跳到达即清终结字段（DB + 内存行）。clearSessionEnd 此前
         // 生产零调用——唤醒后 DB 残留 pause，daemon 重启后 Web 误显休眠、
         // warm-on-open 可对已唤醒会话重复触发。仅终结态时写，避免高频心跳重复落库

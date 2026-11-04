@@ -54,10 +54,14 @@ function migrate(dbPath: string): void {
         return
     }
 
-    // 修改前快照（与 migrate-workspaces 同款备份策略）
+    // 修改前快照（与 migrate-workspaces 同款备份策略）。-wal/-shm 若在场必须一并
+    // 备份——只 copy 主库会漏掉未 checkpoint 的写入，回滚时静默丢最近数据
     const backupPath = `${dbPath}.bak-status-${Date.now()}`
     copyFileSync(dbPath, backupPath)
-    console.log(`    备份: ${backupPath}`)
+    for (const ext of ['-wal', '-shm']) {
+        if (existsSync(`${dbPath}${ext}`)) copyFileSync(`${dbPath}${ext}`, `${backupPath}${ext}`)
+    }
+    console.log(`    备份: ${backupPath}（含 -wal/-shm 附属文件，如在场）`)
 
     const db = new Database(dbPath, { readwrite: true })
     try {
