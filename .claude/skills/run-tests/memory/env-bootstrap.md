@@ -40,23 +40,37 @@ failed 态常驻且 socket 失联不可发现），累积 10 个后才根治为�
    grep "PROFILE" ~/.mobi-e2e/logs/web.log
    ```
 
-**长验收（>10 分钟）禁走后台任务托管——bootstrap 会自毁**（2026-10-26 实踩）：挂在 Claude 后台任务上的
-bootstrap 被 10 分钟超时 SIGTERM 时，脚本 EXIT trap 的 cleanup 按端口 kill -9 全部组件并
-`rm -rf` 数据目录（seed 数据全丢）。规避：做 **/tmp 禁自毁副本**再孤儿化启动——
+**长验收（>10 分钟）环境自毁两条路（2026-10-26 / 2026-11-03 两次实踩）**：bootstrap 末尾 `wait`
+常驻 + EXIT trap cleanup（按端口 kill + `rm -rf` 数据目录）——**bash 一死即清场**，无论托管方式：
+① 挂 Claude 后台任务被 10 分钟超时 SIGTERM；② perl 孤儿化后 bash 本体中途死亡（沙箱回收，
+原因不明）。孤儿化只解决「启动瞬间被组杀」，不免疫常驻期间的回收。
+
+**数据自保护（2026-11-03 起必做）**：
+- 素材建好后立即快照：`cp ~/.mobi-e2e/mobi.db /tmp/e2e-db-snapshot`（WAL 模式下 daemon 持有的
+  已删 inode 副本仍可 checkpoint 读取——数据目录被 trap 删掉后能据此确认「数据曾写入」）
+- 关键一次性断言（entrypoint、transcript 存在性）**尽早做**，别留到验收末尾
+- daemon/web 持已删目录 inode 可继续正常服务（API/UI 全可用）——「数据目录消失」不阻塞
+  进行中的验收，但重启后的环境是空库
+
+孤儿化启动（官方脚本直接用，不必做禁自毁副本；**env -u 必须挂在 perl 调用上**——exec 链
+每层都继承宿主 env，漏带则 vite proxy 指向宿主端口、web 一切 `/api/*` 404，2026-11-03 实踩）：
 
 ```bash
-# 副本三处改造：删 3 行 trap（EXIT/SIGINT/SIGTERM）、source 与 MOBI_ROOT 硬编码原路径
-sed '/^trap cleanup EXIT$/d; /^trap .exit 130. SIGINT$/d; /^trap .exit 143. SIGTERM$/d' \
-  .claude/skills/run-tests/scripts/e2e-bootstrap.sh > /tmp/e2e-bootstrap-nodestruct.sh
-sed -i '' 's|source "$(dirname "$0")/e2e-common.sh"|source "<repo>/.claude/skills/run-tests/scripts/e2e-common.sh"|' /tmp/e2e-bootstrap-nodestruct.sh
-sed -i '' 's|^readonly MOBI_ROOT=.*|readonly MOBI_ROOT="<repo>"|' /tmp/e2e-bootstrap-nodestruct.sh
-# perl 双 fork 孤儿化（macOS 无 setsid 命令）+ env -u 剥宿主 MOBI_*
 env -u MOBI_API_URL -u MOBI_LISTEN_PORT -u MOBI_LISTEN_HOST -u MOBI_HOME -u MOBI_WEB_PORT \
-  perl -e 'use POSIX qw(setsid); setsid(); fork and exit; exec @ARGV' \
-  bash /tmp/e2e-bootstrap-nodestruct.sh &>/tmp/e2e-bootstrap-nodestruct.log &
+  perl -e 'use POSIX qw(setsid); fork and exit; setsid; fork and exit; exec @ARGV or die' -- \
+  bash .claude/skills/run-tests/scripts/e2e-bootstrap.sh &>/tmp/e2e-bootstrap-orphan.log &
 ```
 
-收尾手工清理：kill bootstrap PID（trap 已删不会连杀）→ `bash .claude/skills/run-tests/scripts/e2e-cleanup.sh`。
+收尾：`bash .claude/skills/run-tests/scripts/e2e-cleanup.sh`（孤儿 bash 仍在则先 kill 其 PID）。
+
+**web dev 单独重启修 proxy（2026-11-03 实证）**：daemon 不动，杀 5175 的 bun 后孤儿化拉起，
+显式覆盖而非依赖 profile：
+
+```bash
+perl -e 'use POSIX qw(setsid); fork and exit; setsid; fork and exit; delete $ENV{MOBI_API_URL}; exec @ARGV or die' -- \
+  bash -c 'cd <repo>/packages/web && MOBI_API_URL=http://127.0.0.1:2224 bun run dev --profile e2e >> /tmp/e2e-web-restart.log 2>&1'
+# 就绪判据：curl -X POST http://localhost:5175/api/auth -d '{"accessToken":"e2e-test-token-mobi"}' → 200
+```
 
 ## 端口隔离
 

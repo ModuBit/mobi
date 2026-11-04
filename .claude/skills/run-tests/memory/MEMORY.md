@@ -67,3 +67,5 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [快速模式执行态验证](fast-mode-state-verify.md) — result 帧 vs 切换后 reinitialize 两来源判别（reason 有无）/ **claudeRemote 事件白名单漏转发坑** / 只有 opus-5-5 支持快速模式 / DB 注入验 web 优先级与兜底（2026-10-27）
 - [spawn 链路计时](spawn-chain-timing.md) — API 分段计时 + lstart 定位；role 在 content.role(agent 非 assistant)/日志文件名≠进程启动/prod debug 不落盘不可考
 - [entrypoint 与 sweep 豁免验证](retention-entrypoint-verify.md) — 四组 E2E（收发/唤醒/权限/MCP）+ 离线 sweep 豁免验法；env -i 裸环境、桩 API 延迟 60s、Write 提示词才触发审批（2026-10-30）
+- [Tooltip 验证与诊断](tooltip-verify.md) — tooltip 生命周期观测（dispatchEvent hook 抓互斥广播）/ CDP hover 超时两坑（折叠分组隐形行、合成 PointerEvent 退路）/ 受控封装×Radix delayed-open timer 自毁已修 + **jsdom 测不出 stale closure 必须真机**（2026-11-03）
+- [会话保留期验证](retention-verify.md) — 归档/删除/豁免全链路：spawn+messages body schema、Radix 菜单指针序列、archived 页、批量门槛 native setter、409/transcript+墓碑断言（2026-11-03）
