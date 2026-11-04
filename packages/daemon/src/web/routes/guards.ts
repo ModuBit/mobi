@@ -35,7 +35,7 @@ export function requireSession(
     c: Context<WebAppEnv>,
     engine: SyncEngine,
     sessionId: string,
-    options?: { requireActive?: boolean }
+    options?: { requireActive?: boolean; requireWritable?: boolean }
 ): { sessionId: string; session: Session } | Response {
     const namespace = c.get('namespace')
     const access = engine.resolveSessionAccess(sessionId, namespace)
@@ -43,6 +43,12 @@ export function requireSession(
         const status = access.reason === 'access-denied' ? 403 : 404
         const error = access.reason === 'access-denied' ? 'Session access denied' : 'Session not found'
         return c.json({ error }, status)
+    }
+    // 归档闸（409 session_archived）优先于 active 检查（409 inactive）——归档会话的
+    // 拒绝语义是 session_archived，排序语义只编码在这一处
+    if (options?.requireWritable) {
+        const blocked = requireWritableSession(c, access.session)
+        if (blocked) return blocked
     }
     if (options?.requireActive && !access.session.active) {
         return c.json({ error: 'Session is inactive' }, 409)
@@ -53,18 +59,17 @@ export function requireSession(
 export function requireSessionFromParam(
     c: Context<WebAppEnv>,
     engine: SyncEngine,
-    options?: { paramName?: string; requireActive?: boolean }
+    options?: { paramName?: string; requireActive?: boolean; requireWritable?: boolean }
 ): { sessionId: string; session: Session } | Response {
     const paramName = options?.paramName ?? 'id'
     const sessionId = c.req.param(paramName)
     if (!sessionId) {
         return c.json({ error: 'Missing session ID' }, 400)
     }
-    const result = requireSession(c, engine, sessionId, { requireActive: options?.requireActive })
-    if (result instanceof Response) {
-        return result
-    }
-    return result
+    return requireSession(c, engine, sessionId, {
+        requireActive: options?.requireActive,
+        requireWritable: options?.requireWritable,
+    })
 }
 
 /**

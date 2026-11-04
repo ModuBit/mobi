@@ -129,8 +129,9 @@ function registerSessionConfigRoute<K extends SessionConfigFieldKey>(
             return engine
         }
 
-        // 休眠会话放行（dormancy spec §C.9）：配置切换在休眠下只暂存 DB，活跃才推进程
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: false })
+        // 休眠会话放行（dormancy spec §C.9）：配置切换在休眠下只暂存 DB，活跃才推进程；
+        // 归档禁写（票 11 补挂）：归档是用户终态，静默改写配置是暗坑
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: false, requireWritable: true })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -671,17 +672,10 @@ export function createSessionsRoutes(
             return engine
         }
 
-        // 归档禁写（票 11）优先于 active 检查
-        const sessionResult = requireSessionFromParam(c, engine)
+        // 归档 409 优先于 inactive 409（排序语义收口在 guards.requireSession）
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, requireWritable: true })
         if (sessionResult instanceof Response) {
             return sessionResult
-        }
-        const writeBlocked = requireWritableSession(c, sessionResult.session)
-        if (writeBlocked) {
-            return writeBlocked
-        }
-        if (!sessionResult.session.active) {
-            return c.json({ error: 'Session is inactive' }, 409)
         }
 
         await engine.switchSession(sessionResult.sessionId, 'remote')
@@ -701,12 +695,11 @@ export function createSessionsRoutes(
         try {
             const result = await engine.archiveSession(sessionId)
             if (!result.ok) {
-                // blockers 是休眠 gate 的逐项原因（透传给 web toast）；Session not found
-                // 不是阻塞而是定位失败，编成 404
-                if (result.blockers?.includes('Session not found')) {
+                if (result.reason === 'not-found') {
                     return c.json({ error: 'Session not found' }, 404)
                 }
-                return c.json({ error: 'Session has work in progress', blockers: result.blockers ?? [] }, 409)
+                // blockers 是休眠 gate 的逐项原因（透传给 web toast）
+                return c.json({ error: 'Session has work in progress', blockers: result.blockers }, 409)
             }
             return c.json({ ok: true })
         } catch (error) {
@@ -782,14 +775,10 @@ export function createSessionsRoutes(
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        // 归档禁写（票 11）优先于 active 检查——归档会话的 409 语义是 session_archived
-        const sessionResult = requireSessionFromParam(c, engine)
+        // 归档 409 优先于 inactive 409（排序语义收口在 guards.requireSession）——
+        // 归档会话连 rewind 预测都不给（票 11）
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, requireWritable: true })
         if (sessionResult instanceof Response) return sessionResult
-        const writeBlocked = requireWritableSession(c, sessionResult.session)
-        if (writeBlocked) return writeBlocked
-        if (!sessionResult.session.active) {
-            return c.json({ error: 'Session is inactive' }, 409)
-        }
 
         const body = await c.req.json().catch(() => null)
         const parsed = rewindDryRunSchema.safeParse(body)
@@ -812,14 +801,9 @@ export function createSessionsRoutes(
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        // 归档禁写（票 11）优先于 active 检查
-        const sessionResult = requireSessionFromParam(c, engine)
+        // 归档 409 优先于 inactive 409（排序语义收口在 guards.requireSession）
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, requireWritable: true })
         if (sessionResult instanceof Response) return sessionResult
-        const writeBlocked = requireWritableSession(c, sessionResult.session)
-        if (writeBlocked) return writeBlocked
-        if (!sessionResult.session.active) {
-            return c.json({ error: 'Session is inactive' }, 409)
-        }
 
         const body = await c.req.json().catch(() => null)
         const parsed = rewindSchema.safeParse(body)
@@ -874,14 +858,15 @@ export function createSessionsRoutes(
         return c.json({ sessionId: result.sessionId })
     })
 
-    // 清除 session runtimeState 中的指定字段
+    // 清除 session runtimeState 中的指定字段。归档禁写（票 11 补挂）：runtimeState
+    // 是会话写面（effort/fastMode 等都住在里面）
     app.patch('/sessions/:id/runtime-state', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { requireWritable: true })
         if (sessionResult instanceof Response) {
             return sessionResult
         }

@@ -47,7 +47,7 @@ const mockSession: Session = {
 }
 
 function makeArchiveEngine(overrides: {
-    archiveResult?: { ok: boolean; blockers?: string[] }
+    archiveResult?: { ok: true } | { ok: false; reason: 'not-found' } | { ok: false; reason: 'blocked'; blockers: string[] }
     unarchiveResult?: boolean
 } = {}): SyncEngine {
     return {
@@ -89,7 +89,7 @@ describe('POST /api/sessions/:id/archive（用户归档）', () => {
 
     test('休眠 gate 阻塞 → 409 { error, blockers }', async () => {
         const { app, cleanup, token } = await authorizedApp(
-            makeArchiveEngine({ archiveResult: { ok: false, blockers: ['turn_running'] } }),
+            makeArchiveEngine({ archiveResult: { ok: false, reason: 'blocked', blockers: ['turn_running'] } }),
         )
         try {
             const res = await app.request('/api/sessions/test-session-1/archive', {
@@ -106,7 +106,7 @@ describe('POST /api/sessions/:id/archive（用户归档）', () => {
 
     test('会话不存在 → 404', async () => {
         const { app, cleanup, token } = await authorizedApp(
-            makeArchiveEngine({ archiveResult: { ok: false, blockers: ['Session not found'] } }),
+            makeArchiveEngine({ archiveResult: { ok: false, reason: 'not-found' } }),
         )
         try {
             const res = await app.request('/api/sessions/nope/archive', {

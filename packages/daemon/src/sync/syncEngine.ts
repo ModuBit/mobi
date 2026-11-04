@@ -740,20 +740,24 @@ export class SyncEngine {
     /**
      * 用户归档（session-retention 票 04）：先把在线会话休眠（gate 阻塞原样透出 blockers，
      * 语义与手动休眠一致），再落 archived 状态（清置顶）。已归档幂等成功。
+     * 判别联合：定位失败（not-found）与休眠阻塞（blocked）是两种失败语义，路由据此分流
+     * 404/409——不再用「哨兵字符串混进 blockers」让路由做字符串匹配。
      */
-    async archiveSession(sessionId: string): Promise<{ ok: boolean; blockers?: string[] }> {
+    async archiveSession(sessionId: string): Promise<
+        { ok: true } | { ok: false; reason: 'not-found' } | { ok: false; reason: 'blocked'; blockers: string[] }
+    > {
         const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
-        if (!session) return { ok: false, blockers: ['Session not found'] }
+        if (!session) return { ok: false, reason: 'not-found' }
         if (session.status === 'archived') return { ok: true }
 
         // 前置休眠：归档必须是 dormant。在线会话走既有休眠管线（gate 自查 + RPC kill）；
         // 阻塞时原样透出，不做任何强制路径（close 语义已作废）
         if (session.active) {
             const dormant = await this.dormantSession(sessionId)
-            if (!dormant.ok) return dormant
+            if (!dormant.ok) return { ok: false, reason: 'blocked', blockers: dormant.blockers ?? [] }
         }
         if (!this.sessionCache.archiveSession(sessionId)) {
-            return { ok: false, blockers: ['Session not found'] }
+            return { ok: false, reason: 'not-found' }
         }
         return { ok: true }
     }
@@ -853,9 +857,12 @@ export class SyncEngine {
                 daemonLogger.warn(`[deleteSession] 清理轮次快照引用失败 (best-effort，忽略): ${(error as Error).message}`)
             })
         }
-        return transcript.deleted
-            ? { transcriptDeleted: true, ...(retainedWorktree ? { retainedWorktree } : {}) }
-            : { transcriptDeleted: false, transcriptRetainedReason: transcript.retainedReason, ...(retainedWorktree ? { retainedWorktree } : {}) }
+        // 单对象组装：可选键 undefined 时不进 JSON，响应形状与旧双分支完全一致
+        return {
+            transcriptDeleted: transcript.deleted,
+            ...(transcript.deleted ? {} : { transcriptRetainedReason: transcript.retainedReason }),
+            ...(retainedWorktree && { retainedWorktree }),
+        }
     }
 
     /**

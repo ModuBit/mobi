@@ -15,21 +15,12 @@
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type { InfiniteData, QueryKey } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
-import type { WorkspaceSessionsPage, Session } from '@/core/data/api/types'
+import type { Session } from '@/core/data/api/types'
 import { queryKeys } from '@/core/lib/queryKeys'
 import { toggleIdInPages } from '@/core/data/cache/pinnedOptimistic'
-
-type GroupPages = InfiniteData<WorkspaceSessionsPage> | undefined
-
-/** 取某根前缀下已缓存的全部 [key, data]（用于批量调整工作区分组） */
-function getGroupEntries(
-    queryClient: ReturnType<typeof useQueryClient>,
-    root: QueryKey,
-): Array<[QueryKey, GroupPages]> {
-    return queryClient.getQueriesData<GroupPages>({ queryKey: root })
-}
+import { removeFromGroupedLists, restoreToGroup, resolveGroupRestoreKey } from '@/core/data/cache/groupedSessionLists'
+import type { GroupPages } from '@/core/data/cache/groupedSessionLists'
 
 /**
  * 置顶 / 取消置顶会话。
@@ -54,15 +45,6 @@ export function useSetSessionPinned() {
         },
 
         onSuccess: (_data, { sessionId, pinned }) => {
-            // 会话当前归属（决定 unpin 回填哪个分组）；缓存不含该会话时归属未知
-            const sessions = queryClient.getQueryData<Session[]>(queryKeys.sessions)
-            const session = sessions?.find(s => s.id === sessionId)
-            const restoreKey = session
-                ? (session.workspaceId
-                    ? queryKeys.workspaceSessions(session.workspaceId)
-                    : queryKeys.recentSessions)
-                : null
-
             // 1. 全局会话列表：pinned 翻转
             queryClient.setQueryData<Session[]>(queryKeys.sessions, old =>
                 old?.map(s => (s.id === sessionId ? { ...s, pinned } : s)) ?? old)
@@ -71,24 +53,15 @@ export function useSetSessionPinned() {
             queryClient.setQueryData<Session>(queryKeys.session(sessionId), old =>
                 old ? { ...old, pinned } : old)
 
-            // 3. 分组成员搬移
+            // 3. 分组成员搬移（规则单源 groupedSessionLists）：进置顶则离开原分组，
+            // 取消置顶则回原分组（归属未知时不插，交 invalidate 收敛）
             queryClient.setQueryData<GroupPages>(queryKeys.pinnedSessions, old =>
                 toggleIdInPages(old, sessionId, pinned))
 
             if (pinned) {
-                // 离开原分组：从「最近」与所有工作区组移除（幂等，不存在的移除是 no-op；
-                // 归属未知时全扫是唯一安全做法）
-                queryClient.setQueryData<GroupPages>(queryKeys.recentSessions, old =>
-                    toggleIdInPages(old, sessionId, false))
-                for (const [key] of getGroupEntries(queryClient, queryKeys.workspaceSessionsRoot)) {
-                    queryClient.setQueryData<GroupPages>(key, old =>
-                        toggleIdInPages(old, sessionId, false))
-                }
-            } else if (restoreKey) {
-                // 回原分组。缓存查不到归属时不插——插错分组（工作区会话闪进「最近」）
-                // 比晚到更糟，交给下方 invalidate 收敛
-                queryClient.setQueryData<GroupPages>(restoreKey, old =>
-                    toggleIdInPages(old, sessionId, true))
+                removeFromGroupedLists(queryClient, sessionId)
+            } else {
+                restoreToGroup(queryClient, sessionId, resolveGroupRestoreKey(queryClient, sessionId))
             }
 
             // 真值补偿不再在这里做：daemon 对置顶/归属变更广播 session-updated 且显式带

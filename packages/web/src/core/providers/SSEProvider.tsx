@@ -32,12 +32,12 @@ import { decideToastAction, parseActiveSessionId, showSystemNotification } from 
 import {
     notifyAttention,
     trackAttentionTransition,
-    clearAttentionState,
     clearAllAttentionStates,
 } from '@/core/notifications/attentionFeedback'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { useApprovalNotificationStore } from '@/core/data/stores/approvalNotificationStore'
 import { usePromptSuggestionStore, extractPromptSuggestion } from '@/core/data/stores/promptSuggestionStore'
+import { clearSessionTransientState } from '@/core/lib/sessionEviction'
 import { clearAllSessionResources } from '@/core/lib/sessionResources'
 import { ingestUiCommandEvent } from '@/core/data/stores/workspaceStore'
 import { derivePendingRequestsCount } from '@/core/lib/pendingRequests'
@@ -46,7 +46,6 @@ import {
     ingestIncomingMessages,
     ingestSnapshotDelta,
     markMessagesSubmitted as markSubmittedInStore,
-    clearMessageWindow,
     fetchLatestMessages,
     withdrawFrom,
     markSessionActivity,
@@ -431,11 +430,11 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 qc.invalidateQueries({ queryKey: queryKeys.sdkMetadata(event.sessionId) })
                 break
             case 'session-removed':
+                // 瞬态清理全集单源在 clearSessionTransientState（与本地乐观路径 evictSession
+                // 共用）；失效走批处理（scheduleInvalidation 合并风暴），不用 evictSession 的
+                // 立即失效——语义与 evictSession 相同（列表维度重拉）
                 qc.removeQueries({ queryKey: queryKeys.session(event.sessionId) })
-                clearMessageWindow(event.sessionId)
-                clearAttentionState(event.sessionId)
-                // 清理该 session 的瞬时建议, 避免删除会话后 bySession Map 残留
-                usePromptSuggestionStore.getState().clearSession(event.sessionId)
+                clearSessionTransientState(event.sessionId)
                 scheduleInvalidation('sessions')
                 // 删除的会话需从工作区组/「最近」分组视图中移除
                 scheduleInvalidation('workspaceViews')

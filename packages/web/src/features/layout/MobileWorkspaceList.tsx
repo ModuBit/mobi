@@ -27,7 +27,7 @@ import {
     ImportOutlined,
 } from '@ant-design/icons'
 import { ChevronRight, Plus, Archive } from 'lucide-react'
-import { dormantSessionWithFeedback, deleteBlockedText, dormancyBlockedText, extractBlockers } from '@/core/data/sessionDormancy'
+import { dormantSessionWithFeedback, deleteBlockedText, reportBlockedError } from '@/core/data/sessionDormancy'
 import { useSessionArchive } from '@/core/data/hooks/mutations/useSessionArchive'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
@@ -238,12 +238,11 @@ export function MobileWorkspaceList() {
             await archive.mutateAsync(actionSessionId)
             setActionSessionId(null)
         } catch (error) {
-            const blockers = extractBlockers(error)
-            if (blockers.length > 0) {
-                messageApi.warning(dormancyBlockedText(blockers, t, 'session.archive.blocked'))
-            } else {
-                messageApi.error(t('common.error'))
-            }
+            reportBlockedError(messageApi, t, error, {
+                blockedKey: 'session.archive.blocked',
+                fallbackKey: 'common.error',
+                fallbackVariant: 'error',
+            })
         } finally {
             setActionLoading(null)
         }

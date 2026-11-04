@@ -239,7 +239,7 @@
       "deleteConfirmGroupDesc": "This will delete {{count}} archived sessions in \"{{name}}\", including their messages and Claude Code transcripts. This action cannot be undone.",
       "deleteConfirmPageDesc": "This will delete {{count}} archived sessions, including their messages and Claude Code transcripts. This action cannot be undone.",
       "typeGroupName": "Type the project name \"{{name}}\" to confirm",
-      "typeDelete": "Type DELETE to confirm",
+      "typeDelete": "Type {{token}} to confirm",
       "deleteConfirmOk": "Delete",
       "resultTitle": "Batch operation finished",
       "unarchiveSuccess": "Unarchived {{count}} item(s)",

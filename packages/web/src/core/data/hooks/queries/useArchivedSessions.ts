@@ -21,7 +21,8 @@ import { queryKeys } from '@/core/lib/queryKeys'
 
 /**
  * 归档会话列表（票 05）：daemon 一次性全量返回（归档时间倒序）。
- * 侧栏入口的数量徽标与归档页共用同一缓存键——入口挂载即拉，进页零等待。
+ * 归档页与本 hook 的其他消费者共用同一缓存键；归档/取消归档动作 invalidate 此键
+ * 即时收敛。
  */
 export function useArchivedSessions() {
     const api = useMobiApi()

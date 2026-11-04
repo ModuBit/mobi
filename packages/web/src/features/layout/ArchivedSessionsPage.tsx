@@ -28,11 +28,11 @@ import { DropdownMenu, type DropdownItem } from '@/ui/base/interactive/dropdown-
 import { Button } from '@/ui/base/interactive/button/Button'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
-import { dormancyBlockedText, extractBlockers } from '@/core/data/sessionDormancy'
+import { reportBlockedError } from '@/core/data/sessionDormancy'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { evictSession } from '@/core/lib/sessionEviction'
 import { useSessionDelete } from './useSessionDelete'
-import { runBatch, summarizeBatch, batchConfirmExpected } from './archivedBatch'
+import { runBatch, summarizeBatch, batchConfirmExpected, BATCH_DELETE_CONFIRM_TOKEN } from './archivedBatch'
 import { useMobiApi } from '@/core/data/api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session } from '@/core/data/api/types'
@@ -227,7 +227,6 @@ export function ArchivedSessionsPage() {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     // ── 批量删除确认（自管 Modal：antd modal.confirm 的受控 Input 联动 fragile）──
     const [pendingDelete, setPendingDelete] = useState<PendingBatchDelete | null>(null)
-    const [confirmInput, setConfirmInput] = useState('')
     const [batchRunning, setBatchRunning] = useState(false)
 
     const groups = useMemo<ArchivedGroup[]>(() => {
@@ -260,20 +259,14 @@ export function ArchivedSessionsPage() {
         [archived, selectedIds],
     )
 
-    /** 批量动作成功条目的离场清理（evictSession 收口，与单条删除流一致） */
-    const cleanupAfterBatch = (sessionIds: string[]) => {
-        void evictSession(queryClient, sessionIds)
-    }
-
     // 取消归档：409（gate）原样透出逐项原因，其余通用错误
     const handleUnarchive = (session: Session) => {
         unarchive.mutate(session.id, {
-            onError: (error) => {
-                const blockers = extractBlockers(error)
-                messageApi.error(blockers.length > 0
-                    ? dormancyBlockedText(blockers, t, 'archived.unarchiveBlocked')
-                    : t('common.error'))
-            },
+            onError: (error) => reportBlockedError(messageApi, t, error, {
+                blockedKey: 'archived.unarchiveBlocked',
+                fallbackKey: 'common.error',
+                fallbackVariant: 'error',
+            }),
         })
     }
 
@@ -304,7 +297,7 @@ export function ArchivedSessionsPage() {
         try {
             const okIds: string[] = []
             const results = await runBatch(sessions, id => api.sessions.delete(id), id => okIds.push(id))
-            cleanupAfterBatch(okIds)
+            void evictSession(queryClient, okIds)
             setSelectedIds(new Set())
             const okCount = results.filter(r => r.ok).length
             if (okCount === results.length) {
@@ -328,17 +321,12 @@ export function ArchivedSessionsPage() {
         } finally {
             setBatchRunning(false)
             setPendingDelete(null)
-            setConfirmInput('')
         }
     }
 
     const openBatchDelete = (scope: PendingBatchDelete['scope'], sessions: Session[]) => {
-        setConfirmInput('')
         setPendingDelete({ scope, sessions })
     }
-
-    const confirmExpected = pendingDelete ? batchConfirmExpected(pendingDelete.scope) : ''
-    const confirmReady = pendingDelete !== null && confirmInput.trim() === confirmExpected
 
     const renderMenuItems = (session: Session): DropdownItem[] => [
         {
@@ -454,40 +442,64 @@ export function ArchivedSessionsPage() {
                 ))}
             </Inner>
 
-            {/* 批量删除确认（票 08）：展示条数 + 输入项目名 / DELETE 才可提交。
-                自管 Modal 而非 modal.confirm——确认输入要联动 okButton disabled，受控更直接 */}
-            <Modal
-                title={t('archived.batch.deleteConfirmTitle')}
-                open={pendingDelete !== null}
-                onCancel={() => { if (!batchRunning) { setPendingDelete(null); setConfirmInput('') } }}
-                okText={t('archived.batch.deleteConfirmOk')}
-                okButtonProps={{ danger: true, disabled: !confirmReady, loading: batchRunning }}
-                cancelText={t('common.cancel')}
-                onOk={() => {
-                    if (pendingDelete) void runBatchDelete(pendingDelete.sessions)
-                }}
-                destroyOnHidden
-            >
-                <p style={{ marginBottom: 12 }}>
-                    {pendingDelete?.scope.kind === 'group'
-                        ? t('archived.batch.deleteConfirmGroupDesc', { name: pendingDelete.scope.groupName, count: pendingDelete.sessions.length })
-                        : pendingDelete
-                            ? t('archived.batch.deleteConfirmPageDesc', { count: pendingDelete.sessions.length })
-                            : ''}
-                </p>
-                <p style={{ marginBottom: 8, color: token.colorTextSecondary, fontSize: 12 }}>
-                    {pendingDelete?.scope.kind === 'group' && pendingDelete.scope.groupName.trim().length > 0
-                        ? t('archived.batch.typeGroupName', { name: pendingDelete.scope.groupName.trim() })
-                        : t('archived.batch.typeDelete')}
-                </p>
-                <Input
-                    value={confirmInput}
-                    onChange={e => setConfirmInput(e.target.value)}
-                    placeholder={confirmExpected}
-                    disabled={batchRunning}
-                    autoFocus
-                />
-            </Modal>
+            {/* 批量删除确认（票 08）：确认输入自持在 Modal 子组件里，键入不触发整页列表 reconcile */}
+            <BatchDeleteConfirmModal
+                pendingDelete={pendingDelete}
+                batchRunning={batchRunning}
+                onConfirm={(sessions) => { void runBatchDelete(sessions) }}
+                onCancel={() => { if (!batchRunning) setPendingDelete(null) }}
+            />
         </PageScroll>
+    )
+}
+
+/**
+ * 批量删除确认 Modal（票 08）：展示条数 + 输入项目名 / DELETE 才可提交。
+ * 自管 Modal 而非 modal.confirm——确认输入要联动 okButton disabled，受控更直接；
+ * 确认输入 state 自持于此（destroyOnHidden 卸载即清空），不挂在页面根组件上。
+ */
+function BatchDeleteConfirmModal({ pendingDelete, batchRunning, onConfirm, onCancel }: {
+    pendingDelete: PendingBatchDelete | null
+    batchRunning: boolean
+    onConfirm: (sessions: Session[]) => void
+    onCancel: () => void
+}) {
+    const { token } = useToken()
+    const { t } = useTranslation()
+    const [confirmInput, setConfirmInput] = useState('')
+    const confirmExpected = pendingDelete ? batchConfirmExpected(pendingDelete.scope) : ''
+    const confirmReady = pendingDelete !== null && confirmInput.trim() === confirmExpected
+
+    return (
+        <Modal
+            title={t('archived.batch.deleteConfirmTitle')}
+            open={pendingDelete !== null}
+            onCancel={() => { if (!batchRunning) { onCancel(); setConfirmInput('') } }}
+            okText={t('archived.batch.deleteConfirmOk')}
+            okButtonProps={{ danger: true, disabled: !confirmReady, loading: batchRunning }}
+            cancelText={t('common.cancel')}
+            onOk={() => {
+                if (pendingDelete) onConfirm(pendingDelete.sessions)
+            }}
+            destroyOnHidden
+        >
+            <p style={{ marginBottom: 12 }}>
+                {pendingDelete && (pendingDelete.scope.kind === 'group'
+                    ? t('archived.batch.deleteConfirmGroupDesc', { name: pendingDelete.scope.groupName, count: pendingDelete.sessions.length })
+                    : t('archived.batch.deleteConfirmPageDesc', { count: pendingDelete.sessions.length }))}
+            </p>
+            <p style={{ marginBottom: 8, color: token.colorTextSecondary, fontSize: 12 }}>
+                {pendingDelete?.scope.kind === 'group' && pendingDelete.scope.groupName.trim().length > 0
+                    ? t('archived.batch.typeGroupName', { name: pendingDelete.scope.groupName.trim() })
+                    : t('archived.batch.typeDelete', { token: BATCH_DELETE_CONFIRM_TOKEN })}
+            </p>
+            <Input
+                value={confirmInput}
+                onChange={e => setConfirmInput(e.target.value)}
+                placeholder={confirmExpected}
+                disabled={batchRunning}
+                autoFocus
+            />
+        </Modal>
     )
 }

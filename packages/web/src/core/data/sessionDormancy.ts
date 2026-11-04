@@ -50,6 +50,36 @@ export function dormancyBlockedText(blockers: string[], t: TFunction, blockedKey
     return t(blockedKey, { reasons })
 }
 
+export interface BlockedErrorReport {
+    /** 409 blockers 时的逐项文案键（缺省休眠 blocked） */
+    blockedKey?: string
+    /** 非 blocker 失败的通用文案键（缺省休眠 failed） */
+    fallbackKey?: string
+    /** 非 blocker 失败的 toast 档位（缺省 warning；归档入口传 'error'） */
+    fallbackVariant?: 'warning' | 'error'
+}
+
+/**
+ * gate 阻塞类动作失败的 toast 反馈收口（休眠 / 归档三入口此前各抄一遍
+ * extract→判空→定档三连）：409 blockers → warning 逐项原因（用户可自行处理后
+ * 重试，warning 档更贴语义）；其余失败 → fallback 档位 + 文案。
+ */
+export function reportBlockedError(
+    message: AppMessage,
+    t: TFunction,
+    error: unknown,
+    opts: BlockedErrorReport = {},
+): void {
+    const blockers = extractBlockers(error)
+    if (blockers.length > 0) {
+        void message.warning(dormancyBlockedText(blockers, t, opts.blockedKey ?? 'session.dormancy.blocked'))
+        return
+    }
+    const fallbackKey = opts.fallbackKey ?? 'session.dormancy.failed'
+    if (opts.fallbackVariant === 'error') void message.error(t(fallbackKey))
+    else void message.warning(t(fallbackKey))
+}
+
 /**
  * 删除入口的阻塞文案组合（PC/移动端删除失败 catch 共用，extract→判空→定 key 三步
  * 单点收口）：409 blockers（daemon 删除前自动休眠被 gate 挡）→「无法删除：…」；
@@ -77,14 +107,7 @@ export async function dormantSessionWithFeedback(
         void message.success(t('common.success'))
         await invalidateSessionViews(queryClient, [sessionId])
     } catch (error) {
-        const blockers = extractBlockers(error)
-        if (blockers.length === 0) {
-            // 无 blocker 的失败（RPC 断连等）：通用失败文案
-            void message.warning(t('session.dormancy.failed'))
-            return
-        }
-        // gate 阻塞：只展示原因，用户可自行处理阻塞项后重试
-        void message.warning(dormancyBlockedText(blockers, t))
+        reportBlockedError(message, t, error)
     } finally {
         onDone()
     }

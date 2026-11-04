@@ -15,21 +15,11 @@
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type { InfiniteData, QueryKey } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
-import type { WorkspaceSessionsPage } from '@/core/data/api/types'
 import { queryKeys } from '@/core/lib/queryKeys'
 import { toggleIdInPages } from '@/core/data/cache/pinnedOptimistic'
-
-type GroupPages = InfiniteData<WorkspaceSessionsPage> | undefined
-
-/** 取某根前缀下已缓存的全部 [key, data]（用于从所有分组搬移成员） */
-function getGroupEntries(
-    queryClient: ReturnType<typeof useQueryClient>,
-    root: QueryKey,
-): Array<[QueryKey, GroupPages]> {
-    return queryClient.getQueriesData<GroupPages>({ queryKey: root })
-}
+import { removeFromGroupedLists, restoreToGroup, resolveGroupRestoreKey } from '@/core/data/cache/groupedSessionLists'
+import type { GroupPages, SessionLike } from '@/core/data/cache/groupedSessionLists'
 
 /**
  * 归档 / 取消归档会话（票 05）。
@@ -39,7 +29,7 @@ function getGroupEntries(
  * API 期间 loading 由调用方展示；成功后本地缓存立即生效（不等 invalidate 收敛链路），
  * 详情缓存与 ['sessions'] 同步 patch status/archivedAt（SSE 的 session-updated 广播
  * 是真值收敛路径，两边一致不冲突）。归档被 gate 阻塞时 daemon 返回 409 blockers，
- * 错误提示由调用方处理。
+ * 错误提示由调用方处理。分组成员搬移规则单源在 groupedSessionLists。
  */
 export function useSessionArchive() {
     const api = useMobiApi()
@@ -51,15 +41,10 @@ export function useSessionArchive() {
         },
         onSuccess: (_data, sessionId) => {
             patchSessionStatus(queryClient, sessionId, 'archived', Date.now())
-            // 从所有分组移除（归档会话不属于主列表任何分组）
+            // 从所有分组移除（归档会话不属于主列表任何分组；置顶被一并清掉）
             queryClient.setQueryData<GroupPages>(queryKeys.pinnedSessions, old =>
                 toggleIdInPages(old, sessionId, false))
-            queryClient.setQueryData<GroupPages>(queryKeys.recentSessions, old =>
-                toggleIdInPages(old, sessionId, false))
-            for (const [key] of getGroupEntries(queryClient, queryKeys.workspaceSessionsRoot)) {
-                queryClient.setQueryData<GroupPages>(key, old =>
-                    toggleIdInPages(old, sessionId, false))
-            }
+            removeFromGroupedLists(queryClient, sessionId)
             void queryClient.invalidateQueries({ queryKey: queryKeys.archivedSessions })
         },
     })
@@ -70,14 +55,8 @@ export function useSessionArchive() {
         },
         onSuccess: (_data, sessionId) => {
             patchSessionStatus(queryClient, sessionId, 'dormant', Date.now())
-            // 回原归属分组（归属未知时缓存不含该会话，不插——交给 invalidate 收敛）
-            const sessions = queryClient.getQueryData<SessionLike[]>(queryKeys.sessions)
-            const workspaceId = sessions?.find(s => s.id === sessionId)?.workspaceId
-            const restoreKey = workspaceId
-                ? queryKeys.workspaceSessions(workspaceId)
-                : queryKeys.recentSessions
-            queryClient.setQueryData<GroupPages>(restoreKey, old =>
-                toggleIdInPages(old, sessionId, true))
+            // 回原归属分组（归属未知时不插，交 invalidate 收敛）
+            restoreToGroup(queryClient, sessionId, resolveGroupRestoreKey(queryClient, sessionId))
             void queryClient.invalidateQueries({ queryKey: queryKeys.archivedSessions })
         },
     })
@@ -85,14 +64,8 @@ export function useSessionArchive() {
     return { archive, unarchive }
 }
 
-/** 会话身份缓存（['sessions'] 与详情）的最小字段投影 */
-interface SessionLike {
-    id: string
-    workspaceId?: string | null
-}
-
 /**
- * status 迁移后的本地缓存同步：详情 + 全局列表两处 patch
+ * status 迁移后的本地缓存同步：详情 + 全局列表两处 patch，patch 形状单源 patchOne
  * （归档动作同时清置顶 / 置 active=false，daemon 广播与本地 patch 同值）
  */
 function patchSessionStatus(
@@ -101,22 +74,13 @@ function patchSessionStatus(
     status: 'archived' | 'dormant',
     at: number,
 ): void {
-    queryClient.setQueryData(queryKeys.session(sessionId), (old: SessionLike | undefined) =>
-        old
-            ? {
-                ...old,
-                status,
-                archivedAt: status === 'archived' ? at : null,
-                ...(status === 'archived' ? { pinned: false, active: false } : {}),
-            }
-            : old)
+    const patchOne = <T extends SessionLike>(old: T): T => ({
+        ...old,
+        status,
+        archivedAt: status === 'archived' ? at : null,
+        ...(status === 'archived' ? { pinned: false, active: false } : {}),
+    })
+    queryClient.setQueryData<SessionLike>(queryKeys.session(sessionId), old => old && patchOne(old))
     queryClient.setQueryData<SessionLike[]>(queryKeys.sessions, old =>
-        old?.map(s => (s.id === sessionId
-            ? {
-                ...s,
-                status,
-                archivedAt: status === 'archived' ? at : null,
-                ...(status === 'archived' ? { pinned: false, active: false } : {}),
-            }
-            : s)) ?? old)
+        old?.map(s => (s.id === sessionId ? patchOne(s) : s)) ?? old)
 }

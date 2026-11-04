@@ -239,7 +239,7 @@
       "deleteConfirmGroupDesc": "将删除项目「{{name}}」中的 {{count}} 个归档会话，包含其消息与 Claude Code 对话记录，此操作无法撤销。",
       "deleteConfirmPageDesc": "将删除 {{count}} 个归档会话，包含其消息与 Claude Code 对话记录，此操作无法撤销。",
       "typeGroupName": "输入项目名「{{name}}」以确认",
-      "typeDelete": "输入 DELETE 以确认",
+      "typeDelete": "输入 {{token}} 以确认",
       "deleteConfirmOk": "删除",
       "resultTitle": "批量操作完成",
       "unarchiveSuccess": "已取消归档 {{count}} 项",

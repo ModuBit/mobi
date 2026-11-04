@@ -55,11 +55,15 @@ export async function runBatch(
     return results
 }
 
+/** 页面级批量删除的确认令牌：无组名可比对时的固定输入值；i18n 文案 typeDelete 以
+ *  {{token}} 插值引用同一常量，措辞与匹配值不再双源 */
+export const BATCH_DELETE_CONFIRM_TOKEN = 'DELETE'
+
 /** 批量确认输入的匹配值：组级 = 工作区名（空组名 / 未分组 → DELETE），页面级 = DELETE */
 export function batchConfirmExpected(scope: { kind: 'group'; groupName: string } | { kind: 'page' }): string {
     return scope.kind === 'group' && scope.groupName.trim().length > 0
         ? scope.groupName.trim()
-        : 'DELETE'
+        : BATCH_DELETE_CONFIRM_TOKEN
 }
 
 /**
