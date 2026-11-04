@@ -41,10 +41,8 @@ import { useAssignSessionWorkspace } from '@/core/data/hooks/mutations/useWorksp
 import { useMobiApi } from '@/core/data/api/client'
 import { resumeSession } from '@/core/data/sessionResume'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
-import { queryKeys } from '@/core/lib/queryKeys'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
-import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
-import { clearSessionResources } from '@/core/lib/sessionResources'
+import { evictSession } from '@/core/lib/sessionEviction'
 import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
 import { pushHistoryGuard } from '@/core/lib/drawerHistoryGuard'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
@@ -296,11 +294,7 @@ export function MobileWorkspaceList() {
             } else {
                 messageApi.success(t('common.success'))
             }
-            queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
-            clearMessageWindow(sessionId)
-            await invalidateSessionViews(queryClient, [sessionId])
-            // 清理检视面板状态 + 缓存终端（顺带关闭后端 PTY）
-            clearSessionResources(sessionId)
+            await evictSession(queryClient, [sessionId])
             setActionSessionId(null)
             if (activeSessionId === sessionId) {
                 navigateFromMenu(() => navigate({ to: '/sessions' }))

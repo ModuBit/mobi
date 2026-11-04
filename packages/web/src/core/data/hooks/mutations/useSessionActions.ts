@@ -21,8 +21,8 @@ import { useMobiApi } from '@/core/data/api/client'
 import type { Session } from '@/core/data/api/types'
 import { resumeSession as resumeSessionModule } from '@/core/data/sessionResume'
 import { queryKeys } from '@/core/lib/queryKeys'
-import { clearMessageWindow, fetchLatestMessages, removeQueuedMessages } from '@/core/data/stores/messageWindowStore'
-import { clearSessionResources } from '@/core/lib/sessionResources'
+import { fetchLatestMessages, removeQueuedMessages } from '@/core/data/stores/messageWindowStore'
+import { evictSession } from '@/core/lib/sessionEviction'
 
 /** 参与乐观 patch 的会话配置字段（与 daemon SESSION_CONFIG_FIELDS 的 live 四项对齐） */
 type ConfigField = 'permissionMode' | 'model' | 'effort' | 'fastMode'
@@ -213,13 +213,8 @@ export function useSessionActions(sessionId: string | null): {
         },
         onSuccess: async () => {
             if (!sessionId) return
-            // 删除时移除缓存而不是失效
-            queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
-            // 清理消息 store 窗口
-            clearMessageWindow(sessionId)
-            // 清理检视面板状态 + 缓存终端（顺带关闭后端 PTY）
-            clearSessionResources(sessionId)
-            await queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
+            // 删除离场清理（evictSession 收口：缓存移除 + 资源清理 + 视图失效）
+            await evictSession(queryClient, [sessionId])
         },
     })
 

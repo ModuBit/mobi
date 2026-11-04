@@ -29,10 +29,8 @@ import { Button } from '@/ui/base/interactive/button/Button'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { dormancyBlockedText, extractBlockers } from '@/core/data/sessionDormancy'
-import { queryKeys } from '@/core/lib/queryKeys'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
-import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
-import { clearSessionResources } from '@/core/lib/sessionResources'
+import { evictSession } from '@/core/lib/sessionEviction'
 import { useSessionDelete } from './useSessionDelete'
 import { runBatch, summarizeBatch, batchConfirmExpected } from './archivedBatch'
 import { useMobiApi } from '@/core/data/api/client'
@@ -262,14 +260,9 @@ export function ArchivedSessionsPage() {
         [archived, selectedIds],
     )
 
-    /** 批量动作成功条目的缓存清理（与单条删除流一致） */
+    /** 批量动作成功条目的离场清理（evictSession 收口，与单条删除流一致） */
     const cleanupAfterBatch = (sessionIds: string[]) => {
-        for (const id of sessionIds) {
-            queryClient.removeQueries({ queryKey: queryKeys.session(id) })
-            clearMessageWindow(id)
-            clearSessionResources(id)
-        }
-        void invalidateSessionViews(queryClient, sessionIds)
+        void evictSession(queryClient, sessionIds)
     }
 
     // 取消归档：409（gate）原样透出逐项原因，其余通用错误

@@ -21,10 +21,7 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import { notifyRetainedWorktree, notifyTranscriptRetained } from './retainedWorktreeNotice'
-import { queryKeys } from '@/core/lib/queryKeys'
-import { invalidateSessionViews } from '@/core/lib/invalidateViews'
-import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
-import { clearSessionResources } from '@/core/lib/sessionResources'
+import { evictSession } from '@/core/lib/sessionEviction'
 import { deleteBlockedText } from '@/core/data/sessionDormancy'
 import type { Session } from '@/core/data/api/types'
 
@@ -69,11 +66,7 @@ export function useSessionDelete() {
                     } else {
                         messageApi.success(t('common.success'))
                     }
-                    queryClient.removeQueries({ queryKey: queryKeys.session(session.id) })
-                    clearMessageWindow(session.id)
-                    await invalidateSessionViews(queryClient, [session.id])
-                    // 清理检视面板状态 + 缓存终端（顺带关闭后端 PTY）
-                    clearSessionResources(session.id)
+                    await evictSession(queryClient, [session.id])
                     if (activeSessionId === session.id) {
                         navigate({ to: '/sessions' })
                     }
