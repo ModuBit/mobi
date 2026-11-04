@@ -226,6 +226,7 @@
     "allWorkspaces": "All projects",
     "noMatch": "No matching archived chats",
     "groupCount": "{{count}} sessions",
+        "groupActions": "Project actions",
     "title": "Archived Sessions",
     "empty": "No archived sessions",
     "ungrouped": "Unassigned",
