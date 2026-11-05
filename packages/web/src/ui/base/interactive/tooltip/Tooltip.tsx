@@ -138,6 +138,12 @@ export function Tooltip({
         <TooltipPrimitive.Provider>
             <TooltipPrimitive.Root
                 open={open}
+                // Radix Trigger 内建 delayed-open timer（默认 700ms）与本组件的全受控封装冲突：
+                // 受控打开由 prop 驱动不走 onChange，而该 timer 到点时闭包里的 prop 仍是旧值 false，
+                // setOpen(true) 被判为「值有变化」→ dispatch tooltip.open 互斥广播 → 把自己关掉
+                //（表现为 mouseEnterDelay 0.5s 的 tooltip 打开约 200ms 后自灭）。置 0 让内建打开
+                // 请求立即上抛并被上方 onOpenChange 忽略，timer 即清无残留。
+                delayDuration={0}
                 onOpenChange={(next) => {
                     if (next) return
                     if (triggerPressRef.current) {
