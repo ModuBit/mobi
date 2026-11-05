@@ -144,7 +144,8 @@ export function formatEvent(event: { type: string; [key: string]: unknown }, cre
             return {
                 kind: 'lines',
                 lines: [{
-                    segments: ['📦 ', { key: 'chat.contextCompacted' }, ...(stats.length > 0 ? [` · ${stats.join(' · ')}`] : [])],
+                    icon: 'compact',
+                    segments: [{ key: 'chat.contextCompacted' }, ...(stats.length > 0 ? [` · ${stats.join(' · ')}`] : [])],
                     mono: true,
                 }],
             }
@@ -155,9 +156,11 @@ export function formatEvent(event: { type: string; [key: string]: unknown }, cre
             return {
                 kind: 'lines',
                 lines: [{
+                    // 同 compact 用语义图标（EventText 映射 Minimize2），不再用 📦 emoji
+                    icon: 'compact',
                     // 历史行为保留：formatTokensCount 产物已含「 tokens」后缀，此处再拼一次
                     // （上游如此渲染，改文案属行为变更——已记 pending，分层治理票外裁决）
-                    segments: ['📦 ', { key: 'chat.contextMicrocompacted' }, ...(saved > 0 ? [` · ${formatTokensCount(saved)} tokens`] : [])],
+                    segments: [{ key: 'chat.contextMicrocompacted' }, ...(saved > 0 ? [` · ${formatTokensCount(saved)} tokens`] : [])],
                     mono: true,
                 }],
             }

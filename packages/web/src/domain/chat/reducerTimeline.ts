@@ -24,8 +24,8 @@ import { ensureToolBlock, extractTitleFromChangeTitleInput, isChangeTitleToolNam
 import { messageBlockKeyPrefix } from './blockId'
 
 // 根据事件类型获取渲染提示
-// 对齐语义（2026-10-30 定稿）：过程性系统行靠左（align left → bubble-event-align-left），
-// 仅 title-changed / switch 保持 system 默认居中；/clear（context-cleared）与
+// 对齐语义（2026-11-03 修订）：过程性系统行靠左（align left → bubble-event-align-left）；
+// summary（CC 标题/摘要行）与 switch 保持 system 默认居中；/clear（context-cleared）与
 // rewind-completed 是 divider 角色分隔线，不经此映射
 function getEventDisplay(event: { type: string; [key: string]: unknown }): EventDisplay | undefined {
     switch (event.type) {
@@ -35,10 +35,11 @@ function getEventDisplay(event: { type: string; [key: string]: unknown }): Event
         case 'goal-progress': return { color: event.met === true ? 'success' : 'default', align: 'left' }
         case 'turn-result':
         case 'aborted': return { align: 'left' }
+        // message / plan mode 提示 / 对话压缩类（compact / microcompact）同为过程性事件行，靠左
         case 'message':
-        case 'summary':
         case 'plan-mode-entered':
         case 'plan-mode-enter-failed':
+        case 'compact':
         case 'microcompact': return { align: 'left' }
         default: return undefined
     }

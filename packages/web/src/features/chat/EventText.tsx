@@ -23,13 +23,15 @@
 
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Goal } from 'lucide-react'
+import { Goal, Minimize2 } from 'lucide-react'
 import type { FormattedEvent } from '@/domain/chat'
 import { TurnResultMeta } from './TurnResultMeta'
 
 /** 行首语义图标名 → lucide 组件（domain 零 React 只传名；未知名不渲染） */
 const LINE_ICONS: Record<string, ReactNode> = {
     goal: <Goal size={12} />,
+    // 对话压缩类（compact / microcompact）：双箭头内收的「压缩」语义，替代旧 📦 emoji
+    compact: <Minimize2 size={12} />,
 }
 
 export function EventText({ formatted, actions }: { formatted: FormattedEvent; actions?: ReactNode }) {

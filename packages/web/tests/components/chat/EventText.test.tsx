@@ -156,6 +156,9 @@ describe('formatEvent compact / microcompact', () => {
         expect(screen.getByText(/319\.0k/)).toBeInTheDocument()
         expect(screen.getByText(/30\.3k/)).toBeInTheDocument()
         expect(screen.getByText(/2m 20s/)).toBeInTheDocument()
+        // 行首语义图标（Minimize2）替代旧 📦 emoji：svg 渲染且 emoji 不再出现
+        expect(screen.queryByText(/📦/)).not.toBeInTheDocument()
+        expect(document.querySelector('svg')).not.toBeNull()
     })
 
     it('compact 缺耗时时只显示 token 变化（数据缺失容错）', () => {

@@ -771,3 +771,70 @@ describe('aborted 截断标注（挂在最后一个渲染为 agent-text 的块�
         expect((agentTexts[1] as { aborted?: boolean }).aborted).toBe(true)
     })
 })
+
+// 事件行对齐映射（2026-11-03 定稿）：CC 标题/摘要行（summary）保持 system 默认居中，
+// 对话压缩类事件行（compact）与 CLI 本地命令回显（message）靠左
+describe('事件行对齐映射（display.align）', () => {
+    function makeCtx() {
+        return {
+            permissionsById: new Map<string, PermissionEntry>(),
+            groups: new Map<string, TracedMessage[]>(),
+            consumedGroupIds: new Set<string>(),
+            titleChangesByToolUseId: new Map<string, string>(),
+            emittedTitleChangeToolUseIds: new Set<string>(),
+            hiddenToolUseIds: new Map<string, string>(),
+        }
+    }
+
+    it('summary 行（CC 标题/摘要）无 align 覆盖 → 保持 system 默认居中', () => {
+        const msg: TracedMessage = {
+            id: 'summary-title',
+            localId: null,
+            createdAt: 1000,
+            role: 'agent',
+            isSidechain: false,
+            content: [{ type: 'summary', summary: '思考等级切换 UI 回跳逻辑排查' }],
+        }
+
+        const { blocks } = reduceTimeline([msg], makeCtx())
+
+        const eventBlock = blocks.find(b => b.kind === 'agent-event')
+        expect(eventBlock).toBeDefined()
+        expect((eventBlock as { display?: { align?: string } }).display?.align).toBeUndefined()
+    })
+
+    it('compact 事件行靠左', () => {
+        const msg: TracedMessage = {
+            id: 'compact-1',
+            localId: null,
+            createdAt: 1000,
+            role: 'event',
+            isSidechain: false,
+            content: { type: 'compact', trigger: 'auto', preTokens: 100, postTokens: 50, durationMs: 1000 },
+        } as unknown as TracedMessage
+
+        const { blocks } = reduceTimeline([msg], makeCtx())
+
+        const eventBlock = blocks.find(b => b.kind === 'agent-event')
+        expect(eventBlock).toBeDefined()
+        expect((eventBlock as { display?: { align?: string } }).display?.align).toBe('left')
+    })
+
+    it('message 事件行（CLI 本地命令回显）仍靠左', () => {
+        const msg: TracedMessage = {
+            id: 'msg-echo',
+            localId: null,
+            createdAt: 1000,
+            role: 'user',
+            isSidechain: false,
+            meta: { sentFrom: 'cli' },
+            content: { blocks: [{ type: 'text', text: '<local-command-stdout>模型已切换</local-command-stdout>' }] },
+        } as unknown as TracedMessage
+
+        const { blocks } = reduceTimeline([msg], makeCtx())
+
+        const eventBlock = blocks.find(b => b.kind === 'agent-event')
+        expect(eventBlock).toBeDefined()
+        expect((eventBlock as { display?: { align?: string } }).display?.align).toBe('left')
+    })
+})

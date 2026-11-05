@@ -177,9 +177,9 @@ html[data-theme='dark'] .x-markdown tbody tr:hover {
    dark 提亮一档天蓝；同色相家族。mono 600 强调「这是一条命令」。
    icon 由 React 组件渲染（Markdown.tsx SlashCommandBadge），色随 currentColor */
 .x-markdown .slash-command-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
+    /* inline 而非 inline-flex：flex 容器基线取首个 item，SVG 无文本基线 → 以 icon 底边
+       作基线，文字整体偏离与后文不齐（icon 的对齐在组件层 verticalAlign 微调） */
+    display: inline;
     color: #228be6;
     font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
     font-size: 0.8em;

@@ -92,8 +92,11 @@ const DOMPURIFY_CONFIG: DOMPurifyConfig = {
  * 样式（mono 蓝字、无底无框）见 markdown.css .slash-command-badge。
  */
 const SlashCommandBadge: FC<ComponentProps<{ 'data-command'?: string }>> = ({ 'data-command': command }) => (
+    // icon 用 verticalAlign 负值微调、badge 走 inline（非 inline-flex）：inline-flex 的
+    // 基线取首个 flex item，SVG 无文本基线 → 以 icon 底边作 badge 基线，文字整体偏离
+    // 与后文不齐。模式同 MentionDirectoryBadge（Folder icon 同款处理）。
     <span className="slash-command-badge">
-        <Box size={12} strokeWidth={2.4} aria-hidden="true" />
+        <Box size={12} strokeWidth={2.4} style={{ verticalAlign: -2, marginRight: 3 }} aria-hidden="true" />
         {command}
     </span>
 )
