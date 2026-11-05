@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { ReactNode, UIEvent } from 'react'
+import type { ReactNode } from 'react'
 import { App, Input, Listy, Modal, Spin, theme as antTheme } from 'antd'
 import { Archive as ArchiveIcon, ArchiveRestore, Clock, Folder, MoreHorizontal, Search, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -160,12 +160,15 @@ const ListyShell = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['to
     }
 `
 
-/** 触底加载指示：叠在列表内缘底部的浅色胶囊（双档主题各自可读） */
-const LoadingMore = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
-    position: absolute;
-    bottom: 12px;
-    left: 50%;
-    transform: translateX(-50%);
+/** 手动分页行：列表下方的居中动作行（「加载更多」按钮 / 加载中指示） */
+const LoadMoreRow = styled.div`
+    display: flex;
+    justify-content: center;
+    padding: 12px 0 4px;
+`
+
+/** 加载中指示：浅色胶囊（双档主题各自可读） */
+const LoadMorePill = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -175,7 +178,6 @@ const LoadingMore = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['t
     background: ${p => p.$token.colorBgContainer};
     font-size: 12px;
     color: ${p => p.$token.colorTextSecondary};
-    pointer-events: none;
 `
 
 /* 组头（项目名 + 真实计数 + ⋯ 菜单）：hover 显示动作（触屏常驻），下拉面板打开期间不隐藏 */
@@ -448,15 +450,6 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
         return () => observer.disconnect()
     }, [listShell])
 
-    // ── 触底加载：接近底部 240px 预取下一页（Listy onScroll 原生事件）──
-    const handleListScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
-        const el = e.currentTarget
-        if (!hasNextPage || isFetchingNextPage) return
-        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) {
-            void fetchNextPage()
-        }
-    }, [hasNextPage, isFetchingNextPage, fetchNextPage])
-
     // 取消归档：409（gate）原样透出逐项原因，其余通用错误
     const handleUnarchive = (session: Session) => {
         unarchive.mutate(session.id, {
@@ -708,35 +701,45 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                 {sessions.length === 0 ? (
                     <NoMatchRow $token={token}>{t('archived.noMatch')}</NoMatchRow>
                 ) : (
-                    <ListyShell ref={setListShell} $token={token}>
-                        {/* 高度就绪后才挂 Listy（virtual 依赖 height；ResizeObserver 首帧即给值） */}
-                        {listHeight > 0 && (
-                            <Listy<AnnotatedRow>
-                                items={annotated}
-                                rowKey={(row) => row.session.id}
-                                virtual
-                                height={listHeight}
-                                onScroll={handleListScroll}
-                                group={{
-                                    // antd Key 不含 null——未归入工作区走 '__none__' 哨兵（与过滤选项同值）
-                                    key: (row) => row.session.workspaceId ?? WORKSPACE_NONE,
-                                    title: (groupKey) => renderGroupHeader(groupKey === WORKSPACE_NONE ? null : String(groupKey)),
-                                }}
-                                itemRender={renderRow}
-                                classNames={{
-                                    root: 'archived-listy-root',
-                                    item: 'archived-listy-item',
-                                    groupHeader: 'archived-listy-header',
-                                }}
-                            />
+                    <>
+                        <ListyShell ref={setListShell} $token={token}>
+                            {/* 高度就绪后才挂 Listy（virtual 依赖 height；ResizeObserver 首帧即给值） */}
+                            {listHeight > 0 && (
+                                <Listy<AnnotatedRow>
+                                    items={annotated}
+                                    rowKey={(row) => row.session.id}
+                                    virtual
+                                    height={listHeight}
+                                    group={{
+                                        // antd Key 不含 null——未归入工作区走 '__none__' 哨兵（与过滤选项同值）
+                                        key: (row) => row.session.workspaceId ?? WORKSPACE_NONE,
+                                        title: (groupKey) => renderGroupHeader(groupKey === WORKSPACE_NONE ? null : String(groupKey)),
+                                    }}
+                                    itemRender={renderRow}
+                                    classNames={{
+                                        root: 'archived-listy-root',
+                                        item: 'archived-listy-item',
+                                        groupHeader: 'archived-listy-header',
+                                    }}
+                                />
+                            )}
+                        </ListyShell>
+                        {/* 手动分页：用户点「加载更多」拉下一页（滚动只负责浏览，不被自动预取拖着走） */}
+                        {hasNextPage && (
+                            <LoadMoreRow>
+                                {isFetchingNextPage ? (
+                                    <LoadMorePill $token={token}>
+                                        <Spin size="small" />
+                                        {t('archived.loadingMore')}
+                                    </LoadMorePill>
+                                ) : (
+                                    <Button variant="secondary" size="sm" onClick={() => void fetchNextPage()}>
+                                        {t('archived.loadMore')}
+                                    </Button>
+                                )}
+                            </LoadMoreRow>
                         )}
-                        {isFetchingNextPage && (
-                            <LoadingMore $token={token}>
-                                <Spin size="small" />
-                                {t('archived.loadingMore')}
-                            </LoadingMore>
-                        )}
-                    </ListyShell>
+                    </>
                 )}
             </Inner>
 
