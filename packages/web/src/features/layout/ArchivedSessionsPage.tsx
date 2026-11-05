@@ -34,6 +34,8 @@ import { evictSession } from '@/core/lib/sessionEviction'
 import { useSessionDelete } from './useSessionDelete'
 import { summarizeBatch, batchConfirmExpected, BATCH_DELETE_CONFIRM_TOKEN } from './archivedBatch'
 import type { BatchItemResult } from './archivedBatch'
+import { groupAndAnnotate } from './archivedGrouping'
+import type { AnnotatedRow } from './archivedGrouping'
 import { useMobiApi } from '@/core/data/api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session } from '@/core/data/api/types'
@@ -121,32 +123,22 @@ const WorkspaceFilter = styled(Select)`
 `
 
 /**
- * Listy 容器（虚拟滚动的量高基准）：色块卡效果用数据层组边界标注（见 annotateGroupEdges）
- * + 语义类实现——虚拟滚动下 Listy 平铺 DOM 的相邻关系不可靠（视口外的组头被剪掉后
- * 「组末行 + 下组首行」在 DOM 里直接相邻），圆角/边框不做 DOM 邻接推断。
- * 组边界类标在行内容 div 上，item 容器经 :has() 命中。
+ * Listy 容器（虚拟滚动的量高基准）：色块卡视觉全部由行元素（ArchivedRow）按
+ * group-first/group-last 类直接命中——不从 item 容器用 :has() 回查（祖先选择器在
+ * 虚拟滚动每帧增删行时触发全量样式重验证，移动端滚动肉眼卡顿），也不做 DOM 邻接
+ * 推断（虚拟化下相邻关系不可靠）。行序列由 groupAndAnnotate 在数据层聚类成
+ * 「同组连续」，Listy 的 group 聚类重排退化为恒等，边界标注与视觉位置一致。
  */
 const ListyShell = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
     flex: 1;
     min-height: 0;
     position: relative;
 
-    /* 每行承担色块卡侧壁；组内首行收卡顶，其余行画行间 hairline，末行收卡底 */
+    /* item 容器透明零内衬（卡片视觉与留白都在行元素上；重置 antd 默认底色与
+     * 12px 16px padding，否则容器 padding 区露页面底色、行间现缝） */
     .archived-listy-item {
-        background: ${p => p.$token.colorBgContainer};
-        border-left: 1px solid ${p => p.$token.colorBorderSecondary};
-        border-right: 1px solid ${p => p.$token.colorBorderSecondary};
-    }
-    .archived-listy-item:has(.group-first) {
-        border-top: 1px solid ${p => p.$token.colorBorderSecondary};
-        border-radius: var(--radius-panel) var(--radius-panel) 0 0;
-    }
-    .archived-listy-item:not(:has(.group-first)) {
-        border-top: 1px solid ${p => p.$token.colorBorderSecondary};
-    }
-    .archived-listy-item:has(.group-last) {
-        border-bottom: 1px solid ${p => p.$token.colorBorderSecondary};
-        border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+        background: transparent;
+        padding: 0;
     }
 
     /* 组头裸排页面背景（ChatGPT 形态）：重置 antd 默认背景/内衬，组间 28px 承载在
@@ -239,15 +231,39 @@ const GroupActionButton = styled.button<{ $token: ReturnType<typeof antTheme.use
     }
 `
 
+/**
+ * 色块卡行：卡片视觉（背景/侧壁/组边界圆角与 hairline）按组边界类直接命中（不用
+ * :has()，见 ListyShell 注释）。单行组（first+last 同在）需四角全圆——该规则必须
+ * 声明在 first/last 两条之后，否则 border-radius 被后者覆盖、上圆角变直角。
+ */
 const ArchivedRow = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
     display: flex;
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
     color: ${p => p.$token.colorText};
+    background: ${p => p.$token.colorBgContainer};
+    border-left: 1px solid ${p => p.$token.colorBorderSecondary};
+    border-right: 1px solid ${p => p.$token.colorBorderSecondary};
 
     &:hover {
         background: ${p => p.$token.colorBgTextHover};
+    }
+
+    /* 组内首行收卡顶，其余行画行间 hairline，末行收卡底 */
+    &.group-first {
+        border-top: 1px solid ${p => p.$token.colorBorderSecondary};
+        border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+    }
+    &:not(.group-first) {
+        border-top: 1px solid ${p => p.$token.colorBorderSecondary};
+    }
+    &.group-last {
+        border-bottom: 1px solid ${p => p.$token.colorBorderSecondary};
+        border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+    }
+    &.group-first.group-last {
+        border-radius: var(--radius-panel);
     }
 `
 
@@ -341,24 +357,6 @@ const EmptyState = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['to
     padding-bottom: 15dvh;
 `
 
-/** 组边界标注：Listy item 的圆角/边框按数据层的组内首末行渲染（虚拟化安全，见 ListyShell） */
-interface AnnotatedRow {
-    session: Session
-    groupFirst: boolean
-    groupLast: boolean
-}
-
-function annotateGroupEdges(sessions: Session[]): AnnotatedRow[] {
-    const keyOf = (s: Session) => s.workspaceId ?? null
-    return sessions.map((session, i) => {
-        const key = keyOf(session)
-        // 首末行用 undefined 哨兵（≠ 任何 null/string 组键）保证边界判定
-        const prevKey = i > 0 ? keyOf(sessions[i - 1]) : undefined
-        const nextKey = i < sessions.length - 1 ? keyOf(sessions[i + 1]) : undefined
-        return { session, groupFirst: prevKey !== key, groupLast: nextKey !== key }
-    })
-}
-
 /** 待确认的批量删除：组级（输入项目名）或页面级（输入 DELETE）；count 是范围真实总数 */
 interface PendingBatchDelete {
     scope:
@@ -420,7 +418,7 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
         }
         return out
     }, [data])
-    const annotated = useMemo(() => annotateGroupEdges(sessions), [sessions])
+    const annotated = useMemo(() => groupAndAnnotate(sessions), [sessions])
 
     // 组计数 / 全集总数取最后页快照（每页响应都带全集统计）
     const lastPage = data?.pages[data.pages.length - 1]
