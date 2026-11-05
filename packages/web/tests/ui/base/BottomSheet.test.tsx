@@ -953,8 +953,11 @@ describe('BottomSheet', () => {
         const css = readFileSync(join(process.cwd(), 'src/ui/base/interactive/bottom-sheet/bottom-sheet.module.css'), 'utf8')
         const shell = readFileSync(join(process.cwd(), 'src/ui/base/layout/sheetSurface.module.css'), 'utf8')
         // 高度：内容自适应（height:auto）+ 上限 = 调用方档位（--sheet-max-height，默认 85dvh）
+        // 键盘 overlay 模式：--kb-inset 抬升 sheet 并等量收缩上限（bottom 同源消费，见下）
         expect(css).toMatch(/\.sheet \{[^}]*height: auto;/)
-        expect(css).toMatch(/max-height: calc\(var\(--sheet-max-height, 85dvh\) \+ var\(--sheet-extension\)\)/)
+        expect(css).toMatch(/max-height: calc\(var\(--sheet-max-height, 85dvh\) - var\(--kb-inset, 0px\) \+ var\(--sheet-extension\)\)/)
+        // 键盘跟随：bottom 消费 --kb-inset（store 逐帧写入）——sheet 内输入框不被键盘盖住
+        expect(css).toMatch(/bottom: calc\(var\(--kb-inset, 0px\) \+ var\(--sheet-extension\) \* -1\)/)
         // 内容区：唯一滚动区 + 解除 flex item 的「不收缩」（没有它长内容会撑爆 sheet 被裁）
         expect(shell).toMatch(/\.body \{[^}]*min-height: 0;/)
         expect(shell).toMatch(/\.body \{[^}]*overflow-y: auto;/)

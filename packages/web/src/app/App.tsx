@@ -24,6 +24,7 @@ import { ErrorBoundary } from '@/ui/base/layout/ErrorBoundary'
 import { prefetchRouteChunks } from '@/app/routeChunks'
 import { MobiLogo } from '@/ui/base/brand/MobiLogo'
 import { NotificationPermissionGate } from '@/features/layout/NotificationPermissionGate'
+import { ensureKeyboardViewportWatchers } from '@/features/chat/useKeyboardViewport'
 
 export function App() {
     const { authenticated, logout } = useAuthStore()
@@ -79,6 +80,12 @@ export function App() {
             navigate({ to: '/' })
         }
     }, [authenticated, bootstrapped, location.pathname, navigate])
+
+    // 常驻持有键盘几何监听：布局经 --kb-inset CSS 变量消费 store，这个消费面全站生效
+    // （含无 MainLayout 的登录页），不依赖页面组件订阅——若只靠 chat 页组件订阅，其他
+    // 路由下订阅计数为 0、watcher 不挂，键盘腾出动画/聚焦可见性保护整体瘫痪
+    // （2026-11-01 真机实锤：设置页弹键盘布局纹丝不动）
+    useEffect(() => ensureKeyboardViewportWatchers(), [])
 
     // 空闲预取全部路由 chunk：认证判定通过后浏览器空闲时触发一次，之后任意页面跳转
     // 命中 HTTP 缓存不再 suspend（消除切页白屏）。未认证不预取——登录态下唯一可达

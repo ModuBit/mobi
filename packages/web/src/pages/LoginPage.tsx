@@ -37,11 +37,17 @@ import axios from 'axios'
 import { useState } from 'react'
 import styled from '@emotion/styled'
 
-/** 全屏容器：左右分栏（固定视口高度，左右各自处理内部滚动） */
+/** 全屏容器：左右分栏（固定视口高度，左右各自处理内部滚动）。
+ *  键盘 overlay 模式：--kb-inset（useKeyboardViewport 在事件时刻写一次终值）腾出布局——
+ *  本页无 MainLayout，不接变量则表单下半被键盘盖住且 panel 的 nearest 滚动参照
+ *  仍是全屏底缘，滚了也白滚（2026-11-01 真机）；平滑由 padding-bottom 的 transition
+ *  插值（280ms easeOutCubic，与 store 的 OVERLAY_ANIM_MS 对齐，登录页树轻逐帧 relayout 无压力） */
 const PageContainer = styled.div`
     display: flex;
     width: 100%;
     height: 100dvh;
+    padding-bottom: var(--kb-inset, 0px);
+    transition: padding-bottom 280ms cubic-bezier(0.33, 1, 0.68, 1);
     overflow: hidden;
 `
 

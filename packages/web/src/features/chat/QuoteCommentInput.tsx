@@ -69,7 +69,8 @@ export const QuoteCommentInput = memo(function QuoteCommentInput({
     const { top, left, above } = computeQuoteLayerPlacement(rect, POPOVER_WIDTH, FLIP_THRESHOLD_PX, ESTIMATED_HEIGHT_PX)
     // layoutInset = 当前 layout viewport 内被键盘占据的高度（overlay 模式 = 键盘全高，
     // 与 iOS 模型同语义；resize 模式 ≈0，bottom 基准已是键盘上方），直接用键盘全高
-    // 会在 resize 模式下把浮层抬出屏幕。本组件是键盘跟随浮层，订数值切片逐帧跟动画
+    // 会在 resize 模式下把浮层抬出屏幕。本组件是键盘跟随浮层，订数值切片；store 在事件
+    // 时刻写一次终值，bottom 的 transition 负责插值跟随（JS 不逐帧）
     const keyboardInset = useKeyboardViewportSelector(s => s.keyboardInset)
     const layoutInset = useKeyboardViewportSelector(s => s.layoutInset)
     const { t } = useTranslation()
@@ -80,7 +81,16 @@ export const QuoteCommentInput = memo(function QuoteCommentInput({
             data-testid="quote-comment-layer"
             style={
                 keyboardInset > 0
-                    ? { bottom: layoutInset + 8, left: 16, right: 16, width: 'auto', transform: undefined }
+                    ? {
+                        bottom: layoutInset + 8,
+                        left: 16,
+                        right: 16,
+                        width: 'auto',
+                        transform: undefined,
+                        // 只列 bottom：键盘高度变化（切换布局/语言）时浮层平滑贴住新上缘；
+                        // 形态切换瞬（锚选区→键盘态）其余属性仍瞬变
+                        transition: 'bottom 280ms cubic-bezier(0.33, 1, 0.68, 1)',
+                    }
                     : { top, left, transform: above ? 'translateY(-100%)' : undefined }
             }
         >

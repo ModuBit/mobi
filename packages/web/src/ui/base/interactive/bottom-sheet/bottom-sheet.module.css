@@ -38,17 +38,25 @@
 }
 
 /* sheet 主体：盒高 = 内容高（上限 --sheet-max-height），底部多出 --sheet-extension 的
-   屏下延伸段——向上拉伸时不会在底缘露出缝隙；位移全部走 y 的 transform */
+   屏下延伸段——向上拉伸时不会在底缘露出缝隙；位移全部走 y 的 transform。
+   键盘 overlay 模式：--kb-inset（useKeyboardViewport 在事件时刻写一次终值）抬升 sheet 并
+   等量收缩上限——键盘弹出时 sheet 内的输入框不被键盘盖住；平滑由 bottom/max-height 的
+   transition 插值（280ms easeOutCubic，与 store 的 OVERLAY_ANIM_MS 对齐；sheet 内容树轻，
+   逐帧 relayout 无压力）。开合与拖拽改档位移走 transform 不经这两属性，transition 不会被
+   误触发；变量缺省（无 API 平台/键盘未弹）恒 0px，行为不变 */
 .sheet {
     position: fixed;
     right: 0;
     /* 屏下延伸段的缺席由使用方接住（见 data-sheet-surface 的贴底形状） */
-    bottom: calc(var(--sheet-extension) * -1);
+    bottom: calc(var(--kb-inset, 0px) + var(--sheet-extension) * -1);
     left: 0;
     z-index: var(--sheet-z-top, calc(var(--mobi-z-overlay) + 1));
     width: min(100%, 36rem);
     height: auto;
-    max-height: calc(var(--sheet-max-height, 85dvh) + var(--sheet-extension));
+    max-height: calc(var(--sheet-max-height, 85dvh) - var(--kb-inset, 0px) + var(--sheet-extension));
+    transition:
+        bottom 280ms cubic-bezier(0.33, 1, 0.68, 1),
+        max-height 280ms cubic-bezier(0.33, 1, 0.68, 1);
     margin-inline: auto;
     padding-bottom: calc(var(--sheet-extension) + max(24px, env(safe-area-inset-bottom, 0px)));
     outline: none;

@@ -17,9 +17,10 @@
     <!-- VirtualKeyboard overlay 模式（支持面：Android Chrome/Edge 与 Android PWA；iOS Safari /
          Firefox 无此 API，维持上面的 interactive-widget=resizes-content 视口收缩路径不变）：
          键盘弹出时浏览器不再一步收缩布局视口（那是「腾空间生硬」的根源——视口瞬变而键盘
-         ~300ms 动画抽出，两者不同步），改为键盘浮在内容上，布局经 env(keyboard-inset-height)
-         逐帧跟随键盘动画（MainLayout 高度与 useKeyboardViewport 的 inset 检测都按此模式收口）。
-         必须在首帧前设置 -->
+         ~300ms 动画抽出，两者不同步），改为键盘浮在内容上。真机实锤 Chromium 只在键盘
+         动画结束后才以终值触发 geometrychange / env(keyboard-inset-*)，布局无从跟随滑动，
+         故 useKeyboardViewport 的 store 以焦点事件预测 + 终值校正自补动画，逐帧写入
+         --kb-inset CSS 变量（MainLayout / ChatComposer 消费变量）。必须在首帧前设置 -->
     <script>
         if ('virtualKeyboard' in navigator) navigator.virtualKeyboard.overlaysContent = true
     </script>

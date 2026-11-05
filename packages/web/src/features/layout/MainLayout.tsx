@@ -85,13 +85,15 @@ export function MainLayout() {
                 关闭 = 清空 reload 状态，SW 下次更新才再提示 */}
             {isMobile && <UpdatePrompt onUpdate={updateReload} onClose={() => setUpdateReload(null)} />}
             {/* 外层 column 容器：WCO 标题栏在上（独立于下方 row Layout 的横向流），不受 AppSidebar overflow 裁剪。
-                键盘 overlay 模式（index.html 早期脚本开启）：100dvh 恒为全屏高，键盘高度经
-                env(keyboard-inset-height) 逐帧跟随系统键盘动画——整棵布局平滑腾出空间
-                （border-box 由 base.css 全局规则承担，padding 内收不撑高）。无此 API 的
-                浏览器 env 恒走 0px 兜底，回落 resizes-content 视口收缩路径 */}
+                键盘 overlay 模式（index.html 早期脚本开启）：100dvh 恒为全屏高，键盘高度经 --kb-inset 变量
+                （useKeyboardViewport 在事件时刻写一次终值）腾出空间；平滑由本层 padding-bottom 的
+                transition 插值（280ms easeOutCubic，与 store 的 OVERLAY_ANIM_MS 对齐）——插值虽仍逐帧
+                layout，但已无 JS 逐帧回调、React 逐帧通知与 resize 广播风暴（2026-11-01 掉帧重构）。
+                无此 API 的浏览器变量恒缺省走 0px 兜底，回落 resizes-content 视口收缩路径 */}
             <div style={{
                 height: '100dvh',
-                paddingBottom: 'env(keyboard-inset-height, 0px)',
+                paddingBottom: 'var(--kb-inset, 0px)',
+                transition: 'padding-bottom 280ms cubic-bezier(0.33, 1, 0.68, 1)',
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
