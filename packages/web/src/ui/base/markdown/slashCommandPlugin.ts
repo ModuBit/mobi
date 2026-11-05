@@ -15,16 +15,21 @@
  */
 
 import type { Token, Tokens, TokenizerAndRendererExtension } from 'marked'
+import { COMMAND_NAME_CHARS_SRC } from '@/domain/command/slashCommandHelper'
 
 /**
- * 匹配 /command：独立词 / 开头，命令名 [a-zA-Z0-9_-]+，
+ * 匹配 /command：独立词 / 开头，命令名字符集单源在 COMMAND_NAME_CHARS_SRC
+ * （含冒号——CC 插件命令 /plugin:skill 的命名空间分隔），
  * 命令名后必须是空白/换行/结尾（lookahead）——避免 /path/to/x、/foo(bar) 误判。
  * 第二组捕获命令名后的参数（到行尾），参数走 inline 解析支持 markdown。
  *
  * 触发条件与 sender 的 detectSlashAtCursor 对齐：独立词（/ 前为行首或空白），
  * 不再要求整段以 / 开头。
  */
-const SLASH_COMMAND_RULE = /^\/([a-zA-Z0-9_-]+)(?=[ \t\n]|$)(?:[ \t]([^\n]*))?/
+const SLASH_COMMAND_RULE = new RegExp(`^\\/([${COMMAND_NAME_CHARS_SRC}]+)(?=[ \\t\\n]|$)(?:[ \\t]([^\\n]*))?`)
+
+/** start() 热路径用：找「独立词 / 后跟命令名字符」处 */
+const SLASH_START_RE = new RegExp(`(?:^|\\s)\\/[${COMMAND_NAME_CHARS_SRC}]`)
 
 /** HTML entity 转义，防止 XSS */
 function escapeHtml(text: string): string {
@@ -47,7 +52,7 @@ function slashCommand(): TokenizerAndRendererExtension {
         level: 'inline',
         start(src: string) {
             // 找下一个「独立词 / 后跟命令名字符」的位置（/ 前为空白或开头）
-            const m = src.match(/(?:^|\s)\/[a-zA-Z0-9_-]/)
+            const m = src.match(SLASH_START_RE)
             if (!m) return undefined
             // 跳过可能的前导空白，返回 / 的位置
             return m.index! + (src[m.index!] === '/' ? 0 : 1)

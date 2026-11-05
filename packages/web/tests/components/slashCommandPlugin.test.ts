@@ -68,9 +68,21 @@ describe('slashCommandPlugin', () => {
         expect(html).not.toContain('class="slash-command-badge"')
     })
 
-    it('命令名仅允许 [a-zA-Z0-9_-]', () => {
+    it('命令名仅允许 [a-zA-Z0-9_:-]', () => {
         const html = render('/board-2 详情')
         expect(html).toContain('<slash-command data-command=')
         expect(html).toContain('data-command="board-2"')
+    })
+
+    it('插件命名空间命令 /plugin:skill 识别为 badge（冒号是命令名合法成分）', () => {
+        const html = render('/plugin:skill 参数')
+        expect(html).toContain('<slash-command data-command=')
+        expect(html).toContain('data-command="plugin:skill"')
+        expect(html).toContain('参数')
+    })
+
+    it('URL 形态不误伤（//x:y 的 / 前非空白，非独立词）', () => {
+        const html = render('地址 http://a:b/c 结束')
+        expect(html).not.toContain('class="slash-command-badge"')
     })
 })

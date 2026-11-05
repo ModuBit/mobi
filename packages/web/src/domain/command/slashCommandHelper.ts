@@ -34,8 +34,16 @@ export interface SlashCommandSuggestionItem {
     builtin?: boolean
 }
 
-/** 命令名合法字符（字母、数字、下划线、连字符）；用于过滤路径/括号等误触发 */
-const COMMAND_NAME_CHARS = /^[a-zA-Z0-9_-]*$/
+/**
+ * 命令名字符集源（字符类字面量，供拼正则）：字母、数字、下划线、连字符、冒号。
+ * 冒号是 CC 插件命令的命名空间分隔（/plugin:skill），是命令名合法成分而非误触发信号
+ * （URL 的 //x:y 因「独立词」条件被挡）。composer 触发检测与消息渲染徽章共用本字符集，
+ * 两边语义必须同步演进。
+ */
+export const COMMAND_NAME_CHARS_SRC = 'a-zA-Z0-9_:-'
+
+/** 命令名合法字符；用于过滤路径/括号等误触发 */
+const COMMAND_NAME_CHARS = new RegExp(`^[${COMMAND_NAME_CHARS_SRC}]*$`)
 
 /**
  * 检测光标位置是否处于斜杠命令模式
