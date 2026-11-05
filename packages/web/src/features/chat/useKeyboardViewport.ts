@@ -21,8 +21,14 @@ const KEYBOARD_INSET_THRESHOLD = 80
 
 /** overlay 模式腾出动画的时长（ms）：Android 系统键盘滑出 ~300ms，腾出与其衔接（略短，
  *  让布局先于键盘尾段落定）。store 只在事件时刻写一次终值，插值完全由消费端的 CSS
- *  transition 承担（本常量与各消费端 CSS 里写的时长对齐；也是可见性保护的沉降等待） */
+ *  transition 承担——时长与曲线经 --kb-anim 单源下发给所有消费端（不再各写一份），
+ *  本常量同时是可见性保护的沉降等待 */
 const OVERLAY_ANIM_MS = 280
+
+/** 腾出动画的 CSS 变量名（写 <html> 上）：消费端一律 `transition: … var(--kb-anim)`，
+ *  调时长/曲线只改本模块 */
+export const KB_ANIM_CSS_VAR = '--kb-anim'
+const KB_ANIM_TRANSITION = `${OVERLAY_ANIM_MS}ms cubic-bezier(0.33, 1, 0.68, 1)`
 
 /** focusin 预测弹出后等待 geometrychange 确认的窗口（ms）：超时未见确认视为假弹
  *  （外接键盘/平板等不会弹软键盘的场景），预测收回 */
@@ -300,6 +306,8 @@ export function useKeyboardViewportSelector<T>(selector: (state: KeyboardViewpor
  * （MainLayout）挂载时调用持有，卸载时释放。
  */
 export function ensureKeyboardViewportWatchers(): () => void {
+    // 动画时长/曲线单源下发：消费端只引 var(--kb-anim)
+    document.documentElement.style.setProperty(KB_ANIM_CSS_VAR, KB_ANIM_TRANSITION)
     return storeSubscribe(() => {})
 }
 

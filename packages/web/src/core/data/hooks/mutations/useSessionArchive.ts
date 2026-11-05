@@ -20,6 +20,7 @@ import { queryKeys } from '@/core/lib/queryKeys'
 import { toggleIdInPages } from '@/core/data/cache/pinnedOptimistic'
 import { removeFromGroupedLists, restoreToGroup, resolveGroupRestoreKey } from '@/core/data/cache/groupedSessionLists'
 import type { GroupPages, SessionLike } from '@/core/data/cache/groupedSessionLists'
+import { reportBlockedError } from '@/core/data/sessionDormancy'
 
 /**
  * 归档 / 取消归档会话（票 05）。
@@ -67,6 +68,34 @@ export function useSessionArchive() {
     })
 
     return { archive, unarchive }
+}
+
+/**
+ * 归档 / 取消归档失败的统一反馈（各入口共用，别再各写一份 reportBlockedError 参数）：
+ * 409 blockers → 逐项原因；其余 → 通用错误 toast。两个动作的文案键不同，故各一个入口。
+ */
+export function reportArchiveFailure(
+    message: Parameters<typeof reportBlockedError>[0],
+    t: Parameters<typeof reportBlockedError>[1],
+    error: unknown,
+): void {
+    reportBlockedError(message, t, error, {
+        blockedKey: 'session.archive.blocked',
+        fallbackKey: 'common.error',
+        fallbackVariant: 'error',
+    })
+}
+
+export function reportUnarchiveFailure(
+    message: Parameters<typeof reportBlockedError>[0],
+    t: Parameters<typeof reportBlockedError>[1],
+    error: unknown,
+): void {
+    reportBlockedError(message, t, error, {
+        blockedKey: 'archived.unarchiveBlocked',
+        fallbackKey: 'common.error',
+        fallbackVariant: 'error',
+    })
 }
 
 /**

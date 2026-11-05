@@ -21,8 +21,7 @@ import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useSession } from '@/core/data/hooks/queries/useSession'
-import { useSessionArchive } from '@/core/data/hooks/mutations/useSessionArchive'
-import { reportBlockedError } from '@/core/data/sessionDormancy'
+import { useSessionArchive, reportUnarchiveFailure } from '@/core/data/hooks/mutations/useSessionArchive'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { ChatPane } from '@/pages/session/ChatPane'
 import { InspectorPane } from '@/pages/session/InspectorPane'
@@ -100,11 +99,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                         loading={unarchive.isPending && unarchive.variables === session.id}
                         onClick={() => unarchive.mutate(session.id, {
                             // 失败必须有反馈（409 gate 逐项原因 / 其余通用错误），与归档页同口径
-                            onError: (error) => reportBlockedError(messageApi, t, error, {
-                                blockedKey: 'archived.unarchiveBlocked',
-                                fallbackKey: 'common.error',
-                                fallbackVariant: 'error',
-                            }),
+                            onError: (error) => reportUnarchiveFailure(messageApi, t, error),
                         })}
                     >
                         {t('session.archived.unarchive')}

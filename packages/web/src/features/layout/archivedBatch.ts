@@ -15,14 +15,12 @@
  */
 
 /**
- * 归档页批量操作（session-retention 票 08）：逐条执行 + 结果聚合。
- * daemon 无批量端点——前端循环单条调用；单条失败不回滚整批，逐条记录结果，
- * 由调用方聚合报告（成功条目已生效，失败条目带原因）。
+ * 归档页批量操作的展示侧逻辑（session-retention 票 08）：确认输入匹配值 + 结果聚合。
+ * 批量执行归 daemon 批量端点（DELETE /sessions/archived、POST /sessions/archived/unarchive），
+ * 前端只负责把逐条结果译成可读文案——不在这里做扇出。
  */
 
 import type { TFunction } from 'i18next'
-import type { Session } from '@/core/data/api/types'
-import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 
 export interface BatchItemResult {
     sessionId: string
@@ -30,29 +28,6 @@ export interface BatchItemResult {
     ok: boolean
     /** 失败原因（blockers 文案或通用错误），仅 ok=false 时有值 */
     reason?: string
-}
-
-/**
- * 串行执行批量动作：逐条 await（删除带级联清理，不并发压 daemon）；
- * 单条抛错被捕获记为失败项，不中断整批。每条成功后回调 onSuccess
- * （缓存清理等即时生效动作）。
- */
-export async function runBatch(
-    sessions: Session[],
-    action: (sessionId: string) => Promise<unknown>,
-    onSuccess?: (sessionId: string) => void,
-): Promise<BatchItemResult[]> {
-    const results: BatchItemResult[] = []
-    for (const session of sessions) {
-        try {
-            await action(session.id)
-            onSuccess?.(session.id)
-            results.push({ sessionId: session.id, name: getSessionDisplayName(session), ok: true })
-        } catch (error) {
-            results.push({ sessionId: session.id, name: getSessionDisplayName(session), ok: false, reason: String(error) })
-        }
-    }
-    return results
 }
 
 /** 页面级批量删除的确认令牌：无组名可比对时的固定输入值；i18n 文案 typeDelete 以

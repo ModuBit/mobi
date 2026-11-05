@@ -15,66 +15,13 @@
  */
 
 /**
- * 归档页批量操作逻辑（session-retention 票 08）：串行执行、单条失败不回滚整批、
- * 确认输入匹配规则（组名 / DELETE）。
+ * 归档页批量操作的展示侧逻辑（session-retention 票 08）：确认输入匹配规则
+ * （组名 / DELETE）与逐条结果聚合。
  */
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 
-import { runBatch, batchConfirmExpected, summarizeBatch } from '@/features/layout/archivedBatch'
-import type { Session } from '@/core/data/api/types'
-
-function makeSession(id: string, name = id): Session {
-    return {
-        id,
-        namespace: 'ns',
-        seq: 1,
-        createdAt: 1,
-        updatedAt: 1,
-        active: false,
-        activeAt: 1,
-        metadata: { path: '/x', host: 'h', name },
-        metadataVersion: 1,
-        agentState: null,
-        agentStateVersion: 1,
-        running: false,
-        runningAt: 1,
-    } as Session
-}
-
-describe('runBatch', () => {
-    it('逐条成功：全部 ok，onSuccess 每条回调', async () => {
-        const action = vi.fn().mockResolvedValue(undefined)
-        const onSuccess = vi.fn()
-        const results = await runBatch([makeSession('a', 'A'), makeSession('b', 'B')], action, onSuccess)
-
-        expect(results).toHaveLength(2)
-        expect(results.every(r => r.ok)).toBe(true)
-        expect(onSuccess).toHaveBeenCalledTimes(2)
-        // 串行：第一条完成才发起第二条
-        expect(action.mock.calls.map(c => c[0])).toEqual(['a', 'b'])
-    })
-
-    it('单条失败不回滚整批：失败项带原因，后续条目照常执行', async () => {
-        const action = vi.fn((id: string) =>
-            id === 'b' ? Promise.reject(new Error('EBUSY')) : Promise.resolve(undefined))
-        const onSuccess = vi.fn()
-        const results = await runBatch([makeSession('a', 'A'), makeSession('b', 'B'), makeSession('c', 'C')], action, onSuccess)
-
-        const failed = results.filter(r => !r.ok)
-        expect(failed).toHaveLength(1)
-        expect(failed[0].sessionId).toBe('b')
-        expect(failed[0].reason).toContain('EBUSY')
-        // 成功条目已生效（onSuccess 覆盖 a 与 c）
-        expect(onSuccess).toHaveBeenCalledTimes(2)
-        expect(action).toHaveBeenCalledTimes(3)
-    })
-
-    it('汇总 name 用显示名（metadata.name）而非 id', async () => {
-        const results = await runBatch([makeSession('a', '林墨墨的会话')], () => Promise.reject(new Error('x')))
-        expect(results[0].name).toBe('林墨墨的会话')
-    })
-})
+import { batchConfirmExpected, summarizeBatch } from '@/features/layout/archivedBatch'
 
 describe('batchConfirmExpected（删除确认输入匹配值）', () => {
     it('组级：项目名即匹配值', () => {

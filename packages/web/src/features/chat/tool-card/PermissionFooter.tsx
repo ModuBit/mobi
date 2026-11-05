@@ -421,7 +421,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                         的无层级铺排与满屏勾图标 */}
                     <div data-group="actions" style={{
                         display: 'flex',
-                        flexDirection: isMobile ? 'column' : 'column',
+                        flexDirection: 'column',
                         gap: 8,
                         alignItems: 'stretch',
                     }}>

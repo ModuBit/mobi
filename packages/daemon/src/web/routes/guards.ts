@@ -74,9 +74,9 @@ export function requireSessionFromParam(
 
 /**
  * 归档禁写闸（session-retention 票 11）：域规则「归档期间不可收发、不可写资源」的
- * 单一承载。写端点在 requireSessionFromParam 之后挂此守卫——归档 → 409 +
- * code 'session_archived'（web 按 code 映射文案）。挂点清单见票 11；读端点与
- * archive/unarchive/delete 动作本身不挂（它们就是对归档态的操作）。
+ * 单一承载。写端点经 requireSessionFromParam 的 `requireWritable` 选项挂载——归档 →
+ * 409 + code 'session_archived'（web 按 code 映射文案）。读端点与 archive/unarchive/
+ * delete 动作本身不挂（它们就是对归档态的操作）。
  */
 export function requireWritableSession(c: Context<WebAppEnv>, session: Session): Response | null {
     if (session.status === 'archived') {

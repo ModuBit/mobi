@@ -19,16 +19,16 @@ import type { ReactNode } from 'react'
 import { App, Input, Listy, Modal, Spin, theme as antTheme } from 'antd'
 import { Archive as ArchiveIcon, ArchiveRestore, Clock, Folder, MoreHorizontal, Search, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { ARCHIVED_WORKSPACE_NONE } from '@mobi/shared'
 import styled from '@emotion/styled'
 import { useArchivedSessions } from '@/core/data/hooks/queries/useArchivedSessions'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
-import { useSessionArchive } from '@/core/data/hooks/mutations/useSessionArchive'
+import { useSessionArchive, reportUnarchiveFailure } from '@/core/data/hooks/mutations/useSessionArchive'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { Select } from '@/ui/base/interactive/select/Select'
 import { DropdownMenu } from '@/ui/base/interactive/dropdown-menu/DropdownMenu'
 import { formatMessageTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
-import { reportBlockedError } from '@/core/data/sessionDormancy'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { evictSession } from '@/core/lib/sessionEviction'
 import { useSessionDelete } from './useSessionDelete'
@@ -387,7 +387,8 @@ interface PendingBatchDelete {
 }
 
 const WORKSPACE_ALL = '__all__'
-const WORKSPACE_NONE = '__none__'
+/** 「未归入工作区」的过滤值 = wire 哨兵（单源在 @mobi/shared，UI 侧复用同一值） */
+const WORKSPACE_NONE = ARCHIVED_WORKSPACE_NONE
 
 interface ArchivedSessionsPageProps {
     /** 头部锚位（PC 侧栏开关 / 移动端汉堡），渲染进标题行左缘——本页无独立头部横条 */
@@ -442,12 +443,12 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
     }, [data])
     const annotated = useMemo(() => groupAndAnnotate(sessions), [sessions])
 
-    // 组计数 / 全集总数取最后页快照（每页响应都带全集统计）
-    const lastPage = data?.pages[data.pages.length - 1]
-    const total = lastPage?.total ?? 0
+    // 全集统计只在首页下发（分页期间不变）：组计数与 total 都取首页快照
+    const firstPage = data?.pages[0]
+    const total = firstPage?.total ?? 0
     const workspaceCounts = useMemo(
-        () => new Map((lastPage?.workspaceCounts ?? []).map(c => [c.workspaceId, c.count])),
-        [lastPage],
+        () => new Map((firstPage?.workspaceCounts ?? []).map(c => [c.workspaceId, c.count])),
+        [firstPage],
     )
     // 当前过滤范围的真实总数（页级「全部删除」的确认文案与按钮态依据）
     const filteredTotal = workspaceFilter === WORKSPACE_ALL
@@ -460,12 +461,6 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
     // ref 经 state 挂钩（loading 早退分支先于 ListyShell 挂载，mount 一次的 effect
     // 会拿到 null 且不再重跑——listHeight 恒 0、Listy 恒不挂载）──
     const [listShell, setListShell] = useState<HTMLDivElement | null>(null)
-    // 滑移底色层要 RefObject 形态的容器引用——与量高 state 同源同步
-    const shellRef = useRef<HTMLDivElement | null>(null)
-    const attachShell = useCallback((el: HTMLDivElement | null) => {
-        shellRef.current = el
-        setListShell(el)
-    }, [])
     const [listHeight, setListHeight] = useState(0)
     useEffect(() => {
         if (!listShell) return
@@ -492,11 +487,7 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
     // 取消归档：409（gate）原样透出逐项原因，其余通用错误
     const handleUnarchive = (session: Session) => {
         unarchive.mutate(session.id, {
-            onError: (error) => reportBlockedError(messageApi, t, error, {
-                blockedKey: 'archived.unarchiveBlocked',
-                fallbackKey: 'common.error',
-                fallbackVariant: 'error',
-            }),
+            onError: (error) => reportUnarchiveFailure(messageApi, t, error),
         })
     }
 
@@ -547,8 +538,9 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
             const response = await api.sessions.deleteArchivedSessions(scopeWorkspaceId(scope))
             const results = toBatchResults(response.data.results)
             const okIds = results.filter(r => r.ok).map(r => r.sessionId)
-            void evictSession(queryClient, okIds)
-            await invalidateSessionViews(queryClient, okIds)
+            // 离场编排单源在 evictSession（详情 remove + 列表维度失效）；删除场景不再走
+            // invalidateSessionViews——那套详情失效语义是「会话仍在但身份变更」
+            await evictSession(queryClient, okIds)
             const okCount = okIds.length
             if (okCount === results.length) {
                 notification.success({
@@ -746,7 +738,7 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                     <NoMatchRow $token={token}>{t('archived.noMatch')}</NoMatchRow>
                 ) : (
                     <>
-                        <ListyShell ref={attachShell} $token={token}>
+                        <ListyShell ref={setListShell} $token={token}>
                             {/* 高度就绪后才挂 Listy（virtual 依赖 height；ResizeObserver 首帧即给值） */}
                             {listHeight > 0 && (
                                 <>

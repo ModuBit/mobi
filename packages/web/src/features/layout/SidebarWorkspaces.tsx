@@ -28,8 +28,8 @@ import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinne
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { resumeSession } from '@/core/data/sessionResume'
-import { dormantSessionWithFeedback, reportBlockedError } from '@/core/data/sessionDormancy'
-import { useSessionArchive } from '@/core/data/hooks/mutations/useSessionArchive'
+import { dormantSessionWithFeedback } from '@/core/data/sessionDormancy'
+import { useSessionArchive, reportArchiveFailure } from '@/core/data/hooks/mutations/useSessionArchive'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { WorkspaceFormModal } from '@/ui/shared/WorkspaceFormModal'
 import { AssignWorkspaceModal } from '@/features/layout/AssignWorkspaceModal'
@@ -117,11 +117,7 @@ export function SidebarWorkspaces() {
     const handleArchive = useCallback((session: Session) => {
         setArchivePendingId(session.id)
         archive.mutate(session.id, {
-            onError: (error) => reportBlockedError(messageApi, t, error, {
-                blockedKey: 'session.archive.blocked',
-                fallbackKey: 'common.error',
-                fallbackVariant: 'error',
-            }),
+            onError: (error) => reportArchiveFailure(messageApi, t, error),
             onSettled: () => setArchivePendingId(null),
         })
     }, [archive, t, messageApi])

@@ -15,6 +15,7 @@
  */
 
 import { useInfiniteQuery } from '@tanstack/react-query'
+import { ARCHIVED_WORKSPACE_NONE } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/queryKeys'
 
@@ -34,8 +35,8 @@ export function useArchivedSessions(workspaceFilter?: string | null) {
     return useInfiniteQuery({
         queryKey: queryKeys.archivedSessionsWorkspace(workspaceFilter ?? null),
         queryFn: ({ pageParam }) => api.sessions.archivedSessions({
-            // 未指定 = 全部归档；哨兵 '__none__' = 未归入工作区由 client 翻译成 null
-            workspaceId: workspaceFilter === '__none__' ? null : workspaceFilter,
+            // 未指定 = 全部归档；哨兵（单源 @mobi/shared）= 未归入工作区，由 client 编码为 null
+            workspaceId: workspaceFilter === ARCHIVED_WORKSPACE_NONE ? null : workspaceFilter,
             cursor: pageParam,
         }).then(res => res.data),
         initialPageParam: undefined as number | undefined,
@@ -45,6 +46,3 @@ export function useArchivedSessions(workspaceFilter?: string | null) {
         },
     })
 }
-
-/** 归档分页数据的类型投影（InfiniteData<ArchivedSessionsPage>） */
-export type ArchivedSessionsQueryData = ReturnType<typeof useArchivedSessions>['data']

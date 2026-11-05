@@ -761,13 +761,13 @@ export function ChatComposer(props: ChatComposerProps) {
         // 底衬 = safe-area 减去键盘 inset：键盘弹出（overlay 模式）时 inset 覆盖了 home
         // 指示条区域，safe-area 若照常生效会与 MainLayout 的 --kb-inset 叠出双缝——白卡
         // 直接落在键盘上沿，只保 12px 最小呼吸。无键盘时 inset=0，回落原值。
-        // transition 只列 padding-bottom：--kb-inset 终值一跳后由浏览器插值（280ms
-        // easeOutCubic，与 store 的 OVERLAY_ANIM_MS 对齐），JS 不逐帧
+        // transition 只列 padding-bottom：--kb-inset 终值一跳后由浏览器插值
+        // （时长/曲线取自 --kb-anim），JS 不逐帧
         // data-perf-region：dev-only layout-shift 归因观测器；位于 chat 区域内部，
         // 归因时内层标注优先（composer 内位移源归 composer 不归 chat）
         <div style={{
             padding: '0 16px max(12px, calc(env(safe-area-inset-bottom, 0px) - var(--kb-inset, 0px)))',
-            transition: 'padding-bottom 280ms cubic-bezier(0.33, 1, 0.68, 1)',
+            transition: 'padding-bottom var(--kb-anim)',
         }} data-perf-region="composer">
             {/* Dock 的进退场（ComposerDock 的 :has(> :only-child)）依赖此处的结构契约：
                 InfoPanel 与 goal 行空态必须渲染 null——直接子元素只剩 wrapper 一个时

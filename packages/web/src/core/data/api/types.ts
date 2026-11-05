@@ -229,7 +229,8 @@ export interface ArchivedSessionsPage {
     /** 该 namespace 归档全集总数（不受游标影响） */
     total: number
     /** 各工作区归档数真实总数（组头计数；workspaceId=null 表示未归入工作区） */
-    workspaceCounts: Array<{ workspaceId: string | null; count: number }>
+    /** 各工作区归档总数：仅首页响应携带（分页期间不变，daemon 不重复计算） */
+    workspaceCounts?: Array<{ workspaceId: string | null; count: number }>
 }
 
 /** daemon 归档范围批量操作的逐条结果（批量删除/批量取消归档共用形状） */

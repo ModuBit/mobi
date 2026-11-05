@@ -20,7 +20,7 @@ import { AttachmentMetadataSchema } from '@mobi/shared/schemas'
 import { z } from 'zod'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
-import { requireSessionFromParam, requireSyncEngine, requireWritableSession } from './guards'
+import { requireSessionFromParam, requireSyncEngine } from './guards'
 
 const querySchema = z.object({
     limit: z.coerce.number().int().min(1).max(200).optional(),
@@ -114,19 +114,13 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         // 休眠/待激活会话放行入队（dormancy spec §B：会话行存在即可入队，409 门控已废）；
-        // 不存在的会话由 requireSessionFromParam 兜底 404
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: false })
+        // 不存在的会话由 requireSessionFromParam 兜底 404；归档会话禁收发（票 06/11）：
+        // 明确拒绝而不是悄悄投进一个看不见的会话——code 随响应体给出，web 端映射文案
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: false, requireWritable: true })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
-        const { sessionId, session } = sessionResult
-
-        // 归档会话禁收发（票 06/11：守卫收口 requireWritableSession）：
-        // 明确拒绝而不是悄悄投进一个看不见的会话。code 随响应体给出，web 端映射文案
-        const writeBlocked = requireWritableSession(c, session)
-        if (writeBlocked) {
-            return writeBlocked
-        }
+        const { sessionId } = sessionResult
 
         const body = await c.req.json().catch(() => null)
         const parsed = sendMessageBodySchema.safeParse(body)
@@ -173,15 +167,10 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        // 归档会话禁写（票 11）：撤排队消息也是「发」的撤销面
+        const sessionResult = requireSessionFromParam(c, engine, { requireWritable: true })
         if (sessionResult instanceof Response) {
             return sessionResult
-        }
-
-        // 归档会话禁写（票 11）：撤排队消息也是「发」的撤销面
-        const writeBlocked = requireWritableSession(c, sessionResult.session)
-        if (writeBlocked) {
-            return writeBlocked
         }
 
         const sessionId = sessionResult.sessionId
@@ -223,15 +212,10 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        // 归档会话禁写（票 11）：steer 是提交排队消息的「发」变体
+        const sessionResult = requireSessionFromParam(c, engine, { requireWritable: true })
         if (sessionResult instanceof Response) {
             return sessionResult
-        }
-
-        // 归档会话禁写（票 11）：steer 是提交排队消息的「发」变体
-        const writeBlocked = requireWritableSession(c, sessionResult.session)
-        if (writeBlocked) {
-            return writeBlocked
         }
 
         const sessionId = sessionResult.sessionId

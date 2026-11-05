@@ -23,7 +23,7 @@
  * 引擎是 mock（路由测试缝隙 = HTTP 契约）；store 层行为由 store 测试覆盖。
  */
 
-import { describe, test, expect, afterEach } from 'bun:test'
+import { describe, test, expect } from 'bun:test'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
 import type { SyncEngine } from '../../../src/sync/syncEngine'
 import type { Session } from '@mobi/shared'
@@ -72,10 +72,6 @@ async function authorizedApp(engine: SyncEngine) {
 }
 
 describe('POST /api/sessions/:id/archive（用户归档）', () => {
-    afterEach(() => {
-        // setupTestApp 的 cleanup 由各测试自行调用（返回值展开后丢失引用时兜底）
-    })
-
     test('归档成功 → ok', async () => {
         const { app, cleanup, token } = await authorizedApp(makeArchiveEngine())
         try {

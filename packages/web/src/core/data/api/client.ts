@@ -19,6 +19,7 @@ import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, DaemonStatus, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse, ArchivedSessionsPage, ArchivedBatchResponse, ArchivedBatchItemResult } from './types'
 import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, RedactedTelemetrySettings, TelemetrySettingsSubmission, MapSettingsSubmission, MapSettingsView, PermissionAnnotations, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin, WorktreeListResponse, MergeBackResult, MergeBackRequest, DiscardResult, DeleteSessionResponse } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
+import { encodeArchivedWorkspaceId } from '@mobi/shared'
 
 // 全局 401 处理回调（由外部设置）
 let onUnauthorized: (() => void) | null = null
@@ -214,7 +215,7 @@ export function createMobiApi() {
             archivedSessions: (opts?: { workspaceId?: string | null; cursor?: number; limit?: number }) =>
                 client.get<ArchivedSessionsPage>('/api/sessions/archived', {
                     params: {
-                        ...(opts?.workspaceId !== undefined && { workspaceId: opts.workspaceId ?? '__none__' }),
+                        ...(opts?.workspaceId !== undefined && { workspaceId: encodeArchivedWorkspaceId(opts.workspaceId) }),
                         ...(opts?.cursor !== undefined && { cursor: opts.cursor }),
                         limit: opts?.limit ?? 50,
                     },
@@ -223,14 +224,14 @@ export function createMobiApi() {
             // （workspaceId=null 表示未归入工作区，经 __none__ 哨兵传输），返回逐条结果
             deleteArchivedSessions: (workspaceId?: string | null) =>
                 client.delete<ArchivedBatchResponse>('/api/sessions/archived', {
-                    params: workspaceId === undefined ? {} : { workspaceId: workspaceId ?? '__none__' },
+                    params: workspaceId === undefined ? {} : { workspaceId: encodeArchivedWorkspaceId(workspaceId) },
                 }),
             // 归档范围批量取消归档（组级动作），同范围语义
             unarchiveArchivedSessions: (workspaceId?: string | null) =>
                 client.post<{ results: ArchivedBatchItemResult[]; unarchived: number }>(
                     '/api/sessions/archived/unarchive',
                     null,
-                    { params: workspaceId === undefined ? {} : { workspaceId: workspaceId ?? '__none__' } },
+                    { params: workspaceId === undefined ? {} : { workspaceId: encodeArchivedWorkspaceId(workspaceId) } },
                 ),
             // 归档 / 取消归档（票 04：归档 409 带 blockers——active 会话须先休眠）
             archive: (sessionId: string) => client.post(`/api/sessions/${sessionId}/archive`),

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { CLEARABLE_RUNTIME_STATE_FIELDS, DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, DiffTargetSchema, EFFORT_SESSION_LEVELS, PermissionModeSchema, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
+import { CLEARABLE_RUNTIME_STATE_FIELDS, decodeArchivedWorkspaceId, DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, DiffTargetSchema, EFFORT_SESSION_LEVELS, PermissionModeSchema, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
 import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
 import { buildHostMetadata } from '@mobi/node-core/hostMetadata'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
@@ -29,7 +29,7 @@ import { isSessionRowDeletable } from '../../sync/sessionDeleteGuard'
 import type { WebAppEnv } from '../middleware/auth'
 import type { WebAppDeps } from '../appDeps'
 import { toSummaryWithLiveState } from '../utils/sessionSummary'
-import { requireSessionFromParam, requireSyncEngine, requireWritableSession } from './guards'
+import { requireSessionFromParam, requireSyncEngine } from './guards'
 import { fileMetaHttpStatus, serveFileContent, type FileContentReader } from './serveFileContent'
 import { serveVizDocument } from './serveVizDocument'
 
@@ -46,27 +46,17 @@ const uploadDeleteSchema = z.object({
     path: z.string().min(1)
 })
 
-/** 置顶会话分页 query（limit + updated_at 游标） */
-const pinnedSessionsQuerySchema = z.object({
-    limit: z.coerce.number().min(1).max(100).optional().default(20),
+/** 游标分页 query（limit + cursor）：置顶 / 归档等按时间倒序的分页列表共用一套校验 */
+const cursorPageQuery = (defaultLimit: number) => z.object({
+    limit: z.coerce.number().min(1).max(100).optional().default(defaultLimit),
     cursor: z.coerce.number().optional()
 })
 
-/** 归档会话分页 query（limit + archived_at 游标；归档页整页列表，默认页比主列表大一档） */
-const archivedPageQuery = z.object({
-    limit: z.coerce.number().min(1).max(100).optional().default(50),
-    cursor: z.coerce.number().optional()
-})
+/** 置顶会话分页 query（默认 20） */
+const pinnedSessionsQuerySchema = cursorPageQuery(20)
 
-/**
- * workspaceId query 三态翻译（批量删除/批量取消归档的范围声明）：
- * 缺省 = 全部归档（undefined）；`__none__` = 未归入工作区（null）；其余 = 指定工作区。
- */
-function parseArchivedWorkspaceScope(raw: string | undefined): string | null | undefined {
-    if (raw === undefined || raw === '') return undefined
-    if (raw === '__none__') return null
-    return raw
-}
+/** 归档会话分页 query（归档页整页列表，默认页比主列表大一档） */
+const archivedPageQuery = cursorPageQuery(50)
 
 /** rewind 预检 body（对齐 effort 路由的 zod body 校验模式） */
 const rewindDryRunSchema = z.object({
@@ -345,7 +335,8 @@ export function createSessionsRoutes(
 
     // GET /sessions/archived - 归档会话分页列表（归档页数据源，归档时间倒序游标）。
     // 同 /sessions/pinned 的坑：必须注册在 /sessions/:id 之前。
-    // workspaceCounts 是各工作区归档数的真实总数（GROUP BY 全集），组头计数不受分页影响
+    // workspaceCounts 是各工作区归档数的真实总数（GROUP BY 全集）：分页过程中不变，
+    // 只在首页（无 cursor）计算并下发，后续页省掉一次全表聚合。
     app.get('/sessions/archived', (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
@@ -363,7 +354,7 @@ export function createSessionsRoutes(
         const namespace = c.get('namespace')
         const result = engine.getArchivedSessions(
             namespace,
-            parseArchivedWorkspaceScope(c.req.query('workspaceId')),
+            decodeArchivedWorkspaceId(c.req.query('workspaceId')),
             parsed.data.cursor ?? null,
             parsed.data.limit,
         )
@@ -372,7 +363,10 @@ export function createSessionsRoutes(
             nextCursor: result.nextCursor,
             hasMore: result.hasMore,
             total: result.total,
-            workspaceCounts: engine.getArchivedWorkspaceCounts(namespace),
+            // 仅首页下发：分页期间不变，避免每页一次 GROUP BY 全表聚合
+            workspaceCounts: parsed.data.cursor === undefined
+                ? engine.getArchivedWorkspaceCounts(namespace)
+                : undefined,
         })
     })
 
@@ -386,7 +380,7 @@ export function createSessionsRoutes(
         }
 
         const namespace = c.get('namespace')
-        const results = await engine.deleteArchivedSessions(namespace, parseArchivedWorkspaceScope(c.req.query('workspaceId')))
+        const results = await engine.deleteArchivedSessions(namespace, decodeArchivedWorkspaceId(c.req.query('workspaceId')))
         return c.json({ results, deleted: results.filter(r => r.ok).length })
     })
 
@@ -398,7 +392,7 @@ export function createSessionsRoutes(
         }
 
         const namespace = c.get('namespace')
-        const results = engine.unarchiveArchivedSessions(namespace, parseArchivedWorkspaceScope(c.req.query('workspaceId')))
+        const results = engine.unarchiveArchivedSessions(namespace, decodeArchivedWorkspaceId(c.req.query('workspaceId')))
         return c.json({ results, unarchived: results.filter(r => r.ok).length })
     })
 
@@ -422,15 +416,10 @@ export function createSessionsRoutes(
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        // 归档会话禁唤醒（票 11）：取消归档才是回到 dormant 的唯一路径
+        const sessionResult = requireSessionFromParam(c, engine, { requireWritable: true })
         if (sessionResult instanceof Response) {
             return sessionResult
-        }
-
-        // 归档会话禁唤醒（票 11）：取消归档才是回到 dormant 的唯一路径
-        const writeBlocked = requireWritableSession(c, sessionResult.session)
-        if (writeBlocked) {
-            return writeBlocked
         }
 
         const namespace = c.get('namespace')
@@ -472,15 +461,10 @@ export function createSessionsRoutes(
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        // 归档会话禁写资源（票 11）：requireWritable 由守卫选项承载
+        const sessionResult = requireSessionFromParam(c, engine, { requireWritable: true })
         if (sessionResult instanceof Response) {
             return sessionResult
-        }
-
-        // 归档会话禁写资源（票 11）
-        const writeBlocked = requireWritableSession(c, sessionResult.session)
-        if (writeBlocked) {
-            return writeBlocked
         }
 
         const sessionId = sessionResult.sessionId
@@ -527,13 +511,10 @@ export function createSessionsRoutes(
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        // 休眠会话放行（dormancy：冷编辑器自动保存不唤醒；写边界由 daemon 注入 cwd）
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: false })
+        // 休眠会话放行（dormancy：冷编辑器自动保存不唤醒；写边界由 daemon 注入 cwd）；
+        // 归档会话禁写文件（票 11）——两者语义分层，由守卫选项各自表达
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: false, requireWritable: true })
         if (sessionResult instanceof Response) return sessionResult
-
-        // 归档会话禁写文件（票 11；休眠会话仍放行，与上注释语义分层）
-        const writeBlocked = requireWritableSession(c, sessionResult.session)
-        if (writeBlocked) return writeBlocked
 
         const path = safeDecodeHeader(c.req.header('X-Mobi-Path'))
         const baseEtag = c.req.header('X-Mobi-Base-Etag') ?? ''
@@ -595,15 +576,9 @@ export function createSessionsRoutes(
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { requireWritable: true })
         if (sessionResult instanceof Response) {
             return sessionResult
-        }
-
-        // 归档会话禁写资源（票 11）
-        const writeBlocked = requireWritableSession(c, sessionResult.session)
-        if (writeBlocked) {
-            return writeBlocked
         }
 
         const body = await c.req.json().catch(() => null)
@@ -635,15 +610,9 @@ export function createSessionsRoutes(
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { requireWritable: true })
         if (sessionResult instanceof Response) {
             return sessionResult
-        }
-
-        // 归档会话禁写资源（票 11）
-        const writeBlocked = requireWritableSession(c, sessionResult.session)
-        if (writeBlocked) {
-            return writeBlocked
         }
 
         const path = safeDecodeHeader(c.req.header('X-Mobi-Path'))

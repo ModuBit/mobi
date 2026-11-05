@@ -89,7 +89,7 @@ export const QuoteCommentInput = memo(function QuoteCommentInput({
                         transform: undefined,
                         // 只列 bottom：键盘高度变化（切换布局/语言）时浮层平滑贴住新上缘；
                         // 形态切换瞬（锚选区→键盘态）其余属性仍瞬变
-                        transition: 'bottom 280ms cubic-bezier(0.33, 1, 0.68, 1)',
+                        transition: 'bottom var(--kb-anim)',
                     }
                     : { top, left, transform: above ? 'translateY(-100%)' : undefined }
             }
