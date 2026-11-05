@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { App, Input, Listy, Modal, Spin, theme as antTheme } from 'antd'
 import { Archive as ArchiveIcon, ArchiveRestore, Clock, Folder, MoreHorizontal, Search, Trash2 } from 'lucide-react'
@@ -36,6 +36,7 @@ import { summarizeBatch, batchConfirmExpected, BATCH_DELETE_CONFIRM_TOKEN } from
 import type { BatchItemResult } from './archivedBatch'
 import { groupAndAnnotate } from './archivedGrouping'
 import type { AnnotatedRow } from './archivedGrouping'
+import { RectHoverGlideLayer } from '@/ui/base/motion/RectHoverGlideLayer'
 import { useMobiApi } from '@/core/data/api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session } from '@/core/data/api/types'
@@ -133,11 +134,11 @@ const ListyShell = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['to
     flex: 1;
     min-height: 0;
     position: relative;
+    /* 滑移底色层（RectHoverGlideLayer）的 z-index 分层在此容器内成立 */
+    isolation: isolate;
 
-    /* item 容器透明零内衬零边框（卡片视觉与留白都在行元素上）。antd 默认带
-     * 12px 16px padding + 1px colorSplit borderBottom + hover 背景：不清则
-     * 行间与我们自己的 border-top 叠成双线、圆角处直边线不随弧伸出卡外、
-     * hover 时容器背景从行元素圆角外露色 */
+    /* item 容器透明零内衬零边框（卡片视觉在行内 RowSurface 上；antd 默认带
+     * 12px 16px padding + 1px colorSplit borderBottom + hover 背景，见 RowSurface 注释） */
     .archived-listy-item {
         background: transparent;
         padding: 0;
@@ -145,6 +146,11 @@ const ListyShell = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['to
     }
     .archived-listy-item:hover {
         background: transparent;
+    }
+
+    /* 滑移底色层序：RowSurface(0) < GlideFill(1) < 行内容(2) */
+    .archived-glide-fill {
+        z-index: 1;
     }
 
     /* 组头裸排页面背景（ChatGPT 形态）：重置 antd 默认背景/内衬，组间 28px 承载在
@@ -237,28 +243,30 @@ const GroupActionButton = styled.button<{ $token: ReturnType<typeof antTheme.use
     }
 `
 
-/**
- * 色块卡行：卡片视觉（背景/侧壁/组边界圆角与 hairline）按组边界类直接命中（不用
- * :has()，见 ListyShell 注释）。单行组（first+last 同在）需四角全圆——该规则必须
- * 声明在 first/last 两条之后，否则 border-radius 被后者覆盖、上圆角变直角。
- */
+/** 行容器：布局与留白；卡底视觉全在 RowSurface 上（给滑移底色让出层序：surface 0 < fill 1 < 内容 2） */
 const ArchivedRow = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+    position: relative;
     display: flex;
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
     color: ${p => p.$token.colorText};
+`
+
+/**
+ * 行卡白底层：背景/侧壁/组边界圆角与 hairline 按组边界类直接命中（不用 :has()）。
+ * 独立成层是为了滑移 hover——RectHoverGlideLayer 的底色块（z:1）盖在这层之上、
+ * 行内容（z:2）之下，滑到哪行哪行显底色且被 border-radius 天然裁剪。
+ * 单行组（first+last 同在）需四角全圆——该规则必须声明在 first/last 两条之后，
+ * 否则 border-radius 被后者覆盖、上圆角变直角。
+ */
+const RowSurface = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+    position: absolute;
+    inset: 0;
+    z-index: 0;
     background: ${p => p.$token.colorBgContainer};
     border-left: 1px solid ${p => p.$token.colorBorderSecondary};
     border-right: 1px solid ${p => p.$token.colorBorderSecondary};
-
-    &:hover {
-        background: ${p => p.$token.colorBgTextHover};
-    }
-
-    /* 行 hover 是高频交互：底色 0.1s 快速淡入淡出（不滑移——行卡圆角随组边界
-     * 逐行不同，滑移层的静态圆角对不上；底色在行元素上被 border-radius 天然裁剪） */
-    transition: background-color var(--mobi-duration-fast) var(--mobi-ease-out);
 
     /* 组内首行收卡顶，其余行画行间 hairline，末行收卡底 */
     &.group-first {
@@ -277,8 +285,10 @@ const ArchivedRow = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['t
     }
 `
 
-/** 名称主行 + 归档时间副行（时间是名称的补充信息，窄屏不再挤压名称） */
+/** 名称主行 + 归档时间副行（时间是名称的补充信息，窄屏不再挤压名称）。z:2 压过滑移底色层 */
 const RowMain = styled.div`
+    position: relative;
+    z-index: 2;
     flex: 1;
     min-width: 0;
     display: flex;
@@ -318,6 +328,8 @@ const TimeChunk = styled.span`
 `
 
 const RowActions = styled.span`
+    position: relative;
+    z-index: 2;
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -448,6 +460,12 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
     // ref 经 state 挂钩（loading 早退分支先于 ListyShell 挂载，mount 一次的 effect
     // 会拿到 null 且不再重跑——listHeight 恒 0、Listy 恒不挂载）──
     const [listShell, setListShell] = useState<HTMLDivElement | null>(null)
+    // 滑移底色层要 RefObject 形态的容器引用——与量高 state 同源同步
+    const shellRef = useRef<HTMLDivElement | null>(null)
+    const attachShell = useCallback((el: HTMLDivElement | null) => {
+        shellRef.current = el
+        setListShell(el)
+    }, [])
     const [listHeight, setListHeight] = useState(0)
     useEffect(() => {
         if (!listShell) return
@@ -457,6 +475,19 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
         observer.observe(listShell)
         return () => observer.disconnect()
     }, [listShell])
+
+    // 滑移底色层的容器：holder-inner（Listy 内部渲染的滚动容器，带 transform 独立
+    // 层叠上下文）。RectHoverGlideLayer 会把 Fill portal 进它——Fill 与行同 context，
+    // 插在行底色（z:0）与行内容（z:2）之间；holder-inner 随 Listy 挂载（listHeight>0
+    // 后才存在），等高度就绪再查，查到后条件渲染组件（容器变更即重挂 portal）
+    const [glideContainer, setGlideContainer] = useState<HTMLElement | null>(null)
+    const glideRef = useRef<HTMLElement | null>(null)
+    glideRef.current = glideContainer
+    useEffect(() => {
+        // holder-inner 随 Listy 挂载（listHeight>0 后才存在），等高度就绪再查
+        if (!listShell || listHeight <= 0) return
+        setGlideContainer(listShell.querySelector<HTMLElement>('.ant-listy-holder-inner'))
+    }, [listShell, listHeight])
 
     // 取消归档：409（gate）原样透出逐项原因，其余通用错误
     const handleUnarchive = (session: Session) => {
@@ -594,7 +625,12 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
     const renderRow = useCallback((row: AnnotatedRow) => {
         const session = row.session
         return (
-            <ArchivedRow $token={token} className={[row.groupFirst ? 'group-first' : '', row.groupLast ? 'group-last' : ''].join(' ') || undefined}>
+            <ArchivedRow $token={token} data-glide-row>
+                {/* 行卡底色层：滑移 hover 的测量目标（几何与圆角都从它实测） */}
+                <RowSurface
+                    $token={token}
+                    className={['archived-row-surface', row.groupFirst ? 'group-first' : '', row.groupLast ? 'group-last' : ''].join(' ').trim() || undefined}
+                />
                 <RowMain>
                     <RowName>{getSessionDisplayName(session)}</RowName>
                     {/* 副行双时间（icon 标注语义，同 session 列表口径）：最后活跃 + 归档；非当天自动带日期 */}
@@ -710,10 +746,26 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                     <NoMatchRow $token={token}>{t('archived.noMatch')}</NoMatchRow>
                 ) : (
                     <>
-                        <ListyShell ref={setListShell} $token={token}>
+                        <ListyShell ref={attachShell} $token={token}>
                             {/* 高度就绪后才挂 Listy（virtual 依赖 height；ResizeObserver 首帧即给值） */}
                             {listHeight > 0 && (
-                                <Listy<AnnotatedRow>
+                                <>
+                                    {/* 滑移 hover 底色层：底色块弹簧从上一行滑到新行（主列表同款手感）。
+                                     * Fill portal 进 holder-inner（transform 层叠上下文，与行同 context 层序才正确）；
+                                     * 几何/圆角都从 RowSurface 实测（组边界逐行不同的圆角随行跟随），
+                                     * 滚动后行几何失效先淡出（虚拟列表约定），移动指针重新定位 */}
+                                    {glideContainer && (
+                                        <RectHoverGlideLayer
+                                            containerRef={glideRef}
+                                            measureSelector=".archived-row-surface"
+                                            hideOnScroll
+                                            radiusFor={(measured) => getComputedStyle(measured).borderRadius}
+                                            $background={token.colorBgTextHover}
+                                            $radius="0px"
+                                            className="archived-glide-fill"
+                                        />
+                                    )}
+                                    <Listy<AnnotatedRow>
                                     items={annotated}
                                     rowKey={(row) => row.session.id}
                                     virtual
@@ -730,6 +782,7 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                                         groupHeader: 'archived-listy-header',
                                     }}
                                 />
+                                </>
                             )}
                         </ListyShell>
                         {/* 手动分页：用户点「加载更多」拉下一页（滚动只负责浏览，不被自动预取拖着走） */}

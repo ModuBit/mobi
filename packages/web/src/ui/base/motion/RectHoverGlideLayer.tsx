@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
 import styled from '@emotion/styled'
 import { motion, useReducedMotion } from 'motion/react'
 import { spring } from './presets'
@@ -36,6 +37,11 @@ interface Rect {
  * 与 HoverGlideLayer 同一约定：指针追踪与 state 都收在本组件里，列表零重渲染；
  * 不同之处是它需要 x/width 几何，因此自己驱动 motion 的四个量。
  * hideOnScroll：虚拟列表滚动后行的几何整体失效，先淡出，下一次指针移动重新定位。
+ *
+ * Fill 经 portal 挂进 containerRef.current：层叠归属（容器内的 z 序）由组件
+ * 自保证，与调用方 JSX 的放置位置无关——containerRef 若指向第三方组件（虚拟
+ * 列表等）内部渲染的节点，JSX 无法把子元素放进它里面，必须 portal。
+ * 因此容器节点变更时本组件需重挂（卸载重渲染即可），不做动态换父。
  *
  * 几何量（x/y/width/height）直接走弹簧而不是 transform scale：本层是绝对定位的空
  * 覆盖层，尺寸变化只影响它自身、不触发行与列表重排；若用 scaleX/scaleY 模拟宽度，
@@ -61,6 +67,9 @@ interface RectHoverGlideLayerProps {
     hideOnScroll?: boolean
     $background: string
     $radius?: string
+    /** 逐行圆角回调：滑移层的圆角随目标行实测值变化（如组边界首末行圆角不同的列表）；
+     * 缺省恒用 $radius。motion 对同格式 px 串做插值，滑移途中圆角平滑过渡 */
+    radiusFor?: (measured: Element) => string
     className?: string
 }
 
@@ -71,6 +80,7 @@ export function RectHoverGlideLayer({
     hideOnScroll,
     $background,
     $radius = 'var(--radius-control-sm)',
+    radiusFor,
     className,
 }: RectHoverGlideLayerProps) {
     const reduced = useReducedMotion()
@@ -78,6 +88,12 @@ export function RectHoverGlideLayer({
     const titleRef = useRef<HTMLElement | null>(null)
     /** 首次落位 / 隐藏后再出现直接就位：只有连续换行才滑移，避免从旧几何或 0 点长途飞入 */
     const placedRef = useRef(false)
+    /** portal 目标 = containerRef.current（commit 后 ref 已赋值；容器变更靠重挂本组件） */
+    const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
+
+    useEffect(() => {
+        setPortalTarget(containerRef.current)
+    }, [containerRef])
 
     const hide = useCallback(() => {
         titleRef.current = null
@@ -117,7 +133,8 @@ export function RectHoverGlideLayer({
         }
     }, [containerRef, rowSelector, measureSelector, hideOnScroll, hide])
 
-    return (
+    if (!portalTarget) return null
+    return createPortal(
         <Fill
             aria-hidden="true"
             className={className}
@@ -127,6 +144,7 @@ export function RectHoverGlideLayer({
                 y: rect.y,
                 width: rect.w,
                 height: rect.h,
+                borderRadius: radiusFor && titleRef.current ? radiusFor(titleRef.current) : $radius,
                 opacity: rect.visible ? 1 : 0,
             }}
             transition={
@@ -134,7 +152,8 @@ export function RectHoverGlideLayer({
                     ? { duration: 0 }
                     : { default: spring.glide, opacity: { duration: motionTokens.duration.instant } }
             }
-            style={{ borderRadius: $radius, background: $background }}
-        />
+            style={{ background: $background }}
+        />,
+        portalTarget,
     )
 }
