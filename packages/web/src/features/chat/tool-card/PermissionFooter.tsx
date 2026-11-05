@@ -408,87 +408,148 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                         />
                     ) : null}
 
-                    {/* PC 端不可逆操作提示（移动端在 actions 内用分隔线承载） */}
-                    {!isExitPlanMode && !isMobile ? (
+                    {/* 移动端不可逆提示在 actions 内以分隔线承载；PC 收进否决行（见下） */}
+                    {isMobile && !isExitPlanMode ? (
                         <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
                             {t('chat.tool.irreversibleHint')}
                         </div>
                     ) : null}
 
-                    {/* 操作组：移动垂直 block（触控友好）/ PC 水平 inline（紧凑）。
-                        PC 拒绝提级为 default ghost 与允许同行对等，不再缩到角落 text 弱化；
-                        移动保持末行 text 弱化 + 分隔线防误触 */}
+                    {/* 操作组：移动垂直 block（触控友好）/ PC 双层决策（决策行 + 否决行）。
+                        PC 重设计（2026-11-03）：允许档聚为决策行；拒绝/带原因降为 hairline
+                        之下的否决行（低频侧右置，与警示小字同行）——终结「主按钮 + 三钮平铺」
+                        的无层级铺排与满屏勾图标 */}
                     <div data-group="actions" style={{
                         display: 'flex',
-                        flexDirection: isMobile ? 'column' : 'row',
+                        flexDirection: isMobile ? 'column' : 'column',
                         gap: 8,
-                        alignItems: isMobile ? 'stretch' : 'center',
-                        flexWrap: 'wrap',
+                        alignItems: 'stretch',
                     }}>
                         {isExitPlanMode ? (
+                            isMobile ? (
+                                <>
+                                    <Button
+                                        variant="primary"
+                                        disabled={disabledAll}
+                                        loading={pendingAction === 'allow'}
+                                        onClick={() => approveWithMode('auto')}
+                                        block
+                                        style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+                                    >
+                                        <CheckOutlined /> {t('chat.tool.approveAuto')}
+                                    </Button>
+                                    <Button
+                                        variant="secondary"
+                                        disabled={disabledAll}
+                                        loading={pendingAction === 'allow'}
+                                        onClick={() => approveWithMode('acceptEdits')}
+                                        block
+                                        style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+                                    >
+                                        {t('chat.tool.approveAutoAccept')}
+                                    </Button>
+                                    <Button
+                                        variant="secondary"
+                                        disabled={disabledAll}
+                                        loading={pendingAction === 'allow'}
+                                        onClick={() => approveWithMode('default')}
+                                        block
+                                        style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+                                    >
+                                        {t('chat.tool.approveManual')}
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        disabled={disabledAll}
+                                        loading={pendingAction === 'deny'}
+                                        onClick={() => {
+                                            if (!showFeedback) setShowFeedback(true)
+                                        }}
+                                        block
+                                        style={{ minHeight: actionMinHeight, justifyContent: 'center', color: token.colorTextSecondary }}
+                                    >
+                                        <CloseOutlined /> {t('chat.tool.keepPlanning')}
+                                    </Button>
+                                    <div style={{
+                                        display: 'flex', alignItems: 'center', gap: 8,
+                                        margin: '4px 0', width: '100%',
+                                        color: token.colorTextQuaternary, fontSize: 11,
+                                    }}>
+                                        <span style={{ flex: 1, height: 1, background: token.colorBorderSecondary }} />
+                                        <span>{t('chat.tool.irreversibleHint')}</span>
+                                        <span style={{ flex: 1, height: 1, background: token.colorBorderSecondary }} />
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    {/* 决策行：三档批准（auto 主位 + 两档次要，图标只留主位一枚） */}
+                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                                        <Button
+                                            variant="primary"
+                                            disabled={disabledAll}
+                                            loading={pendingAction === 'allow'}
+                                            onClick={() => approveWithMode('auto')}
+                                            style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+                                        >
+                                            <CheckOutlined /> {t('chat.tool.approveAuto')}
+                                        </Button>
+                                        <Button
+                                            variant="secondary"
+                                            disabled={disabledAll}
+                                            loading={pendingAction === 'allow'}
+                                            onClick={() => approveWithMode('acceptEdits')}
+                                            style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+                                        >
+                                            {t('chat.tool.approveAutoAccept')}
+                                        </Button>
+                                        <Button
+                                            variant="secondary"
+                                            disabled={disabledAll}
+                                            loading={pendingAction === 'allow'}
+                                            onClick={() => approveWithMode('default')}
+                                            style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+                                        >
+                                            {t('chat.tool.approveManual')}
+                                        </Button>
+                                    </div>
+                                    {/* 否决行：警示 + 继续规划（低频侧右置） */}
+                                    <div style={{
+                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                        gap: 8, flexWrap: 'wrap', marginTop: 4, paddingTop: 8,
+                                        borderTop: `1px solid ${token.colorBorderSecondary}`,
+                                    }}>
+                                        <span style={{ fontSize: 11, color: token.colorTextQuaternary }}>
+                                            {t('chat.tool.irreversibleHint')}
+                                        </span>
+                                        <Button
+                                            variant="ghost"
+                                            disabled={disabledAll}
+                                            loading={pendingAction === 'deny'}
+                                            onClick={() => {
+                                                if (!showFeedback) setShowFeedback(true)
+                                            }}
+                                            size="sm"
+                                            style={{ color: token.colorTextSecondary }}
+                                        >
+                                            <CloseOutlined /> {t('chat.tool.keepPlanning')}
+                                        </Button>
+                                    </div>
+                                </>
+                            )
+                        ) : isMobile ? (
                             <>
-                                <Button
-                                    variant="primary"
-                                    disabled={disabledAll}
-                                    loading={pendingAction === 'allow'}
-                                    onClick={() => approveWithMode('auto')}
-                                    block={isMobile}
-                                    style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
-                                >
-                                    <CheckOutlined /> {t('chat.tool.approveAuto')}
-                                </Button>
-                                <Button
-                                    variant="secondary"
-                                    disabled={disabledAll}
-                                    loading={pendingAction === 'allow'}
-                                    onClick={() => approveWithMode('acceptEdits')}
-                                    block={isMobile}
-                                    style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
-                                >
-                                    <CheckOutlined /> {t('chat.tool.approveAutoAccept')}
-                                </Button>
-                                <Button
-                                    variant="secondary"
-                                    disabled={disabledAll}
-                                    loading={pendingAction === 'allow'}
-                                    onClick={() => approveWithMode('default')}
-                                    block={isMobile}
-                                    style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
-                                >
-                                    <CheckOutlined /> {t('chat.tool.approveManual')}
-                                </Button>
-                                <Button
-                                    variant={isMobile ? 'ghost' : 'secondary'}
-                                    disabled={disabledAll}
-                                    loading={pendingAction === 'deny'}
-                                    onClick={() => {
-                                        if (!showFeedback) setShowFeedback(true)
-                                    }}
-                                    block={isMobile}
-                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', color: isMobile ? token.colorTextSecondary : undefined }}
-                                >
-                                    <CloseOutlined /> {t('chat.tool.keepPlanning')}
-                                </Button>
-                            </>
-                        ) : (
-                            <>
-                                {/* 主操作行：移动端满宽独占；PC 序列首位。
-                                    defaultToNo 时主位是拒绝（danger 实心），approve 降级进次要行 */}
+                                {/* 主操作满宽独占；次要档+允许+拒绝并排（defaultToNo 时拒绝在主位） */}
                                 <Button
                                     variant="primary"
                                     danger={denyFirst}
                                     disabled={mainAction.disabled}
                                     loading={mainAction.loading}
                                     onClick={mainAction.onClick}
-                                    block={isMobile}
+                                    block
                                     style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
                                 >
                                     {denyFirst ? <CloseOutlined /> : <CheckOutlined />} {mainAction.label}
                                 </Button>
-                                {/* 次要行：其余持久化档 + 允许本次 + 全部允许（default）+ 拒绝（denyFirst 时移除，已在主位）
-                                    移动端 flex:1 等分并排；PC 作为一组 inline 续在主操作后。
-                                    必须允许换行：这组按钮是外层 flex-wrap 行里的**单个**子项，
-                                    自身不换行时会按内容宽度撑开、在窄容器（通知卡片）里被裁掉 */}
                                 <div data-sub-row="secondary" style={{
                                     display: 'flex',
                                     flexDirection: 'row',
@@ -504,9 +565,9 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                             disabled={action.disabled}
                                             loading={action.loading}
                                             onClick={action.onClick}
-                                            style={{ minHeight: actionMinHeight, flex: isMobile ? 1 : undefined, justifyContent: 'center' }}
+                                            style={{ minHeight: actionMinHeight, flex: 1, justifyContent: 'center' }}
                                         >
-                                            <CheckOutlined /> {action.label}
+                                            {action.label}
                                         </Button>
                                     ))}
                                     {!denyFirst && (
@@ -516,33 +577,110 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                             disabled={denyConfig.disabled}
                                             loading={denyConfig.loading}
                                             onClick={denyConfig.onClick}
-                                            style={{ minHeight: actionMinHeight, flex: isMobile ? 1 : undefined, justifyContent: 'center' }}
+                                            style={{ minHeight: actionMinHeight, flex: 1, justifyContent: 'center' }}
                                         >
                                             <CloseOutlined /> {denyConfig.label}
                                         </Button>
                                     )}
-                                    {/* 「带原因拒绝」：展开 textarea 走 denyWithFeedback（对齐 CLI reject-with-feedback） */}
                                     <Button
                                         variant="ghost"
                                         disabled={disabledAll}
                                         onClick={() => setShowFeedback(true)}
-                                        style={{ minHeight: actionMinHeight, flex: isMobile ? 1 : undefined, justifyContent: 'center', color: token.colorTextSecondary }}
+                                        style={{ minHeight: actionMinHeight, flex: 1, justifyContent: 'center', color: token.colorTextSecondary }}
                                     >
                                         {t('chat.tool.denyWithReason')}
                                     </Button>
                                 </div>
-                                {/* 分隔线 + 不可逆提示：仅移动端（PC 端上方已有文字提示） */}
-                                {isMobile ? (
-                                    <div style={{
-                                        display: 'flex', alignItems: 'center', gap: 8,
-                                        margin: '4px 0', width: '100%',
-                                        color: token.colorTextQuaternary, fontSize: 11,
-                                    }}>
-                                        <span style={{ flex: 1, height: 1, background: token.colorBorderSecondary }} />
-                                        <span>{t('chat.tool.irreversibleHint')}</span>
-                                        <span style={{ flex: 1, height: 1, background: token.colorBorderSecondary }} />
+                                {/* 分隔线 + 不可逆提示（移动端承载处） */}
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', gap: 8,
+                                    margin: '4px 0', width: '100%',
+                                    color: token.colorTextQuaternary, fontSize: 11,
+                                }}>
+                                    <span style={{ flex: 1, height: 1, background: token.colorBorderSecondary }} />
+                                    <span>{t('chat.tool.irreversibleHint')}</span>
+                                    <span style={{ flex: 1, height: 1, background: token.colorBorderSecondary }} />
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                {/* 决策行：主位操作 + 其余允许档（图标只留主位一枚，次档纯文字） */}
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <Button
+                                        variant="primary"
+                                        danger={denyFirst}
+                                        disabled={mainAction.disabled}
+                                        loading={mainAction.loading}
+                                        onClick={mainAction.onClick}
+                                        style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+                                    >
+                                        {denyFirst ? <CloseOutlined /> : <CheckOutlined />} {mainAction.label}
+                                    </Button>
+                                    {!denyFirst && secondaryActions.map((action, idx) => (
+                                        <Button
+                                            key={idx}
+                                            variant="secondary"
+                                            disabled={action.disabled}
+                                            loading={action.loading}
+                                            onClick={action.onClick}
+                                            style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+                                        >
+                                            {action.label}
+                                        </Button>
+                                    ))}
+                                </div>
+                                {/* 否决行：hairline 与决策行分界；左=警示小字，右=低频操作组。
+                                    defaultToNo（拒绝在主位）时右侧放允许组，保持「主位 vs 低频侧」对称 */}
+                                <div style={{
+                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                    gap: 8, flexWrap: 'wrap', marginTop: 4, paddingTop: 8,
+                                    borderTop: `1px solid ${token.colorBorderSecondary}`,
+                                }}>
+                                    <span style={{ fontSize: 11, color: token.colorTextQuaternary }}>
+                                        {t('chat.tool.irreversibleHint')}
+                                    </span>
+                                    <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                                        {denyFirst ? (
+                                            <>
+                                                {secondaryRowActions.map((action, idx) => (
+                                                    <Button
+                                                        key={idx}
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        disabled={action.disabled}
+                                                        loading={action.loading}
+                                                        onClick={action.onClick}
+                                                        style={{ color: token.colorTextSecondary }}
+                                                    >
+                                                        {action.label}
+                                                    </Button>
+                                                ))}
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Button
+                                                    variant="ghost"
+                                                    danger
+                                                    size="sm"
+                                                    disabled={denyConfig.disabled}
+                                                    loading={denyConfig.loading}
+                                                    onClick={denyConfig.onClick}
+                                                >
+                                                    {denyConfig.label}
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    disabled={disabledAll}
+                                                    onClick={() => setShowFeedback(true)}
+                                                    style={{ color: token.colorTextTertiary }}
+                                                >
+                                                    {t('chat.tool.denyWithReason')}
+                                                </Button>
+                                            </>
+                                        )}
                                     </div>
-                                ) : null}
+                                </div>
                             </>
                         )}
                     </div>
