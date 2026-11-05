@@ -256,6 +256,10 @@ const ArchivedRow = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['t
         background: ${p => p.$token.colorBgTextHover};
     }
 
+    /* 行 hover 是高频交互：底色 0.1s 快速淡入淡出（不滑移——行卡圆角随组边界
+     * 逐行不同，滑移层的静态圆角对不上；底色在行元素上被 border-radius 天然裁剪） */
+    transition: background-color var(--mobi-duration-fast) var(--mobi-ease-out);
+
     /* 组内首行收卡顶，其余行画行间 hairline，末行收卡底 */
     &.group-first {
         border-top: 1px solid ${p => p.$token.colorBorderSecondary};
