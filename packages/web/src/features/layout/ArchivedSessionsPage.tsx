@@ -134,11 +134,17 @@ const ListyShell = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['to
     min-height: 0;
     position: relative;
 
-    /* item 容器透明零内衬（卡片视觉与留白都在行元素上；重置 antd 默认底色与
-     * 12px 16px padding，否则容器 padding 区露页面底色、行间现缝） */
+    /* item 容器透明零内衬零边框（卡片视觉与留白都在行元素上）。antd 默认带
+     * 12px 16px padding + 1px colorSplit borderBottom + hover 背景：不清则
+     * 行间与我们自己的 border-top 叠成双线、圆角处直边线不随弧伸出卡外、
+     * hover 时容器背景从行元素圆角外露色 */
     .archived-listy-item {
         background: transparent;
         padding: 0;
+        border-bottom: 0;
+    }
+    .archived-listy-item:hover {
+        background: transparent;
     }
 
     /* 组头裸排页面背景（ChatGPT 形态）：重置 antd 默认背景/内衬，组间 28px 承载在
