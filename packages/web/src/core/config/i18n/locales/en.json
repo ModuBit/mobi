@@ -231,6 +231,7 @@
         "groupActions": "Project actions",
     "title": "Archived Sessions",
     "empty": "No archived sessions",
+    "loadingMore": "Loading…",
     "ungrouped": "Unassigned",
     "unknownWorkspace": "Unknown workspace",
     "archivedAt": "Archived {{time}}",

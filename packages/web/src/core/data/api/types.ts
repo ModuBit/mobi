@@ -221,6 +221,30 @@ export interface WorkspaceSessionsPage {
     total: number
 }
 
+/** 归档列表分页页（useArchivedSessions 的 InfiniteQuery 页结构；归档页自持完整 Session） */
+export interface ArchivedSessionsPage {
+    sessions: Session[]
+    nextCursor: number | null
+    hasMore: boolean
+    /** 该 namespace 归档全集总数（不受游标影响） */
+    total: number
+    /** 各工作区归档数真实总数（组头计数；workspaceId=null 表示未归入工作区） */
+    workspaceCounts: Array<{ workspaceId: string | null; count: number }>
+}
+
+/** daemon 归档范围批量操作的逐条结果（批量删除/批量取消归档共用形状） */
+export interface ArchivedBatchItemResult {
+    sessionId: string
+    ok: boolean
+    error?: string
+}
+
+/** 归档范围批量删除响应（范围按过滤条件声明，非「已加载页」） */
+export interface ArchivedBatchResponse {
+    results: ArchivedBatchItemResult[]
+    deleted: number
+}
+
 // ============ SDK 元数据（来自 SDK initializationResult） ============
 
 import type {

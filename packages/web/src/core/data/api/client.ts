@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
-import type { Session, DecryptedMessage, MessagesResponse, DaemonStatus, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse } from './types'
+import type { Session, DecryptedMessage, MessagesResponse, DaemonStatus, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse, ArchivedSessionsPage, ArchivedBatchResponse, ArchivedBatchItemResult } from './types'
 import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, RedactedTelemetrySettings, TelemetrySettingsSubmission, MapSettingsSubmission, MapSettingsView, PermissionAnnotations, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin, WorktreeListResponse, MergeBackResult, MergeBackRequest, DiscardResult, DeleteSessionResponse } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
@@ -209,8 +209,29 @@ export function createMobiApi() {
                         limit: limit ?? 20,
                     },
                 }),
-            // 归档会话全量（归档页数据源，归档时间倒序）
-            archivedSessions: () => client.get<{ sessions: Session[] }>('/api/sessions/archived'),
+            // 归档会话分页（归档页数据源，归档时间倒序游标；触底加载）。
+            // workspaceId 过滤下推（null = 未归入工作区，经 __none__ 哨兵）——过滤视图以全集分页
+            archivedSessions: (opts?: { workspaceId?: string | null; cursor?: number; limit?: number }) =>
+                client.get<ArchivedSessionsPage>('/api/sessions/archived', {
+                    params: {
+                        ...(opts?.workspaceId !== undefined && { workspaceId: opts.workspaceId ?? '__none__' }),
+                        ...(opts?.cursor !== undefined && { cursor: opts.cursor }),
+                        limit: opts?.limit ?? 50,
+                    },
+                }),
+            // 归档范围批量删除（页级「全部删除」/ 组级删除全部）：范围按过滤条件声明
+            // （workspaceId=null 表示未归入工作区，经 __none__ 哨兵传输），返回逐条结果
+            deleteArchivedSessions: (workspaceId?: string | null) =>
+                client.delete<ArchivedBatchResponse>('/api/sessions/archived', {
+                    params: workspaceId === undefined ? {} : { workspaceId: workspaceId ?? '__none__' },
+                }),
+            // 归档范围批量取消归档（组级动作），同范围语义
+            unarchiveArchivedSessions: (workspaceId?: string | null) =>
+                client.post<{ results: ArchivedBatchItemResult[]; unarchived: number }>(
+                    '/api/sessions/archived/unarchive',
+                    null,
+                    { params: workspaceId === undefined ? {} : { workspaceId: workspaceId ?? '__none__' } },
+                ),
             // 归档 / 取消归档（票 04：归档 409 带 blockers——active 会话须先休眠）
             archive: (sessionId: string) => client.post(`/api/sessions/${sessionId}/archive`),
             unarchive: (sessionId: string) => client.post(`/api/sessions/${sessionId}/unarchive`),

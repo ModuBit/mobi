@@ -108,21 +108,66 @@ describe('主列表分页排除归档 + 归档列表（票 04）', () => {
         expect(pinned.sessions.map(s => s.id)).toEqual([normalId])
     })
 
-    it('getArchivedSessions 按归档时间倒序且只含归档行', () => {
+    it('getArchivedSessions 分页：归档时间倒序、只含归档行、游标翻页、total 全集', () => {
         const a = store.sessions.getOrCreateSession('arc-a', { path: '/x' }, {}, 'default')
         const b = store.sessions.getOrCreateSession('arc-b', { path: '/x' }, {}, 'default')
+        const c = store.sessions.getOrCreateSession('arc-c', { path: '/x' }, {}, 'default')
         const normal = store.sessions.getOrCreateSession('arc-normal', { path: '/x' }, {}, 'default')
         store.sessions.setSessionStatus(a.id, 'default', { status: 'archived', at: 1000 })
         store.sessions.setSessionStatus(b.id, 'default', { status: 'archived', at: 2000 })
+        store.sessions.setSessionStatus(c.id, 'default', { status: 'archived', at: 3000 })
 
-        const list = store.sessions.getArchivedSessions('default')
-        expect(list.map(s => s.id)).toEqual([b.id, a.id])
-        expect(list.map(s => s.archivedAt)).toEqual([2000, 1000])
+        // 首页（limit=2）：按 archived_at 倒序取前两条，total 是全集数
+        const page1 = store.sessions.getArchivedSessions('default', undefined, null, 2)
+        expect(page1.sessions.map(s => s.id)).toEqual([c.id, b.id])
+        expect(page1.hasMore).toBe(true)
+        expect(page1.nextCursor).toBe(2000)
+        expect(page1.total).toBe(3)
+
+        // 翻页：游标 = 上一页末行 archived_at
+        const page2 = store.sessions.getArchivedSessions('default', undefined, page1.nextCursor, 2)
+        expect(page2.sessions.map(s => s.id)).toEqual([a.id])
+        expect(page2.hasMore).toBe(false)
+        expect(page2.nextCursor).toBeNull()
 
         // 取消归档后立即从归档列表消失
-        store.sessions.setSessionStatus(b.id, 'default', { status: 'dormant', at: 3000 })
-        expect(store.sessions.getArchivedSessions('default').map(s => s.id)).toEqual([a.id])
+        store.sessions.setSessionStatus(c.id, 'default', { status: 'dormant', at: 4000 })
+        expect(store.sessions.getArchivedSessions('default', undefined, null, 50).sessions.map(s => s.id)).toEqual([b.id, a.id])
         expect(normal.status).toBe('dormant')
+    })
+
+    it('getArchivedWorkspaceCounts 按工作区聚合计数；getArchivedSessionIds 支持三态范围', () => {
+        const wsA = store.workspaces.createWorkspace({ namespace: 'default', name: 'ws-a', folders: [{ path: '/tmp/a', primary: true }] })
+        const wsB = store.workspaces.createWorkspace({ namespace: 'default', name: 'ws-b', folders: [{ path: '/tmp/b', primary: true }] })
+        const a1 = store.sessions.getOrCreateSession('cnt-a1', { path: '/x' }, {}, 'default')
+        const a2 = store.sessions.getOrCreateSession('cnt-a2', { path: '/x' }, {}, 'default')
+        const b1 = store.sessions.getOrCreateSession('cnt-b1', { path: '/x' }, {}, 'default')
+        const free = store.sessions.getOrCreateSession('cnt-free', { path: '/x' }, {}, 'default')
+        store.sessions.setSessionWorkspace(a1.id, wsA.id, 'default')
+        store.sessions.setSessionWorkspace(a2.id, wsA.id, 'default')
+        store.sessions.setSessionWorkspace(b1.id, wsB.id, 'default')
+        store.sessions.setSessionStatus(a1.id, 'default', { status: 'archived', at: 1000 })
+        store.sessions.setSessionStatus(a2.id, 'default', { status: 'archived', at: 2000 })
+        store.sessions.setSessionStatus(b1.id, 'default', { status: 'archived', at: 3000 })
+        store.sessions.setSessionStatus(free.id, 'default', { status: 'archived', at: 4000 })
+
+        const counts = store.sessions.getArchivedWorkspaceCounts('default')
+        expect(counts).toContainEqual({ workspaceId: wsA.id, count: 2 })
+        expect(counts).toContainEqual({ workspaceId: wsB.id, count: 1 })
+        expect(counts).toContainEqual({ workspaceId: null, count: 1 })
+
+        // 范围 id：全部 / 指定工作区 / 未归入（归档时间倒序）
+        expect(store.sessions.getArchivedSessionIds('default')).toEqual([free.id, b1.id, a2.id, a1.id])
+        expect(store.sessions.getArchivedSessionIds('default', wsA.id)).toEqual([a2.id, a1.id])
+        expect(store.sessions.getArchivedSessionIds('default', null)).toEqual([free.id])
+
+        // 项目过滤下推：指定工作区 / 未归入，各自分页且 total 是过滤全集
+        const wsPage = store.sessions.getArchivedSessions('default', wsA.id, null, 50)
+        expect(wsPage.sessions.map(s => s.id)).toEqual([a2.id, a1.id])
+        expect(wsPage.total).toBe(2)
+        const freePage = store.sessions.getArchivedSessions('default', null, null, 50)
+        expect(freePage.sessions.map(s => s.id)).toEqual([free.id])
+        expect(freePage.total).toBe(1)
     })
 })
 

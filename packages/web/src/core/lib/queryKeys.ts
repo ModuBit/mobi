@@ -51,6 +51,8 @@ export const queryKeys = {
     pinnedSessions: ['pinnedSessions'] as const,
     /** 归档会话（归档页数据源；归档/取消归档动作共用失效前缀） */
     archivedSessions: ['archivedSessions'] as const,
+    /** 归档会话按项目过滤的分页键（前缀 ['archivedSessions'] 失效时全部过滤变体一并收敛） */
+    archivedSessionsWorkspace: (workspaceFilter: string | null) => ['archivedSessions', workspaceFilter] as const,
     /** 机器列表 */
     machines: ['machines'] as const,
     /** daemon 状态（单机：GET /api/daemon/status，取代机器列表作为宿主身份/就绪源） */

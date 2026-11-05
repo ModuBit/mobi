@@ -395,9 +395,42 @@ export class SyncEngine {
         return this.store.sessions.getPinnedSessions(namespace, cursor, limit)
     }
 
-    /** 归档会话全量（归档时间倒序，归档页数据源；量级可控不分页） */
-    getArchivedSessions(namespace: string) {
-        return this.store.sessions.getArchivedSessions(namespace)
+    /** 归档会话分页列表（归档时间倒序游标，归档页数据源；项目过滤下推，前端触底加载） */
+    getArchivedSessions(namespace: string, workspaceId: string | null | undefined, cursor: number | null, limit?: number) {
+        return this.store.sessions.getArchivedSessions(namespace, workspaceId, cursor, limit)
+    }
+
+    /** 归档会话按工作区的组计数（归档页组头真实总数，不受分页影响） */
+    getArchivedWorkspaceCounts(namespace: string) {
+        return this.store.sessions.getArchivedWorkspaceCounts(namespace)
+    }
+
+    /**
+     * 归档范围批量删除（归档页「全部删除」/ 组级删除全部）：逐条走单条删除编排
+     * （transcript / worktree / 墓碑 / 快照清理全复用），单条失败不回滚，
+     * 聚合逐条结果交前端报告。workspaceId 三态同 getArchivedSessionIds。
+     */
+    async deleteArchivedSessions(namespace: string, workspaceId?: string | null): Promise<Array<{ sessionId: string; ok: boolean; error?: string }>> {
+        const ids = this.store.sessions.getArchivedSessionIds(namespace, workspaceId)
+        const results: Array<{ sessionId: string; ok: boolean; error?: string }> = []
+        for (const sessionId of ids) {
+            try {
+                await this.deleteSession(sessionId)
+                results.push({ sessionId, ok: true })
+            } catch (error) {
+                results.push({ sessionId, ok: false, error: error instanceof Error ? error.message : String(error) })
+            }
+        }
+        return results
+    }
+
+    /** 归档范围批量取消归档：逐条走单条取消归档（回 dormant），聚合逐条结果 */
+    unarchiveArchivedSessions(namespace: string, workspaceId?: string | null): Array<{ sessionId: string; ok: boolean; error?: string }> {
+        const ids = this.store.sessions.getArchivedSessionIds(namespace, workspaceId)
+        return ids.map(sessionId => {
+            const ok = this.unarchiveSession(sessionId)
+            return { sessionId, ok, ...(ok ? {} : { error: 'Failed to unarchive the session' }) }
+        })
     }
 
     /**

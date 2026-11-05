@@ -229,11 +229,17 @@ describe('GET /api/sessions 的归档过滤', () => {
     })
 })
 
-describe('GET /api/sessions/archived（票 05 归档页数据源）', () => {
-    test('返回归档全量且叠内存态；注册顺序不被 /:id 拦截', async () => {
+describe('GET /api/sessions/archived（票 05 归档页数据源，分页）', () => {
+    test('返回分页载荷（nextCursor/hasMore/total/workspaceCounts）且叠内存态；注册顺序不被 /:id 拦截', async () => {
         const archived: Session = { ...mockSession, status: 'archived', archivedAt: 1234 }
         const engine = {
-            getArchivedSessions: (_ns: string) => [archived],
+            getArchivedSessions: (_ns: string, _ws: string | null | undefined, _cursor: number | null, _limit?: number) => ({
+                sessions: [archived],
+                nextCursor: null,
+                hasMore: false,
+                total: 1,
+            }),
+            getArchivedWorkspaceCounts: (_ns: string) => [{ workspaceId: null, count: 1 }],
             getSession: (_id: string) => null,
         } as unknown as SyncEngine
         const { app, cleanup, token } = await authorizedApp(engine)
@@ -242,10 +248,103 @@ describe('GET /api/sessions/archived（票 05 归档页数据源）', () => {
                 headers: { Authorization: `Bearer ${token}` },
             })
             expect(res.status).toBe(200)
-            const sessions = ((await res.json()) as { sessions: Session[] }).sessions
-            expect(sessions).toHaveLength(1)
-            expect(sessions[0].status).toBe('archived')
-            expect(sessions[0].archivedAt).toBe(1234)
+            const body = await res.json() as {
+                sessions: Session[]; nextCursor: number | null; hasMore: boolean
+                total: number; workspaceCounts: Array<{ workspaceId: string | null; count: number }>
+            }
+            expect(body.sessions).toHaveLength(1)
+            expect(body.sessions[0].status).toBe('archived')
+            expect(body.sessions[0].archivedAt).toBe(1234)
+            expect(body.nextCursor).toBeNull()
+            expect(body.hasMore).toBe(false)
+            expect(body.total).toBe(1)
+            expect(body.workspaceCounts).toEqual([{ workspaceId: null, count: 1 }])
+        } finally {
+            cleanup()
+        }
+    })
+
+    test('cursor/limit/workspaceId 透传分页与过滤参数；非法 limit → 400', async () => {
+        let received: { ws: string | null | undefined; cursor: number | null; limit: number } | null = null
+        // mock 闭包里的重新赋值不参与控制流收窄——读取经 snapshot 宽化
+        const snapshot = () => received as { ws: string | null | undefined; cursor: number | null; limit: number } | null
+        const engine = {
+            getArchivedSessions: (_ns: string, ws: string | null | undefined, cursor: number | null, limit?: number) => {
+                received = { ws, cursor, limit: limit ?? 0 }
+                return { sessions: [], nextCursor: null, hasMore: false, total: 0 }
+            },
+            getArchivedWorkspaceCounts: (_ns: string) => [],
+            getSession: (_id: string) => null,
+        } as unknown as SyncEngine
+        const { app, cleanup, token } = await authorizedApp(engine)
+        try {
+            await app.request('/api/sessions/archived?cursor=1234&limit=10', {
+                headers: { Authorization: `Bearer ${token}` },
+            })
+            expect(snapshot()).toEqual({ ws: undefined, cursor: 1234, limit: 10 })
+
+            await app.request('/api/sessions/archived?workspaceId=__none__', {
+                headers: { Authorization: `Bearer ${token}` },
+            })
+            expect(snapshot()).toEqual({ ws: null, cursor: null, limit: 50 })
+
+            const bad = await app.request('/api/sessions/archived?limit=0', {
+                headers: { Authorization: `Bearer ${token}` },
+            })
+            expect(bad.status).toBe(400)
+        } finally {
+            cleanup()
+        }
+    })
+})
+
+describe('归档范围批量操作（DELETE /archived、POST /archived/unarchive）', () => {
+    test('批量删除：workspaceId 三态透传，聚合逐条结果', async () => {
+        const scopes: Array<string | null | undefined> = []
+        const engine = {
+            deleteArchivedSessions: async (_ns: string, workspaceId: string | null | undefined) => {
+                scopes.push(workspaceId)
+                return [
+                    { sessionId: 's-1', ok: true },
+                    { sessionId: 's-2', ok: false, error: 'boom' },
+                ]
+            },
+        } as unknown as SyncEngine
+        const { app, cleanup, token } = await authorizedApp(engine)
+        try {
+            const all = await app.request('/api/sessions/archived', {
+                method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+            })
+            expect(await all.json()).toEqual({
+                results: [{ sessionId: 's-1', ok: true }, { sessionId: 's-2', ok: false, error: 'boom' }],
+                deleted: 1,
+            })
+
+            await app.request('/api/sessions/archived?workspaceId=__none__', {
+                method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+            })
+            await app.request('/api/sessions/archived?workspaceId=ws-1', {
+                method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+            })
+            expect(scopes).toEqual([undefined, null, 'ws-1'])
+        } finally {
+            cleanup()
+        }
+    })
+
+    test('批量取消归档：聚合逐条结果', async () => {
+        const engine = {
+            unarchiveArchivedSessions: (_ns: string, _workspaceId: string | null | undefined) => [
+                { sessionId: 's-1', ok: true },
+            ],
+        } as unknown as SyncEngine
+        const { app, cleanup, token } = await authorizedApp(engine)
+        try {
+            const res = await app.request('/api/sessions/archived/unarchive?workspaceId=ws-1', {
+                method: 'POST', headers: { Authorization: `Bearer ${token}` },
+            })
+            expect(res.status).toBe(200)
+            expect(await res.json()).toEqual({ results: [{ sessionId: 's-1', ok: true }], unarchived: 1 })
         } finally {
             cleanup()
         }

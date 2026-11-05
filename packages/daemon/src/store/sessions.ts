@@ -641,8 +641,15 @@ export type WorkspaceSessionsResult = {
     total: number
 }
 
+/** 归档会话分页的组计数行：workspaceId 为 null 表示未归入工作区 */
+export type ArchivedWorkspaceCount = { workspaceId: string | null; count: number }
+
 /**
- * 会话分页查询的共享实现（getSessionsByWorkspace / getUnboundSessions 复用）。
+ * 会话分页查询的共享实现（getSessionsByWorkspace / getUnboundSessions /
+ * getPinnedSessions / getArchivedSessions 复用）。
+ *
+ * 排序列由 orderColumn 声明（updated_at=主列表活跃序；archived_at=归档时间序），
+ * 游标条件 / ORDER BY / nextCursor 取值随之统一——分页语义只写这一处。
  *
  * 单语句同时取分页数据与全集总数：内层 CTE 用 COUNT(*) OVER() 算全集
  * （仅按 whereSql 过滤，不含 cursor/LIMIT），外层套 cursor 过滤与分页。
@@ -650,8 +657,8 @@ export type WorkspaceSessionsResult = {
  * 各自取读快照，中间若有 CLI 写入 session，COUNT 与分页 SELECT 会基于不同快照，
  * 致 total 与累计行数偏差、前端 remainingCount 失真。单语句天然同一快照，无竞态。
  *
- * 已知限制（记录而非修复）：游标为 `updated_at < cursor`，同一毫秒的会话在跨页
- * 边界会被整批跳过（tie-skip）。理论上可用 (updated_at, seq) 元组游标消除，但那会
+ * 已知限制（记录而非修复）：游标为 `排序列 < cursor`，同一毫秒的会话在跨页
+ * 边界会被整批跳过（tie-skip）。理论上可用 (排序列, seq) 元组游标消除，但那会
  * 改变 nextCursor 的结构语义（web 端按单数字 cursor 透传），风险大于收益，故保持现状。
  */
 function paginateSessions(
@@ -659,9 +666,10 @@ function paginateSessions(
     whereSql: string,
     params: Array<string | number | null>,
     cursor: number | null,
-    limit: number = 20
+    limit: number = 20,
+    orderColumn: 'updated_at' | 'archived_at' = 'updated_at'
 ): WorkspaceSessionsResult {
-    const cursorCondition = cursor ? 'AND updated_at < ?' : ''
+    const cursorCondition = cursor ? `AND ${orderColumn} < ?` : ''
     const sql = `
         WITH counted AS (
             SELECT *, COUNT(*) OVER() AS total_count
@@ -670,7 +678,7 @@ function paginateSessions(
         )
         SELECT * FROM counted
         WHERE 1=1 ${cursorCondition}
-        ORDER BY updated_at DESC
+        ORDER BY ${orderColumn} DESC
         LIMIT ?
     `
 
@@ -681,7 +689,7 @@ function paginateSessions(
     const sessions = rows.map(toStoredSession)
     const hasMore = rows.length === limit
     const nextCursor = hasMore && rows.length > 0
-        ? rows[rows.length - 1].updated_at
+        ? rows[rows.length - 1][orderColumn]
         : null
     // 全集总数从首行取（同一结果集所有行的 total_count 一致）；空结果集时为 0。
     // 例外（V5）：带 cursor 的空页通常是「剩余会话 updated_at 被顶到 cursor 之上」的瞬时
@@ -744,12 +752,62 @@ export function getPinnedSessions(
     return paginateSessions(db, 'namespace = ? AND pinned = 1 AND status != \'archived\'', [namespace], cursor, limit)
 }
 
-/** 归档会话列表（归档页数据源）：按归档时间倒序，全量不分页（归档是低频收纳动作） */
-export function getArchivedSessions(db: Database, namespace: string): StoredSession[] {
+/**
+ * 归档范围过滤条件的共享组装（分页列表与范围批量操作的候选集同源）。
+ * workspaceId 三态：undefined=全部归档；null=未归入工作区；string=指定工作区。
+ */
+function buildArchivedWhere(namespace: string, workspaceId: string | null | undefined): { sql: string; params: Array<string | number | null> } {
+    const conditions = ['namespace = ?', 'status = \'archived\'']
+    const params: Array<string | number | null> = [namespace]
+    if (workspaceId === null) {
+        conditions.push('workspace_id IS NULL')
+    } else if (workspaceId !== undefined) {
+        conditions.push('workspace_id = ?')
+        params.push(workspaceId)
+    }
+    return { sql: conditions.join(' AND '), params }
+}
+
+/**
+ * 归档会话分页列表（归档页数据源）：按归档时间倒序游标分页（归档量大时前端
+ * 虚拟滚动 + 触底加载，不再一次性全量）。项目过滤下推（workspaceId 三态）——
+ * 前端过滤视图以全集分页，不是「已加载页内再筛」。archived_at 显式非空——
+ * status='archived' 的行该列恒有值（setSessionStatus 同语句写入），条件只防改库脏值进游标比较。
+ */
+export function getArchivedSessions(
+    db: Database,
+    namespace: string,
+    workspaceId: string | null | undefined,
+    cursor: number | null,
+    limit: number = 50
+): WorkspaceSessionsResult {
+    const where = buildArchivedWhere(namespace, workspaceId)
+    const cursorableWhere = `${where.sql} AND archived_at IS NOT NULL`
+    return paginateSessions(db, cursorableWhere, where.params, cursor, limit, 'archived_at')
+}
+
+/** 归档会话按工作区的组计数（归档页组头「N 个会话」的真实总数，不受分页影响） */
+export function getArchivedWorkspaceCounts(db: Database, namespace: string): ArchivedWorkspaceCount[] {
     const rows = db.prepare(
-        'SELECT * FROM sessions WHERE namespace = ? AND status = \'archived\' ORDER BY archived_at DESC'
-    ).all(namespace) as DbSessionRow[]
-    return rows.map(toStoredSession)
+        'SELECT workspace_id, COUNT(*) AS cnt FROM sessions WHERE namespace = ? AND status = \'archived\' GROUP BY workspace_id'
+    ).all(namespace) as Array<{ workspace_id: string | null; cnt: number }>
+    return rows.map(row => ({ workspaceId: row.workspace_id, count: row.cnt }))
+}
+
+/**
+ * 归档范围批量操作的候选 id（归档时间倒序）。范围条件与分页列表同源
+ * （buildArchivedWhere）。轻量投影（只取 id）——批量删除/取消归档的逐条处置按 id 回查完整行。
+ */
+export function getArchivedSessionIds(
+    db: Database,
+    namespace: string,
+    workspaceId?: string | null
+): string[] {
+    const where = buildArchivedWhere(namespace, workspaceId)
+    const rows = db.prepare(
+        `SELECT id FROM sessions WHERE ${where.sql} ORDER BY archived_at DESC`
+    ).all(...where.params) as Array<{ id: string }>
+    return rows.map(row => row.id)
 }
 
 /** setSessionWorkspace 的三态结果（幂等语义见函数注释） */

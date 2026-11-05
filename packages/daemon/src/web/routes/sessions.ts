@@ -52,6 +52,22 @@ const pinnedSessionsQuerySchema = z.object({
     cursor: z.coerce.number().optional()
 })
 
+/** 归档会话分页 query（limit + archived_at 游标；归档页整页列表，默认页比主列表大一档） */
+const archivedPageQuery = z.object({
+    limit: z.coerce.number().min(1).max(100).optional().default(50),
+    cursor: z.coerce.number().optional()
+})
+
+/**
+ * workspaceId query 三态翻译（批量删除/批量取消归档的范围声明）：
+ * 缺省 = 全部归档（undefined）；`__none__` = 未归入工作区（null）；其余 = 指定工作区。
+ */
+function parseArchivedWorkspaceScope(raw: string | undefined): string | null | undefined {
+    if (raw === undefined || raw === '') return undefined
+    if (raw === '__none__') return null
+    return raw
+}
+
 /** rewind 预检 body（对齐 effort 路由的 zod body 校验模式） */
 const rewindDryRunSchema = z.object({
     nativeId: z.string().min(1)
@@ -327,18 +343,63 @@ export function createSessionsRoutes(
         })
     })
 
-    // GET /sessions/archived - 归档会话全量（归档页数据源，归档时间倒序）。
-    // 同 /sessions/pinned 的坑：必须注册在 /sessions/:id 之前
+    // GET /sessions/archived - 归档会话分页列表（归档页数据源，归档时间倒序游标）。
+    // 同 /sessions/pinned 的坑：必须注册在 /sessions/:id 之前。
+    // workspaceCounts 是各工作区归档数的真实总数（GROUP BY 全集），组头计数不受分页影响
     app.get('/sessions/archived', (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
             return engine
         }
 
-        const namespace = c.get('namespace')
-        const sessions = engine.getArchivedSessions(namespace).map(stored => toSummaryWithLiveState(engine, stored))
+        const parsed = archivedPageQuery.safeParse({
+            limit: c.req.query('limit'),
+            cursor: c.req.query('cursor'),
+        })
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid pagination parameters' }, 400)
+        }
 
-        return c.json({ sessions })
+        const namespace = c.get('namespace')
+        const result = engine.getArchivedSessions(
+            namespace,
+            parseArchivedWorkspaceScope(c.req.query('workspaceId')),
+            parsed.data.cursor ?? null,
+            parsed.data.limit,
+        )
+        return c.json({
+            sessions: result.sessions.map(stored => toSummaryWithLiveState(engine, stored)),
+            nextCursor: result.nextCursor,
+            hasMore: result.hasMore,
+            total: result.total,
+            workspaceCounts: engine.getArchivedWorkspaceCounts(namespace),
+        })
+    })
+
+    // DELETE /sessions/archived - 归档范围批量删除（页级「全部删除」/ 组级删除全部）：
+    // 范围以过滤条件声明（不是「已加载页」），逐条走单条删除编排，聚合逐条结果。
+    // 归档会话必非 active（归档前置休眠且为用户终态），不再逐条走休眠 gate
+    app.delete('/sessions/archived', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const namespace = c.get('namespace')
+        const results = await engine.deleteArchivedSessions(namespace, parseArchivedWorkspaceScope(c.req.query('workspaceId')))
+        return c.json({ results, deleted: results.filter(r => r.ok).length })
+    })
+
+    // POST /sessions/archived/unarchive - 归档范围批量取消归档（组级动作），同范围语义
+    app.post('/sessions/archived/unarchive', (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const namespace = c.get('namespace')
+        const results = engine.unarchiveArchivedSessions(namespace, parseArchivedWorkspaceScope(c.req.query('workspaceId')))
+        return c.json({ results, unarchived: results.filter(r => r.ok).length })
     })
 
     app.get('/sessions/:id', (c) => {

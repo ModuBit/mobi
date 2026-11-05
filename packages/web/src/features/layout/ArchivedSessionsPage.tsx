@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import { useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
-import { App, Input, Modal, theme as antTheme } from 'antd'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { ReactNode, UIEvent } from 'react'
+import { App, Input, Listy, Modal, Spin, theme as antTheme } from 'antd'
 import { Archive as ArchiveIcon, ArchiveRestore, Clock, Folder, MoreHorizontal, Search, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
@@ -32,30 +32,34 @@ import { reportBlockedError } from '@/core/data/sessionDormancy'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { evictSession } from '@/core/lib/sessionEviction'
 import { useSessionDelete } from './useSessionDelete'
-import { runBatch, summarizeBatch, batchConfirmExpected, BATCH_DELETE_CONFIRM_TOKEN } from './archivedBatch'
+import { summarizeBatch, batchConfirmExpected, BATCH_DELETE_CONFIRM_TOKEN } from './archivedBatch'
+import type { BatchItemResult } from './archivedBatch'
 import { useMobiApi } from '@/core/data/api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session } from '@/core/data/api/types'
 
 const { useToken } = antTheme
 
-const PageScroll = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+/**
+ * 页面壳（票 09 分页改造）：不再页面级滚动——滚动容器移交 Listy（虚拟滚动 +
+ * 触底加载），壳只做 flex 纵向布局与安全区内衬。
+ */
+const PageShell = styled.div`
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
     padding: 12px 20px max(24px, env(safe-area-inset-bottom));
 `
 
 const Inner = styled.div`
+    flex: 1;
+    min-height: 0;
+    width: 100%;
     max-width: 860px;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
-`
-
-/** 空态变体：撑满视口高让 EmptyState 垂直居中 */
-const InnerFill = styled(Inner)`
-    min-height: 100%;
 `
 
 /* 页面标题行（兼头部锚位行）：左侧锚位（PC 侧栏开关 / 移动端汉堡）+ 大标题，
@@ -103,6 +107,7 @@ const ToolBar = styled.div`
     align-items: center;
     gap: 10px;
     padding-bottom: 18px;
+    flex-shrink: 0;
 `
 
 const SearchSlot = styled(Input)`
@@ -115,20 +120,65 @@ const WorkspaceFilter = styled(Select)`
     flex-shrink: 0;
 `
 
-/* 组块：组头裸排在页面背景上（色块外，ChatGPT 形态），色块卡只包行列表 */
-const GroupBlock = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
-    & + & {
-        margin-top: 28px;
+/**
+ * Listy 容器（虚拟滚动的量高基准）：色块卡效果用数据层组边界标注（见 annotateGroupEdges）
+ * + 语义类实现——虚拟滚动下 Listy 平铺 DOM 的相邻关系不可靠（视口外的组头被剪掉后
+ * 「组末行 + 下组首行」在 DOM 里直接相邻），圆角/边框不做 DOM 邻接推断。
+ * 组边界类标在行内容 div 上，item 容器经 :has() 命中。
+ */
+const ListyShell = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+    flex: 1;
+    min-height: 0;
+    position: relative;
+
+    /* 每行承担色块卡侧壁；组内首行收卡顶，其余行画行间 hairline，末行收卡底 */
+    .archived-listy-item {
+        background: ${p => p.$token.colorBgContainer};
+        border-left: 1px solid ${p => p.$token.colorBorderSecondary};
+        border-right: 1px solid ${p => p.$token.colorBorderSecondary};
+    }
+    .archived-listy-item:has(.group-first) {
+        border-top: 1px solid ${p => p.$token.colorBorderSecondary};
+        border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+    }
+    .archived-listy-item:not(:has(.group-first)) {
+        border-top: 1px solid ${p => p.$token.colorBorderSecondary};
+    }
+    .archived-listy-item:has(.group-last) {
+        border-bottom: 1px solid ${p => p.$token.colorBorderSecondary};
+        border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+    }
+
+    /* 组头裸排页面背景（ChatGPT 形态）：重置 antd 默认背景/内衬，组间 28px 承载在
+     * 组头顶距上（首个免） */
+    .archived-listy-header {
+        background: transparent;
+        padding: 28px 4px 12px;
+    }
+    .archived-listy-header:first-child {
+        padding-top: 0;
     }
 `
 
-const GroupCard = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+/** 触底加载指示：叠在列表内缘底部的浅色胶囊（双档主题各自可读） */
+const LoadingMore = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 14px;
+    border-radius: var(--radius-pill);
     border: 1px solid ${p => p.$token.colorBorderSecondary};
-    border-radius: var(--radius-panel);
     background: ${p => p.$token.colorBgContainer};
-    overflow: hidden;
+    font-size: 12px;
+    color: ${p => p.$token.colorTextSecondary};
+    pointer-events: none;
 `
 
+/* 组头（项目名 + 真实计数 + ⋯ 菜单）：hover 显示动作（触屏常驻），下拉面板打开期间不隐藏 */
 const GroupHeader = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
     display: flex;
     align-items: center;
@@ -139,7 +189,6 @@ const GroupHeader = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['t
     color: ${p => p.$token.colorText};
     user-select: none;
 
-    /* 组级动作「⋯」：hover 显示（触屏无 hover 常驻），下拉面板打开期间不隐藏 */
     .group-actions {
         visibility: hidden;
     }
@@ -194,11 +243,6 @@ const ArchivedRow = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['t
     gap: 12px;
     padding: 12px 16px;
     color: ${p => p.$token.colorText};
-
-    /* 行间 hairline（首行不画，紧贴卡顶） */
-    & + & {
-        border-top: 1px solid ${p => p.$token.colorBorderSecondary};
-    }
 
     &:hover {
         background: ${p => p.$token.colorBgTextHover};
@@ -295,20 +339,33 @@ const EmptyState = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['to
     padding-bottom: 15dvh;
 `
 
-/** 分组视图：工作区名 → 组内归档会话（归档时间倒序，daemon 已排序，分组保序） */
-interface ArchivedGroup {
-    workspaceId: string | null
-    workspaceName: string
-    sessions: Session[]
+/** 组边界标注：Listy item 的圆角/边框按数据层的组内首末行渲染（虚拟化安全，见 ListyShell） */
+interface AnnotatedRow {
+    session: Session
+    groupFirst: boolean
+    groupLast: boolean
 }
 
-/** 待确认的批量删除：组级（输入项目名）或页面级（输入 DELETE） */
+function annotateGroupEdges(sessions: Session[]): AnnotatedRow[] {
+    const keyOf = (s: Session) => s.workspaceId ?? null
+    return sessions.map((session, i) => {
+        const key = keyOf(session)
+        // 首末行用 undefined 哨兵（≠ 任何 null/string 组键）保证边界判定
+        const prevKey = i > 0 ? keyOf(sessions[i - 1]) : undefined
+        const nextKey = i < sessions.length - 1 ? keyOf(sessions[i + 1]) : undefined
+        return { session, groupFirst: prevKey !== key, groupLast: nextKey !== key }
+    })
+}
+
+/** 待确认的批量删除：组级（输入项目名）或页面级（输入 DELETE）；count 是范围真实总数 */
 interface PendingBatchDelete {
-    scope: { kind: 'group'; groupName: string } | { kind: 'page' }
-    sessions: Session[]
+    scope:
+        | { kind: 'group'; groupName: string; workspaceId: string | null; count: number }
+        | { kind: 'page'; count: number }
 }
 
 const WORKSPACE_ALL = '__all__'
+const WORKSPACE_NONE = '__none__'
 
 interface ArchivedSessionsPageProps {
     /** 头部锚位（PC 侧栏开关 / 移动端汉堡），渲染进标题行左缘——本页无独立头部横条 */
@@ -316,11 +373,11 @@ interface ArchivedSessionsPageProps {
 }
 
 /**
- * 归档页本体（票 05/08，PC 形态一比一对齐 ChatGPT 归档页）：标题行左锚位 + 大标题
- * 左对齐（移动端字号对齐设置页头部）+ 右缘「全部删除」同基线，单行承载、无独立头部
- * 横条；工具条（搜索占位 + 项目过滤）；归档会话按项目分组——组头「项目名 + 计数 +
- * ⋯ 菜单（批量取消归档/删除）」裸排在页面背景上（色块外），色块卡只包行列表，
- * 行「名称 + 归档时间副行 + 常驻取消归档/删除动作」。
+ * 归档页本体（票 05/08/09）：数据走 daemon 游标分页（归档时间倒序，项目过滤下推），
+ * antd Listy 承载渲染——虚拟滚动（virtual + ResizeObserver 量高）、按工作区分组、
+ * 触底加载下一页；组头（项目名 + 真实总数 + ⋯ 菜单）裸排在页面背景上（色块外，
+ * ChatGPT 形态），色块卡只包行列表。批量删除/批量取消归档走 daemon 批量端点，
+ * 范围 = 当前过滤条件（不是「已加载页」）——「全部删除」保持真全删语义。
  * 删除（单条/组级/页面级）保留输入确认与逐条报告。
  * 组装壳（页面容器）在 pages/ArchivedPage，本组件只管列表呈现。
  */
@@ -330,37 +387,75 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
     const { message: messageApi, notification } = App.useApp()
     const api = useMobiApi()
     const queryClient = useQueryClient()
-    const { data: archived = [], isLoading } = useArchivedSessions()
     const { data: workspaces = [] } = useWorkspaces()
     const { unarchive } = useSessionArchive()
     const confirmDelete = useSessionDelete()
 
-    // ── 过滤（搜索占位待接入，先只有项目维度）──
+    // ── 过滤（搜索占位待接入，先只有项目维度；过滤下推 daemon，切换即从第一页重拉）──
     const [workspaceFilter, setWorkspaceFilter] = useState<string>(WORKSPACE_ALL)
     // ── 批量删除确认（自管 Modal：antd modal.confirm 的受控 Input 联动 fragile）──
     const [pendingDelete, setPendingDelete] = useState<PendingBatchDelete | null>(null)
     const [batchRunning, setBatchRunning] = useState(false)
 
-    const filtered = useMemo(() => {
-        if (workspaceFilter === WORKSPACE_ALL) return archived
-        return archived.filter(s => (s.workspaceId ?? null) === (workspaceFilter === '__none__' ? null : workspaceFilter))
-    }, [archived, workspaceFilter])
+    const {
+        data,
+        isLoading,
+        fetchNextPage,
+        hasNextPage,
+        isFetchingNextPage,
+    } = useArchivedSessions(workspaceFilter === WORKSPACE_ALL ? undefined : workspaceFilter)
 
-    const groups = useMemo<ArchivedGroup[]>(() => {
-        const workspaceName = new Map(workspaces.map(w => [w.id, w.name]))
-        const byWorkspace = new Map<string | null, Session[]>()
-        for (const session of filtered) {
-            const key = session.workspaceId ?? null
-            const bucket = byWorkspace.get(key)
-            if (bucket) bucket.push(session)
-            else byWorkspace.set(key, [session])
+    // 扁平化 + 跨页去重（tie-skip 瞬时边界可能让相邻页出现重复行，rowKey 冲突防御）
+    const sessions = useMemo(() => {
+        const seen = new Set<string>()
+        const out: Session[] = []
+        for (const page of data?.pages ?? []) {
+            for (const session of page.sessions) {
+                if (seen.has(session.id)) continue
+                seen.add(session.id)
+                out.push(session)
+            }
         }
-        return Array.from(byWorkspace.entries()).map(([workspaceId, sessions]) => ({
-            workspaceId,
-            workspaceName: workspaceId ? (workspaceName.get(workspaceId) ?? t('archived.unknownWorkspace')) : t('archived.ungrouped'),
-            sessions,
-        }))
-    }, [filtered, workspaces, t])
+        return out
+    }, [data])
+    const annotated = useMemo(() => annotateGroupEdges(sessions), [sessions])
+
+    // 组计数 / 全集总数取最后页快照（每页响应都带全集统计）
+    const lastPage = data?.pages[data.pages.length - 1]
+    const total = lastPage?.total ?? 0
+    const workspaceCounts = useMemo(
+        () => new Map((lastPage?.workspaceCounts ?? []).map(c => [c.workspaceId, c.count])),
+        [lastPage],
+    )
+    // 当前过滤范围的真实总数（页级「全部删除」的确认文案与按钮态依据）
+    const filteredTotal = workspaceFilter === WORKSPACE_ALL
+        ? total
+        : workspaceCounts.get(workspaceFilter === WORKSPACE_NONE ? null : workspaceFilter) ?? 0
+
+    const workspaceName = useMemo(() => new Map(workspaces.map(w => [w.id, w.name])), [workspaces])
+
+    // ── Listy 虚拟滚动量高：容器 flex:1 撑满剩余空间，ResizeObserver 跟随视口变化。
+    // ref 经 state 挂钩（loading 早退分支先于 ListyShell 挂载，mount 一次的 effect
+    // 会拿到 null 且不再重跑——listHeight 恒 0、Listy 恒不挂载）──
+    const [listShell, setListShell] = useState<HTMLDivElement | null>(null)
+    const [listHeight, setListHeight] = useState(0)
+    useEffect(() => {
+        if (!listShell) return
+        const update = () => setListHeight(listShell.clientHeight)
+        update()
+        const observer = new ResizeObserver(update)
+        observer.observe(listShell)
+        return () => observer.disconnect()
+    }, [listShell])
+
+    // ── 触底加载：接近底部 240px 预取下一页（Listy onScroll 原生事件）──
+    const handleListScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
+        const el = e.currentTarget
+        if (!hasNextPage || isFetchingNextPage) return
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) {
+            void fetchNextPage()
+        }
+    }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
     // 取消归档：409（gate）原样透出逐项原因，其余通用错误
     const handleUnarchive = (session: Session) => {
@@ -373,11 +468,31 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
         })
     }
 
+    // 批量操作范围 → daemon workspaceId 三态（页面级跟随当前过滤；组级即组归属）
+    const scopeWorkspaceId = (scope: PendingBatchDelete['scope']): string | null | undefined => {
+        if (scope.kind === 'group') return scope.workspaceId
+        if (workspaceFilter === WORKSPACE_ALL) return undefined
+        if (workspaceFilter === WORKSPACE_NONE) return null
+        return workspaceFilter
+    }
+
+    // daemon 逐条结果 → 展示聚合（name 从已加载行取显示名，未加载行退化为 id）
+    const toBatchResults = (results: Array<{ sessionId: string; ok: boolean; error?: string }>): BatchItemResult[] => {
+        const nameById = new Map(sessions.map(s => [s.id, getSessionDisplayName(s)]))
+        return results.map(r => ({
+            sessionId: r.sessionId,
+            name: nameById.get(r.sessionId) ?? r.sessionId,
+            ok: r.ok,
+            reason: r.error,
+        }))
+    }
+
     // 批量取消归档（组级）：可逆动作不设输入门槛，聚合报告
-    const runBatchUnarchive = async (sessions: Session[]) => {
+    const runBatchUnarchive = async (workspaceId: string | null) => {
         setBatchRunning(true)
         try {
-            const results = await runBatch(sessions, id => api.sessions.unarchive(id))
+            const response = await api.sessions.unarchiveArchivedSessions(workspaceId)
+            const results = toBatchResults(response.data.results)
             await invalidateSessionViews(queryClient, results.filter(r => r.ok).map(r => r.sessionId))
             notification.info({
                 key: 'archived-batch-result',
@@ -393,14 +508,16 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
         }
     }
 
-    // 批量删除：Modal 确认通过后执行；单条失败不回滚，聚合报告逐条原因
-    const runBatchDelete = async (sessions: Session[]) => {
+    // 批量删除：Modal 确认通过后执行；daemon 批量端点单条失败不回滚，聚合报告逐条原因
+    const runBatchDelete = async (scope: PendingBatchDelete['scope']) => {
         setBatchRunning(true)
         try {
-            const okIds: string[] = []
-            const results = await runBatch(sessions, id => api.sessions.delete(id), id => okIds.push(id))
+            const response = await api.sessions.deleteArchivedSessions(scopeWorkspaceId(scope))
+            const results = toBatchResults(response.data.results)
+            const okIds = results.filter(r => r.ok).map(r => r.sessionId)
             void evictSession(queryClient, okIds)
-            const okCount = results.filter(r => r.ok).length
+            await invalidateSessionViews(queryClient, okIds)
+            const okCount = okIds.length
             if (okCount === results.length) {
                 notification.success({
                     key: 'archived-batch-result',
@@ -425,14 +542,100 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
         }
     }
 
-    const openBatchDelete = (scope: PendingBatchDelete['scope'], sessions: Session[]) => {
-        setPendingDelete({ scope, sessions })
+    const openBatchDelete = (scope: PendingBatchDelete['scope']) => {
+        setPendingDelete({ scope })
     }
+
+    // Listy 分组：key 即工作区归属；title 渲染组头（真实计数 + ⋯ 菜单）
+    const renderGroupHeader = useCallback((wsId: string | null): ReactNode => {
+        const name = wsId ? (workspaceName.get(wsId) ?? t('archived.unknownWorkspace')) : t('archived.ungrouped')
+        const count = workspaceCounts.get(wsId) ?? 0
+        return (
+            <GroupHeader $token={token}>
+                <Folder size={15} style={{ color: token.colorTextQuaternary, flexShrink: 0 }} />
+                {name}
+                <GroupCount $token={token}>{t('archived.groupCount', { count })}</GroupCount>
+                <GroupActions className="group-actions">
+                    <DropdownMenu
+                        trigger={
+                            <GroupActionButton
+                                $token={token}
+                                aria-label={t('archived.groupActions')}
+                                disabled={batchRunning}
+                            >
+                                <MoreHorizontal size={16} />
+                            </GroupActionButton>
+                        }
+                        items={[
+                            {
+                                label: t('archived.batch.unarchiveGroup', { count }),
+                                icon: <ArchiveRestore size={15} />,
+                                disabled: batchRunning,
+                                onSelect: () => { void runBatchUnarchive(wsId) },
+                            },
+                            {
+                                label: t('archived.batch.deleteGroup', { count }),
+                                icon: <Trash2 size={15} />,
+                                destructive: true,
+                                disabled: batchRunning,
+                                separatorBefore: true,
+                                onSelect: () => openBatchDelete(
+                                    { kind: 'group', groupName: name, workspaceId: wsId, count },
+                                ),
+                            },
+                        ]}
+                    />
+                </GroupActions>
+            </GroupHeader>
+        )
+    }, [workspaceName, workspaceCounts, token, t, batchRunning, messageApi])
+
+    const renderRow = useCallback((row: AnnotatedRow) => {
+        const session = row.session
+        return (
+            <ArchivedRow $token={token} className={[row.groupFirst ? 'group-first' : '', row.groupLast ? 'group-last' : ''].join(' ') || undefined}>
+                <RowMain>
+                    <RowName>{getSessionDisplayName(session)}</RowName>
+                    {/* 副行双时间（icon 标注语义，同 session 列表口径）：最后活跃 + 归档；非当天自动带日期 */}
+                    <RowTime $token={token}>
+                        <TimeChunk title={t('archived.lastActiveAt')}>
+                            <Clock size={12} />
+                            {formatMessageTime(session.updatedAt)}
+                        </TimeChunk>
+                        <span aria-hidden="true">·</span>
+                        {session.archivedAt && (
+                            <TimeChunk title={t('archived.archivedAtLabel')}>
+                                <ArchiveIcon size={12} />
+                                {formatMessageTime(session.archivedAt)}
+                            </TimeChunk>
+                        )}
+                    </RowTime>
+                </RowMain>
+                <RowActions>
+                    <RowDeleteButton
+                        $token={token}
+                        title={t('session.actions.delete')}
+                        onClick={() => confirmDelete(session)}
+                    >
+                        <Trash2 size={15} />
+                    </RowDeleteButton>
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={unarchive.isPending && unarchive.variables === session.id}
+                        onClick={() => handleUnarchive(session)}
+                    >
+                        {t('session.actions.unarchive')}
+                    </Button>
+                </RowActions>
+            </ArchivedRow>
+        )
+    }, [token, t, confirmDelete, unarchive, messageApi])
 
     // 加载中先给占位：标题行（含头部锚位）恒渲染，列表区给加载占位
     if (isLoading) {
         return (
-            <PageScroll $token={token}>
+            <PageShell>
                 <Inner>
                     <TitleRow $token={token}>
                         {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
@@ -440,14 +643,14 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                     </TitleRow>
                     <ToolBar><SearchSlot disabled placeholder={t('common.loading')} /></ToolBar>
                 </Inner>
-            </PageScroll>
+            </PageShell>
         )
     }
 
-    if (archived.length === 0) {
+    if (total === 0) {
         return (
-            <PageScroll $token={token}>
-                <InnerFill>
+            <PageShell>
+                <Inner>
                     <TitleRow $token={token}>
                         {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
                         <PageTitle $token={token}>{t('archived.title')}</PageTitle>
@@ -456,23 +659,21 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                         <ArchiveIcon size={32} />
                         <div>{t('archived.empty')}</div>
                     </EmptyState>
-                </InnerFill>
-            </PageScroll>
+                </Inner>
+            </PageShell>
         )
     }
 
     const workspaceOptions = [
         { value: WORKSPACE_ALL, label: t('archived.allWorkspaces') },
-        ...workspaces.map(w => ({ value: w.id, label: w.name })),
-        ...(groups.some(g => g.workspaceId === null) || filtered.some(s => !s.workspaceId)
-            ? [{ value: '__none__', label: t('archived.ungrouped') }]
-            : []),
+        ...workspaces.filter(w => workspaceCounts.has(w.id)).map(w => ({ value: w.id, label: w.name })),
+        ...(workspaceCounts.has(null) ? [{ value: WORKSPACE_NONE, label: t('archived.ungrouped') }] : []),
     ]
 
     return (
-        <PageScroll $token={token}>
+        <PageShell>
             <Inner>
-                {/* 标题行：左锚位 + 大标题 + 右缘全部删除（「所见即所删」：范围限当前过滤结果） */}
+                {/* 标题行：左锚位 + 大标题 + 右缘全部删除（范围 = 当前过滤条件，非「已加载页」） */}
                 <TitleRow $token={token}>
                     {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
                     <PageTitle $token={token}>{t('archived.title')}</PageTitle>
@@ -481,8 +682,8 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                         variant="secondary"
                         danger
                         size="sm"
-                        disabled={batchRunning || filtered.length === 0}
-                        onClick={() => openBatchDelete({ kind: 'page' }, filtered)}
+                        disabled={batchRunning || filteredTotal === 0}
+                        onClick={() => openBatchDelete({ kind: 'page', count: filteredTotal })}
                     >
                         <Trash2 size={12} /> {t('archived.batch.deleteAll')}
                     </Button>
@@ -504,113 +705,61 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                     />
                 </ToolBar>
 
-                {groups.length === 0 ? (
+                {sessions.length === 0 ? (
                     <NoMatchRow $token={token}>{t('archived.noMatch')}</NoMatchRow>
-                ) : groups.map(group => (
-                    <GroupBlock key={group.workspaceId ?? '__ungrouped'} $token={token}>
-                        <GroupHeader $token={token}>
-                            <Folder size={15} style={{ color: token.colorTextQuaternary, flexShrink: 0 }} />
-                            {group.workspaceName}
-                            <GroupCount $token={token}>{t('archived.groupCount', { count: group.sessions.length })}</GroupCount>
-                            <GroupActions className="group-actions">
-                                <DropdownMenu
-                                    trigger={
-                                        <GroupActionButton
-                                            $token={token}
-                                            aria-label={t('archived.groupActions')}
-                                            disabled={batchRunning}
-                                        >
-                                            <MoreHorizontal size={16} />
-                                        </GroupActionButton>
-                                    }
-                                    items={[
-                                        {
-                                            label: t('archived.batch.unarchiveGroup', { count: group.sessions.length }),
-                                            icon: <ArchiveRestore size={15} />,
-                                            disabled: batchRunning,
-                                            onSelect: () => { void runBatchUnarchive(group.sessions) },
-                                        },
-                                        {
-                                            label: t('archived.batch.deleteGroup', { count: group.sessions.length }),
-                                            icon: <Trash2 size={15} />,
-                                            destructive: true,
-                                            disabled: batchRunning,
-                                            separatorBefore: true,
-                                            onSelect: () => openBatchDelete(
-                                                group.workspaceId
-                                                    ? { kind: 'group', groupName: group.workspaceName }
-                                                    : { kind: 'page' },
-                                                group.sessions,
-                                            ),
-                                        },
-                                    ]}
-                                />
-                            </GroupActions>
-                        </GroupHeader>
-                        <GroupCard $token={token}>
-                            {group.sessions.map(session => (
-                                <ArchivedRow key={session.id} $token={token}>
-                                    <RowMain>
-                                        <RowName>{getSessionDisplayName(session)}</RowName>
-                                        {/* 副行双时间（icon 标注语义，同 session 列表口径）：最后活跃 + 归档；非当天自动带日期 */}
-                                        <RowTime $token={token}>
-                                            <TimeChunk title={t('archived.lastActiveAt')}>
-                                                <Clock size={12} />
-                                                {formatMessageTime(session.updatedAt)}
-                                            </TimeChunk>
-                                            <span aria-hidden="true">·</span>
-                                            {session.archivedAt && (
-                                                <TimeChunk title={t('archived.archivedAtLabel')}>
-                                                    <ArchiveIcon size={12} />
-                                                    {formatMessageTime(session.archivedAt)}
-                                                </TimeChunk>
-                                            )}
-                                        </RowTime>
-                                    </RowMain>
-                                    <RowActions>
-                                        <RowDeleteButton
-                                            $token={token}
-                                            title={t('session.actions.delete')}
-                                            onClick={() => confirmDelete(session)}
-                                        >
-                                            <Trash2 size={15} />
-                                        </RowDeleteButton>
-                                        <Button
-                                            variant="secondary"
-                                            size="sm"
-                                            disabled={unarchive.isPending && unarchive.variables === session.id}
-                                            onClick={() => handleUnarchive(session)}
-                                        >
-                                            {t('session.actions.unarchive')}
-                                        </Button>
-                                    </RowActions>
-                                </ArchivedRow>
-                            ))}
-                        </GroupCard>
-                    </GroupBlock>
-                ))}
+                ) : (
+                    <ListyShell ref={setListShell} $token={token}>
+                        {/* 高度就绪后才挂 Listy（virtual 依赖 height；ResizeObserver 首帧即给值） */}
+                        {listHeight > 0 && (
+                            <Listy<AnnotatedRow>
+                                items={annotated}
+                                rowKey={(row) => row.session.id}
+                                virtual
+                                height={listHeight}
+                                onScroll={handleListScroll}
+                                group={{
+                                    // antd Key 不含 null——未归入工作区走 '__none__' 哨兵（与过滤选项同值）
+                                    key: (row) => row.session.workspaceId ?? WORKSPACE_NONE,
+                                    title: (groupKey) => renderGroupHeader(groupKey === WORKSPACE_NONE ? null : String(groupKey)),
+                                }}
+                                itemRender={renderRow}
+                                classNames={{
+                                    root: 'archived-listy-root',
+                                    item: 'archived-listy-item',
+                                    groupHeader: 'archived-listy-header',
+                                }}
+                            />
+                        )}
+                        {isFetchingNextPage && (
+                            <LoadingMore $token={token}>
+                                <Spin size="small" />
+                                {t('archived.loadingMore')}
+                            </LoadingMore>
+                        )}
+                    </ListyShell>
+                )}
             </Inner>
 
             {/* 批量删除确认（票 08）：确认输入自持在 Modal 子组件里，键入不触发整页列表 reconcile */}
             <BatchDeleteConfirmModal
                 pendingDelete={pendingDelete}
                 batchRunning={batchRunning}
-                onConfirm={(sessions) => { void runBatchDelete(sessions) }}
+                onConfirm={(scope) => { void runBatchDelete(scope) }}
                 onCancel={() => { if (!batchRunning) setPendingDelete(null) }}
             />
-        </PageScroll>
+        </PageShell>
     )
 }
 
 /**
- * 批量删除确认 Modal（票 08）：展示条数 + 输入项目名 / DELETE 才可提交。
+ * 批量删除确认 Modal（票 08）：展示范围真实条数 + 输入项目名 / DELETE 才可提交。
  * 自管 Modal 而非 modal.confirm——确认输入要联动 okButton disabled，受控更直接；
  * 确认输入 state 自持于此（destroyOnHidden 卸载即清空），不挂在页面根组件上。
  */
 function BatchDeleteConfirmModal({ pendingDelete, batchRunning, onConfirm, onCancel }: {
     pendingDelete: PendingBatchDelete | null
     batchRunning: boolean
-    onConfirm: (sessions: Session[]) => void
+    onConfirm: (scope: PendingBatchDelete['scope']) => void
     onCancel: () => void
 }) {
     const { token } = useToken()
@@ -628,14 +777,14 @@ function BatchDeleteConfirmModal({ pendingDelete, batchRunning, onConfirm, onCan
             okButtonProps={{ danger: true, disabled: !confirmReady, loading: batchRunning }}
             cancelText={t('common.cancel')}
             onOk={() => {
-                if (pendingDelete) onConfirm(pendingDelete.sessions)
+                if (pendingDelete) onConfirm(pendingDelete.scope)
             }}
             destroyOnHidden
         >
             <p style={{ marginBottom: 12 }}>
                 {pendingDelete && (pendingDelete.scope.kind === 'group'
-                    ? t('archived.batch.deleteConfirmGroupDesc', { name: pendingDelete.scope.groupName, count: pendingDelete.sessions.length })
-                    : t('archived.batch.deleteConfirmPageDesc', { count: pendingDelete.sessions.length }))}
+                    ? t('archived.batch.deleteConfirmGroupDesc', { name: pendingDelete.scope.groupName, count: pendingDelete.scope.count })
+                    : t('archived.batch.deleteConfirmPageDesc', { count: pendingDelete.scope.count }))}
             </p>
             <p style={{ marginBottom: 8, color: token.colorTextSecondary, fontSize: 12 }}>
                 {pendingDelete?.scope.kind === 'group' && pendingDelete.scope.groupName.trim().length > 0

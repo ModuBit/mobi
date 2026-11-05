@@ -39,10 +39,13 @@ import {
     setSessionStatus,
     reconcileStartupSessionStatus,
     getArchivedSessions,
+    getArchivedWorkspaceCounts,
+    getArchivedSessionIds,
     addSessionTombstone,
     getSessionTombstone,
     type SessionStatusWrite,
     type SessionTombstone,
+    type ArchivedWorkspaceCount,
     mergeRuntimeState,
     updateSessionAgentState,
     updateSessionMetadata,
@@ -190,9 +193,19 @@ export class SessionStore {
         return getUnboundSessionsFromDb(this.db, namespace, cursor, limit)
     }
 
-    /** 归档会话列表（归档页数据源，按归档时间倒序） */
-    getArchivedSessions(namespace: string): StoredSession[] {
-        return getArchivedSessions(this.db, namespace)
+    /** 归档会话分页列表（归档页数据源，按归档时间倒序游标分页；项目过滤下推） */
+    getArchivedSessions(namespace: string, workspaceId: string | null | undefined, cursor: number | null, limit?: number): WorkspaceSessionsResult {
+        return getArchivedSessions(this.db, namespace, workspaceId, cursor, limit)
+    }
+
+    /** 归档会话按工作区的组计数（归档页组头真实总数，不受分页影响） */
+    getArchivedWorkspaceCounts(namespace: string): ArchivedWorkspaceCount[] {
+        return getArchivedWorkspaceCounts(this.db, namespace)
+    }
+
+    /** 归档范围批量操作的候选 id（workspaceId 三态：缺省=全部，null=未归入，string=指定） */
+    getArchivedSessionIds(namespace: string, workspaceId?: string | null): string[] {
+        return getArchivedSessionIds(this.db, namespace, workspaceId)
     }
 
     setSessionWorkspace(id: string, workspaceId: string | null, namespace: string): SetSessionWorkspaceResult {

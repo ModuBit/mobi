@@ -231,6 +231,7 @@
         "groupActions": "项目操作",
     "title": "已归档会话",
     "empty": "暂无归档会话",
+    "loadingMore": "加载中…",
     "ungrouped": "未归入工作区",
     "unknownWorkspace": "未知工作区",
     "archivedAt": "归档于 {{time}}",
