@@ -27,6 +27,7 @@ import {
     cancelQueuedMessage,
     getResultPositionAt,
     getMessagesByNativeId,
+    getSessionNativeSessionIds,
     hasQueuedMessagesAfter,
     markTerminalReason,
     getMessageSubmitState,
@@ -138,6 +139,11 @@ export class MessageStore {
     /** 按 nativeId 定位未删批首行（min seq，LIMIT 1）；撤回目标定位用（I4） */
     getMessagesByNativeId(sessionId: string, nativeId: string): StoredMessage[] {
         return getMessagesByNativeId(this.db, sessionId, nativeId)
+    }
+
+    /** 该会话消息上出现过的全部 native 链 id（删除会话处置历史 transcript 用） */
+    getSessionNativeSessionIds(sessionId: string): string[] {
+        return getSessionNativeSessionIds(this.db, sessionId)
     }
 
     /** 锚 seq 之后是否仍有 daemon 层排队行——撤回守卫 1b（用户连发场景不连带删后续排队消息） */

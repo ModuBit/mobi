@@ -136,8 +136,10 @@ function patchSessionCache(
         // 完整 session 对象（如 applySessionConfig 场景）
         Object.assign(patch, delta)
     } else {
-        // 增量数据（心跳、状态变化等）
-        for (const key of ['active', 'activeAt', 'running', 'runningAt', 'permissionMode', 'mode', 'metadata', 'agentState', 'agentStateVersion', 'endReason', 'pauseTrigger', 'endedAt']) {
+        // 增量数据（心跳、状态变化等）。白名单必须覆盖 daemon 无 id 广播里会出现的
+        // 全部 Session 字段：归档/取消归档的载荷是 { status, archivedAt, pinned }（无 id），
+        // 漏登记的表现是「本机正常、另一端静默不生效」（本机由 mutation 乐观 patch 遮住）
+        for (const key of ['active', 'activeAt', 'running', 'runningAt', 'permissionMode', 'mode', 'metadata', 'agentState', 'agentStateVersion', 'endReason', 'pauseTrigger', 'endedAt', 'status', 'archivedAt', 'pinned']) {
             if (key in delta) patch[key] = delta[key]
         }
         // model 和 effort 在心跳数据中是顶层字段，但属于 session.runtimeState

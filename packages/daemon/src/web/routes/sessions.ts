@@ -733,6 +733,10 @@ export function createSessionsRoutes(
                 if (result.reason === 'not-found') {
                     return c.json({ error: 'Session not found' }, 404)
                 }
+                if (result.reason === 'write-failed') {
+                    // 落库失败是服务端故障，不能伪装成 404（会话行仍在列表里）
+                    return c.json({ error: 'Failed to archive the session' }, 500)
+                }
                 // blockers 是休眠 gate 的逐项原因（透传给 web toast）
                 return c.json({ error: 'Session has work in progress', blockers: result.blockers }, 409)
             }

@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next'
 import { QUOTE_COMMENT_MAX } from '@mobi/shared'
 import { computeQuoteLayerPlacement } from './quoteLayerPlacement'
 import { CommentField } from '@/ui/shared/CommentField'
-import { useKeyboardViewportSelector } from './useKeyboardViewport'
+import { isKeyboardOverlayMode, useKeyboardViewportSelector } from './useKeyboardViewport'
 
 /** 浮层宽度：多行评论输入条 */
 const POPOVER_WIDTH = 280
@@ -87,9 +87,9 @@ export const QuoteCommentInput = memo(function QuoteCommentInput({
                         right: 16,
                         width: 'auto',
                         transform: undefined,
-                        // 只列 bottom：键盘高度变化（切换布局/语言）时浮层平滑贴住新上缘；
-                        // 形态切换瞬（锚选区→键盘态）其余属性仍瞬变
-                        transition: 'bottom var(--kb-anim)',
+                        // 只列 bottom，且仅 overlay 模式加过渡：该模式 store 只写终值，
+                        // 过渡负责插值；resize 模式 inset 逐次写入，再叠过渡会拖尾
+                        transition: isKeyboardOverlayMode() ? 'bottom var(--kb-anim)' : undefined,
                     }
                     : { top, left, transform: above ? 'translateY(-100%)' : undefined }
             }

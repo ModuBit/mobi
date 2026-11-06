@@ -510,6 +510,17 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
         }))
     }
 
+    // 批量请求整体失败（网络中断 / 5xx）：必须给反馈——弹窗会在 finally 关闭，
+    // 没有这条 catch 就是「弹窗一闪、列表不动、零提示」的静默失败
+    const reportBatchFailure = (error: unknown) => {
+        notification.error({
+            key: 'archived-batch-result',
+            message: t('archived.batch.resultTitle'),
+            description: error instanceof Error ? error.message : t('common.error'),
+            duration: 6,
+        })
+    }
+
     // 批量取消归档（组级）：可逆动作不设输入门槛，聚合报告
     const runBatchUnarchive = async (workspaceId: string | null) => {
         setBatchRunning(true)
@@ -526,6 +537,8 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                 }),
                 duration: 6,
             })
+        } catch (error) {
+            reportBatchFailure(error)
         } finally {
             setBatchRunning(false)
         }
@@ -560,6 +573,8 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                     duration: 8,
                 })
             }
+        } catch (error) {
+            reportBatchFailure(error)
         } finally {
             setBatchRunning(false)
             setPendingDelete(null)
@@ -676,6 +691,31 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
         )
     }
 
+    const workspaceOptions = [
+        { value: WORKSPACE_ALL, label: t('archived.allWorkspaces') },
+        ...workspaces.filter(w => workspaceCounts.has(w.id)).map(w => ({ value: w.id, label: w.name })),
+        ...(workspaceCounts.has(null) ? [{ value: WORKSPACE_NONE, label: t('archived.ungrouped') }] : []),
+    ]
+
+    // 工具条：搜索占位（功能后续接入）+ 项目过滤。空态也渲染——过滤到空组后
+    // 不能把唯一能切回其它组的入口一起藏掉（否则用户只能刷新页面自救）
+    const toolBar = (
+        <ToolBar>
+            <SearchSlot
+                disabled
+                placeholder={t('archived.searchPlaceholder')}
+                prefix={<Search size={13} style={{ color: token.colorTextQuaternary }} />}
+                allowClear={false}
+            />
+            <WorkspaceFilter
+                value={workspaceFilter}
+                onValueChange={(v) => setWorkspaceFilter(v)}
+                options={workspaceOptions}
+                ariaLabel={t('archived.allWorkspaces')}
+            />
+        </ToolBar>
+    )
+
     if (total === 0) {
         return (
             <PageShell>
@@ -684,6 +724,7 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                         {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
                         <PageTitle $token={token}>{t('archived.title')}</PageTitle>
                     </TitleRow>
+                    {toolBar}
                     <EmptyState $token={token}>
                         <ArchiveIcon size={32} />
                         <div>{t('archived.empty')}</div>
@@ -692,12 +733,6 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
             </PageShell>
         )
     }
-
-    const workspaceOptions = [
-        { value: WORKSPACE_ALL, label: t('archived.allWorkspaces') },
-        ...workspaces.filter(w => workspaceCounts.has(w.id)).map(w => ({ value: w.id, label: w.name })),
-        ...(workspaceCounts.has(null) ? [{ value: WORKSPACE_NONE, label: t('archived.ungrouped') }] : []),
-    ]
 
     return (
         <PageShell>
@@ -719,20 +754,7 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                 </TitleRow>
 
                 {/* 工具条：搜索占位（功能后续接入）+ 项目过滤 */}
-                <ToolBar>
-                    <SearchSlot
-                        disabled
-                        placeholder={t('archived.searchPlaceholder')}
-                        prefix={<Search size={13} style={{ color: token.colorTextQuaternary }} />}
-                        allowClear={false}
-                    />
-                    <WorkspaceFilter
-                        value={workspaceFilter}
-                        onValueChange={(v) => setWorkspaceFilter(v)}
-                        options={workspaceOptions}
-                        ariaLabel={t('archived.allWorkspaces')}
-                    />
-                </ToolBar>
+                {toolBar}
 
                 {sessions.length === 0 ? (
                     <NoMatchRow $token={token}>{t('archived.noMatch')}</NoMatchRow>
@@ -833,7 +855,11 @@ function BatchDeleteConfirmModal({ pendingDelete, batchRunning, onConfirm, onCan
             okButtonProps={{ danger: true, disabled: !confirmReady, loading: batchRunning }}
             cancelText={t('common.cancel')}
             onOk={() => {
-                if (pendingDelete) onConfirm(pendingDelete.scope)
+                if (!pendingDelete) return
+                onConfirm(pendingDelete.scope)
+                // destroyOnHidden 只卸载 Modal 内容，本组件自身不卸载——确认值必须显式清空，
+                // 否则下一次打开弹窗时门槛已被上次输入预先满足
+                setConfirmInput('')
             }}
             destroyOnHidden
         >

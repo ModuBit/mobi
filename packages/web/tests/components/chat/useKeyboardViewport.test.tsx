@@ -31,6 +31,8 @@ import {
     useKeyboardViewportSelector,
     resetKeyboardViewportForTests,
     ensureKeyboardViewportWatchers,
+    isKeyboardOverlayMode,
+    KB_ANIM_CSS_VAR,
     KB_INSET_CSS_VAR,
 } from '@/features/chat/useKeyboardViewport'
 
@@ -359,5 +361,30 @@ describe('常驻 watcher（布局消费面不依赖页面组件订阅）', () =>
         }
         // 末位释放：变量清除（store 归零由 reset 在下个用例兜底）
         expect(document.documentElement.style.getPropertyValue(KB_INSET_CSS_VAR)).toBe('')
+    })
+})
+
+describe('overlay 模式判定与动画变量下发', () => {
+    it('isKeyboardOverlayMode 读 overlaysContent 真值，不按 API 存在性推断', () => {
+        // 有 API 但未开 overlay（浏览器仍收缩视口）→ 必须判 false：
+        // 消费端据此决定不叠 CSS 过渡（resize 模式逐次写入，叠过渡会拖尾）
+        Object.defineProperty(navigator, 'virtualKeyboard', {
+            configurable: true,
+            value: { overlaysContent: false, boundingRect: { height: 0, width: 0, x: 0, y: 0 }, addEventListener() {}, removeEventListener() {} },
+        })
+        expect(isKeyboardOverlayMode()).toBe(false)
+
+        stubVirtualKeyboard()
+        expect(isKeyboardOverlayMode()).toBe(true)
+    })
+
+    it('ensure 挂载时下发 --kb-anim（时长/曲线单源，消费端只引变量）', () => {
+        stubVisualViewport()
+        const release = ensureKeyboardViewportWatchers()
+        try {
+            expect(document.documentElement.style.getPropertyValue(KB_ANIM_CSS_VAR)).toMatch(/^\d+ms cubic-bezier/)
+        } finally {
+            release()
+        }
     })
 })

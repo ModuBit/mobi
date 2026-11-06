@@ -408,12 +408,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                         />
                     ) : null}
 
-                    {/* 移动端不可逆提示在 actions 内以分隔线承载；PC 收进否决行（见下） */}
-                    {isMobile && !isExitPlanMode ? (
-                        <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
-                            {t('chat.tool.irreversibleHint')}
-                        </div>
-                    ) : null}
+                    {/* 不可逆提示不在此处渲染：四条分支各自承载——移动端在 actions 内的分隔线，
+                        PC 在否决行左缘。曾经顶部块又按 isMobile 判一次，导致移动端重复展示 */}
 
                     {/* 操作组：移动垂直 block（触控友好）/ PC 双层决策（决策行 + 否决行）。
                         PC 重设计（2026-11-03）：允许档聚为决策行；拒绝/带原因降为 hairline

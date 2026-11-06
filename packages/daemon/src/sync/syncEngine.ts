@@ -784,7 +784,10 @@ export class SyncEngine {
      * 404/409——不再用「哨兵字符串混进 blockers」让路由做字符串匹配。
      */
     async archiveSession(sessionId: string): Promise<
-        { ok: true } | { ok: false; reason: 'not-found' } | { ok: false; reason: 'blocked'; blockers: string[] }
+        | { ok: true }
+        | { ok: false; reason: 'not-found' }
+        | { ok: false; reason: 'write-failed' }
+        | { ok: false; reason: 'blocked'; blockers: string[] }
     > {
         const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
         if (!session) return { ok: false, reason: 'not-found' }
@@ -797,7 +800,9 @@ export class SyncEngine {
             if (!dormant.ok) return { ok: false, reason: 'blocked', blockers: dormant.blockers ?? [] }
         }
         if (!this.sessionCache.archiveSession(sessionId)) {
-            return { ok: false, reason: 'not-found' }
+            // 会话在上面已确认存在，false 只剩「落库失败」一种来源——不能报 404，
+            // 否则写库故障被伪装成会话不存在，用户永远拿不到可操作的错误
+            return { ok: false, reason: 'write-failed' }
         }
         return { ok: true }
     }
@@ -864,11 +869,25 @@ export class SyncEngine {
         // 走到这里路由已先自动休眠成功，active 恒 false；lifecycleState 是防呆双保险
         const cliExited = !session?.active || isExitedLifecycleState(session?.metadata?.lifecycleState)
         const nativeSessionId = session?.metadata?.nativeSessionId ?? null
+        // 候选链 id 必须在删行前取（删除会级联清消息）：当前 id + 该会话消息上出现过的
+        // 历史链 id（/clear 换链前的 jsonl 仍是本会话记录）。排除被其它存活会话绑定的
+        // id——fork 复制行可能仍带祖先链 id，祖先 transcript 属于父会话
+        const nativeIds = [...new Set([
+            ...(nativeSessionId ? [nativeSessionId] : []),
+            ...this.store.messages.getSessionNativeSessionIds(sessionId),
+        ])].filter(id => !this.store.sessions.isNativeSessionIdBoundElsewhere(id, sessionId))
 
         await this.sessionCache.deleteSession(sessionId)
 
-        // transcript 处置（票 07）：闸不满足时保留文件并带回原因（诚实告知）
-        const transcript = disposeTranscript(nativeSessionId, cwd, cliExited)
+        // transcript 处置（票 07）：逐链处置，任一保留即如实带回原因（诚实告知）
+        const dispositions = nativeIds.length > 0
+            ? nativeIds.map(id => disposeTranscript(id, cwd, cliExited))
+            : [disposeTranscript(nativeSessionId, cwd, cliExited)]
+        const transcriptDeleted = dispositions.every(d => d.deleted)
+        const transcriptRetainedReason = dispositions
+            .map(d => d.retainedReason)
+            .filter(Boolean)
+            .join('; ') || undefined
 
         // worktree 处置（票 10 编排归位，原 routes 层）：删行后触发（服务读 store 判
         // 「同一 worktree 是否仍被其他行引用」）；干净删、脏保留带回事实、失败不阻塞删除
@@ -899,8 +918,8 @@ export class SyncEngine {
         }
         // 单对象组装：可选键 undefined 时不进 JSON，响应形状与旧双分支完全一致
         return {
-            transcriptDeleted: transcript.deleted,
-            ...(transcript.deleted ? {} : { transcriptRetainedReason: transcript.retainedReason }),
+            transcriptDeleted,
+            ...(transcriptDeleted ? {} : { transcriptRetainedReason }),
             ...(retainedWorktree && { retainedWorktree }),
         }
     }

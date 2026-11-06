@@ -465,6 +465,23 @@ export function getSessionByClaudeSessionId(
     return row ? toStoredSession(row) : null
 }
 
+/**
+ * 该 native 链 id 是否被**另一**会话绑定。
+ * 删除会话时会连同历史链 id 的 transcript 一起处置（/clear 前的旧记录），但 fork 复制行
+ * 可能仍带祖先链 id —— 祖先的 transcript 属于父会话，不能因子会话删除被连带删掉。
+ */
+export function isNativeSessionIdBoundElsewhere(
+    db: Database,
+    nativeSessionId: string,
+    exceptSessionId: string
+): boolean {
+    return !!db.prepare(`
+        SELECT 1 FROM sessions
+        WHERE id != ? AND json_extract(metadata, '$.nativeSessionId') = ?
+        LIMIT 1
+    `).get(exceptSessionId, nativeSessionId)
+}
+
 export function getSession(db: Database, id: string): StoredSession | null {
     const row = db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as DbSessionRow | undefined
     return row ? toStoredSession(row) : null
@@ -757,7 +774,10 @@ export function getPinnedSessions(
  * workspaceId 三态：undefined=全部归档；null=未归入工作区；string=指定工作区。
  */
 function buildArchivedWhere(namespace: string, workspaceId: string | null | undefined): { sql: string; params: Array<string | number | null> } {
-    const conditions = ['namespace = ?', 'status = \'archived\'']
+    // archived_at 显式非空是「归档范围」的一部分，不是分页列表的私有条件：组计数与
+    // 批量操作的 id 快照也必须用同一范围，否则脏行（status='archived' 但 archived_at
+    // 为 NULL）会进计数/候选集却不出现在列表里——计数对不上、批量删掉用户没见过的行
+    const conditions = ['namespace = ?', 'status = \'archived\'', 'archived_at IS NOT NULL']
     const params: Array<string | number | null> = [namespace]
     if (workspaceId === null) {
         conditions.push('workspace_id IS NULL')
@@ -771,8 +791,8 @@ function buildArchivedWhere(namespace: string, workspaceId: string | null | unde
 /**
  * 归档会话分页列表（归档页数据源）：按归档时间倒序游标分页（归档量大时前端
  * 虚拟滚动 + 触底加载，不再一次性全量）。项目过滤下推（workspaceId 三态）——
- * 前端过滤视图以全集分页，不是「已加载页内再筛」。archived_at 显式非空——
- * status='archived' 的行该列恒有值（setSessionStatus 同语句写入），条件只防改库脏值进游标比较。
+ * 前端过滤视图以全集分页，不是「已加载页内再筛」。archived_at 非空条件在
+ * buildArchivedWhere 内（与组计数/批量范围同源）。
  */
 export function getArchivedSessions(
     db: Database,
@@ -782,15 +802,16 @@ export function getArchivedSessions(
     limit: number = 50
 ): WorkspaceSessionsResult {
     const where = buildArchivedWhere(namespace, workspaceId)
-    const cursorableWhere = `${where.sql} AND archived_at IS NOT NULL`
-    return paginateSessions(db, cursorableWhere, where.params, cursor, limit, 'archived_at')
+    return paginateSessions(db, where.sql, where.params, cursor, limit, 'archived_at')
 }
 
 /** 归档会话按工作区的组计数（归档页组头「N 个会话」的真实总数，不受分页影响） */
 export function getArchivedWorkspaceCounts(db: Database, namespace: string): ArchivedWorkspaceCount[] {
+    // 范围与列表同源（buildArchivedWhere）：组头计数必须与可见行对得上
+    const where = buildArchivedWhere(namespace, undefined)
     const rows = db.prepare(
-        'SELECT workspace_id, COUNT(*) AS cnt FROM sessions WHERE namespace = ? AND status = \'archived\' GROUP BY workspace_id'
-    ).all(namespace) as Array<{ workspace_id: string | null; cnt: number }>
+        `SELECT workspace_id, COUNT(*) AS cnt FROM sessions WHERE ${where.sql} GROUP BY workspace_id`
+    ).all(...where.params) as Array<{ workspace_id: string | null; cnt: number }>
     return rows.map(row => ({ workspaceId: row.workspace_id, count: row.cnt }))
 }
 

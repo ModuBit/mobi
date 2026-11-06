@@ -601,6 +601,23 @@ export function getMessagesByNativeId(
     return rows.map(toStoredMessage)
 }
 
+/**
+ * 该会话消息上出现过的全部 native 链 id（去重）。
+ *
+ * /clear 会把会话换到新链，旧链的 jsonl 仍是本会话产生过的对话记录——删除会话时必须
+ * 一并处置，否则 API 报「transcriptDeleted: true」而旧记录还躺在磁盘上。fork 复制行
+ * 可能仍带祖先链 id，调用方须再用 `isNativeSessionIdBoundElsewhere` 排除仍被其它
+ * 存活会话绑定的 id（祖先 transcript 属于父会话，不能因子会话删除被连带删掉）。
+ */
+export function getSessionNativeSessionIds(db: Database, sessionId: string): string[] {
+    const rows = db.prepare(`
+        SELECT DISTINCT json_extract(metadata, '$.nativeSessionId') AS nid
+        FROM messages
+        WHERE session_id = ? AND json_extract(metadata, '$.nativeSessionId') IS NOT NULL
+    `).all(sessionId) as Array<{ nid: string }>
+    return rows.map(row => row.nid)
+}
+
 /** command_lifecycle 终态的 terminal_reason 落档（metadata.terminalReason，与 nativeAckAt 双写
  *  同构）：只写本次推进命中的行（ids 来自 advanceMessagesLifecycle 的 RETURNING，避免同
  *  nativeId 已终态未推进行被迟到帧补写）。first-write-wins：已有 reason 不被覆盖。

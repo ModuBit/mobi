@@ -228,3 +228,42 @@ describe('reconcileStartupSessionStatus（启动自愈）', () => {
         expect(store.sessions.getSession(s.id)?.status).toBe('dormant')
     })
 })
+
+describe('归档范围三处同源（列表 / 组计数 / 批量候选集）', () => {
+    it('archived_at 为 NULL 的脏行不进列表、组计数与批量候选集', () => {
+        const good = store.sessions.getOrCreateSession('range-good', { path: '/x' }, {}, 'default')
+        const dirty = store.sessions.getOrCreateSession('range-dirty', { path: '/x' }, {}, 'default')
+        store.sessions.setSessionStatus(good.id, 'default', { status: 'archived', at: 1000 })
+        store.sessions.setSessionStatus(dirty.id, 'default', { status: 'archived', at: 2000 })
+        // 模拟迁移中断 / 手工改库：status 归档但 archived_at 丢失
+        store.getDatabaseForTesting().run(`UPDATE sessions SET archived_at = NULL WHERE id = '${dirty.id}'`)
+
+        const list = store.sessions.getArchivedSessions('default', undefined, null, 50)
+        expect(list.sessions.map(s => s.id)).toEqual([good.id])
+        expect(list.total).toBe(1)
+
+        // 组计数与候选集必须与列表同口径：计数对得上、批量范围不含看不见的行
+        const counts = store.sessions.getArchivedWorkspaceCounts('default')
+        expect(counts.reduce((sum, c) => sum + c.count, 0)).toBe(1)
+        expect(store.sessions.getArchivedSessionIds('default')).toEqual([good.id])
+    })
+})
+
+describe('删除会话时的历史 transcript 定位（多链 id）', () => {
+    it('枚举消息上出现过的历史链 id；被其它会话绑定的 id 判为占用', () => {
+        const s = store.sessions.getOrCreateSession(
+            'chain-1', { path: '/x', host: 'h', name: 'chain', nativeSessionId: 'native-new' }, {}, 'default')
+        // /clear 前的消息仍带旧链 id
+        store.messages.addMessage(s.id, { role: 'user', content: 'hi' }, 'local-1', 'persistent',
+            { nativeId: 'native-msg-1', nativeSessionId: 'native-old' })
+
+        expect(store.messages.getSessionNativeSessionIds(s.id)).toEqual(['native-old'])
+
+        // 父会话仍绑定旧链 id（fork 复制行场景）：删除子会话不得连带删父会话的 transcript
+        const parent = store.sessions.getOrCreateSession(
+            'chain-2', { path: '/x', host: 'h', name: 'parent', nativeSessionId: 'native-old' }, {}, 'default')
+        expect(store.sessions.isNativeSessionIdBoundElsewhere('native-old', s.id)).toBe(true)
+        expect(store.sessions.isNativeSessionIdBoundElsewhere('native-old', parent.id)).toBe(false)
+        expect(store.sessions.isNativeSessionIdBoundElsewhere('native-new', s.id)).toBe(false)
+    })
+})

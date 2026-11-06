@@ -22,6 +22,7 @@ import {
     getOrCreateSession,
     getSession,
     getSessionByClaudeSessionId,
+    isNativeSessionIdBoundElsewhere,
     getSessionByNamespace,
     getSessions,
     getRecentSessions,
@@ -123,6 +124,11 @@ export class SessionStore {
 
     getSessionByClaudeSessionId(nativeSessionId: string, namespace: string): StoredSession | null {
         return getSessionByClaudeSessionId(this.db, nativeSessionId, namespace)
+    }
+
+    /** 该 native 链 id 是否被另一会话绑定（删除会话处置历史 transcript 时的防误删判据） */
+    isNativeSessionIdBoundElsewhere(nativeSessionId: string, exceptSessionId: string): boolean {
+        return isNativeSessionIdBoundElsewhere(this.db, nativeSessionId, exceptSessionId)
     }
 
     getSessionByNamespace(id: string, namespace: string): StoredSession | null {

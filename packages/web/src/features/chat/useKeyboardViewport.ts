@@ -30,6 +30,17 @@ const OVERLAY_ANIM_MS = 280
 export const KB_ANIM_CSS_VAR = '--kb-anim'
 const KB_ANIM_TRANSITION = `${OVERLAY_ANIM_MS}ms cubic-bezier(0.33, 1, 0.68, 1)`
 
+/**
+ * 当前是否 overlay 键盘模式（与内部双源判定读同一权威 flag）。
+ * 消费端据此决定 inset 变化怎么跟：overlay 模式下 store 只写终值，需 CSS 过渡插值；
+ * resize 模式下 inset 由 visualViewport 的 resize/scroll 逐次写入，再叠过渡只会让
+ * 元素始终落后键盘一截（拖尾/抖动）。
+ */
+export function isKeyboardOverlayMode(): boolean {
+    const vk = (navigator as { virtualKeyboard?: VirtualKeyboardLike }).virtualKeyboard
+    return vk?.overlaysContent === true
+}
+
 /** focusin 预测弹出后等待 geometrychange 确认的窗口（ms）：超时未见确认视为假弹
  *  （外接键盘/平板等不会弹软键盘的场景），预测收回 */
 const PREDICT_CONFIRM_MS = 700
