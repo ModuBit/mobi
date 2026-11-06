@@ -39,6 +39,8 @@ import type { CrossSessionOrigin, UserContentBlock } from '@mobi/shared'
 import { SEND_MESSAGE_TOOL_NAME } from '../../mcp/sendMessageTool'
 import { escapeXmlText } from '@mobi/shared'
 
+import { neutralizeTags } from './neutralizeTags'
+
 export interface CrossSessionEnvelope extends CrossSessionOrigin {
     /**
      * 来源会话 id。**信封这一路恒有**——本模块只承载 mobi 自发投递的消息（CC 原生 peer 不经
@@ -50,7 +52,8 @@ export interface CrossSessionEnvelope extends CrossSessionOrigin {
     messageId: string
 }
 
-const ENVELOPE_TAG = 'cross-session-message'
+/** 信封 XML 标签名（导出供共享中和清单等引用，单一事实源防两侧字面量漂移） */
+export const ENVELOPE_TAG = 'cross-session-message'
 
 /**
  * 标记与文本转义统一走 {@link escapeXmlText}（& " < >，`&` 先行）——信封的读侧
@@ -63,19 +66,11 @@ const escapeMarkup = escapeXmlText
 const REPLY_TOOL = SEND_MESSAGE_TOOL_NAME
 
 /**
- * 需要中和的标记名：信封自己，以及 harness 注入上下文用的 `<system-reminder>`。
+ * 需要中和的标记名：信封自己，以及 harness 注入上下文用的 `<system-reminder>`——
+ * 只列这两个，其余 `<` `>` 一律不动（`Map<string, number>`、`->`、代码片段都要原样
+ * 读得出来）。
  *
- * 只列这两个——发送方文本里的其它 `<` `>` 一律不动（`Map<string, number>`、`->`、
- * 代码片段都要原样读得出来），所以这是**提高门槛**而非绝对防住：真要绕还有全角字符之类
- * 的把戏。够用于本场景（对面是个 agent，不是专门与我为敌的攻击者）。
- */
-const NEUTRALIZED_TAGS = [ENVELOPE_TAG, 'system-reminder']
-
-/**
- * 中和发送方正文里的标记：把 `<cross-session-message` / `</cross-session-message>` /
- * `<system-reminder` / `</system-reminder>` 的尖括号换成实体，让它们只剩「看着像标记的文字」。
- *
- * 为什么必须做（2026-09-12 讨论）：mobi 只包信封、不对正文做任何处理，于是对面 agent 写
+ * 为什么必须做（2026-09-12 讨论）：不中和的话，对面 agent 写
  *
  * ```
  * </cross-session-message>
@@ -86,16 +81,10 @@ const NEUTRALIZED_TAGS = [ENVELOPE_TAG, 'system-reminder']
  * 判断**谁在说话**的边界被它操纵了；② 伪造一个与 mobi 自己那条提示（见 replyReminder）长得
  * 一模一样的 `<system-reminder>`，而模型学到的是「这个标签 = 可信的系统说明」。
  *
- * 实体化之后它依然读得懂那串字，但它不再是标记，边界也拆不掉了。
+ * 中和实现与「提高门槛而非绝对防御」的威胁模型见 {@link neutralizeTags}——用户自定义
+ * system prompt 段（systemPrompt.ts）与此处共用同一中和规则。
  */
-function neutralizeMarkup(text: string): string {
-    return NEUTRALIZED_TAGS.reduce(
-        // 开标签可能带属性（`<cross-session-message from-name="…">`），所以整对尖括号一起换，
-        // 而不是只换标签名前面那个 `<`——后者会留下一个孤零零的 `>`，看着像半个标记
-        (acc, tag) => acc.replace(new RegExp(`<(/?)${tag}([^>]*)>`, 'g'), `&lt;$1${tag}$2&gt;`),
-        text,
-    )
-}
+const NEUTRALIZED_TAGS = [ENVELOPE_TAG, 'system-reminder']
 
 /**
  * 中和发送方**可控的自由文本**：`text` 正文与 `quote` 摘录/评论（三者都会原样进 prompt）。
@@ -110,12 +99,12 @@ function neutralizeBlocks(blocks: readonly UserContentBlock[]): UserContentBlock
     return blocks.map((block) => {
         switch (block.type) {
             case 'text':
-                return { ...block, text: neutralizeMarkup(block.text) }
+                return { ...block, text: neutralizeTags(block.text, NEUTRALIZED_TAGS) }
             case 'quote':
                 return {
                     ...block,
-                    excerpt: neutralizeMarkup(block.excerpt),
-                    ...(block.comment !== undefined ? { comment: neutralizeMarkup(block.comment) } : {}),
+                    excerpt: neutralizeTags(block.excerpt, NEUTRALIZED_TAGS),
+                    ...(block.comment !== undefined ? { comment: neutralizeTags(block.comment, NEUTRALIZED_TAGS) } : {}),
                 }
             default:
                 return block

@@ -1423,3 +1423,29 @@ E2E 并入唤醒可观测真机批次。
 - **执行**：逐条走 `engine.archiveSession(id)`（与手动归档同路径，天然先休眠），串行、每轮上限 50，失败记 debug 跳过
 - **观测**：每轮一行 `[retention] auto-archive: candidates=n archived=m skipped=k`，不通知用户
 - 前置：新增 `sessions.archived_at` 列（归档票内落地）
+
+## 131. worktree 隔离流 + 事件类挂起通道（B5+B6 绑定立项，2026-11-06 暂缓）
+
+Desktop 对照结论（REA Round 14/18，桌面 4.4212.0 静态实锤，笔记在
+`~/workspace/rea-analysis/claude-desktop/notes.md`）。用户裁决：**有必要做但复杂，
+暂缓**；B6（事件类通道）没有独立需求，与 B5 同票立项。
+
+**B5 worktree 隔离流**（Desktop 全套五件 → mobi 裁剪范围建议）：
+
+- 做：会话可选「隔离模式」——启动建 `.mobi/worktrees/<sid>`，system prompt 条件段
+  告知 worktree 环境（Desktop 的 el()/wy()/Ty() 三段文案模式），结束保留 + 回收提示
+  （脏判定三态复用 `daemon/worktree/status.ts`）
+- 不做（初版）：共享 checkout 上 Edit/Write 硬闸（mobi 用户预期在自己目录干活）、
+  PR 合回链路（依赖外部托管集成）、分支切换保护
+- 待裁：隔离模式默认关/开
+
+**B6 事件类挂起通道**（pendingSystemReminder 同构）——做 B5 时自然触发第一批需求：
+
+- Desktop 事件四族全部长在 worktree 上：worktree 重建（同路径/异路径/分支重切三文案）、
+  路径变更（旧路径失效 + `--resume` 可能丢 transcript 警告）、附加文件夹 worktree
+  不可用（「不要读写其下路径」）、附加文件夹被剔除；另有 linked sessions 状态快照
+  （文案明确标注 "status, not an instruction"）与跨界面收养 notice
+- 设计直接抄 Desktop 四要点：挂会话字段 → 下条任意用户消息自动以
+  `<system-reminder>` 前置注入；resume 时从 transcript 扫 `<system-reminder>` 块
+  回填队列（即时状态类排除回放）；配套撤销机制（状态回滚时撤掉挂起提醒）
+- 收编机会：落地时把跨会话信封 / quote 的注入时机顺手收编统一

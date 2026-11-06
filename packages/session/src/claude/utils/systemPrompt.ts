@@ -17,6 +17,8 @@
 import { trimIdent } from "@mobi/node-core/utils/trimIdent";
 import { ARTIFACTS_DIR_MONTH_FORMAT, ARTIFACTS_DIR_REL, ARTIFACT_TAG_NS, MOBI_CORE_SERVER_NAME } from "@mobi/shared";
 import { OPENUI_CORE_PROMPT } from "./openuiCorePrompt.generated";
+import { neutralizeTags } from "./neutralizeTags";
+import { ENVELOPE_TAG } from "./crossSessionEnvelope";
 
 /**
  * mobi 注入的基础 system prompt：
@@ -66,6 +68,15 @@ export interface AppendSystemPromptConfig {
 }
 
 /**
+ * 用户自定义段需要中和的标记：harness 注入可信上下文用的 `system-reminder` 与跨会话
+ * 信封标签——mobi 链路里仅这两个具有「系统级信任」语义，用户指令没有合法理由伪装它们
+ * （教模型声明产物等诉求用普通文本/契约标签表达，不受影响）。
+ * 信封标签复用 crossSessionEnvelope 的常量（改名时两侧同步）；中和实现也共用
+ * {@link neutralizeTags}。
+ */
+const USER_PROMPT_NEUTRALIZED_TAGS = ["system-reminder", ENVELOPE_TAG];
+
+/**
  * 构造追加到 claude_code 默认 system prompt 之后的内容。
  *
  * 统一 append 语义：customSystemPrompt 与 appendSystemPrompt 不再区分（历史上一为 replace、
@@ -73,6 +84,11 @@ export interface AppendSystemPromptConfig {
  *
  * 拼接顺序：用户 custom → 用户 append → mobi base（change_title/artifact 契约）→
  * openui 核心段（generative-ui 票 02 注入、票 08 分层收窄）。
+ *
+ * 用户两段先做标记中和（sdk-options-hygiene spec A1）：用户文本里的
+ * `<system-reminder>` / 信封标签被实体化——内容照常可读，但不能再冒充 mobi 自己
+ * 注入的可信系统上下文（Desktop 对用户 systemPromptAppend 有同款防线）。mobi 自产
+ * 的 base 与 openui 段不经过中和。
  *
  * 【通道裁决（票 02）】openui prompt 走 session 侧 systemPrompt 组装链（与
  * `<mobi:artifact>` 声明教学的 BASE_SYSTEM_PROMPT 同一链路、常驻契约），不走
@@ -84,7 +100,13 @@ export interface AppendSystemPromptConfig {
  * 主动加载——多数不出 UI 的会话（生产实测 167 会话仅 1 个出过 openui）不再背全量。
  */
 export function buildAppendSystemPrompt(config: AppendSystemPromptConfig): string {
-    return [config.customSystemPrompt, config.appendSystemPrompt, BASE_SYSTEM_PROMPT, OPENUI_CORE_PROMPT]
+    // nullish 判定而非只挡 undefined：wire 上 customSystemPrompt/appendSystemPrompt 是
+    // nullable 字段（MessageMetaSchema），任何未经归一的直通路径都可能把 null 送到这里——
+    // 旧实现的 filter(Boolean) 静默吸收 null，中和函数不能比它更脆
+    const neutralizeUser = (part?: string): string | undefined =>
+        part == null ? undefined : neutralizeTags(part, USER_PROMPT_NEUTRALIZED_TAGS);
+
+    return [neutralizeUser(config.customSystemPrompt), neutralizeUser(config.appendSystemPrompt), BASE_SYSTEM_PROMPT, OPENUI_CORE_PROMPT]
         .filter((part): part is string => Boolean(part))
         .join('\n\n');
 }

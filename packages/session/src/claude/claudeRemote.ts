@@ -1264,6 +1264,13 @@ export async function claudeRemote(
         // effort 依赖 thinking 默认值 { type: 'adaptive' } 才能生效，SDK 默认即为 adaptive
         effort: baseConfig.effort,
         fallbackModel: baseConfig.fallbackModel,
+        // 设置文件层级显式全加载（sdk-options-hygiene spec A2）：user（~/.claude）+
+        // project（仓库 .claude，含 CLAUDE.md 加载前提）+ local（settings.local）。
+        // 与 SDK/CLI 缺省行为一致——显式声明是把它从「默认值巧合」变成明示契约：
+        // mobi 是 personal agent，用户开自己的仓库，与终端 Claude Code 行为一致
+        // 优先于防第三方仓库注入（那要靠将来的 workspace 信任开关，另行立项）。
+        // 对照：Claude Desktop 恒 ['user']（它程序化注入 settings，不让仓库配置进来）。
+        settingSources: ['user', 'project', 'local'],
         // systemPrompt 统一走 preset + append：customSystemPrompt 与 appendSystemPrompt
         // 都作为追加内容拼在 claude_code 默认 prompt 之后（详见 buildAppendSystemPrompt），
         // 不再用纯字符串整体替换——那会丢掉 claude_code 默认 prompt。
