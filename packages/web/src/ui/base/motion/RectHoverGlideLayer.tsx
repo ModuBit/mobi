@@ -119,7 +119,17 @@ export function RectHoverGlideLayer({
             titleRef.current = measured
             const r = measured.getBoundingClientRect()
             const w = container.getBoundingClientRect()
-            setRect({ x: r.left - w.left, y: r.top - w.top, w: r.width, h: r.height, visible: true })
+            // 绝对定位的基准是容器 padding box 的原点：
+            // - 容器自身是滚动容器（非虚拟列表）时，可视区原点不动、内容在滚，须加 scrollTop/Left；
+            // - 容器是滚动区内的定位层（虚拟列表 holder）时，位移已含在 w 里，scrollTop 为 0。
+            // clientTop/Left 是 padding box 相对 border box 的偏移（有边框时也成立）。
+            setRect({
+                x: r.left - w.left - container.clientLeft + container.scrollLeft,
+                y: r.top - w.top - container.clientTop + container.scrollTop,
+                w: r.width,
+                h: r.height,
+                visible: true,
+            })
         }
         const handleLeave = () => hide()
         const handleScroll = () => hide()

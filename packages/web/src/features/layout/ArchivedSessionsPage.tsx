@@ -36,6 +36,8 @@ import { summarizeBatch, batchConfirmExpected, BATCH_DELETE_CONFIRM_TOKEN } from
 import type { BatchItemResult } from './archivedBatch'
 import { groupAndAnnotate } from './archivedGrouping'
 import type { AnnotatedRow } from './archivedGrouping'
+import { ArchivedListSkeleton } from './ArchivedListSkeleton'
+import { SkeletonBar } from './SkeletonBar'
 import { RectHoverGlideLayer } from '@/ui/base/motion/RectHoverGlideLayer'
 import { useMobiApi } from '@/core/data/api/client'
 import { useQueryClient } from '@tanstack/react-query'
@@ -124,11 +126,11 @@ const WorkspaceFilter = styled(Select)`
 `
 
 /**
- * Listy 容器（虚拟滚动的量高基准）：色块卡视觉全部由行元素（ArchivedRow）按
- * group-first/group-last 类直接命中——不从 item 容器用 :has() 回查（祖先选择器在
- * 虚拟滚动每帧增删行时触发全量样式重验证，移动端滚动肉眼卡顿），也不做 DOM 邻接
- * 推断（虚拟化下相邻关系不可靠）。行序列由 groupAndAnnotate 在数据层聚类成
- * 「同组连续」，Listy 的 group 聚类重排退化为恒等，边界标注与视觉位置一致。
+ * Listy 容器（列表高度基准）：色块卡视觉全部由行元素（ArchivedRow）按
+ * group-first/group-last 类直接命中——不从 item 容器用 :has() 回查（祖先选择器
+ * 在增删行时触发全量样式重验证，移动端滚动肉眼卡顿），也不做 DOM 邻接推断。
+ * 行序列由 groupAndAnnotate 在数据层聚类成「同组连续」，Listy 的 group 聚类
+ * 重排退化为恒等，边界标注与视觉位置一致。
  */
 const ListyShell = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
     flex: 1;
@@ -154,12 +156,14 @@ const ListyShell = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['to
     }
 
     /* 组头裸排页面背景（ChatGPT 形态）：重置 antd 默认背景/内衬，组间 28px 承载在
-     * 组头顶距上（首个免） */
+     * 组头顶距上（首个免）。非虚拟模式组头被包在 group-section 里，首组判据走
+     * group-section:first-child；holder-inner 那条留给虚拟模式，两条互斥不会互相误伤 */
     .archived-listy-header {
         background: transparent;
         padding: 28px 4px 12px;
     }
-    .archived-listy-header:first-child {
+    .ant-listy-group-section:first-child > .archived-listy-header,
+    .ant-listy-holder-inner > .archived-listy-header:first-child {
         padding-top: 0;
     }
 `
@@ -471,17 +475,17 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
         return () => observer.disconnect()
     }, [listShell])
 
-    // 滑移底色层的容器：holder-inner（Listy 内部渲染的滚动容器，带 transform 独立
-    // 层叠上下文）。RectHoverGlideLayer 会把 Fill portal 进它——Fill 与行同 context，
-    // 插在行底色（z:0）与行内容（z:2）之间；holder-inner 随 Listy 挂载（listHeight>0
-    // 后才存在），等高度就绪再查，查到后条件渲染组件（容器变更即重挂 portal）
+    // 滑移底色层的容器：非虚拟 RawList 的根节点（它自身就是滚动容器，position:
+    // relative 由 antd 样式提供）。RectHoverGlideLayer 会把 Fill portal 进它——Fill
+    // 与行同 context，插在行底色（z:0）与行内容（z:2）之间；根节点随 Listy 挂载
+    // （listHeight>0 后才存在），等高度就绪再查，查到后条件渲染组件（容器变更即重挂 portal）
     const [glideContainer, setGlideContainer] = useState<HTMLElement | null>(null)
     const glideRef = useRef<HTMLElement | null>(null)
     glideRef.current = glideContainer
     useEffect(() => {
-        // holder-inner 随 Listy 挂载（listHeight>0 后才存在），等高度就绪再查
+        // 根节点随 Listy 挂载（listHeight>0 后才存在），等高度就绪再查
         if (!listShell || listHeight <= 0) return
-        setGlideContainer(listShell.querySelector<HTMLElement>('.ant-listy-holder-inner'))
+        setGlideContainer(listShell.querySelector<HTMLElement>('.archived-listy-root'))
     }, [listShell, listHeight])
 
     // 取消归档：409（gate）原样透出逐项原因，其余通用错误
@@ -685,7 +689,18 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                         {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
                         <PageTitle $token={token}>{t('archived.title')}</PageTitle>
                     </TitleRow>
-                    <ToolBar><SearchSlot disabled placeholder={t('common.loading')} /></ToolBar>
+                    {/* 工具条与就绪态同形同尺寸：搜索框本就禁用，占位文案直接沿用；
+                     * 项目过滤选项来自首屏数据，先以同宽骨架占位，数据到达时不跳动 */}
+                    <ToolBar>
+                        <SearchSlot
+                            disabled
+                            placeholder={t('archived.searchPlaceholder')}
+                            prefix={<Search size={13} style={{ color: token.colorTextQuaternary }} />}
+                            allowClear={false}
+                        />
+                        <SkeletonBar $token={token} style={{ width: 160, height: 36, borderRadius: 'var(--radius-control-sm)' }} />
+                    </ToolBar>
+                    <ArchivedListSkeleton />
                 </Inner>
             </PageShell>
         )
@@ -761,13 +776,13 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                 ) : (
                     <>
                         <ListyShell ref={setListShell} $token={token}>
-                            {/* 高度就绪后才挂 Listy（virtual 依赖 height；ResizeObserver 首帧即给值） */}
+                            {/* 高度就绪后才挂 Listy（height 决定滚动视口；ResizeObserver 首帧即给值） */}
                             {listHeight > 0 && (
                                 <>
                                     {/* 滑移 hover 底色层：底色块弹簧从上一行滑到新行（主列表同款手感）。
-                                     * Fill portal 进 holder-inner（transform 层叠上下文，与行同 context 层序才正确）；
+                                     * Fill portal 进 Listy 根节点（滚动容器，与行同 context 层序才正确）；
                                      * 几何/圆角都从 RowSurface 实测（组边界逐行不同的圆角随行跟随），
-                                     * 滚动后行几何失效先淡出（虚拟列表约定），移动指针重新定位 */}
+                                     * 滚动后行几何先淡出，移动指针重新定位 */}
                                     {glideContainer && (
                                         <RectHoverGlideLayer
                                             containerRef={glideRef}
@@ -782,7 +797,9 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
                                     <Listy<AnnotatedRow>
                                     items={annotated}
                                     rowKey={(row) => row.session.id}
-                                    virtual
+                                    /* 非虚拟：全量渲染已加载行。虚拟滚动下每帧增删行 + itemRender
+                                     * 重跑，滚动明显卡顿；归档页分批加载，DOM 规模可控 */
+                                    virtual={false}
                                     height={listHeight}
                                     group={{
                                         // antd Key 不含 null——未归入工作区走 '__none__' 哨兵（与过滤选项同值）
