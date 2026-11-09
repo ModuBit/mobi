@@ -26,6 +26,23 @@ export const SETTINGS_WIDE_QUERY = '(min-width: 992px)'
 /** 分区徽标声明：渲染层据此挂对应状态组件（机制在 registry，组件映射在渲染点） */
 export type SettingsSectionBadge = 'web-tools-status'
 
+/** 分区分组 id：通用（通知/工具/记忆类）→ 工具（遥测/地图/工作树）→ 开发者（调试） */
+export type SettingsSectionGroupId = 'general' | 'tools' | 'developer'
+
+/** 设置分组定义：分组视图（PC 侧栏 / mobile 入口）的分组标题与顺序单一真相 */
+export interface SettingsSectionGroup {
+    id: SettingsSectionGroupId
+    /** i18n 分组标题 key */
+    titleKey: string
+}
+
+/** 分组定义顺序即渲染顺序 */
+export const SETTINGS_SECTION_GROUPS: SettingsSectionGroup[] = [
+    { id: 'general', titleKey: 'settings.groups.general.title' },
+    { id: 'tools', titleKey: 'settings.groups.tools.title' },
+    { id: 'developer', titleKey: 'settings.groups.developer.title' },
+]
+
 /** 设置分区定义：入口列表（mobile）与分区导航（PC）共用的单一真相 */
 export interface SettingsSection {
     /** 分区 id（同时是子路由段） */
@@ -39,17 +56,47 @@ export interface SettingsSection {
     visible: () => boolean
     /** 状态徽标（有实时摘要的分区声明；PC 导航与 mobile 入口两处渲染点共用同一映射） */
     badge?: SettingsSectionBadge
+    /** 所属分组（分组视图据此归位） */
+    groupId: SettingsSectionGroupId
 }
 
 export const SETTINGS_SECTIONS: SettingsSection[] = [
-    { id: 'notifications', titleKey: 'settings.sections.notifications.title', descKey: 'settings.sections.notifications.desc', icon: Bell, visible: () => true },
-    { id: 'web-tools', titleKey: 'settings.sections.webTools.title', descKey: 'settings.sections.webTools.desc', icon: Globe, visible: () => true, badge: 'web-tools-status' },
-    { id: 'memory', titleKey: 'settings.sections.memory.title', descKey: 'settings.sections.memory.desc', icon: Brain, visible: () => true },
-    { id: 'telemetry', titleKey: 'settings.sections.telemetry.title', descKey: 'settings.sections.telemetry.desc', icon: Activity, visible: () => true },
-    { id: 'map', titleKey: 'settings.sections.map.title', descKey: 'settings.sections.map.desc', icon: MapPin, visible: () => true },
-    { id: 'worktrees', titleKey: 'settings.sections.worktrees.title', descKey: 'settings.sections.worktrees.desc', icon: FolderTree, visible: () => true },
-    { id: 'debug', titleKey: 'settings.sections.debug.title', descKey: 'settings.sections.debug.desc', icon: Bug, visible: () => isDebugUnlocked() },
+    { id: 'notifications', titleKey: 'settings.sections.notifications.title', descKey: 'settings.sections.notifications.desc', icon: Bell, visible: () => true, groupId: 'general' },
+    { id: 'web-tools', titleKey: 'settings.sections.webTools.title', descKey: 'settings.sections.webTools.desc', icon: Globe, visible: () => true, badge: 'web-tools-status', groupId: 'general' },
+    { id: 'memory', titleKey: 'settings.sections.memory.title', descKey: 'settings.sections.memory.desc', icon: Brain, visible: () => true, groupId: 'general' },
+    { id: 'telemetry', titleKey: 'settings.sections.telemetry.title', descKey: 'settings.sections.telemetry.desc', icon: Activity, visible: () => true, groupId: 'tools' },
+    { id: 'map', titleKey: 'settings.sections.map.title', descKey: 'settings.sections.map.desc', icon: MapPin, visible: () => true, groupId: 'tools' },
+    { id: 'worktrees', titleKey: 'settings.sections.worktrees.title', descKey: 'settings.sections.worktrees.desc', icon: FolderTree, visible: () => true, groupId: 'tools' },
+    { id: 'debug', titleKey: 'settings.sections.debug.title', descKey: 'settings.sections.debug.desc', icon: Bug, visible: () => isDebugUnlocked(), groupId: 'developer' },
 ]
+
+/**
+ * 分组视图：把分区清单按分组定义归位，空组整体不出现（如 debug 未解锁时开发者组消失）。
+ * 缺省入参 = 当前可见分区；调用方可显式传入（如搜索过滤后的子集）复用同一归组逻辑。
+ */
+export function groupedSettingsSections(
+    sections: SettingsSection[] = SETTINGS_SECTIONS.filter((s) => s.visible()),
+): Array<SettingsSectionGroup & { sections: SettingsSection[] }> {
+    return SETTINGS_SECTION_GROUPS.map((group) => ({
+        ...group,
+        sections: sections.filter((s) => s.groupId === group.id),
+    })).filter((group) => group.sections.length > 0)
+}
+
+/**
+ * 分区搜索过滤：关键词对调用方解析出的文案做大小写不敏感的包含匹配。
+ * 文案由调用方经 textOf 注入（先 t() 再传入），registry 不引入 i18n 依赖。
+ * 空关键词（含纯空白）返回全量。
+ */
+export function filterSettingsSections(
+    keyword: string,
+    sections: SettingsSection[],
+    textOf: (section: SettingsSection) => string[],
+): SettingsSection[] {
+    const normalized = keyword.trim().toLowerCase()
+    if (!normalized) return sections
+    return sections.filter((s) => textOf(s).some((text) => text.toLowerCase().includes(normalized)))
+}
 
 /**
  * 从 pathname 推断当前激活分区（/settings/web-tools → web-tools 分区对象）。
