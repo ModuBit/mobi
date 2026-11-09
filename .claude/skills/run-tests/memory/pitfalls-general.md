@@ -1,12 +1,25 @@
 ---
 name: pitfalls-general
-description: 跨任务通用误判（token 用途、诊断命令、工具禁用、短生命周期 DOM 验证、懒加载验证、React 控制的 inline style、claude 进程数观测归因）
+description: 跨任务通用误判（token 用途、诊断命令、工具禁用、短生命周期 DOM 验证、懒加载验证、React 控制的 inline style、claude 进程数观测归因、vitest cwd）
 metadata:
   type: pitfall
-  last_verified: 2026-10-28
+  last_verified: 2026-11-09
 ---
 
 # 通用误判
+
+## vitest 必须 cwd=packages/web 跑——root 下跑 alias 失效秒挂（2026-11-09）
+
+单跑 web 单测文件时（如 `bunx vitest run tests/components/settings/xxx.test.tsx`），**必须在
+`packages/web` 目录下执行**。在仓库根目录跑会加载错（或找不到）`vitest.config.ts`，`@/` alias
+解析不了，报 `Cannot find package '@/'`，特征是 **Duration ~354ms 秒挂**——不是测试失败，是
+config 没加载。正确姿势：
+
+```bash
+cd packages/web && bunx vitest run tests/components/settings/MemorySection.test.tsx
+```
+
+全量跑则始终从根目录 `bun run test` / `bun run test:web`（root 下直接 bunx vitest 同样中招）。
 
 ## 附件上传测试文件必须放 repo 内（2026-08-27）
 

@@ -280,9 +280,11 @@ packages/web/src/
 │   │   ├── TerminalView.tsx    终端视图（useCachedInstance 保活）
 │   │   └── cachedTerminal.ts   终端实例工厂（xterm + socket 常驻缓存）
 │   ├── sketchpad/              画板（SketchCanvas / SketchDrawerHandler / sketch marks）
-│   └── settings/               设置组件
-│       ├── NotificationSettings.tsx / blocks/（GuideSection / PwaCard / DebugSection）
-│       ├── sections/           设置分区（registry.ts 单一真相 + 各 Section；路由布局见 pages/SettingsPage.tsx）
+│   └── settings/               设置组件（SettingRow 行式形态，2026-11-09 重构：PC 全屏接管壳
+│       │                       自带分组侧栏 / mobile 入口分组卡 + 子页返回，壳在 pages/SettingsPage.tsx）
+│       ├── NotificationSettings.tsx / blocks/（行式原语 SettingRow + SettingGroupCard 无缝分组卡 /
+│       │                       GuideSection / PwaCard / DebugSection / shared）
+│       ├── sections/           设置分区（registry.ts 单一真相 + 各 Section 均为即改即存行式；路由布局见 pages/SettingsPage.tsx）
 │       └── webtools/           Web 工具子页（RouteCard / ProviderCard / CredentialEditor）
 │
 ├── ui/                         通用组件（零业务知识，2026-10-12 ui 治理定形）
