@@ -19,9 +19,6 @@ import { useTranslation } from 'react-i18next'
 import { ChevronRight } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import styled from '@emotion/styled'
-import { useMediaQuery } from '@/core/data/hooks/useMediaQuery'
-import { SETTINGS_WIDE_QUERY } from './registry'
-import { NotificationsSection } from './NotificationsSection'
 import { SETTINGS_SECTIONS } from './registry'
 import { WebToolsStatusBadge } from './WebToolsStatusBadge'
 
@@ -84,16 +81,13 @@ const EntrySub = styled.span<{ $token: Token }>`
 /** Web 工具状态徽标已提取为 WebToolsStatusBadge（单文件单职责，PC 导航与 mobile 入口共用） */
 
 /**
- * /settings index 分流：PC（≥992px）渲染默认分区（通知），mobile 渲染分组入口列表。
- * 入口 = registry 分区清单；声明了 badge 的分区副标题位显示实时状态徽标。
+ * /settings index（mobile 专属）：PC 由路由 beforeLoad「记住上次分区」重定向，落不到这里。
+ * mobile 渲染分组入口列表；入口 = registry 分区清单；声明了 badge 的分区副标题位显示实时状态徽标。
  */
 export function SettingsIndex() {
     const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
-    const isWide = useMediaQuery(SETTINGS_WIDE_QUERY)
-
-    if (isWide) return <NotificationsSection />
 
     const sections = SETTINGS_SECTIONS.filter((s) => s.visible())
     return (

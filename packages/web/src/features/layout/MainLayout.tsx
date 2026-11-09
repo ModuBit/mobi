@@ -22,7 +22,7 @@ import { AppSidebar } from './AppSidebar'
 import { MobileMenuDrawer } from './mobileMenu'
 import { WcoTitleBar, resolveChromeColor } from './WcoTitleBar'
 import { useWindowControlsOverlay, WcoContext } from './useWindowControlsOverlay'
-import { Outlet } from '@tanstack/react-router'
+import { Outlet, useLocation } from '@tanstack/react-router'
 import { useEffect, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Helmet } from 'react-helmet-async'
@@ -30,6 +30,8 @@ import { UpdatePrompt } from './UpdatePrompt'
 import { registerServiceWorker } from '@/core/pwa/registerSW'
 import { setUpdateReload, useUpdateAvailable } from '@/core/pwa/useUpdateAvailable'
 import { startLayoutShiftObserver } from '@/core/lib/layoutShiftObserver'
+import { isSettingsPath } from '@/domain/navigation/settingsPath'
+import { setSettingsReturnOrigin, isSettingsReturnOriginCandidate } from './settingsReturnOrigin'
 
 const { useToken } = antTheme
 
@@ -41,7 +43,18 @@ export function MainLayout() {
     const { t } = useTranslation()
     const { token } = useToken()
     const isMobile = useIsMobile()
+    const location = useLocation()
     const sidebarExpanded = useUiStore((s) => s.sidebarExpanded)
+    // 设置路由族 → 全屏视图接管（ChatGPT 形态）：主侧栏让位（display:none 保挂载，零卸载）、
+    // 内容区交由 SettingsPage 自带侧栏 + 分区内容。判断收口在 isSettingsPath（registry 单一真相）
+    const settingsTakeover = !isMobile && isSettingsPath(location.pathname)
+
+    // 返回链路来源：停留在非设置路由时持续刷新记录（sessionStorage per-tab）
+    useEffect(() => {
+        if (isSettingsReturnOriginCandidate(location.pathname)) {
+            setSettingsReturnOrigin(location.pathname)
+        }
+    }, [location.pathname])
     // 解析后档位只消费不推导——data-theme / antd algorithm 归 ThemeProvider 单源
     // （见 core/config/theme/ThemeProvider.tsx），本组件只额外负责浏览器 chrome 色
     const resolvedTheme = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark))
@@ -106,18 +119,25 @@ export function MainLayout() {
                     flexDirection: 'row',
                     background: token.colorBgContainer,
                 }}>
-                    <AppSidebar />
+                    {/* 侧栏容器：设置接管时 display:none 隐藏（AppSidebar 及其数据不卸载，
+                        返回时零 refetch）；contents 让 AppSidebar 保持 flex 子项语义 */}
+                    <div
+                        data-testid="app-sidebar-slot"
+                        style={{ display: settingsTakeover ? 'none' : 'contents' }}
+                    >
+                        <AppSidebar />
+                    </div>
                     <Layout.Content style={{
                         flex: 1,
                         display: 'flex',
                         overflow: 'hidden',
                         minWidth: 0,
-                        borderRadius: framedContent ? 'var(--radius-panel) 0 0 var(--radius-panel)' : undefined,
+                        borderRadius: !settingsTakeover && framedContent ? 'var(--radius-panel) 0 0 var(--radius-panel)' : undefined,
                         /* 三边描边 + 上下 4px 呼吸：内容区才读作浮在布局底色上的面，而不是贴着窗口边缘的色块 */
-                        borderLeft: framedContent ? `1px solid ${token.colorBorder}` : undefined,
-                        borderTop: framedContent ? `1px solid ${token.colorBorder}` : undefined,
-                        borderBottom: framedContent ? `1px solid ${token.colorBorder}` : undefined,
-                        marginBlock: framedContent ? 4 : undefined,
+                        borderLeft: !settingsTakeover && framedContent ? `1px solid ${token.colorBorder}` : undefined,
+                        borderTop: !settingsTakeover && framedContent ? `1px solid ${token.colorBorder}` : undefined,
+                        borderBottom: !settingsTakeover && framedContent ? `1px solid ${token.colorBorder}` : undefined,
+                        marginBlock: !settingsTakeover && framedContent ? 4 : undefined,
                         background: token.colorBgLayout,
                     }}>
                         {/* 页面级懒加载 chunk 的内层边界：跳转时只内容区出 loading，

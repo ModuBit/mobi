@@ -226,9 +226,9 @@
     "allWorkspaces": "所有项目",
     "noMatch": "无匹配的归档会话",
     "groupCount": "{{count}} 个会话",
-        "lastActiveAt": "最后活跃",
-        "archivedAtLabel": "归档时间",
-        "groupActions": "项目操作",
+    "lastActiveAt": "最后活跃",
+    "archivedAtLabel": "归档时间",
+    "groupActions": "项目操作",
     "title": "已归档会话",
     "empty": "暂无归档会话",
     "loadMore": "加载更多",
@@ -960,7 +960,19 @@
       "retainedTitle": "工作树已保留",
       "retainedDesc": "「{{name}}」有 {{count}} 个未提交改动，删除会话时已保留，可在设置中处理。",
       "goManage": "去设置处理"
-    }
+    },
+    "groups": {
+      "general": {
+        "title": "通用"
+      },
+      "tools": {
+        "title": "工具"
+      },
+      "developer": {
+        "title": "开发者"
+      }
+    },
+    "search": "搜索设置"
   },
   "debug": {
     "title": "调试",

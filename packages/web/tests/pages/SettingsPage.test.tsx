@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 
 /** 媒体查询开关：true=PC（≥992px），false=mobile */
 const mediaMatches = { value: true }
@@ -64,7 +64,7 @@ async function renderLayout(path: string) {
 afterEach(() => cleanup())
 
 describe('SettingsPage 响应式壳', () => {
-    it('PC（≥992px）：渲染分区导航与子内容', async () => {
+    it('PC（≥992px）：全屏接管壳——返回键 + 搜索框 + 分组导航与子内容', async () => {
         mediaMatches.value = true
         await renderLayout('/settings/notifications')
         // 等子路由 Outlet 内容出现（RouterProvider 异步 commit）后再断言
@@ -73,6 +73,26 @@ describe('SettingsPage 响应式壳', () => {
         expect(screen.getByText('settings.sections.webTools.title')).toBeTruthy()
         // debug 入口默认不可见（未解锁）
         expect(screen.queryByText('settings.sections.debug.title')).toBeNull()
+        // 接管壳三件：返回键 / 分区搜索 / 分组标题
+        expect(screen.getByRole('button', { name: 'common.back' })).toBeTruthy()
+        expect(screen.getByRole('textbox', { name: 'settings.search' })).toBeTruthy()
+        expect(screen.getByText('settings.groups.general.title')).toBeTruthy()
+        expect(screen.getByText('settings.groups.tools.title')).toBeTruthy()
+    })
+
+    it('PC 搜索过滤：关键词过滤分区，空态提示', async () => {
+        mediaMatches.value = true
+        await renderLayout('/settings/notifications')
+        expect(await screen.findByTestId('child-outlet')).toBeTruthy()
+        const search = screen.getByRole('textbox', { name: 'settings.search' })
+        // i18n mock 下 titleKey 即文案，'notifications' 命中通知分区
+        fireEvent.change(search, { target: { value: 'notifications' } })
+        expect(screen.getByText('settings.sections.notifications.title')).toBeTruthy()
+        expect(screen.queryByText('settings.sections.webTools.title')).toBeNull()
+        // 无命中 → 空态提示、分区行全部消失
+        fireEvent.change(search, { target: { value: '不存在的关键词xyz' } })
+        expect(screen.getByText('settings.searchEmpty')).toBeTruthy()
+        expect(screen.queryByText('settings.sections.notifications.title')).toBeNull()
     })
 
     it('mobile（<992px）：不渲染分区导航，渲染子内容 + 返回键', async () => {

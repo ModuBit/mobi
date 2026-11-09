@@ -226,9 +226,9 @@
     "allWorkspaces": "All projects",
     "noMatch": "No matching archived chats",
     "groupCount": "{{count}} sessions",
-        "lastActiveAt": "Last active",
-        "archivedAtLabel": "Archived at",
-        "groupActions": "Project actions",
+    "lastActiveAt": "Last active",
+    "archivedAtLabel": "Archived at",
+    "groupActions": "Project actions",
     "title": "Archived Sessions",
     "empty": "No archived sessions",
     "loadMore": "Load more",
@@ -969,7 +969,19 @@
       "retainedTitle": "Worktree kept",
       "retainedDesc": "\"{{name}}\" has {{count}} uncommitted changes and was kept when the session was deleted. You can handle it in Settings.",
       "goManage": "Open settings"
-    }
+    },
+    "groups": {
+      "general": {
+        "title": "General"
+      },
+      "tools": {
+        "title": "Tools"
+      },
+      "developer": {
+        "title": "Developer"
+      }
+    },
+    "search": "Search settings"
   },
   "debug": {
     "title": "Debug",

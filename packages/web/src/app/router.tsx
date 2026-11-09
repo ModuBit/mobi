@@ -18,6 +18,8 @@ import { lazy } from 'react'
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { App } from './App'
 import { lazyRoute, routeChunkLoaders } from '@/app/routeChunks'
+import { SETTINGS_WIDE_QUERY } from '@/features/settings/sections/registry'
+import { readLastSettingsSection } from '@/features/settings/sections/lastSettingsSection'
 
 // 页面组件用 React.lazy 拆成独立 chunk（加载器与预取定义见 @/app/routeChunks，
 // 该模块独立存在以避免 App ↔ router 循环依赖）。App（root，含 SSEProvider）保持
@@ -115,10 +117,16 @@ const settingsRoute = createRoute({
     path: 'settings',
     component: SettingsPage,
 })
-// 设置 index：PC 渲染默认分区（通知），mobile 渲染分组入口列表（SettingsIndex 内部分流）
+// 设置 index：PC「记住上次分区」——重定向到上次分区（缺省通知）；mobile 保持分组入口列表（SettingsIndex）
 const settingsIndexRoute = createRoute({
     getParentRoute: () => settingsRoute,
     path: '/',
+    beforeLoad: () => {
+        if (window.matchMedia(SETTINGS_WIDE_QUERY).matches) {
+            const last = readLastSettingsSection() ?? 'notifications'
+            throw redirect({ to: `/settings/${last}` })
+        }
+    },
     component: SettingsIndex,
 })
 // 通知与推送分区

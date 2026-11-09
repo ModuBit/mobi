@@ -17,7 +17,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 
-/** 媒体查询开关：true=PC（≥992px），false=mobile（入口列表形态） */
+/** 媒体查询开关：mobile（入口列表形态）。PC 分流已由票02收口到 router 层 beforeLoad 重定向 */
 const mediaMatches = { value: false }
 vi.mock('@/core/data/hooks/queries/useWebToolsStatus', () => ({
     useWebToolsStatus: vi.fn(),
@@ -29,9 +29,6 @@ vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
     // 浅 mock 下其他模块（i18n init）可能引用，补占位避免 mock 不完整报错
     initReactI18next: { type: '3rd-party', init: () => {} },
-}))
-vi.mock('@/features/settings/sections/NotificationsSection', () => ({
-    NotificationsSection: () => <div data-testid="notifications-section" />,
 }))
 vi.mock('@/core/lib/debug', () => ({ isDebugUnlocked: () => false }))
 vi.mock('@tanstack/react-router', () => ({
@@ -74,11 +71,6 @@ describe('SettingsIndex（mobile 入口列表）', () => {
 })
 
 describe('SettingsIndex（PC 分流）', () => {
-    it('宽屏（≥992px）直接渲染默认分区（通知），不渲染入口列表', () => {
-        mediaMatches.value = true
-        vi.mocked(useWebToolsStatus).mockReturnValue('enabled')
-        render(<SettingsIndex />)
-        expect(screen.getByTestId('notifications-section')).toBeTruthy()
-        expect(screen.queryByText('settings.sections.webTools.title')).toBeNull()
-    })
+    // 票02：PC index 改由路由 beforeLoad「记住上次分区」重定向（router 层职责），
+    // SettingsIndex 收敛为 mobile 专属组件——宽屏分流断言随旧实现一并移除
 })

@@ -16,6 +16,7 @@
 
 import { Bell, Globe, Bug, Brain, Activity, MapPin, FolderTree, type LucideIcon } from 'lucide-react'
 import { isDebugUnlocked } from '@/core/lib/debug'
+import { isSettingsPath } from '@/domain/navigation/settingsPath'
 
 /**
  * 设置分区导航断点：≥992px 显示左侧分区导航（主侧栏240+分区导航200+内容720 的宽度预算）。
@@ -108,3 +109,9 @@ export function activeSection(pathname: string): SettingsSection | null {
     const segment = match?.[1]
     return SETTINGS_SECTIONS.find((s) => s.id === segment) ?? null
 }
+
+/**
+ * 设置路由族判断（/settings 及其子路径）：MainLayout 布局分支「设置是全屏视图」的唯一判断点。
+ * 知识本体在 domain/navigation（多域共享，域间互引禁止），此处 re-export 供 settings 域内消费方就近引用。
+ */
+export { isSettingsPath }
