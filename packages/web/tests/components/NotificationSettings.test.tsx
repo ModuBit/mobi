@@ -209,6 +209,14 @@ describe('NotificationSettings', () => {
         expect(screen.queryByText('notification.settings.resubscribe')).not.toBeInTheDocument()
     })
 
+    it('granted + 已订阅 显示订阅状态行（订阅标签 + 已订阅值）', async () => {
+        mockState.permission = 'granted'
+        mockState.subscribed = true
+        renderUi()
+        expect(screen.getByText('notification.settings.subscription')).toBeInTheDocument()
+        expect(screen.getByText('notification.settings.subscribed')).toBeInTheDocument()
+    })
+
     it('点击「重新订阅」触发 enable()', async () => {
         mockState.permission = 'granted'
         mockState.subscribed = false

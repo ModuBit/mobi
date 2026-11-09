@@ -17,13 +17,16 @@
 import { useState, useEffect } from 'react'
 import { App, theme as antTheme } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
-import { BellOutlined, CloudOutlined, SyncOutlined } from '@ant-design/icons'
+import { SyncOutlined } from '@ant-design/icons'
+import { Bell, Cloud } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { css, keyframes } from '@emotion/react'
 import styled from '@emotion/styled'
 import { useNotificationSetup } from '@/core/data/hooks/useNotificationSetup'
 import { awaitServiceWorkerReady } from '@/core/pwa/swReady'
-import { enter, IconBox } from './blocks/shared'
+import { SettingGroupCard } from './blocks/SettingGroupCard'
+import { SettingRow } from './blocks/SettingRow'
 import { GuideSection } from './blocks/GuideSection'
 import { PwaCard } from './blocks/PwaCard'
 
@@ -49,35 +52,14 @@ const Wrap = styled.div<{ $token: Token }>`
     gap: ${p => p.$token.marginXS}px;
 `
 
-// 卡片：无 tone 填充（去 alert 感），容器色 + 细边框 + 留白驱动精致
-const Card = styled.section<{ $token: Token }>`
-    display: flex;
-    flex-direction: column;
-    padding: 18px ${p => p.$token.padding}px;
-    border-radius: ${p => p.$token.borderRadiusLG}px;
-    background: ${p => p.$token.colorBgContainer};
-    border: 1px solid ${p => p.$token.colorBorderSecondary};
-    animation: ${enter} 0.3s ease-out;
-`
-
-const MainRow = styled.div<{ $token: Token }>`
-    display: flex;
-    align-items: center;
-    gap: ${p => p.$token.marginSM}px;
-`
-
-const StatusInfo = styled.div<{ $token: Token }>`
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    flex: 1;
-    min-width: 0;
-`
-
-const StatusLine = styled.div<{ $token: Token }>`
-    display: flex;
+const StatusLabel = styled.span<{ $token: Token; $tone: Tone }>`
+    display: inline-flex;
     align-items: center;
     gap: 7px;
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: -0.01em;
+    color: ${p => (p.$tone === 'error' ? p.$token.colorErrorText : p.$token.colorText)};
 `
 
 // dot：小、状态色，granted 时呼吸。keyframes 用 css 包裹避免插值警告
@@ -93,42 +75,7 @@ const Dot = styled.span<{ $color: string; $pulse: boolean }>`
     `}
 `
 
-const Label = styled.span<{ $token: Token; $tone: Tone }>`
-    font-weight: 600;
-    font-size: 14px;
-    letter-spacing: -0.01em;
-    color: ${p => (p.$tone === 'error' ? p.$token.colorErrorText : p.$token.colorText)};
-`
-
-const Desc = styled.span<{ $token: Token }>`
-    font-size: 12.5px;
-    line-height: 1.5;
-    color: ${p => p.$token.colorTextTertiary};
-    padding-left: 14px;
-`
-
-const Action = styled.div<{ $token: Token }>`
-    flex-shrink: 0;
-    margin-left: auto;
-`
-
-// 订阅行：等宽字体技术感，细线分隔
-const SubRow = styled.div<{ $token: Token }>`
-    display: flex;
-    align-items: center;
-    gap: ${p => p.$token.marginSM}px;
-    margin-top: 14px;
-    padding-top: 14px;
-    border-top: 1px solid ${p => p.$token.colorBorderSecondary};
-`
-
-const SubIcon = styled.span<{ $token: Token; $on: boolean }>`
-    color: ${p => (p.$on ? p.$token.colorSuccessText : p.$token.colorTextQuaternary)};
-    font-size: 14px;
-    display: inline-flex;
-    align-items: center;
-`
-
+// 订阅状态值：等宽字体技术感（沿袭原 SubValue 语言）
 const SubValue = styled.span<{ $token: Token; $on: boolean }>`
     font-family: ${p => p.$token.fontFamilyCode};
     font-size: 12px;
@@ -137,10 +84,11 @@ const SubValue = styled.span<{ $token: Token; $on: boolean }>`
 `
 
 /**
- * 通知设置区块（重设计 v2：去 alert 感）。
+ * 通知设置分区（SettingRow 行式形态，票05 样板）。
  *
- * 三层视觉层级：主卡（容器色 + 实线，状态与操作）→ 说明区块（blocks/GuideSection，两层权限指引）
- * → PWA 卡（blocks/PwaCard，进阶建议）。子块抽到 blocks/ 以满足单一职责。
+ * 行式分组卡：状态行（权限 dot + 状态文案 + 操作钮）→ 订阅行（值 / 重新订阅）；
+ * 权限指引（GuideSection 折叠组）与 PWA 引导卡语义保留。业务逻辑（useNotificationSetup、
+ * SW 订阅链路）零改动——只换布局形态。
  */
 export function NotificationSettings({ namespace }: NotificationSettingsProps) {
     const { token } = useToken()
@@ -189,60 +137,61 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
         : permission === 'denied' ? t('notification.settings.statusDenied')
         : t('notification.settings.statusDefault')
 
+    const statusRowLabel = (
+        <StatusLabel $token={token} $tone={tone}>
+            <Dot $color={dotColor} $pulse={permission === 'granted'} />
+            {statusLabel}
+        </StatusLabel>
+    )
+
+    const subscriptionIcon: LucideIcon = Cloud
+    const statusIcon: LucideIcon = Bell
+
     return (
         <Wrap $token={token}>
-            <Card $token={token}>
-                <MainRow $token={token}>
-                    <IconBox $token={token} aria-hidden="true">
-                        <BellOutlined />
-                    </IconBox>
-                    <StatusInfo $token={token}>
-                        <StatusLine $token={token}>
-                            <Dot $color={dotColor} $pulse={permission === 'granted'} />
-                            <Label $token={token} $tone={tone}>{statusLabel}</Label>
-                        </StatusLine>
-                        {permission === 'denied' && (
-                            <Desc $token={token}>{t('notification.settings.denied')}</Desc>
-                        )}
-                    </StatusInfo>
-                    <Action $token={token}>
-                        {permission === 'default' && (
+            <SettingGroupCard>
+                <SettingRow
+                    label={statusRowLabel}
+                    icon={statusIcon}
+                    description={permission === 'denied' ? t('notification.settings.denied') : undefined}
+                    variant="action"
+                    action={
+                        permission === 'default' ? (
                             <Button variant="primary" onClick={() => { void enable() }}>
                                 {t('notification.settings.enable')}
                             </Button>
-                        )}
-                        {permission === 'granted' && (
-                            <Button variant="secondary" onClick={() => { void sendTest() }}>{t('notification.settings.test')}</Button>
-                        )}
-                        {permission === 'denied' && (
+                        ) : permission === 'granted' ? (
+                            <Button variant="secondary" onClick={() => { void sendTest() }}>
+                                {t('notification.settings.test')}
+                            </Button>
+                        ) : (
                             <Button variant="secondary" onClick={() => { void refreshPermission() }}>
                                 {t('notification.settings.refreshPermission')}
                             </Button>
-                        )}
-                    </Action>
-                </MainRow>
-
-                {permission === 'granted' && (
-                    <SubRow $token={token}>
-                        <SubIcon $token={token} $on={subscribed} aria-hidden="true">
-                            <CloudOutlined />
-                        </SubIcon>
-                        <SubValue $token={token} $on={subscribed}>
-                            {subscribed ? t('notification.settings.subscribed') : t('notification.settings.unsubscribed')}
-                        </SubValue>
-                        {!subscribed && (
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                style={{ marginLeft: 'auto' }}
-                                onClick={() => { void enable() }}
-                            >
+                        )
+                    }
+                />
+                {permission === 'granted' && !subscribed && (
+                    <SettingRow
+                        label={t('notification.settings.subscription')}
+                        icon={subscriptionIcon}
+                        variant="action"
+                        action={
+                            <Button variant="ghost" size="sm" onClick={() => { void enable() }}>
                                 <SyncOutlined /> {t('notification.settings.resubscribe')}
                             </Button>
-                        )}
-                    </SubRow>
+                        }
+                    />
                 )}
-            </Card>
+                {permission === 'granted' && subscribed && (
+                    <SettingRow
+                        label={t('notification.settings.subscription')}
+                        icon={subscriptionIcon}
+                        variant="value"
+                        value={<SubValue $token={token} $on>{t('notification.settings.subscribed')}</SubValue>}
+                    />
+                )}
+            </SettingGroupCard>
 
             <GuideSection guideOpen={guideOpen} onToggle={() => setGuideOpen((v) => !v)} />
             <PwaCard />

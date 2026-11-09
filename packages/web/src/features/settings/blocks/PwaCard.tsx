@@ -15,74 +15,34 @@
  */
 
 import { useTranslation } from 'react-i18next'
-import styled from '@emotion/styled'
-import { theme as antTheme } from 'antd'
-import { MobileOutlined } from '@ant-design/icons'
-import { enter, IconBox } from './shared'
+import { Smartphone } from 'lucide-react'
 import { usePwaMode } from '@/ui/shared/usePwaMode'
 import { InstallButton } from '@/ui/shared/InstallButton'
-
-const { useToken } = antTheme
-// 块内部 token 类型（不 export）
-type Token = ReturnType<typeof useToken>['token']
-
-// 虚线边框次级提示（最轻层级）
-const Card = styled.div<{ $token: Token }>`
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: ${p => p.$token.marginSM}px;
-    padding: 12px ${p => p.$token.padding}px;
-    border-radius: ${p => p.$token.borderRadiusLG}px;
-    background: transparent;
-    border: 1px dashed ${p => p.$token.colorBorderSecondary};
-    animation: ${enter} 0.3s ease-out 60ms backwards;
-`
-
-const Text = styled.div<{ $token: Token }>`
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    flex: 1;
-    min-width: 0;
-`
-
-const Title = styled.span<{ $token: Token }>`
-    font-size: 13px;
-    color: ${p => p.$token.colorTextSecondary};
-`
-
-const Desc = styled.span<{ $token: Token }>`
-    font-size: 12px;
-    line-height: 1.5;
-    color: ${p => p.$token.colorTextTertiary};
-`
-
-const Ios = styled.span<{ $token: Token }>`
-    font-size: 11.5px;
-    color: ${p => p.$token.colorTextQuaternary};
-`
+import { SettingGroupCard } from './SettingGroupCard'
+import { SettingRow } from './SettingRow'
 
 /**
- * PWA 安装引导卡（虚线边框，进阶建议）。抽自 NotificationSettings。
- * token 由内部 useToken 获取；已装 PWA（usePwaMode=true）时不渲染。
+ * PWA 安装引导（SettingRow 行式，票05：原虚线卡收敛为分组卡内操作行）。
+ * token 由 SettingRow 内部获取；已装 PWA（usePwaMode=true）时不渲染。
  */
 export function PwaCard() {
     const { t } = useTranslation()
-    const { token } = useToken()
     const isPwa = usePwaMode()
     if (isPwa) return null
     return (
-        <Card $token={token}>
-            <IconBox $token={token} aria-hidden="true">
-                <MobileOutlined />
-            </IconBox>
-            <Text $token={token}>
-                <Title $token={token}>{t('notification.settings.installPwa')}</Title>
-                <Desc $token={token}>{t('notification.settings.installPwaDesc')}</Desc>
-                <Ios $token={token}>{t('notification.settings.installPwaIos')}</Ios>
-            </Text>
-            <InstallButton variant="card" />
-        </Card>
+        <SettingGroupCard>
+            <SettingRow
+                label={t('notification.settings.installPwa')}
+                description={
+                    <span style={{ display: 'grid', gap: 2 }}>
+                        <span>{t('notification.settings.installPwaDesc')}</span>
+                        <span>{t('notification.settings.installPwaIos')}</span>
+                    </span>
+                }
+                icon={Smartphone}
+                variant="action"
+                action={<InstallButton variant="card" />}
+            />
+        </SettingGroupCard>
     )
 }

@@ -1115,7 +1115,8 @@
       "subscribeFailed": "订阅通知失败，请重试",
       "refreshPermission": "重新检查",
       "testFailed": "测试通知发送失败，请重试",
-      "testBody": "点击此通知将打开应用并跳转到会话列表"
+      "testBody": "点击此通知将打开应用并跳转到会话列表",
+      "subscription": "订阅状态"
     },
     "pwa": {
       "updateAvailable": "发现新版本",
