@@ -19,9 +19,8 @@ import { useTranslation } from 'react-i18next'
 import { Search, FileText } from 'lucide-react'
 import styled from '@emotion/styled'
 import type { RedactedWebToolsConfig, WebToolProviderId } from '@mobi/shared'
-import { SettingsCard } from '@/features/settings/blocks/shared'
-// uiarc 自管件（antd Select 迁移）：allowClear 清空发 ""，归一为 null 回传
-import { Select } from '@/ui/base/interactive/select/Select'
+import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
+import { SettingRow } from '@/features/settings/blocks/SettingRow'
 
 const { useToken } = antTheme
 
@@ -42,42 +41,21 @@ export interface RouteCardProps {
     onChange: (next: { searchProviderId?: WebToolProviderId | null; fetchProviderId?: WebToolProviderId | null }) => Promise<boolean>
 }
 
-// 卡片：共享 SettingsCard 扩展路由卡自身节奏（gap/内边距）
-const Card = styled(SettingsCard)<{ $token: Token }>`
-    gap: 4px;
-    padding: 18px ${p => p.$token.padding}px;
-`
-
-const Title = styled.span<{ $token: Token }>`
-    font-weight: 600;
-    font-size: 14px;
-    letter-spacing: -0.01em;
-    color: ${p => p.$token.colorText};
-    margin-bottom: 10px;
-`
-
-// 路由行：icon + 文案 + code pill + 右侧 Select
-const Row = styled.div`
-    display: flex;
+/** 行 label：图标 + 文案 + 工具名 code pill（与代码语言一致的技术感） */
+const RouteLabel = styled.span<{ $token: Token }>`
+    display: inline-flex;
     align-items: center;
-    gap: 10px;
-    padding: 5px 0;
-`
-
-const RowIcon = styled.span<{ $token: Token }>`
-    display: grid;
-    place-items: center;
-    flex-shrink: 0;
-    color: ${p => p.$token.colorText};
-    opacity: 0.6;
-`
-
-const RowLabel = styled.span<{ $token: Token }>`
+    gap: 8px;
     font-size: 13px;
     color: ${p => p.$token.colorText};
 `
 
-// 工具名 code pill：等宽字体 + 四级填充底，与代码语言一致的技术感
+const RouteIcon = styled.span<{ $token: Token }>`
+    display: inline-flex;
+    color: ${p => p.$token.colorText};
+    opacity: 0.6;
+`
+
 const ToolPill = styled.code<{ $token: Token }>`
     font-family: ${p => p.$token.fontFamilyCode};
     font-size: 11.5px;
@@ -87,17 +65,18 @@ const ToolPill = styled.code<{ $token: Token }>`
     padding: 1.5px 7px;
 `
 
-const Hint = styled.span<{ $token: Token }>`
+/** 组卡内灰字说明（首/尾行，与行式形态 CardHint 同语言） */
+const CardHint = styled.div<{ $token: Token }>`
+    padding: 10px 16px 14px;
     font-size: 11.5px;
-    color: ${p => p.$token.colorTextTertiary};
     line-height: 1.5;
-    margin-top: 10px;
+    color: ${p => p.$token.colorTextTertiary};
 `
 
 /**
- * 用途路由卡：web_search / web_fetch 两行下拉直接选已启用 provider，变更即时保存（无保存按钮）。
- * 空 provider 时转引导态（只有标题 + 提示）。Select 支持 allowClear：路由可随时撤销
- * （清除后 daemon resolve 回落 null → NO_PROVIDER，mobi 不再拦截该工具）；
+ * 用途路由卡（SettingRow 行式，票07）：web_search / web_fetch 两行下拉直接选已启用 provider，
+ * 变更即时保存（无保存按钮）。空 provider 时转引导态（只有标题 + 提示）。Select 支持 allowClear：
+ * 路由可随时撤销（清除后 daemon resolve 回落 null → NO_PROVIDER，mobi 不再拦截该工具）；
  * 单 provider 时切无可切（下拉只有同值项），但清除始终可用——teardown 流程：清路由 → 禁用 provider。
  */
 export function RouteCard({ config, enabledIds, saving, onChange }: RouteCardProps) {
@@ -107,45 +86,47 @@ export function RouteCard({ config, enabledIds, saving, onChange }: RouteCardPro
     const options = enabledIds.map((id) => ({ value: id, label: t(`settings.webTools.providers.${id}`) }))
 
     return (
-        <Card $token={token}>
-            <Title $token={token}>{t('settings.webTools.routeTitle')}</Title>
-
+        <SettingGroupCard title={t('settings.webTools.routeTitle')}>
             {enabledIds.length === 0 ? (
                 // 引导态：尚无启用 provider，路由无从选择
-                <Hint $token={token}>{t('settings.webTools.routeEmptyHint')}</Hint>
+                <CardHint $token={token}>{t('settings.webTools.routeEmptyHint')}</CardHint>
             ) : (
                 <>
                     {ROUTES.map(({ key, icon: Icon, tool, labelKey }) => {
                         const value = key === 'search' ? config.searchProviderId : config.fetchProviderId
                         return (
-                            <Row key={key}>
-                                <RowIcon $token={token}>
-                                    <Icon size={15} strokeWidth={2} />
-                                </RowIcon>
-                                <RowLabel $token={token}>{t(labelKey)}</RowLabel>
-                                <ToolPill $token={token}>{tool}</ToolPill>
-                                <Select
-                                    style={{ marginLeft: 'auto', minWidth: 140 }}
-                                    ariaLabel={t(labelKey)}
-                                    value={value ?? ""}
-                                    options={options}
-                                    disabled={saving}
-                                    allowClear
-                                    placeholder={t('settings.webTools.routePlaceholder')}
-                                    onValueChange={(next) => {
-                                        void onChange(key === 'search' ? { searchProviderId: next } : { fetchProviderId: next })
-                                    }}
-                                    onClear={() => {
+                            <SettingRow
+                                key={key}
+                                label={
+                                    <RouteLabel $token={token}>
+                                        <RouteIcon $token={token}><Icon size={15} strokeWidth={2} /></RouteIcon>
+                                        {t(labelKey)}
+                                        <ToolPill $token={token}>{tool}</ToolPill>
+                                    </RouteLabel>
+                                }
+                                variant="inline-select"
+                                select={{
+                                    value: value ?? "",
+                                    options,
+                                    disabled: saving,
+                                    allowClear: true,
+                                    ariaLabel: t(labelKey),
+                                    placeholder: t('settings.webTools.routePlaceholder'),
+                                    style: { minWidth: 140 },
+                                    onValueChange: (next) => {
+                                        void onChange(key === 'search' ? { searchProviderId: next as WebToolProviderId } : { fetchProviderId: next as WebToolProviderId })
+                                    },
+                                    onClear: () => {
                                         // 显式清除 → null（区别于「未提及回填现值」）
                                         void onChange(key === 'search' ? { searchProviderId: null } : { fetchProviderId: null })
-                                    }}
-                                />
-                            </Row>
+                                    },
+                                }}
+                            />
                         )
                     })}
-                    <Hint $token={token}>{t('settings.webTools.routeHint')}</Hint>
+                    <CardHint $token={token}>{t('settings.webTools.routeHint')}</CardHint>
                 </>
             )}
-        </Card>
+        </SettingGroupCard>
     )
 }

@@ -27,69 +27,23 @@
  */
 
 import { useState } from 'react'
-import { App, Switch, theme as antTheme } from 'antd'
-import { Button } from '@/ui/base/interactive/button/Button'
-import { BugOutlined, DownloadOutlined } from '@ant-design/icons'
+import { App, theme as antTheme } from 'antd'
+import { DownloadOutlined } from '@ant-design/icons'
+import { Bug } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import { enter, IconBox } from './shared'
 import { isDebugUnlocked } from '@/core/lib/debug'
 import { isDiagEnabled, enableDiag, disableDiag, dumpDiag } from '@/core/lib/diag'
+import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
+import { SettingRow } from '@/features/settings/blocks/SettingRow'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 
-const { useToken } = antTheme
-type Token = ReturnType<typeof useToken>['token']
-
-const Card = styled.section<{ $token: Token }>`
-    display: flex;
-    flex-direction: column;
-    padding: 18px ${p => p.$token.padding}px;
-    border-radius: ${p => p.$token.borderRadiusLG}px;
-    background: ${p => p.$token.colorBgContainer};
-    border: 1px solid ${p => p.$token.colorBorderSecondary};
-    animation: ${enter} 0.3s ease-out;
-`
-
-const MainRow = styled.div<{ $token: Token }>`
-    display: flex;
-    align-items: center;
-    gap: ${p => p.$token.marginSM}px;
-`
-
-const Text = styled.div<{ $token: Token }>`
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    flex: 1;
-    min-width: 0;
-`
-
-const Title = styled.span<{ $token: Token }>`
-    font-weight: 600;
-    font-size: 14px;
-    letter-spacing: -0.01em;
-    color: ${p => p.$token.colorText};
-`
-
-const Desc = styled.span<{ $token: Token }>`
-    font-size: 12.5px;
+/** 区块说明行（组卡内首行灰字，与行式形态的 CardHint 同语言） */
+const CardHint = styled.div<{ $token: { colorTextTertiary: string } }>`
+    padding: 10px 16px 2px;
+    font-size: 12px;
     line-height: 1.5;
     color: ${p => p.$token.colorTextTertiary};
-`
-
-const Actions = styled.div<{ $token: Token }>`
-    display: flex;
-    align-items: center;
-    gap: ${p => p.$token.marginSM}px;
-    flex-shrink: 0;
-`
-
-const SubRow = styled.div<{ $token: Token }>`
-    display: flex;
-    align-items: center;
-    gap: ${p => p.$token.marginXS}px;
-    margin-top: 14px;
-    padding-top: 14px;
-    border-top: 1px solid ${p => p.$token.colorBorderSecondary};
 `
 
 /** 下载诊断数据为 JSON 文件（内容等价 window.__mobiDiag.dump()） */
@@ -113,7 +67,7 @@ function downloadDiagData(message: ReturnType<typeof App.useApp>['message'], t: 
 
 export function DebugSection() {
     const { t } = useTranslation()
-    const { token } = useToken()
+    const { token } = antTheme.useToken()
     const { message } = App.useApp()
     // diag 模块级 enabled 非响应式，本地镜像状态驱动 Switch 渲染
     const [diagOn, setDiagOn] = useState(isDiagEnabled())
@@ -144,33 +98,27 @@ export function DebugSection() {
     }
 
     return (
-        <Card $token={token}>
-            <MainRow $token={token}>
-                <IconBox $token={token} aria-hidden="true">
-                    <BugOutlined />
-                </IconBox>
-                <Text $token={token}>
-                    <Title $token={token}>{t('debug.title')}</Title>
-                    <Desc $token={token}>{t('debug.desc')}</Desc>
-                </Text>
-                <Actions $token={token}>
-                    <Switch
-                        size="small"
-                        checked={diagOn}
-                        onChange={toggleDiag}
-                        aria-label={t('debug.diagLabel')}
+        <SettingGroupCard>
+            <CardHint $token={token}>{t('debug.desc')}</CardHint>
+            <SettingRow
+                icon={Bug}
+                label={t('debug.diagLabel')}
+                variant="switch"
+                checked={diagOn}
+                onCheckedChange={toggleDiag}
+            />
+            <SettingRow
+                label={t('debug.download')}
+                variant="action"
+                action={
+                    <IconButton
+                        icon={<DownloadOutlined />}
+                        size={26}
+                        aria-label={t('debug.download')}
+                        onClick={handleDownload}
                     />
-                </Actions>
-            </MainRow>
-
-            <SubRow $token={token}>
-                <span style={{ fontSize: 12.5, color: token.colorTextTertiary, flex: 1 }}>
-                    {t('debug.diagLabel')}
-                </span>
-                <Button variant="secondary" size="sm" onClick={handleDownload}>
-                    <DownloadOutlined /> {t('debug.download')}
-                </Button>
-            </SubRow>
-        </Card>
+                }
+            />
+        </SettingGroupCard>
     )
 }

@@ -28,6 +28,7 @@ import { useMobiApi } from '@/core/data/api/client'
 import { useWebToolsConfig } from '@/core/data/hooks/queries/useWebToolsConfig'
 import { RouteCard } from '@/features/settings/webtools/RouteCard'
 import { ProviderCard } from '@/features/settings/webtools/ProviderCard'
+import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import type { ProviderEntry, VerifyResult } from '@/features/settings/webtools/CredentialEditor'
 
 const { useToken } = antTheme
@@ -43,23 +44,6 @@ const Wrap = styled.div<{ $token: Token }>`
     display: flex;
     flex-direction: column;
     gap: ${p => p.$token.margin}px;
-`
-
-// 小节标签：等宽大写 + 字距（延续 GuideSection LayerLabel 语言）
-const SectionLabel = styled.div<{ $token: Token }>`
-    font-family: ${p => p.$token.fontFamilyCode};
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: ${p => p.$token.colorTextSecondary};
-    font-weight: 600;
-    margin: 6px 0 3px;
-`
-
-const CardStack = styled.div<{ $token: Token }>`
-    display: flex;
-    flex-direction: column;
-    gap: ${p => p.$token.marginXS}px;
 `
 
 const Hint = styled.span<{ $token: Token }>`
@@ -169,8 +153,8 @@ export function WebToolsSection() {
                         onChange={(next) => saveBase({ ...next, providers: providersWith() })}
                     />
 
-                    <SectionLabel $token={token}>{t('settings.webTools.providersTitle')}</SectionLabel>
-                    <CardStack $token={token}>
+                    {/* PROVIDERS 分组无缝卡：卡间分隔线归容器（SettingGroupCard） */}
+                    <SettingGroupCard title={t('settings.webTools.providersTitle')}>
                         {WEB_TOOL_PROVIDER_IDS.map((id) => {
                             const entry = providerEntry(id)
                             // 机器上尚无条目的 provider 合成默认卡（未启用、凭据未设），与真实条目走同一条保存链路
@@ -196,7 +180,7 @@ export function WebToolsSection() {
                                 />
                             )
                         })}
-                    </CardStack>
+                    </SettingGroupCard>
                     <Hint $token={token}>{t('settings.webTools.storageHint')}</Hint>
                 </>
             )}

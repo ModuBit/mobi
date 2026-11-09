@@ -878,6 +878,7 @@
       "headersHint": "Auth headers for your observability backend, sent with every export request",
       "headersInvalid": "Headers must be K=V,K2=V2 (comma separated, non-empty key and value)",
       "headersClear": "Clear saved headers",
+      "clear": "Clear",
       "contentLabel": "Export message & tool content",
       "contentHint": "Full user prompts and assistant responses, tool inputs/outputs are sent to the collector — conversation content leaves this machine; make sure you trust the endpoint. When off, only timing spans are exported.",
       "rawLabel": "Export full API request bodies",

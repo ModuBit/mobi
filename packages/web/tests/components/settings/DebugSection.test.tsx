@@ -74,14 +74,15 @@ describe('DebugSection', () => {
 
     it('未解锁时不渲染', () => {
         renderUi()
-        expect(screen.queryByText('debug.title')).not.toBeInTheDocument()
+        expect(screen.queryByText('debug.desc')).not.toBeInTheDocument()
     })
 
-    it('解锁后渲染标题与下载按钮', () => {
+    it('解锁后渲染说明与诊断埋点开关行、下载按钮', () => {
         unlockDebug()
         renderUi()
-        expect(screen.getByText('debug.title')).toBeInTheDocument()
-        expect(screen.getByText('debug.download')).toBeInTheDocument()
+        expect(screen.getByText('debug.desc')).toBeInTheDocument()
+        expect(screen.getByText('debug.diagLabel')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'debug.download' })).toBeInTheDocument()
     })
 
     it('diag 关闭时点击开关调用 enableDiag 并提示开启', () => {
@@ -132,7 +133,7 @@ describe('DebugSection', () => {
         const origClick = HTMLAnchorElement.prototype.click
         HTMLAnchorElement.prototype.click = clickSpy as unknown as typeof HTMLAnchorElement.prototype.click
 
-        fireEvent.click(screen.getByText('debug.download'))
+        fireEvent.click(screen.getByRole('button', { name: 'debug.download' }))
 
         expect(messageSpy.warning).toHaveBeenCalledWith('debug.diagNotEnabled')
         expect(clickSpy).toHaveBeenCalled()
@@ -154,7 +155,7 @@ describe('DebugSection', () => {
         const origClick = HTMLAnchorElement.prototype.click
         HTMLAnchorElement.prototype.click = clickSpy as unknown as typeof HTMLAnchorElement.prototype.click
 
-        fireEvent.click(screen.getByText('debug.download'))
+        fireEvent.click(screen.getByRole('button', { name: 'debug.download' }))
 
         expect(messageSpy.warning).not.toHaveBeenCalled()
         expect(clickSpy).toHaveBeenCalled()

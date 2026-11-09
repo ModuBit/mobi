@@ -42,6 +42,10 @@ const i18nMap = vi.hoisted(() => ({
     'settings.telemetry.headersInvalid': '认证头格式应为 K=V,K2=V2',
     'settings.telemetry.headersClear': '清除已存认证头',
     'settings.telemetry.headersCleared': '认证头已清除',
+    'settings.telemetry.clear': '清除',
+    'settings.telemetry.contentLabel': '导出消息与工具内容',
+    'settings.telemetry.rawLabel': '导出完整 API 请求体',
+    'settings.telemetry.metricsLabel': '导出指标（token/成本计数）',
     'settings.telemetry.saveButton': '保存',
     'settings.telemetry.savedHint': '已保存，下个新会话生效',
     'settings.telemetry.saveFailed': '保存失败',
@@ -116,27 +120,24 @@ describe('TelemetrySection 开启态与保存', () => {
         expect(screen.getByText(i18nMap['settings.telemetry.headersClear'])).toBeInTheDocument()
     })
 
-    it('保存：合法认证头解析成 record 提交；草稿清空', async () => {
+    it('认证头失焦落盘：合法草稿解析成 record 提交（部分字段）并清空', async () => {
         renderSection()
         await waitFor(() => expect(screen.getByLabelText('认证头')).toBeInTheDocument())
         fireEvent.change(screen.getByLabelText('认证头'), { target: { value: 'DD-API-KEY= secret , k2=v2' } })
-        fireEvent.click(screen.getByText(i18nMap['settings.telemetry.saveButton']))
+        fireEvent.blur(screen.getByLabelText('认证头'))
 
         await waitFor(() => expect(stableApi.telemetry.set).toHaveBeenCalledWith({
-            enabled: true,
-            endpoint: 'http://localhost:4318',
-            includeContent: false,
-            includeRawApiBodies: false,
-            includeMetrics: false,
             headers: { 'DD-API-KEY': 'secret', k2: 'v2' },
         }))
+        // 落盘成功草稿清空
+        expect((screen.getByLabelText('认证头') as HTMLInputElement).value).toBe('')
     })
 
     it('非法认证头（缺 =）→ 拦截提交', async () => {
         renderSection()
         await waitFor(() => expect(screen.getByLabelText('认证头')).toBeInTheDocument())
         fireEvent.change(screen.getByLabelText('认证头'), { target: { value: 'not-a-pair' } })
-        fireEvent.click(screen.getByText(i18nMap['settings.telemetry.saveButton']))
+        fireEvent.blur(screen.getByLabelText('认证头'))
 
         await waitFor(() => expect(screen.getByText(i18nMap['settings.telemetry.headersInvalid'])).toBeInTheDocument())
         expect(stableApi.telemetry.set).not.toHaveBeenCalled()
@@ -146,17 +147,24 @@ describe('TelemetrySection 开启态与保存', () => {
         stableApi.telemetry.get.mockResolvedValue({ data: { settings: { enabled: false, headersSet: false } } })
         renderSection()
         await waitFor(() => expect(screen.getAllByRole('switch')[0]).toBeInTheDocument())
-        fireEvent.click(screen.getAllByRole('switch')[0]) // 开启 → endpoint 输入出现（空）
-        fireEvent.click(screen.getByText(i18nMap['settings.telemetry.saveButton']))
-
+        // 开启但 endpoint 空：开关翻转、endpoint 行展开供填写（无死锁），落盘延迟——不发请求
+        fireEvent.click(screen.getAllByRole('switch')[0])
         await waitFor(() => expect(screen.getByText(i18nMap['settings.telemetry.endpointRequired'])).toBeInTheDocument())
+        expect(screen.getAllByRole('switch')[0]).toBeChecked()
+        expect(screen.getByLabelText('OTLP Endpoint')).toBeInTheDocument()
         expect(stableApi.telemetry.set).not.toHaveBeenCalled()
+        // 填 endpoint 失焦：开启意图随有效地址一并落盘
+        fireEvent.change(screen.getByLabelText('OTLP Endpoint'), { target: { value: 'http://localhost:4318' } })
+        fireEvent.blur(screen.getByLabelText('OTLP Endpoint'))
+        await waitFor(() => expect(stableApi.telemetry.set).toHaveBeenCalledWith({
+            endpoint: 'http://localhost:4318', enabled: true,
+        }))
     })
 
     it('清除已存认证头：显式提交空对象', async () => {
         renderSection()
         await waitFor(() => expect(screen.getByText(i18nMap['settings.telemetry.headersClear'])).toBeInTheDocument())
-        fireEvent.click(screen.getByText(i18nMap['settings.telemetry.headersClear']))
+        fireEvent.click(screen.getByText(i18nMap['settings.telemetry.clear']))
 
         await waitFor(() => expect(stableApi.telemetry.set).toHaveBeenCalledWith({ headers: {} }))
     })
@@ -171,15 +179,13 @@ describe('TelemetrySection 开启态与保存', () => {
             expect(els.length).toBe(4)
             return els
         })
-        // enabled / 档① / 档② = checked/false/true
+        // enabled / 档① / 档② = checked/false/true（草稿随已存值回显）
         expect(switches[0]).toBeChecked()
         expect(switches[1]).toBeChecked()
         expect(switches[2]).not.toBeChecked()
-        // 点保存：布尔恒提交
-        fireEvent.click(screen.getByText(i18nMap['settings.telemetry.saveButton']))
-        await waitFor(() => expect(stableApi.telemetry.set).toHaveBeenCalledWith(
-            expect.objectContaining({ includeContent: true, includeRawApiBodies: false }),
-        ))
+        // 档位开关动作即落盘（部分字段）
+        fireEvent.click(switches[3])
+        await waitFor(() => expect(stableApi.telemetry.set).toHaveBeenCalledWith({ includeMetrics: true }))
     })
 
     it('开档②自动带档①；关档①联动关档②', async () => {
@@ -190,11 +196,17 @@ describe('TelemetrySection 开启态与保存', () => {
             expect(els.length).toBe(4)
             return els
         })
-        // 开档② → 档①联动开
+        // 开档② → 档①联动开（payload 两个布尔恒显式提交）
         fireEvent.click(switches[2])
         expect(switches[1]).toBeChecked()
+        await waitFor(() => expect(stableApi.telemetry.set).toHaveBeenCalledWith({
+            includeRawApiBodies: true, includeContent: true,
+        }))
         // 关档① → 档②联动关
         fireEvent.click(switches[1])
         expect(switches[2]).not.toBeChecked()
+        await waitFor(() => expect(stableApi.telemetry.set).toHaveBeenCalledWith({
+            includeContent: false, includeRawApiBodies: false,
+        }))
     })
 })

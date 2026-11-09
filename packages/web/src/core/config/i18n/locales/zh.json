@@ -869,6 +869,7 @@
       "headersHint": "云产品接入的认证 header，随导出请求一并发送",
       "headersInvalid": "认证头格式应为 K=V,K2=V2（逗号分隔，键值均非空）",
       "headersClear": "清除已存认证头",
+      "clear": "清除",
       "contentLabel": "导出消息与工具内容",
       "contentHint": "用户消息与助手回复全文、工具出入参与输出都会发到 collector——对话内容出网，请确认你信任该 endpoint。关闭时仅导出时延。",
       "rawLabel": "导出完整 API 请求体",

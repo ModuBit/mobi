@@ -18,7 +18,6 @@ import { App, Switch, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { credentialKeysFor } from '@mobi/shared'
-import { SettingsCard } from '@/features/settings/blocks/shared'
 import { CredentialEditor, type ProviderEntry, type VerifyResult } from './CredentialEditor'
 
 const { useToken } = antTheme
@@ -40,24 +39,25 @@ export interface ProviderCardProps {
     onVerify: (credentials: Record<string, string>) => Promise<VerifyResult>
 }
 
-// 卡片：共享 SettingsCard 扩展；展开态细边框微亮提示层级
-const Card = styled(SettingsCard)<{ $token: Token; $expanded: boolean }>`
-    border-color: ${p => (p.$expanded ? p.$token.colorBorder : p.$token.colorBorderSecondary)};
+// 卡容器（票07 行式化）：无缝分组卡由父 SettingGroupCard 提供底/边框/分隔线，
+// 自身只保留行内布局；展开态由 Body 上边框分隔呈现
+const Card = styled.section`
+    display: flex;
+    flex-direction: column;
 `
 
-// 卡头：可点击展开（除 Switch 区域），键盘可达
+// 卡头（对齐 SettingRow 行语言）：可点击展开（除 Switch 区域），键盘可达
 const Head = styled.div<{ $token: Token }>`
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 14px 16px;
+    padding: 11px 16px;
     cursor: pointer;
     user-select: none;
 
     &:focus-visible {
         outline: 2px solid ${p => p.$token.colorPrimary};
         outline-offset: -2px;
-        border-radius: ${p => p.$token.borderRadiusLG}px;
     }
 `
 
@@ -155,7 +155,7 @@ export function ProviderCard({ provider, referencedBy, expanded, onExpandedChang
     const toggleExpanded = () => onExpandedChange(!expanded)
 
     return (
-        <Card $token={token} $expanded={expanded}>
+        <Card>
             <Head
                 $token={token}
                 role="button"
