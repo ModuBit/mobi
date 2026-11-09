@@ -17,14 +17,14 @@
 import { keyframes } from '@emotion/react'
 import styled from '@emotion/styled'
 
-/** 卡片入场：轻微上浮 + 淡入（主卡 / 说明区块 / PWA 卡共享） */
+/** 卡片入场：轻微上浮 + 淡入（说明区块 / 分区容器共享） */
 export const enter = keyframes`
     from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
 `
 
 /**
- * 线性图标容器，中性色，无色块徽章（主卡 / 说明区块 / PWA 卡共享）。
+ * 线性图标容器，中性色，无色块徽章（GuideSection 共享）。
  * $token 只声明用到的字段（portable 子集），避免 export 时引用 antd 内部类型触发 TS2883。
  * aria-hidden：旁边有文本，图标为装饰。
  */
@@ -35,39 +35,4 @@ export const IconBox = styled.span<{ $token: { colorTextSecondary: string } }>`
     flex-shrink: 0;
     color: ${p => p.$token.colorTextSecondary};
     font-size: 17px;
-`
-
-/**
- * 设置页主卡容器（容器色 + 细边框 + 面板档圆角 + 入场动画）。
- * RouteCard / ProviderCard 等设置分区卡片共享，padding/gap/边框态由各卡按需扩展——
- * 主题圆角或卡片语言调整只改这一处，不再逐卡漂移。
- */
-export const SettingsCard = styled.section<{ $token: { colorBgContainer: string; colorBorderSecondary: string; borderRadiusLG: number } }>`
-    display: flex;
-    flex-direction: column;
-    border-radius: ${p => p.$token.borderRadiusLG}px;
-    background: ${p => p.$token.colorBgContainer};
-    border: 1px solid ${p => p.$token.colorBorderSecondary};
-    animation: ${enter} 0.3s ease-out;
-`
-
-/**
- * 设置分区表单行排版（label + 控件 + hint 纵列）：字号 13/11.5 的设置页规范收口
- * 在此，各分区（Map / Memory / WebTools…）不再各抄一份——调视觉只改这里。
- */
-export const Field = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-`
-
-export const FieldLabel = styled.label<{ $token: { colorText: string } }>`
-    font-size: 13px;
-    color: ${p => p.$token.colorText};
-`
-
-export const Hint = styled.span<{ $token: { colorTextTertiary: string } }>`
-    font-size: 11.5px;
-    color: ${p => p.$token.colorTextTertiary};
-    line-height: 1.5;
 `
