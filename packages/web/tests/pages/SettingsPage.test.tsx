@@ -22,9 +22,8 @@ const mediaMatches = { value: true }
 vi.mock('@/core/data/hooks/useMediaQuery', () => ({
     useMediaQuery: () => mediaMatches.value,
 }))
-vi.mock('@/features/layout/PageHeader', () => ({
-    PageHeader: ({ left }: { left: React.ReactNode }) => <header data-testid="page-header">{left}</header>,
-}))
+// 票04 头部收敛后 SettingsPage 不再消费 PageHeader/SidebarToggle/汉堡钮；
+// sidebar-toggle / mobile-menu 测试桩保留，用于断言「设置视图内不再出现」
 vi.mock('@/features/layout/SidebarToggle', () => ({ SidebarToggle: () => <button data-testid="sidebar-toggle" /> }))
 vi.mock('@/features/layout/mobileMenu', () => ({ MobileMenuButton: () => <button data-testid="mobile-menu" /> }))
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }))
@@ -105,12 +104,14 @@ describe('SettingsPage 响应式壳', () => {
         expect(screen.getByRole('button', { name: 'common.back' })).toBeTruthy()
     })
 
-    it('mobile 未知子路由段：回入口态标题（settings.title），不崩溃、无返回键', async () => {
+    it('mobile 未知子路由段：回入口态标题（settings.title），不崩溃；返回键离开设置而非回列表', async () => {
         mediaMatches.value = false
-        // fuzzy notFoundMode 下 layout 仍渲染，activeSectionId 对未知段须返回 null 而非类型谎言
+        // fuzzy notFoundMode 下 layout 仍渲染，activeSectionId 对未知段须返回 null 而非类型谎言。
+        // 票04 头部收敛：返回键恒在（入口态语义 = 离开设置），无汉堡并存
         await renderLayout('/settings/foo')
         expect(await screen.findByText('settings.title')).toBeTruthy()
-        expect(screen.getByTestId('sidebar-toggle')).toBeTruthy()
-        expect(screen.queryByRole('button', { name: 'common.back' })).toBeNull()
+        expect(screen.getByRole('button', { name: 'common.back' })).toBeTruthy()
+        expect(screen.queryByTestId('mobile-menu')).toBeNull()
+        expect(screen.queryByTestId('sidebar-toggle')).toBeNull()
     })
 })

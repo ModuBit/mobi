@@ -89,11 +89,16 @@ describe('SettingRow input（行内输入）', () => {
 })
 
 describe('SettingRow navigate（导航行）', () => {
-    it('整行是按钮，点击触发 onClick，右侧 chevron 装饰', async () => {
+    it('整行是按钮，点击触发 onClick，右侧 chevron 装饰', () => {
         const onClick = vi.fn()
         render(<SettingRow label='参考照片' variant='navigate' onClick={onClick} />)
         fireEvent.click(screen.getByRole('button', { name: '参考照片' }))
         expect(onClick).toHaveBeenCalledOnce()
+    })
+
+    it('可带右侧当前值（值 + chevron 并存，ChatGPT 行形态）', () => {
+        render(<SettingRow label='外观' variant='navigate' onClick={vi.fn()} value='系统' />)
+        expect(screen.getByText('系统')).toBeTruthy()
     })
 })
 

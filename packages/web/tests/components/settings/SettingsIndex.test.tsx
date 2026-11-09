@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 
 /** 媒体查询开关：mobile（入口列表形态）。PC 分流已由票02收口到 router 层 beforeLoad 重定向 */
 const mediaMatches = { value: false }
@@ -41,15 +41,16 @@ import { useWebToolsStatus } from '@/core/data/hooks/queries/useWebToolsStatus'
 afterEach(() => cleanup())
 
 describe('SettingsIndex（mobile 入口列表）', () => {
-    it('渲染通知与 Web 工具入口，不含未解锁的调试入口', () => {
+    it('入口行渲染为可点按钮，含通知与 Web 工具，不含未解锁的调试入口', () => {
         mediaMatches.value = false
         vi.mocked(useWebToolsStatus).mockReturnValue('enabled')
         render(<SettingsIndex />)
-        expect(screen.getByText('settings.sections.notifications.title')).toBeTruthy()
-        expect(screen.getByText('settings.sections.webTools.title')).toBeTruthy()
-        expect(screen.queryByText('settings.sections.debug.title')).toBeNull()
+        expect(screen.getByRole('button', { name: 'settings.sections.notifications.title' })).toBeTruthy()
+        // web-tools 行可访问名含徽标文案（值 + chevron 并存），用前缀正则匹配
+        expect(screen.getByRole('button', { name: /settings\.sections\.webTools\.title/ })).toBeTruthy()
+        expect(screen.queryByRole('button', { name: /settings\.sections\.debug\.title/ })).toBeNull()
     })
-    it('Web 工具入口显示已启用徽标', () => {
+    it('Web 工具入口行右侧显示已启用徽标（值 + chevron 并存）', () => {
         mediaMatches.value = false
         vi.mocked(useWebToolsStatus).mockReturnValue('enabled')
         render(<SettingsIndex />)
@@ -61,16 +62,23 @@ describe('SettingsIndex（mobile 入口列表）', () => {
         render(<SettingsIndex />)
         expect(screen.getByText('settings.sections.webTools.statusOffline')).toBeTruthy()
     })
-    it('loading 时副标题回退 desc 占位（避免卡片高度跳动）', () => {
+    it('loading 时行右侧无徽标（避免占位跳动）', () => {
         mediaMatches.value = false
         vi.mocked(useWebToolsStatus).mockReturnValue('loading')
         render(<SettingsIndex />)
-        expect(screen.getByText('settings.sections.webTools.desc')).toBeTruthy()
         expect(screen.queryByText('settings.sections.webTools.statusEnabled')).toBeNull()
     })
-})
-
-describe('SettingsIndex（PC 分流）', () => {
-    // 票02：PC index 改由路由 beforeLoad「记住上次分区」重定向（router 层职责），
-    // SettingsIndex 收敛为 mobile 专属组件——宽屏分流断言随旧实现一并移除
+    it('底部悬浮搜索：关键词过滤入口行，空态提示', () => {
+        mediaMatches.value = false
+        vi.mocked(useWebToolsStatus).mockReturnValue('enabled')
+        render(<SettingsIndex />)
+        const search = screen.getByRole('textbox', { name: 'settings.search' })
+        // i18n mock 下 titleKey 即文案：'memory' 命中记忆分区
+        fireEvent.change(search, { target: { value: 'memory' } })
+        expect(screen.getByRole('button', { name: 'settings.sections.memory.title' })).toBeTruthy()
+        expect(screen.queryByRole('button', { name: 'settings.sections.notifications.title' })).toBeNull()
+        fireEvent.change(search, { target: { value: '不存在的关键词xyz' } })
+        expect(screen.getByText('settings.searchEmpty')).toBeTruthy()
+        expect(screen.queryByRole('button', { name: 'settings.sections.memory.title' })).toBeNull()
+    })
 })

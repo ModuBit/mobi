@@ -14,107 +14,105 @@
  * limitations under the License.
  */
 
-import { theme as antTheme } from 'antd'
+import { useState } from 'react'
+import { Input, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { ChevronRight } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import styled from '@emotion/styled'
-import { SETTINGS_SECTIONS } from './registry'
+import { SETTINGS_SECTIONS, groupedSettingsSections, filterSettingsSections } from './registry'
 import { WebToolsStatusBadge } from './WebToolsStatusBadge'
+import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
+import { SettingRow } from '@/features/settings/blocks/SettingRow'
 
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
 
-const List = styled.div`
+/** 底部悬浮搜索需避让的净空：搜索框高度 + 间距 + safe-area */
+const FLOATING_SEARCH_CLEARANCE = 76
+
+const Wrap = styled.div<{ $token: Token }>`
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 18px;
+    /* 底部净空 = 悬浮搜索框 + safe-area（搜索框 fixed 不占流） */
+    padding-bottom: calc(${FLOATING_SEARCH_CLEARANCE}px + env(safe-area-inset-bottom));
 `
 
-const EntryCard = styled.button<{ $token: Token }>`
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    background: ${p => p.$token.colorBgContainer};
-    border: 1px solid ${p => p.$token.colorBorderSecondary};
-    border-radius: ${p => p.$token.borderRadiusLG}px;
-    padding: 16px;
-    cursor: pointer;
-    text-align: left;
-    &:focus-visible {
-        outline: 2px solid ${p => p.$token.colorPrimary};
-        outline-offset: 2px;
-    }
-`
-
-const IconBox = styled.span<{ $token: Token }>`
-    width: 38px;
-    height: 38px;
-    border-radius: ${p => p.$token.borderRadiusSM}px;
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: ${p => p.$token.colorFillQuaternary};
-    color: ${p => p.$token.colorTextSecondary};
-`
-
-const EntryText = styled.span`
-    flex: 1;
-    min-width: 0;
+const GroupList = styled.div`
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 18px;
 `
 
-const EntryTitle = styled.span<{ $token: Token }>`
-    font-size: 14.5px;
-    font-weight: 600;
-    color: ${p => p.$token.colorText};
-`
-
-const EntrySub = styled.span<{ $token: Token }>`
-    font-size: 12px;
+const EmptyHint = styled.div<{ $token: Token }>`
+    padding: 12px 4px;
+    font-size: 13px;
     color: ${p => p.$token.colorTextTertiary};
 `
 
-/** Web 工具状态徽标已提取为 WebToolsStatusBadge（单文件单职责，PC 导航与 mobile 入口共用） */
+/** 底部悬浮搜索（ChatGPT 移动端设置首页形态）：圆角胶囊浮在视口底部 */
+const FloatingSearch = styled.div<{ $token: Token }>`
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: max(12px, calc(env(safe-area-inset-bottom) + 8px));
+    width: min(420px, calc(100% - 24px));
+    z-index: 10;
+    border-radius: var(--radius-pill);
+    background: ${p => p.$token.colorBgContainer};
+    border: 1px solid ${p => p.$token.colorBorderSecondary};
+    box-shadow: ${p => `0 4px 16px ${p.$token.colorBgMask}`};
+    padding: 4px 8px;
+`
 
 /**
  * /settings index（mobile 专属）：PC 由路由 beforeLoad「记住上次分区」重定向，落不到这里。
- * mobile 渲染分组入口列表；入口 = registry 分区清单；声明了 badge 的分区副标题位显示实时状态徽标。
+ * ChatGPT 移动端形态：分组无缝圆角卡（行 = icon + 标题 + 右值/chevron）+ 底部悬浮「搜索设置」。
+ * 入口 = registry 分组视图；声明了 badge 的分区行右侧显示实时状态徽标。
  */
 export function SettingsIndex() {
     const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
+    const [keyword, setKeyword] = useState('')
 
     const sections = SETTINGS_SECTIONS.filter((s) => s.visible())
+    const filtered = filterSettingsSections(keyword, sections, (s) => [t(s.titleKey), t(s.descKey)])
+    const groups = groupedSettingsSections(filtered)
+
     return (
-        <List>
-            {sections.map((s) => {
-                const Icon = s.icon
-                return (
-                    <EntryCard
-                        key={s.id}
-                        $token={token}
-                        onClick={() => {
-                            void navigate({ to: `/settings/${s.id}` })
-                        }}
-                    >
-                        <IconBox $token={token}>
-                            <Icon size={19} opacity={0.8} />
-                        </IconBox>
-                        <EntryText>
-                            <EntryTitle $token={token}>{t(s.titleKey)}</EntryTitle>
-                            <EntrySub $token={token}>
-                                {s.badge === 'web-tools-status' ? <WebToolsStatusBadge /> : t(s.descKey)}
-                            </EntrySub>
-                        </EntryText>
-                        <ChevronRight size={16} color={token.colorTextQuaternary} />
-                    </EntryCard>
-                )
-            })}
-        </List>
+        <Wrap $token={token}>
+            <GroupList>
+                {groups.map((group) => (
+                    <SettingGroupCard key={group.id}>
+                        {group.sections.map((s) => (
+                            <SettingRow
+                                key={s.id}
+                                label={t(s.titleKey)}
+                                icon={s.icon}
+                                variant="navigate"
+                                value={s.badge === 'web-tools-status' ? <WebToolsStatusBadge /> : undefined}
+                                onClick={() => {
+                                    void navigate({ to: `/settings/${s.id}` })
+                                }}
+                            />
+                        ))}
+                    </SettingGroupCard>
+                ))}
+                {groups.length === 0 && <EmptyHint $token={token}>{t('settings.searchEmpty')}</EmptyHint>}
+            </GroupList>
+            <FloatingSearch $token={token}>
+                <Input
+                    allowClear
+                    value={keyword}
+                    onChange={(e) => setKeyword(e.target.value)}
+                    placeholder={t('settings.search')}
+                    prefix={<Search size={14} />}
+                    variant="borderless"
+                    aria-label={t('settings.search')}
+                />
+            </FloatingSearch>
+        </Wrap>
     )
 }

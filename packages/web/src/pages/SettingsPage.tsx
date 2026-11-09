@@ -15,22 +15,18 @@
  */
 
 import { useState, useEffect } from 'react'
-import { Typography, theme as antTheme, Input } from 'antd'
+import { theme as antTheme, Input } from 'antd'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import { Outlet, useLocation, useNavigate, useRouter, useCanGoBack } from '@tanstack/react-router'
 import { ChevronLeft, Search } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useMediaQuery } from '@/core/data/hooks/useMediaQuery'
-import { PageHeader } from '@/features/layout/PageHeader'
-import { MobileMenuButton } from '@/features/layout/mobileMenu'
-import { SidebarToggle } from '@/features/layout/SidebarToggle'
 import { SETTINGS_WIDE_QUERY, SETTINGS_SECTIONS, activeSection, groupedSettingsSections, filterSettingsSections, type SettingsSection } from '@/features/settings/sections/registry'
 import { writeLastSettingsSection } from '@/features/settings/sections/lastSettingsSection'
 import { WebToolsStatusBadge } from '@/features/settings/sections/WebToolsStatusBadge'
 import { resolveSettingsBackTarget } from '@/features/layout/settingsReturnOrigin'
 
-const { Title } = Typography
 const { useToken } = antTheme
 
 type Token = ReturnType<typeof useToken>['token']
@@ -173,6 +169,50 @@ const SettingsContent = styled.div<{ $token: Token }>`
     padding: 24px 24px max(24px, env(safe-area-inset-bottom));
 `
 
+/** mobile 设置头部（ChatGPT 移动端形态）：返回箭头 + 居中标题三栏；避让 PWA 刘海 */
+const MobileHeader = styled.header<{ $token: Token }>`
+    display: grid;
+    grid-template-columns: 48px 1fr 48px;
+    align-items: center;
+    height: 48px;
+    flex-shrink: 0;
+    padding-top: max(0px, env(safe-area-inset-top));
+`
+
+const MobileHeaderSide = styled.div`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+`
+
+const MobileBackButton = styled.button<{ $token: Token }>`
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-pill);
+    color: ${p => p.$token.colorText};
+    &:active { background: ${p => p.$token.colorFillQuaternary}; }
+    &:focus-visible {
+        outline: 2px solid ${p => p.$token.colorPrimary};
+        outline-offset: 2px;
+    }
+`
+
+const MobileHeaderTitle = styled.div<{ $token: Token }>`
+    text-align: center;
+    font-size: 16px;
+    font-weight: 600;
+    color: ${p => p.$token.colorText};
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+`
+
 /**
  * 设置布局壳（/settings 路由族组件）：
  * - PC（≥992px）：全屏接管视图——自带侧栏（返回键 + 标题 + 分区搜索 + 分组导航），MainLayout 已让位主侧栏
@@ -197,23 +237,28 @@ export function SettingsPage() {
     if (!isWide) {
         // activeSection 已校验段在 SETTINGS_SECTIONS 内，未知段返回 null（回到入口态标题）
         const titleKey = active?.titleKey ?? 'settings.title'
+        // 头部收敛（ChatGPT 移动端形态）：返回箭头 + 居中标题，无汉堡并存。
+        // 子页返回 = 回入口列表；入口态返回 = 离开设置（与 PC 同一返回链路裁决）
+        const handleMobileBack = () => {
+            if (active) {
+                void navigate({ to: '/settings' })
+                return
+            }
+            const target = resolveSettingsBackTarget(canGoBack)
+            if (target.mode === 'history') router.history.back()
+            else void navigate({ to: target.to })
+        }
         return (
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-                <PageHeader
-                    left={<>
-                        {active ? (
-                            <button
-                                aria-label={t('common.back')}
-                                onClick={() => { void navigate({ to: '/settings' }) }}
-                                style={{ border: 'none', background: 'none', cursor: 'pointer', display: 'flex', color: token.colorTextSecondary, padding: 4 }}
-                            >
-                                <ChevronLeft size={18} />
-                            </button>
-                        ) : <SidebarToggle />}
-                        <MobileMenuButton />
-                        <Title level={5} style={{ margin: 0 }}>{t(titleKey)}</Title>
-                    </>}
-                />
+                <MobileHeader $token={token}>
+                    <MobileHeaderSide>
+                        <MobileBackButton $token={token} aria-label={t('common.back')} onClick={handleMobileBack}>
+                            <ChevronLeft size={20} />
+                        </MobileBackButton>
+                    </MobileHeaderSide>
+                    <MobileHeaderTitle $token={token}>{t(titleKey)}</MobileHeaderTitle>
+                    <MobileHeaderSide />
+                </MobileHeader>
                 <SettingsContent $token={token}>
                     <Outlet />
                 </SettingsContent>

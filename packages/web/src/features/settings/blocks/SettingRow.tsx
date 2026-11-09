@@ -55,7 +55,13 @@ export type SettingRowProps = SettingRowBase &
               /** antd Input props（受控由调用方持有）；label 用作可访问名 */
               input: InputProps
           }
-        | { variant: 'navigate'; onClick: () => void; disabled?: boolean }
+        | {
+              variant: 'navigate'
+              onClick: () => void
+              disabled?: boolean
+              /** 右侧当前值（值 + chevron 并存，ChatGPT 行形态，可选） */
+              value?: ReactNode
+          }
         | { variant: 'action'; /** 右侧操作区（自管 Button 等） */ action: ReactNode }
     )
 
@@ -203,9 +209,12 @@ export function SettingRow(props: SettingRowProps) {
         case 'navigate':
             nav = { onClick: props.onClick, disabled: props.disabled }
             right = (
-                <Chevron $token={token}>
-                    <ChevronRight size={16} />
-                </Chevron>
+                <>
+                    {props.value !== undefined && <ValueText $token={token}>{props.value}</ValueText>}
+                    <Chevron $token={token}>
+                        <ChevronRight size={16} />
+                    </Chevron>
+                </>
             )
             break
         case 'action':
