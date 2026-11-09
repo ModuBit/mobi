@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Alert, App, Input, InputNumber, Radio, Tag, theme as antTheme } from 'antd'
+import { Alert, App, Input, Tag, theme as antTheme } from 'antd'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { IconButton } from '@/ui/base/interactive/IconButton'
@@ -26,11 +26,12 @@ import { Combobox } from '@/ui/base/interactive/combobox/Combobox'
 import { useTranslation } from 'react-i18next'
 import { Brain, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import styled from '@emotion/styled'
-import type { MemoryAutoInjectMode, MemoryEndpointCheckResult, MemoryRule } from '@mobi/shared'
+import type { MemoryAutoInjectMode, MemoryEndpointCheckResult, MemoryRule, MemorySettingsSubmission } from '@mobi/shared'
 import { deriveMemoryUiUrl, HINDSIGHT_CLOUD_API_URL, isOffMachineEndpoint, parseEndpointUrl } from '@mobi/shared'
-import { SettingsCard } from '@/features/settings/blocks/shared'
 import { toDraft, useMemorySettings } from '@/core/data/hooks/queries/useMemorySettings'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
+import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
+import { SettingRow } from '@/features/settings/blocks/SettingRow'
 
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
@@ -42,65 +43,26 @@ const Wrap = styled.div`
     animation: enter 0.25s ease;
 `
 
-const Card = styled(SettingsCard)<{ $token: Token }>`
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 18px ${p => p.$token.padding}px;
-`
-
-const Title = styled.span<{ $token: Token }>`
-    font-weight: 600;
-    font-size: 14px;
-    letter-spacing: -0.01em;
-    color: ${p => p.$token.colorText};
-`
-
-const FieldLabel = styled.label<{ $token: Token }>`
-    font-size: 13px;
-    color: ${p => p.$token.colorText};
-    display: block;
-    margin-bottom: 6px;
-`
-
-const Hint = styled.span<{ $token: Token }>`
-    font-size: 11.5px;
-    color: ${p => p.$token.colorTextTertiary};
+/** 组卡内说明行（灰字，占卡内首行——与行式形态的行下说明同语言） */
+const CardHint = styled.div<{ $token: Token }>`
+    padding: 10px 16px 2px;
+    font-size: 12px;
     line-height: 1.5;
-    display: block;
+    color: ${p => p.$token.colorTextTertiary};
 `
 
-/** 隔离规则行：目标标签 + 档位选择 + 条件覆盖输入 + 删除（换行容纳窄屏） */
-const RuleRow = styled.div`
+/** 隔离规则行的操作区：档位选择 + 条件覆盖输入 + 删除（换行容纳窄屏） */
+const RuleActions = styled.div`
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
-    margin-bottom: 8px;
 `
 
-/** 规则行内目标展示（workspace 名 / 路径），窄屏收缩 */
-const RuleTarget = styled.span<{ $token: Token }>`
-    font-size: 13px;
-    color: ${p => p.$token.colorText};
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 240px;
-`
-
-const RowActions = styled.div`
-    display: flex;
-    gap: 8px;
-    margin-top: 4px;
-`
-
-const Footer = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
+const ExternalHint = styled.a<{ $token: Token }>`
+    font-size: 12px;
+    color: ${p => p.$token.colorTextTertiary};
+    word-break: break-all;
 `
 
 /** 连接状态结果渲染（四态文案 + 耗时），检查按钮的伴随展示 */
@@ -118,14 +80,17 @@ function CheckResultView({ result, t }: { result: MemoryEndpointCheckResult; t: 
 }
 
 /**
- * 长期记忆子页（agent-memory 票 03）：引擎单选 / endpoint / token / 路径映射 /
- * workspace 排除 / 连接检查 / 记忆界面链接。显式保存（保存后「下个新会话生效」）。
+ * 长期记忆子页（SettingRow 行式形态，票06：显式保存页 → 即改即存行式）。
+ *
+ * 保存时机随行控件走（引擎/注入/规则/排除 = 动作即落盘；地址/Token/库名/刷新间隔 = 失焦落盘），
+ * 部分字段提交由 Submission 协议的 merge 语义承载（读写协议零改动）。
+ * 「下个新会话生效」语义不变（落盘即完成，daemon spawn 现读）。
  */
 export function MemorySection() {
     const { token } = useToken()
     const { t } = useTranslation()
     const { message } = App.useApp()
-    const { settings, loaded, offline, saving, save, check } = useMemorySettings()
+    const { settings, loaded, offline, save, check } = useMemorySettings()
     const workspacesQuery = useWorkspaces()
 
     // 表单草稿（可变输入——最小标识外状态，非派生对象）
@@ -137,10 +102,14 @@ export function MemorySection() {
     const [disabledWorkspaces, setDisabledWorkspaces] = useState<string[]>([])
     // 注入策略草稿（mobi 默认关：不自动注入 + 不刷目录；要在设置里显式开）
     const [autoInject, setAutoInject] = useState<MemoryAutoInjectMode>('none')
-    const [pageRefreshEveryTurns, setPageRefreshEveryTurns] = useState(0)
+    const [refreshDraft, setRefreshDraft] = useState('0')
     const [checkResult, setCheckResult] = useState<MemoryEndpointCheckResult | null>(null)
-    // 高级路径规则输入（折叠式，不默认占屏）
+    // 高级路径规则输入（行内，不默认占屏）
     const [pathDraft, setPathDraft] = useState('')
+    // 已存基线：失焦落盘只在草稿偏离基线时发请求（幂等 merge 下避免无谓写盘）
+    const [endpointBaseline, setEndpointBaseline] = useState('')
+    const [bankBaseline, setBankBaseline] = useState('')
+    const [refreshBaseline, setRefreshBaseline] = useState(0)
 
     // 加载完成后初始化草稿一次（invalidate 重读不重置——编辑中的草稿不丢，对齐 webTools 语义）
     const [initialized, setInitialized] = useState(false)
@@ -149,13 +118,23 @@ export function MemorySection() {
         const draft = toDraft(settings)
         setEngine(draft.engine === 'hindsight' ? 'hindsight' : 'off')
         setEndpoint(draft.endpoint ?? '')
+        setEndpointBaseline(draft.endpoint ?? '')
         setRules(draft.rules ?? [])
         setBankName(draft.bankName ?? '')
+        setBankBaseline(draft.bankName ?? '')
         setDisabledWorkspaces(draft.disabledWorkspaces ?? [])
         setAutoInject(draft.autoInject ?? 'none')
-        setPageRefreshEveryTurns(draft.pageRefreshEveryTurns ?? 0)
+        setRefreshDraft(String(draft.pageRefreshEveryTurns ?? 0))
+        setRefreshBaseline(draft.pageRefreshEveryTurns ?? 0)
         setInitialized(true)
     }, [loaded, initialized, settings])
+
+    /** 部分字段落盘（Submission merge 协议），失败统一 toast；返回是否成功 */
+    const savePartial = async (patch: MemorySettingsSubmission) => {
+        const result = await save(patch)
+        if (!result.ok) message.error(result.error || t('settings.memory.saveFailed'))
+        return result.ok
+    }
 
     if (!loaded) {
         return (
@@ -166,8 +145,9 @@ export function MemorySection() {
         )
     }
 
+    const hindsight = engine === 'hindsight'
     const uiUrl = deriveMemoryUiUrl(endpoint)
-    const offMachine = engine === 'hindsight' && isOffMachineEndpoint(endpoint)
+    const offMachine = hindsight && isOffMachineEndpoint(endpoint)
     // workspace 排除下拉可选项：全部工作区 folder 路径（tags 模式仍可自由输入任意路径）。
     // chip 完整显示路径（放不下换行，超容器宽才截断 + 悬停全值），不做任何短化猜测
     const workspaceOptions = Array.from(new Set(
@@ -184,289 +164,329 @@ export function MemorySection() {
         .filter((w) => !ruledWorkspaceIds.has(w.id))
         .map((w) => ({ value: w.id, label: w.name }))
 
-    /** 提交 payload：apiToken 在场性——草稿非空才携带（undefined = 保持旧值） */
-    const buildSubmission = () => ({
-        engine,
-        endpoint: endpoint.trim(),
-        rules,
-        disabledWorkspaces,
-        // bankName 恒提交（空串走 merge 清除语义）
-        bankName,
-        // 注入策略恒提交（显式值，缺省 = mobi 默认 none / 0）
-        autoInject,
-        pageRefreshEveryTurns,
-        ...(tokenDraft.trim() ? { apiToken: tokenDraft.trim() } : {}),
-    })
+    /** 引擎切换：动作即落盘（hindsight 态 endpoint 未填不拦截——spawn 裁决侧 fail-closed 兜底，填地址行就在旁边） */
+    const switchEngine = (v: 'off' | 'hindsight') => {
+        setEngine(v)
+        setCheckResult(null)
+        void savePartial({ engine: v })
+    }
 
-    const handleSave = async () => {
-        if (engine === 'hindsight') {
-            if (!endpoint.trim()) {
-                message.error(t('settings.memory.endpointRequired'))
-                return
-            }
-            // 无 scheme（localhost:9999）等解析不出 hostname 的输入在保存口拦下
-            if (!parseEndpointUrl(endpoint)) {
-                message.error(t('settings.memory.endpointInvalid'))
-                return
-            }
-        }
-        const result = await save(buildSubmission())
-        if (!result.ok) {
-            message.error(result.error || t('settings.memory.saveFailed'))
+    /** 地址失焦落盘：hindsight 态沿用原前端校验（必填 + 带协议 URL），失败不落盘、草稿保持让用户改 */
+    const saveEndpoint = async () => {
+        if (endpoint === endpointBaseline) return
+        if (!endpoint.trim()) {
+            message.error(t('settings.memory.endpointRequired'))
             return
         }
-        setTokenDraft('')
-        message.success(t('settings.memory.savedHint'))
+        if (!parseEndpointUrl(endpoint)) {
+            message.error(t('settings.memory.endpointInvalid'))
+            return
+        }
+        if (await savePartial({ endpoint: endpoint.trim() })) setEndpointBaseline(endpoint.trim())
+    }
+
+    /** Token 失焦落盘：非空才携带（在场性协议：不在场 = 保持旧值），成功清空草稿 */
+    const saveToken = async () => {
+        const trimmed = tokenDraft.trim()
+        if (!trimmed) return
+        if (await savePartial({ apiToken: trimmed })) setTokenDraft('')
     }
 
     /** 清除已存 token：显式提交空串（在场性协议：空串 = 清除） */
-    const handleClearToken = async () => {
-        const result = await save({ apiToken: '' })
-        if (!result.ok) {
-            message.error(result.error || t('settings.memory.saveFailed'))
-        } else {
-            setTokenDraft('')
-            message.success(t('settings.memory.tokenCleared'))
+    const clearToken = async () => {
+        if (await savePartial({ apiToken: '' })) message.success(t('settings.memory.tokenCleared'))
+    }
+
+    /** 规则任何变更（增删改）即落盘 */
+    const updateRules = (next: MemoryRule[]) => {
+        setRules(next)
+        void savePartial({ rules: next })
+    }
+
+    /** 库名失焦落盘：空串走 merge 清除语义（协议不变） */
+    const saveBankName = async () => {
+        if (bankName === bankBaseline) return
+        if (await savePartial({ bankName })) setBankBaseline(bankName)
+    }
+
+    /** 注入模式切换：动作即落盘 */
+    const switchAutoInject = (v: MemoryAutoInjectMode) => {
+        setAutoInject(v)
+        void savePartial({ autoInject: v })
+    }
+
+    /** 刷新间隔失焦落盘：整数化语义不变（小数取整、清空回落 0——不落 1「每轮」） */
+    const saveRefresh = async () => {
+        const n = Math.max(0, Math.round(Number(refreshDraft) || 0))
+        setRefreshDraft(String(n))
+        if (n === refreshBaseline) return
+        if (await savePartial({ pageRefreshEveryTurns: n })) setRefreshBaseline(n)
+    }
+
+    return (
+        <Wrap>
+            <SettingGroupCard>
+                <SettingRow
+                    icon={Brain}
+                    label={t('settings.memory.engineTitle')}
+                    variant="inline-select"
+                    description={hindsight ? t('settings.memory.savedHint') : t('settings.memory.privacyHint')}
+                    select={{
+                        value: engine,
+                        ariaLabel: t('settings.memory.engineTitle'),
+                        onValueChange: (v) => switchEngine(v === 'hindsight' ? 'hindsight' : 'off'),
+                        options: [
+                            { value: 'off', label: t('settings.memory.engineOff') },
+                            { value: 'hindsight', label: t('settings.memory.engineHindsight') },
+                        ],
+                    }}
+                />
+                {hindsight && (
+                    <SettingRow
+                        label={t('settings.memory.endpointLabel')}
+                        variant="input"
+                        input={{
+                            value: endpoint,
+                            onChange: (e) => { setEndpoint(e.target.value); setCheckResult(null) },
+                            onBlur: saveEndpoint,
+                            onPressEnter: saveEndpoint,
+                            placeholder: HINDSIGHT_CLOUD_API_URL,
+                        }}
+                    />
+                )}
+                {offMachine && (
+                    <Alert type="warning" showIcon banner message={t('settings.memory.offMachineWarning')} />
+                )}
+                {hindsight && (
+                    <SettingRow
+                        label={t('settings.memory.tokenLabel')}
+                        variant="input"
+                        secret
+                        description={settings?.apiTokenSet ? t('settings.memory.tokenSetPlaceholder') : undefined}
+                        input={{
+                            value: tokenDraft,
+                            onChange: (e) => setTokenDraft(e.target.value),
+                            onBlur: saveToken,
+                            onPressEnter: saveToken,
+                            placeholder: settings?.apiTokenSet
+                                ? t('settings.memory.tokenSetPlaceholder')
+                                : t('settings.memory.tokenUnsetPlaceholder'),
+                            autoComplete: 'new-password',
+                        }}
+                    />
+                )}
+                {hindsight && settings?.apiTokenSet && (
+                    <SettingRow
+                        label={t('settings.memory.tokenClear')}
+                        variant="action"
+                        action={
+                            <Button variant="ghost" size="sm" onClick={() => { void clearToken() }}>
+                                {t('settings.memory.clear')}
+                            </Button>
+                        }
+                    />
+                )}
+                {hindsight && (
+                    <SettingRow
+                        label={t('settings.memory.statusTitle')}
+                        variant="action"
+                        action={
+                            <>
+                                <Button variant="secondary" size="sm" onClick={() => { void handleCheck() }} disabled={!endpoint.trim()}>
+                                    {t('settings.memory.checkButton')}
+                                </Button>
+                                {checkResult && <CheckResultView result={checkResult} t={t} />}
+                            </>
+                        }
+                    />
+                )}
+                {hindsight && uiUrl && (
+                    <SettingRow
+                        label={t('settings.memory.openUi')}
+                        variant="navigate"
+                        description={<ExternalHint $token={token} href={uiUrl} target="_blank" rel="noreferrer">{uiUrl} <ExternalLink size={12} style={{ verticalAlign: -1.5 }} /></ExternalHint>}
+                        onClick={() => { window.open(uiUrl, '_blank', 'noreferrer') }}
+                    />
+                )}
+            </SettingGroupCard>
+
+            {hindsight && (
+                <SettingGroupCard title={t('settings.memory.mapTitle')}>
+                    <CardHint $token={token}>{t('settings.memory.mapHint')}</CardHint>
+                    {rules.map((rule, i) => (
+                        <SettingRow
+                            key={i}
+                            label={rule.target.type === 'workspace' ? workspaceNameOf(rule.target.id) : rule.target.path}
+                            description={t(`settings.memory.mode${rule.mode.charAt(0).toUpperCase()}${rule.mode.slice(1)}Hint`)}
+                            variant="action"
+                            action={
+                                <RuleActions>
+                                    <UiSelect
+                                        style={{ width: 120 }}
+                                        ariaLabel={t('settings.memory.mapTitle')}
+                                        value={rule.mode}
+                                        onValueChange={(mode) => updateRules(rules.map((x, j) => j === i
+                                            ? { ...x, mode, ...(mode !== 'normal' ? { tag: undefined } : {}), ...(mode !== 'isolated' ? { bank: undefined } : {}) }
+                                            : x))}
+                                        options={[
+                                            { value: 'normal', label: t('settings.memory.modeNormal'), title: t('settings.memory.modeNormalHint') },
+                                            { value: 'open', label: t('settings.memory.modeOpen'), title: t('settings.memory.modeOpenHint') },
+                                            { value: 'isolated', label: t('settings.memory.modeIsolated'), title: t('settings.memory.modeIsolatedHint') },
+                                        ]}
+                                    />
+                                    {rule.mode === 'normal' && (
+                                        <AppTooltip title={t('settings.memory.tagPlaceholder')}>
+                                            <Input
+                                                size="small"
+                                                style={{ width: 150 }}
+                                                value={rule.tag ?? ''}
+                                                onChange={(e) => setRules(rules.map((x, j) => j === i ? { ...x, tag: e.target.value.trim() || undefined } : x))}
+                                                onBlur={() => updateRules(rules)}
+                                                placeholder={t('settings.memory.tagLabel')}
+                                                aria-label={t('settings.memory.tagLabel')}
+                                            />
+                                        </AppTooltip>
+                                    )}
+                                    {rule.mode === 'isolated' && (
+                                        <AppTooltip title={t('settings.memory.bankPlaceholder')}>
+                                            <Input
+                                                size="small"
+                                                style={{ width: 150 }}
+                                                value={rule.bank ?? ''}
+                                                onChange={(e) => setRules(rules.map((x, j) => j === i ? { ...x, bank: e.target.value.trim() || undefined } : x))}
+                                                onBlur={() => updateRules(rules)}
+                                                placeholder={t('settings.memory.bankLabel')}
+                                                aria-label={t('settings.memory.bankLabel')}
+                                            />
+                                        </AppTooltip>
+                                    )}
+                                    <IconButton
+                                        icon={<Trash2 size={14} />} size={22}
+                                        aria-label={t('settings.memory.ruleRemove')}
+                                        onClick={() => updateRules(rules.filter((_, j) => j !== i))}
+                                    />
+                                </RuleActions>
+                            }
+                        />
+                    ))}
+                    {/* 恒占位 picker：选中即建规则，value 恒 ""（回显交由规则行） */}
+                    <SettingRow
+                        label={t('settings.memory.ruleAddWorkspace')}
+                        variant="action"
+                        action={
+                            <Combobox
+                                style={{ minWidth: 200 }}
+                                value=""
+                                aria-label={t('settings.memory.ruleAddWorkspace')}
+                                placeholder={t('settings.memory.ruleAddWorkspace')}
+                                options={addableWorkspaces}
+                                onValueChange={(id) => {
+                                    if (id) updateRules([...rules, { target: { type: 'workspace', id }, mode: 'normal' }])
+                                }}
+                            />
+                        }
+                    />
+                    <SettingRow
+                        label={t('settings.memory.ruleAddPath')}
+                        variant="action"
+                        action={
+                            <>
+                                <Input
+                                    size="small"
+                                    style={{ width: 220 }}
+                                    value={pathDraft}
+                                    onChange={(e) => setPathDraft(e.target.value)}
+                                    onPressEnter={addPathRule}
+                                    placeholder={t('settings.memory.rulePathPlaceholder')}
+                                    aria-label={t('settings.memory.ruleAddPath')}
+                                />
+                                <Button variant="ghost" size="sm" onClick={addPathRule}>
+                                    <Plus size={13} /> {t('settings.memory.add')}
+                                </Button>
+                            </>
+                        }
+                    />
+                    <SettingRow
+                        label={t('settings.memory.bankNameLabel')}
+                        variant="input"
+                        description={t('settings.memory.bankNameHint')}
+                        input={{
+                            value: bankName,
+                            onChange: (e) => setBankName(e.target.value),
+                            onBlur: saveBankName,
+                            onPressEnter: saveBankName,
+                            placeholder: t('settings.memory.bankNamePlaceholder'),
+                        }}
+                    />
+                </SettingGroupCard>
+            )}
+
+            {hindsight && (
+                <SettingGroupCard title={t('settings.memory.injectTitle')}>
+                    <CardHint $token={token}>{t('settings.memory.injectHint')}</CardHint>
+                    <SettingRow
+                        label={t('settings.memory.injectModeLabel')}
+                        variant="inline-select"
+                        select={{
+                            value: autoInject,
+                            ariaLabel: t('settings.memory.injectModeLabel'),
+                            onValueChange: (v) => switchAutoInject(v as MemoryAutoInjectMode),
+                            options: [
+                                { value: 'reflect', label: t('settings.memory.injectReflect'), title: t('settings.memory.injectReflectHint') },
+                                { value: 'recall', label: t('settings.memory.injectRecall'), title: t('settings.memory.injectRecallHint') },
+                                { value: 'pages', label: t('settings.memory.injectPages'), title: t('settings.memory.injectPagesHint') },
+                                { value: 'none', label: t('settings.memory.injectNone'), title: t('settings.memory.injectNoneHint') },
+                            ],
+                        }}
+                    />
+                    <SettingRow
+                        label={t('settings.memory.pageRefreshLabel')}
+                        variant="input"
+                        description={t('settings.memory.pageRefreshHint')}
+                        input={{
+                            value: refreshDraft,
+                            onChange: (e) => setRefreshDraft(e.target.value),
+                            onBlur: saveRefresh,
+                            onPressEnter: saveRefresh,
+                            inputMode: 'numeric',
+                        }}
+                    />
+                </SettingGroupCard>
+            )}
+
+            <SettingGroupCard title={t('settings.memory.excludedTitle')}>
+                <CardHint $token={token}>{t('settings.memory.excludedHint')}</CardHint>
+                <div style={{ padding: '10px 16px 14px' }}>
+                    <MultiSelect
+                        mode="tags"
+                        value={disabledWorkspaces}
+                        onValueChange={(next) => { setDisabledWorkspaces(next); void savePartial({ disabledWorkspaces: next }) }}
+                        options={workspaceOptions}
+                        placeholder={t('settings.memory.excludedPlaceholder')}
+                        ariaLabel={t('settings.memory.excludedTitle')}
+                    />
+                </div>
+            </SettingGroupCard>
+        </Wrap>
+    )
+
+    /** 按路径添加规则（输入非空才建，成功清空输入） */
+    function addPathRule() {
+        const p = pathDraft.trim()
+        if (p) {
+            updateRules([...rules, { target: { type: 'path', path: p }, mode: 'normal' }])
+            setPathDraft('')
         }
     }
 
-    const handleCheck = async () => {
+    /** 连接检查（草稿值；token 不在场 daemon 用已存值兜底） */
+    async function handleCheck() {
         if (!endpoint.trim()) {
             message.warning(t('settings.memory.endpointRequired'))
             return
         }
         setCheckResult(await check({ endpoint, ...(tokenDraft.trim() ? { apiToken: tokenDraft.trim() } : {}) }))
     }
-
-    return (
-        <Wrap>
-            <Card $token={token}>
-                <Title $token={token}>
-                    <Brain size={15} style={{ verticalAlign: -2.5, marginRight: 6 }} />
-                    {t('settings.memory.engineTitle')}
-                </Title>
-
-                <Radio.Group
-                    value={engine}
-                    onChange={(e) => { setEngine(e.target.value); setCheckResult(null) }}
-                    options={[
-                        { value: 'off', label: t('settings.memory.engineOff') },
-                        { value: 'hindsight', label: t('settings.memory.engineHindsight') },
-                    ]}
-                />
-                {engine === 'off' ? (
-                    <Hint $token={token}>{t('settings.memory.privacyHint')}</Hint>
-                ) : (
-                    <>
-                        <div>
-                            <FieldLabel $token={token}>{t('settings.memory.endpointLabel')}</FieldLabel>
-                            <Input
-                                value={endpoint}
-                                onChange={(e) => { setEndpoint(e.target.value); setCheckResult(null) }}
-                                placeholder={HINDSIGHT_CLOUD_API_URL}
-                                aria-label={t('settings.memory.endpointLabel')}
-                            />
-                            {offMachine && (
-                                <Alert type="warning" showIcon banner style={{ marginTop: 8 }}
-                                    message={t('settings.memory.offMachineWarning')} />
-                            )}
-                        </div>
-
-                        <div>
-                            <FieldLabel $token={token}>{t('settings.memory.tokenLabel')}</FieldLabel>
-                            <Input.Password
-                                value={tokenDraft}
-                                onChange={(e) => setTokenDraft(e.target.value)}
-                                placeholder={settings?.apiTokenSet
-                                    ? t('settings.memory.tokenSetPlaceholder')
-                                    : t('settings.memory.tokenUnsetPlaceholder')}
-                                aria-label={t('settings.memory.tokenLabel')}
-                            />
-                            {settings?.apiTokenSet && (
-                                <Button variant="ghost" size="sm" style={{ marginTop: 4, padding: 0 }}
-                                    onClick={() => { void handleClearToken() }}>
-                                    {t('settings.memory.tokenClear')}
-                                </Button>
-                            )}
-                        </div>
-                    </>
-                )}
-            </Card>
-
-            {engine === 'hindsight' && (
-                <Card $token={token}>
-                    <Title $token={token}>{t('settings.memory.mapTitle')}</Title>
-                    <Hint $token={token}>{t('settings.memory.mapHint')}</Hint>
-                    {rules.map((rule, i) => (
-                        <RuleRow key={i}>
-                            <RuleTarget $token={token} title={rule.target.type === 'path' ? rule.target.path : undefined}>
-                                {rule.target.type === 'workspace' ? workspaceNameOf(rule.target.id) : rule.target.path}
-                            </RuleTarget>
-                            <UiSelect
-                                style={{ width: 120 }}
-                                ariaLabel={t('settings.memory.mapTitle')}
-                                value={rule.mode}
-                                onValueChange={(mode) => setRules(rules.map((x, j) => j === i
-                                    ? { ...x, mode, ...(mode !== 'normal' ? { tag: undefined } : {}), ...(mode !== 'isolated' ? { bank: undefined } : {}) }
-                                    : x))}
-                                options={[
-                                    { value: 'normal', label: t('settings.memory.modeNormal'), title: t('settings.memory.modeNormalHint') },
-                                    { value: 'open', label: t('settings.memory.modeOpen'), title: t('settings.memory.modeOpenHint') },
-                                    { value: 'isolated', label: t('settings.memory.modeIsolated'), title: t('settings.memory.modeIsolatedHint') },
-                                ]}
-                            />
-                            {rule.mode === 'normal' && (
-                                <AppTooltip title={t('settings.memory.tagPlaceholder')}>
-                                    <Input
-                                        size="small"
-                                        style={{ width: 150 }}
-                                        value={rule.tag ?? ''}
-                                        onChange={(e) => setRules(rules.map((x, j) => j === i ? { ...x, tag: e.target.value.trim() || undefined } : x))}
-                                        placeholder={t('settings.memory.tagLabel')}
-                                        aria-label={t('settings.memory.tagLabel')}
-                                    />
-                                </AppTooltip>
-                            )}
-                            {rule.mode === 'isolated' && (
-                                <AppTooltip title={t('settings.memory.bankPlaceholder')}>
-                                    <Input
-                                        size="small"
-                                        style={{ width: 150 }}
-                                        value={rule.bank ?? ''}
-                                        onChange={(e) => setRules(rules.map((x, j) => j === i ? { ...x, bank: e.target.value.trim() || undefined } : x))}
-                                        placeholder={t('settings.memory.bankLabel')}
-                                        aria-label={t('settings.memory.bankLabel')}
-                                    />
-                                </AppTooltip>
-                            )}
-                            <IconButton
-                                icon={<Trash2 size={14} />} size={22}
-                                aria-label={t('settings.memory.ruleRemove')}
-                                onClick={() => setRules(rules.filter((_, j) => j !== i))}
-                            />
-                        </RuleRow>
-                    ))}
-                    <RowActions>
-                        {/* 恒占位 picker：选中即建规则，value 恒 ""（回显交由规则行） */}
-                        <Combobox
-                            style={{ minWidth: 200 }}
-                            value=""
-                            aria-label={t('settings.memory.ruleAddWorkspace')}
-                            placeholder={t('settings.memory.ruleAddWorkspace')}
-                            options={addableWorkspaces}
-                            onValueChange={(id) => {
-                                if (id) {
-                                    setRules([...rules, { target: { type: 'workspace', id }, mode: 'normal' }])
-                                }
-                            }}
-                        />
-                        <Input
-                            size="small"
-                            style={{ width: 220 }}
-                            value={pathDraft}
-                            onChange={(e) => setPathDraft(e.target.value)}
-                            placeholder={t('settings.memory.rulePathPlaceholder')}
-                            aria-label={t('settings.memory.ruleAddPath')}
-                        />
-                        <Button variant="ghost" size="sm"
-                            onClick={() => {
-                                const p = pathDraft.trim()
-                                if (p) {
-                                    setRules([...rules, { target: { type: 'path', path: p }, mode: 'normal' }])
-                                    setPathDraft('')
-                                }
-                            }}>
-                            <Plus size={13} /> {t('settings.memory.ruleAddPath')}
-                        </Button>
-                    </RowActions>
-                    <RowActions>
-                        <AppTooltip title={t('settings.memory.bankNameHint')}>
-                            <span style={{ fontSize: 12.5 }}>{t('settings.memory.bankNameLabel')}</span>
-                        </AppTooltip>
-                        <Input
-                            size="small"
-                            style={{ width: 200 }}
-                            value={bankName}
-                            onChange={(e) => setBankName(e.target.value)}
-                            placeholder={t('settings.memory.bankNamePlaceholder')}
-                            aria-label={t('settings.memory.bankNameLabel')}
-                        />
-                    </RowActions>
-                </Card>
-            )}
-
-            {engine === 'hindsight' && (
-                <Card $token={token}>
-                    <Title $token={token}>{t('settings.memory.injectTitle')}</Title>
-                    <Hint $token={token}>{t('settings.memory.injectHint')}</Hint>
-                    <div>
-                        <FieldLabel $token={token}>{t('settings.memory.injectModeLabel')}</FieldLabel>
-                        <UiSelect
-                            style={{ width: 260 }}
-                            ariaLabel={t('settings.memory.injectModeLabel')}
-                            value={autoInject}
-                            onValueChange={(v) => setAutoInject(v)}
-                            options={[
-                                { value: 'reflect', label: t('settings.memory.injectReflect'), title: t('settings.memory.injectReflectHint') },
-                                { value: 'recall', label: t('settings.memory.injectRecall'), title: t('settings.memory.injectRecallHint') },
-                                { value: 'pages', label: t('settings.memory.injectPages'), title: t('settings.memory.injectPagesHint') },
-                                { value: 'none', label: t('settings.memory.injectNone'), title: t('settings.memory.injectNoneHint') },
-                            ]}
-                        />
-                    </div>
-                    <div>
-                        <FieldLabel $token={token}>{t('settings.memory.pageRefreshLabel')}</FieldLabel>
-                        <InputNumber
-                            min={0}
-                            step={1}
-                            // 轮数是整数计数：小数会被 shared 的 zod .int() 拒掉，整张表单 400（用户只看到
-                            // 通用「保存失败」），故输入侧就锁整数。清空回落 0（从不刷新）——回落 1 是最费的每轮。
-                            precision={0}
-                            style={{ width: 120 }}
-                            value={pageRefreshEveryTurns}
-                            onChange={(v) => setPageRefreshEveryTurns(typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.round(v)) : 0)}
-                            aria-label={t('settings.memory.pageRefreshLabel')}
-                        />
-                        <Hint $token={token}>{t('settings.memory.pageRefreshHint')}</Hint>
-                    </div>
-                </Card>
-            )}
-
-            <Card $token={token}>
-                <Title $token={token}>{t('settings.memory.excludedTitle')}</Title>
-                <Hint $token={token}>{t('settings.memory.excludedHint')}</Hint>
-                <MultiSelect
-                    mode="tags"
-                    value={disabledWorkspaces}
-                    onValueChange={setDisabledWorkspaces}
-                    options={workspaceOptions}
-                    placeholder={t('settings.memory.excludedPlaceholder')}
-                    ariaLabel={t('settings.memory.excludedTitle')}
-                />
-            </Card>
-
-            <Card $token={token}>
-                <Title $token={token}>{t('settings.memory.statusTitle')}</Title>
-                <RowActions>
-                    <Button variant="secondary" size="sm" onClick={() => { void handleCheck() }} disabled={!endpoint.trim()}>
-                        {t('settings.memory.checkButton')}
-                    </Button>
-                    {checkResult && <CheckResultView result={checkResult} t={t} />}
-                </RowActions>
-                {uiUrl && (
-                    <a href={uiUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12.5 }}>
-                        {t('settings.memory.openUi')} <ExternalLink size={12} style={{ verticalAlign: -1.5 }} />
-                    </a>
-                )}
-            </Card>
-
-            <Footer>
-                <Button variant="primary" loading={saving} onClick={() => { void handleSave() }}>
-                    {t('settings.memory.saveButton')}
-                </Button>
-            </Footer>
-        </Wrap>
-    )
 }
 
 /** 空占位：首次加载中保持子页高度，避免布局跳动（对齐 WebToolsSection 的 Placeholder 语义） */

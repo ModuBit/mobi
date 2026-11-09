@@ -54,6 +54,8 @@ export type SettingRowProps = SettingRowBase &
               variant: 'input'
               /** antd Input props（受控由调用方持有）；label 用作可访问名 */
               input: InputProps
+              /** 密码态（Input.Password 渲染，如 API Token / key 类字段） */
+              secret?: boolean
           }
         | {
               variant: 'navigate'
@@ -144,9 +146,15 @@ const InputSlot = styled.div`
     flex: 1;
     display: flex;
 
-    /* 行内输入：无框、行内嵌感 */
+    /* 行内输入：无框、行内嵌感（plain 与 password 态都贴行） */
     .ant-input {
         padding: 0;
+    }
+    .ant-input-affix-wrapper {
+        padding: 0;
+        background: transparent;
+        border: none;
+        box-shadow: none;
     }
 `
 
@@ -202,7 +210,11 @@ export function SettingRow(props: SettingRowProps) {
         case 'input':
             right = (
                 <InputSlot>
-                    <Input {...props.input} variant="borderless" aria-label={accessibleName} />
+                    {props.secret ? (
+                        <Input.Password {...props.input} variant="borderless" aria-label={accessibleName} />
+                    ) : (
+                        <Input {...props.input} variant="borderless" aria-label={accessibleName} />
+                    )}
                 </InputSlot>
             )
             break

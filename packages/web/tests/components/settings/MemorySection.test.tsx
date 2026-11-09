@@ -41,45 +41,53 @@ const i18nMap = vi.hoisted(() => ({
     'settings.memory.engineOff': '关闭',
     'settings.memory.engineHindsight': 'Hindsight',
     'settings.memory.privacyHint': '记忆默认关闭 · 开启后对话中的关键信息会被提取并跨会话召回',
+    'settings.memory.savedHint': '已保存 · 下个新会话生效',
     'settings.memory.endpointLabel': 'API 地址',
     'settings.memory.offMachineWarning': '数据将离开本机：记忆会写入远端服务，请确认你信任该 endpoint',
     'settings.memory.endpointRequired': '开启记忆需要先填写 API 地址',
+    'settings.memory.endpointInvalid': 'API 地址无效：需要带协议的完整 URL（如 http://localhost:9999）',
     'settings.memory.tokenLabel': 'API Token',
     'settings.memory.tokenSetPlaceholder': '已设置 · 留空保持不变',
     'settings.memory.tokenUnsetPlaceholder': '粘贴 API Token（可选）',
     'settings.memory.tokenClear': '清除已存 Token',
+    'settings.memory.tokenCleared': 'Token 已清除',
+    'settings.memory.clear': '清除',
     'settings.memory.mapTitle': '记忆隔离',
+    'settings.memory.mapHint': '按工作区设置记忆隔离档位',
     'settings.memory.ruleAddWorkspace': '选择工作区添加规则',
     'settings.memory.ruleAddPath': '按路径添加（高级）',
     'settings.memory.rulePathPlaceholder': '目录路径（如 ~/notes）',
+    'settings.memory.add': '添加',
     'settings.memory.modeNormal': '独立记忆',
     'settings.memory.modeOpen': '完全共享',
     'settings.memory.modeIsolated': '完全隔离',
+    'settings.memory.modeNormalHint': '各项目独立记忆',
+    'settings.memory.modeOpenHint': '召回不过滤、全局可见',
+    'settings.memory.modeIsolatedHint': '独立记忆库',
     'settings.memory.tagLabel': '共享组名',
     'settings.memory.bankLabel': '隔离库名',
     'settings.memory.bankNameLabel': '全局记忆库名',
     'settings.memory.bankNamePlaceholder': 'mobi-global',
     'settings.memory.ruleRemove': '删除该规则',
     'settings.memory.excludedTitle': '按工作区关闭',
+    'settings.memory.excludedHint': '命中的工作区不挂载记忆',
+    'settings.memory.excludedPlaceholder': '选择或输入要排除的目录',
     'settings.memory.statusTitle': '连接状态',
     'settings.memory.checkButton': '检查连接',
     'settings.memory.checkOk': '可达（{{ms}}ms）',
     'settings.memory.checkUnreachable': '不可达：服务未起或地址错误',
     'settings.memory.checkUnauthorized': '鉴权失败：Token 错误',
     'settings.memory.openUi': '打开记忆界面',
-    'settings.memory.saveButton': '保存',
-    'settings.memory.savedHint': '已保存 · 下个新会话生效',
     'settings.memory.saveFailed': '保存失败',
     'settings.memory.loadFailed': '记忆设置加载失败，请确认 daemon 可达后重试',
-    'settings.memory.bankNameHint': '高级：覆盖全局共享池的库名，一般无需修改',
     'settings.memory.injectTitle': '自动注入',
+    'settings.memory.injectHint': '每轮自动把记忆注入上下文的方式',
     'settings.memory.injectModeLabel': '注入模式',
     'settings.memory.injectReflect': '每轮合成',
     'settings.memory.injectRecall': '直接注入检索结果',
     'settings.memory.injectPages': '仅注入目录',
     'settings.memory.injectNone': '不自动注入',
     'settings.memory.pageRefreshLabel': '知识页目录刷新间隔（轮）',
-    'settings.memory.endpointInvalid': 'API 地址无效：需要带协议的完整 URL（如 http://localhost:9999）',
 }))
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({
@@ -154,6 +162,23 @@ describe('MemorySection 默认关闭态', () => {
         // 表单不渲染——防「空草稿一次保存覆写已存配置」
         expect(screen.queryByLabelText('API 地址')).not.toBeInTheDocument()
     })
+
+    it('引擎切换即改即存：off → Hindsight 动作即落盘（部分字段提交）', async () => {
+        stableApi.memory.get.mockResolvedValue({ data: { settings: { apiTokenSet: false } } })
+        stableApi.memory.set.mockResolvedValue({ data: { settings: { apiTokenSet: false } } })
+        renderSection()
+        await waitFor(() => expect(screen.getByText(i18nMap['settings.memory.privacyHint'])).toBeInTheDocument())
+
+        // uiarc Select：pointerDown(mouse) 展开、click 选中
+        fireEvent.pointerDown(screen.getByLabelText(i18nMap['settings.memory.engineTitle']), { button: 0, pointerType: 'mouse' })
+        await waitFor(() => expect(screen.getByText(i18nMap['settings.memory.engineHindsight'])).toBeInTheDocument())
+        fireEvent.click(screen.getByText(i18nMap['settings.memory.engineHindsight']))
+
+        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalledWith({ engine: 'hindsight' }))
+        // hindsight 态展开：endpoint/token 行出现，description 换生效提示
+        expect(screen.getByLabelText('API 地址')).toBeInTheDocument()
+        expect(screen.getByText(i18nMap['settings.memory.savedHint'])).toBeInTheDocument()
+    })
 })
 
 describe('MemorySection hindsight 开启态', () => {
@@ -169,113 +194,118 @@ describe('MemorySection hindsight 开启态', () => {
         await waitFor(() => expect((screen.getByLabelText('API 地址') as HTMLInputElement).value)
             .toBe('https://api.hindsight.vectorize.io'))
         expect(screen.getByText(i18nMap['settings.memory.offMachineWarning'])).toBeInTheDocument()
-        const uiLink = screen.getByText(i18nMap['settings.memory.openUi']).closest('a')
+        // UI 链接：行 description 里的外链（a 标签），navigate 行整行也可点
+        const uiLink = screen.getByText(/ui\.hindsight\.vectorize\.io/).closest('a')
         expect(uiLink).toHaveAttribute('href', 'https://ui.hindsight.vectorize.io')
     })
 
-    it('保存 payload：apiToken 留空不携带（在场性=保持）；填写则携带', async () => {
+    it('endpoint 失焦落盘：改动才提交（部分字段）；回显值未动不发请求', async () => {
         renderSection()
         await waitFor(() => expect(screen.getByLabelText('API 地址')).toBeInTheDocument())
 
-        // 留空保存
-        fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }))  // antd 对两字 CJK 按钮自动插空格)
-        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalled())
-        let payload = stableApi.memory.set.mock.calls[0][0]
-        expect(payload.apiToken).toBeUndefined()
-        expect(payload.engine).toBe('hindsight')
-        expect(payload.rules).toEqual([])
-        expect(payload.bankName).toBe('')
-        expect(payload.disabledWorkspaces).toEqual([])
+        // 未改动失焦：不发请求
+        fireEvent.blur(screen.getByLabelText('API 地址'))
+        expect(stableApi.memory.set).not.toHaveBeenCalled()
 
-        // 填写后携带
-        fireEvent.change(screen.getByLabelText('API Token'), { target: { value: 'tok-123' } })
-        fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }))  // antd 对两字 CJK 按钮自动插空格)
-        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalledTimes(2))
-        payload = stableApi.memory.set.mock.calls[1][0]
-        expect(payload.apiToken).toBe('tok-123')
+        // 改动后失焦：只提交 endpoint 字段
+        fireEvent.change(screen.getByLabelText('API 地址'), { target: { value: 'http://localhost:9090' } })
+        fireEvent.blur(screen.getByLabelText('API 地址'))
+        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalledWith({ endpoint: 'http://localhost:9090' }))
     })
 
-    it('隔离规则编辑契约：workspace 选择添加 → 档位切换出条件覆盖 → payload 携带', async () => {
+    it('endpoint 校验：清空或无协议 URL 失焦不落盘（草稿保持让用户改）', async () => {
+        renderSection()
+        await waitFor(() => expect(screen.getByLabelText('API 地址')).toBeInTheDocument())
+
+        // 清空 → endpointRequired
+        fireEvent.change(screen.getByLabelText('API 地址'), { target: { value: '' } })
+        fireEvent.blur(screen.getByLabelText('API 地址'))
+        await waitFor(() => expect(screen.getByText(i18nMap['settings.memory.endpointRequired'])).toBeInTheDocument())
+        expect(stableApi.memory.set).not.toHaveBeenCalled()
+
+        // 无协议 URL → endpointInvalid
+        fireEvent.change(screen.getByLabelText('API 地址'), { target: { value: 'localhost:9999' } })
+        fireEvent.blur(screen.getByLabelText('API 地址'))
+        await waitFor(() => expect(screen.getByText(i18nMap['settings.memory.endpointInvalid'])).toBeInTheDocument())
+        expect(stableApi.memory.set).not.toHaveBeenCalled()
+    })
+
+    it('token 失焦落盘：填写才携带（在场性=覆盖）；留空失焦不发请求（在场性=保持）', async () => {
+        renderSection()
+        await waitFor(() => expect(screen.getByLabelText('API Token')).toBeInTheDocument())
+
+        // 留空失焦：不携带、不请求
+        fireEvent.blur(screen.getByLabelText('API Token'))
+        expect(stableApi.memory.set).not.toHaveBeenCalled()
+
+        // 填写后失焦：携带 token
+        fireEvent.change(screen.getByLabelText('API Token'), { target: { value: 'tok-123' } })
+        fireEvent.blur(screen.getByLabelText('API Token'))
+        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalledWith({ apiToken: 'tok-123' }))
+    })
+
+    it('隔离规则契约：workspace 选中即建规则（payload 携带）、档位切换即落盘（条件覆盖联动）', async () => {
         stableWorkspaces.data = [{ id: 'w-learn', name: '学习', folders: [{ path: '/x/learn' }] }]
         renderSection()
         await waitFor(() => expect(screen.getByLabelText('API 地址')).toBeInTheDocument())
 
-        // 添加 workspace 规则（默认 normal）——uiarc Combobox 聚焦即展开
+        // 添加 workspace 规则（默认 normal）——动作即落盘
         fireEvent.focus(screen.getByLabelText('选择工作区添加规则'))
-        await waitFor(() => expect(screen.getByText('学习')).toBeInTheDocument())
-        fireEvent.click(screen.getByText('学习'))
+        await waitFor(() => expect(screen.getAllByText('学习').length).toBeGreaterThan(0))
+        fireEvent.click(screen.getAllByText('学习')[0])
+        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalledWith({
+            rules: [{ target: { type: 'workspace', id: 'w-learn' }, mode: 'normal' }],
+        }))
+
+        // normal 档出现共享组名输入；切到 isolated → 共享组名消失、隔离库名出现，动作即落盘
         await waitFor(() => expect(screen.getByLabelText('共享组名')).toBeInTheDocument())
-
-        // 填共享组名
-        fireEvent.change(screen.getByLabelText('共享组名'), { target: { value: 'learn' } })
-
-        // 切到 isolated → 共享组名消失、隔离库名出现（uiarc Select：pointerDown(mouse) 展开、click 选中）
+        // uiarc Select：pointerDown(mouse) 展开、click 选中
         fireEvent.pointerDown(screen.getByLabelText('记忆隔离'), { button: 0, pointerType: 'mouse' })
         await waitFor(() => expect(screen.getByText('完全隔离')).toBeInTheDocument())
         fireEvent.click(screen.getByText('完全隔离'))
-        await waitFor(() => expect(screen.queryByLabelText('共享组名')).not.toBeInTheDocument())
+        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalledWith({
+            rules: [{ target: { type: 'workspace', id: 'w-learn' }, mode: 'isolated' }],
+        }))
         await waitFor(() => expect(screen.getByLabelText('隔离库名')).toBeInTheDocument())
-        fireEvent.change(screen.getByLabelText('隔离库名'), { target: { value: 'vault' } })
-
-        // 全局库名覆盖
-        fireEvent.change(screen.getByLabelText('全局记忆库名'), { target: { value: 'my-pool' } })
-
-        // 保存 payload：规则与覆盖值形状正确
-        fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }))
-        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalled())
-        const payload = stableApi.memory.set.mock.calls[0][0]
-        expect(payload.rules).toEqual([
-            { target: { type: 'workspace', id: 'w-learn' }, mode: 'isolated', bank: 'vault' },
-        ])
-        expect(payload.bankName).toBe('my-pool')
+        expect(screen.queryByLabelText('共享组名')).not.toBeInTheDocument()
     })
 
-    it('注入策略：mobi 默认 none / 0；改为开档后 payload 反映', async () => {
+    it('注入策略：注入模式切换即落盘；刷新间隔失焦整数化落盘', async () => {
         renderSection()
         await waitFor(() => expect(screen.getByLabelText('API 地址')).toBeInTheDocument())
 
-        // 无存量设置 → 草稿回填 mobi 默认（关）
-        fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }))
-        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalled())
-        let payload = stableApi.memory.set.mock.calls[0][0]
-        expect(payload.autoInject).toBe('none')
-        expect(payload.pageRefreshEveryTurns).toBe(0)
-
-        // 显式开档：每轮合成 + 间隔 5（uiarc Select：pointerDown(mouse) 展开、click 选中）
+        // 注入模式切换：动作即落盘（uiarc Select：pointerDown(mouse) 展开、click 选中）
         fireEvent.pointerDown(screen.getByLabelText(i18nMap['settings.memory.injectModeLabel']), { button: 0, pointerType: 'mouse' })
         await waitFor(() => expect(screen.getByText(i18nMap['settings.memory.injectReflect'])).toBeInTheDocument())
         fireEvent.click(screen.getByText(i18nMap['settings.memory.injectReflect']))
-        fireEvent.change(screen.getByLabelText(i18nMap['settings.memory.pageRefreshLabel']), { target: { value: '5' } })
+        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalledWith({ autoInject: 'reflect' }))
 
-        fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }))
-        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalledTimes(2))
-        payload = stableApi.memory.set.mock.calls[1][0]
-        expect(payload.autoInject).toBe('reflect')
-        expect(payload.pageRefreshEveryTurns).toBe(5)
+        // 刷新间隔：失焦落盘，小数被整数化（Math.round 语义：2.5 → 3）
+        const field = screen.getByLabelText(i18nMap['settings.memory.pageRefreshLabel'])
+        fireEvent.change(field, { target: { value: '2.5' } })
+        fireEvent.blur(field)
+        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalledWith({ pageRefreshEveryTurns: 3 }))
     })
 
-    it('刷新间隔：小数被整数化、清空回落 0（不刷新），不落 1（每轮）', async () => {
+    it('刷新间隔：清空回落 0（从不刷新），不落 1（每轮）', async () => {
+        // 已存非 0 值作基线：清空才有「落盘回落」可言（基线本就是 0 时清空无变化不落盘）
+        stableApi.memory.get.mockResolvedValue({
+            data: { settings: { engine: 'hindsight', endpoint: 'https://api.hindsight.vectorize.io', apiTokenSet: true, pageRefreshEveryTurns: 3 } },
+        })
         renderSection()
         await waitFor(() => expect(screen.getByLabelText('API 地址')).toBeInTheDocument())
 
         const field = screen.getByLabelText(i18nMap['settings.memory.pageRefreshLabel'])
-        // 轮数是整数计数：小数会被 shared 的 zod .int() 拒掉 → 整表单 400，用户只看到通用「保存失败」
-        fireEvent.change(field, { target: { value: '2.5' } })
-        fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }))
-        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalled())
-        expect(Number.isInteger(stableApi.memory.set.mock.calls[0][0].pageRefreshEveryTurns)).toBe(true)
-
-        // 清空：回落 0（从不刷新）。回落 1 会变成最费的「每轮」
+        expect((field as HTMLInputElement).value).toBe('3')
         fireEvent.change(field, { target: { value: '' } })
-        fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }))
-        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalledTimes(2))
-        expect(stableApi.memory.set.mock.calls[1][0].pageRefreshEveryTurns).toBe(0)
+        fireEvent.blur(field)
+        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalledWith({ pageRefreshEveryTurns: 0 }))
     })
 
     it('清除 token：提交空串（在场性=清除）', async () => {
         renderSection()
         await waitFor(() => expect(screen.getByText(i18nMap['settings.memory.tokenClear'])).toBeInTheDocument())
-        fireEvent.click(screen.getByText(i18nMap['settings.memory.tokenClear']))
+        fireEvent.click(screen.getByText(i18nMap['settings.memory.clear']))
         await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalledWith({ apiToken: '' }))
     })
 
