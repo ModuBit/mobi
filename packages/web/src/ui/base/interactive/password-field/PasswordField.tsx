@@ -18,15 +18,17 @@
 // 本地修改：①label 改可选——可选时不渲染 label 节点（设置行左标签/FieldRow 自管 label
 //   的行内场景，壳内 label 是多余的）②motionTokens 改引 @/ui/base/motion/motionTokens
 // ③className 挂组件根（field）——布局尺寸从根上给，消费方无需包裹 div
-// ④messages 默认文案改走 i18n（上游默认英文；仍可传 messages 覆写）
+// ④messages 默认文案改走 i18n（ui.passwordField.*；上游默认英文，仍可传 messages 覆写）
 // ⑤补 error prop——与 input 同语言（aria-invalid 红边 + alert 红字；上游仅 description）
+// ⑥消息动效链收拢 fieldMessageShared（与 input 同源，reduced-motion 首帧修复随之同步）
 "use client";
 
-import { forwardRef, useEffect, useId, useRef, useState } from "react";
+import { forwardRef, useId, useState } from "react";
 import type { InputHTMLAttributes } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
 import { useTranslation } from "react-i18next";
+import { FieldMessage } from "@/ui/base/interactive/fieldMessageShared";
 import styles from "./password-field.module.css";
 
 export interface PasswordFieldMessages { showPassword: string; hidePassword: string }
@@ -50,42 +52,10 @@ function EyeMorph({ slashed }: { slashed: boolean }) {
   </svg>;
 }
 
-/** Changed words rise in and unblur while unchanged words hold still. Assistive tech reads the plain copy. */
-function MotionText({ text }: { text: string }) {
-  const reduced = useReducedMotion();
-  const words = text.split(" ");
-  return <><span className={styles.srOnly}>{text}</span><span className={styles.words} aria-hidden="true"><AnimatePresence initial={false} mode="popLayout">{words.map((word, index) => <motion.span key={`${index}:${word}`} className={styles.word}
-    initial={reduced ? { opacity: 0 } : { opacity: 0, y: "0.35em", filter: `blur(${motionTokens.blur.soft}px)` }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-    exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, y: "-0.35em", filter: `blur(${motionTokens.blur.subtle}px)`, transition: { duration: motionTokens.duration.exit, ease: [...motionTokens.ease.exit] } }}
-    transition={reduced ? { duration: motionTokens.duration.instant } : { duration: motionTokens.duration.standard, ease: [...motionTokens.ease.enter] }}>{index < words.length - 1 ? `${word} ` : word}</motion.span>)}</AnimatePresence></span></>;
-}
-
-/** Helper and error copy: the row opens its height on a spring, then the words settle in. */
-function FieldMessage({ id, text, className, alert }: { id?: string; text?: string; className?: string; alert?: boolean }) {
-  return <AnimatePresence initial={false}>{text ? <MessageRow key="message" id={id} text={text} className={className} alert={alert} /> : null}</AnimatePresence>;
-}
-
-/** The row tracks the measured copy, so a longer message that wraps opens its next line instead of snapping. */
-function MessageRow({ id, text, className, alert }: { id?: string; text: string; className?: string; alert?: boolean }) {
-  const reduced = useReducedMotion();
-  const copyRef = useRef<HTMLSpanElement>(null);
-  const [height, setHeight] = useState<number | "auto">("auto");
-  useEffect(() => {
-    const node = copyRef.current;
-    if (!node || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(([entry]) => { if (entry) setHeight(entry.borderBoxSize?.[0]?.blockSize ?? node.offsetHeight); });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-  return <motion.span className={styles.messageSlot} initial={{ height: 0, opacity: 0 }} animate={{ height, opacity: 1 }} exit={{ height: 0, opacity: 0, transition: reduced ? { duration: 0 } : { height: motionTokens.spring.smooth, opacity: { duration: motionTokens.duration.instant } } }} transition={reduced ? { duration: 0 } : { height: motionTokens.spring.smooth, opacity: { duration: motionTokens.duration.fast } }}>
-    <motion.span ref={copyRef} id={id} className={className} role={alert ? "alert" : undefined} initial={reduced ? false : { y: "0.35em", filter: `blur(${motionTokens.blur.soft}px)` }} animate={{ y: 0, filter: "blur(0px)" }} transition={{ duration: reduced ? 0 : motionTokens.duration.standard, ease: [...motionTokens.ease.enter] }}><MotionText text={text} /></motion.span>
-  </motion.span>;
-}
-
 export const PasswordField = forwardRef<HTMLInputElement, PasswordFieldProps>(function PasswordField({ label, description, error, messages: messagesProp, id, className, ...props }, ref) {
   const { t } = useTranslation();
   // 上游默认英文；这里默认值取 i18n，messages 仍可覆写
-  const messages: PasswordFieldMessages = { showPassword: t("settings.passwordField.show"), hidePassword: t("settings.passwordField.hide"), ...messagesProp };
+  const messages: PasswordFieldMessages = { showPassword: t("ui.passwordField.show"), hidePassword: t("ui.passwordField.hide"), ...messagesProp };
   const generated = useId(); const controlId = id ?? generated; const [visible, setVisible] = useState(false); const [toggled, setToggled] = useState(false);
   const hintId = description ? `${controlId}-description` : undefined;
   const errorId = error ? `${controlId}-error` : undefined;

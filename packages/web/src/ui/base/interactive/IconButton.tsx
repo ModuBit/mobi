@@ -64,6 +64,9 @@ const StyledButton = styled.button<{
     }
 `
 
+/** 行内图标钮统一热区档：26 触屏点不中，行内场景（设置行/表单行）一律 32 */
+export const ROW_ICON_BUTTON_SIZE = 32
+
 interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
     icon: ReactNode
     active?: boolean

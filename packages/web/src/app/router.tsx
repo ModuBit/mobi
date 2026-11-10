@@ -19,7 +19,7 @@ import { createRootRoute, createRoute, createRouter, redirect, useNavigate } fro
 import { App } from './App'
 import { lazyRoute, routeChunkLoaders } from '@/app/routeChunks'
 import { SETTINGS_WIDE_QUERY } from '@/features/settings/sections/registry'
-import { readLastSettingsSection } from '@/features/settings/sections/lastSettingsSection'
+import { DEFAULT_SETTINGS_SECTION, readLastSettingsSection } from '@/features/settings/sections/lastSettingsSection'
 
 // 页面组件用 React.lazy 拆成独立 chunk（加载器与预取定义见 @/app/routeChunks，
 // 该模块独立存在以避免 App ↔ router 循环依赖）。App（root，含 SSEProvider）保持
@@ -105,18 +105,12 @@ const newSessionRoute = createRoute({
 })
 
 // 旧归档页路由：入口收编进设置页（/settings/archived），深链 replace 重定向不留历史项
-function ArchivedRedirect() {
-    const navigate = useNavigate()
-    useEffect(() => {
-        void navigate({ to: '/settings/archived', replace: true })
-    }, [navigate])
-    return null
-}
-
 const archivedRoute = createRoute({
     getParentRoute: () => mainLayoutRoute,
     path: 'archived',
-    component: ArchivedRedirect,
+    beforeLoad: () => {
+        throw redirect({ to: '/settings/archived', replace: true })
+    },
 })
 
 // 设置页 layout 路由（左侧分区导航 / mobile 子页由 SettingsPage 响应式分流）。
@@ -125,7 +119,7 @@ const archivedRoute = createRoute({
 function SettingsSectionRedirect() {
     const navigate = useNavigate()
     useEffect(() => {
-        void navigate({ to: `/settings/${readLastSettingsSection() ?? 'notifications'}`, replace: true })
+        void navigate({ to: `/settings/${readLastSettingsSection() ?? DEFAULT_SETTINGS_SECTION}`, replace: true })
     }, [navigate])
     return null
 }
@@ -142,7 +136,7 @@ const settingsIndexRoute = createRoute({
     path: '/',
     beforeLoad: () => {
         if (window.matchMedia(SETTINGS_WIDE_QUERY).matches) {
-            const last = readLastSettingsSection() ?? 'notifications'
+            const last = readLastSettingsSection() ?? DEFAULT_SETTINGS_SECTION
             throw redirect({ to: `/settings/${last}` })
         }
     },

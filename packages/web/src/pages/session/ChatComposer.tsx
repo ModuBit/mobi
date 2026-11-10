@@ -311,8 +311,11 @@ export function ChatComposer(props: ChatComposerProps) {
     const capabilities = useDirectoryCapabilities(capTarget)
     const { data: commandsData, isLoading: commandsLoading } = useDirectoryCommands(capabilities)
 
-    // 控件禁用：会话失活/被归档时禁用输入与拖拽，并需重置拖拽计数避免覆盖层残留
-    const controlsDisabled = disabled || (!active && !allowSendWhenInactive)
+    // 失活覆盖谓词：会话失活/被归档（允许发送时除外）。单一命名，Sender 遮罩与
+    // 控件禁用（controlsDisabled）共引——失活判据加条件只改这里
+    const inactiveCover = !active && !allowSendWhenInactive
+    // 控件禁用：失活时禁用输入与拖拽，并需重置拖拽计数避免覆盖层残留
+    const controlsDisabled = disabled || inactiveCover
 
     // 附件管理（共享 hook）
     const {
@@ -689,8 +692,10 @@ export function ChatComposer(props: ChatComposerProps) {
         setQuotes(prev => prev.filter(q => q.uid !== uid))
     }, [])
 
-    const showInactiveCover = !active && !allowSendWhenInactive
     const showLocalModeCover = active && mode === 'local'
+    // 参数条按钮闸：控件禁用 + 本地模式遮罩（按钮不持有焦点，挂 DOM disabled 无失焦风险，
+    // 与 senderDisabled doc 的「textarea 闸」语义不同级）
+    const chromeDisabled = controlsDisabled || showLocalModeCover
     const isBashMode = text.startsWith('! ')
 
     // 下一轮建议(SDK prompt_suggestion, 瞬时): 有值则渲染 chip, 无则省略
@@ -795,7 +800,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     onSubmit={handleSubmit}
                     submitType={hasFinePointer ? 'enter' : 'shiftEnter'}
                     placeholder={isBashMode ? t('composer.bashPlaceholder') : t(`composer.placeholders.${placeholderIdx.current}`)}
-                    disabled={resolveSenderDisabled({ inactiveCover: showInactiveCover, localModeCover: showLocalModeCover })}
+                    disabled={resolveSenderDisabled({ inactiveCover, localModeCover: showLocalModeCover })}
                     loading={senderLoading}
                     autoSize={{ minRows: 1, maxRows: 5 }}
                     onKeyDown={handleKeyDown}
@@ -818,7 +823,7 @@ export function ChatComposer(props: ChatComposerProps) {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                 {/* 附件面板：文件/拍照（移动端）/画板聚合入口（Codex 风格富面板）——左端固定锚 */}
                                 <AttachPanel
-                                    disabled={controlsDisabled || showLocalModeCover || hasPendingPermission}
+                                    disabled={chromeDisabled || hasPendingPermission}
                                     onAttach={handleAttach}
                                     onSketch={() => handleOpenSketch()}
                                 />
@@ -834,7 +839,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                                 iconOnly
                                                 value={permissionMode ?? 'default'}
                                                 onChange={v => onPermissionModeChange?.(v as PermissionMode)}
-                                                disabled={controlsDisabled || showLocalModeCover}
+                                                disabled={chromeDisabled}
                                                 options={permissionModeIconOptions}
                                             />
                                         ),
@@ -853,7 +858,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                                 onModelChange={v => onModelChange(v)}
                                                 onEffortChange={onEffortChange ? e => onEffortChange(e) : undefined}
                                                 onFastModeChange={onFastModeChange}
-                                                disabled={controlsDisabled || showLocalModeCover}
+                                                disabled={chromeDisabled}
                                             />
                                         ),
                                     }] : []),
@@ -867,7 +872,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                                 availableStyles={availableOutputStyles}
                                                 running={running}
                                                 clearInProgress={clearInProgress}
-                                                disabled={controlsDisabled || showLocalModeCover}
+                                                disabled={chromeDisabled}
                                             />
                                         ),
                                     },
@@ -950,7 +955,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 </div>
 
                 {/* 未激活覆盖层 */}
-                {showInactiveCover && (
+                {inactiveCover && (
                     <ActivateCover
                         className="activate-cover-mask"
                         loading={activatePending}

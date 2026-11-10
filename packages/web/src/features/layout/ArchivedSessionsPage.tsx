@@ -47,16 +47,15 @@ const { useToken } = antTheme
 
 /**
  * 页面壳（票 09 分页改造）：不再页面级滚动——滚动容器移交 Listy（虚拟滚动 +
- * 触底加载），壳只做 flex 纵向布局与安全区内衬。
+ * 触底加载），壳只做 flex 纵向布局与安全区内衬。内衬归设置壳（layout:'fill' 满
+ * 高内滚链），只保留底部安全区避让。
  */
-const PageShell = styled.div<{ $embedded: boolean }>`
+const PageShell = styled.div`
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    /* page：自带水平/顶内衬；section（设置分区嵌入）：内衬归设置壳（layout:'fill' 满
-     * 高内滚链），只保留底部安全区避让 */
-    padding: ${p => p.$embedded ? '0 0 max(24px, env(safe-area-inset-bottom))' : '12px 20px max(24px, env(safe-area-inset-bottom))'};
+    padding: 0 0 max(24px, env(safe-area-inset-bottom));
 `
 
 const Inner = styled.div`
@@ -86,25 +85,6 @@ const TitleRow = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['toke
 
     .title-delete-all {
         margin-left: auto;
-    }
-`
-
-const TitleAnchorSlot = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-`
-
-const PageTitle = styled.h1<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
-    margin: 0;
-    font-size: 28px;
-    font-weight: 600;
-    color: ${p => p.$token.colorText};
-
-    /* 移动端对齐设置页头部标题（Title level 5 = 16px），断点同 SETTINGS_WIDE_QUERY */
-    @media (max-width: 991.98px) {
-        font-size: 16px;
     }
 `
 
@@ -396,17 +376,6 @@ const WORKSPACE_ALL = '__all__'
 /** 「未归入工作区」的过滤值 = wire 哨兵（单源在 @mobi/shared，UI 侧复用同一值） */
 const WORKSPACE_NONE = ARCHIVED_WORKSPACE_NONE
 
-interface ArchivedSessionsPageProps {
-    /** 头部锚位（PC 侧栏开关 / 移动端汉堡），渲染进标题行左缘——本页无独立头部横条 */
-    headerLeft?: ReactNode
-    /**
-     * 形态：'page'（缺省，独立路由页——自带大标题行）| 'section'（设置分区嵌入——
-     * 页题归设置壳（SectionTitle），标题行只留右缘「全部删除」；水平/顶部内衬由
-     * 设置壳提供（layout: 'fill' 满高内滚链），本组件只保留底部安全区避让）
-     */
-    variant?: 'page' | 'section'
-}
-
 /**
  * 归档页本体（票 05/08/09）：数据走 daemon 游标分页（归档时间倒序，项目过滤下推），
  * antd Listy 承载渲染——虚拟滚动（virtual + ResizeObserver 量高）、按工作区分组、
@@ -414,10 +383,10 @@ interface ArchivedSessionsPageProps {
  * ChatGPT 形态），色块卡只包行列表。批量删除/批量取消归档走 daemon 批量端点，
  * 范围 = 当前过滤条件（不是「已加载页」）——「全部删除」保持真全删语义。
  * 删除（单条/组级/页面级）保留输入确认与逐条报告。
- * 组装壳（页面容器）在 pages/ArchivedPage，本组件只管列表呈现。
+ * 页题归设置壳（SectionTitle），水平/顶部内衬由设置壳提供（layout: 'fill' 满高内滚链），
+ * 本组件只保留底部安全区避让；组装壳（设置分区路由）在 pages/SettingsArchivedSection。
  */
-export function ArchivedSessionsPage({ headerLeft, variant = 'page' }: ArchivedSessionsPageProps) {
-    const embedded = variant === 'section'
+export function ArchivedSessionsPage() {
     const { token } = useToken()
     const { t } = useTranslation()
     const { message: messageApi, notification } = App.useApp()
@@ -692,15 +661,8 @@ export function ArchivedSessionsPage({ headerLeft, variant = 'page' }: ArchivedS
     // 加载中先给占位：标题行（含头部锚位）恒渲染，列表区给加载占位
     if (isLoading) {
         return (
-            <PageShell $embedded={embedded}>
+            <PageShell>
                 <Inner>
-                    {/* section 形态页题归设置壳，加载态无「全部删除」可放——标题行整体省略 */}
-                    {!embedded && (
-                        <TitleRow $token={token}>
-                            {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
-                            <PageTitle $token={token}>{t('archived.title')}</PageTitle>
-                        </TitleRow>
-                    )}
                     {/* 工具条与就绪态同形同尺寸：搜索框本就禁用，占位文案直接沿用；
                      * 项目过滤选项来自首屏数据，先以同宽骨架占位，数据到达时不跳动 */}
                     <ToolBar>
@@ -745,14 +707,8 @@ export function ArchivedSessionsPage({ headerLeft, variant = 'page' }: ArchivedS
 
     if (total === 0) {
         return (
-            <PageShell $embedded={embedded}>
+            <PageShell>
                 <Inner>
-                    {!embedded && (
-                        <TitleRow $token={token}>
-                            {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
-                            <PageTitle $token={token}>{t('archived.title')}</PageTitle>
-                        </TitleRow>
-                    )}
                     {toolBar}
                     <EmptyState $token={token}>
                         <ArchiveIcon size={32} />
@@ -764,17 +720,11 @@ export function ArchivedSessionsPage({ headerLeft, variant = 'page' }: ArchivedS
     }
 
     return (
-        <PageShell $embedded={embedded}>
+        <PageShell>
             <Inner>
-                {/* 标题行：page=左锚位 + 大标题 + 右缘全部删除；section=仅右缘全部删除
-                 *（页题归设置壳），范围 = 当前过滤条件，非「已加载页」 */}
+                {/* 标题行：页题归设置壳，本行只剩右缘「全部删除」——
+                 * 范围 = 当前过滤条件，非「已加载页」 */}
                 <TitleRow $token={token}>
-                    {!embedded && (
-                        <>
-                            {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
-                            <PageTitle $token={token}>{t('archived.title')}</PageTitle>
-                        </>
-                    )}
                     <Button
                         className="title-delete-all"
                         variant="secondary"

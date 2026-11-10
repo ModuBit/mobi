@@ -18,10 +18,12 @@
 // 本地修改：①label 改可选——可选时不渲染 label 节点（行内/侧栏搜索靠 placeholder 自述，
 //   无障碍名退化用 aria-label 或 placeholder）②motionTokens 改引 @/ui/base/motion/motionTokens
 // ③className 挂组件根（field）——布局尺寸从根上给（上游挂在 input 上）
-// ④aria-label "Clear search" 改走 i18n（settings.searchField.clear）
+// ④aria-label "Clear search" 改走 i18n（ui.searchField.clear）
+// ⑤shell 圆角暴露 --search-field-radius 变量 seam——胶囊形态由调用方声明意图，
+//   不再依赖「field 的直接子即 shell」的内部 DOM 结构
 "use client";
 
-import { forwardRef, useId, useRef } from "react";
+import { forwardRef, useCallback, useId, useRef } from "react";
 import type { InputHTMLAttributes } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Search, X as Xmark } from "lucide-react";
@@ -38,10 +40,11 @@ export interface SearchFieldProps extends Omit<InputHTMLAttributes<HTMLInputElem
 export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(function SearchField({ label, value, onValueChange, id, className, ...props }, ref) {
   const { t } = useTranslation();
   const generated = useId(); const controlId = id ?? generated; const reduced = useReducedMotion(); const inputRef = useRef<HTMLInputElement | null>(null);
-  const setRefs = (node: HTMLInputElement | null) => { inputRef.current = node; if (typeof ref === "function") ref(node); else if (ref) ref.current = node; };
+  // useCallback 稳定回调 ref 身份：受控组件每次键入都重渲染，内联箭头会让 React 每个 commit 都解绑/重绑
+  const setRefs = useCallback((node: HTMLInputElement | null) => { inputRef.current = node; if (typeof ref === "function") ref(node); else if (ref) ref.current = node; }, [ref]);
   // Clearing returns focus to the field, since the clear button unmounts under the pointer.
   function clear() { onValueChange(""); inputRef.current?.focus(); }
-  const clearLabel = t("settings.searchField.clear");
+  const clearLabel = t("ui.searchField.clear");
   return <div className={[styles.field, className].filter(Boolean).join(" ")}>
     {label && <label htmlFor={controlId}>{label}</label>}
     <div className={styles.shell} data-filled={value ? "true" : undefined}>

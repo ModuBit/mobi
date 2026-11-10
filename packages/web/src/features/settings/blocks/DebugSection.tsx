@@ -37,6 +37,7 @@ import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { CardHint } from '@/features/settings/blocks/CardHint'
 import { SettingRow } from '@/features/settings/blocks/SettingRow'
 import { IconButton } from '@/ui/base/interactive/IconButton'
+import { ROW_ICON_BUTTON_SIZE } from '@/ui/base/interactive/IconButton'
 
 /** 下载诊断数据为 JSON 文件（内容等价 window.__mobiDiag.dump()） */
 function downloadDiagData(message: ReturnType<typeof App.useApp>['message'], t: (k: string) => string): void {
@@ -104,8 +105,7 @@ export function DebugSection() {
                 action={
                     <IconButton
                         icon={<DownloadOutlined />}
-                        // 32：SettingRow 行内图标钮统一热区档（26 触屏点不中）
-                        size={32}
+                        size={ROW_ICON_BUTTON_SIZE}
                         aria-label={t('debug.download')}
                         onClick={handleDownload}
                     />

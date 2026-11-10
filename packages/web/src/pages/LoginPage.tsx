@@ -16,7 +16,7 @@
 
 import { Form, Input, App } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
-import { IconButton } from '@/ui/base/interactive/IconButton'
+import { IconButton, ROW_ICON_BUTTON_SIZE } from '@/ui/base/interactive/IconButton'
 import {
     SunOutlined,
     MoonOutlined,
@@ -306,7 +306,7 @@ export function LoginPage() {
                     <IconButton
                         icon={isDark ? <SunOutlined /> : <MoonOutlined />}
                         aria-label={t('common.toggleTheme')}
-                        size={32}
+                        size={ROW_ICON_BUTTON_SIZE}
                         circle
                         onClick={toggleTheme}
                     />

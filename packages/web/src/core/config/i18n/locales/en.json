@@ -34,6 +34,15 @@
     "optionsCount_one": "{{count}} option",
     "optionsCount_other": "{{count}} options"
   },
+  "ui": {
+    "passwordField": {
+      "show": "Show password",
+      "hide": "Hide password"
+    },
+    "searchField": {
+      "clear": "Clear search"
+    }
+  },
   "time": {
     "justNow": "just now",
     "minutesAgo": "{{count}}m ago",
@@ -228,7 +237,6 @@
     "lastActiveAt": "Last active",
     "archivedAtLabel": "Archived at",
     "groupActions": "Project actions",
-    "title": "Archived Sessions",
     "empty": "No archived sessions",
     "loadMore": "Load more",
     "loadingMore": "Loading…",
@@ -990,14 +998,7 @@
       }
     },
     "search": "Search settings",
-    "searchEmpty": "No matching settings",
-    "passwordField": {
-      "show": "Show password",
-      "hide": "Hide password"
-    },
-    "searchField": {
-      "clear": "Clear search"
-    }
+    "searchEmpty": "No matching settings"
   },
   "debug": {
     "title": "Debug",

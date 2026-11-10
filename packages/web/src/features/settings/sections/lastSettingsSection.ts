@@ -18,6 +18,9 @@ import { SETTINGS_SECTIONS, type SettingsSection } from './registry'
 
 const STORAGE_KEY = 'settings.lastSection'
 
+/** 「记住上次分区」的缺省：无记录/脏数据时的落点（PC index 重定向与 404 兜底共用，勿再散写字面量） */
+export const DEFAULT_SETTINGS_SECTION: SettingsSection['id'] = 'notifications'
+
 /**
  * 上次访问分区的持久化存取（「记住上次分区」）。
  * 读侧校验：id 必须是已知分区且当前可见（debug 解锁后写入的 debug，锁定后读回 null），

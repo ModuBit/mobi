@@ -20,6 +20,7 @@ import { Input } from '@/ui/base/interactive/input/Input'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { IconButton } from '@/ui/base/interactive/IconButton'
+import { ROW_ICON_BUTTON_SIZE } from '@/ui/base/interactive/IconButton'
 // uiarc 自管件：单选/可搜索选择（antd Select 已全站清零；tags 模式归 MultiSelect mode="tags"）
 import { Select as UiSelect } from '@/ui/base/interactive/select/Select'
 import { MultiSelect } from '@/ui/base/interactive/multi-select/MultiSelect'
@@ -374,8 +375,7 @@ export function MemorySection() {
                                         </AppTooltip>
                                     )}
                                     <IconButton
-                                        // 32：与同行 select 视觉高度对齐；22 的图标钮热区触屏点不中
-                                        icon={<Trash2 size={14} />} size={32}
+                                        icon={<Trash2 size={14} />} size={ROW_ICON_BUTTON_SIZE}
                                         aria-label={t('settings.memory.ruleRemove')}
                                         onClick={() => { void draftApi.commit('rules', { rules: rules.filter((_, j) => j !== i) }) }}
                                     />

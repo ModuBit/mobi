@@ -16,6 +16,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { theme as antTheme } from 'antd'
+import { css } from '@emotion/react'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft } from 'lucide-react'
@@ -156,14 +157,21 @@ const SectionMain = styled.main<{ $fill: boolean }>`
     flex: 1;
     min-width: 0;
     overflow-y: ${p => (p.$fill ? 'hidden' : 'auto')};
-    ${p => (p.$fill ? 'display: flex;\n    flex-direction: column;' : '')}
+    ${p => p.$fill && css`
+        display: flex;
+        flex-direction: column;
+    `}
     padding: 28px 32px max(28px, env(safe-area-inset-bottom));
 `
 
 const SectionMainInner = styled.div<{ $fill: boolean }>`
     max-width: 860px;
     margin: 0 auto;
-    ${p => (p.$fill ? 'height: 100%;\n    display: flex;\n    flex-direction: column;' : '')}
+    ${p => p.$fill && css`
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    `}
 `
 
 /** 分区页题（Codex 形态）：内容区顶部大字号分区名，与组卡小标题（组标签层）区分层级 */
@@ -348,6 +356,7 @@ export function SettingsPage() {
             const target = resolveSettingsLeaveTarget()
             void navigate({ to: target.to })
         }
+        const fill = active?.layout === 'fill'
         return (
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
                 <MobileHeader $token={token}>
@@ -359,7 +368,7 @@ export function SettingsPage() {
                     <MobileHeaderTitle $token={token}>{t(titleKey)}</MobileHeaderTitle>
                     <MobileHeaderSide />
                 </MobileHeader>
-                <SettingsContent $token={token} $fill={active?.layout === 'fill'}>
+                <SettingsContent $token={token} $fill={fill}>
                     <Suspense fallback={<SectionFallback />}>
                         <Outlet />
                     </Suspense>
@@ -369,11 +378,12 @@ export function SettingsPage() {
     }
 
     // PC：全屏接管壳（侧栏 keyword 状态收在 Sidebar 内，键入不重渲染 Outlet 子树）
+    const fill = active?.layout === 'fill'
     return (
         <SettingsTakeover>
             <Sidebar $token={token} active={active} goBack={goBack} />
-            <SectionMain $fill={active?.layout === 'fill'}>
-                <SectionMainInner $fill={active?.layout === 'fill'}>
+            <SectionMain $fill={fill}>
+                <SectionMainInner $fill={fill}>
                     <SectionTitle $token={token}>{t(active?.titleKey ?? 'settings.title')}</SectionTitle>
                     <Suspense fallback={<SectionFallback />}>
                         <Outlet />

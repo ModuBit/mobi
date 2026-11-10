@@ -34,6 +34,15 @@
     "optionsCount_one": "{{count}} 个选项",
     "optionsCount_other": "{{count}} 个选项"
   },
+  "ui": {
+    "passwordField": {
+      "show": "显示密码",
+      "hide": "隐藏密码"
+    },
+    "searchField": {
+      "clear": "清除搜索"
+    }
+  },
   "time": {
     "justNow": "刚刚",
     "minutesAgo": "{{count}}分钟前",
@@ -228,7 +237,6 @@
     "lastActiveAt": "最后活跃",
     "archivedAtLabel": "归档时间",
     "groupActions": "项目操作",
-    "title": "已归档会话",
     "empty": "暂无归档会话",
     "loadMore": "加载更多",
     "loadingMore": "加载中…",
@@ -981,14 +989,7 @@
       }
     },
     "search": "搜索设置",
-    "searchEmpty": "没有匹配的设置",
-    "passwordField": {
-      "show": "显示密码",
-      "hide": "隐藏密码"
-    },
-    "searchField": {
-      "clear": "清除搜索"
-    }
+    "searchEmpty": "没有匹配的设置"
   },
   "debug": {
     "title": "调试",

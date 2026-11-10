@@ -65,10 +65,9 @@ const FloatingSearch = styled(SearchField)<{ $token: Token }>`
     z-index: 10;
     box-shadow: ${p => `0 4px 16px ${p.$token.colorBgMask}`};
 
-    /* shell 圆角跟随胶囊（field 的直接子即 shell） */
-    & > div {
-        border-radius: var(--radius-pill);
-    }
+    /* 胶囊形态：经 --search-field-radius 声明意图（SearchField 公开 seam），
+       不 reach-in 组件内部 DOM 结构 */
+    --search-field-radius: var(--radius-pill);
 `
 
 /**
