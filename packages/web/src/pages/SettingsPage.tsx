@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { theme as antTheme, Input } from 'antd'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
@@ -59,18 +59,21 @@ const SidebarScroll = styled.div`
     gap: 12px;
 `
 
-const BackButton = styled.button<{ $token: Token }>`
+/** 头部行：返回 icon 与「设置」标题同一行（整行可点 = 返回），标题字号与导航层级匹配 */
+const SettingsHeaderRow = styled.button<{ $token: Token }>`
     display: flex;
     align-items: center;
-    gap: 6px;
-    align-self: flex-start;
+    gap: 8px;
+    align-self: stretch;
     padding: 6px 10px 6px 6px;
     border: none;
     background: transparent;
     cursor: pointer;
     border-radius: ${p => p.$token.borderRadius}px;
-    color: ${p => p.$token.colorTextSecondary};
-    font-size: 13px;
+    color: ${p => p.$token.colorText};
+    font-size: 16px;
+    font-weight: 600;
+    text-align: left;
     &:hover { background: ${p => p.$token.colorFillQuaternary}; }
     &:focus-visible {
         outline: 2px solid ${p => p.$token.colorPrimary};
@@ -78,15 +81,8 @@ const BackButton = styled.button<{ $token: Token }>`
     }
 `
 
-const SidebarTitle = styled.div<{ $token: Token }>`
-    padding: 0 6px;
-    font-size: 15px;
-    font-weight: 600;
-    color: ${p => p.$token.colorText};
-`
-
 const SearchSlot = styled.div`
-    padding: 0 6px;
+    padding: 0 2px;
 `
 
 const NavGroups = styled.nav`
@@ -156,6 +152,15 @@ const SectionMain = styled.main`
 const SectionMainInner = styled.div`
     max-width: 860px;
     margin: 0 auto;
+`
+
+/**
+ * 分区 chunk 拉取占位：分区是独立 lazy chunk，suspend 必须在本层被接住——
+ * 冒泡到 App 根级 Suspense 会全屏替换（设置侧栏一起消失，切换分区看起来整页在 loading）。
+ * 形态与分区自身查询占位（Placeholder min-height）一致，chunk 拉取完成后无缝续接。
+ */
+const SectionFallback = styled.div`
+    min-height: 240px;
 `
 
 /** mobile 形态沿用的内容容器：避让 home 指示条 */
@@ -241,19 +246,18 @@ function Sidebar({ $token, active, goBack }: SidebarProps) {
     return (
         <SettingsSidebar $token={$token}>
             <SidebarScroll>
-                <BackButton $token={$token} aria-label={t('common.back')} onClick={goBack}>
-                    <ChevronLeft size={16} />
-                    {t('common.back')}
-                </BackButton>
-                <SidebarTitle $token={$token}>{t('settings.title')}</SidebarTitle>
+                {/* 头部行：返回 icon + 标题同一行，整行可点 = 返回（含离开设置） */}
+                <SettingsHeaderRow $token={$token} aria-label={t('common.back')} onClick={goBack}>
+                    <ChevronLeft size={18} />
+                    {t('settings.title')}
+                </SettingsHeaderRow>
                 <SearchSlot>
                     <Input
                         allowClear
                         value={keyword}
                         onChange={(e) => setKeyword(e.target.value)}
                         placeholder={t('settings.search')}
-                        prefix={<Search size={14} />}
-                        size="small"
+                        prefix={<Search size={15} />}
                         aria-label={t('settings.search')}
                     />
                 </SearchSlot>
@@ -335,7 +339,9 @@ export function SettingsPage() {
                     <MobileHeaderSide />
                 </MobileHeader>
                 <SettingsContent $token={token}>
-                    <Outlet />
+                    <Suspense fallback={<SectionFallback />}>
+                        <Outlet />
+                    </Suspense>
                 </SettingsContent>
             </div>
         )
@@ -347,7 +353,9 @@ export function SettingsPage() {
             <Sidebar $token={token} active={active} goBack={goBack} />
             <SectionMain>
                 <SectionMainInner>
-                    <Outlet />
+                    <Suspense fallback={<SectionFallback />}>
+                        <Outlet />
+                    </Suspense>
                 </SectionMainInner>
             </SectionMain>
         </SettingsTakeover>
