@@ -159,6 +159,15 @@ const SectionMainInner = styled.div`
     margin: 0 auto;
 `
 
+/** 分区页题（Codex 形态）：内容区顶部大字号分区名，与组卡小标题（组标签层）区分层级 */
+const SectionTitle = styled.h1<{ $token: Token }>`
+    margin: 0 0 16px;
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: ${p => p.$token.colorText};
+`
+
 /**
  * 分区 chunk 拉取占位：分区是独立 lazy chunk，suspend 必须在本层被接住——
  * 冒泡到 App 根级 Suspense 会全屏替换（设置侧栏一起消失，切换分区看起来整页在 loading）。
@@ -355,6 +364,7 @@ export function SettingsPage() {
             <Sidebar $token={token} active={active} goBack={goBack} />
             <SectionMain>
                 <SectionMainInner>
+                    <SectionTitle $token={token}>{t(active?.titleKey ?? 'settings.title')}</SectionTitle>
                     <Suspense fallback={<SectionFallback />}>
                         <Outlet />
                     </Suspense>

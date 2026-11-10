@@ -68,9 +68,9 @@ describe('SettingsPage 响应式壳', () => {
         await renderLayout('/settings/notifications')
         // 等子路由 Outlet 内容出现（RouterProvider 异步 commit）后再断言
         expect(await screen.findByTestId('child-outlet')).toBeTruthy()
-        expect(screen.getByText('settings.sections.notifications.title')).toBeTruthy()
-        expect(screen.getByText('settings.sections.webTools.title')).toBeTruthy()
-        // debug 入口默认不可见（未解锁）
+        // 分区名两处出现：侧栏导航项 + 内容区页题（Codex 形态）；debug 入口默认不可见（未解锁）
+        expect(screen.getAllByText('settings.sections.notifications.title')).toHaveLength(2)
+        expect(screen.getAllByText('settings.sections.webTools.title')).toHaveLength(1)
         expect(screen.queryByText('settings.sections.debug.title')).toBeNull()
         // 接管壳三件：返回键 / 分区搜索 / 分组标题
         expect(screen.getByRole('button', { name: 'common.back' })).toBeTruthy()
@@ -84,14 +84,14 @@ describe('SettingsPage 响应式壳', () => {
         await renderLayout('/settings/notifications')
         expect(await screen.findByTestId('child-outlet')).toBeTruthy()
         const search = screen.getByRole('textbox', { name: 'settings.search' })
-        // i18n mock 下 titleKey 即文案，'notifications' 命中通知分区
+        // i18n mock 下 titleKey 即文案，'notifications' 命中通知分区；页题恒显示当前分区，不受过滤影响
         fireEvent.change(search, { target: { value: 'notifications' } })
-        expect(screen.getByText('settings.sections.notifications.title')).toBeTruthy()
+        expect(screen.getAllByText('settings.sections.notifications.title')).toHaveLength(2)
         expect(screen.queryByText('settings.sections.webTools.title')).toBeNull()
-        // 无命中 → 空态提示、分区行全部消失
+        // 无命中 → 空态提示、侧栏分区行全部消失（页题属内容区，仍显示当前分区）
         fireEvent.change(search, { target: { value: '不存在的关键词xyz' } })
         expect(screen.getByText('settings.searchEmpty')).toBeTruthy()
-        expect(screen.queryByText('settings.sections.notifications.title')).toBeNull()
+        expect(screen.getAllByText('settings.sections.notifications.title')).toHaveLength(1)
     })
 
     it('mobile（<992px）：不渲染分区导航，渲染子内容 + 返回键', async () => {
