@@ -976,7 +976,8 @@
         "title": "开发者"
       }
     },
-    "search": "搜索设置"
+    "search": "搜索设置",
+    "searchEmpty": "没有匹配的设置"
   },
   "debug": {
     "title": "调试",

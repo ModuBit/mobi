@@ -36,6 +36,11 @@ const Wrap = styled.div`
     animation: ${enter} 0.25s ease-out;
 `
 
+/** 空占位：首次加载中保持子页高度，避免布局跳动（对齐 Memory/Telemetry 的 Placeholder 语义） */
+const Placeholder = styled.div`
+    min-height: 200px;
+`
+
 const MODE_VARIANT: Record<MapMode, 'success' | 'warning' | 'default'> = {
     interactive: 'success',
     static: 'warning',
@@ -112,6 +117,17 @@ export function MapSection() {
 
     const mode = settings?.mode ?? 'none'
     const modeLabel = t(`settings.map.mode${mode.charAt(0).toUpperCase()}${mode.slice(1)}`)
+
+    // 加载完成后才渲染输入行：草稿初值投影发生在 loaded 翻转时，加载中渲染会吃掉用户键入
+    // （query resolve → 投影整份覆写草稿）；占位形态对齐 Memory/Telemetry
+    if (!loaded) {
+        return (
+            <Wrap>
+                {offline ? <Alert type="warning" showIcon title={t('settings.map.offline')} /> : null}
+                <Placeholder />
+            </Wrap>
+        )
+    }
 
     const onSave = () => {
         setStatus('idle')

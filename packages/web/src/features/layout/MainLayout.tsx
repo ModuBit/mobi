@@ -17,7 +17,8 @@
 import { theme as antTheme, Layout } from 'antd'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { MobiLogo } from '@/ui/base/brand/MobiLogo'
-import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import { useIsMobile, useMediaQuery } from '@/core/data/hooks/useMediaQuery'
+import { SETTINGS_WIDE_QUERY, isSettingsPath } from '@/domain/navigation/settingsPath'
 import { AppSidebar } from './AppSidebar'
 import { MobileMenuDrawer } from './mobileMenu'
 import { WcoTitleBar, resolveChromeColor } from './WcoTitleBar'
@@ -30,7 +31,6 @@ import { UpdatePrompt } from './UpdatePrompt'
 import { registerServiceWorker } from '@/core/pwa/registerSW'
 import { setUpdateReload, useUpdateAvailable } from '@/core/pwa/useUpdateAvailable'
 import { startLayoutShiftObserver } from '@/core/lib/layoutShiftObserver'
-import { isSettingsPath } from '@/domain/navigation/settingsPath'
 import { setSettingsReturnOrigin, isSettingsReturnOriginCandidate } from './settingsReturnOrigin'
 
 const { useToken } = antTheme
@@ -46,8 +46,11 @@ export function MainLayout() {
     const location = useLocation()
     const sidebarExpanded = useUiStore((s) => s.sidebarExpanded)
     // 设置路由族 → 全屏视图接管（ChatGPT 形态）：主侧栏让位（display:none 保挂载，零卸载）、
-    // 内容区交由 SettingsPage 自带侧栏 + 分区内容。判断收口在 isSettingsPath（registry 单一真相）
-    const settingsTakeover = !isMobile && isSettingsPath(location.pathname)
+    // 内容区交由 SettingsPage 自带侧栏 + 分区内容。判断收口在 isSettingsPath（registry 单一真相）；
+    // 宽屏断点与 SettingsPage 的 SETTINGS_WIDE_QUERY 同源——768–991px 频段两个判断必须一致，
+    // 否则主侧栏被隐藏而设置壳渲染 mobile 形态，用户失去全部导航出口
+    const isSettingsWide = useMediaQuery(SETTINGS_WIDE_QUERY)
+    const settingsTakeover = isSettingsWide && isSettingsPath(location.pathname)
 
     // 返回链路来源：停留在非设置路由时持续刷新记录（sessionStorage per-tab）
     useEffect(() => {

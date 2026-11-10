@@ -17,12 +17,14 @@
 import { Bell, Globe, Bug, Brain, Activity, MapPin, FolderTree, type LucideIcon } from 'lucide-react'
 import { isDebugUnlocked } from '@/core/lib/debug'
 import { normalizeNeedle } from '@/ui/base/interactive/optionSearch'
+import { SETTINGS_WIDE_QUERY } from '@/domain/navigation/settingsPath'
 
 /**
- * 设置分区导航断点：≥992px 显示左侧分区导航（主侧栏240+分区导航200+内容720 的宽度预算）。
- * 放在 registry（分区单一真相）而非 pages 层——sections 组件消费断点时不再反向 import pages（避免分层倒置）。
+ * 设置分区导航断点：≥992px 显示左侧分区导航。真相在 domain/navigation/settingsPath
+ * （MainLayout 主侧栏让位须用同一断点，域间互引禁止故下沉 domain），此处转发导出，
+ * 分区组件照旧从 registry 取（分区单一真相入口不变）。
  */
-export const SETTINGS_WIDE_QUERY = '(min-width: 992px)'
+export { SETTINGS_WIDE_QUERY }
 
 /** 分区徽标声明：渲染层据此挂对应状态组件（机制在 registry，组件映射在渲染点） */
 export type SettingsSectionBadge = 'web-tools-status'

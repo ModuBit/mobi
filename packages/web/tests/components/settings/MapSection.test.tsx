@@ -72,13 +72,13 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('MapSection 行式形态（局部保存，票06）', () => {
-    it('加载失败（daemon 不可达）：显示离线提示，保存/清除不可用（hook 层双保险拒写）', async () => {
+    it('加载失败（daemon 不可达）：显示离线提示，输入行不渲染（未加载不投影，占位形态）', async () => {
         stableApi.map.get.mockResolvedValue({ data: { status: 'offline' } })
         renderSection()
 
         await waitFor(() => expect(screen.getByText(i18nMap['settings.map.offline'])).toBeInTheDocument())
-        expect(screen.getByRole('button', { name: i18nMap['settings.map.save'] })).toBeDisabled()
-        expect(screen.getByRole('button', { name: i18nMap['settings.map.clear'] })).toBeDisabled()
+        expect(screen.queryByRole('button', { name: i18nMap['settings.map.save'] })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: i18nMap['settings.map.clear'] })).not.toBeInTheDocument()
     })
 
     it('渲染档位由 daemon 推导回显（前端不重复判定）', async () => {
@@ -98,8 +98,8 @@ describe('MapSection 行式形态（局部保存，票06）', () => {
             data: { status: 'ok', settings: { mode: 'static' } },
         })
         renderSection()
-        const jsInput = screen.getByLabelText(i18nMap['settings.map.jsApiKeyLabel']) as HTMLInputElement
-        // 输入恒渲染（离线也可见）；等 settings 到位后占位才切「已设置」
+        // 输入行加载完成后才渲染（未加载不投影占位）；settings 到位后占位切「已设置」
+        const jsInput = await screen.findByLabelText(i18nMap['settings.map.jsApiKeyLabel']) as HTMLInputElement
         await waitFor(() => expect(jsInput.getAttribute('placeholder')).toBe(i18nMap['settings.map.setPlaceholder']))
 
         // 只填 webServiceKey，其余留空：提交只携带填写字段

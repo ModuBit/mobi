@@ -985,7 +985,8 @@
         "title": "Developer"
       }
     },
-    "search": "Search settings"
+    "search": "Search settings",
+    "searchEmpty": "No matching settings"
   },
   "debug": {
     "title": "Debug",

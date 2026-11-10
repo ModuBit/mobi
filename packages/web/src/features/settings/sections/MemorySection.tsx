@@ -53,7 +53,8 @@ const RuleActions = styled.div`
     align-items: center;
 `
 
-const ExternalHint = styled.a<{ $token: Token }>`
+/** URL 展示（纯文本：导航行为归 NavRow 整行 onClick 单一触发——button 内嵌 anchor 违反 HTML 规范且双开） */
+const ExternalHint = styled.span<{ $token: Token }>`
     font-size: 12px;
     color: ${p => p.$token.colorTextTertiary};
     word-break: break-all;
@@ -86,7 +87,7 @@ type MemoryDraft = {
 }
 
 /**
- * 记忆提交内容构造（分区不变式所在）：地址/库名偏离基线才提交；token 非空才携带
+ * 记忆提交内容构造（分区不变式所在）：地址/库名/规则偏离基线才提交；token 非空才携带
  * （在场性协议：不在场 = 保持旧值）；刷新间隔整数化后偏离才提交。
  * 校验失败返回 error（走 hook 的失败呈现，草稿保持让用户改）。
  * 清除已存 token 是语义动作，分区直调 save（见 clearToken），不走本构造。
@@ -111,7 +112,9 @@ function buildMemoryPayload(
             return trimmed ? { apiToken: trimmed } : null
         }
         case 'rules':
-            return { rules: draft.rules }
+            // 偏离基线才提交（基线推进后与草稿同引用）：tag/bank 失焦未改动不发请求，
+            // 点删除时 blur+click 也不再连发两笔（blur 判 null，只落删除那一笔）
+            return draft.rules === baseline.rules ? null : { rules: draft.rules }
         case 'bankName':
             return draft.bankName === baseline.bankName ? null : { bankName: draft.bankName }
         case 'autoInject':
@@ -213,18 +216,19 @@ export function MemorySection() {
         void draftApi.commit('engine', { engine: v })
     }
 
-    /** 清除已存 token：语义动作直调落盘（成功提示是本动作的一部分，不走草稿纪律） */
+    /** 清除已存 token：语义动作直调落盘（成功提示是本动作的一部分，不走草稿纪律）；失败弹原因 */
     const clearToken = async () => {
-        if (await save({ apiToken: '' })) message.success(t('settings.memory.tokenCleared'))
+        const result = await save({ apiToken: '' })
+        if (result.ok) message.success(t('settings.memory.tokenCleared'))
+        else message.error(result.error || t('settings.memory.saveFailed'))
     }
 
-    /** 按路径添加规则（输入非空才建，成功清空输入） */
+    /** 按路径添加规则（输入非空才建；清空输入框等落盘成功后——失败保住键入可改） */
     const addPathRule = () => {
         const p = pathDraft.trim()
-        if (p) {
-            void draftApi.commit('rules', { rules: [...rules, { target: { type: 'path', path: p }, mode: 'normal' }] })
-            setPathDraft('')
-        }
+        if (!p) return
+        void draftApi.commit('rules', { rules: [...rules, { target: { type: 'path', path: p }, mode: 'normal' }] })
+            .then((ok) => { if (ok) setPathDraft('') })
     }
 
     /** 连接检查（草稿值；token 不在场 daemon 用已存值兜底） */
@@ -311,7 +315,7 @@ export function MemorySection() {
                     <SettingRow
                         label={t('settings.memory.openUi')}
                         variant="navigate"
-                        description={<ExternalHint $token={token} href={uiUrl} target="_blank" rel="noreferrer">{uiUrl} <ExternalLink size={12} style={{ verticalAlign: -1.5 }} /></ExternalHint>}
+                        description={<ExternalHint $token={token}>{uiUrl} <ExternalLink size={12} style={{ verticalAlign: -1.5 }} /></ExternalHint>}
                         onClick={() => { window.open(uiUrl, '_blank', 'noreferrer') }}
                     />
                 )}

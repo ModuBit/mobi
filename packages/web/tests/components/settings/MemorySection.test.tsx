@@ -194,9 +194,9 @@ describe('MemorySection hindsight 开启态', () => {
         await waitFor(() => expect((screen.getByLabelText('API 地址') as HTMLInputElement).value)
             .toBe('https://api.hindsight.vectorize.io'))
         expect(screen.getByText(i18nMap['settings.memory.offMachineWarning'])).toBeInTheDocument()
-        // UI 链接：行 description 里的外链（a 标签），navigate 行整行也可点
-        const uiLink = screen.getByText(/ui\.hindsight\.vectorize\.io/).closest('a')
-        expect(uiLink).toHaveAttribute('href', 'https://ui.hindsight.vectorize.io')
+        // UI 地址：行 description 纯文本展示（button 内嵌 anchor 违反 HTML 规范且与整行 onClick 双开），打开归整行
+        expect(screen.getByText(/ui\.hindsight\.vectorize\.io/)).toBeInTheDocument()
+        expect(screen.getByText(/ui\.hindsight\.vectorize\.io/).closest('a')).toBeNull()
     })
 
     it('endpoint 失焦落盘：改动才提交（部分字段）；回显值未动不发请求', async () => {

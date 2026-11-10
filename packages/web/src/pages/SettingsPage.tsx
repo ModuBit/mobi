@@ -25,7 +25,7 @@ import { useMediaQuery } from '@/core/data/hooks/useMediaQuery'
 import { SETTINGS_WIDE_QUERY, activeSection, searchSettingsSectionGroups, type SettingsSection } from '@/features/settings/sections/registry'
 import { writeLastSettingsSection } from '@/features/settings/sections/lastSettingsSection'
 import { WebToolsStatusBadge } from '@/features/settings/sections/WebToolsStatusBadge'
-import { resolveSettingsBackTarget } from '@/features/layout/settingsReturnOrigin'
+import { resolveSettingsBackTarget, resolveSettingsLeaveTarget } from '@/features/layout/settingsReturnOrigin'
 
 const { useToken } = antTheme
 
@@ -313,13 +313,15 @@ export function SettingsPage() {
         // activeSection 已校验段在 SETTINGS_SECTIONS 内，未知段返回 null（回到入口态标题）
         const titleKey = active?.titleKey ?? 'settings.title'
         // 头部收敛（ChatGPT 移动端形态）：返回箭头 + 居中标题，无汉堡并存。
-        // 子页返回 = 回入口列表；入口态返回 = 离开设置（与 PC 同一返回链路裁决）
+        // 子页返回 = 回入口列表；入口态返回 = 离开设置——恒走来源记录兜底链，
+        // 不用 history.back：子分区→入口是 push，back 会弹回子分区困在设置内
         const handleMobileBack = () => {
             if (active) {
                 void navigate({ to: '/settings' })
                 return
             }
-            goBack()
+            const target = resolveSettingsLeaveTarget()
+            void navigate({ to: target.to })
         }
         return (
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>

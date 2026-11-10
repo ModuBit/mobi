@@ -19,7 +19,11 @@ import { render, screen, cleanup } from '@testing-library/react'
 import { createContext } from 'react'
 
 // MainLayout 周边重依赖全部 mock（PWA / WCO / 布局位移观测），只留布局分支本体
-vi.mock('@/core/data/hooks/useMediaQuery', () => ({ useIsMobile: () => false }))
+vi.mock('@/core/data/hooks/useMediaQuery', () => ({
+    useIsMobile: () => false,
+    // MainLayout 消费 SETTINGS_WIDE_QUERY 判断设置接管（与 SettingsPage 同断点）；测试视口按宽屏取
+    useMediaQuery: (query: string) => query === '(min-width: 992px)',
+}))
 vi.mock('@/features/layout/AppSidebar', () => ({ AppSidebar: () => <div data-testid="app-sidebar" /> }))
 vi.mock('@/features/layout/mobileMenu', () => ({
     MobileMenuDrawer: () => <div data-testid="mobile-menu-drawer" />,

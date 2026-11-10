@@ -149,16 +149,16 @@ export function useSettingsDraft<Draft extends Record<string, unknown>, S>(
             reportFailure(result.error, t(errorFallbackKey))
             return false
         }
-        // 基线推进：payload 中出现且为已声明字段的 key，基线 := 提交时的草稿值
+        // 基线推进：提交 key ∪ payload 中已声明字段——同时覆盖换名情形（如 pageRefresh 落盘为
+        // pageRefreshEveryTurns：payload key 不在 fields，靠提交 key 推进基线，否则 dirty 永真、
+        // 改回原值会被「与基线相同 → null」吞掉，UI 与落盘值永久背离）
         const committedKeys = new Set(payloadKeys(payload).filter((k) => k in fields))
+        if (key && key in fields) committedKeys.add(key)
         const nextBaseline = { ...baselineRef.current }
         for (const k of committedKeys) nextBaseline[k as keyof Draft] = nextDraft[k as keyof Draft]
         baselineRef.current = nextBaseline
-        // 字段副作用：触发集合 = 提交 key ∪ payload 中的字段 key（写后清空等——
-        // payload key 与草稿字段不同名时（如 headers→headersDraft）由提交 key 兜底触发）
-        const savedFieldKeys = new Set(committedKeys)
-        if (key && key in fields) savedFieldKeys.add(key)
-        for (const k of savedFieldKeys) {
+        // 字段副作用直接随基线推进集合触发（写后清空等）
+        for (const k of committedKeys) {
             const field = fields[k as keyof Draft]
             field?.onSaved?.({
                 reset: (value) => {

@@ -194,6 +194,28 @@ describe('useSettingsDraft 纪律', () => {
         expect(save).toHaveBeenLastCalledWith({ name: 'k1', secret: 'tok' })
     })
 
+    it('换名落盘（payload key ≠ 草稿字段名）同样推进基线：不重复提交、改回原值不再被 null 吞掉', async () => {
+        const save = vi.fn().mockResolvedValue({ ok: true } as const)
+        const { hook } = renderDraftHook({
+            settings: { name: 'saved-name' },
+            save,
+            // 模拟 MemorySection 的 pageRefresh 形态：草稿字段 name 落盘为换名 key savedName
+            buildPayload: (_key, draft, baseline) =>
+                draft.name !== baseline.name ? { savedName: draft.name } : null,
+        })
+        await waitFor(() => expect(hook.result.current.draft.name).toBe('saved-name'))
+
+        // 改 5 → 落盘成功后基线推进到 5：同值再 commit 不重复发请求
+        await act(() => hook.result.current.commit('name', { name: 'five' }))
+        expect(save).toHaveBeenCalledWith({ savedName: 'five' })
+        await act(() => hook.result.current.commit('name'))
+        expect(save).toHaveBeenCalledTimes(1)
+        expect(hook.result.current.dirty).toBe(false)
+        // 改回基线值 → 落盘（若基线未推进，这里会被「与基线相同 → null」吞掉，UI 与落盘值背离）
+        await act(() => hook.result.current.commit('name', { name: 'saved-name' }))
+        expect(save).toHaveBeenLastCalledWith({ savedName: 'saved-name' })
+    })
+
     it('bindInput：value 受控、onChange 编辑、blur/回车以字段 key 提交', async () => {
         const save = vi.fn().mockResolvedValue({ ok: true } as const)
         const { hook } = renderDraftHook({ settings: { name: 'base' }, save })
