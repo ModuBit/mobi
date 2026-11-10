@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next'
 import { Search } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import styled from '@emotion/styled'
-import { SETTINGS_SECTIONS, groupedSettingsSections, filterSettingsSections } from './registry'
+import { searchSettingsSectionGroups } from './registry'
 import { WebToolsStatusBadge } from './WebToolsStatusBadge'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { SettingRow } from '@/features/settings/blocks/SettingRow'
@@ -77,9 +77,7 @@ export function SettingsIndex() {
     const navigate = useNavigate()
     const [keyword, setKeyword] = useState('')
 
-    const sections = SETTINGS_SECTIONS.filter((s) => s.visible())
-    const filtered = filterSettingsSections(keyword, sections, (s) => [t(s.titleKey), t(s.descKey)])
-    const groups = groupedSettingsSections(filtered)
+    const groups = searchSettingsSectionGroups(keyword, t)
 
     return (
         <Wrap $token={token}>

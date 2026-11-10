@@ -14,19 +14,17 @@
  * limitations under the License.
  */
 
-import { Alert, App, theme as antTheme } from 'antd'
+import { Alert, App } from 'antd'
 import { Activity } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { TelemetrySettings, TelemetrySettingsSubmission } from '@mobi/shared'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { useTelemetrySettings } from '@/core/data/hooks/queries/useTelemetrySettings'
+import { CardHint } from '@/features/settings/blocks/CardHint'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { SettingRow } from '@/features/settings/blocks/SettingRow'
 import { useSettingsDraft } from '@/features/settings/useSettingsDraft'
-
-const { useToken } = antTheme
-type Token = ReturnType<typeof useToken>['token']
 
 import { enter } from '@/features/settings/blocks/shared'
 
@@ -35,14 +33,6 @@ const Wrap = styled.div`
     flex-direction: column;
     gap: 14px;
     animation: ${enter} 0.25s ease;
-`
-
-/** 生效时机提示（组卡内尾行灰字，恒显） */
-const CardHint = styled.div<{ $token: Token }>`
-    padding: 2px 16px 12px;
-    font-size: 12px;
-    line-height: 1.5;
-    color: ${p => p.$token.colorTextTertiary};
 `
 
 /** 认证头草稿解析：`K=V,K2=V2` → record；键值均非空才算合法段 */
@@ -69,7 +59,6 @@ const parseHeadersDraft = (trimmed: string): Record<string, string> | { invalid:
  * 内容分档显式知情。「下个新会话生效」语义不变——daemon spawn 时现读注入 OTEL_* env。
  */
 export function TelemetrySection() {
-    const { token } = useToken()
     const { t } = useTranslation()
     const { message } = App.useApp()
     const { settings, loaded, offline, save } = useTelemetrySettings()
@@ -97,7 +86,7 @@ export function TelemetrySection() {
     if (!loaded) {
         return (
             <Wrap>
-                {offline && <Alert type="warning" showIcon message={t('settings.telemetry.loadFailed')} />}
+                {offline && <Alert type="warning" showIcon title={t('settings.telemetry.loadFailed')} />}
                 <Placeholder />
             </Wrap>
         )
@@ -146,20 +135,14 @@ export function TelemetrySection() {
                             variant="switch"
                             description={t('settings.telemetry.contentHint')}
                             checked={draft.includeContent}
-                            onCheckedChange={(v) => { void draftApi.commit('includeContent', {
-                                includeContent: v,
-                                ...(v ? {} : { includeRawApiBodies: false }),
-                            }) }}
+                            onCheckedChange={(v) => { void draftApi.commit('includeContent', contentSwitchDraft(v)) }}
                         />
                         <SettingRow
                             label={t('settings.telemetry.rawLabel')}
                             variant="switch"
                             description={t('settings.telemetry.rawHint')}
                             checked={draft.includeRawApiBodies}
-                            onCheckedChange={(v) => { void draftApi.commit('includeRawApiBodies', {
-                                includeRawApiBodies: v,
-                                ...(v ? { includeContent: true } : {}),
-                            }) }}
+                            onCheckedChange={(v) => { void draftApi.commit('includeRawApiBodies', rawSwitchDraft(v)) }}
                         />
                         <SettingRow
                             label={t('settings.telemetry.metricsLabel')}
@@ -194,7 +177,8 @@ export function TelemetrySection() {
                         )}
                     </>
                 )}
-                <CardHint $token={token}>{t('settings.telemetry.effectiveNextSession')}</CardHint>
+                {/* 生效时机提示（组卡内尾行灰字，恒显） */}
+                <CardHint pad="2px 16px 12px">{t('settings.telemetry.effectiveNextSession')}</CardHint>
             </SettingGroupCard>
         </Wrap>
     )
@@ -209,6 +193,14 @@ type TelemetryDraft = {
     includeMetrics: boolean
     headersDraft: string
 }
+
+/** 三档位联动（单一事实，调用点 patch 与 buildPayload 共用）：content 关 → raw 连带关 */
+const contentSwitchDraft = (v: boolean): Partial<TelemetryDraft> =>
+    v ? { includeContent: true } : { includeContent: false, includeRawApiBodies: false }
+
+/** 三档位联动（单一事实）：raw 开 → content 连带开 */
+const rawSwitchDraft = (v: boolean): Partial<TelemetryDraft> =>
+    v ? { includeRawApiBodies: true, includeContent: true } : { includeRawApiBodies: false }
 
 /**
  * 遥测提交内容构造（分区不变式所在，对提交内容有最终决定权）：
@@ -237,13 +229,9 @@ function buildTelemetryPayload(
             return { endpoint: draft.endpoint.trim(), ...(draft.enabled ? { enabled: true } : {}) }
         }
         case 'includeContent':
-            return draft.includeContent
-                ? { includeContent: true }
-                : { includeContent: false, includeRawApiBodies: false }
+            return contentSwitchDraft(draft.includeContent)
         case 'includeRawApiBodies':
-            return draft.includeRawApiBodies
-                ? { includeRawApiBodies: true, includeContent: true }
-                : { includeRawApiBodies: false }
+            return rawSwitchDraft(draft.includeRawApiBodies)
         case 'includeMetrics':
             return { includeMetrics: draft.includeMetrics }
         case 'headersClear':

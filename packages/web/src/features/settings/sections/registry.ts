@@ -16,7 +16,7 @@
 
 import { Bell, Globe, Bug, Brain, Activity, MapPin, FolderTree, type LucideIcon } from 'lucide-react'
 import { isDebugUnlocked } from '@/core/lib/debug'
-import { isSettingsPath } from '@/domain/navigation/settingsPath'
+import { normalizeNeedle } from '@/ui/base/interactive/optionSearch'
 
 /**
  * 设置分区导航断点：≥992px 显示左侧分区导航（主侧栏240+分区导航200+内容720 的宽度预算）。
@@ -86,6 +86,7 @@ export function groupedSettingsSections(
 
 /**
  * 分区搜索过滤：关键词对调用方解析出的文案做大小写不敏感的包含匹配。
+ * 规整复用 optionSearch 的 normalizeNeedle（全站统一键入匹配入口）。
  * 文案由调用方经 textOf 注入（先 t() 再传入），registry 不引入 i18n 依赖。
  * 空关键词（含纯空白）返回全量。
  */
@@ -94,9 +95,22 @@ export function filterSettingsSections(
     sections: SettingsSection[],
     textOf: (section: SettingsSection) => string[],
 ): SettingsSection[] {
-    const normalized = keyword.trim().toLowerCase()
-    if (!normalized) return sections
-    return sections.filter((s) => textOf(s).some((text) => text.toLowerCase().includes(normalized)))
+    const needle = normalizeNeedle(keyword)
+    if (!needle) return sections
+    return sections.filter((s) => textOf(s).some((text) => text.toLocaleLowerCase().includes(needle)))
+}
+
+/**
+ * 分区搜索一步到位：visible 过滤 → 关键词过滤（title+desc 文案）→ 分组归位。
+ * PC 侧栏与 mobile 入口共用同一管线（文案投影在此收口，调用方只传 t）。
+ */
+export function searchSettingsSectionGroups(
+    keyword: string,
+    t: (key: string) => string,
+): Array<SettingsSectionGroup & { sections: SettingsSection[] }> {
+    const visible = SETTINGS_SECTIONS.filter((s) => s.visible())
+    const filtered = filterSettingsSections(keyword, visible, (s) => [t(s.titleKey), t(s.descKey)])
+    return groupedSettingsSections(filtered)
 }
 
 /**
@@ -109,9 +123,3 @@ export function activeSection(pathname: string): SettingsSection | null {
     const segment = match?.[1]
     return SETTINGS_SECTIONS.find((s) => s.id === segment) ?? null
 }
-
-/**
- * 设置路由族判断（/settings 及其子路径）：MainLayout 布局分支「设置是全屏视图」的唯一判断点。
- * 知识本体在 domain/navigation（多域共享，域间互引禁止），此处 re-export 供 settings 域内消费方就近引用。
- */
-export { isSettingsPath }

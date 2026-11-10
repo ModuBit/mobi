@@ -27,24 +27,16 @@
  */
 
 import { useState } from 'react'
-import { App, theme as antTheme } from 'antd'
+import { App } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { Bug } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import styled from '@emotion/styled'
 import { isDebugUnlocked } from '@/core/lib/debug'
 import { isDiagEnabled, enableDiag, disableDiag, dumpDiag } from '@/core/lib/diag'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
+import { CardHint } from '@/features/settings/blocks/CardHint'
 import { SettingRow } from '@/features/settings/blocks/SettingRow'
 import { IconButton } from '@/ui/base/interactive/IconButton'
-
-/** 区块说明行（组卡内首行灰字，与行式形态的 CardHint 同语言） */
-const CardHint = styled.div<{ $token: { colorTextTertiary: string } }>`
-    padding: 10px 16px 2px;
-    font-size: 12px;
-    line-height: 1.5;
-    color: ${p => p.$token.colorTextTertiary};
-`
 
 /** 下载诊断数据为 JSON 文件（内容等价 window.__mobiDiag.dump()） */
 function downloadDiagData(message: ReturnType<typeof App.useApp>['message'], t: (k: string) => string): void {
@@ -67,7 +59,6 @@ function downloadDiagData(message: ReturnType<typeof App.useApp>['message'], t: 
 
 export function DebugSection() {
     const { t } = useTranslation()
-    const { token } = antTheme.useToken()
     const { message } = App.useApp()
     // diag 模块级 enabled 非响应式，本地镜像状态驱动 Switch 渲染
     const [diagOn, setDiagOn] = useState(isDiagEnabled())
@@ -99,7 +90,7 @@ export function DebugSection() {
 
     return (
         <SettingGroupCard>
-            <CardHint $token={token}>{t('debug.desc')}</CardHint>
+            <CardHint pad="10px 16px 2px">{t('debug.desc')}</CardHint>
             <SettingRow
                 icon={Bug}
                 label={t('debug.diagLabel')}

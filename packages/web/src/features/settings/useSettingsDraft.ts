@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { App } from 'antd'
 import { useTranslation } from 'react-i18next'
 
@@ -31,10 +31,12 @@ import { useTranslation } from 'react-i18next'
  * 与基线，对提交内容有最终决定权（enabledPending 特判这类跨字段不变式因此留在分区）。
  */
 
-/** 单字段声明：初值投影 + 可选的显示规范化与成功后副作用 */
+/** 单字段声明：初值投影 + 可选的编辑副作用、显示规范化与成功后副作用 */
 export interface SettingsDraftField<V, S> {
     /** 加载完成后草稿与基线的初值投影（settings 未加载/缺失时也以 undefined 调用给出兜底初值） */
     from: (settings: S | undefined) => V
+    /** 编辑副作用（与 onSaved 对称；如「编辑即清上次的连接检查结果」），bindInput 的 onChange 内触发 */
+    onEdit?: () => void
     /** 失焦提交时对草稿做显示规范化（如刷新间隔整数化），规范化值写回草稿后再进 buildPayload */
     normalize?: (value: V) => V
     /** 提交成功且本字段在提交 payload 中时的副作用；reset 同时重置该字段草稿与基线（如密钥写后清空输入框） */
@@ -82,18 +84,21 @@ export interface SettingsDraftApi<Draft extends Record<string, unknown>> {
         onBlur: () => void
         onPressEnter: () => void
     }
-    /** 是否有 blur 字段草稿偏离基线（信号性暴露，分区可用可不闭环——现有分区不做门控） */
+    /** 是否有字段草稿偏离基线（信号性暴露，分区可用可不闭环——现有分区不做门控） */
     dirty: boolean
 }
 
-/** 提交 payload 中出现的字段 key 集合（含嵌套对象键不可枚举场景之外的全部情况——payload 均为平面对象） */
+/** 提交 payload 中出现的字段 key 集合（payload 均为平面对象） */
 function payloadKeys(payload: Record<string, unknown> | null | { error: string }): string[] {
-    if (!payload || payload === null || 'error' in payload) return []
+    if (!payload || 'error' in payload) return []
     return Object.keys(payload)
 }
 
 /**
  * 设置草稿 hook。泛型：Draft = 字段草稿形状，S = 设置数据形状。
+ * 基线不驱动渲染（唯一渲染期用途是 dirty 信号），故为纯 ref；草稿为 state（驱动受控输入）。
+ * commit/bindInput 不做 memoization：options 全是分区渲染期字面量，任何依赖收窄都是假稳定——
+ * 低频交互页按渲染闭包执行即为正确语义。
  */
 export function useSettingsDraft<Draft extends Record<string, unknown>, S>(
     options: UseSettingsDraftOptions<Draft, S>,
@@ -102,28 +107,26 @@ export function useSettingsDraft<Draft extends Record<string, unknown>, S>(
     const { message } = App.useApp()
     const { t } = useTranslation()
 
-    // 草稿与基线：初值由 from(undefined) 给出（加载前兜底），loaded 后投影一次
+    // 草稿：初值由 from(undefined) 给出（加载前兜底），loaded 后投影一次
     const [draft, setDraftState] = useState<Draft>(() => projectFrom(fields, undefined))
-    const [baseline, setBaselineState] = useState<Draft>(() => projectFrom(fields, undefined))
+    const baselineRef = useRef<Draft>(projectFrom(fields, undefined))
     const [initialized, setInitialized] = useState(false)
     useEffect(() => {
         if (!loaded || initialized) return
         const projected = projectFrom(fields, settings)
         setDraftState(projected)
-        setBaselineState(projected)
+        baselineRef.current = projected
         setInitialized(true)
         // 纪律：invalidate 重读不重置编辑中草稿——只投影一次，settings 变化不再回写
     }, [loaded, initialized])
 
-    // commit 内读最新草稿/基线用 ref，规避闭包旧值（blur 与动作提交都发生在渲染后的交互回调里）
+    // commit 的 async 续体内读最新草稿用 ref，规避闭包旧值
     const draftRef = useRef(draft)
     draftRef.current = draft
-    const baselineRef = useRef(baseline)
-    baselineRef.current = baseline
 
     const reportFailure = reportError ?? ((error: string, fallback: string) => { message.error(error || fallback) })
 
-    const commit = useCallback(async (key = '', patch?: Partial<Draft>): Promise<boolean> => {
+    const commit = async (key = '', patch?: Partial<Draft>): Promise<boolean> => {
         // 合并 patch 后按字段声明做显示规范化（规范化值写回草稿，对齐既有「失焦整数化」行为）
         let nextDraft: Draft = { ...draftRef.current, ...(patch ?? {}) }
         const normalizer = key ? fields[key]?.normalize : undefined
@@ -132,6 +135,7 @@ export function useSettingsDraft<Draft extends Record<string, unknown>, S>(
             nextDraft = { ...nextDraft, [key]: (normalizer as (v: unknown) => Draft[string])(nextDraft[key]) }
         }
         setDraftState(nextDraft)
+        draftRef.current = nextDraft
 
         const payload = buildPayload(key, nextDraft, baselineRef.current)
         if (payload === null) return true
@@ -149,7 +153,6 @@ export function useSettingsDraft<Draft extends Record<string, unknown>, S>(
         const committedKeys = new Set(payloadKeys(payload).filter((k) => k in fields))
         const nextBaseline = { ...baselineRef.current }
         for (const k of committedKeys) nextBaseline[k as keyof Draft] = nextDraft[k as keyof Draft]
-        setBaselineState(nextBaseline)
         baselineRef.current = nextBaseline
         // 字段副作用：触发集合 = 提交 key ∪ payload 中的字段 key（写后清空等——
         // payload key 与草稿字段不同名时（如 headers→headersDraft）由提交 key 兜底触发）
@@ -161,7 +164,6 @@ export function useSettingsDraft<Draft extends Record<string, unknown>, S>(
                 reset: (value) => {
                     const cleared = { ...baselineRef.current, [k]: value }
                     baselineRef.current = cleared
-                    setBaselineState(cleared)
                     const clearedDraft = { ...draftRef.current, [k]: value }
                     draftRef.current = clearedDraft
                     setDraftState(clearedDraft)
@@ -170,25 +172,24 @@ export function useSettingsDraft<Draft extends Record<string, unknown>, S>(
         }
         onCommitSuccess?.()
         return true
-        // 纪律集中在 hook 内：buildPayload/save/reportError 由分区保证稳定（useCallback/直传），
-        // 交互回调场景下按渲染闭包执行即为正确语义
-    }, [buildPayload, save, reportFailure, onCommitSuccess, fields, errorFallbackKey, t])
+    }
 
-    const setDraft = useCallback((patch: Partial<Draft>) => {
+    const setDraft = (patch: Partial<Draft>) => {
         setDraftState((prev) => ({ ...prev, ...patch }))
-    }, [])
+    }
 
-    const bindInput = useCallback(<K extends Extract<keyof Draft, string>>(key: K) => ({
+    const bindInput = <K extends Extract<keyof Draft, string>>(key: K) => ({
         value: draft[key],
         onChange: (event: ChangeEvent<{ value: unknown }>) => {
             setDraftState((prev) => ({ ...prev, [key]: event.target.value as Draft[K] }))
+            fields[key].onEdit?.()
         },
         onBlur: () => { void commit(key) },
         onPressEnter: () => { void commit(key) },
-    }), [commit, draft])
+    })
 
     const dirty = (Object.keys(fields) as (keyof Draft & string)[])
-        .some((k) => draft[k] !== baseline[k])
+        .some((k) => draft[k] !== baselineRef.current[k])
 
     return { draft, setDraft, commit, bindInput, dirty }
 }

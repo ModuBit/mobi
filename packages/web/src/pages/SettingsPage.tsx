@@ -22,7 +22,7 @@ import { Outlet, useLocation, useNavigate, useRouter, useCanGoBack } from '@tans
 import { ChevronLeft, Search } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useMediaQuery } from '@/core/data/hooks/useMediaQuery'
-import { SETTINGS_WIDE_QUERY, SETTINGS_SECTIONS, activeSection, groupedSettingsSections, filterSettingsSections, type SettingsSection } from '@/features/settings/sections/registry'
+import { SETTINGS_WIDE_QUERY, activeSection, searchSettingsSectionGroups, type SettingsSection } from '@/features/settings/sections/registry'
 import { writeLastSettingsSection } from '@/features/settings/sections/lastSettingsSection'
 import { WebToolsStatusBadge } from '@/features/settings/sections/WebToolsStatusBadge'
 import { resolveSettingsBackTarget } from '@/features/layout/settingsReturnOrigin'
@@ -213,6 +213,83 @@ const MobileHeaderTitle = styled.div<{ $token: Token }>`
     white-space: nowrap;
 `
 
+/** 返回链路收尾（history.back 优先，无应用内历史落来源记录，最后兜底新对话）：PC 侧栏与 mobile 头部共用 */
+function useSettingsBack(): () => void {
+    const navigate = useNavigate()
+    const router = useRouter()
+    const canGoBack = useCanGoBack()
+    return () => {
+        const target = resolveSettingsBackTarget(canGoBack)
+        if (target.mode === 'history') router.history.back()
+        else void navigate({ to: target.to })
+    }
+}
+
+interface SidebarProps {
+    $token: Token
+    active: SettingsSection | null
+    goBack: () => void
+}
+
+/** PC 侧栏（返回键 + 标题 + 分区搜索 + 分组导航）。keyword 状态收在内部：键入不重渲染 Outlet 子树 */
+function Sidebar({ $token, active, goBack }: SidebarProps) {
+    const { t } = useTranslation()
+    const navigate = useNavigate()
+    const [keyword, setKeyword] = useState('')
+    const groups = searchSettingsSectionGroups(keyword, t)
+
+    return (
+        <SettingsSidebar $token={$token}>
+            <SidebarScroll>
+                <BackButton $token={$token} aria-label={t('common.back')} onClick={goBack}>
+                    <ChevronLeft size={16} />
+                    {t('common.back')}
+                </BackButton>
+                <SidebarTitle $token={$token}>{t('settings.title')}</SidebarTitle>
+                <SearchSlot>
+                    <Input
+                        allowClear
+                        value={keyword}
+                        onChange={(e) => setKeyword(e.target.value)}
+                        placeholder={t('settings.search')}
+                        prefix={<Search size={14} />}
+                        size="small"
+                        aria-label={t('settings.search')}
+                    />
+                </SearchSlot>
+                <NavGroups aria-label={t('settings.title')}>
+                    {groups.map((group) => (
+                        <div key={group.id}>
+                            <GroupLabel $token={$token}>{t(group.titleKey)}</GroupLabel>
+                            <NavList>
+                                {group.sections.map((section: SettingsSection) => {
+                                    const Icon: LucideIcon = section.icon
+                                    const isActive = active?.id === section.id
+                                    return (
+                                        <NavItem
+                                            key={section.id}
+                                            $token={$token}
+                                            $active={isActive}
+                                            aria-current={isActive ? 'page' : undefined}
+                                            onClick={() => { void navigate({ to: `/settings/${section.id}` }) }}
+                                        >
+                                            <NavIcon><Icon size={15} opacity={0.75} /></NavIcon>
+                                            {t(section.titleKey)}
+                                            {section.badge === 'web-tools-status' && (
+                                                <NavBadge><WebToolsStatusBadge variant="compact" /></NavBadge>
+                                            )}
+                                        </NavItem>
+                                    )
+                                })}
+                            </NavList>
+                        </div>
+                    ))}
+                    {groups.length === 0 && <EmptyHint $token={$token}>{t('settings.searchEmpty')}</EmptyHint>}
+                </NavGroups>
+            </SidebarScroll>
+        </SettingsSidebar>
+    )
+}
 /**
  * 设置布局壳（/settings 路由族组件）：
  * - PC（≥992px）：全屏接管视图——自带侧栏（返回键 + 标题 + 分区搜索 + 分组导航），MainLayout 已让位主侧栏
@@ -224,10 +301,8 @@ export function SettingsPage() {
     const isWide = useMediaQuery(SETTINGS_WIDE_QUERY)
     const location = useLocation()
     const navigate = useNavigate()
-    const router = useRouter()
-    const canGoBack = useCanGoBack()
+    const goBack = useSettingsBack()
     const active = activeSection(location.pathname)
-    const [keyword, setKeyword] = useState('')
 
     // 记住上次分区：激活分区变化即写（深链以 URL 为准并覆盖记录）
     useEffect(() => {
@@ -244,9 +319,7 @@ export function SettingsPage() {
                 void navigate({ to: '/settings' })
                 return
             }
-            const target = resolveSettingsBackTarget(canGoBack)
-            if (target.mode === 'history') router.history.back()
-            else void navigate({ to: target.to })
+            goBack()
         }
         return (
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
@@ -266,69 +339,10 @@ export function SettingsPage() {
         )
     }
 
-    // PC：全屏接管壳
-    const sections = SETTINGS_SECTIONS.filter((s) => s.visible())
-    const filtered = filterSettingsSections(keyword, sections, (s) => [t(s.titleKey), t(s.descKey)])
-    const groups = groupedSettingsSections(filtered)
-
-    /** 返回链路：history.back 优先（自然语义），无应用内历史落来源记录，最后兜底新对话 */
-    const handleBack = () => {
-        const target = resolveSettingsBackTarget(canGoBack)
-        if (target.mode === 'history') router.history.back()
-        else void navigate({ to: target.to })
-    }
-
+    // PC：全屏接管壳（侧栏 keyword 状态收在 Sidebar 内，键入不重渲染 Outlet 子树）
     return (
         <SettingsTakeover>
-            <SettingsSidebar $token={token}>
-                <SidebarScroll>
-                    <BackButton $token={token} aria-label={t('common.back')} onClick={handleBack}>
-                        <ChevronLeft size={16} />
-                        {t('common.back')}
-                    </BackButton>
-                    <SidebarTitle $token={token}>{t('settings.title')}</SidebarTitle>
-                    <SearchSlot>
-                        <Input
-                            allowClear
-                            value={keyword}
-                            onChange={(e) => setKeyword(e.target.value)}
-                            placeholder={t('settings.search')}
-                            prefix={<Search size={14} />}
-                            size="small"
-                            aria-label={t('settings.search')}
-                        />
-                    </SearchSlot>
-                    <NavGroups aria-label={t('settings.title')}>
-                        {groups.map((group) => (
-                            <div key={group.id}>
-                                <GroupLabel $token={token}>{t(group.titleKey)}</GroupLabel>
-                                <NavList>
-                                    {group.sections.map((section: SettingsSection) => {
-                                        const Icon: LucideIcon = section.icon
-                                        const isActive = active?.id === section.id
-                                        return (
-                                            <NavItem
-                                                key={section.id}
-                                                $token={token}
-                                                $active={isActive}
-                                                aria-current={isActive ? 'page' : undefined}
-                                                onClick={() => { void navigate({ to: `/settings/${section.id}` }) }}
-                                            >
-                                                <NavIcon><Icon size={15} opacity={0.75} /></NavIcon>
-                                                {t(section.titleKey)}
-                                                {section.badge === 'web-tools-status' && (
-                                                    <NavBadge><WebToolsStatusBadge variant="compact" /></NavBadge>
-                                                )}
-                                            </NavItem>
-                                        )
-                                    })}
-                                </NavList>
-                            </div>
-                        ))}
-                        {groups.length === 0 && <EmptyHint $token={token}>{t('settings.searchEmpty')}</EmptyHint>}
-                    </NavGroups>
-                </SidebarScroll>
-            </SettingsSidebar>
+            <Sidebar $token={token} active={active} goBack={goBack} />
             <SectionMain>
                 <SectionMainInner>
                     <Outlet />

@@ -18,6 +18,7 @@ import { App } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
     WEB_TOOL_PROVIDER_IDS,
+    credentialKeysFor,
     type RedactedWebToolsConfig,
     type WebToolProviderId,
     type WebToolProviderSubmission,
@@ -25,7 +26,10 @@ import {
 import { useWebToolsConfig } from '@/core/data/hooks/queries/useWebToolsConfig'
 
 /** 脱敏配置中的 provider 条目（凭据只有 set 标记 + 掩码 preview，无明文） */
-type ProviderEntry = NonNullable<RedactedWebToolsConfig['providers']>[number]
+export type ProviderEntry = NonNullable<RedactedWebToolsConfig['providers']>[number]
+
+/** 未配置 provider 的默认超时（提交构造与展示投影共用同一默认） */
+export const DEFAULT_PROVIDER_TIMEOUT_MS = 15_000
 
 export interface WebToolsSubmissionApi {
     config: RedactedWebToolsConfig | null
@@ -33,6 +37,8 @@ export interface WebToolsSubmissionApi {
     offline: boolean
     loadError: string | null
     saving: boolean
+    /** 全 id 展示投影：机器尚无条目的 provider 合成默认条目（未启用、凭据未设），与提交构造同源 */
+    providerEntries: ProviderEntry[]
     /** 意图：设置某用途路由（即时保存，未提及路由回填现值——整体替换语义不清空另一路） */
     setRoute: (slot: 'search' | 'fetch', providerId: WebToolProviderId) => Promise<boolean>
     /** 意图：清除某用途路由（整体替换语义下字段缺席 = 清除落盘，区别于未提及回填） */
@@ -82,12 +88,12 @@ export function useWebToolsSubmission(): WebToolsSubmissionApi {
         WEB_TOOL_PROVIDER_IDS.map((pid) => {
             const entry = providerEntry(pid)
             if (pid !== targetId) {
-                return { id: pid, enabled: entry?.enabled ?? false, timeoutMs: entry?.timeoutMs ?? 15_000, credentials: {} }
+                return { id: pid, enabled: entry?.enabled ?? false, timeoutMs: entry?.timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS, credentials: {} }
             }
             return {
                 id: pid,
                 enabled: patch.enabled ?? entry?.enabled ?? Boolean(patch.credentials),
-                timeoutMs: entry?.timeoutMs ?? 15_000,
+                timeoutMs: entry?.timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS,
                 credentials: patch.credentials ?? {},
             }
         })
@@ -113,12 +119,26 @@ export function useWebToolsSubmission(): WebToolsSubmissionApi {
         return true
     }
 
+    // 展示投影：与提交构造同源的默认合成（未配置 provider 的卡片展示与落盘默认一致）
+    const providerEntries: ProviderEntry[] = WEB_TOOL_PROVIDER_IDS.map((id) => {
+        const entry = providerEntry(id)
+        return entry ?? {
+            id,
+            enabled: false,
+            timeoutMs: DEFAULT_PROVIDER_TIMEOUT_MS,
+            credentials: Object.fromEntries(
+                credentialKeysFor(id).map((key) => [key, { set: false }]),
+            ),
+        }
+    })
+
     return {
         config,
         loaded,
         offline,
         loadError,
         saving,
+        providerEntries,
         setRoute: (slot, providerId) =>
             submit(slot === 'search' ? { searchProviderId: providerId } : { fetchProviderId: providerId }),
         clearRoute: (slot) =>

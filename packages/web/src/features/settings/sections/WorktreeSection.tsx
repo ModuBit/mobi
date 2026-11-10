@@ -157,7 +157,7 @@ export function WorktreeSection() {
                 />
 
                 {isError && (
-                    <Alert type="warning" showIcon message={t('settings.worktrees.scanFailed')} />
+                    <Alert type="warning" showIcon title={t('settings.worktrees.scanFailed')} />
                 )}
 
                 {!isError && isLoading && <EmptyHint $token={token}>{t('common.loading')}</EmptyHint>}

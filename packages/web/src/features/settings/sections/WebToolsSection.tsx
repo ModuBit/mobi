@@ -18,17 +18,13 @@ import { useState } from 'react'
 import { Alert, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import {
-    WEB_TOOL_PROVIDER_IDS,
-    credentialKeysFor,
-    type WebToolProviderId,
-} from '@mobi/shared'
+import { type WebToolProviderId } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
 import { useWebToolsSubmission } from '@/features/settings/webtools/useWebToolsSubmission'
 import { RouteCard } from '@/features/settings/webtools/RouteCard'
 import { ProviderCard } from '@/features/settings/webtools/ProviderCard'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
-import type { ProviderEntry, VerifyResult } from '@/features/settings/webtools/CredentialEditor'
+import type { VerifyResult } from '@/features/settings/webtools/CredentialEditor'
 
 const { useToken } = antTheme
 
@@ -62,14 +58,11 @@ export function WebToolsSection() {
     const { token } = useToken()
     const { t } = useTranslation()
     const api = useMobiApi()
-    const { config, offline, loadError, loaded, saving, setRoute, clearRoute, toggleProvider, saveCredentials } = useWebToolsSubmission()
+    const { config, offline, loadError, loaded, saving, providerEntries, setRoute, clearRoute, toggleProvider, saveCredentials } = useWebToolsSubmission()
     // 展开态提升到本层持有：保存后 invalidate 重读脱敏配置，子树不卸载编辑器不收起，A 卡展开时操作 B 卡互不影响
     const [expandedId, setExpandedId] = useState<WebToolProviderId | null>(null)
 
-    const providerEntry = (id: WebToolProviderId): ProviderEntry | undefined =>
-        config?.providers?.find((p) => p.id === id)
-
-    const enabledIds = WEB_TOOL_PROVIDER_IDS.filter((id) => providerEntry(id)?.enabled)
+    const enabledIds = providerEntries.filter((p) => p.enabled).map((p) => p.id)
 
     /** 验证连接：传输层异常（502 等）收敛为失败 envelope，编辑器统一按 success:false 呈现 */
     const verifyCredentials = async (
@@ -100,7 +93,7 @@ export function WebToolsSection() {
                 <>
                     <RouteCard
                         config={config}
-                        enabledIds={[...enabledIds]}
+                        enabledIds={enabledIds}
                         saving={saving}
                         onSetRoute={setRoute}
                         onClearRoute={clearRoute}
@@ -108,31 +101,19 @@ export function WebToolsSection() {
 
                     {/* PROVIDERS 分组无缝卡：卡间分隔线归容器（SettingGroupCard） */}
                     <SettingGroupCard title={t('settings.webTools.providersTitle')}>
-                        {WEB_TOOL_PROVIDER_IDS.map((id) => {
-                            const entry = providerEntry(id)
-                            // 机器上尚无条目的 provider 合成默认卡（未启用、凭据未设），与真实条目走同一条保存链路
-                            const provider: ProviderEntry = entry ?? {
-                                id,
-                                enabled: false,
-                                timeoutMs: 15_000,
-                                credentials: Object.fromEntries(
-                                    credentialKeysFor(id).map((key) => [key, { set: false }]),
-                                ),
-                            }
-                            return (
-                                <ProviderCard
-                                    key={id}
-                                    provider={provider}
-                                    referencedBy={referencedBy(id)}
-                                    expanded={expandedId === id}
-                                    onExpandedChange={(expanded) => setExpandedId(expanded ? id : null)}
-                                    saving={saving}
-                                    onToggle={(enabled) => toggleProvider(id, enabled)}
-                                    onSaveCredentials={(credentials) => saveCredentials(id, credentials)}
-                                    onVerify={(credentials) => verifyCredentials(id, credentials)}
-                                />
-                            )
-                        })}
+                        {providerEntries.map((provider) => (
+                            <ProviderCard
+                                key={provider.id}
+                                provider={provider}
+                                referencedBy={referencedBy(provider.id)}
+                                expanded={expandedId === provider.id}
+                                onExpandedChange={(expanded) => setExpandedId(expanded ? provider.id : null)}
+                                saving={saving}
+                                onToggle={(enabled) => toggleProvider(provider.id, enabled)}
+                                onSaveCredentials={(credentials) => saveCredentials(provider.id, credentials)}
+                                onVerify={(credentials) => verifyCredentials(provider.id, credentials)}
+                            />
+                        ))}
                     </SettingGroupCard>
                     <Hint $token={token}>{t('settings.webTools.storageHint')}</Hint>
                 </>

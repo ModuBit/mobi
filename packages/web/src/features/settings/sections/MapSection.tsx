@@ -24,7 +24,7 @@ import { enter } from '@/features/settings/blocks/shared'
 import { useMapSettings } from '@/core/data/hooks/queries/useMapSettings'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { SettingRow } from '@/features/settings/blocks/SettingRow'
-import { useSettingsDraft } from '@/features/settings/useSettingsDraft'
+import { useSettingsDraft, type SettingsDraftField } from '@/features/settings/useSettingsDraft'
 
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
@@ -61,6 +61,12 @@ type MapDraft = {
     webServiceKey: string
 }
 
+/** 三 key 同为 write-only 待覆盖草稿：无回显基线，保存/清除成功后清空输入框 */
+const writeOnlyKey: SettingsDraftField<string, MapSettingsView> = {
+    from: () => '',
+    onSaved: ({ reset }) => reset(''),
+}
+
 /**
  * 地图提交内容构造（batch 整组语义所在）：
  * - 保存（key=''）：非空 = 覆盖、留空 = 保持——只携带非空 trim 值（空 patch 恒提交，
@@ -93,11 +99,11 @@ export function MapSection() {
         settings: settings ?? undefined,
         errorFallbackKey: 'settings.map.saveFailed',
         fields: {
-            jsApiKey: { from: () => '', onSaved: ({ reset }) => reset('') },
-            securityJsCode: { from: () => '', onSaved: ({ reset }) => reset('') },
-            webServiceKey: { from: () => '', onSaved: ({ reset }) => reset('') },
+            jsApiKey: writeOnlyKey,
+            securityJsCode: writeOnlyKey,
+            webServiceKey: writeOnlyKey,
         },
-        buildPayload: (key, draft) => buildMapPayload(key, draft),
+        buildPayload: buildMapPayload,
         save,
         // 结果呈现是 inline 状态（组内操作行旁），覆写默认 toast
         reportError: () => setStatus('failed'),
@@ -138,7 +144,7 @@ export function MapSection() {
 
     return (
         <Wrap>
-            {offline ? <Alert type="warning" showIcon message={t('settings.map.offline')} /> : null}
+            {offline ? <Alert type="warning" showIcon title={t('settings.map.offline')} /> : null}
             <SettingGroupCard title={t('settings.map.title')}>
                 <SettingRow
                     label={t('settings.map.modeLabel')}

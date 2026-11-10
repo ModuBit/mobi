@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Alert, App, Input, Tag, theme as antTheme } from 'antd'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { Button } from '@/ui/base/interactive/button/Button'
@@ -30,6 +30,7 @@ import type { MemoryAutoInjectMode, MemoryEndpointCheckResult, MemoryRule, Memor
 import { deriveMemoryUiUrl, HINDSIGHT_CLOUD_API_URL, isOffMachineEndpoint, parseEndpointUrl } from '@mobi/shared'
 import { toDraft, useMemorySettings } from '@/core/data/hooks/queries/useMemorySettings'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
+import { CardHint } from '@/features/settings/blocks/CardHint'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { SettingRow } from '@/features/settings/blocks/SettingRow'
 import { useSettingsDraft } from '@/features/settings/useSettingsDraft'
@@ -42,14 +43,6 @@ const Wrap = styled.div`
     flex-direction: column;
     gap: 14px;
     animation: enter 0.25s ease;
-`
-
-/** 组卡内说明行（灰字，占卡内首行——与行式形态的行下说明同语言） */
-const CardHint = styled.div<{ $token: Token }>`
-    padding: 10px 16px 2px;
-    font-size: 12px;
-    line-height: 1.5;
-    color: ${p => p.$token.colorTextTertiary};
 `
 
 /** 隔离规则行的操作区：档位选择 + 条件覆盖输入 + 删除（换行容纳窄屏） */
@@ -94,8 +87,9 @@ type MemoryDraft = {
 
 /**
  * 记忆提交内容构造（分区不变式所在）：地址/库名偏离基线才提交；token 非空才携带
- * （在场性协议：不在场 = 保持旧值，空串 = 清除走 tokenClear）；刷新间隔整数化后偏离才提交。
+ * （在场性协议：不在场 = 保持旧值）；刷新间隔整数化后偏离才提交。
  * 校验失败返回 error（走 hook 的失败呈现，草稿保持让用户改）。
+ * 清除已存 token 是语义动作，分区直调 save（见 clearToken），不走本构造。
  */
 function buildMemoryPayload(
     key: string,
@@ -116,9 +110,6 @@ function buildMemoryPayload(
             const trimmed = draft.apiToken.trim()
             return trimmed ? { apiToken: trimmed } : null
         }
-        case 'tokenClear':
-            // 清除已存 token：显式提交空串（在场性协议：空串 = 清除）
-            return { apiToken: '' }
         case 'rules':
             return { rules: draft.rules }
         case 'bankName':
@@ -151,20 +142,28 @@ export function MemorySection() {
     const { settings, loaded, offline, save, check } = useMemorySettings()
     const workspacesQuery = useWorkspaces()
 
+    // 字段投影共享一份（toDraft 深拷贝 rules/disabledWorkspaces，逐字段投影会重复拷贝 8 次）；
+    // 投影只发生在 loaded 后初始化那一次，invalidate 重读仅更新此 memo、不影响已初始化的草稿
+    const projected = useMemo(() => toDraft(settings ?? null), [settings])
+
     const draftApi = useSettingsDraft<MemoryDraft, Parameters<typeof toDraft>[0]>({
         loaded,
         settings: settings ?? null,
         errorFallbackKey: 'settings.memory.saveFailed',
         fields: {
-            engine: { from: (s) => (toDraft(s).engine === 'hindsight' ? 'hindsight' : 'off') },
-            endpoint: { from: (s) => toDraft(s).endpoint ?? '' },
+            engine: { from: () => (projected.engine === 'hindsight' ? 'hindsight' : 'off') },
+            endpoint: {
+                from: () => projected.endpoint ?? '',
+                // 地址编辑即清上次的连接检查结果（旧结果对应旧地址，留着误导）——编辑副作用收进字段声明
+                onEdit: () => setCheckResult(null),
+            },
             apiToken: { from: () => '', onSaved: ({ reset }) => reset('') },
-            rules: { from: (s) => toDraft(s).rules ?? [] },
-            bankName: { from: (s) => toDraft(s).bankName ?? '' },
-            disabledWorkspaces: { from: (s) => toDraft(s).disabledWorkspaces ?? [] },
-            autoInject: { from: (s) => toDraft(s).autoInject ?? 'none' },
+            rules: { from: () => projected.rules ?? [] },
+            bankName: { from: () => projected.bankName ?? '' },
+            disabledWorkspaces: { from: () => projected.disabledWorkspaces ?? [] },
+            autoInject: { from: () => projected.autoInject ?? 'none' },
             pageRefresh: {
-                from: (s) => String(toDraft(s).pageRefreshEveryTurns ?? 0),
+                from: () => String(projected.pageRefreshEveryTurns ?? 0),
                 // 失焦整数化显示（小数取整、清空回落 0——不落 1「每轮」），规范化值参与 payload 判定
                 normalize: (v) => String(Math.max(0, Math.round(Number(v) || 0))),
             },
@@ -180,7 +179,7 @@ export function MemorySection() {
     if (!loaded) {
         return (
             <Wrap>
-                {offline && <Alert type="warning" showIcon message={t('settings.memory.loadFailed')} />}
+                {offline && <Alert type="warning" showIcon title={t('settings.memory.loadFailed')} />}
                 <Placeholder />
             </Wrap>
         )
@@ -261,14 +260,12 @@ export function MemorySection() {
                         variant="input"
                         input={{
                             ...draftApi.bindInput('endpoint'),
-                            // 地址编辑即清上次的连接检查结果（旧结果对应旧地址，留着误导）
-                            onChange: (e) => { draftApi.setDraft({ endpoint: e.target.value }); setCheckResult(null) },
                             placeholder: HINDSIGHT_CLOUD_API_URL,
                         }}
                     />
                 )}
                 {offMachine && (
-                    <Alert type="warning" showIcon banner message={t('settings.memory.offMachineWarning')} />
+                    <Alert type="warning" showIcon banner title={t('settings.memory.offMachineWarning')} />
                 )}
                 {hindsight && (
                     <SettingRow
@@ -322,7 +319,7 @@ export function MemorySection() {
 
             {hindsight && (
                 <SettingGroupCard title={t('settings.memory.mapTitle')}>
-                    <CardHint $token={token}>{t('settings.memory.mapHint')}</CardHint>
+                    <CardHint pad="10px 16px 2px">{t('settings.memory.mapHint')}</CardHint>
                     {rules.map((rule, i) => (
                         <SettingRow
                             key={i}
@@ -430,7 +427,7 @@ export function MemorySection() {
 
             {hindsight && (
                 <SettingGroupCard title={t('settings.memory.injectTitle')}>
-                    <CardHint $token={token}>{t('settings.memory.injectHint')}</CardHint>
+                    <CardHint pad="10px 16px 2px">{t('settings.memory.injectHint')}</CardHint>
                     <SettingRow
                         label={t('settings.memory.injectModeLabel')}
                         variant="inline-select"
@@ -459,7 +456,7 @@ export function MemorySection() {
             )}
 
             <SettingGroupCard title={t('settings.memory.excludedTitle')}>
-                <CardHint $token={token}>{t('settings.memory.excludedHint')}</CardHint>
+                <CardHint pad="10px 16px 2px">{t('settings.memory.excludedHint')}</CardHint>
                 <div style={{ padding: '10px 16px 14px' }}>
                     <MultiSelect
                         mode="tags"

@@ -19,7 +19,6 @@ import { App, theme as antTheme } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { SyncOutlined } from '@ant-design/icons'
 import { Bell, Cloud } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { css, keyframes } from '@emotion/react'
 import styled from '@emotion/styled'
@@ -144,15 +143,12 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
         </StatusLabel>
     )
 
-    const subscriptionIcon: LucideIcon = Cloud
-    const statusIcon: LucideIcon = Bell
-
     return (
         <Wrap $token={token}>
             <SettingGroupCard>
                 <SettingRow
                     label={statusRowLabel}
-                    icon={statusIcon}
+                    icon={Bell}
                     description={permission === 'denied' ? t('notification.settings.denied') : undefined}
                     variant="action"
                     action={
@@ -174,7 +170,7 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
                 {permission === 'granted' && !subscribed && (
                     <SettingRow
                         label={t('notification.settings.subscription')}
-                        icon={subscriptionIcon}
+                        icon={Cloud}
                         variant="action"
                         action={
                             <Button variant="ghost" size="sm" onClick={() => { void enable() }}>
@@ -186,7 +182,7 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
                 {permission === 'granted' && subscribed && (
                     <SettingRow
                         label={t('notification.settings.subscription')}
-                        icon={subscriptionIcon}
+                        icon={Cloud}
                         variant="value"
                         value={<SubValue $token={token} $on>{t('notification.settings.subscribed')}</SubValue>}
                     />

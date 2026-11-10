@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next'
 import { Search, FileText } from 'lucide-react'
 import styled from '@emotion/styled'
 import type { RedactedWebToolsConfig, WebToolProviderId } from '@mobi/shared'
+import { CardHint } from '@/features/settings/blocks/CardHint'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { SettingRow } from '@/features/settings/blocks/SettingRow'
 
@@ -67,14 +68,6 @@ const ToolPill = styled.code<{ $token: Token }>`
     padding: 1.5px 7px;
 `
 
-/** 组卡内灰字说明（首/尾行，与行式形态 CardHint 同语言） */
-const CardHint = styled.div<{ $token: Token }>`
-    padding: 10px 16px 14px;
-    font-size: 11.5px;
-    line-height: 1.5;
-    color: ${p => p.$token.colorTextTertiary};
-`
-
 /**
  * 用途路由卡（SettingRow 行式）：web_search / web_fetch 两行下拉直接选已启用 provider，
  * 变更即时保存（无保存按钮）。空 provider 时转引导态（只有标题 + 提示）。Select 支持 allowClear：
@@ -91,7 +84,7 @@ export function RouteCard({ config, enabledIds, saving, onSetRoute, onClearRoute
         <SettingGroupCard title={t('settings.webTools.routeTitle')}>
             {enabledIds.length === 0 ? (
                 // 引导态：尚无启用 provider，路由无从选择
-                <CardHint $token={token}>{t('settings.webTools.routeEmptyHint')}</CardHint>
+                <CardHint pad="10px 16px 14px">{t('settings.webTools.routeEmptyHint')}</CardHint>
             ) : (
                 <>
                     {ROUTES.map(({ key, icon: Icon, tool, labelKey }) => {
@@ -125,7 +118,7 @@ export function RouteCard({ config, enabledIds, saving, onSetRoute, onClearRoute
                             />
                         )
                     })}
-                    <CardHint $token={token}>{t('settings.webTools.routeHint')}</CardHint>
+                    <CardHint pad="10px 16px 14px">{t('settings.webTools.routeHint')}</CardHint>
                 </>
             )}
         </SettingGroupCard>
