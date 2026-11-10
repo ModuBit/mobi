@@ -15,17 +15,16 @@
  */
 
 import { useState } from 'react'
-import { Alert, App, theme as antTheme } from 'antd'
+import { Alert, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import {
     WEB_TOOL_PROVIDER_IDS,
     credentialKeysFor,
     type WebToolProviderId,
-    type WebToolProviderSubmission,
 } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
-import { useWebToolsConfig } from '@/core/data/hooks/queries/useWebToolsConfig'
+import { useWebToolsSubmission } from '@/features/settings/webtools/useWebToolsSubmission'
 import { RouteCard } from '@/features/settings/webtools/RouteCard'
 import { ProviderCard } from '@/features/settings/webtools/ProviderCard'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
@@ -55,14 +54,15 @@ const Hint = styled.span<{ $token: Token }>`
 /**
  * Web 工具子页：顶部用途路由卡（web_search/web_fetch 即时保存）+ 下方 provider 卡列表
  * （开关外置、点击卡身展开内联凭据编辑器）。
+ * 提交构造（providers 整体替换/路由三义性/首存连带启用/失败 toast 收口）归 useWebToolsSubmission，
+ * 本组件只做编排与展示语义（展开态、referencedBy 拦截提示、验证连接）。
  * 配置真相源在宿主的 `~/.mobi/settings.json`（daemon 纯透传 executor RPC）。
  */
 export function WebToolsSection() {
     const { token } = useToken()
     const { t } = useTranslation()
     const api = useMobiApi()
-    const { message } = App.useApp()
-    const { config, offline, loadError, loaded, saving, save } = useWebToolsConfig()
+    const { config, offline, loadError, loaded, saving, setRoute, clearRoute, toggleProvider, saveCredentials } = useWebToolsSubmission()
     // 展开态提升到本层持有：保存后 invalidate 重读脱敏配置，子树不卸载编辑器不收起，A 卡展开时操作 B 卡互不影响
     const [expandedId, setExpandedId] = useState<WebToolProviderId | null>(null)
 
@@ -71,55 +71,7 @@ export function WebToolsSection() {
 
     const enabledIds = WEB_TOOL_PROVIDER_IDS.filter((id) => providerEntry(id)?.enabled)
 
-    /**
-     * 全量 provider 提交条目（providers 整体替换语义：提交必须覆盖全部 id，缺谁落盘就丢谁）。
-     * targetId 的 provider 应用 patch：开关走显式 enabled；凭据首次保存时机器尚无条目 → 连带启用（填凭据即启用）。
-     * 不指定 target（路由变更）= 纯回填全部现值。凭据键不在场 = 保持旧值（在场性协议）。
-     */
-    const providersWith = (
-        targetId?: WebToolProviderId,
-        patch: { enabled?: boolean; credentials?: Record<string, string> } = {},
-    ): WebToolProviderSubmission[] =>
-        WEB_TOOL_PROVIDER_IDS.map((pid) => {
-            const entry = providerEntry(pid)
-            if (pid !== targetId) {
-                return { id: pid, enabled: entry?.enabled ?? false, timeoutMs: entry?.timeoutMs ?? 15_000, credentials: {} }
-            }
-            return {
-                id: pid,
-                enabled: patch.enabled ?? entry?.enabled ?? Boolean(patch.credentials),
-                // 超时非本页可编辑项，回传已加载值避免落盘被 schema 默认值覆盖
-                timeoutMs: entry?.timeoutMs ?? 15_000,
-                credentials: patch.credentials ?? {},
-            }
-        })
-
-    /**
-     * 即时保存（路由/开关/凭据）。
-     * 路由字段：undefined = 未提及回填现值；null = 显式清除（allowClear）——providers/路由整体替换语义下
-     * 构造 payload 时必须区分这两者，否则清除意图会被回填吞掉。
-     * 失败提示统一在此收口并透传 daemon 原因（编辑器静默依赖本约定）。
-     */
-    const saveBase = async (next: {
-        searchProviderId?: WebToolProviderId | null
-        fetchProviderId?: WebToolProviderId | null
-        providers: WebToolProviderSubmission[]
-    }) => {
-        const search = next.searchProviderId !== undefined ? next.searchProviderId : config?.searchProviderId
-        const fetch = next.fetchProviderId !== undefined ? next.fetchProviderId : config?.fetchProviderId
-        const result = await save({
-            ...(search ? { searchProviderId: search } : {}),
-            ...(fetch ? { fetchProviderId: fetch } : {}),
-            providers: next.providers,
-        })
-        if (!result.ok) {
-            message.error(result.error || t('settings.webTools.saveFailed'))
-            return false
-        }
-        return true // hook 已 invalidate 共享缓存自动重读
-    }
-
-    /** 验证连接：传输层异常（502 等）收敛为失败 envelope，S9 编辑器统一按 success:false 呈现 */
+    /** 验证连接：传输层异常（502 等）收敛为失败 envelope，编辑器统一按 success:false 呈现 */
     const verifyCredentials = async (
         id: WebToolProviderId,
         credentials: Record<string, string>,
@@ -150,7 +102,8 @@ export function WebToolsSection() {
                         config={config}
                         enabledIds={[...enabledIds]}
                         saving={saving}
-                        onChange={(next) => saveBase({ ...next, providers: providersWith() })}
+                        onSetRoute={setRoute}
+                        onClearRoute={clearRoute}
                     />
 
                     {/* PROVIDERS 分组无缝卡：卡间分隔线归容器（SettingGroupCard） */}
@@ -174,8 +127,8 @@ export function WebToolsSection() {
                                     expanded={expandedId === id}
                                     onExpandedChange={(expanded) => setExpandedId(expanded ? id : null)}
                                     saving={saving}
-                                    onToggle={(enabled) => saveBase({ providers: providersWith(id, { enabled }) })}
-                                    onSaveCredentials={(credentials) => saveBase({ providers: providersWith(id, { credentials }) })}
+                                    onToggle={(enabled) => toggleProvider(id, enabled)}
+                                    onSaveCredentials={(credentials) => saveCredentials(id, credentials)}
                                     onVerify={(credentials) => verifyCredentials(id, credentials)}
                                 />
                             )

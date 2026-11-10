@@ -37,8 +37,10 @@ export interface RouteCardProps {
     /** 已启用的 provider id 列表（下拉可选项） */
     enabledIds: WebToolProviderId[]
     saving: boolean
-    /** 即时保存：null = 显式清除该路由（allowClear），返回是否成功（失败提示由上层负责） */
-    onChange: (next: { searchProviderId?: WebToolProviderId | null; fetchProviderId?: WebToolProviderId | null }) => Promise<boolean>
+    /** 意图：设置某用途路由（即时保存；失败提示归上层，返回是否成功） */
+    onSetRoute: (slot: 'search' | 'fetch', providerId: WebToolProviderId) => Promise<boolean>
+    /** 意图：清除某用途路由（allowClear——清除后 daemon resolve 回落 null → NO_PROVIDER，mobi 不再拦截该工具） */
+    onClearRoute: (slot: 'search' | 'fetch') => Promise<boolean>
 }
 
 /** 行 label：图标 + 文案 + 工具名 code pill（与代码语言一致的技术感） */
@@ -74,12 +76,12 @@ const CardHint = styled.div<{ $token: Token }>`
 `
 
 /**
- * 用途路由卡（SettingRow 行式，票07）：web_search / web_fetch 两行下拉直接选已启用 provider，
+ * 用途路由卡（SettingRow 行式）：web_search / web_fetch 两行下拉直接选已启用 provider，
  * 变更即时保存（无保存按钮）。空 provider 时转引导态（只有标题 + 提示）。Select 支持 allowClear：
- * 路由可随时撤销（清除后 daemon resolve 回落 null → NO_PROVIDER，mobi 不再拦截该工具）；
- * 单 provider 时切无可切（下拉只有同值项），但清除始终可用——teardown 流程：清路由 → 禁用 provider。
+ * 路由可随时撤销——teardown 流程：清路由 → 禁用 provider。
+ * 提交构造（路由字段三义性）归 useWebToolsSubmission，本卡只以意图回调说话。
  */
-export function RouteCard({ config, enabledIds, saving, onChange }: RouteCardProps) {
+export function RouteCard({ config, enabledIds, saving, onSetRoute, onClearRoute }: RouteCardProps) {
     const { token } = useToken()
     const { t } = useTranslation()
 
@@ -114,11 +116,10 @@ export function RouteCard({ config, enabledIds, saving, onChange }: RouteCardPro
                                     placeholder: t('settings.webTools.routePlaceholder'),
                                     style: { minWidth: 140 },
                                     onValueChange: (next) => {
-                                        void onChange(key === 'search' ? { searchProviderId: next as WebToolProviderId } : { fetchProviderId: next as WebToolProviderId })
+                                        void onSetRoute(key, next as WebToolProviderId)
                                     },
                                     onClear: () => {
-                                        // 显式清除 → null（区别于「未提及回填现值」）
-                                        void onChange(key === 'search' ? { searchProviderId: null } : { fetchProviderId: null })
+                                        void onClearRoute(key)
                                     },
                                 }}
                             />

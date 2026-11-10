@@ -67,14 +67,18 @@ vi.mock('react-i18next', () => ({
     }),
 }))
 
-// RouteCard 真实渲染（保留渲染断言），另捕获 onChange 供路由变更用例稳定触发：
-// mock 配置里只有 tavily 启用，真实 Select 恒锁定（无可选项），走 UI 交互断言不了 onChange 路径
-const routeState = vi.hoisted(() => ({ onChange: null as null | ((next: { searchProviderId?: 'tavily' | null; fetchProviderId?: 'tavily' | null }) => Promise<boolean>) }))
+// RouteCard 真实渲染（保留渲染断言），另捕获意图回调供路由变更用例稳定触发：
+// mock 配置里只有 tavily 启用，真实 Select 恒锁定（无可选项），走 UI 交互断言不了意图路径
+const routeState = vi.hoisted(() => ({
+    onSetRoute: null as null | ((slot: 'search' | 'fetch', providerId: string) => Promise<boolean>),
+    onClearRoute: null as null | ((slot: 'search' | 'fetch') => Promise<boolean>),
+}))
 vi.mock('@/features/settings/webtools/RouteCard', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/features/settings/webtools/RouteCard')>()
     return {
         RouteCard: (props: import('@/features/settings/webtools/RouteCard').RouteCardProps) => {
-            routeState.onChange = props.onChange
+            routeState.onSetRoute = props.onSetRoute
+            routeState.onClearRoute = props.onClearRoute
             return <actual.RouteCard {...props} />
         },
     }
@@ -137,7 +141,8 @@ describe('WebToolsSection', () => {
         stableApi.webTools.get.mockReset()
         stableApi.webTools.set.mockReset()
         stableApi.webTools.verify.mockReset()
-        routeState.onChange = null
+        routeState.onSetRoute = null
+        routeState.onClearRoute = null
         editorState.onSave = null
         editorState.onSaveByProvider = {}
     })
@@ -244,9 +249,9 @@ describe('WebToolsSection', () => {
         renderSection()
 
         await waitFor(() => expect(screen.getByText('web_search')).toBeTruthy())
-        expect(routeState.onChange).toBeTruthy()
-        // 通过捕获的 onChange 回调触发路由变更（真实 Select 单 provider 恒锁定，UI 路径不可达）
-        await routeState.onChange!({ searchProviderId: 'tavily' })
+        expect(routeState.onSetRoute).toBeTruthy()
+        // 通过捕获的意图回调触发路由变更（真实 Select 单 provider 恒锁定，UI 路径不可达）
+        await routeState.onSetRoute!('search', 'tavily')
 
         await waitFor(() => expect(stableApi.webTools.set).toHaveBeenCalledTimes(1))
         const [config] = stableApi.webTools.set.mock.calls[0] as [
@@ -339,9 +344,9 @@ describe('WebToolsSection', () => {
         renderSection()
 
         await waitFor(() => expect(screen.getByText('web_search')).toBeTruthy())
-        expect(routeState.onChange).toBeTruthy()
-        // 清除 fetch 路由：null 语义 → payload 只回填 search 现值，fetch 字段整体缺席（整体替换语义下即清除落盘）
-        await routeState.onChange!({ fetchProviderId: null })
+        expect(routeState.onClearRoute).toBeTruthy()
+        // 清除 fetch 路由（意图）：payload 只回填 search 现值，fetch 字段整体缺席（整体替换语义下即清除落盘）
+        await routeState.onClearRoute!('fetch')
 
         await waitFor(() => expect(stableApi.webTools.set).toHaveBeenCalledTimes(1))
         const [config] = stableApi.webTools.set.mock.calls[0] as [
