@@ -49,12 +49,14 @@ const { useToken } = antTheme
  * 页面壳（票 09 分页改造）：不再页面级滚动——滚动容器移交 Listy（虚拟滚动 +
  * 触底加载），壳只做 flex 纵向布局与安全区内衬。
  */
-const PageShell = styled.div`
+const PageShell = styled.div<{ $embedded: boolean }>`
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: 12px 20px max(24px, env(safe-area-inset-bottom));
+    /* page：自带水平/顶内衬；section（设置分区嵌入）：内衬归设置壳（layout:'fill' 满
+     * 高内滚链），只保留底部安全区避让 */
+    padding: ${p => p.$embedded ? '0 0 max(24px, env(safe-area-inset-bottom))' : '12px 20px max(24px, env(safe-area-inset-bottom))'};
 `
 
 const Inner = styled.div`
@@ -397,6 +399,12 @@ const WORKSPACE_NONE = ARCHIVED_WORKSPACE_NONE
 interface ArchivedSessionsPageProps {
     /** 头部锚位（PC 侧栏开关 / 移动端汉堡），渲染进标题行左缘——本页无独立头部横条 */
     headerLeft?: ReactNode
+    /**
+     * 形态：'page'（缺省，独立路由页——自带大标题行）| 'section'（设置分区嵌入——
+     * 页题归设置壳（SectionTitle），标题行只留右缘「全部删除」；水平/顶部内衬由
+     * 设置壳提供（layout: 'fill' 满高内滚链），本组件只保留底部安全区避让）
+     */
+    variant?: 'page' | 'section'
 }
 
 /**
@@ -408,7 +416,8 @@ interface ArchivedSessionsPageProps {
  * 删除（单条/组级/页面级）保留输入确认与逐条报告。
  * 组装壳（页面容器）在 pages/ArchivedPage，本组件只管列表呈现。
  */
-export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) {
+export function ArchivedSessionsPage({ headerLeft, variant = 'page' }: ArchivedSessionsPageProps) {
+    const embedded = variant === 'section'
     const { token } = useToken()
     const { t } = useTranslation()
     const { message: messageApi, notification } = App.useApp()
@@ -683,12 +692,15 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
     // 加载中先给占位：标题行（含头部锚位）恒渲染，列表区给加载占位
     if (isLoading) {
         return (
-            <PageShell>
+            <PageShell $embedded={embedded}>
                 <Inner>
-                    <TitleRow $token={token}>
-                        {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
-                        <PageTitle $token={token}>{t('archived.title')}</PageTitle>
-                    </TitleRow>
+                    {/* section 形态页题归设置壳，加载态无「全部删除」可放——标题行整体省略 */}
+                    {!embedded && (
+                        <TitleRow $token={token}>
+                            {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
+                            <PageTitle $token={token}>{t('archived.title')}</PageTitle>
+                        </TitleRow>
+                    )}
                     {/* 工具条与就绪态同形同尺寸：搜索框本就禁用，占位文案直接沿用；
                      * 项目过滤选项来自首屏数据，先以同宽骨架占位，数据到达时不跳动 */}
                     <ToolBar>
@@ -733,12 +745,14 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
 
     if (total === 0) {
         return (
-            <PageShell>
+            <PageShell $embedded={embedded}>
                 <Inner>
-                    <TitleRow $token={token}>
-                        {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
-                        <PageTitle $token={token}>{t('archived.title')}</PageTitle>
-                    </TitleRow>
+                    {!embedded && (
+                        <TitleRow $token={token}>
+                            {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
+                            <PageTitle $token={token}>{t('archived.title')}</PageTitle>
+                        </TitleRow>
+                    )}
                     {toolBar}
                     <EmptyState $token={token}>
                         <ArchiveIcon size={32} />
@@ -750,12 +764,17 @@ export function ArchivedSessionsPage({ headerLeft }: ArchivedSessionsPageProps) 
     }
 
     return (
-        <PageShell>
+        <PageShell $embedded={embedded}>
             <Inner>
-                {/* 标题行：左锚位 + 大标题 + 右缘全部删除（范围 = 当前过滤条件，非「已加载页」） */}
+                {/* 标题行：page=左锚位 + 大标题 + 右缘全部删除；section=仅右缘全部删除
+                 *（页题归设置壳），范围 = 当前过滤条件，非「已加载页」 */}
                 <TitleRow $token={token}>
-                    {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
-                    <PageTitle $token={token}>{t('archived.title')}</PageTitle>
+                    {!embedded && (
+                        <>
+                            {headerLeft && <TitleAnchorSlot>{headerLeft}</TitleAnchorSlot>}
+                            <PageTitle $token={token}>{t('archived.title')}</PageTitle>
+                        </>
+                    )}
                     <Button
                         className="title-delete-all"
                         variant="secondary"

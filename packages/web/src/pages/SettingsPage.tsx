@@ -147,17 +147,23 @@ const EmptyHint = styled.div<{ $token: Token }>`
     color: ${p => p.$token.colorTextTertiary};
 `
 
-/** PC 分区内容：居中限宽（ChatGPT 内容形态），纵向滚动 */
-const SectionMain = styled.main`
+/**
+ * PC 分区内容：居中限宽（ChatGPT 内容形态），纵向滚动。
+ * $fill（列表流分区，registry layout:'fill'）：壳只让出滚动（overflow:hidden + flex
+ * 纵向链），滚动权交给分区组件满高内滚——Listy 虚拟滚动需要限高容器，整区滚动会把它撑开
+ */
+const SectionMain = styled.main<{ $fill: boolean }>`
     flex: 1;
     min-width: 0;
-    overflow-y: auto;
+    overflow-y: ${p => (p.$fill ? 'hidden' : 'auto')};
+    ${p => (p.$fill ? 'display: flex;\n    flex-direction: column;' : '')}
     padding: 28px 32px max(28px, env(safe-area-inset-bottom));
 `
 
-const SectionMainInner = styled.div`
+const SectionMainInner = styled.div<{ $fill: boolean }>`
     max-width: 860px;
     margin: 0 auto;
+    ${p => (p.$fill ? 'height: 100%;\n    display: flex;\n    flex-direction: column;' : '')}
 `
 
 /** 分区页题（Codex 形态）：内容区顶部大字号分区名，与组卡小标题（组标签层）区分层级 */
@@ -178,11 +184,14 @@ const SectionFallback = styled.div`
     min-height: 240px;
 `
 
-/** mobile 形态沿用的内容容器：避让 home 指示条 */
-const SettingsContent = styled.div<{ $token: Token }>`
+/**
+ * mobile 形态沿用的内容容器：避让 home 指示条。
+ * $fill（列表流分区）：同 PC——壳只让出滚动，分区组件满高内滚
+ */
+const SettingsContent = styled.div<{ $token: Token; $fill: boolean }>`
     flex: 1;
     min-height: 0; /* flex 子项可缩小，overflow 才生效（父 Content overflow:hidden） */
-    overflow-y: auto;
+    overflow-y: ${p => (p.$fill ? 'hidden' : 'auto')};
     display: flex;
     flex-direction: column;
     /* 底部避让 home 指示条；桌面 env=0 保持 24px */
@@ -350,7 +359,7 @@ export function SettingsPage() {
                     <MobileHeaderTitle $token={token}>{t(titleKey)}</MobileHeaderTitle>
                     <MobileHeaderSide />
                 </MobileHeader>
-                <SettingsContent $token={token}>
+                <SettingsContent $token={token} $fill={active?.layout === 'fill'}>
                     <Suspense fallback={<SectionFallback />}>
                         <Outlet />
                     </Suspense>
@@ -363,8 +372,8 @@ export function SettingsPage() {
     return (
         <SettingsTakeover>
             <Sidebar $token={token} active={active} goBack={goBack} />
-            <SectionMain>
-                <SectionMainInner>
+            <SectionMain $fill={active?.layout === 'fill'}>
+                <SectionMainInner $fill={active?.layout === 'fill'}>
                     <SectionTitle $token={token}>{t(active?.titleKey ?? 'settings.title')}</SectionTitle>
                     <Suspense fallback={<SectionFallback />}>
                         <Outlet />

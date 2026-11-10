@@ -84,7 +84,6 @@
     "collapse": "Collapse",
     "pinned": "Pinned",
     "recent": "Recent",
-    "archived": "Archived",
     "noSessions": "No sessions yet",
     "workspaces": "Workspaces",
     "newWorkspace": "New Workspace"
@@ -762,6 +761,10 @@
       "worktrees": {
         "title": "Worktrees",
         "desc": "Kept and leftover worktrees — inspect and dispose"
+      },
+      "archived": {
+        "title": "Archived sessions",
+        "desc": "Browse and restore archived sessions"
       }
     },
     "webTools": {

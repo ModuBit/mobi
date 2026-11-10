@@ -20,7 +20,6 @@ import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
     Settings,
-    Archive,
     Sun,
     Moon,
     Languages,
@@ -73,7 +72,7 @@ const SettingsButton = styled.button<{ $token: ReturnType<typeof useToken>['toke
 
 /**
  * 侧边栏底部区域
- * 设置按钮，点击弹出 Dropdown（归档/设置/主题/语言/安装/退出）
+ * 设置按钮，点击弹出 Dropdown（设置/主题/语言/安装/退出）
  */
 export function SidebarFooter() {
     const { token } = useToken()
@@ -99,12 +98,6 @@ export function SidebarFooter() {
                 label: t('nav.settings'),
                 icon: <Settings size={16} />,
                 onSelect: () => navigate({ to: '/settings' }),
-            },
-            {
-                key: 'archived',
-                label: t('nav.archived'),
-                icon: <Archive size={16} />,
-                onSelect: () => navigate({ to: '/archived' }),
             },
             {
                 key: 'theme',

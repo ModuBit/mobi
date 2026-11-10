@@ -31,7 +31,7 @@ const MainLayout = lazyRoute(routeChunkLoaders.MainLayout)
 const SessionsLayout = lazyRoute(routeChunkLoaders.SessionsLayout)
 const SessionDetailPage = lazyRoute(routeChunkLoaders.SessionDetailPage)
 const NewSessionPage = lazyRoute(routeChunkLoaders.NewSessionPage)
-const ArchivedPage = lazyRoute(routeChunkLoaders.ArchivedPage)
+const SettingsArchivedSection = lazyRoute(routeChunkLoaders.SettingsArchivedSection)
 const SettingsPage = lazyRoute(routeChunkLoaders.SettingsPage)
 const NotificationsSection = lazyRoute(routeChunkLoaders.NotificationsSection)
 const SettingsIndex = lazyRoute(routeChunkLoaders.SettingsIndex)
@@ -104,11 +104,19 @@ const newSessionRoute = createRoute({
     }),
 })
 
-// 已归档会话页（session-retention 票 05）：侧栏「已归档」/ 移动端汉堡菜单整页打开
+// 旧归档页路由：入口收编进设置页（/settings/archived），深链 replace 重定向不留历史项
+function ArchivedRedirect() {
+    const navigate = useNavigate()
+    useEffect(() => {
+        void navigate({ to: '/settings/archived', replace: true })
+    }, [navigate])
+    return null
+}
+
 const archivedRoute = createRoute({
     getParentRoute: () => mainLayoutRoute,
     path: 'archived',
-    component: ArchivedPage,
+    component: ArchivedRedirect,
 })
 
 // 设置页 layout 路由（左侧分区导航 / mobile 子页由 SettingsPage 响应式分流）。
@@ -157,6 +165,12 @@ const settingsMemoryRoute = createRoute({
     getParentRoute: () => settingsRoute,
     path: 'memory',
     component: MemorySection,
+})
+// 已归档会话分区（列表流，registry layout:'fill'）
+const settingsArchivedRoute = createRoute({
+    getParentRoute: () => settingsRoute,
+    path: 'archived',
+    component: SettingsArchivedSection,
 })
 // 会话遥测分区（OpenTelemetry trace 导出）
 const settingsTelemetryRoute = createRoute({
@@ -210,6 +224,7 @@ export const router = createRouter({
                 settingsNotificationsRoute,
                 settingsWebToolsRoute,
                 settingsMemoryRoute,
+                settingsArchivedRoute,
                 settingsTelemetryRoute,
                 settingsMapRoute,
                 settingsWorktreesRoute,

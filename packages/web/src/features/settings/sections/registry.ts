@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Bell, Globe, Bug, Brain, Activity, MapPin, FolderTree, type LucideIcon } from 'lucide-react'
+import { Bell, Globe, Bug, Brain, Activity, MapPin, FolderTree, Archive, type LucideIcon } from 'lucide-react'
 import { isDebugUnlocked } from '@/core/lib/debug'
 import { normalizeNeedle } from '@/ui/base/interactive/optionSearch'
 import { SETTINGS_WIDE_QUERY } from '@/domain/navigation/settingsPath'
@@ -49,7 +49,7 @@ export const SETTINGS_SECTION_GROUPS: SettingsSectionGroup[] = [
 /** 设置分区定义：入口列表（mobile）与分区导航（PC）共用的单一真相 */
 export interface SettingsSection {
     /** 分区 id（同时是子路由段） */
-    id: 'notifications' | 'web-tools' | 'memory' | 'telemetry' | 'map' | 'worktrees' | 'debug'
+    id: 'notifications' | 'web-tools' | 'memory' | 'archived' | 'telemetry' | 'map' | 'worktrees' | 'debug'
     /** i18n 标题 key */
     titleKey: string
     /** i18n 副标题 key */
@@ -61,12 +61,20 @@ export interface SettingsSection {
     badge?: SettingsSectionBadge
     /** 所属分组（分组视图据此归位） */
     groupId: SettingsSectionGroupId
+    /**
+     * 内容布局模式：缺省 'form'（表单流——设置壳整区滚动）；'fill' = 列表流分区
+     * （设置壳只让出滚动 overflow:hidden + flex 纵向链，分区组件满高内滚——归档列表
+     * 的 Listy 虚拟滚动需要限高容器，整区滚动会把它撑开）。声明在此单一真相，
+     * SettingsPage 只是渲染响应。
+     */
+    layout?: 'fill'
 }
 
 export const SETTINGS_SECTIONS: SettingsSection[] = [
     { id: 'notifications', titleKey: 'settings.sections.notifications.title', descKey: 'settings.sections.notifications.desc', icon: Bell, visible: () => true, groupId: 'general' },
     { id: 'web-tools', titleKey: 'settings.sections.webTools.title', descKey: 'settings.sections.webTools.desc', icon: Globe, visible: () => true, badge: 'web-tools-status', groupId: 'general' },
     { id: 'memory', titleKey: 'settings.sections.memory.title', descKey: 'settings.sections.memory.desc', icon: Brain, visible: () => true, groupId: 'general' },
+    { id: 'archived', titleKey: 'settings.sections.archived.title', descKey: 'settings.sections.archived.desc', icon: Archive, visible: () => true, groupId: 'general', layout: 'fill' },
     { id: 'telemetry', titleKey: 'settings.sections.telemetry.title', descKey: 'settings.sections.telemetry.desc', icon: Activity, visible: () => true, groupId: 'tools' },
     { id: 'map', titleKey: 'settings.sections.map.title', descKey: 'settings.sections.map.desc', icon: MapPin, visible: () => true, groupId: 'tools' },
     { id: 'worktrees', titleKey: 'settings.sections.worktrees.title', descKey: 'settings.sections.worktrees.desc', icon: FolderTree, visible: () => true, groupId: 'tools' },

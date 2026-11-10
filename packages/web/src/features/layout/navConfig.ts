@@ -20,7 +20,6 @@ import {
     Blocks,
     Clock,
     Settings,
-    Archive,
     LogOut,
     type LucideIcon,
 } from 'lucide-react'
@@ -52,7 +51,6 @@ export const logoutNavItem: NavItemConfig = {
 export const navPathMap: Record<string, string> = {
     'new-session': '/sessions/new',
     sessions: '/sessions',
-    archived: '/archived',
     settings: '/settings',
 }
 
@@ -70,6 +68,5 @@ export function getNavActiveKey(pathname: string, key: string): boolean {
 // 移动端菜单项（MobileMenu 使用，工作区列表单独嵌入）
 export const mobileNavItems: NavItemConfig[] = [
     { key: 'new-session', icon: Plus, labelKey: 'nav.newSession' },
-    { key: 'archived', icon: Archive, labelKey: 'nav.archived' },
     { key: 'settings', icon: Settings, labelKey: 'nav.settings' },
 ]

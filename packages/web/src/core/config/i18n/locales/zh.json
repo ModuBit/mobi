@@ -84,7 +84,6 @@
     "collapse": "收起",
     "pinned": "置顶",
     "recent": "最近",
-    "archived": "已归档",
     "noSessions": "暂无会话",
     "workspaces": "工作区",
     "newWorkspace": "新建工作区"
@@ -753,6 +752,10 @@
       "worktrees": {
         "title": "Worktree 管理",
         "desc": "保留/残留工作树的状态与处置"
+      },
+      "archived": {
+        "title": "已归档",
+        "desc": "查看与恢复已归档的会话"
       }
     },
     "webTools": {
