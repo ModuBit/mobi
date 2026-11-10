@@ -91,6 +91,9 @@
 }
 /* Radix unmounts when the exit animation ends, so a no-op keyframe times the exit while the transition does the visual work. */
 .menu[data-state="closed"] { opacity: 0; transform: translate(calc(var(--menu-x) * .5), calc(var(--menu-y) * .5)) scale(.985); transition: opacity 130ms var(--ease-standard), transform 130ms var(--ease-standard); animation: menu-exit 130ms linear both; pointer-events: none; }
+/* 锚点死亡（触发器被 display:none 塌掉，rect 归零）：面板立即隐形——退场动画照常跑完让 Radix
+   正常卸载，但不再画出被 floating-ui 甩到视口原点的那一帧（本地修改 9）。 */
+.menu[data-anchor-dead] { visibility: hidden; }
 /* 条目容器（本地修改 8）：高亮与条目同处一层——两者一起随内容滚动，offsetTop 也才有同一基准。
    面板的 padding 留在外层的 .menu/.subMenu 上，滚动只发生在这里：滚动容器自己的 padding 会随内容
    滚出视口，滚动后内容便贴住面板上下边缘（子菜单长列表在真机上的表现）。 */

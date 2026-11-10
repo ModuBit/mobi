@@ -44,6 +44,13 @@ function setWidth(el: HTMLElement, width: number) {
     roPairs.filter((p) => p.el === el).forEach((p) => p.cb([{ target: el, contentRect: { width } }]))
 }
 
+/** 面包屑容器 = 观察元素中含路径末段文本的那个（树里其他 RO——如 DropdownMenu 锚点检测——不持有路径文本） */
+function findCrumbObserver(basename: string): HTMLElement {
+    const crumb = observers.find((el) => el.textContent?.includes(basename))
+    if (!crumb) throw new Error(`no ResizeObserver observes an element containing "${basename}"; observed: ${observers.length}`)
+    return crumb
+}
+
 describe('FileContentViewHeader 面包屑左省略', () => {
     it('空间足够 → 完整显示所有段，无省略号', () => {
         const { container } = render(
@@ -53,7 +60,7 @@ describe('FileContentViewHeader 面包屑左省略', () => {
                 treeOpen={false} onTreeOpenChange={() => {}}
             />,
         )
-        const crumb = observers[0]
+        const crumb = findCrumbObserver('c.ts')
         setWidth(crumb, 1000)
         expect(container.textContent).toContain('a')
         expect(container.textContent).toContain('b')
@@ -81,7 +88,7 @@ describe('FileContentViewHeader 面包屑左省略', () => {
                 treeOpen={false} onTreeOpenChange={() => {}}
             />,
         )
-        const crumb = observers[0]
+        const crumb = findCrumbObserver('d.ts')
         await act(async () => {
             Object.defineProperty(crumb, 'clientWidth', { configurable: true, value: 50 })
             Object.defineProperty(crumb, 'scrollWidth', { configurable: true, value: 1000 })

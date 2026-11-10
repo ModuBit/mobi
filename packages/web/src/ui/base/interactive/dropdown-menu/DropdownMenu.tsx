@@ -38,13 +38,16 @@
 //     usePanelEdgeShift 注释），宽面板在窄屏直接顶出屏幕右缘，由组件侧按实测矩形补上（两级通用）。
 //  8. 条目容器——高亮与条目收进 .items（子菜单的滚动容器），面板 padding 留在外层：滚动容器
 //     自身的 padding 会随内容滚出视口，表现为「滚动后内容紧贴上下边缘」。
-// 注：Radix 的弹层按触发器的矩形定位（floating-ui autoUpdate），因此**触发器必须常驻布局**——
-// 消费方若把触发器放进 hover-only 的容器，关闭瞬间容器塌成 display:none、rect 归零到视口
-// 原点，仍在退场的菜单会被甩到左上角。此为消费方约束，组件侧不做兜底。
+//  9. 锚点死亡检测——触发器被 display:none 塌掉（rect 归零）时退场中的面板会被 floating-ui
+//     甩到视口原点闪一帧；观察到锚点盒归零立即隐藏面板并收起菜单（详见 DropdownMenu 内注释）。
+// 注：Radix 的弹层按触发器的矩形定位（floating-ui autoUpdate）。触发器若被 display:none
+// 塌掉（设置接管隐藏侧栏、hover-only 容器收起、路由切换卸装父容器），rect 归零到视口
+// 原点，仍在退场的菜单会被甩到左上角闪一帧——组件侧已兜底（本地修改 9：锚点死亡检测），
+// 消费方无需再保证触发器常驻布局。
 "use client";
 
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { CSSProperties, FocusEvent, ReactNode, RefCallback } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, cloneElement, isValidElement } from "react";
+import type { CSSProperties, FocusEvent, ReactNode, ReactElement, Ref, RefCallback } from "react";
 import * as DropdownPrimitive from "@radix-ui/react-dropdown-menu";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -210,7 +213,7 @@ function usePanelEdgeShift(panel: HTMLDivElement | null): void {
  * 就把整棵 portal 卸掉，`.menu[data-state="closed"]` 的退出动画永远跑不起来
  * （上游把 Content 内联在 Portal 里所以没这层；React 19 起函数组件的 ref 走 props）。
  */
-function MenuLevel({ variant, items, side, align, sideOffset, alignOffset, ref }: { variant: "root" | "sub"; items: DropdownItem[]; side?: MenuSide; align?: MenuAlign; sideOffset: number; alignOffset?: number; ref?: RefCallback<HTMLDivElement> }) {
+function MenuLevel({ variant, items, side, align, sideOffset, alignOffset, anchorDead, ref }: { variant: "root" | "sub"; items: DropdownItem[]; side?: MenuSide; align?: MenuAlign; sideOffset: number; alignOffset?: number; anchorDead?: boolean; ref?: RefCallback<HTMLDivElement> }) {
   const reduced = useReducedMotion();
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const pointer = useRef(false);
@@ -281,16 +284,66 @@ function MenuLevel({ variant, items, side, align, sideOffset, alignOffset, ref }
   if (variant === "sub") {
     return <DropdownPrimitive.SubContent ref={setPanel} className={styles.subMenu} data-dropdown-panel sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={EDGE_PADDING} loop onFocus={onPanelFocus} onPointerMoveCapture={() => { pointer.current = true; }} onKeyDownCapture={() => { pointer.current = false; }} onClick={event => event.stopPropagation()}>{body}</DropdownPrimitive.SubContent>;
   }
-  return <DropdownPrimitive.Content ref={setPanel} className={styles.menu} data-dropdown-panel side={side} align={align} sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={EDGE_PADDING} loop onFocus={onPanelFocus} onPointerMoveCapture={() => { pointer.current = true; }} onKeyDownCapture={() => { pointer.current = false; }} onClick={event => event.stopPropagation()}>{body}</DropdownPrimitive.Content>;
+  return <DropdownPrimitive.Content ref={setPanel} className={styles.menu} data-dropdown-panel data-anchor-dead={anchorDead ? "" : undefined} side={side} align={align} sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={EDGE_PADDING} loop onFocus={onPanelFocus} onPointerMoveCapture={() => { pointer.current = true; }} onKeyDownCapture={() => { pointer.current = false; }} onClick={event => event.stopPropagation()}>{body}</DropdownPrimitive.Content>;
 }
 
 export function DropdownMenu({ label, trigger, items, icon, side = "bottom", align = "end", open, onOpenChange }: DropdownMenuProps) {
-  return <DropdownPrimitive.Root modal={false} open={open} onOpenChange={onOpenChange}>
+  const isControlled = open !== undefined;
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = isControlled ? open : internalOpen;
+
+  // 本地修改 9——锚点死亡检测：触发器被 display:none 塌掉（rect 归零）时，floating-ui 仍在
+  // 给退场中的面板定位，会被甩到视口原点闪一帧（设置接管隐藏侧栏时点「设置」即复现）。
+  // 观察到锚点盒归零立即：① 面板置 visibility:hidden（退场动画隐形跑完，portal 正常卸载）；
+  // ② 通知 Root 收起。ResizeObserver 在 display:none 生效的同一帧回调，早于下一次绘制。
+  // 盒尺寸判归零而非 offsetParent：position:fixed 祖先下的触发器 offsetParent 恒 null，会误杀。
+  // **观察器必须常驻，不能挂 isOpen**：点菜单项往往同时触发导航，Root 收起（isOpen 翻 false）
+  // 与锚点塌掉落在同一提交里——先断观察器就没人看到那一帧了。常驻观察 + 由 rect 自愈归位。
+  const triggerNodeRef = useRef<HTMLElement | null>(null);
+  const [anchorDead, setAnchorDead] = useState(false);
+  useLayoutEffect(() => {
+    const node = triggerNodeRef.current;
+    if (!node) return;
+    const check = (entry?: ResizeObserverEntry) => {
+      const box = entry?.contentRect ?? node.getBoundingClientRect();
+      setAnchorDead(box.width === 0 && box.height === 0);
+    };
+    check();
+    const observer = new ResizeObserver((entries) => check(entries[0]));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    if (anchorDead) {
+      if (!isControlled) setInternalOpen(false);
+      onOpenChange?.(false);
+    }
+  }, [anchorDead, isControlled, onOpenChange]);
+
+  // 合成 ref：既要拿到锚点节点做死亡检测，也不能冲掉触发器自带的 ref
+  const setTriggerRef = useCallback((node: HTMLElement | null) => {
+    triggerNodeRef.current = node;
+    if (isValidElement(trigger)) {
+      const original = (trigger as { ref?: Ref<HTMLElement> | null }).ref;
+      if (typeof original === "function") original(node);
+      else if (original) (original as { current: HTMLElement | null }).current = node;
+    }
+  }, [trigger]);
+  const triggerWithRef = isValidElement(trigger)
+    ? cloneElement(trigger as ReactElement<{ ref?: Ref<HTMLElement> }>, { ref: setTriggerRef })
+    : trigger;
+
+  const handleOpenChange = useCallback((next: boolean) => {
+    if (!isControlled) setInternalOpen(next);
+    onOpenChange?.(next);
+  }, [isControlled, onOpenChange]);
+
+  return <DropdownPrimitive.Root modal={false} open={isOpen} onOpenChange={handleOpenChange}>
     {/* mobi 本地修改 1：trigger 插槽走 asChild（不挂上游 .trigger 样式——外部触发器自带外观）；未给时保留上游触发器 */}
     {trigger !== undefined
-      ? <DropdownPrimitive.Trigger asChild>{trigger}</DropdownPrimitive.Trigger>
+      ? <DropdownPrimitive.Trigger asChild>{triggerWithRef}</DropdownPrimitive.Trigger>
       : <DropdownPrimitive.Trigger className={styles.trigger} type="button">{icon && <span className={styles.triggerIcon} aria-hidden="true">{icon}</span>}<TriggerLabel text={label ?? ""}/><ChevronDown className={styles.chevron} size={15} strokeWidth={1.8} aria-hidden="true"/></DropdownPrimitive.Trigger>}
-    <DropdownPrimitive.Portal><MenuLevel variant="root" items={items} side={side} align={align} sideOffset={6} /></DropdownPrimitive.Portal>
+    <DropdownPrimitive.Portal><MenuLevel variant="root" items={items} side={side} align={align} sideOffset={6} anchorDead={anchorDead} /></DropdownPrimitive.Portal>
   </DropdownPrimitive.Root>;
 }
 
