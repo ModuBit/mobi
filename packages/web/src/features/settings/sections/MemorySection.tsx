@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Alert, App, Input, Tag, theme as antTheme } from 'antd'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { Button } from '@/ui/base/interactive/button/Button'
@@ -32,6 +32,7 @@ import { toDraft, useMemorySettings } from '@/core/data/hooks/queries/useMemoryS
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { SettingRow } from '@/features/settings/blocks/SettingRow'
+import { useSettingsDraft } from '@/features/settings/useSettingsDraft'
 
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
@@ -79,8 +80,65 @@ function CheckResultView({ result, t }: { result: MemoryEndpointCheckResult; t: 
     return <AppTooltip title={result.reason || undefined}><Tag color="warning">{t('settings.memory.checkUnreachable')}</Tag></AppTooltip>
 }
 
+/** 记忆草稿形状（apiToken 为 write-only 草稿，写后清空；pageRefresh 为字符串草稿，失焦整数化） */
+type MemoryDraft = {
+    engine: 'off' | 'hindsight'
+    endpoint: string
+    apiToken: string
+    rules: MemoryRule[]
+    bankName: string
+    disabledWorkspaces: string[]
+    autoInject: MemoryAutoInjectMode
+    pageRefresh: string
+}
+
 /**
- * 长期记忆子页（SettingRow 行式形态，票06：显式保存页 → 即改即存行式）。
+ * 记忆提交内容构造（分区不变式所在）：地址/库名偏离基线才提交；token 非空才携带
+ * （在场性协议：不在场 = 保持旧值，空串 = 清除走 tokenClear）；刷新间隔整数化后偏离才提交。
+ * 校验失败返回 error（走 hook 的失败呈现，草稿保持让用户改）。
+ */
+function buildMemoryPayload(
+    key: string,
+    draft: MemoryDraft,
+    baseline: MemoryDraft,
+    t: (k: string) => string,
+): MemorySettingsSubmission | Record<string, unknown> | null | { error: string } {
+    switch (key) {
+        case 'engine':
+            return { engine: draft.engine }
+        case 'endpoint': {
+            if (draft.endpoint === baseline.endpoint) return null
+            if (!draft.endpoint.trim()) return { error: t('settings.memory.endpointRequired') }
+            if (!parseEndpointUrl(draft.endpoint)) return { error: t('settings.memory.endpointInvalid') }
+            return { endpoint: draft.endpoint.trim() }
+        }
+        case 'apiToken': {
+            const trimmed = draft.apiToken.trim()
+            return trimmed ? { apiToken: trimmed } : null
+        }
+        case 'tokenClear':
+            // 清除已存 token：显式提交空串（在场性协议：空串 = 清除）
+            return { apiToken: '' }
+        case 'rules':
+            return { rules: draft.rules }
+        case 'bankName':
+            return draft.bankName === baseline.bankName ? null : { bankName: draft.bankName }
+        case 'autoInject':
+            return { autoInject: draft.autoInject }
+        case 'pageRefresh': {
+            const n = Math.max(0, Math.round(Number(draft.pageRefresh) || 0))
+            return n === Number(baseline.pageRefresh) ? null : { pageRefreshEveryTurns: n }
+        }
+        case 'disabledWorkspaces':
+            return { disabledWorkspaces: draft.disabledWorkspaces }
+        default:
+            return null
+    }
+}
+
+/**
+ * 长期记忆子页（SettingRow 行式形态）。草稿—落盘纪律由 useSettingsDraft 承载，
+ * 分区只声明字段投影与提交内容构造（buildMemoryPayload）。
  *
  * 保存时机随行控件走（引擎/注入/规则/排除 = 动作即落盘；地址/Token/库名/刷新间隔 = 失焦落盘），
  * 部分字段提交由 Submission 协议的 merge 语义承载（读写协议零改动）。
@@ -93,48 +151,31 @@ export function MemorySection() {
     const { settings, loaded, offline, save, check } = useMemorySettings()
     const workspacesQuery = useWorkspaces()
 
-    // 表单草稿（可变输入——最小标识外状态，非派生对象）
-    const [engine, setEngine] = useState<'off' | 'hindsight'>('off')
-    const [endpoint, setEndpoint] = useState('')
-    const [tokenDraft, setTokenDraft] = useState('')
-    const [rules, setRules] = useState<MemoryRule[]>([])
-    const [bankName, setBankName] = useState('')
-    const [disabledWorkspaces, setDisabledWorkspaces] = useState<string[]>([])
-    // 注入策略草稿（mobi 默认关：不自动注入 + 不刷目录；要在设置里显式开）
-    const [autoInject, setAutoInject] = useState<MemoryAutoInjectMode>('none')
-    const [refreshDraft, setRefreshDraft] = useState('0')
+    const draftApi = useSettingsDraft<MemoryDraft, Parameters<typeof toDraft>[0]>({
+        loaded,
+        settings: settings ?? null,
+        errorFallbackKey: 'settings.memory.saveFailed',
+        fields: {
+            engine: { from: (s) => (toDraft(s).engine === 'hindsight' ? 'hindsight' : 'off') },
+            endpoint: { from: (s) => toDraft(s).endpoint ?? '' },
+            apiToken: { from: () => '', onSaved: ({ reset }) => reset('') },
+            rules: { from: (s) => toDraft(s).rules ?? [] },
+            bankName: { from: (s) => toDraft(s).bankName ?? '' },
+            disabledWorkspaces: { from: (s) => toDraft(s).disabledWorkspaces ?? [] },
+            autoInject: { from: (s) => toDraft(s).autoInject ?? 'none' },
+            pageRefresh: {
+                from: (s) => String(toDraft(s).pageRefreshEveryTurns ?? 0),
+                // 失焦整数化显示（小数取整、清空回落 0——不落 1「每轮」），规范化值参与 payload 判定
+                normalize: (v) => String(Math.max(0, Math.round(Number(v) || 0))),
+            },
+        },
+        buildPayload: (key, draft, baseline) => buildMemoryPayload(key, draft, baseline, t),
+        save,
+    })
+
+    // 纯本地展示态（不入草稿 schema）：连接检查结果与高级路径规则输入行内草稿
     const [checkResult, setCheckResult] = useState<MemoryEndpointCheckResult | null>(null)
-    // 高级路径规则输入（行内，不默认占屏）
     const [pathDraft, setPathDraft] = useState('')
-    // 已存基线：失焦落盘只在草稿偏离基线时发请求（幂等 merge 下避免无谓写盘）
-    const [endpointBaseline, setEndpointBaseline] = useState('')
-    const [bankBaseline, setBankBaseline] = useState('')
-    const [refreshBaseline, setRefreshBaseline] = useState(0)
-
-    // 加载完成后初始化草稿一次（invalidate 重读不重置——编辑中的草稿不丢，对齐 webTools 语义）
-    const [initialized, setInitialized] = useState(false)
-    useEffect(() => {
-        if (!loaded || initialized) return
-        const draft = toDraft(settings)
-        setEngine(draft.engine === 'hindsight' ? 'hindsight' : 'off')
-        setEndpoint(draft.endpoint ?? '')
-        setEndpointBaseline(draft.endpoint ?? '')
-        setRules(draft.rules ?? [])
-        setBankName(draft.bankName ?? '')
-        setBankBaseline(draft.bankName ?? '')
-        setDisabledWorkspaces(draft.disabledWorkspaces ?? [])
-        setAutoInject(draft.autoInject ?? 'none')
-        setRefreshDraft(String(draft.pageRefreshEveryTurns ?? 0))
-        setRefreshBaseline(draft.pageRefreshEveryTurns ?? 0)
-        setInitialized(true)
-    }, [loaded, initialized, settings])
-
-    /** 部分字段落盘（Submission merge 协议），失败统一 toast；返回是否成功 */
-    const savePartial = async (patch: MemorySettingsSubmission) => {
-        const result = await save(patch)
-        if (!result.ok) message.error(result.error || t('settings.memory.saveFailed'))
-        return result.ok
-    }
 
     if (!loaded) {
         return (
@@ -145,9 +186,12 @@ export function MemorySection() {
         )
     }
 
-    const hindsight = engine === 'hindsight'
-    const uiUrl = deriveMemoryUiUrl(endpoint)
-    const offMachine = hindsight && isOffMachineEndpoint(endpoint)
+    const { draft } = draftApi
+    const { rules } = draft
+
+    const hindsight = draft.engine === 'hindsight'
+    const uiUrl = deriveMemoryUiUrl(draft.endpoint)
+    const offMachine = hindsight && isOffMachineEndpoint(draft.endpoint)
     // workspace 排除下拉可选项：全部工作区 folder 路径（tags 模式仍可自由输入任意路径）。
     // chip 完整显示路径（放不下换行，超容器宽才截断 + 悬停全值），不做任何短化猜测
     const workspaceOptions = Array.from(new Set(
@@ -166,61 +210,31 @@ export function MemorySection() {
 
     /** 引擎切换：动作即落盘（hindsight 态 endpoint 未填不拦截——spawn 裁决侧 fail-closed 兜底，填地址行就在旁边） */
     const switchEngine = (v: 'off' | 'hindsight') => {
-        setEngine(v)
         setCheckResult(null)
-        void savePartial({ engine: v })
+        void draftApi.commit('engine', { engine: v })
     }
 
-    /** 地址失焦落盘：hindsight 态沿用原前端校验（必填 + 带协议 URL），失败不落盘、草稿保持让用户改 */
-    const saveEndpoint = async () => {
-        if (endpoint === endpointBaseline) return
-        if (!endpoint.trim()) {
-            message.error(t('settings.memory.endpointRequired'))
-            return
-        }
-        if (!parseEndpointUrl(endpoint)) {
-            message.error(t('settings.memory.endpointInvalid'))
-            return
-        }
-        if (await savePartial({ endpoint: endpoint.trim() })) setEndpointBaseline(endpoint.trim())
-    }
-
-    /** Token 失焦落盘：非空才携带（在场性协议：不在场 = 保持旧值），成功清空草稿 */
-    const saveToken = async () => {
-        const trimmed = tokenDraft.trim()
-        if (!trimmed) return
-        if (await savePartial({ apiToken: trimmed })) setTokenDraft('')
-    }
-
-    /** 清除已存 token：显式提交空串（在场性协议：空串 = 清除） */
+    /** 清除已存 token：语义动作直调落盘（成功提示是本动作的一部分，不走草稿纪律） */
     const clearToken = async () => {
-        if (await savePartial({ apiToken: '' })) message.success(t('settings.memory.tokenCleared'))
+        if (await save({ apiToken: '' })) message.success(t('settings.memory.tokenCleared'))
     }
 
-    /** 规则任何变更（增删改）即落盘 */
-    const updateRules = (next: MemoryRule[]) => {
-        setRules(next)
-        void savePartial({ rules: next })
+    /** 按路径添加规则（输入非空才建，成功清空输入） */
+    const addPathRule = () => {
+        const p = pathDraft.trim()
+        if (p) {
+            void draftApi.commit('rules', { rules: [...rules, { target: { type: 'path', path: p }, mode: 'normal' }] })
+            setPathDraft('')
+        }
     }
 
-    /** 库名失焦落盘：空串走 merge 清除语义（协议不变） */
-    const saveBankName = async () => {
-        if (bankName === bankBaseline) return
-        if (await savePartial({ bankName })) setBankBaseline(bankName)
-    }
-
-    /** 注入模式切换：动作即落盘 */
-    const switchAutoInject = (v: MemoryAutoInjectMode) => {
-        setAutoInject(v)
-        void savePartial({ autoInject: v })
-    }
-
-    /** 刷新间隔失焦落盘：整数化语义不变（小数取整、清空回落 0——不落 1「每轮」） */
-    const saveRefresh = async () => {
-        const n = Math.max(0, Math.round(Number(refreshDraft) || 0))
-        setRefreshDraft(String(n))
-        if (n === refreshBaseline) return
-        if (await savePartial({ pageRefreshEveryTurns: n })) setRefreshBaseline(n)
+    /** 连接检查（草稿值；token 不在场 daemon 用已存值兜底） */
+    const handleCheck = async () => {
+        if (!draft.endpoint.trim()) {
+            message.warning(t('settings.memory.endpointRequired'))
+            return
+        }
+        setCheckResult(await check({ endpoint: draft.endpoint, ...(draft.apiToken.trim() ? { apiToken: draft.apiToken.trim() } : {}) }))
     }
 
     return (
@@ -232,7 +246,7 @@ export function MemorySection() {
                     variant="inline-select"
                     description={hindsight ? t('settings.memory.savedHint') : t('settings.memory.privacyHint')}
                     select={{
-                        value: engine,
+                        value: draft.engine,
                         ariaLabel: t('settings.memory.engineTitle'),
                         onValueChange: (v) => switchEngine(v === 'hindsight' ? 'hindsight' : 'off'),
                         options: [
@@ -246,10 +260,9 @@ export function MemorySection() {
                         label={t('settings.memory.endpointLabel')}
                         variant="input"
                         input={{
-                            value: endpoint,
-                            onChange: (e) => { setEndpoint(e.target.value); setCheckResult(null) },
-                            onBlur: saveEndpoint,
-                            onPressEnter: saveEndpoint,
+                            ...draftApi.bindInput('endpoint'),
+                            // 地址编辑即清上次的连接检查结果（旧结果对应旧地址，留着误导）
+                            onChange: (e) => { draftApi.setDraft({ endpoint: e.target.value }); setCheckResult(null) },
                             placeholder: HINDSIGHT_CLOUD_API_URL,
                         }}
                     />
@@ -264,10 +277,7 @@ export function MemorySection() {
                         secret
                         description={settings?.apiTokenSet ? t('settings.memory.tokenSetPlaceholder') : undefined}
                         input={{
-                            value: tokenDraft,
-                            onChange: (e) => setTokenDraft(e.target.value),
-                            onBlur: saveToken,
-                            onPressEnter: saveToken,
+                            ...draftApi.bindInput('apiToken'),
                             placeholder: settings?.apiTokenSet
                                 ? t('settings.memory.tokenSetPlaceholder')
                                 : t('settings.memory.tokenUnsetPlaceholder'),
@@ -292,7 +302,7 @@ export function MemorySection() {
                         variant="action"
                         action={
                             <>
-                                <Button variant="secondary" size="sm" onClick={() => { void handleCheck() }} disabled={!endpoint.trim()}>
+                                <Button variant="secondary" size="sm" onClick={() => { void handleCheck() }} disabled={!draft.endpoint.trim()}>
                                     {t('settings.memory.checkButton')}
                                 </Button>
                                 {checkResult && <CheckResultView result={checkResult} t={t} />}
@@ -325,9 +335,9 @@ export function MemorySection() {
                                         style={{ width: 120 }}
                                         ariaLabel={t('settings.memory.mapTitle')}
                                         value={rule.mode}
-                                        onValueChange={(mode) => updateRules(rules.map((x, j) => j === i
+                                        onValueChange={(mode) => { void draftApi.commit('rules', { rules: rules.map((x, j) => j === i
                                             ? { ...x, mode, ...(mode !== 'normal' ? { tag: undefined } : {}), ...(mode !== 'isolated' ? { bank: undefined } : {}) }
-                                            : x))}
+                                            : x) }) }}
                                         options={[
                                             { value: 'normal', label: t('settings.memory.modeNormal'), title: t('settings.memory.modeNormalHint') },
                                             { value: 'open', label: t('settings.memory.modeOpen'), title: t('settings.memory.modeOpenHint') },
@@ -340,8 +350,8 @@ export function MemorySection() {
                                                 size="small"
                                                 style={{ width: 150 }}
                                                 value={rule.tag ?? ''}
-                                                onChange={(e) => setRules(rules.map((x, j) => j === i ? { ...x, tag: e.target.value.trim() || undefined } : x))}
-                                                onBlur={() => updateRules(rules)}
+                                                onChange={(e) => draftApi.setDraft({ rules: rules.map((x, j) => j === i ? { ...x, tag: e.target.value.trim() || undefined } : x) })}
+                                                onBlur={() => { void draftApi.commit('rules') }}
                                                 placeholder={t('settings.memory.tagLabel')}
                                                 aria-label={t('settings.memory.tagLabel')}
                                             />
@@ -353,8 +363,8 @@ export function MemorySection() {
                                                 size="small"
                                                 style={{ width: 150 }}
                                                 value={rule.bank ?? ''}
-                                                onChange={(e) => setRules(rules.map((x, j) => j === i ? { ...x, bank: e.target.value.trim() || undefined } : x))}
-                                                onBlur={() => updateRules(rules)}
+                                                onChange={(e) => draftApi.setDraft({ rules: rules.map((x, j) => j === i ? { ...x, bank: e.target.value.trim() || undefined } : x) })}
+                                                onBlur={() => { void draftApi.commit('rules') }}
                                                 placeholder={t('settings.memory.bankLabel')}
                                                 aria-label={t('settings.memory.bankLabel')}
                                             />
@@ -363,7 +373,7 @@ export function MemorySection() {
                                     <IconButton
                                         icon={<Trash2 size={14} />} size={22}
                                         aria-label={t('settings.memory.ruleRemove')}
-                                        onClick={() => updateRules(rules.filter((_, j) => j !== i))}
+                                        onClick={() => { void draftApi.commit('rules', { rules: rules.filter((_, j) => j !== i) }) }}
                                     />
                                 </RuleActions>
                             }
@@ -381,7 +391,7 @@ export function MemorySection() {
                                 placeholder={t('settings.memory.ruleAddWorkspace')}
                                 options={addableWorkspaces}
                                 onValueChange={(id) => {
-                                    if (id) updateRules([...rules, { target: { type: 'workspace', id }, mode: 'normal' }])
+                                    if (id) void draftApi.commit('rules', { rules: [...rules, { target: { type: 'workspace', id }, mode: 'normal' }] })
                                 }}
                             />
                         }
@@ -411,10 +421,7 @@ export function MemorySection() {
                         variant="input"
                         description={t('settings.memory.bankNameHint')}
                         input={{
-                            value: bankName,
-                            onChange: (e) => setBankName(e.target.value),
-                            onBlur: saveBankName,
-                            onPressEnter: saveBankName,
+                            ...draftApi.bindInput('bankName'),
                             placeholder: t('settings.memory.bankNamePlaceholder'),
                         }}
                     />
@@ -428,9 +435,9 @@ export function MemorySection() {
                         label={t('settings.memory.injectModeLabel')}
                         variant="inline-select"
                         select={{
-                            value: autoInject,
+                            value: draft.autoInject,
                             ariaLabel: t('settings.memory.injectModeLabel'),
-                            onValueChange: (v) => switchAutoInject(v as MemoryAutoInjectMode),
+                            onValueChange: (v) => { void draftApi.commit('autoInject', { autoInject: v as MemoryAutoInjectMode }) },
                             options: [
                                 { value: 'reflect', label: t('settings.memory.injectReflect'), title: t('settings.memory.injectReflectHint') },
                                 { value: 'recall', label: t('settings.memory.injectRecall'), title: t('settings.memory.injectRecallHint') },
@@ -444,10 +451,7 @@ export function MemorySection() {
                         variant="input"
                         description={t('settings.memory.pageRefreshHint')}
                         input={{
-                            value: refreshDraft,
-                            onChange: (e) => setRefreshDraft(e.target.value),
-                            onBlur: saveRefresh,
-                            onPressEnter: saveRefresh,
+                            ...draftApi.bindInput('pageRefresh'),
                             inputMode: 'numeric',
                         }}
                     />
@@ -459,8 +463,8 @@ export function MemorySection() {
                 <div style={{ padding: '10px 16px 14px' }}>
                     <MultiSelect
                         mode="tags"
-                        value={disabledWorkspaces}
-                        onValueChange={(next) => { setDisabledWorkspaces(next); void savePartial({ disabledWorkspaces: next }) }}
+                        value={draft.disabledWorkspaces}
+                        onValueChange={(next) => { void draftApi.commit('disabledWorkspaces', { disabledWorkspaces: next }) }}
                         options={workspaceOptions}
                         placeholder={t('settings.memory.excludedPlaceholder')}
                         ariaLabel={t('settings.memory.excludedTitle')}
@@ -469,24 +473,6 @@ export function MemorySection() {
             </SettingGroupCard>
         </Wrap>
     )
-
-    /** 按路径添加规则（输入非空才建，成功清空输入） */
-    function addPathRule() {
-        const p = pathDraft.trim()
-        if (p) {
-            updateRules([...rules, { target: { type: 'path', path: p }, mode: 'normal' }])
-            setPathDraft('')
-        }
-    }
-
-    /** 连接检查（草稿值；token 不在场 daemon 用已存值兜底） */
-    async function handleCheck() {
-        if (!endpoint.trim()) {
-            message.warning(t('settings.memory.endpointRequired'))
-            return
-        }
-        setCheckResult(await check({ endpoint, ...(tokenDraft.trim() ? { apiToken: tokenDraft.trim() } : {}) }))
-    }
 }
 
 /** 空占位：首次加载中保持子页高度，避免布局跳动（对齐 WebToolsSection 的 Placeholder 语义） */

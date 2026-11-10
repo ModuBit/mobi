@@ -6,7 +6,7 @@
 - [Daemon](./packages/daemon/CONTEXT.md): 单机 daemon 的领域语言——会话实体的持久化与多端同步、daemon / 宿主 / 宿主通道
 - [Session](./packages/session/CONTEXT.md): 会话宿主的领域语言——local/remote 会话、锚点（rewind / fork）、轮次变更、进程角色
 - [CLI](./packages/cli/CONTEXT.md): 组合根词汇——命令入口、supervisor 托管单 daemon
-- [Web](./packages/web/CONTEXT.md): 聊天流中的工具呈现词汇（工具行 / 文件 Chip，首建于工具卡片改版）
+- [Web](./packages/web/CONTEXT.md): 聊天流中的工具呈现词汇（工具行 / 文件 Chip）与设置页词汇（设置草稿 / 提交策略，首建于设置页行式重构）
 
 ## Relationships
 

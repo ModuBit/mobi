@@ -14,16 +14,16 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react'
 import { Alert, App, theme as antTheme } from 'antd'
 import { Activity } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import type { TelemetrySettingsSubmission } from '@mobi/shared'
+import type { TelemetrySettings, TelemetrySettingsSubmission } from '@mobi/shared'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { useTelemetrySettings } from '@/core/data/hooks/queries/useTelemetrySettings'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { SettingRow } from '@/features/settings/blocks/SettingRow'
+import { useSettingsDraft } from '@/features/settings/useSettingsDraft'
 
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
@@ -45,13 +45,28 @@ const CardHint = styled.div<{ $token: Token }>`
     color: ${p => p.$token.colorTextTertiary};
 `
 
+/** 认证头草稿解析：`K=V,K2=V2` → record；键值均非空才算合法段 */
+const parseHeadersDraft = (trimmed: string): Record<string, string> | { invalid: true } => {
+    const record: Record<string, string> = {}
+    for (const pair of trimmed.split(',')) {
+        const idx = pair.indexOf('=')
+        const k = idx > 0 ? pair.slice(0, idx).trim() : ''
+        const v = idx > 0 ? pair.slice(idx + 1).trim() : ''
+        if (!k || !v) return { invalid: true }
+        record[k] = v
+    }
+    return record
+}
+
 /**
- * 会话遥测子页（SettingRow 行式形态，票07：显式保存页 → 即改即存行式）。
+ * 会话遥测子页（SettingRow 行式形态）。草稿—落盘纪律由 useSettingsDraft 承载
+ * （加载投影一次 / 失败 toast / 成功副作用），分区只声明字段投影与提交内容构造：
  *
  * 开关动作即落盘（三档位联动规则不变：raw 开→content 连带开、content 关→raw 连带关）；
  * endpoint / 认证头失焦落盘（校验沿用原保存口语义）；部分字段提交由 Submission 协议承载。
- * traces 恒导出（span 只含时延与名称）；内容分档显式知情。「下个新会话生效」语义不变
- * ——daemon spawn 时现读注入 OTEL_* env。
+ * 不变式「enabled 落盘必带有效 endpoint」在 buildPayload 内维持（开关已翻未落盘的中间态
+ * 由 endpoint 失焦提交时一并携带 enabled 收口）。traces 恒导出（span 只含时延与名称）；
+ * 内容分档显式知情。「下个新会话生效」语义不变——daemon spawn 时现读注入 OTEL_* env。
  */
 export function TelemetrySection() {
     const { token } = useToken()
@@ -59,36 +74,25 @@ export function TelemetrySection() {
     const { message } = App.useApp()
     const { settings, loaded, offline, save } = useTelemetrySettings()
 
-    // 表单草稿（可变输入——最小标识外状态，非派生对象）
-    const [enabled, setEnabled] = useState(false)
-    const [endpoint, setEndpoint] = useState('')
-    const [includeContent, setIncludeContent] = useState(false)
-    const [includeRawApiBodies, setIncludeRawApiBodies] = useState(false)
-    const [includeMetrics, setIncludeMetrics] = useState(false)
-    // 认证头草稿：OTEL 标准形态字符串 `K=V,K2=V2`（write-only，回读只知 headersSet）
-    const [headersDraft, setHeadersDraft] = useState('')
-    // 已存基线：失焦落盘只在草稿偏离基线时发请求
-    const [endpointBaseline, setEndpointBaseline] = useState('')
+    const draftApi = useSettingsDraft<TelemetryDraft, TelemetrySettings | null>({
+        loaded,
+        settings: settings ?? null,
+        errorFallbackKey: 'settings.telemetry.saveFailed',
+        fields: {
+            enabled: { from: (s) => s?.enabled ?? false },
+            endpoint: { from: (s) => s?.endpoint ?? '' },
+            includeContent: { from: (s) => s?.includeContent ?? false },
+            includeRawApiBodies: { from: (s) => s?.includeRawApiBodies ?? false },
+            includeMetrics: { from: (s) => s?.includeMetrics ?? false },
+            // 认证头草稿：OTEL 标准形态字符串 `K=V,K2=V2`（write-only，回读只知 headersSet），写后清空
+            headersDraft: { from: () => '', onSaved: ({ reset }) => reset('') },
+        },
+        buildPayload: (key, draft, baseline) => buildTelemetryPayload(key, draft, baseline, t),
+        save,
+    })
 
-    // 加载完成后初始化草稿一次（invalidate 重读不重置——编辑中的草稿不丢，对齐 memory 语义）
-    const [initialized, setInitialized] = useState(false)
-    useEffect(() => {
-        if (!loaded || initialized) return
-        setEnabled(settings?.enabled ?? false)
-        setEndpoint(settings?.endpoint ?? '')
-        setEndpointBaseline(settings?.endpoint ?? '')
-        setIncludeContent(settings?.includeContent ?? false)
-        setIncludeRawApiBodies(settings?.includeRawApiBodies ?? false)
-        setIncludeMetrics(settings?.includeMetrics ?? false)
-        setInitialized(true)
-    }, [loaded, initialized, settings])
-
-    /** 部分字段落盘，失败统一 toast；返回是否成功 */
-    const savePartial = async (patch: TelemetrySettingsSubmission) => {
-        const result = await save(patch)
-        if (!result.ok) message.error(result.error || t('settings.telemetry.saveFailed'))
-        return result.ok
-    }
+    // 认证头已存哨兵（回读只知布尔），清除行走语义动作提交空对象（在场性协议：空对象 = 清除）
+    const headersSet = settings?.headersSet ?? false
 
     if (!loaded) {
         return (
@@ -99,85 +103,21 @@ export function TelemetrySection() {
         )
     }
 
-    /** 认证头草稿解析：`K=V,K2=V2` → record；键值均非空才算合法段 */
-    const parseHeadersDraft = (): Record<string, string> | { invalid: true } => {
-        const trimmed = headersDraft.trim()
-        if (!trimmed) return {}
-        const record: Record<string, string> = {}
-        for (const pair of trimmed.split(',')) {
-            const idx = pair.indexOf('=')
-            const k = idx > 0 ? pair.slice(0, idx).trim() : ''
-            const v = idx > 0 ? pair.slice(idx + 1).trim() : ''
-            if (!k || !v) return { invalid: true }
-            record[k] = v
-        }
-        return record
-    }
+    const { draft } = draftApi
 
-    /** 总开关：翻转即展开 endpoint 行；落盘保持「enabled 落盘必带有效 endpoint」不变式——
-     *  endpoint 未填时只翻转 UI 提示待填，不落盘（防 enabled+空 endpoint 中间态落盘） */
-    const switchEnabled = async (next: boolean) => {
-        setEnabled(next)
-        if (next && !endpoint.trim()) {
+    /** 总开关：翻转即展开 endpoint 行；endpoint 未填时只翻转 UI 提示待填，不落盘
+     * （防 enabled+空 endpoint 中间态落盘——不变式由 buildPayload 的 enabled 分支维持） */
+    const switchEnabled = (next: boolean) => {
+        draftApi.setDraft({ enabled: next })
+        if (next && !draft.endpoint.trim()) {
             message.warning(t('settings.telemetry.endpointRequired'))
             return
         }
-        await savePartial(next ? { enabled: true, endpoint: endpoint.trim() } : { enabled: false })
+        void draftApi.commit('enabled')
     }
 
-    /** endpoint 失焦落盘：启用态必填（校验失败不落盘、草稿保持让用户改）；
-     *  启用态下一并携带 enabled（覆盖「开关已翻未落盘」的中间态，开启意图随有效地址一起生效） */
-    const saveEndpoint = async () => {
-        const enabledPending = enabled && !endpointBaseline.trim()
-        if (endpoint === endpointBaseline && !enabledPending) return
-        if (enabled && !endpoint.trim()) {
-            message.error(t('settings.telemetry.endpointRequired'))
-            return
-        }
-        if (await savePartial({ endpoint: endpoint.trim(), ...(enabled ? { enabled: true } : {}) })) {
-            setEndpointBaseline(endpoint.trim())
-        }
-    }
-
-    /** 内容档位开关：动作即落盘（含联动布尔恒显式提交——非敏感布尔无在场性协议） */
-    const switchContent = (next: boolean) => {
-        // 关闭内容档连带关闭完整请求体档（原联动规则）
-        setIncludeContent(next)
-        if (!next) setIncludeRawApiBodies(false)
-        void savePartial(next ? { includeContent: true } : { includeContent: false, includeRawApiBodies: false })
-    }
-
-    const switchRaw = (next: boolean) => {
-        // 开启完整请求体档连带开启内容档（原联动规则）
-        setIncludeRawApiBodies(next)
-        if (next) setIncludeContent(true)
-        void savePartial(next ? { includeRawApiBodies: true, includeContent: true } : { includeRawApiBodies: false })
-    }
-
-    const switchMetrics = (next: boolean) => {
-        setIncludeMetrics(next)
-        void savePartial({ includeMetrics: next })
-    }
-
-    /** 认证头失焦落盘：非空才校验+携带（在场性协议：不在场 = 保持旧值） */
-    const saveHeaders = async () => {
-        const trimmed = headersDraft.trim()
-        if (!trimmed) return
-        const parsed = parseHeadersDraft()
-        if ('invalid' in parsed) {
-            message.error(t('settings.telemetry.headersInvalid'))
-            return
-        }
-        if (await savePartial({ headers: parsed })) setHeadersDraft('')
-    }
-
-    /** 清除已存认证头：显式提交空对象（在场性协议：空对象 = 清除） */
-    const clearHeaders = async () => {
-        if (await savePartial({ headers: {} })) {
-            setHeadersDraft('')
-            message.success(t('settings.telemetry.headersCleared'))
-        }
-    }
+    /** 清除已存认证头 */
+    const clearHeaders = () => { void draftApi.commit('headersClear', { headersDraft: '' }) }
 
     return (
         <Wrap>
@@ -187,19 +127,16 @@ export function TelemetrySection() {
                     label={t('settings.telemetry.enabledLabel')}
                     variant="switch"
                     description={t('settings.telemetry.privacyHint')}
-                    checked={enabled}
-                    onCheckedChange={(v) => { void switchEnabled(v) }}
+                    checked={draft.enabled}
+                    onCheckedChange={switchEnabled}
                 />
-                {enabled && (
+                {draft.enabled && (
                     <>
                         <SettingRow
                             label={t('settings.telemetry.endpointLabel')}
                             variant="input"
                             input={{
-                                value: endpoint,
-                                onChange: (e) => setEndpoint(e.target.value),
-                                onBlur: () => { void saveEndpoint() },
-                                onPressEnter: () => { void saveEndpoint() },
+                                ...draftApi.bindInput('endpoint'),
                                 placeholder: 'http://localhost:4318',
                             }}
                         />
@@ -207,22 +144,28 @@ export function TelemetrySection() {
                             label={t('settings.telemetry.contentLabel')}
                             variant="switch"
                             description={t('settings.telemetry.contentHint')}
-                            checked={includeContent}
-                            onCheckedChange={switchContent}
+                            checked={draft.includeContent}
+                            onCheckedChange={(v) => { void draftApi.commit('includeContent', {
+                                includeContent: v,
+                                ...(v ? {} : { includeRawApiBodies: false }),
+                            }) }}
                         />
                         <SettingRow
                             label={t('settings.telemetry.rawLabel')}
                             variant="switch"
                             description={t('settings.telemetry.rawHint')}
-                            checked={includeRawApiBodies}
-                            onCheckedChange={switchRaw}
+                            checked={draft.includeRawApiBodies}
+                            onCheckedChange={(v) => { void draftApi.commit('includeRawApiBodies', {
+                                includeRawApiBodies: v,
+                                ...(v ? { includeContent: true } : {}),
+                            }) }}
                         />
                         <SettingRow
                             label={t('settings.telemetry.metricsLabel')}
                             variant="switch"
                             description={t('settings.telemetry.metricsHint')}
-                            checked={includeMetrics}
-                            onCheckedChange={switchMetrics}
+                            checked={draft.includeMetrics}
+                            onCheckedChange={(v) => { void draftApi.commit('includeMetrics', { includeMetrics: v }) }}
                         />
                         <SettingRow
                             label={t('settings.telemetry.headersLabel')}
@@ -230,22 +173,19 @@ export function TelemetrySection() {
                             secret
                             description={t('settings.telemetry.headersHint')}
                             input={{
-                                value: headersDraft,
-                                onChange: (e) => setHeadersDraft(e.target.value),
-                                onBlur: () => { void saveHeaders() },
-                                onPressEnter: () => { void saveHeaders() },
-                                placeholder: settings?.headersSet
+                                ...draftApi.bindInput('headersDraft'),
+                                placeholder: headersSet
                                     ? t('settings.telemetry.headersSetPlaceholder')
                                     : t('settings.telemetry.headersPlaceholder'),
                                 autoComplete: 'new-password',
                             }}
                         />
-                        {settings?.headersSet && (
+                        {headersSet && (
                             <SettingRow
                                 label={t('settings.telemetry.headersClear')}
                                 variant="action"
                                 action={
-                                    <HeadersClearButton onClick={() => { void clearHeaders() }}>
+                                    <HeadersClearButton onClick={clearHeaders}>
                                         {t('settings.telemetry.clear')}
                                     </HeadersClearButton>
                                 }
@@ -257,6 +197,66 @@ export function TelemetrySection() {
             </SettingGroupCard>
         </Wrap>
     )
+}
+
+/** 遥测草稿形状（headersDraft 为 write-only 原文草稿，提交时解析成 headers record） */
+type TelemetryDraft = {
+    enabled: boolean
+    endpoint: string
+    includeContent: boolean
+    includeRawApiBodies: boolean
+    includeMetrics: boolean
+    headersDraft: string
+}
+
+/**
+ * 遥测提交内容构造（分区不变式所在，对提交内容有最终决定权）：
+ * - enabled 开关：开 = 携带有效 endpoint（不变式「enabled 落盘必带有效 endpoint」，上层已挡空值）；
+ *   关 = 只携带 enabled
+ * - endpoint 失焦：偏离基线（或 enabled 意图尚待落盘）才提交；启用态必填校验失败返回 error 不落盘；
+ *   启用态提交时一并携带 enabled（覆盖「开关已翻未落盘」中间态）
+ * - 三档位开关联动：raw 开→content 连带开；content 关→raw 连带关（联动布尔显式提交）
+ * - 认证头：非空才解析携带（在场性协议：不在场 = 保持旧值），解析失败返回 error
+ */
+function buildTelemetryPayload(
+    key: string,
+    draft: TelemetryDraft,
+    baseline: TelemetryDraft,
+    t: (k: string) => string,
+): TelemetrySettingsSubmission | Record<string, unknown> | null | { error: string } {
+    switch (key) {
+        case 'enabled':
+            return draft.enabled
+                ? { enabled: true, endpoint: draft.endpoint.trim() }
+                : { enabled: false }
+        case 'endpoint': {
+            const enabledPending = draft.enabled && !baseline.endpoint.trim()
+            if (draft.endpoint === baseline.endpoint && !enabledPending) return null
+            if (draft.enabled && !draft.endpoint.trim()) return { error: t('settings.telemetry.endpointRequired') }
+            return { endpoint: draft.endpoint.trim(), ...(draft.enabled ? { enabled: true } : {}) }
+        }
+        case 'includeContent':
+            return draft.includeContent
+                ? { includeContent: true }
+                : { includeContent: false, includeRawApiBodies: false }
+        case 'includeRawApiBodies':
+            return draft.includeRawApiBodies
+                ? { includeRawApiBodies: true, includeContent: true }
+                : { includeRawApiBodies: false }
+        case 'includeMetrics':
+            return { includeMetrics: draft.includeMetrics }
+        case 'headersClear':
+            // 显式清除：提交空对象（在场性协议：空对象 = 清除）
+            return { headers: {} }
+        case 'headersDraft': {
+            const trimmed = draft.headersDraft.trim()
+            if (!trimmed) return null
+            const parsed = parseHeadersDraft(trimmed)
+            return 'invalid' in parsed ? { error: t('settings.telemetry.headersInvalid') } : { headers: parsed }
+        }
+        default:
+            return null
+    }
 }
 
 const HeadersClearButton = styled(Button)`

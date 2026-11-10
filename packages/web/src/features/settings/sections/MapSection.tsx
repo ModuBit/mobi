@@ -14,16 +14,17 @@
  * limitations under the License.
  */
 
-import { useState, type ChangeEvent } from 'react'
+import { useState } from 'react'
 import { Alert, Tag, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import type { MapMode } from '@mobi/shared'
+import type { MapMode, MapSettingsView } from '@mobi/shared'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { enter } from '@/features/settings/blocks/shared'
 import { useMapSettings } from '@/core/data/hooks/queries/useMapSettings'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { SettingRow } from '@/features/settings/blocks/SettingRow'
+import { useSettingsDraft } from '@/features/settings/useSettingsDraft'
 
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
@@ -53,55 +54,73 @@ const StatusHint = styled.span<{ $token: Token }>`
     color: ${p => p.$token.colorTextTertiary};
 `
 
+/** 地图草稿形状：三个 key 都是 write-only 待覆盖草稿（留空 = 保持已存值，无回显基线） */
+type MapDraft = {
+    jsApiKey: string
+    securityJsCode: string
+    webServiceKey: string
+}
+
 /**
- * 地图设置分区（SettingRow 行式形态，票06）：三个 key 的在场性协议——
- * 非空 = 覆盖，留空 = 保持已存值；「清除全部」显式提交空串。
- * 三 key 需批量提交（留空保持语义无法按行失焦拆分），是唯一保留**局部保存**的分区：
- * 保存/清除收进组内操作行，页尾全局保存按钮不复存在。
+ * 地图提交内容构造（batch 整组语义所在）：
+ * - 保存（key=''）：非空 = 覆盖、留空 = 保持——只携带非空 trim 值（空 patch 恒提交，
+ *   对齐既有「保存恒可点」语义）；三 key 必须整组一次提交，逐字段落盘会产生半配置中间态
+ * - 清除（key='clear'）：显式提交全空串（在场性协议：空串 = 清除）
+ */
+function buildMapPayload(key: string, draft: MapDraft): Record<string, string> {
+    if (key === 'clear') return { jsApiKey: '', securityJsCode: '', webServiceKey: '' }
+    const patch: Record<string, string> = {}
+    if (draft.jsApiKey.trim()) patch.jsApiKey = draft.jsApiKey.trim()
+    if (draft.securityJsCode.trim()) patch.securityJsCode = draft.securityJsCode.trim()
+    if (draft.webServiceKey.trim()) patch.webServiceKey = draft.webServiceKey.trim()
+    return patch
+}
+
+/**
+ * 地图设置分区（SettingRow 行式形态，提交策略 = batch）：全站唯一保留**局部保存**的分区。
+ * 草稿纪律由 useSettingsDraft 承载（写后清空输入框、失败呈现覆写为 inline 状态而非 toast），
+ * 分区只声明 buildMapPayload 与保存/清除两个提交入口。
  * 渲染档位由 daemon 推导后回显，前端不重复判定逻辑。
  */
 export function MapSection() {
     const { token } = useToken()
     const { t } = useTranslation()
     const { settings, offline, loaded, saving, save } = useMapSettings()
-
-    const [jsApiKey, setJsApiKey] = useState('')
-    const [securityJsCode, setSecurityJsCode] = useState('')
-    const [webServiceKey, setWebServiceKey] = useState('')
     const [status, setStatus] = useState<'idle' | 'saved' | 'failed'>('idle')
+
+    const draftApi = useSettingsDraft<MapDraft, MapSettingsView>({
+        loaded,
+        settings: settings ?? undefined,
+        errorFallbackKey: 'settings.map.saveFailed',
+        fields: {
+            jsApiKey: { from: () => '', onSaved: ({ reset }) => reset('') },
+            securityJsCode: { from: () => '', onSaved: ({ reset }) => reset('') },
+            webServiceKey: { from: () => '', onSaved: ({ reset }) => reset('') },
+        },
+        buildPayload: (key, draft) => buildMapPayload(key, draft),
+        save,
+        // 结果呈现是 inline 状态（组内操作行旁），覆写默认 toast
+        reportError: () => setStatus('failed'),
+        onCommitSuccess: () => setStatus('saved'),
+    })
 
     const mode = settings?.mode ?? 'none'
     const modeLabel = t(`settings.map.mode${mode.charAt(0).toUpperCase()}${mode.slice(1)}`)
 
-    const submit = async (submission: { jsApiKey?: string; securityJsCode?: string; webServiceKey?: string }) => {
-        setStatus('idle')
-        const result = await save(submission)
-        setStatus(result.ok ? 'saved' : 'failed')
-        if (result.ok) {
-            setJsApiKey('')
-            setSecurityJsCode('')
-            setWebServiceKey('')
-        }
-    }
-
     const onSave = () => {
-        const submission: { jsApiKey?: string; securityJsCode?: string; webServiceKey?: string } = {}
-        if (jsApiKey.trim()) submission.jsApiKey = jsApiKey.trim()
-        if (securityJsCode.trim()) submission.securityJsCode = securityJsCode.trim()
-        if (webServiceKey.trim()) submission.webServiceKey = webServiceKey.trim()
-        void submit(submission)
+        setStatus('idle')
+        void draftApi.commit()
     }
 
     const onClear = () => {
-        void submit({ jsApiKey: '', securityJsCode: '', webServiceKey: '' })
+        setStatus('idle')
+        void draftApi.commit('clear', { jsApiKey: '', securityJsCode: '', webServiceKey: '' })
     }
 
     const field = (
-        key: 'jsApiKey' | 'securityJsCode' | 'webServiceKey',
+        key: keyof MapDraft,
         labelKey: string,
         hintKey: string,
-        value: string,
-        onChange: (event: ChangeEvent<HTMLInputElement>) => void,
         secret: boolean,
     ) => {
         const configured = key === 'webServiceKey' ? settings?.webServiceKeySet : Boolean(settings?.[key])
@@ -112,7 +131,7 @@ export function MapSection() {
                 description={t(hintKey)}
                 variant="input"
                 secret={secret}
-                input={{ value, onChange, placeholder, autoComplete: 'off' }}
+                input={{ ...draftApi.bindInput(key), placeholder, autoComplete: 'off' }}
             />
         )
     }
@@ -127,9 +146,9 @@ export function MapSection() {
                     variant="value"
                     value={loaded ? <Tag color={MODE_VARIANT[mode]}>{modeLabel}</Tag> : undefined}
                 />
-                {field('jsApiKey', 'settings.map.jsApiKeyLabel', 'settings.map.jsApiKeyHint', jsApiKey, (e) => setJsApiKey(e.target.value), false)}
-                {field('securityJsCode', 'settings.map.securityJsCodeLabel', 'settings.map.securityJsCodeHint', securityJsCode, (e) => setSecurityJsCode(e.target.value), true)}
-                {field('webServiceKey', 'settings.map.webServiceKeyLabel', 'settings.map.webServiceKeyHint', webServiceKey, (e) => setWebServiceKey(e.target.value), true)}
+                {field('jsApiKey', 'settings.map.jsApiKeyLabel', 'settings.map.jsApiKeyHint', false)}
+                {field('securityJsCode', 'settings.map.securityJsCodeLabel', 'settings.map.securityJsCodeHint', true)}
+                {field('webServiceKey', 'settings.map.webServiceKeyLabel', 'settings.map.webServiceKeyHint', true)}
                 {/* 局部保存操作行：无 label 的组内操作区（页尾全局保存按钮不复存在） */}
                 <div style={{ padding: '10px 16px 14px' }}>
                     <SaveActions>
