@@ -495,6 +495,23 @@ height: 'calc(100vh - 64px)'
 
 移动端虚拟键盘弹出时，Popover 的绝对定位会导致布局错乱。需要用户输入的场景改用内联展示或 Drawer。
 
+### fixed 贴底浮层必须消费键盘腾出变量
+
+**新增任何 `position: fixed` 且贴视口底部的浮层，`bottom` 必须叠加 `var(--kb-inset, 0px)` 并挂 `transition: <属性> var(--kb-anim)`。**
+
+移动端键盘走 overlay 模式（`index.html` 对 Android Chrome/PWA 设 `overlaysContent = true`）：键盘**浮在内容上、不收缩视口**，腾出空间靠 `useKeyboardViewport` 把键盘高度写进 `<html>` 的 `--kb-inset`（动画曲线单源 `--kb-anim`）。布局消费端只有显式接入的才有腾出——漏接的浮层会被键盘盖住（2026-11-10 实锤：设置页悬浮搜索忘了消费，键盘弹出即遮挡；此前 MainLayout/ChatComposer/LoginPage 已各自接入）。
+
+```typescript
+// ✅ 正确（SettingsIndex FloatingSearch）
+bottom: 'calc(max(12px, calc(env(safe-area-inset-bottom, 0px) + 8px)) + var(--kb-inset, 0px))',
+transition: 'bottom var(--kb-anim, 0ms)',
+
+// ❌ 错误——键盘弹出即被盖住
+bottom: 'max(12px, calc(env(safe-area-inset-bottom) + 8px))',
+```
+
+iOS / Firefox 无 VirtualKeyboard API，`--kb-inset` 恒缺省 0px，回落视口收缩路径，写上无害。机制全貌见 `features/chat/useKeyboardViewport.ts` 头部注释。
+
 ## 动画与过渡
 
 ### 尺寸变化必须有过渡动画
