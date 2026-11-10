@@ -146,37 +146,7 @@ const SelectSlot = styled.div`
 const InputSlot = styled.div<{ $token: Token }>`
     flex: 1;
     display: flex;
-
-    /* 行内输入：无框、行内嵌感（plain 与 password 态都贴行）。
-     * 纯 borderless 无任何可交互线索（看起来像只读值）——hover/focus 亮起淡底色，
-     * 负 margin 外扩让底色带呼吸感且不移动文字布局 */
-    .ant-input,
-    .ant-input-affix-wrapper {
-        padding: 0;
-        margin: 0 -4px;
-        border-radius: ${p => p.$token.borderRadiusSM}px;
-        transition: background-color ${p => p.$token.motionDurationMid} ${p => p.$token.motionEaseInOut};
-    }
-    .ant-input > input {
-        padding: 0 4px;
-    }
-    .ant-input-affix-wrapper > .ant-input {
-        margin: 0;
-        background: transparent;
-    }
-    .ant-input:hover,
-    .ant-input-affix-wrapper:hover {
-        background: ${p => p.$token.colorFillQuaternary};
-    }
-    .ant-input:focus,
-    .ant-input-affix-wrapper:focus-within {
-        background: ${p => p.$token.colorFillQuaternary};
-    }
-    .ant-input-affix-wrapper {
-        background: transparent;
-        border: none;
-        box-shadow: none;
-    }
+    min-width: 0;
 `
 
 const ActionSlot = styled.div`
@@ -231,10 +201,13 @@ export function SettingRow(props: SettingRowProps) {
         case 'input':
             right = (
                 <InputSlot $token={token}>
+                    {/* 吃全局 variant=filled（ThemeProvider）：静止态淡底圆角块——
+                        输入区必须有「可填」的形态（borderless 曾被用户两次指认「不点不知道
+                        是个 input」）；hover/focus 行为与全站 filled 输入一致 */}
                     {props.secret ? (
-                        <Input.Password {...props.input} variant="borderless" aria-label={accessibleName} />
+                        <Input.Password {...props.input} aria-label={accessibleName} />
                     ) : (
-                        <Input {...props.input} variant="borderless" aria-label={accessibleName} />
+                        <Input {...props.input} aria-label={accessibleName} />
                     )}
                 </InputSlot>
             )

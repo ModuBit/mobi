@@ -34,5 +34,6 @@ const CardHintBase = styled.div<{ $token: Token; $pad: string }>`
  */
 export function CardHint({ pad, children }: { pad: string; children: ReactNode }) {
     const { token } = useToken()
-    return <CardHintBase $token={token} $pad={pad}>{children}</CardHintBase>
+    // data-hint：SettingGroupCard 据此让 hint 行退出行分隔线（提示是卡的注脚，不是一行设置项）
+    return <CardHintBase $token={token} $pad={pad} data-hint="">{children}</CardHintBase>
 }

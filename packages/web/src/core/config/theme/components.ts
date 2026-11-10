@@ -47,6 +47,11 @@ const sharedComponents = {
     Switch: {
         trackHeight: 24,
         trackMinWidth: 44,
+        // knob 与轨道四周等缝（2px）：trackPadding 是 antd 按「默认 22 高」硬编码的 inset，
+        // trackHeight 升到 24 后不跟进的话 knob 垂直偏上（top 2 / bottom 4，用户两次指出的
+        // 「圈圈不居中」真凶）；knob 20 是 24 轨道下等缝的比例（18 会瘦一圈）
+        trackPadding: 2,
+        handleSize: 20,
         innerMinMargin: 4,
         innerMaxMargin: 24,
     },
@@ -93,6 +98,10 @@ export const shadcnLightComponents = {
         hoverBorderColor: NEUTRAL_LIGHT.inkQuaternary,
         // focus 边框用中灰（ink-tertiary）而非最深的墨色——深墨描边过刺眼（DESIGN.md Buttons 章）
         activeBorderColor: NEUTRAL_LIGHT.inkTertiary,
+        // 全局 variant=filled（ThemeProvider）：filled 聚焦态 antd 原生把底翻成
+        // colorBgContainer（亮面板色）——「静止灰、一点上去翻白」的突兀感（用户指认）。
+        // 组件级压到 filled 静止同档（colorFillTertiary=selected），聚焦不翻底；hover 深档照常
+        colorBgContainer: NEUTRAL_LIGHT.selected,
     },
     Select: {
         // 选项 hover = 悬浮高亮 hover 档、选中 = 选中档，与全站阶梯同一来源（DESIGN.md「Hover & Selected」）
@@ -155,6 +164,8 @@ export const shadcnDarkComponents = {
         hoverBorderColor: NEUTRAL_DARK.inkQuaternary,
         // focus 边框用中灰（ink-tertiary）而非最亮的纸白——白框在暗底上过刺眼（DESIGN.md Buttons 章）
         activeBorderColor: NEUTRAL_DARK.inkTertiary,
+        // 同 light 段：filled 聚焦不翻底（dark 档 selected）
+        colorBgContainer: NEUTRAL_DARK.selected,
     },
     Select: {
         optionSelectedBg: NEUTRAL_DARK.selected,

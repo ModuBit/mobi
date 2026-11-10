@@ -31,6 +31,15 @@ const Card = styled.div<{ $token: Token }>`
         border-top: 1px solid ${p => p.$token.colorBorderSecondary};
     }
 
+    /* hint（CardHint）是卡的注脚不是行：自身不吃线、也不给相邻行引线
+     *（前导线 = 「hint 头注 → 首个设置项」、尾注线 = 「末行 → hint 尾注」，都显多余） */
+    & > [data-hint] {
+        border-top: none;
+    }
+    & > [data-hint] + * {
+        border-top: none;
+    }
+
     /* 圆角裁切由角行自身承担（不用 overflow:hidden）——卡内可能驻留非 portal 弹层
      * （Combobox 建议），整体裁切会把弹层裁死在卡里；角行圆角对行 hover 底色同样生效 */
     & > *:first-child {
