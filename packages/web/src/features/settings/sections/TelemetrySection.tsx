@@ -106,14 +106,15 @@ export function TelemetrySection() {
     const { draft } = draftApi
 
     /** 总开关：翻转即展开 endpoint 行；endpoint 未填时只翻转 UI 提示待填，不落盘
-     * （防 enabled+空 endpoint 中间态落盘——不变式由 buildPayload 的 enabled 分支维持） */
+     * （防 enabled+空 endpoint 中间态落盘——不变式由 buildPayload 的 enabled 分支维持）。
+     * commit 必须带 patchDraft：同一同步序列内 setDraft 尚未 flush，无 patch 会读到 stale 草稿 */
     const switchEnabled = (next: boolean) => {
-        draftApi.setDraft({ enabled: next })
         if (next && !draft.endpoint.trim()) {
+            draftApi.setDraft({ enabled: next })
             message.warning(t('settings.telemetry.endpointRequired'))
             return
         }
-        void draftApi.commit('enabled')
+        void draftApi.commit('enabled', { enabled: next })
     }
 
     /** 清除已存认证头 */

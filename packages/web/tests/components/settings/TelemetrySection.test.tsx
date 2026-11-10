@@ -161,6 +161,20 @@ describe('TelemetrySection 开启态与保存', () => {
         }))
     })
 
+    it('关闭遥测：动作即落盘 {enabled:false}（同一同步序列内不得读 stale 草稿）', async () => {
+        stableApi.telemetry.get.mockResolvedValue({
+            data: { settings: { enabled: true, endpoint: 'http://localhost:4318', headersSet: false } },
+        })
+        renderSection()
+        const switches = await waitFor(() => {
+            const els = screen.getAllByRole('switch')
+            expect(els.length).toBeGreaterThan(0)
+            return els
+        })
+        fireEvent.click(switches[0])
+        await waitFor(() => expect(stableApi.telemetry.set).toHaveBeenCalledWith({ enabled: false }))
+    })
+
     it('清除已存认证头：显式提交空对象', async () => {
         renderSection()
         await waitFor(() => expect(screen.getByText(i18nMap['settings.telemetry.headersClear'])).toBeInTheDocument())
