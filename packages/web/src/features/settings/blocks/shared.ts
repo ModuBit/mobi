@@ -23,6 +23,10 @@ export const enter = keyframes`
     to { opacity: 1; transform: translateY(0); }
 `
 
+/** 入场动画统一手感：时长/缓动收口一处（分区切来切去手感不齐先看这里） */
+export const ENTER_DURATION = '0.25s'
+export const ENTER_EASING = 'ease-out'
+
 /**
  * 线性图标容器，中性色，无色块徽章（GuideSection 共享）。
  * $token 只声明用到的字段（portable 子集），避免 export 时引用 antd 内部类型触发 TS2883。

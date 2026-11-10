@@ -101,10 +101,11 @@ const NavRow = styled.button<{ $token: Token; $disabled: boolean }>`
     }
 `
 
-const IconBox = styled.span`
+const IconBox = styled.span<{ $token: Token }>`
     display: flex;
     flex-shrink: 0;
-    color: inherit;
+    /* 弱化用色 token 而非 opacity：随主题/状态联动（与 GuideSection IconBox 同语言） */
+    color: ${p => p.$token.colorTextSecondary};
 `
 
 const TextCol = styled.span`
@@ -239,8 +240,9 @@ export function SettingRow(props: SettingRowProps) {
     const rowContent = (
         <>
             {Icon !== undefined && (
-                <IconBox>
-                    <Icon size={18} opacity={0.8} />
+                <IconBox $token={token}>
+                    {/* 1.5px 描边配 14px/400 标签的光重（2px 是 semibold 旁的档位） */}
+                    <Icon size={18} strokeWidth={1.5} />
                 </IconBox>
             )}
             {text}

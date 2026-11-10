@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { MapMode, MapSettingsView } from '@mobi/shared'
 import { Button } from '@/ui/base/interactive/button/Button'
-import { enter } from '@/features/settings/blocks/shared'
+import { enter, ENTER_DURATION, ENTER_EASING } from '@/features/settings/blocks/shared'
 import { useMapSettings } from '@/core/data/hooks/queries/useMapSettings'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { SettingRow } from '@/features/settings/blocks/SettingRow'
@@ -33,7 +33,7 @@ const Wrap = styled.div`
     display: flex;
     flex-direction: column;
     gap: 14px;
-    animation: ${enter} 0.25s ease-out;
+    animation: ${enter} ${ENTER_DURATION} ${ENTER_EASING};
 `
 
 /** 空占位：首次加载中保持子页高度，避免布局跳动（对齐 Memory/Telemetry 的 Placeholder 语义） */

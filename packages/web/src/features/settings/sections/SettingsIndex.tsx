@@ -106,7 +106,7 @@ export function SettingsIndex() {
                     value={keyword}
                     onChange={(e) => setKeyword(e.target.value)}
                     placeholder={t('settings.search')}
-                    prefix={<Search size={14} />}
+                    prefix={<Search size={15} />}
                     variant="borderless"
                     aria-label={t('settings.search')}
                 />

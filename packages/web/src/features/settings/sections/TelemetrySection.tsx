@@ -26,13 +26,13 @@ import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { SettingRow } from '@/features/settings/blocks/SettingRow'
 import { useSettingsDraft } from '@/features/settings/useSettingsDraft'
 
-import { enter } from '@/features/settings/blocks/shared'
+import { enter, ENTER_DURATION, ENTER_EASING } from '@/features/settings/blocks/shared'
 
 const Wrap = styled.div`
     display: flex;
     flex-direction: column;
     gap: 14px;
-    animation: ${enter} 0.25s ease;
+    animation: ${enter} ${ENTER_DURATION} ${ENTER_EASING};
 `
 
 /** 认证头草稿解析：`K=V,K2=V2` → record；键值均非空才算合法段 */

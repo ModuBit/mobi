@@ -27,6 +27,7 @@ import { useTranslation } from 'react-i18next'
 import { Brain, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import styled from '@emotion/styled'
 import type { MemoryAutoInjectMode, MemoryEndpointCheckResult, MemoryRule, MemorySettingsSubmission } from '@mobi/shared'
+import { enter, ENTER_DURATION, ENTER_EASING } from '@/features/settings/blocks/shared'
 import { deriveMemoryUiUrl, HINDSIGHT_CLOUD_API_URL, isOffMachineEndpoint, parseEndpointUrl } from '@mobi/shared'
 import { toDraft, useMemorySettings } from '@/core/data/hooks/queries/useMemorySettings'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
@@ -42,7 +43,7 @@ const Wrap = styled.div`
     display: flex;
     flex-direction: column;
     gap: 14px;
-    animation: enter 0.25s ease;
+    animation: ${enter} ${ENTER_DURATION} ${ENTER_EASING};
 `
 
 /** 隔离规则行的操作区：档位选择 + 条件覆盖输入 + 删除（换行容纳窄屏） */

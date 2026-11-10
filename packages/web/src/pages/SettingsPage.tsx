@@ -211,8 +211,9 @@ const MobileBackButton = styled.button<{ $token: Token }>`
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    /* 44×44 触屏命中区下限（MobileHeader 侧栏格 48px 容纳） */
+    width: 44px;
+    height: 44px;
     border-radius: var(--radius-pill);
     color: ${p => p.$token.colorText};
     &:active { background: ${p => p.$token.colorFillQuaternary}; }
@@ -286,7 +287,8 @@ function Sidebar({ $token, active, goBack }: SidebarProps) {
                                             data-glide-active={isActive ? 'true' : undefined}
                                             onClick={() => { void navigate({ to: `/settings/${section.id}` }) }}
                                         >
-                                            <NavIcon><Icon size={15} opacity={0.75} /></NavIcon>
+                                            {/* 描边配行字重：600 行 2px、400 行 1.5px（与 SettingRow 同语言）；弱化交给行的 color token */}
+                                            <NavIcon><Icon size={15} strokeWidth={isActive ? 2 : 1.5} /></NavIcon>
                                             {t(section.titleKey)}
                                             {section.badge === 'web-tools-status' && (
                                                 <NavBadge><WebToolsStatusBadge variant="compact" /></NavBadge>

@@ -19,7 +19,7 @@ import { keyframes, css } from '@emotion/react'
 import styled from '@emotion/styled'
 import { theme as antTheme } from 'antd'
 import { DownOutlined, InfoCircleOutlined } from '@ant-design/icons'
-import { enter, IconBox } from './shared'
+import { enter, ENTER_DURATION, ENTER_EASING, IconBox } from './shared'
 
 const { useToken } = antTheme
 // 块内部 token 类型（不 export，避免引用 antd 内部类型触发 TS2883）
@@ -37,7 +37,7 @@ const Section = styled.section<{ $token: Token }>`
     border-radius: ${p => p.$token.borderRadiusLG}px;
     background: transparent;
     overflow: hidden;
-    animation: ${enter} 0.3s ease-out 30ms backwards;
+    animation: ${enter} ${ENTER_DURATION} ${ENTER_EASING} 30ms backwards;
 `
 
 const Header = styled.button<{ $token: Token }>`
