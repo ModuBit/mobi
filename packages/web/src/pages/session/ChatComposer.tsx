@@ -68,6 +68,7 @@ import { OutputStyleSwitch } from '@/features/composer/OutputStyleSwitch'
 import { SubmitButton } from '@/features/composer/SubmitButton'
 import { ContextRing } from '@/ui/shared/ContextRing'
 import { resolveSubmitButtonState } from '@/features/composer/submitButtonState'
+import { resolveSenderDisabled } from '@/features/composer/senderDisabled'
 import { useHasFinePointer, useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import type { ClearRuntimeStateField } from '@/ui/base/interactive/ClearStateButton'
 import { usePromptSuggestion, usePromptSuggestionStore } from '@/core/data/stores/promptSuggestionStore'
@@ -653,21 +654,6 @@ export function ChatComposer(props: ChatComposerProps) {
         if (mention.handleKeyDown(e)) return
     }, [running, onAbort, abortPending, mention, slash])
 
-    const needsRefocusRef = useRef(false)
-
-    // disabled 结束后恢复焦点（发送 mutation 完成时 disabled 从 true 变回 false）。
-    // 仅限有物理键盘的设备（hasFinePointer，line 275）——触屏设备聚焦会弹出虚拟键盘
-    // 挤占视口，发送后用户想看的是回复而非继续打字，故跳过
-    useEffect(() => {
-        if (!controlsDisabled && needsRefocusRef.current) {
-            needsRefocusRef.current = false
-            if (!hasFinePointer) return
-            requestAnimationFrame(() => {
-                getTextarea(wrapperRef.current)?.focus()
-            })
-        }
-    }, [controlsDisabled, hasFinePointer])
-
     const handleSubmit = useCallback((content: string) => {
         if (import.meta.env.DEV) console.log('[Send] handleSubmit', { contentLen: content.length, canSend, mentionOpen: mention.isOpen, slashOpen: slash.isOpen, uploading: attachments.filter(a => a.status === 'uploading').length })
         if (!canSend) return
@@ -694,7 +680,6 @@ export function ChatComposer(props: ChatComposerProps) {
         setText('')
         resetAttachments()
         setQuotes([])
-        needsRefocusRef.current = true
         // 发新消息即消失: 清空当前建议(生命周期"每轮结束显示, 发送后消失")
         usePromptSuggestionStore.getState().clearSession(sessionId)
     }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments, segmentBuckets, quotes, t, resetAttachments, sessionId])
@@ -810,7 +795,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     onSubmit={handleSubmit}
                     submitType={hasFinePointer ? 'enter' : 'shiftEnter'}
                     placeholder={isBashMode ? t('composer.bashPlaceholder') : t(`composer.placeholders.${placeholderIdx.current}`)}
-                    disabled={controlsDisabled || showInactiveCover || showLocalModeCover || hasPendingPermission}
+                    disabled={resolveSenderDisabled({ inactiveCover: showInactiveCover, localModeCover: showLocalModeCover })}
                     loading={senderLoading}
                     autoSize={{ minRows: 1, maxRows: 5 }}
                     onKeyDown={handleKeyDown}
