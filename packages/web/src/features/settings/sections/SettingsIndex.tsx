@@ -56,7 +56,11 @@ const FloatingSearch = styled(SearchField)<{ $token: Token }>`
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    bottom: max(12px, calc(env(safe-area-inset-bottom) + 8px));
+    /* 键盘腾出（overlay 模式，Android）：键盘浮在内容上，fixed 悬浮框自行抬到键盘上沿——
+       --kb-inset 由 useKeyboardViewport 写 <html>，动画走 --kb-anim 与全站腾出同步；
+       无键盘时 0px 原位。iOS vv 模式变量恒缺省，回落视口收缩路径 */
+    bottom: calc(max(12px, calc(env(safe-area-inset-bottom, 0px) + 8px)) + var(--kb-inset, 0px));
+    transition: bottom var(--kb-anim, 0ms);
     width: min(420px, calc(100% - 24px));
     z-index: 10;
     box-shadow: ${p => `0 4px 16px ${p.$token.colorBgMask}`};
