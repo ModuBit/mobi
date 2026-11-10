@@ -15,7 +15,8 @@
  */
 
 import { useMemo, useState } from 'react'
-import { Alert, App, Input, Tag, theme as antTheme } from 'antd'
+import { Alert, App, Tag, theme as antTheme } from 'antd'
+import { Input } from '@/ui/base/interactive/input/Input'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { IconButton } from '@/ui/base/interactive/IconButton'
@@ -349,7 +350,7 @@ export function MemorySection() {
                                     {rule.mode === 'normal' && (
                                         <AppTooltip title={t('settings.memory.tagPlaceholder')}>
                                             <Input
-                                                size="small"
+                                                inputSize="sm"
                                                 style={{ width: 150 }}
                                                 value={rule.tag ?? ''}
                                                 onChange={(e) => draftApi.setDraft({ rules: rules.map((x, j) => j === i ? { ...x, tag: e.target.value.trim() || undefined } : x) })}
@@ -362,7 +363,7 @@ export function MemorySection() {
                                     {rule.mode === 'isolated' && (
                                         <AppTooltip title={t('settings.memory.bankPlaceholder')}>
                                             <Input
-                                                size="small"
+                                                inputSize="sm"
                                                 style={{ width: 150 }}
                                                 value={rule.bank ?? ''}
                                                 onChange={(e) => draftApi.setDraft({ rules: rules.map((x, j) => j === i ? { ...x, bank: e.target.value.trim() || undefined } : x) })}
@@ -405,11 +406,11 @@ export function MemorySection() {
                         action={
                             <>
                                 <Input
-                                    size="small"
+                                    inputSize="sm"
                                     style={{ width: 220 }}
                                     value={pathDraft}
                                     onChange={(e) => setPathDraft(e.target.value)}
-                                    onPressEnter={addPathRule}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') addPathRule() }}
                                     placeholder={t('settings.memory.rulePathPlaceholder')}
                                     aria-label={t('settings.memory.ruleAddPath')}
                                 />

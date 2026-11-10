@@ -72,7 +72,7 @@ describe('SettingsIndex（mobile 入口列表）', () => {
         mediaMatches.value = false
         vi.mocked(useWebToolsStatus).mockReturnValue('enabled')
         render(<SettingsIndex />)
-        const search = screen.getByRole('textbox', { name: 'settings.search' })
+        const search = screen.getByRole('searchbox', { name: 'settings.search' })
         // i18n mock 下 titleKey 即文案：'memory' 命中记忆分区
         fireEvent.change(search, { target: { value: 'memory' } })
         expect(screen.getByRole('button', { name: 'settings.sections.memory.title' })).toBeTruthy()

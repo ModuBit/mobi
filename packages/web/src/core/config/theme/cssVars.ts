@@ -177,6 +177,7 @@ const UIARC_ALIAS_VARS: ReadonlyArray<readonly [string, string]> = [
     ['--space-4', '16px'],
     ['--space-5', '20px'],
     ['--leading-body', 'normal'],
+    ['--tracking-body', 'normal'],
     // 控件高三档贴本站现状：sm 沿 copy-button 既有 28px、md 沿 select/multi-select 验收过的 36px
     ['--control-height-sm', '28px'],
     ['--control-height-md', '36px'],

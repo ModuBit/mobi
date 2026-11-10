@@ -74,7 +74,7 @@ describe('SettingsPage 响应式壳', () => {
         expect(screen.queryByText('settings.sections.debug.title')).toBeNull()
         // 接管壳三件：返回键 / 分区搜索 / 分组标题
         expect(screen.getByRole('button', { name: 'common.back' })).toBeTruthy()
-        expect(screen.getByRole('textbox', { name: 'settings.search' })).toBeTruthy()
+        expect(screen.getByRole('searchbox', { name: 'settings.search' })).toBeTruthy()
         expect(screen.getByText('settings.groups.general.title')).toBeTruthy()
         expect(screen.getByText('settings.groups.tools.title')).toBeTruthy()
     })
@@ -83,7 +83,7 @@ describe('SettingsPage 响应式壳', () => {
         mediaMatches.value = true
         await renderLayout('/settings/notifications')
         expect(await screen.findByTestId('child-outlet')).toBeTruthy()
-        const search = screen.getByRole('textbox', { name: 'settings.search' })
+        const search = screen.getByRole('searchbox', { name: 'settings.search' })
         // i18n mock 下 titleKey 即文案，'notifications' 命中通知分区；页题恒显示当前分区，不受过滤影响
         fireEvent.change(search, { target: { value: 'notifications' } })
         expect(screen.getAllByText('settings.sections.notifications.title')).toHaveLength(2)

@@ -15,9 +15,9 @@
  */
 
 import { useState } from 'react'
-import { Input, theme as antTheme } from 'antd'
+import { theme as antTheme } from 'antd'
+import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
 import { useTranslation } from 'react-i18next'
-import { Search } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import styled from '@emotion/styled'
 import { searchSettingsSectionGroups } from './registry'
@@ -51,19 +51,20 @@ const EmptyHint = styled.div<{ $token: Token }>`
     color: ${p => p.$token.colorTextTertiary};
 `
 
-/** 底部悬浮搜索（ChatGPT 移动端设置首页形态）：圆角胶囊浮在视口底部 */
-const FloatingSearch = styled.div<{ $token: Token }>`
+/** 底部悬浮搜索（ChatGPT 移动端设置首页形态）：胶囊浮在视口底部，视觉（边/底/圆角）归 SearchField */
+const FloatingSearch = styled(SearchField)<{ $token: Token }>`
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
     bottom: max(12px, calc(env(safe-area-inset-bottom) + 8px));
     width: min(420px, calc(100% - 24px));
     z-index: 10;
-    border-radius: var(--radius-pill);
-    background: ${p => p.$token.colorBgContainer};
-    border: 1px solid ${p => p.$token.colorBorderSecondary};
     box-shadow: ${p => `0 4px 16px ${p.$token.colorBgMask}`};
-    padding: 4px 8px;
+
+    /* shell 圆角跟随胶囊（field 的直接子即 shell） */
+    & > div {
+        border-radius: var(--radius-pill);
+    }
 `
 
 /**
@@ -100,17 +101,13 @@ export function SettingsIndex() {
                 ))}
                 {groups.length === 0 && <EmptyHint $token={token}>{t('settings.searchEmpty')}</EmptyHint>}
             </GroupList>
-            <FloatingSearch $token={token}>
-                <Input
-                    allowClear
-                    value={keyword}
-                    onChange={(e) => setKeyword(e.target.value)}
-                    placeholder={t('settings.search')}
-                    prefix={<Search size={15} />}
-                    variant="borderless"
-                    aria-label={t('settings.search')}
-                />
-            </FloatingSearch>
+            <FloatingSearch
+                $token={token}
+                value={keyword}
+                onValueChange={setKeyword}
+                placeholder={t('settings.search')}
+                aria-label={t('settings.search')}
+            />
         </Wrap>
     )
 }

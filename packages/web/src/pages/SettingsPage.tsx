@@ -15,12 +15,13 @@
  */
 
 import { useState, useEffect, Suspense } from 'react'
-import { theme as antTheme, Input } from 'antd'
+import { theme as antTheme } from 'antd'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, Search } from 'lucide-react'
+import { ChevronLeft } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
+import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
 import { useMediaQuery } from '@/core/data/hooks/useMediaQuery'
 import { SETTINGS_WIDE_QUERY, activeSection, searchSettingsSectionGroups, type SettingsSection } from '@/features/settings/sections/registry'
 import { writeLastSettingsSection } from '@/features/settings/sections/lastSettingsSection'
@@ -257,12 +258,10 @@ function Sidebar({ $token, active, goBack }: SidebarProps) {
                     {t('settings.title')}
                 </SettingsHeaderRow>
                 <SearchSlot>
-                    <Input
-                        allowClear
+                    <SearchField
                         value={keyword}
-                        onChange={(e) => setKeyword(e.target.value)}
+                        onValueChange={setKeyword}
                         placeholder={t('settings.search')}
-                        prefix={<Search size={15} />}
                         aria-label={t('settings.search')}
                     />
                 </SearchSlot>

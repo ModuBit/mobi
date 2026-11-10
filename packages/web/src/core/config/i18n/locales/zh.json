@@ -978,7 +978,14 @@
       }
     },
     "search": "搜索设置",
-    "searchEmpty": "没有匹配的设置"
+    "searchEmpty": "没有匹配的设置",
+    "passwordField": {
+      "show": "显示密码",
+      "hide": "隐藏密码"
+    },
+    "searchField": {
+      "clear": "清除搜索"
+    }
   },
   "debug": {
     "title": "调试",

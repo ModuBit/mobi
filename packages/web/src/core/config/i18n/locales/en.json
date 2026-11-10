@@ -987,7 +987,14 @@
       }
     },
     "search": "Search settings",
-    "searchEmpty": "No matching settings"
+    "searchEmpty": "No matching settings",
+    "passwordField": {
+      "show": "Show password",
+      "hide": "Hide password"
+    },
+    "searchField": {
+      "clear": "Clear search"
+    }
   },
   "debug": {
     "title": "Debug",

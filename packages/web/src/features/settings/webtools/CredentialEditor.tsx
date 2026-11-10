@@ -15,7 +15,8 @@
  */
 
 import { useState } from 'react'
-import { App, Input, theme as antTheme } from 'antd'
+import { App, theme as antTheme } from 'antd'
+import { Input } from '@/ui/base/interactive/input/Input'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
 import { ShieldCheck } from 'lucide-react'
@@ -197,7 +198,7 @@ export function CredentialEditor({ provider, onSave, onVerify }: CredentialEdito
                         </FieldLabel>
                         <Input
                             id={inputId}
-                            size="small"
+                            inputSize="sm"
                             // aria-label 独立于可见 label（后者还含 set 状态文案，不能作为可访问名整体）
                             aria-label={t(`settings.webTools.${key}`)}
                             readOnly={!editing}

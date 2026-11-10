@@ -15,11 +15,13 @@
  */
 
 import type { ReactNode } from 'react'
-import { Input, Switch, theme as antTheme } from 'antd'
-import type { InputProps } from 'antd'
+import type { InputHTMLAttributes } from 'react'
+import { Switch, theme as antTheme } from 'antd'
 import { ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import styled from '@emotion/styled'
+import { Input } from '@/ui/base/interactive/input/Input'
+import { PasswordField } from '@/ui/base/interactive/password-field/PasswordField'
 import { Select } from '@/ui/base/interactive/select/Select'
 import type { SelectProps } from '@/ui/base/interactive/select/Select'
 
@@ -52,9 +54,9 @@ export type SettingRowProps = SettingRowBase &
           }
         | {
               variant: 'input'
-              /** antd Input props（受控由调用方持有）；label 用作可访问名 */
-              input: InputProps
-              /** 密码态（Input.Password 渲染，如 API Token / key 类字段） */
+              /** uiarc Input props（受控由调用方持有）；label 用作可访问名 */
+              input: InputHTMLAttributes<HTMLInputElement>
+              /** 密码态（PasswordField 渲染，如 API Token / key 类字段） */
               secret?: boolean
           }
         | {
@@ -143,7 +145,7 @@ const SelectSlot = styled.div`
     flex-shrink: 0;
 `
 
-const InputSlot = styled.div<{ $token: Token }>`
+const InputSlot = styled.div`
     flex: 1;
     display: flex;
     min-width: 0;
@@ -200,12 +202,12 @@ export function SettingRow(props: SettingRowProps) {
             break
         case 'input':
             right = (
-                <InputSlot $token={token}>
-                    {/* 吃全局 variant=filled（ThemeProvider）：静止态淡底圆角块——
-                        输入区必须有「可填」的形态（borderless 曾被用户两次指认「不点不知道
-                        是个 input」）；hover/focus 行为与全站 filled 输入一致 */}
+                <InputSlot>
+                    {/* uiarc 自管 Input / PasswordField（行内不传 label，可访问名走行标签）：
+                        surface 底 + border-strong 边框，focus 边框变 --foreground——
+                        与自管 Select/Combobox 同一套控件语言 */}
                     {props.secret ? (
-                        <Input.Password {...props.input} aria-label={accessibleName} />
+                        <PasswordField {...props.input} aria-label={accessibleName} />
                     ) : (
                         <Input {...props.input} aria-label={accessibleName} />
                     )}
