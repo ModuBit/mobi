@@ -89,6 +89,8 @@
 .highlight { position: absolute; top: 0; right: 2px; left: 2px; border-radius: calc(var(--radius-panel) - 6px); background: color-mix(in oklab, var(--foreground) 6.5%, transparent); opacity: 0; pointer-events: none; transition: opacity var(--duration-instant) var(--ease-standard); }
 .highlight[data-on] { opacity: 1; }
 .option { position: relative; display: flex; width: 100%; min-height: 38px; align-items: center; justify-content: space-between; gap: 12px; border: 0; border-radius: calc(var(--radius-panel) - 6px); padding: 0 11px; background: transparent; color: var(--foreground); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; transition: color 80ms var(--ease-standard); }
+/* 空候选提示行（emptyMessage）：非交互、弱化文案，占同一行高避免弹层塌成壳 */
+.empty { display: flex; min-height: 38px; align-items: center; padding: 0 11px; color: var(--text-muted); font-size: var(--text-sm); }
 .option > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .option[data-active="true"] { color: var(--foreground); }
 .option:disabled { opacity: .42; cursor: not-allowed; }

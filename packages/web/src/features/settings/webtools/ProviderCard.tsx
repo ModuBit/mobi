@@ -186,7 +186,6 @@ export function ProviderCard({ provider, referencedBy, expanded, onExpandedChang
                     onKeyDown={(e) => e.stopPropagation()}
                 >
                     <Switch
-                        size="small"
                         aria-label={`${provider.id}-enabled`}
                         checked={provider.enabled}
                         loading={saving}

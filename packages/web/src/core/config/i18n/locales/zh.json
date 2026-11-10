@@ -811,6 +811,7 @@
       "excludedTitle": "按工作区关闭",
       "excludedHint": "命中的工作区（含其子目录）不挂载记忆 · 支持自由输入任意路径",
       "excludedPlaceholder": "选择或输入要排除的目录",
+      "excludedEmpty": "无匹配候选 · 回车直接添加",
       "statusTitle": "连接状态",
       "checkButton": "检查连接",
       "checkOk": "可达（{{ms}}ms）",

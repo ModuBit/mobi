@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { lazy } from 'react'
-import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
+import { lazy, useEffect } from 'react'
+import { createRootRoute, createRoute, createRouter, redirect, useNavigate } from '@tanstack/react-router'
 import { App } from './App'
 import { lazyRoute, routeChunkLoaders } from '@/app/routeChunks'
 import { SETTINGS_WIDE_QUERY } from '@/features/settings/sections/registry'
@@ -111,11 +111,22 @@ const archivedRoute = createRoute({
     component: ArchivedPage,
 })
 
-// 设置页 layout 路由（左侧分区导航 / mobile 子页由 SettingsPage 响应式分流）
+// 设置页 layout 路由（左侧分区导航 / mobile 子页由 SettingsPage 响应式分流）。
+// 未知设置段（如手输 /settings/worktree 单数）：不渲染裸 Not Found——重定向到上次分区，
+// 与 index 的「记住上次分区」同一语义；replace 不留历史项，effect 里跳避免渲染期副作用
+function SettingsSectionRedirect() {
+    const navigate = useNavigate()
+    useEffect(() => {
+        void navigate({ to: `/settings/${readLastSettingsSection() ?? 'notifications'}`, replace: true })
+    }, [navigate])
+    return null
+}
+
 const settingsRoute = createRoute({
     getParentRoute: () => mainLayoutRoute,
     path: 'settings',
     component: SettingsPage,
+    notFoundComponent: SettingsSectionRedirect,
 })
 // 设置 index：PC「记住上次分区」——重定向到上次分区（缺省通知）；mobile 保持分组入口列表（SettingsIndex）
 const settingsIndexRoute = createRoute({

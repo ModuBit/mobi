@@ -470,6 +470,7 @@ export function MemorySection() {
                         options={workspaceOptions}
                         placeholder={t('settings.memory.excludedPlaceholder')}
                         ariaLabel={t('settings.memory.excludedTitle')}
+                        emptyMessage={t('settings.memory.excludedEmpty')}
                     />
                 </div>
             </SettingGroupCard>

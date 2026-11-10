@@ -25,11 +25,21 @@ const Card = styled.div<{ $token: Token }>`
     background: ${p => p.$token.colorBgContainer};
     border: 1px solid ${p => p.$token.colorBorderSecondary};
     border-radius: ${p => p.$token.borderRadiusLG}px;
-    overflow: hidden;
 
     /* 无缝分组卡：行间细分隔线，首行无线（ChatGPT 分组卡形态） */
     & > * + * {
         border-top: 1px solid ${p => p.$token.colorBorderSecondary};
+    }
+
+    /* 圆角裁切由角行自身承担（不用 overflow:hidden）——卡内可能驻留非 portal 弹层
+     * （Combobox 建议），整体裁切会把弹层裁死在卡里；角行圆角对行 hover 底色同样生效 */
+    & > *:first-child {
+        border-top-left-radius: ${p => p.$token.borderRadiusLG}px;
+        border-top-right-radius: ${p => p.$token.borderRadiusLG}px;
+    }
+    & > *:last-child {
+        border-bottom-left-radius: ${p => p.$token.borderRadiusLG}px;
+        border-bottom-right-radius: ${p => p.$token.borderRadiusLG}px;
     }
 `
 

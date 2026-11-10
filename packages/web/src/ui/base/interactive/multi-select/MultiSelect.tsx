@@ -27,7 +27,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { Variants } from "motion/react";
 import { ChevronDown, X } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent } from "react";
+import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
 import { GlidingHighlight } from "@/ui/base/motion/GlidingHighlight";
@@ -59,6 +59,8 @@ export interface MultiSelectProps {
   style?: CSSProperties;
   /** tags：chip 内联输入，候选可点选、任意值可自由输入（antd Select mode="tags" 对应物） */
   mode?: "default" | "tags";
+  /** 候选为空时弹层里的提示行（不渲染 = 空候选直接不弹内容壳） */
+  emptyMessage?: ReactNode;
 }
 
 const enter = motionTokens.ease.enter;
@@ -87,7 +89,7 @@ function CheckMark({ reduce }: { reduce: boolean | null }) {
   </svg>;
 }
 
-export function MultiSelect({ label, options, value, defaultValue = [], onValueChange, placeholder, description, maxVisible, disabled = false, ariaLabel, className, style, mode = "default" }: MultiSelectProps) {
+export function MultiSelect({ label, options, value, defaultValue = [], onValueChange, placeholder, description, maxVisible, disabled = false, ariaLabel, className, style, mode = "default", emptyMessage }: MultiSelectProps) {
   const { t } = useTranslation();
   const placeholderText = placeholder ?? t("common.select");
   const tags = mode === "tags";
@@ -298,6 +300,7 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
           exit={{ opacity: 0, ...(reduce ? {} : { y: dropUp ? 4 : -4, scale: .98 }), transition: { duration: motionTokens.duration.instant, ease: standard } }}>
           {/* gliding highlight 的当前项（键盘 activeIndex 与悬停 onPointerMove 同源） */}
           <GlidingHighlight className={styles.highlight} target={(activeIndex >= 0 ? optionRefs.current[menuOptions[activeIndex]?.value ?? ""] : null) ?? null} />
+          {menuOptions.length === 0 && emptyMessage !== undefined && <div className={styles.empty} role="presentation">{emptyMessage}</div>}
           {menuOptions.map((option, index) => <button type="button" role="option" aria-selected={selectedSet.has(option.value)} aria-disabled={option.disabled || undefined} key={option.value} ref={(el) => { if (el) optionRefs.current[option.value] = el; else delete optionRefs.current[option.value]; }} className={styles.option} data-active={activeIndex === index} disabled={option.disabled} onPointerMove={() => { if (activeIndex !== index) setActiveIndex(index); }} onClick={() => pick(option)}>
             <span>{option.label}</span><AnimatePresence initial={false}>{selectedSet.has(option.value) && <CheckMark key="check" reduce={reduce} />}</AnimatePresence>
           </button>)}

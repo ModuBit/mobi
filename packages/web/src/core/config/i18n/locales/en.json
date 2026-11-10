@@ -820,6 +820,7 @@
       "excludedTitle": "Disable per Workspace",
       "excludedHint": "Matched workspaces (and subdirectories) run without memory · free-form paths allowed",
       "excludedPlaceholder": "Pick or type directories to exclude",
+      "excludedEmpty": "No matches · press Enter to add",
       "statusTitle": "Connection",
       "checkButton": "Check",
       "checkOk": "Reachable ({{ms}}ms)",
