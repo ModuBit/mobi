@@ -18,14 +18,16 @@ import { useState, useEffect, Suspense } from 'react'
 import { theme as antTheme, Input } from 'antd'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
-import { Outlet, useLocation, useNavigate, useRouter, useCanGoBack } from '@tanstack/react-router'
 import { ChevronLeft, Search } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { useMediaQuery } from '@/core/data/hooks/useMediaQuery'
 import { SETTINGS_WIDE_QUERY, activeSection, searchSettingsSectionGroups, type SettingsSection } from '@/features/settings/sections/registry'
 import { writeLastSettingsSection } from '@/features/settings/sections/lastSettingsSection'
 import { WebToolsStatusBadge } from '@/features/settings/sections/WebToolsStatusBadge'
-import { resolveSettingsBackTarget, resolveSettingsLeaveTarget } from '@/features/layout/settingsReturnOrigin'
+import { resolveSettingsLeaveTarget } from '@/features/layout/settingsReturnOrigin'
+import { GlideLayer, HoverGlideLayer } from '@/ui/base/motion/GlideLayer'
+import { useGlideHighlight } from '@/ui/base/motion/useGlideHighlight'
 
 const { useToken } = antTheme
 
@@ -86,6 +88,8 @@ const SearchSlot = styled.div`
 `
 
 const NavGroups = styled.nav`
+    position: relative; /* 滑移底色层的定位容器（层与行平级，几何取行 offsetTop） */
+    isolation: isolate; /* 滑移层 z-index:-1 落在内容之下、容器背景之上 */
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -105,6 +109,7 @@ const NavList = styled.div`
 `
 
 const NavItem = styled.button<{ $token: Token; $active: boolean }>`
+    position: relative; /* 盖在滑移底色层之上（层在行之前渲染，无 z-index） */
     display: flex;
     align-items: center;
     gap: 10px;
@@ -114,10 +119,10 @@ const NavItem = styled.button<{ $token: Token; $active: boolean }>`
     border-radius: ${p => p.$token.borderRadius}px;
     font-size: 13.5px;
     text-align: left;
-    background: ${p => (p.$active ? p.$token.colorFillSecondary : 'transparent')};
+    /* 底色由滑移层绘制（hover/selected 两档），行只负责文字与字重 */
+    background: transparent;
     color: ${p => (p.$active ? p.$token.colorText : p.$token.colorTextSecondary)};
     font-weight: ${p => (p.$active ? 600 : 400)};
-    &:hover { background: ${p => p.$token.colorFillQuaternary}; }
     &:focus-visible {
         outline: 2px solid ${p => p.$token.colorPrimary};
         outline-offset: 2px;
@@ -218,18 +223,6 @@ const MobileHeaderTitle = styled.div<{ $token: Token }>`
     white-space: nowrap;
 `
 
-/** 返回链路收尾（history.back 优先，无应用内历史落来源记录，最后兜底新对话）：PC 侧栏与 mobile 头部共用 */
-function useSettingsBack(): () => void {
-    const navigate = useNavigate()
-    const router = useRouter()
-    const canGoBack = useCanGoBack()
-    return () => {
-        const target = resolveSettingsBackTarget(canGoBack)
-        if (target.mode === 'history') router.history.back()
-        else void navigate({ to: target.to })
-    }
-}
-
 interface SidebarProps {
     $token: Token
     active: SettingsSection | null
@@ -242,6 +235,8 @@ function Sidebar({ $token, active, goBack }: SidebarProps) {
     const navigate = useNavigate()
     const [keyword, setKeyword] = useState('')
     const groups = searchSettingsSectionGroups(keyword, t)
+    // 悬停 / 激活两档滑移底色（与主侧栏导航同一套弹簧手感，跨分组滑移）
+    const { containerRef, activeEl } = useGlideHighlight<HTMLDivElement>()
 
     return (
         <SettingsSidebar $token={$token}>
@@ -261,7 +256,10 @@ function Sidebar({ $token, active, goBack }: SidebarProps) {
                         aria-label={t('settings.search')}
                     />
                 </SearchSlot>
-                <NavGroups aria-label={t('settings.title')}>
+                <NavGroups aria-label={t('settings.title')} ref={containerRef}>
+                    {/* 滑移底色层：hover 最淡一档、active 深半档，跨分组弹簧滑移（行零重渲染） */}
+                    <HoverGlideLayer containerRef={containerRef} $background={$token.colorBgTextHover} />
+                    <GlideLayer target={activeEl} $background={$token.colorPrimaryBg} />
                     {groups.map((group) => (
                         <div key={group.id}>
                             <GroupLabel $token={$token}>{t(group.titleKey)}</GroupLabel>
@@ -275,6 +273,8 @@ function Sidebar({ $token, active, goBack }: SidebarProps) {
                                             $token={$token}
                                             $active={isActive}
                                             aria-current={isActive ? 'page' : undefined}
+                                            data-glide-row=""
+                                            data-glide-active={isActive ? 'true' : undefined}
                                             onClick={() => { void navigate({ to: `/settings/${section.id}` }) }}
                                         >
                                             <NavIcon><Icon size={15} opacity={0.75} /></NavIcon>
@@ -305,8 +305,10 @@ export function SettingsPage() {
     const isWide = useMediaQuery(SETTINGS_WIDE_QUERY)
     const location = useLocation()
     const navigate = useNavigate()
-    const goBack = useSettingsBack()
     const active = activeSection(location.pathname)
+    // 返回 = 离开设置：恒落来源记录（打开设置前的页面），不在设置内逐级回走历史——
+    // A→B→C 切过之后 history.back 会依次弹回 B、A，而侧栏常驻下用户意图就是「回去」
+    const goBack = () => { void navigate({ to: resolveSettingsLeaveTarget().to }) }
 
     // 记住上次分区：激活分区变化即写（深链以 URL 为准并覆盖记录）
     useEffect(() => {

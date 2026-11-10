@@ -41,16 +41,11 @@ export function getSettingsReturnOrigin(): string | null {
     }
 }
 
-/** 返回链路裁决：有应用内历史优先 history.back（自然语义），否则落记录来源，最后兜底新对话 */
-export function resolveSettingsBackTarget(canGoBack: boolean): { mode: 'history' } | { mode: 'navigate'; to: string } {
-    if (canGoBack) return { mode: 'history' }
-    return { mode: 'navigate', to: getSettingsReturnOrigin() ?? '/sessions/new' }
-}
-
 /**
- * 入口态「离开设置」目标：恒走来源记录，最后兜底新对话。
- * 不走 history.back——入口态的历史上一条是子分区→入口的 push（back 会弹回子分区困在设置内），
- * 「离开设置」语义下应用内历史不可信，来源记录（最近非设置路由）才是正确目标。
+ * 「离开设置」目标：恒走来源记录，最后兜底新对话。
+ * 不走 history.back——设置内逐级切换（A→B→C）会让 back 依次弹回 B、A，
+ * 「返回」的意图是回打开设置前的页面，来源记录（最近非设置路由）才是正确目标。
+ * PC 侧栏返回与 mobile 入口态返回共用本裁决。
  */
 export function resolveSettingsLeaveTarget(): { to: string } {
     return { to: getSettingsReturnOrigin() ?? '/sessions/new' }

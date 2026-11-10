@@ -279,6 +279,7 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - 任何列表行、菜单项、下拉选项、卡片可点区都落在这套阶梯上，**禁止自造 hover 色**：不直接写 rgba 黑白 alpha（antd 默认冷灰）、不硬编码 hex、不把 `colorPrimaryBg` 借作 hover（它会与选中撞色）。要走 token：hover 用 `colorBgTextHover`，选中用 `colorPrimaryBg`。
 - antd 内部组件的高亮由全局 token 自动统一（`colorFill*` 已统一覆盖 antd 的默认冷灰）；自定义 CSS 变量引用 `var(--ant-color-bg-text-hover)` / `var(--ant-color-fill-*)` 同样自动跟随。
 - 选中态的入口若同时可 hover（如侧栏选中行），hover 不得把选中底色洗掉——写条件保持 `selected` 档（参照 `sidebarProjects.styles` / `mobileMenu.styles` 的模式）。
+- **列表/菜单行的高亮底色用滑移层绘制，不逐行瞬变**（2026-11-10 决策）：hover 用 `ui/base/motion` 的 `HoverGlideLayer`、选中用 `GlideLayer`，行标记走 `data-glide-row` / `data-glide-active` 约定（`useGlideHighlight` 追踪激活行），弹簧手感统一 `spring.glide`。行本身 `background: transparent`（只负责文字/字重），容器 `position: relative; isolation: isolate`。高亮块在行间连续滑移可跟，跨分组/跨层级同样成立——参照 `SidebarNav` / `SettingsPage` 侧栏。零重渲染是这层的固有性质（悬停 state 收在层内），不要把 hover 行号放进列表组件的 state。
 
 ## Typography
 
@@ -393,6 +394,7 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - **Don't** 用纯黑 `#000` 或纯白 `#fff` 做大面积底色（净白仅限抬升层）。
 - **Don't** 给按钮、输入加阴影或 focus 光晕——这是本项目的核心克制。
 - **Do** 悬浮/选中高亮走三档阶梯 token（hover=`colorBgTextHover`、selected=`colorPrimaryBg`，见 Hover & Selected 章）。
+- **Do** 列表/菜单行的高亮底色用滑移层（`HoverGlideLayer`/`GlideLayer` + `data-glide-row` 约定），让高亮在行间弹簧滑移（见 Hover & Selected 章）。
 - **Don't** 自造 hover 色——不写 rgba 黑白 alpha、不硬编码 hex、不把 `colorPrimaryBg` 借作 hover。
 - **Don't** 让 hover 与 selected 同色——selected 永远比 hover 深半档。
 - **Don't** 给旁路动作（取消/替换/次要设置项）用 solid primary——一屏两个实心墨块即层级失败。
