@@ -41,9 +41,19 @@ export interface ProviderCardProps {
 
 // 卡容器（票07 行式化）：无缝分组卡由父 SettingGroupCard 提供底/边框/分隔线，
 // 自身只保留行内布局；展开态由 Body 上边框分隔呈现
-const Card = styled.section`
+const Card = styled.section<{ $token: Token }>`
     display: flex;
     flex-direction: column;
+
+    /* hover 反馈挂在卡容器上（角行圆角由 SettingGroupCard 落在直接子元素=本组件根上，
+       挂 Head 会以直角溢出圆角）；:has 限定「指针落在卡头」才亮——展开体的凭据编辑器
+       hover 不算「要展开」的意图，不触发 */
+    transition: background-color 0.2s;
+    @media (hover: hover) {
+        &:has(> [role='button']:hover) {
+            background: ${p => p.$token.colorFillQuaternary};
+        }
+    }
 `
 
 // 卡头（对齐 SettingRow 行语言）：可点击展开（除 Switch 区域），键盘可达
@@ -155,7 +165,7 @@ export function ProviderCard({ provider, referencedBy, expanded, onExpandedChang
     const toggleExpanded = () => onExpandedChange(!expanded)
 
     return (
-        <Card>
+        <Card $token={token}>
             <Head
                 $token={token}
                 role="button"

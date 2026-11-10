@@ -53,7 +53,9 @@ const StyledButton = styled.button<{
     border-radius: ${props => props.$circle ? '50%' : 'var(--radius-icon)'};
     cursor: ${props => props.disabled ? 'not-allowed' : props.$loading ? 'progress' : 'pointer'};
     opacity: ${props => props.disabled ? 0.4 : 1};
-    transition: all 0.2s;
+    // hover 变 background/color、disabled 变 opacity——只列实际属性（transition:all 会连带
+    // 触发 width/height 等无关属性的过渡监听）
+    transition: background-color 0.2s, color 0.2s, opacity 0.2s;
 
     &:hover:not(:disabled) {
         // hover 用悬浮高亮淡档，active（$active）保留 colorPrimaryBg——hover ≠ 选中（DESIGN.md Hover 高亮章）

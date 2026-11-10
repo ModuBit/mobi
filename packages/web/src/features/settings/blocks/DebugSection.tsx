@@ -104,7 +104,8 @@ export function DebugSection() {
                 action={
                     <IconButton
                         icon={<DownloadOutlined />}
-                        size={26}
+                        // 32：SettingRow 行内图标钮统一热区档（26 触屏点不中）
+                        size={32}
                         aria-label={t('debug.download')}
                         onClick={handleDownload}
                     />

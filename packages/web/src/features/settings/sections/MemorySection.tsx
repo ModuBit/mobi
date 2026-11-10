@@ -373,7 +373,8 @@ export function MemorySection() {
                                         </AppTooltip>
                                     )}
                                     <IconButton
-                                        icon={<Trash2 size={14} />} size={22}
+                                        // 32：与同行 select 视觉高度对齐；22 的图标钮热区触屏点不中
+                                        icon={<Trash2 size={14} />} size={32}
                                         aria-label={t('settings.memory.ruleRemove')}
                                         onClick={() => { void draftApi.commit('rules', { rules: rules.filter((_, j) => j !== i) }) }}
                                     />
