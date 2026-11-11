@@ -93,6 +93,32 @@ function setup(
     return { rerender, unmount: utils.unmount, setText, setAttachments, setQuotes }
 }
 
+/** 结构化双路专用壳：跨调用共享 editorState getter / applyEditorState mock */
+function setupStructured(opts: {
+    editorStateJson?: string | null
+    initialSid?: string | undefined
+} = {}) {
+    let text = ''
+    const setText = vi.fn((v: string) => { text = v })
+    const applyEditorState = vi.fn()
+    const getEditorState = vi.fn(() => opts.editorStateJson ?? null)
+    const utils = renderHook(
+        ({ sid }) => useComposerDraft(
+            sid,
+            {
+                get text() { return text },
+                attachments: [],
+                quotes: [],
+                getEditorState,
+            },
+            { setText, setAttachments: vi.fn(), setQuotes: vi.fn(), applyEditorState },
+        ),
+        { initialProps: { sid: opts.initialSid ?? 's1' } },
+    )
+    const rerender = utils.rerender as (props: { sid: string | undefined }) => void
+    return { ...utils, rerender, setText, applyEditorState, getEditorState }
+}
+
 describe('useComposerDraft', () => {
     beforeEach(() => {
         draftStore.get.mockReset().mockReturnValue(null)
@@ -175,5 +201,41 @@ describe('useComposerDraft', () => {
         act(() => unmount())
         expect(draftStore.get).not.toHaveBeenCalled()
         expect(draftStore.save).not.toHaveBeenCalled()
+    })
+
+    it('结构化双路：draft 含 editorState → setText 先兜底、applyEditorState 后覆盖', async () => {
+        draftStore.get.mockReturnValue({
+            ...seg('fallback'),
+            editorState: { v: 1 as const, json: '{"type":"doc"}' },
+        } as ComposerSegments)
+        const { setText, applyEditorState } = setupStructured()
+        await act(async () => { await flushRaf() })
+        expect(setText).toHaveBeenCalledWith('fallback')
+        expect(applyEditorState).toHaveBeenCalledWith('{"type":"doc"}')
+        // 语义保证：文本兜底先于结构化覆盖（顺序即终态正确性）
+        expect(setText.mock.invocationCallOrder[0]!).toBeLessThan(applyEditorState.mock.invocationCallOrder[0]!)
+    })
+
+    it('结构化双路：draft 无 editorState → 只 setText', async () => {
+        draftStore.get.mockReturnValue(seg('plain') as ComposerSegments)
+        const { setText, applyEditorState } = setupStructured()
+        await act(async () => { await flushRaf() })
+        expect(setText).toHaveBeenCalledWith('plain')
+        expect(applyEditorState).not.toHaveBeenCalled()
+    })
+
+    it('结构化双路：卸载保存时 getEditorState 结果进 saveDraft（null 则只存 text 单路）', async () => {
+        const withState = setupStructured({ editorStateJson: '{"type":"doc"}' })
+        await act(async () => { await flushRaf() })
+        act(() => withState.unmount())
+        const [, saved] = draftStore.save.mock.calls[0] as [string, ComposerSegments & { editorState?: unknown }]
+        expect(saved.editorState).toEqual({ v: 1, json: '{"type":"doc"}' })
+
+        draftStore.save.mockReset()
+        const withoutState = setupStructured({ editorStateJson: null })
+        await act(async () => { await flushRaf() })
+        act(() => withoutState.unmount())
+        const [, saved2] = draftStore.save.mock.calls[0] as [string, ComposerSegments & { editorState?: unknown }]
+        expect(saved2).not.toHaveProperty('editorState')
     })
 })

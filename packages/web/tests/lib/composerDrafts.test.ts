@@ -112,6 +112,29 @@ describe('composerDrafts', () => {
         expect(getDraft('s1')).toBeNull()
     })
 
+    it('editorState 结构化草稿：save 带 → get 原样读出；不带 → undefined（旧格式兼容）', () => {
+        const editorState = { v: 1 as const, json: '{"type":"doc","content":[]}' }
+        saveDraft('s1', { ...seg('hello'), editorState })
+        expect(getDraft('s1')!.editorState).toEqual(editorState)
+        // 旧格式（无 editorState 字段）天然走 text 兜底，无需迁移代码
+        saveDraft('s2', seg('legacy'))
+        expect(getDraft('s2')!.editorState).toBeUndefined()
+        // 非法包装（版本不符/非字符串 json）：冷加载（sessionStorage 重读）时按无此字段处理
+        saveDraft('s3', { ...seg('x'), editorState: { v: 2, json: '{}' } as unknown as { v: 1; json: string } })
+        __resetDraftCacheForTesting()
+        expect(getDraft('s3')!.editorState).toBeUndefined()
+    })
+
+    it('LRU 淘汰对含 editorState 的条目同样生效', () => {
+        for (let i = 0; i < 50; i++) {
+            saveDraft(`s${i}`, { ...seg(`t${i}`), editorState: { v: 1, json: '{"i":' + i + '}' } })
+        }
+        saveDraft('new', { ...seg('n'), editorState: { v: 1, json: '{"i":"new"}' } })
+        expect(getDraft('s0')).toBeNull()
+        expect(getDraft('new')!.editorState).toEqual({ v: 1, json: '{"i":"new"}' })
+        expect(getDraft('s49')!.editorState).toEqual({ v: 1, json: '{"i":49}' })
+    })
+
     it('LRU：超过 50 条删最早；重复 save 刷新顺序', () => {
         for (let i = 0; i < 50; i++) saveDraft(`s${i}`, seg(`t${i}`))
         saveDraft('s0', seg('updated')) // 刷新 s0 到最新

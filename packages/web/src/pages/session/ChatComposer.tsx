@@ -445,10 +445,16 @@ export function ChatComposer(props: ChatComposerProps) {
         setText(v)
         shellRef.current?.setText(v)
     }, [])
+    // 草稿保存时的结构化快照（含未来票 05 的 chip 节点）；编辑器未就绪返回 null 走 text 单路
+    const getEditorState = useCallback(() => shellRef.current?.getEditorStateJSON() ?? null, [])
+    // 结构化恢复：编辑器程序化写入（解析失败静默 no-op，此前 setText 的文本兜底已生效）
+    const applyEditorState = useCallback((json: string) => {
+        shellRef.current?.setEditorStateJSON(json)
+    }, [])
     useComposerDraft(
         sessionId,
-        { text, attachments, quotes },
-        { setText: setTextWithEditor, setAttachments, setQuotes: setQuotesWithUids },
+        { text, attachments, quotes, getEditorState },
+        { setText: setTextWithEditor, setAttachments, setQuotes: setQuotesWithUids, applyEditorState },
     )
 
     // SDK 元数据（模型列表等）

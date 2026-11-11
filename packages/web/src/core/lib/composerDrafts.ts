@@ -41,6 +41,8 @@ export interface PersistedSegments {
     files: PersistedFileRef[]
     images: PersistedFileRef[]
     quotes: PendingQuoteRef[]
+    /** TipTap EditorState JSON（结构化草稿）。包装形态带版本：解析失败/版本不符按无此字段处理 */
+    editorState?: { v: 1; json: string }
 }
 
 type DraftsMap = Record<string, PersistedSegments>
@@ -121,6 +123,14 @@ function coerceArray<T>(value: unknown, item: (v: unknown) => T | null): T[] {
     return value.map(item).filter((v): v is T => v !== null)
 }
 
+/** 校验 editorState 包装（版本 + JSON 字符串）；非法返回 undefined 按无此字段处理（走 text 兜底） */
+function coerceEditorState(value: unknown): PersistedSegments['editorState'] {
+    if (!value || typeof value !== 'object') return undefined
+    const o = value as Record<string, unknown>
+    if (o.v !== 1 || typeof o.json !== 'string') return undefined
+    return { v: 1, json: o.json }
+}
+
 /** 校验单个 draft 结构，非法返回 null。兼容两种存量格式：见下方分支注释 */
 function coerceDraft(value: unknown): PersistedSegments | null {
     if (!value || typeof value !== 'object') return null
@@ -133,11 +143,13 @@ function coerceDraft(value: unknown): PersistedSegments | null {
         Array.isArray(obj.images) ||
         Array.isArray(obj.quotes)
     ) {
+        const editorState = coerceEditorState(obj.editorState)
         return {
             text: obj.text,
             files: coerceArray(obj.files, coerceFileRef),
             images: coerceArray(obj.images, coerceFileRef),
             quotes: coerceArray(obj.quotes, coerceQuote),
+            ...(editorState ? { editorState } : {}),
         }
     }
 
@@ -214,8 +226,9 @@ function persist(next: DraftsMap): void {
 /**
  * ComposerSegments → 可持久化形态：
  * 剥离 volatile 的 previewUrl（blob URL 跨会话失效）、quote 截至上限（serialize 时同样截断，双保险）。
+ * editorState（结构化草稿，可选）原样透传——core 层纯数据搬运，JSON 解析归调用方。
  */
-function toPersisted(segments: ComposerSegments): PersistedSegments {
+function toPersisted(segments: ComposerSegments & Pick<PersistedSegments, 'editorState'>): PersistedSegments {
     const workspace = (f: BlockFileRef): PersistedFileRef =>
         ({
             id: f.id, filename: f.filename, path: f.path, mimeType: f.mimeType, size: f.size,
@@ -226,6 +239,7 @@ function toPersisted(segments: ComposerSegments): PersistedSegments {
         files: segments.files.map(workspace),
         images: segments.images.map(workspace),
         quotes: segments.quotes.slice(0, QUOTE_MAX_COUNT),
+        ...(segments.editorState ? { editorState: segments.editorState } : {}),
     }
 }
 
@@ -238,10 +252,11 @@ function isPersistedEmpty(persisted: PersistedSegments): boolean {
 }
 
 /**
- * 读草稿：返回 ComposerSegments（PersistedSegments 结构子集，天然可赋值）；
+ * 读草稿：返回 PersistedSegments（结构兼容 ComposerSegments + 可选 editorState——
+ * 结构化草稿由调用方按需解析，core 层不碰 JSON）；
  * 不存在的 session 返回 null。
  */
-export function getDraft(sessionId: string): ComposerSegments | null {
+export function getDraft(sessionId: string): PersistedSegments | null {
     const drafts = hydrate()
     const draft = drafts[sessionId]
     if (draft) {
@@ -252,7 +267,7 @@ export function getDraft(sessionId: string): ComposerSegments | null {
     return draft ?? null
 }
 
-export function saveDraft(sessionId: string, segments: ComposerSegments): void {
+export function saveDraft(sessionId: string, segments: ComposerSegments & Pick<PersistedSegments, 'editorState'>): void {
     if (!sessionId) return
     const persisted = toPersisted(segments)
     const next: DraftsMap = { ...hydrate() }
