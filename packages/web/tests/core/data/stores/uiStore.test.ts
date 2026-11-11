@@ -20,7 +20,7 @@
  * 断言外部行为：订阅后 store 与 OS 同步、OS 变更时 store 跟着变、退订后不再变。
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { resolveTheme, subscribeSystemTheme, useUiStore } from '@/core/data/stores/uiStore'
 
 /** 可控 matchMedia 桩：返回 { fire(matches) } 模拟 OS 切换，并记录监听器增删次数 */
@@ -104,5 +104,37 @@ describe('subscribeSystemTheme', () => {
 
         mql.fire(true)
         expect(useUiStore.getState().systemIsDark).toBe(false)
+    })
+})
+
+describe('persist 白名单（声明「persist 跟随用户偏好」的字段必须收进 partialize）', () => {
+    // 反馈开关声明为 persist 跟随用户偏好——漏白名单则刷新回默认值，
+    // 用户关闭的反馈静默回开（2026-11-11 实锤：partialize 漏收两开关）
+    function readPersisted(): Record<string, unknown> {
+        const raw = localStorage.getItem('mobi-ui')
+        expect(raw).toBeTruthy()
+        return JSON.parse(raw!) as Record<string, unknown>
+    }
+
+    beforeEach(() => {
+        localStorage.removeItem('mobi-ui')
+    })
+
+    it('初始化快照包含反馈开关', () => {
+        useUiStore.getState().setSoundFeedbackEnabled(true)
+        const state = readPersisted().state as Record<string, unknown>
+        expect(state.theme).toBeDefined()
+        expect(state.locale).toBeDefined()
+        expect(state.sidebarExpanded).toBeDefined()
+        expect(state.soundFeedbackEnabled).toBeDefined()
+        expect(state.hapticFeedbackEnabled).toBeDefined()
+    })
+
+    it('翻转反馈开关立即写回持久化快照', () => {
+        useUiStore.getState().setSoundFeedbackEnabled(false)
+        useUiStore.getState().setHapticFeedbackEnabled(false)
+        const state = readPersisted().state as Record<string, unknown>
+        expect(state.soundFeedbackEnabled).toBe(false)
+        expect(state.hapticFeedbackEnabled).toBe(false)
     })
 })

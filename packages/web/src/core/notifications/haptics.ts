@@ -79,11 +79,6 @@ export function hapticTap(): void {
     vibratePattern(HAPTIC_PATTERNS.tap)
 }
 
-/** 设备/浏览器是否具备 Vibration API（不代表有振动器；「试一下」的降级提示判据） */
-export function vibrateSupported(): boolean {
-    return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'
-}
-
 /**
  * 带交互语义的元素 selector：button 本体 + ARIA 交互角色 + 原生 checkbox。
  * antd（Checkbox/Pagination）、Radix/Base UI（Select/Combobox/DropdownMenu）、

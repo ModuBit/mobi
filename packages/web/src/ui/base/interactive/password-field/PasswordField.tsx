@@ -30,6 +30,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
 import { useTranslation } from "react-i18next";
 import { FieldMessage } from "@/ui/base/interactive/fieldMessageShared";
+import { isSubmitEnter } from "@/ui/base/interactive/inputEnterKeys";
 import styles from "./password-field.module.css";
 
 export interface PasswordFieldMessages { showPassword: string; hidePassword: string }
@@ -69,7 +70,7 @@ export const PasswordField = forwardRef<HTMLInputElement, PasswordFieldProps>(fu
     <div className={styles.shell}>
       <input {...props} ref={ref} id={controlId} type={visible ? "text" : "password"} data-reveal={toggled ? (visible ? "shown" : "hidden") : undefined} aria-invalid={error ? true : props["aria-invalid"]} aria-describedby={describedBy} className={styles.input}
         onKeyDown={onPressEnter ? (event) => {
-          if (event.key === "Enter" && !event.nativeEvent.isComposing) onPressEnter();
+          if (isSubmitEnter(event)) onPressEnter();
           props.onKeyDown?.(event);
         } : props.onKeyDown} />
       <button type="button" onClick={() => { setVisible(current => !current); setToggled(true); }} aria-label={visible ? messages.hidePassword : messages.showPassword} aria-pressed={visible}><EyeMorph slashed={visible} /></button>

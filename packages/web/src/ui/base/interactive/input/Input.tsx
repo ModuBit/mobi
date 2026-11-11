@@ -25,6 +25,7 @@
 import { forwardRef, useId } from "react";
 import type { InputHTMLAttributes } from "react";
 import { FieldMessage } from "@/ui/base/interactive/fieldMessageShared";
+import { isSubmitEnter } from "@/ui/base/interactive/inputEnterKeys";
 import styles from "./input.module.css";
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -49,8 +50,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
     {label && <label className={styles.label} htmlFor={controlId}>{label}</label>}
     <input {...props} id={controlId} ref={ref} className={styles.input} aria-invalid={error ? true : props["aria-invalid"]} aria-describedby={describedBy}
       onKeyDown={onPressEnter ? (event) => {
-        // Enter 提交与消费方 onKeyDown 共存（Escape 取消等场景），组合态（IME 确认候选词）不触发
-        if (event.key === "Enter" && !event.nativeEvent.isComposing) onPressEnter();
+        // Enter 提交与消费方 onKeyDown 共存（Escape 取消等场景），组合态不触发
+        if (isSubmitEnter(event)) onPressEnter();
         props.onKeyDown?.(event);
       } : props.onKeyDown} />
     <FieldMessage id={hintId} text={description} className={styles.description} />

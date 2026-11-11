@@ -173,11 +173,14 @@ export const useUiStore = create<UiState>()(
         }),
         {
             name: 'mobi-ui',
-            // 持久化 theme、locale 和 sidebarExpanded
+            // 持久化 theme、locale 和 sidebarExpanded；反馈开关声明为「persist 跟随用户偏好」，
+            // 漏白名单则刷新静默回默认开（用户关掉的反馈回魂）
             partialize: (state) => ({
                 theme: state.theme,
                 locale: state.locale,
                 sidebarExpanded: state.sidebarExpanded,
+                soundFeedbackEnabled: state.soundFeedbackEnabled,
+                hapticFeedbackEnabled: state.hapticFeedbackEnabled,
             }),
             // 合并时保留 store 默认值，防止 localStorage 中无该字段时为 undefined
             merge: (persistedState, currentState) => ({

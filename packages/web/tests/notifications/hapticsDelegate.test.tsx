@@ -25,7 +25,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import { Button } from '@/ui/base/interactive/button/Button'
-import { HAPTIC_PATTERNS, installHapticFeedback, setHapticGate, vibratePattern, vibrateSupported } from '@/core/notifications/haptics'
+import { HAPTIC_PATTERNS, installHapticFeedback, setHapticGate, vibratePattern } from '@/core/notifications/haptics'
 
 const nav = navigator as { vibrate?: unknown } & typeof navigator
 let originalVibrate: unknown
@@ -149,17 +149,6 @@ describe('installHapticFeedback 全局委托', () => {
         down(getByRole('button'))
         expect(vibrate).toHaveBeenCalledTimes(1)
         expect(vibrate).toHaveBeenCalledWith([...HAPTIC_PATTERNS.tap])
-    })
-})
-
-describe('vibrateSupported', () => {
-    it('有 vibrate API → true', () => {
-        expect(vibrateSupported()).toBe(true)
-    })
-
-    it('无 vibrate API → false', () => {
-        Object.defineProperty(nav, 'vibrate', { value: undefined, configurable: true })
-        expect(vibrateSupported()).toBe(false)
     })
 })
 

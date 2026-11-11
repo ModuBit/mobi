@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useRef, type KeyboardEvent } from 'react'
+import { useState, useRef } from 'react'
 
 import { Terminal as TerminalIcon } from 'lucide-react'
 import { Input } from '@/ui/base/interactive/input/Input'
@@ -69,12 +69,6 @@ export function TerminalTabLabel({ tab, onRename }: TerminalTabLabelProps) {
         activeRef.current = false
         setEditing(false)
     }
-    const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-        // IME 组合中的 Enter 是确认候选词，不触发提交
-        if (e.key === 'Enter' && !e.nativeEvent.isComposing) commit()
-        else if (e.key === 'Escape') cancel()
-    }
-
     if (editing) {
         return (
             <Input
@@ -83,7 +77,10 @@ export function TerminalTabLabel({ tab, onRename }: TerminalTabLabelProps) {
                 value={draft}
                 placeholder={t('session.inspector.terminalRenamePlaceholder')}
                 onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={onKeyDown}
+                // Enter 提交走 Input 内建 onPressEnter（IME 组合态豁免由组件承载）；
+                // Escape 取消经 onKeyDown 旁路，与 onPressEnter 共存
+                onPressEnter={commit}
+                onKeyDown={(e) => { if (e.key === 'Escape') cancel() }}
                 onBlur={commit}
                 style={{ width: 120 }}
             />

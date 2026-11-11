@@ -78,6 +78,18 @@ describe('buildShadcnThemeCss（--background 系主题变量）', () => {
         expect(dark).toContain(`--foreground: ${shadcnDarkToken.colorText}`)
         expect(light).toContain(`--primary: ${shadcnLightToken.colorPrimary}`)
         expect(dark).toContain(`--primary: ${shadcnDarkToken.colorPrimary}`)
+        // --primary-foreground 是「primary 实心块之上的前景色」（shadcn 语义）：primary 在本项目
+        // 是中性墨族（light 墨黑 / dark 亮白），其上的字必为画布反色——绝不能等于 --primary 本身
+        // （旧映射 colorPrimaryText=主色色值，墨勾画墨底糊死，E2E 实锤后修映射层）
+        const primaryFgLight = light.match(/--primary-foreground: ([^;]+);/)?.[1]
+        const primaryFgDark = dark.match(/--primary-foreground: ([^;]+);/)?.[1]
+        expect(primaryFgLight).toBeDefined()
+        expect(primaryFgDark).toBeDefined()
+        expect(primaryFgLight).not.toBe(shadcnLightToken.colorPrimary)
+        expect(primaryFgDark).not.toBe(shadcnDarkToken.colorPrimary)
+        // 双档都取画布色（dark 档 Primary.text 的既有自述「实心块上的字 = 画布色」同源）
+        expect(primaryFgLight).toBe(shadcnLightToken.colorBgLayout)
+        expect(primaryFgDark).toBe(shadcnDarkToken.colorBgLayout)
     })
 
     it('light 挂 :root、dark 挂 .dark 选择器，radius 带 px 单位', () => {

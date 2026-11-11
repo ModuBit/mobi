@@ -208,7 +208,6 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
                         setSoundFeedbackEnabled(v)
                         if (v) previewAttentionSound()
                     }}
-                    ariaLabel={t('notification.settings.soundFeedback')}
                 />
                 <SettingRow
                     label={t('notification.settings.vibration')}
@@ -220,7 +219,6 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
                         setHapticFeedbackEnabled(v)
                         if (v) hapticTap()
                     }}
-                    ariaLabel={t('notification.settings.vibration')}
                 />
             </SettingGroupCard>
 

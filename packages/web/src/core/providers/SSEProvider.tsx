@@ -602,6 +602,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                         icon: '/brand/favicon.ico',
                         tag: `mobi-${kind}-${sessionId}`,
                         renotify: true,
+                        // permission 提醒沿用 pending 同款急迫双脉冲；ready/pending 索引直取同键 pattern
                         vibrate: kind === 'ready' ? HAPTIC_PATTERNS.ready : HAPTIC_PATTERNS.pending,
                         data: { url },
                     }).then((ok) => {

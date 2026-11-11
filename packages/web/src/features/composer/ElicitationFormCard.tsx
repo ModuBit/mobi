@@ -110,12 +110,7 @@ function BooleanSwitch({ value, onChange }: {
     onChange?: (value: boolean) => void
 }) {
     return (
-        <Switch
-            checked={value ?? false}
-            onCheckedChange={(next) => {
-                onChange?.(next)
-            }}
-        />
+        <Switch checked={value ?? false} onCheckedChange={onChange} />
     )
 }
 

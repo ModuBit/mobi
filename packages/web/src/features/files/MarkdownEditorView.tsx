@@ -283,6 +283,18 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
     )
 }
 
+/** 链接/图片 bubble 共用：前导图标 + Input 的填充外壳（uiarc Input 无 prefix/affix，图标移外壳行）；
+ *  input 本体去边框去底色由 editor.css .md-link-input 补 */
+const bubbleInputShell: CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0,
+    background: 'var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04))',
+    borderRadius: 'var(--ant-border-radius, 8px)', padding: '0 6px',
+}
+/** bubble 输入框本体的共同样式（等宽字体、贴行高） */
+const bubbleInputStyle: CSSProperties = {
+    flex: 1, minWidth: 0, fontSize: 12, fontFamily: 'var(--font-mono, JetBrains Mono, monospace)',
+}
+
 /** 链接态 bubble：单行 URL + apply / open / remove（全 icon；标题在编辑器内直接改） */
 function LinkBubble({ editor }: { editor: Editor }) {
     const { token } = antTheme.useToken()
@@ -336,8 +348,7 @@ function LinkBubble({ editor }: { editor: Editor }) {
 
     return (
         <div style={card}>
-            {/* uiarc Input 无 borderless/prefix：形态经 styled 覆盖（editor.css .md-link-input 同步改），图标移外壳行 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0, background: 'var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04))', borderRadius: 'var(--ant-border-radius, 8px)', padding: '0 6px' }}>
+            <div style={bubbleInputShell}>
                 <Link2 size={13} style={{ color: token.colorTextTertiary, flexShrink: 0 }} />
                 <Input
                     className="md-link-input"
@@ -347,7 +358,7 @@ function LinkBubble({ editor }: { editor: Editor }) {
                     onChange={(e) => setUrl(e.target.value)}
                     onPressEnter={apply}
                     autoFocus
-                    style={{ flex: 1, minWidth: 0, fontSize: 12, fontFamily: 'var(--font-mono, JetBrains Mono, monospace)' }}
+                    style={bubbleInputStyle}
                 />
             </div>
             <AppTooltip title="应用链接" mouseEnterDelay={0.4}>
@@ -412,7 +423,7 @@ function ImageBubble({ editor }: { editor: Editor }) {
 
     return (
         <div style={card}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0, background: 'var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04))', borderRadius: 'var(--ant-border-radius, 8px)', padding: '0 6px' }}>
+            <div style={bubbleInputShell}>
                 <ImageIcon size={13} style={{ color: token.colorTextTertiary, flexShrink: 0 }} />
                 <Input
                     className="md-link-input"
@@ -422,7 +433,7 @@ function ImageBubble({ editor }: { editor: Editor }) {
                     onChange={(e) => setSrc(e.target.value)}
                     onPressEnter={apply}
                     autoFocus
-                    style={{ flex: 1, minWidth: 0, fontSize: 12, fontFamily: 'var(--font-mono, JetBrains Mono, monospace)' }}
+                    style={bubbleInputStyle}
                 />
             </div>
             <AppTooltip title="应用" mouseEnterDelay={0.4}>

@@ -63,25 +63,17 @@ export function OptionRow(props: OptionRowProps) {
 
     const showDescription = Boolean(props.description && props.description !== props.title)
 
-    // mark：受控纯视觉（pointerEvents none 让点击穿透到本行 div）。
-    // 多选 uiarc Checkbox / 单选 uiarc RadioIndicator；完成态选中色局部覆盖 CSS 变量为成功色
-    // （ConfigProvider 的 token 覆盖只影响 antd 子树，uiarc 组件取色走 --control-on/--control-glyph 变量）
-    const completedVars = {
-        '--control-on': token.colorSuccess,
-        '--control-glyph': token.colorSuccess,
+    // mark 外壳：纯视觉（aria-hidden + pointerEvents none，点击穿透到本行 div）。
+    // 多选 = uiarc Checkbox / 单选 = uiarc RadioIndicator，状态由外层受控。
+    // 完成态选中色局部覆盖 CSS 变量为成功色——CSS 变量沿 DOM 继承，外壳一处注入对
+    // 两分支统一生效（ConfigProvider 的 token 覆盖只影响 antd 子树，uiarc 走 CSS 变量）
+    const markStyle = {
+        pointerEvents: 'none',
+        ...(props.tone === 'completed' ? {
+            '--control-on': token.colorSuccess,
+            '--control-glyph': token.colorSuccess,
+        } : null),
     } as CSSProperties
-    const mark = props.mode === 'multi' ? (
-        <Checkbox
-            checked={props.checked}
-            onCheckedChange={() => {}}
-            tabIndex={-1}
-            style={{ pointerEvents: 'none', ...(props.tone === 'completed' ? completedVars : null) }}
-        />
-    ) : (
-        <span style={{ pointerEvents: 'none', display: 'flex', ...(props.tone === 'completed' ? completedVars : null) }}>
-            <RadioIndicator checked={props.checked} />
-        </span>
-    )
 
     // 标题 + 描述组合：如有 preview 则外层包 OptionPreview（眼睛图标 + Popover）
     // 注：标题固定 colorText（非强调色）——选中态的强调由 antd mark + 实色边框承载，
@@ -150,8 +142,13 @@ export function OptionRow(props: OptionRowProps) {
             onKeyDown={onKeyDown}
             style={baseStyle}
         >
-            <span aria-hidden="true" style={{ flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center' }}>
-                {mark}
+            <span
+                aria-hidden="true"
+                style={{ flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', ...markStyle }}
+            >
+                {props.mode === 'multi'
+                    ? <Checkbox checked={props.checked} tabIndex={-1} />
+                    : <RadioIndicator checked={props.checked} />}
             </span>
             <span style={{ minWidth: 0, flex: 1 }}>
                 {content}

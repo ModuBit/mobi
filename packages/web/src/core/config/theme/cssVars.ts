@@ -46,7 +46,11 @@ const SHADCN_VAR_MAPPINGS: ReadonlyArray<readonly [string, keyof Token]> = [
     ['--popover', 'colorBgElevated'],
     ['--popover-foreground', 'colorText'],
     ['--primary', 'colorPrimary'],
-    ['--primary-foreground', 'colorPrimaryText'],
+    // 「primary 实心块之上的前景色」（shadcn 语义）。antd 无对应 token：colorPrimaryText 是
+    // 「用 primary 色写字」（=主色本身，黑上黑糊死，E2E 实锤）。primary 在本项目是中性墨族
+    // （light 墨黑 / dark 亮白），其上的字两档都取画布反色——colorBgLayout 的值恰为画布
+    // （dark 档 Primary.text 自述「实心块上的字 = 画布色」同源）
+    ['--primary-foreground', 'colorBgLayout'],
     ['--secondary', 'colorFillTertiary'],
     ['--secondary-foreground', 'colorText'],
     ['--muted', 'colorFillQuaternary'],
@@ -194,13 +198,11 @@ const UIARC_ALIAS_VARS: ReadonlyArray<readonly [string, string]> = [
     ['--ease-spring', 'var(--mobi-ease-in-out)'],
     // 控件语义色（switch/checkbox/radio 族，2026-11-11 迁移）：轨道取 muted（未选）/primary（选中），
     // 双档随 shadcn token 自动翻转；拇指固定白为双档同值的有意识选择——dark 深轨道配白拇指对比成立。
-    // glyph（填充态字形）取 background 反色：primary 是中性墨族（light 墨黑/dark 浅白），
-    // 其上的字形恰为画布反色——不能用 --primary-foreground（它映射 colorPrimaryText=主色本身，
-    // 黑勾画黑底会糊死，E2E 实锤）
+    // glyph（填充态字形）= 选中块（--control-on=primary）之上的字形，与 --primary-foreground 同语义
     ['--control-track', 'var(--muted)'],
     ['--control-track-hover', 'var(--accent)'],
     ['--control-on', 'var(--primary)'],
-    ['--control-glyph', 'var(--background)'],
+    ['--control-glyph', 'var(--primary-foreground)'],
     ['--control-thumb', 'hsl(0 0% 100%)'],
     ['--control-thumb-on', 'hsl(0 0% 100%)'],
     ['--control-thumb-shadow', '0 1px 2px rgb(0 0 0 / 0.2)'],

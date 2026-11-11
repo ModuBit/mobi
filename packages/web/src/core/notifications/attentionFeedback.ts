@@ -170,39 +170,32 @@ function playTone(ctx: AudioContext, opts: {
  * - pending：上行双音「叮-叮」（880 → 1319Hz，渐强 = 需要你行动）
  */
 function playSound(kind: AttentionKind): void {
-    // 用户关闭声音反馈（设置页开关，注入读取）→ 静默
-    if (!soundGate()) return
-    const ctx = getAudioContext()
-    if (!ctx || ctx.state !== 'running') return
-    if (kind === 'ready') {
-        playTone(ctx, { freq: 1318.5, startAt: 0, duration: 0.12, volume: 0.55 })
-        playTone(ctx, { freq: 1046.5, startAt: 0.1, duration: 0.2, volume: 0.5 })
-    } else {
-        playTone(ctx, { freq: 880, startAt: 0, duration: 0.09, volume: 0.75 })
-        playTone(ctx, { freq: 1318.5, startAt: 0.12, duration: 0.14, volume: 0.8 })
+    // 音频环境异常（无声卡/WebAudio 不可用/构造抛错）静默——异常边界在播放器本体收口，
+    // 调用方（通知/预览）不必各自包 try/catch
+    try {
+        // 用户关闭声音反馈（设置页开关，注入读取）→ 静默
+        if (!soundGate()) return
+        const ctx = getAudioContext()
+        if (!ctx || ctx.state !== 'running') return
+        if (kind === 'ready') {
+            playTone(ctx, { freq: 1318.5, startAt: 0, duration: 0.12, volume: 0.55 })
+            playTone(ctx, { freq: 1046.5, startAt: 0.1, duration: 0.2, volume: 0.5 })
+        } else {
+            playTone(ctx, { freq: 880, startAt: 0, duration: 0.09, volume: 0.75 })
+            playTone(ctx, { freq: 1318.5, startAt: 0.12, duration: 0.14, volume: 0.8 })
+        }
+    } catch {
+        // 静默
     }
 }
 
 // ==================== 震动（Vibration API，pattern 与入口见 ./haptics 单源） ====================
 
-/**
- * 震动反馈。pattern 与声音同构（pending 双脉冲更急）；
- * iOS Safari / 主屏 PWA 无 navigator.vibrate，静默降级为仅声音。
- * 注意：页面 hidden（切走/锁屏）时 Chrome 会拦截页面层震动——后台场景由
- * SSEProvider 的 SW 系统通知（携带同一 pattern）承担，见 haptics.ts 头注释。
- */
-function vibrate(kind: AttentionKind): void {
-    vibratePattern(kind === 'ready' ? HAPTIC_PATTERNS.ready : HAPTIC_PATTERNS.pending)
-}
-
-/** 对外入口：按类型同时给声音 + 震动（各自独立降级，互不阻塞） */
+/** 对外入口：按类型同时给声音 + 震动（各自独立降级，互不阻塞）。
+ *  AttentionKind 的两个值恰为 HAPTIC_PATTERNS 的键——索引访问，新增 kind 时编译器强制补 pattern */
 export function notifyAttention(kind: AttentionKind): void {
-    try {
-        playSound(kind)
-    } catch {
-        // 音频环境异常（无声卡/WebAudio 不可用）不影响震动
-    }
-    vibrate(kind)
+    playSound(kind)
+    vibratePattern(HAPTIC_PATTERNS[kind])
 }
 
 /**
@@ -210,9 +203,5 @@ export function notifyAttention(kind: AttentionKind): void {
  * 走 playSound 正常链路（soundGate/浏览器自动播放策略各自生效）。
  */
 export function previewAttentionSound(): void {
-    try {
-        playSound('ready')
-    } catch {
-        // 音频环境异常静默
-    }
+    playSound('ready')
 }
