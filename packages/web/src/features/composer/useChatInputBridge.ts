@@ -15,15 +15,11 @@
  */
 
 import { useCallback, useEffect, useRef, type RefObject } from 'react'
-import type { ChatInputHandle } from '@/ui/base/interactive/chat-input'
+import type { ChatInputHandle, ChatInputUpdateContext } from '@/ui/base/interactive/chat-input'
 import { normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash } from '@/domain/command/composerInputNormalization'
 
-/** ChatInput.onUpdate 的 ctx（与 ChatInputProps.onUpdate 定义一致，此处独立声明避免 ui 层类型回泄） */
-export interface TextInputCtx {
-    text: string
-    programmatic: boolean
-    cursorOffset: number
-}
+/** 桥接所需的编辑器更新子集（完整载荷见 ui 层 ChatInputUpdateContext） */
+export type TextInputCtx = Pick<ChatInputUpdateContext, 'text' | 'programmatic' | 'cursorOffset'>
 
 /** 面板选中结果（mention/slash 的 selectItem/selectCurrent 契约；cursorPos null = 光标置尾） */
 export interface PanelSelectionResult {

@@ -71,14 +71,6 @@ export const QuoteItemIndex = styled.span`
     font-variant-numeric: tabular-nums;
 `
 
-export const QuoteItemBody = styled.div`
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-`
-
 export const QuoteItemText = styled.span`
     font-size: 12px;
     line-height: 18px;
@@ -94,15 +86,4 @@ export const QuoteItemComment = styled.span`
     color: var(--ant-color-text-tertiary);
     word-break: break-word;
     white-space: pre-wrap;
-`
-
-export const QuoteItemAction = styled.span`
-    flex-shrink: 0;
-    font-size: 10px;
-    color: var(--ant-color-text-quaternary);
-    cursor: pointer;
-    transition: color 0.15s;
-    &:hover {
-        color: var(--ant-color-text-secondary);
-    }
 `

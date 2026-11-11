@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useImperativeHandle, useRef, type CSSProperties, type Ref } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, type CSSProperties, type Ref } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -26,7 +26,6 @@ import type { ComposerQuoteRef, PendingQuoteRef } from '@/domain/chat/composerSe
 import { normalizeEditorText } from './chatInputText'
 import {
     addQuoteToEditor,
-    clearQuotesInEditor,
     collectQuotesFromDoc,
     extractWireText,
     insertQuotesAtEnd,
@@ -42,15 +41,39 @@ const PROGRAMMATIC_META = 'chat-input-programmatic'
 
 
 /** doc 中装配节点的实例数（extraNodeCount 派生源；未装节点恒 0） */
-function countExtraNodes(doc: PMNode, extraNodes: AnyExtension[] | undefined): number {
-    if (!extraNodes?.length) return 0
-    const names = new Set(extraNodes.map((n) => n.name))
+function countExtraNodes(doc: PMNode, names: Set<string>): number {
+    if (names.size === 0) return 0
     let count = 0
     doc.descendants((node) => {
         if (names.has(node.type.name)) count++
         return true
     })
     return count
+}
+
+/** schema → 文本序列化器映射：schema 每个 editor 实例稳定，跨 update 复用（避免每键重建） */
+const serializerCache = new WeakMap<object, ReturnType<typeof getTextSerializersFromSchema>>()
+function serializersFor(schema: Editor['schema']): ReturnType<typeof getTextSerializersFromSchema> {
+    let serializers = serializerCache.get(schema)
+    if (!serializers) {
+        serializers = getTextSerializersFromSchema(schema)
+        serializerCache.set(schema, serializers)
+    }
+    return serializers
+}
+
+/** 光标前的纯文本长度（getText 段落语义单源；onUpdate 与 setCursorOffset 共用） */
+function textLengthBefore(doc: PMNode, pos: number, serializers: ReturnType<typeof getTextSerializersFromSchema>): number {
+    return getTextBetween(doc, { from: 0, to: pos }, { blockSeparator: '\n', textSerializers: serializers }).length
+}
+
+/** 编辑器更新上下文（ChatInput.onUpdate 载荷；消费方桥接层按需收窄） */
+export interface ChatInputUpdateContext {
+    text: string
+    programmatic: boolean
+    cursorOffset: number
+    extraNodeCount: number
+    editorStateJSON: string
 }
 
 export interface ChatInputProps {
@@ -72,9 +95,7 @@ export interface ChatInputProps {
      *  mention/slash 的 (text, cursorPos) 模型对接用；
      *  editorStateJSON = 当前 doc 序列化快照（草稿持久化用：消费方镜像持有，
      *  卸载清理时 handle ref 已被 React 置 null，不能再回调本组件） */
-    onUpdate?: (ctx: { text: string; programmatic: boolean; cursorOffset: number; extraNodeCount: number; editorStateJSON: string }) => void
-    onFocus?: () => void
-    onBlur?: () => void
+    onUpdate?: (ctx: ChatInputUpdateContext) => void
     /** 编辑器实例就绪（immediatelyRender:false 异步挂载完成）后回调一次 */
     onReady?: () => void
     /** 内嵌自定义节点（装配注入，如引用 chip 节点）；默认不装——ui 层不感知业务节点类型 */
@@ -92,7 +113,6 @@ export interface ChatInputProps {
  */
 export interface ChatInputHandle {
     focus(options?: { preventScroll?: boolean }): void
-    blur(): void
     /** 纯文本（段落分隔符统一 '\n'，与 textarea 语义一致） */
     getText(): string
     getEditorStateJSON(): string
@@ -114,8 +134,6 @@ export interface ChatInputHandle {
     addQuote(quote: PendingQuoteRef): ComposerQuoteRef | null
     /** 按 uid 更新/清空某条引用的评论；返回是否命中 */
     updateQuoteComment(uid: string, comment: string | undefined): boolean
-    /** 清空全部引用；返回删除条数 */
-    clearQuotes(): number
     /** 在文档末尾回填一组引用（回填数据无 uid，内部补） */
     insertQuotesAtEnd(quotes: PendingQuoteRef[]): void
     /** 编辑器实例逃生舱（**仅测试与节点级断言使用，业务层禁止调用**——业务操作走上面的 Handle 方法）；未就绪返回 null */
@@ -141,8 +159,6 @@ export function ChatInput({
     onSubmit,
     onKeyDown,
     onUpdate,
-    onFocus,
-    onBlur,
     onPaste,
     onReady,
     extraNodes,
@@ -153,77 +169,19 @@ export function ChatInput({
 }: ChatInputProps & { ref?: Ref<ChatInputHandle> }) {
     // 回调与动态 props 走 ref 持有：editor options 只求值一次，回调读 ref 保证始终最新
     // （MarkdownEditorView 的 onChangeRef 同款）；placeholderRef 供 Placeholder 扩展函数读取
-    const propsRef = useRef({ onSubmit, onKeyDown, onUpdate, onFocus, onBlur, onPaste, placeholder, submitKey })
-    propsRef.current = { onSubmit, onKeyDown, onUpdate, onFocus, onBlur, onPaste, placeholder, submitKey }
+    const propsRef = useRef({ onSubmit, onKeyDown, onUpdate, onPaste, placeholder, submitKey })
+    propsRef.current = { onSubmit, onKeyDown, onUpdate, onPaste, placeholder, submitKey }
     const onReadyRef = useRef(onReady)
     onReadyRef.current = onReady
 
     // editor 实例 ref：editorProps 回调在 options 求值时创建，闭包捕获不到后续就绪的 editor——经 ref 读取
     const editorRef = useRef<Editor | null>(null)
 
-    const editor = useEditor({
-        // SSR/水合安全（MarkdownEditorView 同款）：首帧不渲染编辑器，挂载后异步就绪
-        immediatelyRender: false,
-        injectCSS: false,
-        // editable 初始态；运行时切换由下方 effect 走 setEditable（不重建 editor）
-        editable: !disabled,
-        // 输入区无富文本格式需求，StarterKit 逐项关闭（体积与语义双收），只留
-        // document / paragraph / text / undoRedo；hardBreak 关闭 = 换行一律 splitBlock，
-        // getText 段落语义单源（Shift+Enter 换行在键位层主动 splitBlock）
-        extensions: [
-            StarterKit.configure({
-                bold: false, italic: false, strike: false, code: false, codeBlock: false,
-                blockquote: false, bulletList: false, orderedList: false, listItem: false,
-                horizontalRule: false, heading: false, hardBreak: false,
-                dropcursor: false, gapcursor: false, // undoRedo 保持默认启用（v3 options 只接受 false|配置对象，开=省略）
-            }),
-            // 函数形式读 ref：动态文案（bash 模式占位切换）不重建 editor
-            Placeholder.configure({
-                placeholder: () => propsRef.current.placeholder ?? '',
-            }),
-            // 装配注入的业务节点（引用 chip 等）：ui 层零业务，节点实现由消费方提供
-            ...(extraNodes ?? []),
-        ],
-        editorProps: {
-            attributes: {
-                role: 'textbox',
-                'aria-multiline': 'true',
-                spellcheck: 'false',
-                ...(ariaLabel ? { 'aria-label': ariaLabel } : {}),
-            },
-            handleKeyDown: (_view, event) => handleKeyDown(event),
-            handlePaste: (_view, event) => {
-                const handler = propsRef.current.onPaste
-                return handler ? handler(event) === true : false
-            },
-            // v3 无 handleFocus/handleBlur 命名槽，走 handleDOMEvents（返回 false 不消费，默认行为继续）
-            handleDOMEvents: {
-                focus: () => { propsRef.current.onFocus?.(); return false },
-                blur: () => { propsRef.current.onBlur?.(); return false },
-            },
-        },
-        onUpdate: ({ editor, transaction }) => {
-            // offset/降级文本同源：getTextBetween 吃 schema 的 toText 序列化器
-            // （节点 renderText 落 schema.toText）——chip 的「excerpt」在 getText 与
-            // cursorOffset 两侧一致，面板检测的 cursorPos 不错位
-            const serializers = getTextSerializersFromSchema(editor.schema)
-            propsRef.current.onUpdate?.({
-                text: normalizeEditorText(editor.getText({ blockSeparator: '\n' })),
-                programmatic: transaction.getMeta(PROGRAMMATIC_META) === true,
-                cursorOffset: getTextBetween(editor.state.doc, { from: 0, to: editor.state.selection.from }, {
-                    blockSeparator: '\n',
-                    textSerializers: serializers,
-                }).length,
-                extraNodeCount: countExtraNodes(editor.state.doc, extraNodes),
-                editorStateJSON: JSON.stringify(editor.getJSON()),
-            })
-        },
-        // 先把实例交给 ref 再通知就绪：onCreate 在 useEditor 的创建路径内同步触发，
-        // 早于组件下一次渲染对 editorRef 的赋值——否则 onReady 里的 handle 调用全是 no-op
-        onCreate: ({ editor }) => { editorRef.current = editor; onReadyRef.current?.() },
-    })
-    // 每渲染同步（挂载后 editor 由 null → 实例触发重渲染，ref 随之就位）
-    editorRef.current = editor
+    // 装配注入的业务节点名集合：随 extraNodes 变化（页面级稳定），每键重建无意义
+    const extraNodeNames = useMemo(
+        () => new Set((extraNodes ?? []).map((n) => n.name)),
+        [extraNodes],
+    )
 
     /**
      * 键位层（顺序固定）：消费方接管 → IME 守卫 → Enter 判定（语义抄 antx TextArea.js：
@@ -231,7 +189,7 @@ export function ChatInput({
      * 默认 splitBlock；shift+Enter 因 hardBreak 关闭无默认绑定，主动 splitBlock 保持
      * getText 段落语义单源。
      */
-    const handleKeyDown = (event: KeyboardEvent): boolean => {
+    const handleKeyDown = useCallback((event: KeyboardEvent): boolean => {
         // 1. 消费方接管（面板导航/快捷键等）
         if (propsRef.current.onKeyDown?.(event) === true) return true
         // 2. IME 组合残留：isComposing + keyCode 229 兜底，放行给编辑器
@@ -254,7 +212,69 @@ export function ChatInput({
             return true
         }
         return false
-    }
+    }, [])
+
+    // editor options 引用稳定：useEditor 每次渲染都会比较 options，内联对象/数组会触发
+    // setOptions → view.setProps + updateState（流式/逐键渲染下的额外 ProseMirror 遍历）
+    const editorProps = useMemo(() => ({
+        attributes: {
+            role: 'textbox',
+            'aria-multiline': 'true',
+            spellcheck: 'false',
+            ...(ariaLabel ? { 'aria-label': ariaLabel } : {}),
+        },
+        handleKeyDown: (_view: unknown, event: KeyboardEvent) => handleKeyDown(event),
+        handlePaste: (_view: unknown, event: ClipboardEvent) => {
+            const handler = propsRef.current.onPaste
+            return handler ? handler(event) === true : false
+        },
+    }), [ariaLabel, handleKeyDown])
+
+    const editorOptions = useMemo(() => ({
+        // SSR/水合安全（MarkdownEditorView 同款）：首帧不渲染编辑器，挂载后异步就绪
+        immediatelyRender: false,
+        injectCSS: false,
+        // editable 初始态；运行时切换由下方 effect 走 setEditable（不重建 editor）
+        editable: !disabled,
+        // 输入区无富文本格式需求，StarterKit 逐项关闭（体积与语义双收），只留
+        // document / paragraph / text / undoRedo；hardBreak 关闭 = 换行一律 splitBlock，
+        // getText 段落语义单源（Shift+Enter 换行在键位层主动 splitBlock）
+        extensions: [
+            StarterKit.configure({
+                bold: false, italic: false, strike: false, code: false, codeBlock: false,
+                blockquote: false, bulletList: false, orderedList: false, listItem: false,
+                horizontalRule: false, heading: false, hardBreak: false,
+                dropcursor: false, gapcursor: false, // undoRedo 保持默认启用（v3 options 只接受 false|配置对象，开=省略）
+            }),
+            // 函数形式读 ref：动态文案（bash 模式占位切换）不重建 editor
+            Placeholder.configure({
+                placeholder: () => propsRef.current.placeholder ?? '',
+            }),
+            // 装配注入的业务节点（引用 chip 等）：ui 层零业务，节点实现由消费方提供
+            ...(extraNodes ?? []),
+        ],
+        editorProps,
+        onUpdate: ({ editor, transaction }: { editor: Editor; transaction: { getMeta: (key: string) => unknown } }) => {
+            // offset/降级文本同源：getTextBetween 吃 schema 的 toText 序列化器
+            // （节点 renderText 落 schema.toText）——chip 的「excerpt」在 getText 与
+            // cursorOffset 两侧一致，面板检测的 cursorPos 不错位
+            propsRef.current.onUpdate?.({
+                text: normalizeEditorText(editor.getText({ blockSeparator: '\n' })),
+                programmatic: transaction.getMeta(PROGRAMMATIC_META) === true,
+                cursorOffset: textLengthBefore(editor.state.doc, editor.state.selection.from, serializersFor(editor.schema)),
+                extraNodeCount: countExtraNodes(editor.state.doc, extraNodeNames),
+                editorStateJSON: JSON.stringify(editor.getJSON()),
+            })
+        },
+        // 先把实例交给 ref 再通知就绪：onCreate 在 useEditor 的创建路径内同步触发，
+        // 早于组件下一次渲染对 editorRef 的赋值——否则 onReady 里的 handle 调用全是 no-op
+        onCreate: ({ editor }: { editor: Editor }) => { editorRef.current = editor; onReadyRef.current?.() },
+        // disabled 入 deps：editable 初值随禁用态快照（运行时切换仍由下方 effect 负责）
+    }), [extraNodes, extraNodeNames, editorProps, disabled])
+
+    const editor = useEditor(editorOptions)
+    // 每渲染同步（挂载后 editor 由 null → 实例触发重渲染，ref 随之就位）
+    editorRef.current = editor
 
     /** 纯文本 → doc JSON：setContent(string) 走 HTML 解析（纯文本含 '<' 会误解析成节点），手工构建规避 */
     const buildTextDoc = (text: string): JSONContent => ({
@@ -267,7 +287,7 @@ export function ChatInput({
 
     // 程序化写入三原则：meta 标记（防 onUpdate 回环误消费）+ addToHistory:false（防污染
     // undo 栈）+ 写入后光标置尾（TextSelection.atEnd）；emitUpdate:true 让 onUpdate 正常发出
-    const setText = (text: string) => {
+    const replaceDoc = (content: JSONContent) => {
         const ed = editorRef.current
         if (!ed) return
         ed.chain()
@@ -276,7 +296,7 @@ export function ChatInput({
                 tr.setMeta('addToHistory', false)
                 return true
             })
-            .setContent(buildTextDoc(text), { emitUpdate: true })
+            .setContent(content, { emitUpdate: true })
             .command(({ tr }) => {
                 tr.setSelection(TextSelection.atEnd(tr.doc))
                 return true
@@ -284,27 +304,16 @@ export function ChatInput({
             .run()
     }
 
+    const setText = (text: string) => replaceDoc(buildTextDoc(text))
+
     const setEditorStateJSON = (json: string) => {
-        const ed = editorRef.current
-        if (!ed) return
         let parsed: JSONContent
         try {
             parsed = JSON.parse(json) as JSONContent
         } catch {
             return // 非法 JSON 静默降级为 no-op（调用方自己兜底 setText）
         }
-        ed.chain()
-            .command(({ tr }) => {
-                tr.setMeta(PROGRAMMATIC_META, true)
-                tr.setMeta('addToHistory', false)
-                return true
-            })
-            .setContent(parsed, { emitUpdate: true })
-            .command(({ tr }) => {
-                tr.setSelection(TextSelection.atEnd(tr.doc))
-                return true
-            })
-            .run()
+        replaceDoc(parsed)
     }
 
     // Handle 全走 editorRef 读取（deps 留空，方法体无闭包过期风险）
@@ -315,7 +324,6 @@ export function ChatInput({
             // PM 光标 selection 独立于 DOM 焦点，重新聚焦后光标原地保持
             editorRef.current?.view.dom.focus({ preventScroll: options?.preventScroll })
         },
-        blur: () => editorRef.current?.commands.blur(),
         getText: () => normalizeEditorText(editorRef.current?.getText({ blockSeparator: '\n' }) ?? ''),
         getEditorStateJSON: () => (editorRef.current ? JSON.stringify(editorRef.current.getJSON()) : ''),
         setText,
@@ -334,15 +342,11 @@ export function ChatInput({
             const ed = editorRef.current
             if (!ed) return
             const doc = ed.state.doc
-            const serializers = getTextSerializersFromSchema(ed.schema)
-            const textBefore = (pos: number) => getTextBetween(doc, { from: 0, to: pos }, {
-                blockSeparator: '\n',
-                textSerializers: serializers,
-            }).length
+            const serializers = serializersFor(ed.schema)
             let target: number | null = null
             doc.descendants((node, pos) => {
                 if (target != null || !node.isText) return true
-                const before = textBefore(pos)
+                const before = textLengthBefore(doc, pos, serializers)
                 if (before + node.nodeSize >= offset) {
                     target = pos + (offset - before)
                     return false
@@ -358,7 +362,6 @@ export function ChatInput({
         updateQuoteComment: (uid, comment) => (
             editorRef.current ? updateQuoteCommentInEditor(editorRef.current, uid, comment) : false
         ),
-        clearQuotes: () => (editorRef.current ? clearQuotesInEditor(editorRef.current) : 0),
         insertQuotesAtEnd: (quotes) => {
             if (editorRef.current) insertQuotesAtEnd(editorRef.current, quotes)
         },

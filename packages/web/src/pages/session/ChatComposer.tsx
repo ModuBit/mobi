@@ -309,12 +309,22 @@ export function ChatComposer(props: ChatComposerProps) {
         insertPendingQuotesIfReady()
     }, [insertPendingQuotesIfReady])
 
-    // 设置草稿并聚焦：suggestion 采纳共用此实现（镜像 + 编辑器双写）
-    const setDraft = useCallback((draftText: string) => {
-        setText(draftText)
-        shellRef.current?.setText(draftText)
-        shellRef.current?.focus()
+    // 镜像 + 编辑器双写单源：编辑器未就绪时写入为 no-op，由 onReady 对账兜底
+    const setTextWithEditor = useCallback((v: string) => {
+        setText(v)
+        shellRef.current?.setText(v)
     }, [])
+    // 旧格式草稿的引用桶恢复（无 uid）：排队到编辑器就绪后逐条插入末尾
+    const restoreDraftQuotes = useCallback((qs: PendingQuoteRef[]) => {
+        pendingQuotesRef.current = qs
+        insertPendingQuotesIfReady()
+    }, [insertPendingQuotesIfReady])
+
+    // 设置草稿并聚焦：suggestion 采纳共用此实现
+    const setDraft = useCallback((draftText: string) => {
+        setTextWithEditor(draftText)
+        shellRef.current?.focus()
+    }, [setTextWithEditor])
 
     // rewind 收尾结构化回填请求体：经 ref 读最新值，下方 effect 只依赖 nonce——
     // 避免 draftRequest 对象引用变化重复触发（effect 与 applySegments 定义在同处，见 segmentBuckets 之后）
@@ -327,13 +337,11 @@ export function ChatComposer(props: ChatComposerProps) {
         if (!sessionId) return
         const crossPageDraft = consumeDraftText()
         if (crossPageDraft) {
-            setText(crossPageDraft)
-            // 非受控编辑器双写：镜像之外编辑器也要立即显示（编辑器未就绪时由 onReady 对账兜底）
-            shellRef.current?.setText(crossPageDraft)
+            setTextWithEditor(crossPageDraft)
             // 仅更新文本，保留该 session 既有的附件草稿（避免空附件覆盖）
             mergeDraftText(sessionId, crossPageDraft)
         }
-    }, [sessionId])
+    }, [sessionId, setTextWithEditor])
 
     // 构建目录能力目标，useMemo 保证引用稳定，避免下游 useEffect 无限循环
     const capTarget = useMemo<CapabilityTarget | null>(
@@ -363,12 +371,11 @@ export function ChatComposer(props: ChatComposerProps) {
         slash,
         bridge,
         handlePasteNative,
-        placeholderIndex,
+        placeholder,
         showGhostHint,
     } = useComposerScaffold({
         capTarget,
         workingDir,
-        placeholderCount: (t('composer.placeholders', { returnObjects: true }) as string[]).length,
         text,
         wrapperRef,
         shellRef,
@@ -426,16 +433,12 @@ export function ChatComposer(props: ChatComposerProps) {
     // wire 回填数据无 uid——chip 重建走 insertQuotesAtEnd（内部 withQuoteUid 生成）
     const applySegments = useCallback((segments: ComposerSegments) => {
         const refs = [...segments.files, ...segments.images]
-        setText(segments.text)
-        shellRef.current?.setText(segments.text)
+        setTextWithEditor(segments.text)
         setAttachments(refs.map(fileRefToPlaceholderAttachment))
         const quotesToRestore = segments.quotes.slice(0, QUOTE_MAX_COUNT)
-        if (quotesToRestore.length > 0) {
-            pendingQuotesRef.current = quotesToRestore
-            insertPendingQuotesIfReady()
-        }
+        if (quotesToRestore.length > 0) restoreDraftQuotes(quotesToRestore)
         shellRef.current?.focus()
-    }, [setAttachments, insertPendingQuotesIfReady])
+    }, [setAttachments, setTextWithEditor, restoreDraftQuotes])
 
     // 回填应用门控：nonce 单调递增触发一次；空分段静默跳过
     // （数据异常无从还原时不清空用户当前草稿）
@@ -451,15 +454,6 @@ export function ChatComposer(props: ChatComposerProps) {
     // 草稿读回的 quotes 桶（旧格式，无 editorState）无 uid（持久化不存条目身份）→
     // 逐条插入编辑器末尾（withQuoteUid 生成）；新格式草稿由 editorState 整体恢复
     // （useComposerDraft 内部：editorState 存在时跳过 quotes 桶，避免 chip 双份）
-    const restoreDraftQuotes = useCallback((qs: PendingQuoteRef[]) => {
-        pendingQuotesRef.current = qs
-        insertPendingQuotesIfReady()
-    }, [insertPendingQuotesIfReady])
-    // 草稿恢复双写：镜像之外写回编辑器（编辑器未就绪时由 onReady 对账兜底）
-    const setTextWithEditor = useCallback((v: string) => {
-        setText(v)
-        shellRef.current?.setText(v)
-    }, [])
     // 草稿保存时的结构化快照（含引用 chip 节点）：空态返回 null——isPersistedEmpty 以
     // 「editorState 存在」判定结构化内容非空（chip-only 草稿靠它存活，纯空态不落空文档）
     const getEditorState = useCallback(() => {
@@ -475,7 +469,7 @@ export function ChatComposer(props: ChatComposerProps) {
     }, [])
     useComposerDraft(
         sessionId,
-        { text, attachments, quotes: [], getEditorState },
+        { text, attachments, getEditorState },
         { setText: setTextWithEditor, setAttachments, setQuotes: restoreDraftQuotes, applyEditorState },
     )
 
@@ -557,13 +551,13 @@ export function ChatComposer(props: ChatComposerProps) {
         return false
     }, [running, onAbort, abortPending, mention, slash, bridge])
 
-    const handleSubmit = useCallback((content: string) => {
+    const handleSubmit = useCallback(() => {
         // 正文用 getWireText 剥掉 chip 的降级文本：引用由 quote block 承载，
         // 正文重复 excerpt 会成为气泡可见的重复内容；引用从编辑器文档收集（chip 节点即数据）
         const shell = shellRef.current
         const ready = shell?.isReady() === true
         const resolution = resolveComposerSubmit({
-            text: ready ? shell!.getWireText() : content,
+            text: ready ? shell!.getWireText() : textRef.current,
             quotes: ready ? shell!.getQuotes() : [],
             attachments,
             panelOpen: mention.isOpen || slash.isOpen,
@@ -696,7 +690,7 @@ export function ChatComposer(props: ChatComposerProps) {
 
                 <ChatInput
                     ref={shellRef}
-                    placeholder={isBashMode ? t('composer.bashPlaceholder') : t(`composer.placeholders.${placeholderIndex}`)}
+                    placeholder={isBashMode ? t('composer.bashPlaceholder') : placeholder}
                     submitKey={hasFinePointer ? 'enter' : 'shiftEnter'}
                     disabled={resolveSenderDisabled({ inactiveCover, localModeCover: showLocalModeCover })}
                     onUpdate={(ctx) => {
@@ -707,7 +701,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     }}
                     onKeyDown={handleKeyDown}
                     onPaste={handlePasteNative}
-                    onSubmit={() => handleSubmit(textRef.current)}
+                    onSubmit={() => handleSubmit()}
                     onReady={handleShellReady}
                     extraNodes={quoteNodes}
                     minRows={1}
@@ -783,7 +777,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     {showLocalModeCover ? null : (
                         <SubmitButton
                             state={submitButtonState}
-                            onSubmit={() => handleSubmit(text)}
+                            onSubmit={() => handleSubmit()}
                             onAbort={onAbort}
                         />
                     )}

@@ -15,8 +15,6 @@
  */
 
 export { ChatInput } from './ChatInput'
-export { normalizeEditorText } from './chatInputText'
-export type { ChatInputHandle, ChatInputProps } from './ChatInput'
+export type { ChatInputHandle, ChatInputProps, ChatInputUpdateContext } from './ChatInput'
 export { ChatInputQuoteNode } from './ChatInputQuoteNode'
 export { CHAT_INPUT_QUOTE_NODE_NAME } from './chatInputQuoteTypes'
-export type { ChatInputQuoteAttrs, ChatInputQuoteOptions } from './chatInputQuoteTypes'

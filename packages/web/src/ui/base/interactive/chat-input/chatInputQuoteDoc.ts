@@ -20,6 +20,7 @@ import { normalizeEditorText } from './chatInputText'
 import {
     QUOTE_MAX_COUNT,
     withQuoteUid,
+    withQuoteUids,
     type ComposerQuoteRef,
     type PendingQuoteRef,
 } from '@/domain/chat/composerSegments'
@@ -81,11 +82,12 @@ function quoteNodeJSON(quote: ComposerQuoteRef) {
  * 不抢焦点：引用是消息列表里的动作，焦点可能仍在消息区。
  */
 export function addQuoteToEditor(editor: Editor, quote: PendingQuoteRef): ComposerQuoteRef | null {
-    const existing = collectQuotesFromDoc(editor.state.doc).find(
+    const existingQuotes = collectQuotesFromDoc(editor.state.doc)
+    const existing = existingQuotes.find(
         q => q.messageId === quote.messageId && q.excerpt === quote.excerpt,
     )
     if (existing) return existing
-    if (collectQuotesFromDoc(editor.state.doc).length >= QUOTE_MAX_COUNT) return null
+    if (existingQuotes.length >= QUOTE_MAX_COUNT) return null
     const entry = withQuoteUid(quote)
     editor.commands.insertContent([quoteNodeJSON(entry), { type: 'text', text: ' ' }])
     return entry
@@ -132,9 +134,9 @@ export function clearQuotesInEditor(editor: Editor): number {
  */
 export function insertQuotesAtEnd(editor: Editor, quotes: PendingQuoteRef[]): void {
     if (quotes.length === 0) return
-    const items = quotes.slice(0, QUOTE_MAX_COUNT).flatMap((q) => {
-        const entry = withQuoteUid(q)
-        return [quoteNodeJSON(entry), { type: 'text', text: ' ' }]
-    })
+    const items = withQuoteUids(quotes.slice(0, QUOTE_MAX_COUNT)).flatMap((q) => [
+        quoteNodeJSON(q),
+        { type: 'text', text: ' ' },
+    ])
     editor.chain().focus('end').insertContent(items).run()
 }

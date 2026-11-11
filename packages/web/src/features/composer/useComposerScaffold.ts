@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useRef, type RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ChatInputHandle } from '@/ui/base/interactive/chat-input'
 import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useDirectoryCommands } from './useDirectoryCommands'
@@ -42,8 +43,6 @@ export interface UseComposerScaffoldParams {
     capTarget: CapabilityTarget | null
     /** @ 引用与 / 命令的工作目录 */
     workingDir: string | undefined
-    /** placeholder 文案池大小（每次挂载随机取一个下标；文案由调用方 t(key) 渲染） */
-    placeholderCount: number
     /** 当前文本镜像（showGhostHint 派生输入） */
     text: string
     /** 点外关闭与 ARIA 的容器 */
@@ -64,9 +63,10 @@ export interface UseComposerScaffoldParams {
 
 export function useComposerScaffold(params: UseComposerScaffoldParams) {
     const {
-        capTarget, workingDir, placeholderCount, text, wrapperRef, shellRef,
+        capTarget, workingDir, text, wrapperRef, shellRef,
         onTextChange, onUserEdit, attachmentsDisabled, attachmentSessionId, capabilitiesOptions,
     } = params
+    const { t } = useTranslation()
 
     // 能力探测 → 目录命令（/ 面板数据源）
     const capabilities = useDirectoryCapabilities(capTarget, capabilitiesOptions)
@@ -131,8 +131,12 @@ export function useComposerScaffold(params: UseComposerScaffoldParams) {
                 : null,
     )
 
-    // placeholder 下标：每次挂载随机一个（ref 初始化，与既有行为一致）
-    const placeholderIndexRef = useRef(Math.floor(Math.random() * placeholderCount))
+    // placeholder：每次挂载从文案池随机取一条（ref 初始化，与既有行为一致）；
+    // 语言包结构知识收在此处，页面只渲染字符串
+    const placeholderIndexRef = useRef(
+        Math.floor(Math.random() * (t('composer.placeholders', { returnObjects: true }) as string[]).length),
+    )
+    const placeholder = t(`composer.placeholders.${placeholderIndexRef.current}`)
 
     // 命令提示：提示/描述任一存在 + 文本恰好是「命令 + 空格」且面板已关
     const activeCommand = slash.activeCommand
@@ -142,14 +146,12 @@ export function useComposerScaffold(params: UseComposerScaffoldParams) {
 
     return {
         capabilities,
-        commandsData,
-        commandsLoading,
         attachments,
         mention,
         slash,
         bridge,
         handlePasteNative,
-        placeholderIndex: placeholderIndexRef.current,
+        placeholder,
         showGhostHint,
     }
 }

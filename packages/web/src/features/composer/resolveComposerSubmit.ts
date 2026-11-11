@@ -39,19 +39,22 @@ export interface ComposerSubmitInput {
     /** 引用（会话页从编辑器 chip 节点收集；新会话页无引用通道，缺省 []） */
     quotes?: ComposerQuoteRef[]
     attachments: FileAttachment[]
-    /** mention/slash 面板开着时 Enter 是选择不是提交 */
-    panelOpen: boolean
-    /** 调用方门控（会话页 canSend / 新会话页 canSubmit） */
-    enabled: boolean
+    /** mention/slash 面板开着时 Enter 是选择不是提交（缺省 false：无面板语义的调用方不传） */
+    panelOpen?: boolean
+    /** 调用方门控（会话页 canSend；缺省 true：新会话页的「能否建会话」由页面自判） */
+    enabled?: boolean
 }
 
 /**
  * 按固定优先级判定：disabled → panel-open → uploading → empty → 完整分段。
  * 上传守卫必须先于空分段判定——否则「只有上传中附件」会被判成 empty 静默吞掉。
+ *
+ * empty 的语义随调用方：会话页视为不可发送；新会话页只是「不带首条消息建会话」
+ * （按钮语义是创建会话），由调用方忽略该分支而不是在此特化。
  */
 export function resolveComposerSubmit(input: ComposerSubmitInput): ComposerSubmitResolution {
-    if (!input.enabled) return { ok: false, blocked: 'disabled' }
-    if (input.panelOpen) return { ok: false, blocked: 'panel-open' }
+    if (input.enabled === false) return { ok: false, blocked: 'disabled' }
+    if (input.panelOpen === true) return { ok: false, blocked: 'panel-open' }
     if (input.attachments.some(a => a.status === 'uploading')) return { ok: false, blocked: 'uploading' }
 
     const segments: ComposerSegments = {

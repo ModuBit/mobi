@@ -295,12 +295,11 @@ export function NewSessionPage() {
         slash,
         bridge,
         handlePasteNative,
-        placeholderIndex,
+        placeholder,
         showGhostHint,
     } = useComposerScaffold({
         capTarget,
         workingDir: selectedDirectory || undefined,
-        placeholderCount: (t('composer.placeholders', { returnObjects: true }) as string[]).length,
         text: inputText,
         wrapperRef,
         shellRef,
@@ -319,11 +318,9 @@ export function NewSessionPage() {
     } = attachmentHandling
 
     // ref 持有最新值，避免 handleSubmit 因 attachments/inputText 变化而重建
+    // （面板选中切分 selectCurrent(text) 与提交读取共用同一快照）
     const inputTextRef = useRef(inputText)
     inputTextRef.current = inputText
-    // 面板选中切分（selectCurrent(text)）用的同源快照
-    const textRef = useRef(inputText)
-    textRef.current = inputText
     const attachmentsRef = useRef(attachments)
     attachmentsRef.current = attachments
     // 同步防重入标志（ref 即时生效，弥补 isPending setState 的异步窗口）(#13)
@@ -392,7 +389,7 @@ export function NewSessionPage() {
     // 面板键位与 ChatComposer 共用单源：Tab/Enter 选择、Escape/Arrow 委托
     const handleKeyDown = useCallback((e: KeyboardEvent): boolean => (
         resolveComposerPanelKeyDown(e, {
-            text: textRef.current,
+            text: inputTextRef.current,
             slash,
             mention,
             applySelection: bridge.applySelection,
@@ -408,8 +405,6 @@ export function NewSessionPage() {
         const resolution = resolveComposerSubmit({
             text: inputTextRef.current,
             attachments: attachmentsRef.current,
-            panelOpen: false,
-            enabled: true,
         })
         if (!resolution.ok && resolution.blocked === 'uploading') {
             messageApi.warning(t('composer.uploadPendingWarning'))
@@ -690,7 +685,7 @@ export function NewSessionPage() {
 
                     <ChatInput
                         ref={shellRef}
-                        placeholder={t(`composer.placeholders.${placeholderIndex}`)}
+                        placeholder={placeholder}
                         submitKey={hasFinePointer ? 'enter' : 'shiftEnter'}
                         disabled={inputDisabled}
                         onUpdate={bridge.onTextInput}

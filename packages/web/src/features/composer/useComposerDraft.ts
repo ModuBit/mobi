@@ -23,7 +23,6 @@ import { QUOTE_MAX_COUNT, type PendingQuoteRef } from '@/domain/chat/composerSeg
 interface UseComposerDraftState {
     text: string
     attachments: FileAttachment[]
-    quotes: PendingQuoteRef[]
     /** 结构化草稿读出（卸载保存时调）：返回 TipTap EditorState JSON，空/未就绪返回 null 则只存 text 单路 */
     getEditorState?: () => string | null
 }
@@ -41,8 +40,8 @@ interface UseComposerDraftSetters {
  * 结构化双路：editorState JSON 优先、纯文本兜底）。
  *
  * - 挂载 / sessionId 变化：延迟一帧从草稿库恢复 text + 文件/图片/引用分段；
- *   文件引用还原为占位附件（不再上传），随后由 ChatComposer.segmentBuckets 经
- *   isImageFileAttachment 扩展名兜底重新分桶，与保存时的投影语义自洽
+ *   文件引用还原为占位附件（不再上传），随后由会话页渲染层按扩展名兜底重新分桶
+ *   （isImageFileAttachment），与保存时的投影语义自洽
  * - 结构化双路：draft.editorState 存在时先 setText（文本兜底）再 applyEditorState
  *   （成功即覆盖前者结果，无需探测成败——顺序保证终态正确；解析失败由实现方 no-op）
  * - 卸载 / sessionId 切走：把当前分段经 bucketCompletedAttachments 投影后存入旧 sessionId 草稿；
@@ -57,13 +56,11 @@ export function useComposerDraft(
     state: UseComposerDraftState,
     setters: UseComposerDraftSetters,
 ): void {
-    // 用 ref 镜像最新值，使卸载时的清理函数能读到最新 text/attachments/quotes（避免闭包陈旧）
+    // 用 ref 镜像最新值，使卸载时的清理函数能读到最新 text/attachments（避免闭包陈旧）
     const textRef = useRef(state.text)
     textRef.current = state.text
     const attachmentsRef = useRef(state.attachments)
     attachmentsRef.current = state.attachments
-    const quotesRef = useRef(state.quotes)
-    quotesRef.current = state.quotes
     const getEditorStateRef = useRef(state.getEditorState)
     getEditorStateRef.current = state.getEditorState
 
@@ -109,7 +106,8 @@ export function useComposerDraft(
             saveDraft(currentSessionId, {
                 text: textRef.current,
                 ...bucketCompletedAttachments(attachmentsRef.current),
-                quotes: quotesRef.current,
+                // 引用桶只服务旧格式草稿读取；新草稿的引用 chip 在 editorState 快照里
+                quotes: [],
                 ...(editorStateJson ? { editorState: { v: 1 as const, json: editorStateJson } } : {}),
             })
         }

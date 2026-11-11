@@ -70,22 +70,19 @@ function seg(text = '', overrides: Partial<ComposerSegments> = {}): ComposerSegm
 function setup(
     initialText = '',
     initialAttachments: FileAttachment[] = [],
-    initialQuotes: ComposerSegments['quotes'] = [],
     initialSid: string | undefined = 's1',
 ): SetupResult {
     let text = initialText
     let attachments = initialAttachments
-    let quotes = initialQuotes
     const setText = vi.fn((v: string) => { text = v })
     const setAttachments = vi.fn((v: FileAttachment[]) => { attachments = v })
-    const setQuotes = vi.fn((v: ComposerSegments['quotes']) => { quotes = v })
+    const setQuotes = vi.fn()
     const utils = renderHook(
         ({ sid }) => useComposerDraft(
             sid,
             {
                 get text() { return text },
                 get attachments() { return attachments },
-                get quotes() { return quotes },
             },
             { setText, setAttachments, setQuotes },
         ),
@@ -145,7 +142,7 @@ describe('useComposerDraft', () => {
         expect(setQuotes).toHaveBeenCalledWith([{ messageId: 'm1', role: 'agent', excerpt: '引用正文' }])
     })
 
-    it('卸载时按分段保存：附件经 bucketCompletedAttachments 投影、三桶齐全', async () => {
+    it('卸载时按分段保存：附件经 bucketCompletedAttachments 投影；引用桶恒空（chip 在 editorState 里）', async () => {
         const imageAttach: FileAttachment = {
             id: 'g1',
             file: new File([], 'p.png'),
@@ -154,8 +151,7 @@ describe('useComposerDraft', () => {
             name: 'p.png',
             size: 99,
         }
-        const initialQuotes = [{ messageId: 'm1', role: 'user' as const, excerpt: 'q' }]
-        const { unmount } = setup('hello', [imageAttach], initialQuotes)
+        const { unmount } = setup('hello', [imageAttach])
         await act(async () => { await flushRaf() }) // 恢复完成 → draftReady=true
         act(() => unmount())
         expect(draftStore.save).toHaveBeenCalledTimes(1)
@@ -165,7 +161,7 @@ describe('useComposerDraft', () => {
             text: 'hello',
             files: [],
             images: [{ id: 'g1', filename: 'p.png', path: '/u/p.png', mimeType: 'image/png', size: 99 }],
-            quotes: initialQuotes,
+            quotes: [],
         })
     })
 
@@ -224,7 +220,7 @@ describe('useComposerDraft', () => {
     })
 
     it('sessionId 为 undefined 时不读不写', () => {
-        const { unmount } = setup('', [], [], undefined)
+        const { unmount } = setup('', [], undefined)
         act(() => unmount())
         expect(draftStore.get).not.toHaveBeenCalled()
         expect(draftStore.save).not.toHaveBeenCalled()
