@@ -35,7 +35,7 @@ import { fileRefContext } from '@/core/utils/fileUrl'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { AttachPanel } from '@/features/composer/AttachPanel'
 import { ChatInputQuoteNode } from '@/ui/base/interactive/chat-input'
-import { collectQuotesFromDoc, addQuoteToEditor, updateQuoteCommentInEditor, clearQuotesInEditor, insertQuotesAtEnd } from '@/features/composer/quoteDoc'
+import { collectQuotesFromDoc, addQuoteToEditor, updateQuoteCommentInEditor, clearQuotesInEditor, insertQuotesAtEnd, extractWireText } from '@/features/composer/quoteDoc'
 import { composerCard } from '@/features/composer/composerSurface.styles'
 import { ComposerInfoPanel } from '@/pages/session/ComposerInfoPanel'
 import { resolveCopyShortcut } from '@/features/composer/copyShortcut'
@@ -285,10 +285,16 @@ export function ChatComposer(props: ChatComposerProps) {
     const [quoteCount, setQuoteCount] = useState(0)
     const quoteCountRef = useRef(0)
     quoteCountRef.current = quoteCount
+    // 编辑器 JSON 快照镜像（每次 onUpdate 刷新）：草稿保存发生在组件卸载清理阶段，
+    // 此时 shellRef 已被 React 置 null，不能再回调句柄取快照
+    const editorStateJsonRef = useRef<string | null>(null)
 
     // 引用注入编辑器（未就绪排队）：草稿恢复 / 旧格式 quotes 桶等程序通道共用——
     // immediatelyRender:false 下恢复可能早于编辑器就绪，排队到 onReady 一并插入
     const pendingQuotesRef = useRef<PendingQuoteRef[] | null>(null)
+    // 结构化草稿同理：恢复的 rAF 早于编辑器就绪时先存这里，onReady 对账时再写入
+    // （否则 setEditorStateJSON 因 shellRef 为 null 静默丢弃，只剩 text 降级文本）
+    const pendingEditorStateRef = useRef<string | null>(null)
     const insertPendingQuotesIfReady = useCallback(() => {
         const editor = shellRef.current?.getEditor()
         const pending = pendingQuotesRef.current
@@ -299,9 +305,14 @@ export function ChatComposer(props: ChatComposerProps) {
     }, [])
 
     // 编辑器就绪对账：就绪前镜像可能已恢复草稿/跨页草稿、引用已排队——就绪后一次性
-    // 写入编辑器（就绪后才发生的恢复走各写入点的双写，不经此）
+    // 写入编辑器（就绪后才发生的恢复走各写入点的双写，不经此）。
+    // 结构化快照须在 setText 前取：setText 的 onUpdate 会把镜像刷成纯文本文档；
+    // 快照同时是 dev StrictMode 二次挂载（新 editor 实例）重建 chip 的来源
     const handleShellReady = useCallback(() => {
+        const snapshot = pendingEditorStateRef.current ?? editorStateJsonRef.current
         if (textRef.current) shellRef.current?.setText(textRef.current)
+        if (snapshot) shellRef.current?.setEditorStateJSON(snapshot)
+        pendingEditorStateRef.current = null
         insertPendingQuotesIfReady()
     }, [insertPendingQuotesIfReady])
 
@@ -450,11 +461,14 @@ export function ChatComposer(props: ChatComposerProps) {
     // 「editorState 存在」判定结构化内容非空（chip-only 草稿靠它存活，纯空态不落空文档）
     const getEditorState = useCallback(() => {
         if (!textRef.current && quoteCountRef.current === 0) return null
-        return shellRef.current?.getEditorStateJSON() ?? null
+        return editorStateJsonRef.current
     }, [])
-    // 结构化恢复：编辑器程序化写入（解析失败静默 no-op，此前 setText 的文本兜底已生效）
+    // 结构化恢复：编辑器程序化写入（解析失败静默 no-op，此前 setText 的文本兜底已生效）；
+    // 编辑器就绪前（shellRef 已挂但 editor 实例未创建，immediateRender:false）先排队到 onReady
     const applyEditorState = useCallback((json: string) => {
-        shellRef.current?.setEditorStateJSON(json)
+        const shell = shellRef.current
+        if (shell?.getEditor()) shell.setEditorStateJSON(json)
+        else pendingEditorStateRef.current = json
     }, [])
     useComposerDraft(
         sessionId,
@@ -669,10 +683,11 @@ export function ChatComposer(props: ChatComposerProps) {
         }
 
         // 组装完整分段直传——引用从编辑器文档收集（chip 节点即数据），序列化为
-        // wire blocks 由 useSendMessage 内统一完成
+        // wire blocks 由 useSendMessage 内统一完成。正文用 extractWireText 剥掉 chip 的
+        // 降级文本：引用由 quote block 承载，正文重复 excerpt 会成为气泡可见的重复内容
         const editor = shellRef.current?.getEditor()
         const segments: ComposerSegments = {
-            text: content,
+            text: editor ? extractWireText(editor.state.doc) : content,
             files: segmentBuckets.files,
             images: segmentBuckets.images,
             quotes: editor ? collectQuotesFromDoc(editor.state.doc) : [],
@@ -814,6 +829,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     onUpdate={(ctx) => {
                         // quoteCount 镜像（canSend/空判定派生）+ 桥接（归一/面板检测）
                         setQuoteCount(ctx.quoteCount)
+                        editorStateJsonRef.current = ctx.editorStateJSON
                         bridge.onTextInput(ctx)
                     }}
                     onKeyDown={handleKeyDown}

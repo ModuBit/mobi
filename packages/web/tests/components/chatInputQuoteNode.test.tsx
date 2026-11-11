@@ -29,6 +29,7 @@ import {
     addQuoteToEditor,
     clearQuotesInEditor,
     collectQuotesFromDoc,
+    extractWireText,
     insertQuotesAtEnd,
     updateQuoteCommentInEditor,
 } from '@/features/composer/quoteDoc'
@@ -175,6 +176,21 @@ describe('ChatInputQuoteNode（引用 chip 节点）', () => {
         insertQuotesAtEnd(editor, [QUOTE, { ...QUOTE, excerpt: '第二段' }])
         expect(collectQuotesFromDoc(editor.state.doc).map((q) => q.excerpt)).toEqual(['原文片段', '第二段'])
         expect(handle.current!.getText()).toBe('「原文片段」 「第二段」 ')
+    })
+
+    it('extractWireText：wire 正文剥掉 chip 降级文本（引用由 quote block 承载，不重复）', async () => {
+        const { handle, ready } = setup()
+        await ready()
+        const editor = handle.current!.getEditor()!
+        addQuoteToEditor(editor, QUOTE)
+        handle.current!.insertAtCursor('正文')
+        // 编辑器内视图：chip 有降级文本（光标/面板语义）……
+        expect(handle.current!.getText()).toBe('「原文片段」 正文')
+        // ……wire 正文不含它；多段分隔与 getText 同语义
+        expect(extractWireText(editor.state.doc)).toBe(' 正文')
+        editor.commands.splitBlock()
+        editor.commands.insertContent('第二段')
+        expect(extractWireText(editor.state.doc)).toBe(' 正文\n第二段')
     })
 
     it('草稿双路 round-trip：含 chip（含评论）的 EditorState JSON 恢复', async () => {

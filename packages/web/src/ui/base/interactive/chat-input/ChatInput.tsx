@@ -58,8 +58,10 @@ export interface ChatInputProps {
     onKeyDown?: (e: KeyboardEvent) => boolean | void
     /** 内容变化；programmatic=true 表示来自 setText/setEditorStateJSON 等程序化写入；
      *  cursorOffset = 光标前的纯文本长度（'\n' 分段计 1，与 getText 同语义）——
-     *  mention/slash 的 (text, cursorPos) 模型对接用 */
-    onUpdate?: (ctx: { text: string; programmatic: boolean; cursorOffset: number; quoteCount: number }) => void
+     *  mention/slash 的 (text, cursorPos) 模型对接用；
+     *  editorStateJSON = 当前 doc 序列化快照（草稿持久化用：消费方镜像持有，
+     *  卸载清理时 handle ref 已被 React 置 null，不能再回调本组件） */
+    onUpdate?: (ctx: { text: string; programmatic: boolean; cursorOffset: number; quoteCount: number; editorStateJSON: string }) => void
     onFocus?: () => void
     onBlur?: () => void
     /** 编辑器实例就绪（immediatelyRender:false 异步挂载完成）后回调一次 */
@@ -188,9 +190,12 @@ export function ChatInput({
                     textSerializers: serializers,
                 }).length,
                 quoteCount: countExtraNodes(editor.state.doc, extraNodes),
+                editorStateJSON: JSON.stringify(editor.getJSON()),
             })
         },
-        onCreate: () => { onReadyRef.current?.() },
+        // 先把实例交给 ref 再通知就绪：onCreate 在 useEditor 的创建路径内同步触发，
+        // 早于组件下一次渲染对 editorRef 的赋值——否则 onReady 里的 handle 调用全是 no-op
+        onCreate: ({ editor }) => { editorRef.current = editor; onReadyRef.current?.() },
     })
     // 每渲染同步（挂载后 editor 由 null → 实例触发重渲染，ref 随之就位）
     editorRef.current = editor
