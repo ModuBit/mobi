@@ -258,20 +258,6 @@
         scrollbar-width: thin;
         scrollbar-color: var(--ant-color-border, rgba(0, 0, 0, 0.15)) transparent;
     }
-    .markdown-editor-view .ProseMirror .tableWrapper::-webkit-scrollbar {
-        display: block;
-        height: 8px;
-    }
-    .markdown-editor-view .ProseMirror .tableWrapper::-webkit-scrollbar-thumb {
-        background: var(--ant-color-border, rgba(0, 0, 0, 0.15));
-        border-radius: 4px;
-    }
-    .markdown-editor-view .ProseMirror .tableWrapper::-webkit-scrollbar-thumb:hover {
-        background: var(--ant-color-text-tertiary, rgba(0, 0, 0, 0.25));
-    }
-    .markdown-editor-view .ProseMirror .tableWrapper::-webkit-scrollbar-track {
-        background: transparent;
-    }
 }
 
 .markdown-editor-view .ProseMirror table {

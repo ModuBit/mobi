@@ -24,6 +24,19 @@
     <script>
         if ('virtualKeyboard' in navigator) navigator.virtualKeyboard.overlaysContent = true
     </script>
+    <!-- 滚动条探测：经典滚动条（占布局宽度）的平台给 <html> 打标，
+         styles/scrollbar.css 据此全局隐藏滚动条，避免挤压内容。
+         必须在首屏绘制前同步执行，否则滚动条出现/消失会造成布局跳动 -->
+    <script>
+        (function () {
+            var probe = document.createElement('div')
+            probe.style.cssText = 'position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll'
+            document.documentElement.appendChild(probe)
+            var scrollbarWidth = probe.offsetWidth - probe.clientWidth
+            probe.remove()
+            if (scrollbarWidth > 0) document.documentElement.setAttribute('data-scrollbar', 'classic')
+        })()
+    </script>
     <!-- 早读 mobi-ui theme，React 加载前同步设 theme-color，消除刷新时"先黑后浅"闪烁。
          mobi 主题独立于系统主题（system 才跟随），media query 兜底仅用于 localStorage 无值的首次访问 -->
     <script>

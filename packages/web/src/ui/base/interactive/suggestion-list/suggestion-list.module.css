@@ -31,21 +31,8 @@
     scrollbar-color: color-mix(in oklab, var(--foreground) 18%, transparent) transparent;
 }
 
-/* 深色主题下系统滚动条会画出一条亮轨道，盖过面板底色；只留一根细拇指 */
-.list::-webkit-scrollbar {
-    width: 8px;
-}
-
-.list::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.list::-webkit-scrollbar-thumb {
-    border: 2px solid transparent;
-    border-radius: var(--radius-pill);
-    background: color-mix(in oklab, var(--foreground) 18%, transparent);
-    background-clip: padding-box;
-}
+/* 深色主题下系统滚动条会画出一条亮轨道，盖过面板底色；只留一根细拇指。
+   只用标准属性：webkit 伪元素一设宽就把系统浮动滚动条换成占布局的经典滚动条 */
 
 /* 滑动高亮（GlidingHighlight）：绝对定位在列表内，随列表滚动；
  * 圆角 = 面板圆角 − 外壳内衬（内衬由承载面板通过 --suggestion-inset 声明） */

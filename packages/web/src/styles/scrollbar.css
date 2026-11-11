@@ -1,31 +1,29 @@
 /* ==================== 滚动条样式 ==================== */
 
-/* 滚动条样式 - Light 模式 */
-::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+/* 全局策略：**不自定义 `::-webkit-scrollbar` 的尺寸**。
+   Chromium 一旦用 `::-webkit-scrollbar` 指定宽度，就会把系统「浮动滚动条」切换成
+   占布局空间的经典滚动条（macOS 实测：6px 从内容区扣掉，滚动区出现/消失时布局跳动）。
+   这里改成交给平台原生行为：
+   - macOS / 触屏平台：系统浮动滚动条，滚动时出现、不占空间
+   - 经典滚动条平台（Windows / Linux，或 macOS 系统设置「始终显示滚动条」）：
+     index.html 首帧探测到滚动条占宽后给 <html> 打 data-scrollbar="classic"，
+     由下面的规则全局隐藏——保留滚动能力，只去掉视觉占用 */
+html {
+    /* 只校准粗细/配色，不再接管伪元素。scrollbar-color 可继承，滚动容器跟随主题；
+       这两个标准属性在 macOS 的浮动滚动条下不占布局宽度（实测 clientWidth 无缩水） */
+    scrollbar-width: thin;
+    scrollbar-color: var(--mobi-pressed) transparent;
 }
 
-::-webkit-scrollbar-track {
-    background: transparent;
+/* 经典滚动条平台：全局隐藏（含组件内自定义滚动条），彻底消除布局挤占 */
+html[data-scrollbar='classic'],
+html[data-scrollbar='classic'] * {
+    scrollbar-width: none !important;
 }
 
-::-webkit-scrollbar-thumb {
-    background: var(--mobi-pressed);
-    border-radius: var(--radius-square);
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: var(--mobi-ink-quaternary);
-}
-
-/* 滚动条样式 - Dark 模式 */
-html[data-theme='dark'] ::-webkit-scrollbar-thumb {
-    background: var(--mobi-pressed);
-}
-
-html[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
-    background: var(--mobi-ink-quaternary);
+html[data-scrollbar='classic']::-webkit-scrollbar,
+html[data-scrollbar='classic'] *::-webkit-scrollbar {
+    display: none !important;
 }
 
 /* 隐藏滚动条但保留滚动能力 */

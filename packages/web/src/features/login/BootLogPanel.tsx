@@ -184,21 +184,9 @@ const Body = styled.div`
     z-index: 1;
     /* 视口高度不足时内容区滚动（Status 固定为底栏，prompt 始终可见） */
     overflow-y: auto;
+    /* 只用标准属性：webkit 伪元素一设宽就把系统浮动滚动条换成占布局的经典滚动条 */
     scrollbar-width: thin;
     scrollbar-color: ${TERMINAL.line} transparent;
-    &::-webkit-scrollbar {
-        width: 6px;
-    }
-    &::-webkit-scrollbar-track {
-        background: transparent;
-    }
-    &::-webkit-scrollbar-thumb {
-        background: ${TERMINAL.line};
-        border-radius: var(--radius-square);
-    }
-    &::-webkit-scrollbar-thumb:hover {
-        background: ${TERMINAL.lineStrong};
-    }
 `
 
 /** 顶部 hero：m 标记 + 信息表 */

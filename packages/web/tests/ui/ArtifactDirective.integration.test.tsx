@@ -307,10 +307,12 @@ describe('产物 inline 渲染（票 02/03）', () => {
         injectArtifactScrollbarStyle(doc)
         const styles = doc.querySelectorAll('#mobi-artifact-scrollbar')
         expect(styles).toHaveLength(1)
-        expect(styles[0]!.textContent).toContain('::-webkit-scrollbar-thumb')
-        // 注入的是**产物文档**：CSS 自定义属性不跨文档，宿主 :root 的取档变量（--radius-*）
-        // 在那里不存在，一旦引用圆角声明就整条失效——这段样式只能用字面量/产物自身的变量
-        expect(styles[0]!.textContent).not.toContain('var(--radius')
+        expect(styles[0]!.textContent).toContain('scrollbar-width: thin')
+        // 只用标准属性：webkit 伪元素一设宽就会把系统浮动滚动条换成占布局的经典滚动条
+        expect(styles[0]!.textContent).not.toContain('::-webkit-scrollbar')
+        // 注入的是**产物文档**：CSS 自定义属性不跨文档，宿主 :root 的变量在那里不存在，
+        // 一旦引用就整条失效——这段样式只能用字面量/产物自身的变量
+        expect(styles[0]!.textContent).not.toContain('var(--')
 
         injectArtifactScrollbarStyle(doc)
         expect(doc.querySelectorAll('#mobi-artifact-scrollbar')).toHaveLength(1)
