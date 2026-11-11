@@ -135,6 +135,16 @@ module.exports = tseslint.config(
             importNames: ['Tooltip'],
             message: 'antd Tooltip 已迁自管件（@/ui/base/interactive/AppTooltip，触屏长按语义统一），禁止新增',
           },
+          {
+            name: 'antd',
+            importNames: ['Switch'],
+            message: 'antd Switch 已迁 uiarc（@/ui/shadcn/switch/switch），禁止新增',
+          },
+          {
+            name: 'antd',
+            importNames: ['Checkbox'],
+            message: 'antd Checkbox 已迁 uiarc（@/ui/shadcn/checkbox/checkbox），禁止新增',
+          },
         ],
       }],
     },

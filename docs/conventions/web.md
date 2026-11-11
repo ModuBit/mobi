@@ -88,7 +88,10 @@ src/
 
 | 组件 | 归属 | 与上游 | 迁移于 | 说明 |
 |---|---|---|---|---|
-| （当前为空——首批四件已转自管，见下节） | | | | |
+| switch | arc（uiarc） | tracked | 2026-11-11 | Radix Switch 底座 + motion 拇指弹簧（按压伸展）；antd `Switch` 全站清零，**eslint `no-restricted-imports` 禁新增**。消费点：SettingRow `variant="switch"` 右槽、ProviderCard 启用开关（loading 形态以 `disabled`+`aria-busy` 替代）、ElicitationFormCard boolean 字段（`BooleanSwitch` 桥 antd Form 注入契约）。触觉委托按 `role=switch` 排除，反馈由 onChange 按新状态决定 |
+| checkbox | arc（uiarc） | tracked | 2026-11-11 | Radix Checkbox 底座 + motion 对勾/横杠 morph（同一 path 变形）；antd `Checkbox` 全站清零，**eslint `no-restricted-imports` 禁新增**。消费点：OptionRow multi 模式 mark（纯视觉 aria-hidden，点击穿透行 div；完成态选中色局部覆盖 `--control-on`/`--control-glyph`） |
+| radio-group | arc（uiarc） | tracked | 2026-11-11 | 已装待消费（底座预铺）：antd Radio 消费端（OptionRow single mark 等）待首个真实迁移场景到达时启用，勿重复造轮子 |
+| radio-cards | arc（uiarc） | tracked | 2026-11-11 | 已装待消费（底座预铺）：卡片式单选形态，与 radio-group 同批安装、消费端未替换；适合设置页分组单选等场景 |
 
 ### 已自管组件（脱离 registry，归 `ui/base/` 体系）
 

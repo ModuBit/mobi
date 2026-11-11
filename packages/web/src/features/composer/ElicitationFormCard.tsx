@@ -15,9 +15,11 @@
  */
 
 import { useMemo } from 'react'
-import { Form, InputNumber, Switch, theme as antTheme } from 'antd'
+import { Form, InputNumber, theme as antTheme } from 'antd'
 import { Input } from '@/ui/base/interactive/input/Input'
 import { Button } from '@/ui/base/interactive/button/Button'
+// uiarc 自管件（antd Switch 迁移）：boolean 字段开关（经 BooleanSwitch 桥 antd Form 契约）
+import { Switch } from '@/ui/shadcn/switch/switch'
 import { useTranslation } from 'react-i18next'
 import type { PermissionAnswers, SDKUIHints } from '@mobi/shared'
 import type { ElicitationFieldSchema, ElicitationRequestedSchema } from '@/domain/tool/elicitation'
@@ -100,6 +102,24 @@ function EnumSelect({ field, value, onChange, disabled }: {
 }
 
 /**
+ * boolean 字段控件：桥接 antd Form.Item 注入的 value/onChange 与 uiarc Switch 的
+ * checked/onCheckedChange；表单值始终为原生 boolean，保证 onFinish 收到 boolean
+ */
+function BooleanSwitch({ value, onChange }: {
+    value?: boolean
+    onChange?: (value: boolean) => void
+}) {
+    return (
+        <Switch
+            checked={value ?? false}
+            onCheckedChange={(next) => {
+                onChange?.(next)
+            }}
+        />
+    )
+}
+
+/**
  * 按 requestedSchema 单字段生成表单控件（spec D4：string→Input、enum→Select、
  * number/integer→InputNumber、boolean→Switch；array/object 等不支持类型渲染禁用 input——
  * cli 端无法转型，避免用户填值后被静默 decline）
@@ -113,8 +133,7 @@ function renderFieldControl(field: ElicitationFieldSchema, disabled: boolean) {
         case 'integer':
             return <InputNumber style={{ width: '100%' }} />
         case 'boolean':
-            // Switch 的表单值走 checked（antd 约定），保证 onFinish 收到原生 boolean
-            return <Switch />
+            return <BooleanSwitch />
         case 'string':
             return <Input />
         default:

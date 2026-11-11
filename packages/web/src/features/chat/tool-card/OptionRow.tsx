@@ -15,7 +15,9 @@
  */
 
 import { useMemo, type CSSProperties, type ReactNode, type KeyboardEvent } from 'react'
-import { Checkbox, ConfigProvider, Radio, theme as antTheme } from 'antd'
+import { ConfigProvider, Radio, theme as antTheme } from 'antd'
+// uiarc 自管件（antd Checkbox 迁移）：多选 mark（radio 分支待 radio-group 迁移后同换）
+import { Checkbox } from '@/ui/shadcn/checkbox/checkbox'
 import { OptionPreview } from './OptionPreview'
 
 export type OptionRowMode = 'single' | 'multi'
@@ -42,7 +44,7 @@ type OptionRowProps = {
  * 共享选项行 —— AskUserQuestion 的交互态（Footer）与完成态（View）共用，
  * 根除两处样式漂移。触控目标移动端 44px / 桌面 40px。
  *
- * 选中态由 antd Radio（单选）/ Checkbox（多选）承载：实心圆点 / 填充方块 + 过渡，
+ * 选中态由 uiarc Checkbox（多选）/ antd Radio（单选，待 radio-group 迁移）承载：填充方块 / 实心圆点 + 过渡，
  * 比线性图标切换更有确定感。mark 作纯视觉（pointerEvents none，点击穿透到本行 div），
  * 状态由外层受控。行内不再叠加背景染色 / 左色带，避免选中反馈堆叠显脏；
  * 仅留一条实色选中边框做轮廓反馈。
@@ -59,13 +61,19 @@ export function OptionRow(props: OptionRowProps) {
 
     const showDescription = Boolean(props.description && props.description !== props.title)
 
-    // antd mark：受控 checked、纯视觉（pointerEvents none 让点击穿透到本行 div）
+    // mark：受控纯视觉（pointerEvents none 让点击穿透到本行 div）。
+    // 多选用 uiarc Checkbox；完成态选中色局部覆盖 CSS 变量为成功色（ConfigProvider 的
+    // token 覆盖只影响 antd 子树，uiarc 组件取色走 --control-on 变量）
+    const completedVars = {
+        '--control-on': token.colorSuccess,
+        '--control-glyph': token.colorSuccess,
+    } as CSSProperties
     const mark = props.mode === 'multi' ? (
         <Checkbox
             checked={props.checked}
-            onChange={() => {}}
+            onCheckedChange={() => {}}
             tabIndex={-1}
-            style={{ pointerEvents: 'none' }}
+            style={{ pointerEvents: 'none', ...(props.tone === 'completed' ? completedVars : null) }}
         />
     ) : (
         <Radio
@@ -75,13 +83,13 @@ export function OptionRow(props: OptionRowProps) {
             style={{ pointerEvents: 'none' }}
         />
     )
-    // 完成态：antd 选中色默认走 colorPrimary，局部覆盖为 colorSuccess 才呈现绿色。
-    // theme 对象 memoize，避免每次渲染新建 → 触发 antd 全量重算 Radio/Checkbox 子树样式
+    // 完成态：antd Radio 选中色默认走 colorPrimary，局部覆盖为 colorSuccess 才呈现绿色。
+    // theme 对象 memoize，避免每次渲染新建 → 触发 antd 全量重算 Radio 子树样式
     const completedTheme = useMemo(
         () => ({ token: { colorPrimary: token.colorSuccess } }),
         [token.colorSuccess]
     )
-    const markNode = props.tone === 'completed' ? (
+    const markNode = props.tone === 'completed' && props.mode !== 'multi' ? (
         <ConfigProvider theme={completedTheme}>
             {mark}
         </ConfigProvider>

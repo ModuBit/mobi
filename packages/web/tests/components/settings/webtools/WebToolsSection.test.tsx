@@ -169,7 +169,7 @@ describe('WebToolsSection', () => {
         expect(screen.getByText('Tavily')).toBeTruthy()
         expect(screen.getByText('AI 搜索与网页抓取 · tavily.com')).toBeTruthy()
         // Switch 选中
-        expect(screen.getByRole('switch', { name: 'tavily-enabled' })).toHaveClass('ant-switch-checked')
+        expect(screen.getByRole('switch', { name: 'tavily-enabled' })).toHaveAttribute('aria-checked', 'true')
     })
 
     it('未配置的 provider 也渲染默认卡（DeepSeek 名称 + 未启用）', async () => {
@@ -178,7 +178,7 @@ describe('WebToolsSection', () => {
 
         await waitFor(() => expect(screen.getByText('DeepSeek')).toBeTruthy())
         expect(screen.getByText('网页搜索与抓取 · api.deepseek.com')).toBeTruthy()
-        expect(screen.getByRole('switch', { name: 'deepseek-enabled' })).not.toHaveClass('ant-switch-checked')
+        expect(screen.getByRole('switch', { name: 'deepseek-enabled' })).toHaveAttribute('aria-checked', 'false')
     })
 
     it('点击卡头展开编辑器：aria-expanded 翻 true（S9 实装编辑器内容）', async () => {
@@ -218,7 +218,7 @@ describe('WebToolsSection', () => {
         )
         expect(stableApi.webTools.set).not.toHaveBeenCalled()
         // 开关仍选中
-        expect(screen.getByRole('switch', { name: 'tavily-enabled' })).toHaveClass('ant-switch-checked')
+        expect(screen.getByRole('switch', { name: 'tavily-enabled' })).toHaveAttribute('aria-checked', 'true')
     })
 
     it('启用未引用 provider：即时保存全量 providers（凭据键不在场=保持）并重读配置', async () => {
@@ -301,7 +301,7 @@ describe('WebToolsSection', () => {
         // 失败提示恰好一条（Section 层收口）且带 runner 校验原因——支持性回归锁（旧 UI 有此能力）
         await waitFor(() => expect(screen.getByText('provider "tavily" 缺少凭据：apiKey')).toBeTruthy())
         expect(screen.queryAllByText('provider "tavily" 缺少凭据：apiKey')).toHaveLength(1)
-        expect(screen.getByRole('switch', { name: 'tavily-enabled' })).toHaveClass('ant-switch-checked')
+        expect(screen.getByRole('switch', { name: 'tavily-enabled' })).toHaveAttribute('aria-checked', 'true')
     })
 
     it('全部 provider 未启用：路由卡转引导态（无下拉、显示引导文案）', async () => {

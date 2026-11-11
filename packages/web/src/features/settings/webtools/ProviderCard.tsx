@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
-import { App, Switch, theme as antTheme } from 'antd'
+import { App, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
+// uiarc 自管件（antd Switch 迁移）：provider 启用开关
+import { Switch } from '@/ui/shadcn/switch/switch'
 import { credentialKeysFor } from '@mobi/shared'
 import { CredentialEditor, type ProviderEntry, type VerifyResult } from './CredentialEditor'
 
@@ -198,8 +200,10 @@ export function ProviderCard({ provider, referencedBy, expanded, onExpandedChang
                     <Switch
                         aria-label={`${provider.id}-enabled`}
                         checked={provider.enabled}
-                        loading={saving}
-                        onChange={(checked) => {
+                        // uiarc Switch 无 loading 形态：保存中禁用（aria-busy 同步暴露给读屏）
+                        disabled={saving}
+                        aria-busy={saving}
+                        onCheckedChange={(checked) => {
                             void handleToggle(checked)
                         }}
                     />

@@ -99,12 +99,16 @@ function renderFooter(tool: ToolInfo, disabled = false, onDone: () => void = vi.
     )
 }
 
-/** 查找选项按钮（共享 OptionRow 渲染的 <button data-selected>），通过其内部 label div 匹配 */
+/** 查找选项按钮（共享 OptionRow 渲染的 <button data-selected>），通过其内部 title 叶子 div 匹配 */
 function findOptionBtn(label: string): HTMLElement {
     const opts = Array.from(document.querySelectorAll('[data-selected]'))
     for (const o of opts) {
-        const title = o.querySelector('span > div:first-child')
-        if (title && title.textContent?.trim() === label) return o as HTMLElement
+        // 叶子 div（无子元素）匹配 title 文本——mark 包裹 div（uiarc Checkbox 的 .field）无文本不干扰，
+        // 不依赖 span 序位（实现无关）
+        const title = Array.from(o.querySelectorAll('div')).find(
+            (d) => d.children.length === 0 && d.textContent?.trim() === label
+        )
+        if (title) return o as HTMLElement
     }
     throw new Error(`option "${label}" not found`)
 }
@@ -580,7 +584,7 @@ describe('AskUserQuestionFooter', () => {
     })
 
     describe('共享 OptionRow', () => {
-        it('选中项带 data-selected=true 与 antd Checkbox 选中态', () => {
+        it('选中项带 data-selected=true 与 uiarc Checkbox 选中态', () => {
             const tool = makeTool([{
                 question: 'Q', multiSelect: true,
                 options: [{ label: 'A', description: null, preview: null }],
@@ -589,9 +593,9 @@ describe('AskUserQuestionFooter', () => {
             const a = findOptionBtn('A')
             fireEvent.click(a)
             expect(a.getAttribute('data-selected')).toBe('true')
-            // 不再有左侧色带（四重堆叠已收敛），选中态由 antd Checkbox 实心方块承载
+            // 不再有左侧色带（四重堆叠已收敛），选中态由 uiarc Checkbox 填充方块承载
             expect(a.querySelector('[data-slot="bar"]')).toBeNull()
-            expect(a.querySelector('input[type="checkbox"]')).not.toBeNull()
+            expect(a.querySelector('button[role="checkbox"]')).not.toBeNull()
         })
     })
 

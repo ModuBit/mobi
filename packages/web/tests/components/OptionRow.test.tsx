@@ -113,7 +113,7 @@ describe('OptionRow', () => {
         expect(getComputedStyle(btn).opacity).toBe('1')
     })
 
-    it('single 模式渲染 antd Radio，multi 模式渲染 antd Checkbox', () => {
+    it('single 模式渲染 antd Radio，multi 模式渲染 uiarc Checkbox', () => {
         const { rerender } = wrap(
             <OptionRow data-testid="opt" checked={false} mode="single" disabled={false} tone="interactive" title="A" onClick={() => {}} />
         )
@@ -125,8 +125,8 @@ describe('OptionRow', () => {
                 <OptionRow data-testid="opt" checked mode="multi" disabled={false} tone="interactive" title="A" onClick={() => {}} />
             </ConfigProvider>
         )
-        // multi → antd Checkbox
-        expect(screen.getByTestId('opt').querySelector('input[type="checkbox"]')).not.toBeNull()
+        // multi → uiarc Checkbox（Radix button role=checkbox，纯视觉内嵌于 aria-hidden mark span）
+        expect(screen.getByTestId('opt').querySelector('button[role="checkbox"]')).not.toBeNull()
         expect(screen.getByTestId('opt').getAttribute('data-selected')).toBe('true')
     })
 

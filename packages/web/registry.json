@@ -1,4 +1,51 @@
 {
     "$comment": "组件归属注册表——shadcn 底座票 04。唯一机器事实源，消费方：tests/conventions/componentRegistry.test.ts（一致性守卫）、web.md「组件选型」章（投影表）。registry 组件统一落 packages/web/src/ui/shadcn/<name>/；shadcn 是组件体系名（非来源名），官方 shadcn / uiarc / beautifului 在路径上无来源差异——来源只记本表 source 字段（shadcn 官方模型：注册表命名空间只决定下载源，落盘统一进 aliases.ui 目录）。迁移流程完成后在此登记；name 用语义名，source 取 shadcn | arc；upstream 记与上游的关系（tracked 跟上游 / adopted 已认领，判据见 web.md「与上游的关系」章）；migratedIn 为迁移标识（commit 或日期/票号）；localMods 列本地修改点（tracked 时 add --overwrite 升级后照单恢复；adopted 时作历史差异记录）。 2026-10-15 起首批四件（bottom-sheet / copy-button / dropdown-menu / morph-select）转全量自管：目录迁 src/ui/base/interactive/、主文件改名对齐导出名、脱离本表（localMods 账本定格于迁出 commit）。本表与 ui/shadcn/ 落位机制保留给未来迁移。",
-    "components": []
+    "components": [
+        {
+            "name": "switch",
+            "source": "arc",
+            "upstream": "tracked",
+            "migratedIn": "2026-11-11",
+            "localMods": [
+                "Apache 版权头",
+                "motion-tokens import 接线（上游 lib/motion-tokens → @/ui/base/motion/motionTokens 单源）"
+            ],
+            "note": "antd Switch 已全站清零且 eslint 禁新增。消费点：SettingRow variant=switch 右槽、ProviderCard 启用开关（loading 形态以 disabled+aria-busy 替代）、ElicitationFormCard boolean 字段（BooleanSwitch 桥 antd Form value/onChange 契约）。触觉委托按 role=switch 排除，反馈由 onChange 按新状态决定"
+        },
+        {
+            "name": "checkbox",
+            "source": "arc",
+            "upstream": "tracked",
+            "migratedIn": "2026-11-11",
+            "localMods": [
+                "Apache 版权头",
+                "motion-tokens import 接线（上游 lib/motion-tokens → @/ui/base/motion/motionTokens 单源）",
+                "visual 方块圆角 5px → var(--radius-square)（档位重映射：DESIGN.md「复选框归 square 档」）"
+            ],
+            "note": "antd Checkbox 已全站清零且 eslint 禁新增。消费点：OptionRow multi 模式 mark（纯视觉 aria-hidden，点击穿透到行 div；完成态选中色局部覆盖 --control-on/--control-glyph 为成功色）"
+        },
+        {
+            "name": "radio-group",
+            "source": "arc",
+            "upstream": "tracked",
+            "migratedIn": "2026-11-11",
+            "localMods": [
+                "Apache 版权头",
+                "motion-tokens import 接线（上游 lib/motion-tokens → @/ui/base/motion/motionTokens 单源）"
+            ],
+            "note": "已装待消费（底座预铺）：antd Radio 消费端（OptionRow single mark 等）待首个真实迁移场景到达时启用，勿重复造轮子"
+        },
+        {
+            "name": "radio-cards",
+            "source": "arc",
+            "upstream": "tracked",
+            "migratedIn": "2026-11-11",
+            "localMods": [
+                "Apache 版权头",
+                "motion-tokens import 接线（上游 lib/motion-tokens → @/ui/base/motion/motionTokens 单源）",
+                "ring/card 圆角 20px → var(--radius-panel)（档位重映射：卡片归 panel 档）"
+            ],
+            "note": "已装待消费（底座预铺）：卡片式单选形态，与 radio-group 同批安装、消费端未替换；适合设置页分组单选等场景，勿重复造轮子"
+        }
+    ]
 }

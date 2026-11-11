@@ -16,10 +16,12 @@
 
 import type { ReactNode } from 'react'
 import type { InputHTMLAttributes } from 'react'
-import { Switch, theme as antTheme } from 'antd'
+import { theme as antTheme } from 'antd'
 import { ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import styled from '@emotion/styled'
+// uiarc 自管件（antd Switch 迁移）：开关行右槽
+import { Switch } from '@/ui/shadcn/switch/switch'
 import { Input } from '@/ui/base/interactive/input/Input'
 import { PasswordField } from '@/ui/base/interactive/password-field/PasswordField'
 import { Select } from '@/ui/base/interactive/select/Select'
@@ -206,7 +208,7 @@ export function SettingRow(props: SettingRowProps) {
             right = (
                 <Switch
                     checked={props.checked}
-                    onChange={props.onCheckedChange}
+                    onCheckedChange={props.onCheckedChange}
                     disabled={props.disabled}
                     aria-label={props.ariaLabel ?? accessibleName}
                 />
