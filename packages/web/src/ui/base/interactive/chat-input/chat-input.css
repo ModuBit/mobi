@@ -1,0 +1,41 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* 聊天输入框（TipTap 封装）：高度自适应（contentEditable 自然增高，无 JS 测量）。
+   min/max 行数由组件内联 CSS 变量换算（LINE_HEIGHT_PX=22，对齐现 Sender 输入区视觉） */
+.chat-input {
+    display: flex;
+    flex-direction: column;
+    min-height: var(--chat-input-min-h, 22px);
+    max-height: var(--chat-input-max-h, 110px);
+}
+
+.chat-input .ProseMirror {
+    outline: none;
+    overflow-y: auto;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+}
+
+/* placeholder：官方扩展的 emptyEditorClass（默认 is-editor-empty），::before 悬浮展示不占布局 */
+.chat-input .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    color: var(--ant-color-text-tertiary, rgba(0, 0, 0, 0.45));
+    float: left;
+    height: 0;
+    pointer-events: none;
+}
