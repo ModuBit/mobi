@@ -15,7 +15,8 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from 'react'
-import { App, Input, Spin, Segmented, theme as antTheme } from 'antd'
+import { App, Spin, Segmented, theme as antTheme } from 'antd'
+import { Input } from '@/ui/base/interactive/input/Input'
 import styled from '@emotion/styled'
 import { AttachPanel } from '@/features/composer/AttachPanel'
 import { composerSenderCard, composerSubmitButton } from '@/features/composer/composerSurface.styles'
@@ -865,16 +866,18 @@ export function NewSessionPage() {
                     }}>
                         <div style={{ overflow: 'hidden' }}>
                             <div style={{ padding: '0 6px 4px' }}>
-                                <Input
-                                    size="small"
-                                    prefix={<BranchesOutlined style={{ fontSize: 12, opacity: 0.55 }} />}
-                                    placeholder={t('newSession.worktreeNamePlaceholder')}
-                                    value={worktreeName}
-                                    onChange={e => setWorktreeName(e.target.value)}
-                                    disabled={inputDisabled}
-                                    style={{ fontSize: 12 }}
-                                    allowClear
-                                />
+                                {/* uiarc Input 无 prefix：分支图标移外壳布局行 */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <BranchesOutlined style={{ fontSize: 12, opacity: 0.55, flexShrink: 0 }} />
+                                    <Input
+                                        inputSize="sm"
+                                        placeholder={t('newSession.worktreeNamePlaceholder')}
+                                        value={worktreeName}
+                                        onChange={e => setWorktreeName(e.target.value)}
+                                        disabled={inputDisabled}
+                                        style={{ fontSize: 12, flex: 1, minWidth: 0 }}
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>

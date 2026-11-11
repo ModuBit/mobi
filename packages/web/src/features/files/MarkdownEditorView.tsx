@@ -17,7 +17,8 @@
 import { useEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
-import { Input, theme as antTheme } from 'antd'
+import { theme as antTheme } from 'antd'
+import { Input } from '@/ui/base/interactive/input/Input'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { Popover } from '@/ui/base/interactive/popover/Popover'
@@ -256,7 +257,7 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
                 content={
                     <div style={{ display: 'flex', gap: 4 }}>
                         <Input
-                            size="small"
+                            inputSize="sm"
                             placeholder="https://"
                             value={linkUrl}
                             onChange={(e) => setLinkUrl(e.target.value)}
@@ -335,18 +336,20 @@ function LinkBubble({ editor }: { editor: Editor }) {
 
     return (
         <div style={card}>
-            <Input
-                className="md-link-input"
-                variant="borderless"
-                size="small"
-                prefix={<Link2 size={13} style={{ color: token.colorTextTertiary }} />}
-                placeholder="https://"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onPressEnter={apply}
-                autoFocus
-                style={{ flex: 1, width: 220, fontSize: 12, fontFamily: 'var(--font-mono, JetBrains Mono, monospace)' }}
-            />
+            {/* uiarc Input 无 borderless/prefix：形态经 styled 覆盖（editor.css .md-link-input 同步改），图标移外壳行 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0, background: 'var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04))', borderRadius: 'var(--ant-border-radius, 8px)', padding: '0 6px' }}>
+                <Link2 size={13} style={{ color: token.colorTextTertiary, flexShrink: 0 }} />
+                <Input
+                    className="md-link-input"
+                    inputSize="sm"
+                    placeholder="https://"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    onPressEnter={apply}
+                    autoFocus
+                    style={{ flex: 1, minWidth: 0, fontSize: 12, fontFamily: 'var(--font-mono, JetBrains Mono, monospace)' }}
+                />
+            </div>
             <AppTooltip title="应用链接" mouseEnterDelay={0.4}>
                 <Button variant="ghost" size="sm" onClick={apply}><Check size={15} style={{ color: token.colorPrimary }} /></Button>
             </AppTooltip>
@@ -409,18 +412,19 @@ function ImageBubble({ editor }: { editor: Editor }) {
 
     return (
         <div style={card}>
-            <Input
-                className="md-link-input"
-                variant="borderless"
-                size="small"
-                prefix={<ImageIcon size={13} style={{ color: token.colorTextTertiary }} />}
-                placeholder="图片地址 https://"
-                value={src}
-                onChange={(e) => setSrc(e.target.value)}
-                onPressEnter={apply}
-                autoFocus
-                style={{ flex: 1, width: 260, fontSize: 12, fontFamily: 'var(--font-mono, JetBrains Mono, monospace)' }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0, background: 'var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04))', borderRadius: 'var(--ant-border-radius, 8px)', padding: '0 6px' }}>
+                <ImageIcon size={13} style={{ color: token.colorTextTertiary, flexShrink: 0 }} />
+                <Input
+                    className="md-link-input"
+                    inputSize="sm"
+                    placeholder="图片地址 https://"
+                    value={src}
+                    onChange={(e) => setSrc(e.target.value)}
+                    onPressEnter={apply}
+                    autoFocus
+                    style={{ flex: 1, minWidth: 0, fontSize: 12, fontFamily: 'var(--font-mono, JetBrains Mono, monospace)' }}
+                />
+            </div>
             <AppTooltip title="应用" mouseEnterDelay={0.4}>
                 <Button variant="ghost" size="sm" onClick={apply}><Check size={15} style={{ color: token.colorPrimary }} /></Button>
             </AppTooltip>

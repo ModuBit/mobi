@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { Badge, Input, theme as antTheme } from 'antd'
+import { Badge, theme as antTheme } from 'antd'
+import { Input } from '@/ui/base/interactive/input/Input'
 import { EditOutlined, DeleteOutlined, MoonOutlined, MoreOutlined, PlayCircleOutlined } from '@ant-design/icons'
 import { Archive, Pin, PinOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -101,7 +102,7 @@ export function SessionRow({
         return (
             <RenameRow $token={token}>
                 <Input
-                    size="small"
+                    inputSize="sm"
                     value={renameValue}
                     onChange={(e) => onRenameValueChange(e.target.value)}
                     onPressEnter={onRenameLoading ? undefined : onRenameConfirm}

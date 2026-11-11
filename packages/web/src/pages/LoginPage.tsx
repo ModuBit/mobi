@@ -14,15 +14,14 @@
  * limitations under the License.
  */
 
-import { Form, Input, App } from 'antd'
+import { Form, App } from 'antd'
+import { PasswordField } from '@/ui/base/interactive/password-field/PasswordField'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { IconButton, ROW_ICON_BUTTON_SIZE } from '@/ui/base/interactive/IconButton'
 import {
     SunOutlined,
     MoonOutlined,
     GithubOutlined,
-    EyeOutlined,
-    EyeInvisibleOutlined,
 } from '@ant-design/icons'
 import { BootLogPanel } from '@/features/login/BootLogPanel'
 import { useNavigate } from '@tanstack/react-router'
@@ -335,24 +334,9 @@ export function LoginPage() {
                                 },
                             ]}
                         >
-                            <Input.Password
+                            <PasswordField
                                 autoComplete="current-password"
                                 placeholder={t('login.tokenPlaceholder')}
-                                size="large"
-                                visibilityToggle
-                                iconRender={(visible) => (
-                                    // onMouseDown 防止点击切换按钮时 input 失焦
-                                    <span
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        style={{ display: 'inline-flex' }}
-                                    >
-                                        {visible ? (
-                                            <EyeInvisibleOutlined />
-                                        ) : (
-                                            <EyeOutlined />
-                                        )}
-                                    </span>
-                                )}
                             />
                         </Form.Item>
                         <Form.Item style={{ marginBottom: 0 }}>

@@ -22,12 +22,13 @@
 // ⑤shell 圆角暴露 --search-field-radius 变量 seam——胶囊形态由调用方声明意图，
 //   不再依赖「field 的直接子即 shell」的内部 DOM 结构
 // ⑥清除钮接 ClearButton 单源（与 combobox/multi-select 同一编排，消漂移副本）
+// ⑦loading prop——搜索进行中前导图标换旋转指示（旧 antd Input.Search 的 prefix loading 语义保全）
 "use client";
 
 import { forwardRef, useCallback, useId, useRef } from "react";
 import type { InputHTMLAttributes } from "react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
-import { Search } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ClearButton } from "@/ui/base/motion/ClearButton";
 import styles from "./search-field.module.css";
@@ -36,9 +37,11 @@ export interface SearchFieldProps extends Omit<InputHTMLAttributes<HTMLInputElem
   label?: string;
   value: string;
   onValueChange: (value: string) => void;
+  /** 搜索进行中：前导图标换旋转 loading（替代旧 antd Input.Search 的 prefix loading 指示） */
+  loading?: boolean;
 }
 
-export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(function SearchField({ label, value, onValueChange, id, className, ...props }, ref) {
+export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(function SearchField({ label, value, onValueChange, loading, id, className, ...props }, ref) {
   const { t } = useTranslation();
   const generated = useId(); const controlId = id ?? generated; const reduced = useReducedMotion(); const inputRef = useRef<HTMLInputElement | null>(null);
   // useCallback 稳定回调 ref 身份：受控组件每次键入都重渲染，内联箭头会让 React 每个 commit 都解绑/重绑
@@ -49,7 +52,7 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
   return <div className={[styles.field, className].filter(Boolean).join(" ")}>
     {label && <label htmlFor={controlId}>{label}</label>}
     <div className={styles.shell} data-filled={value ? "true" : undefined}>
-      <Search width={18} height={18} aria-hidden="true" />
+      {loading ? <Loader2 width={18} height={18} aria-hidden="true" className={styles.loadingIcon} /> : <Search width={18} height={18} aria-hidden="true" />}
       <input {...props} ref={setRefs} id={controlId} type="search" value={value} onChange={event => onValueChange(event.target.value)} className={styles.input} aria-label={props["aria-label"] ?? (label ? undefined : props.placeholder)} />
       {/* The clear button has a reserved slot, so the field never changes width when it appears or leaves. */}
       {/* 清除钮走 ClearButton 单源（combobox/multi-select 同一编排），外观归 .shell button 规则 */}

@@ -32,4 +32,7 @@
 .clearSlot { display: grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; }
 .shell button { display: grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text-muted); transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
 @media (hover: hover) and (pointer: fine) { .shell button:hover { background: var(--surface-muted); color: var(--foreground); } }
-@media (prefers-reduced-motion: reduce) { .shell, .shell > svg, .shell button { transition: none; } }
+/* loading 态：前导图标旋转指示 */
+.loadingIcon { animation: loading-spin 0.9s linear infinite; color: var(--text-muted); }
+@keyframes loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .shell, .shell > svg, .shell button { transition: none; } .loadingIcon { animation: none; } }

@@ -17,15 +17,15 @@
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import styled from '@emotion/styled'
 import { motion, useReducedMotion } from 'motion/react'
-import { Tree, Empty, Skeleton, Input, type TreeProps } from 'antd'
+import { Tree, Empty, Skeleton, type TreeProps } from 'antd'
+import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { IconButton } from '@/ui/base/interactive/IconButton'
 import { spring } from '@/ui/base/motion/presets'
 import { RectHoverGlideLayer } from '@/ui/base/motion/RectHoverGlideLayer'
 import type { DataNode } from 'antd/es/tree'
-import { ChevronRight, FolderOpen, FolderClosed, Search, Eye, EyeOff, RotateCw, TriangleAlert } from 'lucide-react'
+import { ChevronRight, FolderOpen, FolderClosed, Eye, EyeOff, RotateCw, TriangleAlert } from 'lucide-react'
 import { FileTypeBadge } from '@/ui/base/display/FileTypeBadge'
-import { LoadingOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { parseDirectoryEntries } from '@/core/data/hooks/queries/useFileTree'
@@ -736,12 +736,10 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
                 className="tree-hover-fill"
             />
             <div style={{ display: 'flex', gap: 4, marginBottom: 8, alignItems: 'center' }}>
-                <Input
-                    prefix={isSearching && isSearchLoading ? <LoadingOutlined style={{ fontSize: 14 }} /> : <Search size={14} />}
-                    allowClear
-                    size="small"
+                <SearchField
+                    loading={isSearching && isSearchLoading}
                     value={filter}
-                    onChange={(e) => setFilter(e.target.value)}
+                    onValueChange={setFilter}
                     placeholder={t('files.searchPlaceholder')}
                     style={{ flex: 1 }}
                 />

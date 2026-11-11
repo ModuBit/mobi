@@ -15,7 +15,8 @@
  */
 
 import { useState, useCallback, useEffect } from 'react'
-import { App as AntdApp, Input, Modal, theme as antTheme } from 'antd'
+import { App as AntdApp, Modal, theme as antTheme } from 'antd'
+import { Input } from '@/ui/base/interactive/input/Input'
 import { Button } from '@/ui/base/interactive/button/Button'
 import {
     EditOutlined,

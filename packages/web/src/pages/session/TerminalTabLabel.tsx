@@ -15,8 +15,9 @@
  */
 
 import { useState, useRef, type KeyboardEvent } from 'react'
-import { Input } from 'antd'
+
 import { Terminal as TerminalIcon } from 'lucide-react'
+import { Input } from '@/ui/base/interactive/input/Input'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import type { InspectorTabEntry } from '@/core/data/stores/workspaceStore'
@@ -69,14 +70,15 @@ export function TerminalTabLabel({ tab, onRename }: TerminalTabLabelProps) {
         setEditing(false)
     }
     const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter') commit()
+        // IME 组合中的 Enter 是确认候选词，不触发提交
+        if (e.key === 'Enter' && !e.nativeEvent.isComposing) commit()
         else if (e.key === 'Escape') cancel()
     }
 
     if (editing) {
         return (
             <Input
-                size="small"
+                inputSize="sm"
                 autoFocus
                 value={draft}
                 placeholder={t('session.inspector.terminalRenamePlaceholder')}

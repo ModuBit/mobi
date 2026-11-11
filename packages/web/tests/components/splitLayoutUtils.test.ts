@@ -18,6 +18,7 @@ import { describe, it, expect } from 'vitest'
 import {
     computeSplitRatio,
     shouldCollapseOnDrag,
+    rightPanePx,
     DEFAULT_LEFT_MIN_RATIO,
 } from '@/ui/base/layout/splitLayoutUtils'
 
@@ -64,6 +65,26 @@ describe('splitLayoutUtils', () => {
             expect(shouldCollapseOnDrag(0.5)).toBe(false)
             expect(shouldCollapseOnDrag(0.8)).toBe(false)
             expect(shouldCollapseOnDrag(0.98)).toBe(false)
+        })
+    })
+
+    describe('rightPanePx', () => {
+        it('按 1-splitRatio 计算右栏宽度', () => {
+            expect(rightPanePx(0.5, 1000, 0)).toBe(500)
+            expect(rightPanePx(0.8, 1000, 0)).toBeCloseTo(200)
+        })
+
+        it('占比算出的宽度低于下限时抬到下限（窄容器里树列仍可用）', () => {
+            // 回归：601px 容器 × 20% = 120px，筛选框被压到不可用
+            expect(rightPanePx(0.8, 601, 200)).toBe(200)
+        })
+
+        it('占比宽度充足时不受下限影响', () => {
+            expect(rightPanePx(0.5, 1000, 200)).toBe(500)
+        })
+
+        it('containerWidth<=0（首帧未测量）返回下限', () => {
+            expect(rightPanePx(0.8, 0, 200)).toBe(200)
         })
     })
 })

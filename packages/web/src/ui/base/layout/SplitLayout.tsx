@@ -31,7 +31,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import styled from '@emotion/styled'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
-import { computeSplitRatio, shouldCollapseOnDrag, DEFAULT_LEFT_MIN_RATIO } from '@/ui/base/layout/splitLayoutUtils'
+import { computeSplitRatio, shouldCollapseOnDrag, rightPanePx, DEFAULT_LEFT_MIN_RATIO } from '@/ui/base/layout/splitLayoutUtils'
 import { CLIP_DURATION, CLIP_EASING } from '@/ui/base/layout/clipConstants'
 import { pushHistoryGuard } from '@/core/lib/drawerHistoryGuard'
 
@@ -54,6 +54,8 @@ export interface SplitLayoutProps {
     leftMinRatio?: number
     /** 默认左侧占比，拖拽至收起后重新展开时恢复用，默认 0.5 */
     defaultSplitRatio?: number
+    /** 右栏像素宽度下限（窄容器里比例坍缩时抬住，如树列筛选框需可用），默认 0（不抬） */
+    rightMinPx?: number
 }
 
 /**
@@ -163,6 +165,7 @@ export function SplitLayout({
     onSplitRatioChange,
     leftMinRatio = DEFAULT_LEFT_MIN_RATIO,
     defaultSplitRatio = 0.5,
+    rightMinPx = 0,
 }: SplitLayoutProps) {
     const isMobile = useIsMobile()
     const containerRef = useRef<HTMLDivElement>(null)
@@ -277,14 +280,16 @@ export function SplitLayout({
 
     // 右栏可见：展开或最大化（最大化隐含展开）
     const rightVisible = expanded || secondaryMaximized
-    // 右栏外层宽度占比
-    const rightFraction = secondaryMaximized ? 1 : 1 - splitRatio
-    // 左栏内层自然宽度：展开（含最大化）时按 splitRatio，收起时占满
-    const leftInnerPx = expanded ? Math.max(0, splitRatio * containerWidth) : containerWidth
-    // 右栏内层自然宽度：最大化时占满，否则按 1-splitRatio（收起时也保持此宽度以被裁剪）
+    // 右栏内层自然宽度：最大化时占满，否则按 1-splitRatio（rightMinPx 兜窄容器，收起时也保持此宽度以被裁剪）
     const rightInnerPx = secondaryMaximized
         ? containerWidth
-        : Math.max(0, (1 - splitRatio) * containerWidth)
+        : rightPanePx(splitRatio, containerWidth, rightMinPx)
+    // 右栏外层宽度占比：与内层对齐——下限抬起时外层若仍按比例收窄，overflow:hidden 会把抬起来的内层裁回去
+    const rightFraction = secondaryMaximized
+        ? 1
+        : containerWidth > 0 ? Math.min(1, rightInnerPx / containerWidth) : 1 - splitRatio
+    // 左栏内层自然宽度：展开（含最大化）时占余量，收起时占满
+    const leftInnerPx = expanded ? Math.max(0, containerWidth - rightInnerPx) : containerWidth
     const showDivider = expanded && !secondaryMaximized
 
     return (
@@ -319,7 +324,7 @@ export function SplitLayout({
  * 左栏大子树全量重渲（审查清单 61 行实测非常卡）；收在本组件后拖拽只重渲分栏壳，
  * left/right 元素引用不变，React 对子树直接 bail out。
  */
-export const RatioSplitLayout = memo(function RatioSplitLayout({ expanded, onExpandedChange, left, right, defaultSplitRatio = 0.8 }: {
+export const RatioSplitLayout = memo(function RatioSplitLayout({ expanded, onExpandedChange, left, right, defaultSplitRatio = 0.8, rightMinPx = 200 }: {
     /** 右栏是否展开 */
     expanded: boolean
     /** 展开/收起变更（拖到右缘自动收起也走这里） */
@@ -330,6 +335,8 @@ export const RatioSplitLayout = memo(function RatioSplitLayout({ expanded, onExp
     right: ReactNode
     /** 默认左侧占比（右栏约占 1-该值），拖拽后沿用最近值 */
     defaultSplitRatio?: number
+    /** 右栏像素宽度下限：窄容器里比例坍缩时抬住（审查/文件树列需容纳筛选框），默认 200 */
+    rightMinPx?: number
 }) {
     const [splitRatio, setSplitRatio] = useState(defaultSplitRatio)
     return (
@@ -343,6 +350,7 @@ export const RatioSplitLayout = memo(function RatioSplitLayout({ expanded, onExp
                 onExpandedChange={onExpandedChange}
                 onSplitRatioChange={setSplitRatio}
                 defaultSplitRatio={defaultSplitRatio}
+                rightMinPx={rightMinPx}
             />
         </div>
     )

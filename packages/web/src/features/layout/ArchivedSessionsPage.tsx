@@ -16,8 +16,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { App, Input, Listy, Modal, Spin, theme as antTheme } from 'antd'
-import { Archive as ArchiveIcon, ArchiveRestore, Clock, Folder, MoreHorizontal, Search, Trash2 } from 'lucide-react'
+import { App, Listy, Modal, Spin, theme as antTheme } from 'antd'
+import { Input } from '@/ui/base/interactive/input/Input'
+import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
+import { Archive as ArchiveIcon, ArchiveRestore, Clock, Folder, MoreHorizontal, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ARCHIVED_WORKSPACE_NONE } from '@mobi/shared'
 import styled from '@emotion/styled'
@@ -91,7 +93,7 @@ const ToolBar = styled.div`
     flex-shrink: 0;
 `
 
-const SearchSlot = styled(Input)`
+const SearchSlot = styled(SearchField)`
     flex: 1;
     min-width: 0;
 `
@@ -662,9 +664,9 @@ export function ArchivedSessionsPage() {
                     <ToolBar>
                         <SearchSlot
                             disabled
+                            value=""
+                            onValueChange={() => {}}
                             placeholder={t('archived.searchPlaceholder')}
-                            prefix={<Search size={13} style={{ color: token.colorTextQuaternary }} />}
-                            allowClear={false}
                         />
                         <SkeletonBar $token={token} style={{ width: 160, height: 36, borderRadius: 'var(--radius-control-sm)' }} />
                     </ToolBar>
@@ -686,9 +688,9 @@ export function ArchivedSessionsPage() {
         <ToolBar>
             <SearchSlot
                 disabled
+                value=""
+                onValueChange={() => {}}
                 placeholder={t('archived.searchPlaceholder')}
-                prefix={<Search size={13} style={{ color: token.colorTextQuaternary }} />}
-                allowClear={false}
             />
             <WorkspaceFilter
                 value={workspaceFilter}

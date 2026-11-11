@@ -15,7 +15,8 @@
  */
 
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
-import { Alert, App, Form, Input, Modal, Radio } from 'antd'
+import { Alert, App, Form, Modal, Radio } from 'antd'
+import { Input } from '@/ui/base/interactive/input/Input'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { Combobox } from '@/ui/base/interactive/combobox/Combobox'
 import { useTranslation } from 'react-i18next'

@@ -42,3 +42,14 @@ export function computeSplitRatio(
 export function shouldCollapseOnDrag(splitRatio: number): boolean {
     return 1 - splitRatio < COLLAPSE_THRESHOLD
 }
+
+/**
+ * 按左占比计算右栏像素宽度，并施加最小宽度下限。
+ * 下限兜住窄容器的比例坍缩：601px 容器 × 20% = 120px 时树列筛选框被压到不可用
+ * （2026-11-11 实测），下限抬住后左栏按 containerWidth - 右栏宽相应收缩。
+ * containerWidth <= 0（首帧未测量）时返回下限本身。
+ */
+export function rightPanePx(splitRatio: number, containerWidth: number, rightMinPx: number): number {
+    if (containerWidth <= 0) return rightMinPx
+    return Math.max(rightMinPx, (1 - splitRatio) * containerWidth)
+}

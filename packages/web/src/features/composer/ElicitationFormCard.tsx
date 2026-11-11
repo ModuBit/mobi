@@ -15,7 +15,8 @@
  */
 
 import { useMemo } from 'react'
-import { Form, Input, InputNumber, Switch, theme as antTheme } from 'antd'
+import { Form, InputNumber, Switch, theme as antTheme } from 'antd'
+import { Input } from '@/ui/base/interactive/input/Input'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { useTranslation } from 'react-i18next'
 import type { PermissionAnswers, SDKUIHints } from '@mobi/shared'

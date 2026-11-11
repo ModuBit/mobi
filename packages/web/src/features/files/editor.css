@@ -57,15 +57,14 @@
     box-shadow: inset 1px 0 0 var(--ant-color-border-secondary, rgba(0, 0, 0, 0.08));
 }
 
-/* 链接 bubble 输入框：borderless + 强制 focus 无光晕（DESIGN：无 focus 光晕） */
-.md-link-input.ant-input-affix-wrapper,
-.md-link-input.ant-input {
-    background: var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04));
-    border-radius: var(--ant-border-radius, 8px);
+/* 链接/图片 bubble 输入框：bubble 自带填充底（外壳层），input 本体去边框去底色
+   （uiarc 自管件，无 antd affix wrapper——选择器直指 .md-link-input 根下的 input） */
+.md-link-input input {
+    border: 0;
+    background: transparent;
 }
-.md-link-input.ant-input-affix-wrapper-focused,
-.md-link-input.ant-input:focus {
-    box-shadow: none !important;
+.md-link-input input:focus {
+    border: 0;
 }
 
 /* ============ Tiptap ProseMirror（markdown-editor-view）============ */

@@ -228,7 +228,7 @@ describe('FileTreeView', () => {
         renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
         await screen.findByText('a.ts')
 
-        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'foo' } })
+        fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'foo' } })
         // src 虚拟目录 + foo.ts 叶子，且 src 默认展开（叶子直接可见）
         await waitFor(() => expect(screen.getByText('src')).toBeInTheDocument())
         expect(screen.getByText('foo.ts')).toBeInTheDocument()
@@ -246,7 +246,7 @@ describe('FileTreeView', () => {
         renderWithClient(<FileTreeView sessionId="s1" onOpenFile={onOpenFile} />)
         await screen.findByText('a.ts')
 
-        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'foo' } })
+        fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'foo' } })
         const leaf = await screen.findByText('foo.ts')
         fireEvent.click(leaf)
         expect(onOpenFile).toHaveBeenCalledWith('src/foo.ts', 'foo.ts')
@@ -286,7 +286,7 @@ describe('FileTreeView', () => {
         renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
         await screen.findByText('a.ts')
 
-        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'foo' } })
+        fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'foo' } })
         await waitFor(() => expect(searchFiles).toHaveBeenCalledTimes(1))
         const listBefore = list.mock.calls.length
 
@@ -359,7 +359,7 @@ describe('FileTreeView', () => {
         renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
         await screen.findByText('a.ts')
 
-        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'foo' } })
+        fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'foo' } })
 
         await waitFor(() => expect(screen.getByText('files.searchFailed')).toBeInTheDocument())
         expect(screen.queryByText('files.noResults')).not.toBeInTheDocument()
@@ -373,7 +373,7 @@ describe('FileTreeView', () => {
         renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
         await screen.findByText('a.ts')
 
-        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'foo' } })
+        fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'foo' } })
 
         await waitFor(() => expect(screen.getByText('files.noResults')).toBeInTheDocument())
         expect(screen.queryByText('files.searchFailed')).not.toBeInTheDocument()
@@ -391,7 +391,7 @@ describe('FileTreeView', () => {
         renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
         await screen.findByText('a.ts')
 
-        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'foo' } })
+        fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'foo' } })
         await screen.findByText('foo.ts')
 
         shouldFail = true
@@ -487,7 +487,7 @@ describe('FileTreeView', () => {
         expect(screen.getByText('files.treeTruncated')).toBeInTheDocument()
 
         // 切搜索:foo.ts 命中 src/foo.ts,buildPathTree 造虚拟目录 src
-        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'foo' } })
+        fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'foo' } })
         await screen.findByText('foo.ts')
         // 关键:搜索结果里 src 虚拟目录不应再带树模式的截断提示
         expect(screen.queryByText('files.treeTruncated')).not.toBeInTheDocument()
@@ -593,7 +593,7 @@ describe('FileTreeView', () => {
         const { container } = renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
         await screen.findByText('a.ts')
 
-        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'foo' } })
+        fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'foo' } })
         const leaf = await screen.findByText('foo.ts')
         expect(leaf).toBeInTheDocument()
 

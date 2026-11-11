@@ -68,7 +68,10 @@ export const PasswordField = forwardRef<HTMLInputElement, PasswordFieldProps>(fu
     {label && <label htmlFor={controlId}>{label}</label>}
     <div className={styles.shell}>
       <input {...props} ref={ref} id={controlId} type={visible ? "text" : "password"} data-reveal={toggled ? (visible ? "shown" : "hidden") : undefined} aria-invalid={error ? true : props["aria-invalid"]} aria-describedby={describedBy} className={styles.input}
-        onKeyDown={onPressEnter ? (event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) onPressEnter(); } : props.onKeyDown} />
+        onKeyDown={onPressEnter ? (event) => {
+          if (event.key === "Enter" && !event.nativeEvent.isComposing) onPressEnter();
+          props.onKeyDown?.(event);
+        } : props.onKeyDown} />
       <button type="button" onClick={() => { setVisible(current => !current); setToggled(true); }} aria-label={visible ? messages.hidePassword : messages.showPassword} aria-pressed={visible}><EyeMorph slashed={visible} /></button>
     </div>
     <FieldMessage id={hintId} text={description} className={styles.hint} />

@@ -21,11 +21,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import styled from '@emotion/styled'
-import { Empty, Flex, Input, Tree } from 'antd'
+import { Empty, Flex, Tree } from 'antd'
+import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
 import type { TreeProps } from 'antd'
 import type { DataNode } from 'antd/es/tree'
 import { useTranslation } from 'react-i18next'
-import { Search, FolderClosed, FolderOpen } from 'lucide-react'
+import { FolderClosed, FolderOpen } from 'lucide-react'
 import type { TurnDiffFileKind } from '@mobi/shared'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { basename } from '@/core/utils/path'
@@ -156,12 +157,9 @@ export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
             className="review-tree"
             style={{ height: '100%', minHeight: 0, padding: 8 }}
         >
-            <Input
-                size="small"
-                allowClear
-                prefix={<Search size={13} />}
+            <SearchField
                 value={filter}
-                onChange={(e) => setFilter(e.target.value)}
+                onValueChange={setFilter}
                 placeholder={t('review.filterPlaceholder')}
                 data-testid="review-tree-filter"
             />
