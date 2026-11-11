@@ -243,12 +243,17 @@ function toPersisted(segments: ComposerSegments & Pick<PersistedSegments, 'edito
     }
 }
 
-/** 分段空判定（删除草稿的条件）：text(trim 后) 与三个非文本桶全空 */
+/**
+ * 分段空判定（删除草稿的条件）：text(trim 后) 与三个非文本桶全空，且无结构化快照。
+ * 约定：调用方只在「有内容」时提供 editorState（空态传 undefined）——所以它的存在
+ * 即表示结构化内容非空（如仅含引用 chip、无纯文本的草稿靠它存活）。
+ */
 function isPersistedEmpty(persisted: PersistedSegments): boolean {
     return persisted.text.trim().length === 0
         && persisted.files.length === 0
         && persisted.images.length === 0
         && persisted.quotes.length === 0
+        && !persisted.editorState
 }
 
 /**

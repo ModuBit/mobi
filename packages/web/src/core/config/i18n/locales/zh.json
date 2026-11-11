@@ -1046,6 +1046,7 @@
     "quoteAdd": "添加到对话",
     "quoteTooLong": "选区过长，无法引用",
     "quoteLimitReached": "引用数量已达上限",
+    "quoteLocate": "定位到原消息",
     "outputStyle": "Output Style",
     "outputStyleFollowSetting": "跟随 CC 设置",
     "outputStyleFollowSettingDesc": "不指定，使用 Claude Code 设置中的默认 style",

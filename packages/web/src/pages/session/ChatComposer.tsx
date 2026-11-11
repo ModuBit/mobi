@@ -29,15 +29,14 @@ import {
     type ComposerQuoteRef,
     type ComposerSegments,
     type PendingQuoteRef,
-    withQuoteUid,
-    withQuoteUids,
 } from '@/domain/chat/composerSegments'
 import { bucketCompletedAttachments, fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
 import { fileRefContext } from '@/core/utils/fileUrl'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { AttachPanel } from '@/features/composer/AttachPanel'
-import { QuoteChipBar } from '@/features/composer/QuoteChipBar'
-import { COMPOSER_CARD_HEADER_INSET, composerCard } from '@/features/composer/composerSurface.styles'
+import { ChatInputQuoteNode } from '@/ui/base/interactive/chat-input'
+import { collectQuotesFromDoc, addQuoteToEditor, updateQuoteCommentInEditor, clearQuotesInEditor, insertQuotesAtEnd } from '@/features/composer/quoteDoc'
+import { composerCard } from '@/features/composer/composerSurface.styles'
 import { ComposerInfoPanel } from '@/pages/session/ComposerInfoPanel'
 import { resolveCopyShortcut } from '@/features/composer/copyShortcut'
 import { ModelSettingsSelect } from '@/features/composer/ModelSettingsSelect'
@@ -280,15 +279,31 @@ export function ChatComposer(props: ChatComposerProps) {
     const wrapperRef = useRef<HTMLDivElement>(null)
     const pendingCursorRef = useRef<number | null>(null)
 
-    // 编辑器就绪对账：immediatelyRender:false 异步挂载，就绪前镜像可能已恢复草稿/跨页
-    // 草稿——就绪后把镜像一次性写入编辑器（就绪后才发生的恢复走各写入点的双写，不经此）
-    const handleShellReady = useCallback(() => {
-        if (textRef.current) shellRef.current?.setText(textRef.current)
+    // 待发送引用：source of truth = 编辑器文档（chip 节点即数据），quoteCount 只是镜像
+    // （canSend 派生 / 空判定）；增删改走 quoteDoc 的 doc 级操作。上限 QUOTE_MAX_COUNT
+    // 是引用入口的前置契约（addQuoteToEditor 拦截），serialize 侧 slice 为底线
+    const [quoteCount, setQuoteCount] = useState(0)
+    const quoteCountRef = useRef(0)
+    quoteCountRef.current = quoteCount
+
+    // 引用注入编辑器（未就绪排队）：草稿恢复 / 旧格式 quotes 桶等程序通道共用——
+    // immediatelyRender:false 下恢复可能早于编辑器就绪，排队到 onReady 一并插入
+    const pendingQuotesRef = useRef<PendingQuoteRef[] | null>(null)
+    const insertPendingQuotesIfReady = useCallback(() => {
+        const editor = shellRef.current?.getEditor()
+        const pending = pendingQuotesRef.current
+        if (!editor || !pending) return false
+        pendingQuotesRef.current = null
+        insertQuotesAtEnd(editor, pending)
+        return true
     }, [])
 
-    // 待发送引用：极简 chip 列表展示。约束：持有条数恒 ≤ QUOTE_MAX_COUNT（3）——
-    // 上限为引用入口时的前置契约：置入超出时应替换最早一条；serialize 侧 slice(0, QUOTE_MAX_COUNT) 为底线
-    const [quotes, setQuotes] = useState<ComposerQuoteRef[]>([])
+    // 编辑器就绪对账：就绪前镜像可能已恢复草稿/跨页草稿、引用已排队——就绪后一次性
+    // 写入编辑器（就绪后才发生的恢复走各写入点的双写，不经此）
+    const handleShellReady = useCallback(() => {
+        if (textRef.current) shellRef.current?.setText(textRef.current)
+        insertPendingQuotesIfReady()
+    }, [insertPendingQuotesIfReady])
 
     // 设置草稿并聚焦：suggestion 采纳共用此实现（镜像 + 编辑器双写）
     const setDraft = useCallback((draftText: string) => {
@@ -357,45 +372,27 @@ export function ChatComposer(props: ChatComposerProps) {
 
     // 气泡重编辑入口：完成后产物同样落回 composer 附件（历史不可变）。
     // getQuoteCount/addQuote/updateQuoteComment：消息列表选区引用动作的手柄通道
-    //（引用是即时动作，「添加到对话」即落条目，后续评论只是补充，无需信箱防重放）
-    // 同步判定走 quotesRef（事件内 setState updater 到 render 才执行，返回值取不到）：
-    // 读 ref 判重/算 uid 后同步推进 ref 再 setQuotes，连续调用不丢序
+    //（引用是即时动作，「添加到对话」即落条目，后续评论只是补充，无需信箱防重放）。
+    // source of truth = 编辑器文档：增删改直接操作 doc（quoteDoc），quoteCount 镜像随 onUpdate 更新
     const addQuote = useCallback((quote: PendingQuoteRef): ComposerQuoteRef | null => {
-        // 同一片段（同消息同文本）去重：返回已有条目（评论浮层续编辑）。
-        // 同消息的**不同**片段允许多条并存（QUOTE_MAX_COUNT 的本意）；
-        // uid 条目级身份在置入时生成（chip key/删除/评论编辑都以 uid 寻址）
-        const existing = quotesRef.current.find(q => q.messageId === quote.messageId && q.excerpt === quote.excerpt)
-        if (existing) return existing
-        if (quotesRef.current.length >= QUOTE_MAX_COUNT) return null
-        const entry = withQuoteUid(quote)
-        quotesRef.current = [...quotesRef.current, entry]
-        setQuotes(quotesRef.current)
-        return entry
+        const editor = shellRef.current?.getEditor()
+        if (!editor) return null
+        return addQuoteToEditor(editor, quote)
     }, [])
-    // getQuoteCount 经 ref 读最新条数：deps 不含 quotes，引用增删不再重建整个 handle
-    //（含 openSketch/openBubbleSketch 闭包的对象身份稳定）
-    const quotesRef = useRef(quotes)
-    quotesRef.current = quotes
-    // 评论补充入口（「添加到对话」即落条目，评论浮层保存/清空都走这里）
+    // 评论补充入口（「添加到对话」即落条目，评论浮层保存/清空都走这里；undefined = 清空）
     const updateQuoteComment = useCallback((uid: string, comment: string | undefined) => {
-        setQuotes(prev => prev.map(q => {
-            if (q.uid !== uid) return q
-            if (comment !== undefined) return { ...q, comment }
-            // 清评论 = 剔除 comment 字段本身（wire 契约：无评论不落键）；rest 解构避免
-            // 手写 PendingQuoteRef 字段白名单——新增字段时这里不会悄悄剥掉
-            const { comment: _dropped, ...base } = q
-            return base
-        }))
+        const editor = shellRef.current?.getEditor()
+        if (editor) updateQuoteCommentInEditor(editor, uid, comment)
     }, [])
-    // 一键清空全部引用（引用胶囊旁 ×）：ref 同步推进，与 addQuote 的同步判定约定一致
+    // 一键清空全部引用（程序式通道；inline 形态下用户逐个 × 删除即可）
     const clearQuotes = useCallback(() => {
-        quotesRef.current = []
-        setQuotes([])
+        const editor = shellRef.current?.getEditor()
+        if (editor) clearQuotesInEditor(editor)
     }, [])
     useImperativeHandle(ref, () => ({
         openSketch: handleOpenSketch,
         openBubbleSketch: sketchSession.openFromBubble,
-        getQuoteCount: () => quotesRef.current.length,
+        getQuoteCount: () => quoteCountRef.current,
         addQuote,
         updateQuoteComment,
         clearQuotes,
@@ -412,15 +409,19 @@ export function ChatComposer(props: ChatComposerProps) {
 
     // 结构化回填（排队消息编辑 / rewind 收尾共用）：text + 附件双桶（占位附件还原，
     // 不再上传，MIME 由扩展名兜底重 derive）+ 引用 chip 一并恢复并聚焦。
-    // setter 均为稳定引用，回调恒稳定——下游 nonce effect 无稳定性顾虑
+    // wire 回填数据无 uid——chip 重建走 insertQuotesAtEnd（内部 withQuoteUid 生成）
     const applySegments = useCallback((segments: ComposerSegments) => {
         const refs = [...segments.files, ...segments.images]
         setText(segments.text)
         shellRef.current?.setText(segments.text)
         setAttachments(refs.map(fileRefToPlaceholderAttachment))
-        setQuotes(withQuoteUids(segments.quotes.slice(0, QUOTE_MAX_COUNT)))
+        const quotesToRestore = segments.quotes.slice(0, QUOTE_MAX_COUNT)
+        if (quotesToRestore.length > 0) {
+            pendingQuotesRef.current = quotesToRestore
+            insertPendingQuotesIfReady()
+        }
         shellRef.current?.focus()
-    }, [setAttachments])
+    }, [setAttachments, insertPendingQuotesIfReady])
 
     // 回填应用门控：nonce 单调递增触发一次；空分段静默跳过
     // （数据异常无从还原时不清空用户当前草稿）
@@ -433,24 +434,32 @@ export function ChatComposer(props: ChatComposerProps) {
     }, [draftNonce, applySegments])
 
     // per-session 草稿生命周期：挂载恢复、切走保存（依赖上面的 text/attachments/setters）
-    // 草稿读回的 quotes 无 uid（持久化不存条目身份）→ 经包装统一补；保存侧 ComposerQuoteRef
-    // 结构兼容 PendingQuoteRef，直传即可
-    const setQuotesWithUids = useCallback((qs: PendingQuoteRef[]) => setQuotes(withQuoteUids(qs)), [])
+    // 草稿读回的 quotes 桶（旧格式，无 editorState）无 uid（持久化不存条目身份）→
+    // 逐条插入编辑器末尾（withQuoteUid 生成）；新格式草稿由 editorState 整体恢复
+    // （useComposerDraft 内部：editorState 存在时跳过 quotes 桶，避免 chip 双份）
+    const restoreDraftQuotes = useCallback((qs: PendingQuoteRef[]) => {
+        pendingQuotesRef.current = qs
+        insertPendingQuotesIfReady()
+    }, [insertPendingQuotesIfReady])
     // 草稿恢复双写：镜像之外写回编辑器（编辑器未就绪时由 onReady 对账兜底）
     const setTextWithEditor = useCallback((v: string) => {
         setText(v)
         shellRef.current?.setText(v)
     }, [])
-    // 草稿保存时的结构化快照（含未来票 05 的 chip 节点）；编辑器未就绪返回 null 走 text 单路
-    const getEditorState = useCallback(() => shellRef.current?.getEditorStateJSON() ?? null, [])
+    // 草稿保存时的结构化快照（含引用 chip 节点）：空态返回 null——isPersistedEmpty 以
+    // 「editorState 存在」判定结构化内容非空（chip-only 草稿靠它存活，纯空态不落空文档）
+    const getEditorState = useCallback(() => {
+        if (!textRef.current && quoteCountRef.current === 0) return null
+        return shellRef.current?.getEditorStateJSON() ?? null
+    }, [])
     // 结构化恢复：编辑器程序化写入（解析失败静默 no-op，此前 setText 的文本兜底已生效）
     const applyEditorState = useCallback((json: string) => {
         shellRef.current?.setEditorStateJSON(json)
     }, [])
     useComposerDraft(
         sessionId,
-        { text, attachments, quotes, getEditorState },
-        { setText: setTextWithEditor, setAttachments, setQuotes: setQuotesWithUids, applyEditorState },
+        { text, attachments, quotes: [], getEditorState },
+        { setText: setTextWithEditor, setAttachments, setQuotes: restoreDraftQuotes, applyEditorState },
     )
 
     // SDK 元数据（模型列表等）
@@ -499,7 +508,7 @@ export function ChatComposer(props: ChatComposerProps) {
     const trimmed = text.trim()
     const hasText = trimmed.length > 0
     const hasAttachments = attachments.length > 0
-    const hasQuotes = quotes.length > 0
+    const hasQuotes = quoteCount > 0
     // 有 pending 权限请求时禁用发送
     const hasPendingPermission = Boolean(agentState?.requests && Object.keys(agentState.requests).length > 0)
     // 注意：running 时不禁用发送——运行中发送的消息会进入排队悬浮条（queued），
@@ -659,32 +668,27 @@ export function ChatComposer(props: ChatComposerProps) {
             return
         }
 
-        // 组装完整分段直传——不再拼接 @path 文本：附件以 document/image block 结构化发送，
-        // 序列化为 wire blocks 由 useSendMessage 内统一完成
+        // 组装完整分段直传——引用从编辑器文档收集（chip 节点即数据），序列化为
+        // wire blocks 由 useSendMessage 内统一完成
+        const editor = shellRef.current?.getEditor()
         const segments: ComposerSegments = {
             text: content,
             files: segmentBuckets.files,
             images: segmentBuckets.images,
-            quotes,
+            quotes: editor ? collectQuotesFromDoc(editor.state.doc) : [],
         }
         if (isSegmentEmpty(segments)) return
 
         onSend(segments)
-        // 清空走编辑器程序化通道（onUpdate programmatic 回写镜像归零）
+        // 清空走编辑器程序化通道（onUpdate programmatic 回写镜像/引用计数归零）
         shellRef.current?.clear()
         resetAttachments()
-        setQuotes([])
         // 发新消息即消失: 清空当前建议(生命周期"每轮结束显示, 发送后消失")
         usePromptSuggestionStore.getState().clearSession(sessionId)
         // PC 发送后保持输入焦点（textarea 语义等价：清空后光标仍在原位）；触屏刻意不恢复
         //（虚拟键盘不收起，现状语义平移）
         if (hasFinePointer) shellRef.current?.focus()
-    }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments, segmentBuckets, quotes, t, resetAttachments, sessionId, hasFinePointer])
-
-    // 引用动作：删除 / 评论编辑（excerpt 只读——引用忠实于源消息，评论才是用户的话）
-    const removeQuote = useCallback((uid: string) => {
-        setQuotes(prev => prev.filter(q => q.uid !== uid))
-    }, [])
+    }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments, segmentBuckets, t, resetAttachments, sessionId, hasFinePointer])
 
     const showLocalModeCover = active && mode === 'local'
     // 参数条按钮闸：控件禁用 + 本地模式遮罩（按钮不持有焦点，挂 DOM disabled 无失焦风险，
@@ -699,6 +703,14 @@ export function ChatComposer(props: ChatComposerProps) {
         handlePaste(e as unknown as React.ClipboardEvent)
         return e.defaultPrevented
     }, [handlePaste])
+
+    // 引用 chip 节点（装配注入 ChatInput）：onLocate 装配时绑定，节点 options 是
+    // editor 创建期快照——onQuoteLocate 属稳定回调（父组件传入），变化场景随重挂生效
+    const quoteNodes = useMemo(
+        () => [ChatInputQuoteNode.configure({ onLocate: onQuoteLocate ?? locateQuotedMessage })],
+        // eslint 未启用 exhaustive-deps 规则，依赖显式列出即可
+        [onQuoteLocate],
+    )
 
     // 下一轮建议(SDK prompt_suggestion, 瞬时): 有值则渲染 chip, 无则省略
     const suggestion = usePromptSuggestion(sessionId)
@@ -723,17 +735,6 @@ export function ChatComposer(props: ChatComposerProps) {
                 }}
                 onDismiss={() => usePromptSuggestionStore.getState().clearSession(sessionId)}
             />
-        ),
-        hasQuotes && (
-            <div key="quotes" style={{ padding: COMPOSER_CARD_HEADER_INSET }}>
-                <QuoteChipBar
-                    quotes={quotes}
-                    onRemove={removeQuote}
-                    onUpdateComment={updateQuoteComment}
-                    onClearAll={clearQuotes}
-                    onLocate={onQuoteLocate ?? locateQuotedMessage}
-                />
-            </div>
         ),
         hasAttachments && (
             <AttachmentList
@@ -810,11 +811,16 @@ export function ChatComposer(props: ChatComposerProps) {
                     placeholder={isBashMode ? t('composer.bashPlaceholder') : t(`composer.placeholders.${placeholderIdx.current}`)}
                     submitKey={hasFinePointer ? 'enter' : 'shiftEnter'}
                     disabled={resolveSenderDisabled({ inactiveCover, localModeCover: showLocalModeCover })}
-                    onUpdate={bridge.onTextInput}
+                    onUpdate={(ctx) => {
+                        // quoteCount 镜像（canSend/空判定派生）+ 桥接（归一/面板检测）
+                        setQuoteCount(ctx.quoteCount)
+                        bridge.onTextInput(ctx)
+                    }}
                     onKeyDown={handleKeyDown}
                     onPaste={handlePasteBridge}
                     onSubmit={() => handleSubmit(textRef.current)}
                     onReady={handleShellReady}
+                    extraNodes={quoteNodes}
                     minRows={1}
                     maxRows={5}
                     aria-label={t('composer.inputLabel', '消息输入框')}

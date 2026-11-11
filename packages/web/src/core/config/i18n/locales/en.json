@@ -1055,6 +1055,7 @@
     "quoteAdd": "Add to chat",
     "quoteTooLong": "Selection too long to quote",
     "quoteLimitReached": "Quote limit reached",
+    "quoteLocate": "Locate in chat",
     "outputStyle": "Output Style",
     "outputStyleFollowSetting": "Follow CC settings",
     "outputStyleFollowSettingDesc": "Use the default output style from Claude Code settings",

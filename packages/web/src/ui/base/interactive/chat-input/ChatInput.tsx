@@ -19,7 +19,8 @@ import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { TextSelection } from '@tiptap/pm/state'
-import type { JSONContent } from '@tiptap/core'
+import type { Node as PMNode } from '@tiptap/pm/model'
+import { getTextBetween, getTextSerializersFromSchema, type AnyExtension, type JSONContent } from '@tiptap/core'
 import { isComposingEvent } from '@/core/lib/inputEnterKeys'
 import './chat-input.css'
 
@@ -28,6 +29,18 @@ const LINE_HEIGHT_PX = 22
 
 /** 程序化写入 meta 标记：区分 setText/setEditorStateJSON 等程序写入与用户输入（防 onUpdate 回环误消费） */
 const PROGRAMMATIC_META = 'chat-input-programmatic'
+
+/** doc 中装配节点的实例数（quoteCount 派生源；未装节点恒 0） */
+function countExtraNodes(doc: PMNode, extraNodes: AnyExtension[] | undefined): number {
+    if (!extraNodes?.length) return 0
+    const names = new Set(extraNodes.map((n) => n.name))
+    let count = 0
+    doc.descendants((node) => {
+        if (names.has(node.type.name)) count++
+        return true
+    })
+    return count
+}
 
 export interface ChatInputProps {
     placeholder?: string
@@ -46,11 +59,13 @@ export interface ChatInputProps {
     /** 内容变化；programmatic=true 表示来自 setText/setEditorStateJSON 等程序化写入；
      *  cursorOffset = 光标前的纯文本长度（'\n' 分段计 1，与 getText 同语义）——
      *  mention/slash 的 (text, cursorPos) 模型对接用 */
-    onUpdate?: (ctx: { text: string; programmatic: boolean; cursorOffset: number }) => void
+    onUpdate?: (ctx: { text: string; programmatic: boolean; cursorOffset: number; quoteCount: number }) => void
     onFocus?: () => void
     onBlur?: () => void
     /** 编辑器实例就绪（immediatelyRender:false 异步挂载完成）后回调一次 */
     onReady?: () => void
+    /** 内嵌自定义节点（装配注入，如引用 chip 节点）；默认不装——ui 层不感知业务节点类型 */
+    extraNodes?: AnyExtension[]
     /** 粘贴事件（消费方分流文件粘贴）；返回 true 阻止默认 */
     onPaste?: (e: ClipboardEvent) => boolean | void
     className?: string
@@ -76,6 +91,8 @@ export interface ChatInputHandle {
     insertAtCursor(text: string): void
     /** 把光标移到纯文本 offset 处（与 onUpdate ctx.cursorOffset 同语义；越界/空文档置尾） */
     setCursorOffset(offset: number): void
+    /** 编辑器实例逃生舱（业务方做节点级操作：引用 chip 的增删改遍历等）；未就绪返回 null */
+    getEditor(): Editor | null
     clear(): void
 }
 
@@ -101,6 +118,7 @@ export function ChatInput({
     onBlur,
     onPaste,
     onReady,
+    extraNodes,
     className,
     style,
     'aria-label': ariaLabel,
@@ -136,6 +154,8 @@ export function ChatInput({
             Placeholder.configure({
                 placeholder: () => propsRef.current.placeholder ?? '',
             }),
+            // 装配注入的业务节点（引用 chip 等）：ui 层零业务，节点实现由消费方提供
+            ...(extraNodes ?? []),
         ],
         editorProps: {
             attributes: {
@@ -156,11 +176,18 @@ export function ChatInput({
             },
         },
         onUpdate: ({ editor, transaction }) => {
-            // 光标 offset 语义与 setCursorOffset 对称：光标前的文本长度（'\n' 计 1）
+            // offset/降级文本同源：getTextBetween 吃 schema 的 toText 序列化器
+            // （节点 renderText 落 schema.toText）——chip 的「excerpt」在 getText 与
+            // cursorOffset 两侧一致，面板检测的 cursorPos 不错位
+            const serializers = getTextSerializersFromSchema(editor.schema)
             propsRef.current.onUpdate?.({
                 text: editor.getText({ blockSeparator: '\n' }),
                 programmatic: transaction.getMeta(PROGRAMMATIC_META) === true,
-                cursorOffset: editor.state.doc.textBetween(0, editor.state.selection.from, '\n', '\n').length,
+                cursorOffset: getTextBetween(editor.state.doc, { from: 0, to: editor.state.selection.from }, {
+                    blockSeparator: '\n',
+                    textSerializers: serializers,
+                }).length,
+                quoteCount: countExtraNodes(editor.state.doc, extraNodes),
             })
         },
         onCreate: () => { onReadyRef.current?.() },
@@ -270,17 +297,22 @@ export function ChatInput({
         },
         /**
          * 光标定位到纯文本 offset（与 onUpdate ctx.cursorOffset 对称的定义：
-         * textBetween(0, pos, '\n', '\n').length === offset）。doc 顺序扫描文本节点，
+         * getTextBetween(0, pos) 长度 === offset，降级文本同源）。doc 顺序扫描文本节点，
          * 找到累计长度首次覆盖 offset 的节点内部位置；无文本节点（空文档/越界）置尾。
          */
         setCursorOffset: (offset: number) => {
             const ed = editorRef.current
             if (!ed) return
             const doc = ed.state.doc
+            const serializers = getTextSerializersFromSchema(ed.schema)
+            const textBefore = (pos: number) => getTextBetween(doc, { from: 0, to: pos }, {
+                blockSeparator: '\n',
+                textSerializers: serializers,
+            }).length
             let target: number | null = null
             doc.descendants((node, pos) => {
                 if (target != null || !node.isText) return true
-                const before = doc.textBetween(0, pos, '\n', '\n').length
+                const before = textBefore(pos)
                 if (before + node.nodeSize >= offset) {
                     target = pos + (offset - before)
                     return false
@@ -289,6 +321,7 @@ export function ChatInput({
             })
             ed.commands.setTextSelection(target ?? TextSelection.atEnd(doc).from)
         },
+        getEditor: () => editorRef.current,
         clear: () => setText(''),
     }), [])
 

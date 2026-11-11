@@ -20,7 +20,7 @@ import { isComposingEvent } from './inputEnterKeys'
 type InputLike = HTMLInputElement | HTMLTextAreaElement
 
 /**
- * 引用评论输入框的键位判定（QuoteCommentInput 浮层 / QuoteChipBar 列表卡编辑共用）：
+ * 引用评论输入框的键位判定（CommentField 弹层：引用 chip 评论 / 消息引用评论共用）：
  * **Enter 换行**（多行评论是合法输入）、**Ctrl/Cmd+Enter 提交**、Escape 取消。
  *
  * IME 规则单处承载（isComposingEvent，含 WebKit keyCode 229 时序兜底）：**组合中的

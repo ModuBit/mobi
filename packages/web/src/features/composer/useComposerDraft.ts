@@ -90,7 +90,10 @@ export function useComposerDraft(
                     setAttachments(refs.map(fileRefToPlaceholderAttachment))
                 }
                 if (draft.quotes.length > 0) {
-                    setQuotes(draft.quotes.slice(0, QUOTE_MAX_COUNT))
+                    // 结构化快照（含引用 chip 节点）存在时由它整体恢复，跳过 quotes 桶
+                    // （保存侧同源，两路都跑会让 chip 双份）；旧格式草稿（无 editorState）
+                    // 才走桶恢复，消费方实现为「逐条插入编辑器」
+                    if (!draft.editorState) setQuotes(draft.quotes.slice(0, QUOTE_MAX_COUNT))
                 }
             }
             draftReadyRef.current = true

@@ -15,9 +15,8 @@
  */
 
 /**
- * 引用列表卡的共享视觉词汇（/simplify 收口）：composer 引用胶囊（QuoteChipBar，可编辑）
- * 与气泡 header 引用 chip（UserBubbleHeader，只读）是同一「引用条目」规则的两个宿主——
- * 胶囊、列表卡、编号/excerpt/评论的排版在此单点定义，宿主只保留各自差异（编辑/删除动作、
+ * 引用列表卡的共享视觉词汇（/simplify 收口）：气泡 header 引用 chip（UserBubbleHeader，
+ * 只读）与条目列表卡的「引用条目」规则在此单点定义，宿主只保留各自差异（编辑/删除动作、
  * 条目截断策略），改视觉不再需要双处同步。
  */
 
