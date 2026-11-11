@@ -30,6 +30,16 @@ const LINE_HEIGHT_PX = 22
 /** 程序化写入 meta 标记：区分 setText/setEditorStateJSON 等程序写入与用户输入（防 onUpdate 回环误消费） */
 const PROGRAMMATIC_META = 'chat-input-programmatic'
 
+/**
+ * contenteditable 产物归一：行尾空格经浏览器落 DOM 时会被写成 NBSP，
+ * ProseMirror 解析后模型里同样是 NBSP。纯文本语义应与 textarea 一致（普通空格），
+ * 否则消费方的 `text.startsWith('! ')` 一类判定会在「行尾空格」时失效——
+ * 所有对外读数（getText / onUpdate.text / wire 正文）统一经此归一。
+ */
+export function normalizeEditorText(text: string): string {
+    return text.includes('\u00a0') ? text.replace(/\u00a0/g, ' ') : text
+}
+
 /** doc 中装配节点的实例数（quoteCount 派生源；未装节点恒 0） */
 function countExtraNodes(doc: PMNode, extraNodes: AnyExtension[] | undefined): number {
     if (!extraNodes?.length) return 0
@@ -183,7 +193,7 @@ export function ChatInput({
             // cursorOffset 两侧一致，面板检测的 cursorPos 不错位
             const serializers = getTextSerializersFromSchema(editor.schema)
             propsRef.current.onUpdate?.({
-                text: editor.getText({ blockSeparator: '\n' }),
+                text: normalizeEditorText(editor.getText({ blockSeparator: '\n' })),
                 programmatic: transaction.getMeta(PROGRAMMATIC_META) === true,
                 cursorOffset: getTextBetween(editor.state.doc, { from: 0, to: editor.state.selection.from }, {
                     blockSeparator: '\n',
@@ -291,7 +301,7 @@ export function ChatInput({
             editorRef.current?.view.dom.focus({ preventScroll: options?.preventScroll })
         },
         blur: () => editorRef.current?.commands.blur(),
-        getText: () => editorRef.current?.getText({ blockSeparator: '\n' }) ?? '',
+        getText: () => normalizeEditorText(editorRef.current?.getText({ blockSeparator: '\n' }) ?? ''),
         getEditorStateJSON: () => (editorRef.current ? JSON.stringify(editorRef.current.getJSON()) : ''),
         setText,
         setEditorStateJSON,

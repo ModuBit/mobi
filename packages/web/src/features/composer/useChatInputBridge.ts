@@ -67,6 +67,9 @@ export function useChatInputBridge({ shellRef, slash, mention, onTextChange, onP
         onUserEdit?.()
         // 镜像同步（含程序化写入——清空/回填/归一写回后镜像必须一致，canSend 等派生源）
         onTextChange?.(ctx.text)
+        // 前值必须在跟进之前取出：归一器对比的是「本次值 vs 上一值」，
+        // 先覆盖再比对会让两者恒等（顿号归一因此永不命中）
+        const previousText = prevTextRef.current
         // 镜像前值全量跟进（含程序化写入），保证归一判定始终基于最新前值
         prevTextRef.current = ctx.text
         // 程序化写入（归一写回/选中插回/清空/草稿恢复）：跳过归一与面板检测（见上）
@@ -75,7 +78,7 @@ export function useChatInputBridge({ shellRef, slash, mention, onTextChange, onP
         let value = ctx.text
         // 中文 IME 输入归一管线（归一器单一来源 composerInputNormalization，循环逐器过）
         for (const normalize of [normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash]) {
-            const normalized = normalize(value, prevTextRef.current)
+            const normalized = normalize(value, previousText)
             if (normalized !== null) {
                 onPendingCursor?.(ctx.cursorOffset)
                 value = normalized

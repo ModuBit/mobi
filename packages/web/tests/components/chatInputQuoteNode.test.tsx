@@ -191,6 +191,9 @@ describe('ChatInputQuoteNode（引用 chip 节点）', () => {
         editor.commands.splitBlock()
         editor.commands.insertContent('第二段')
         expect(extractWireText(editor.state.doc)).toBe(' 正文\n第二段')
+        // NBSP（行尾空格在模型里的形态）同样归一回普通空格
+        editor.commands.insertContent('\u00a0')
+        expect(extractWireText(editor.state.doc)).toBe(' 正文\n第二段 ')
     })
 
     it('草稿双路 round-trip：含 chip（含评论）的 EditorState JSON 恢复', async () => {

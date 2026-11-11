@@ -57,6 +57,16 @@ describe('ChatInput', () => {
         expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ text: 'ab', programmatic: false }))
     })
 
+    it('NBSP 归一：contenteditable 行尾空格（\\u00a0）在 getText / onUpdate 中落普通空格', async () => {
+        const onUpdate = vi.fn()
+        const { handle, ready } = setup({ onUpdate })
+        await ready()
+        // 真实浏览器里行尾空格在模型中是 NBSP（DOM 落盘产物）；消费方判定按普通空格语义
+        handle.current!.getEditor()!.commands.insertContent('!\u00a0')
+        expect(handle.current!.getText()).toBe('! ')
+        expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ text: '! ' }))
+    })
+
     it('setText → onUpdate({ text, programmatic: true }) 且 getText 同步', async () => {
         const onUpdate = vi.fn()
         const { handle, ready } = setup({ onUpdate })

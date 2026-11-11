@@ -47,6 +47,7 @@ interface UseComposerDraftSetters {
  *   （成功即覆盖前者结果，无需探测成败——顺序保证终态正确；解析失败由实现方 no-op）
  * - 卸载 / sessionId 切走：把当前分段经 bucketCompletedAttachments 投影后存入旧 sessionId 草稿；
  *   同时经 getEditorState 读出结构化快照（含未来 chip 节点），一并持久化
+ * - 刷新/关闭页面：React 清理不执行，保存还挂在 pagehide（及 visibilitychange-hidden）上
  * - draftReady 守卫：恢复完成前不保存，避免初始空态覆盖真实草稿
  *
  * @param sessionId 当前会话 id；undefined 时跳过读写
@@ -99,19 +100,33 @@ export function useComposerDraft(
             draftReadyRef.current = true
         })
 
+        // 恢复完成守卫置位后，保存动作可供三条路径复用：
+        // 卸载/切会话（React 清理）、页面卸载（pagehide——刷新/关闭时 React 清理不执行）、
+        // 页面隐藏（visibilitychange，移动端切后台可能不派发 pagehide）
+        const persist = () => {
+            if (!draftReadyRef.current) return
+            const editorStateJson = getEditorStateRef.current?.() ?? null
+            saveDraft(currentSessionId, {
+                text: textRef.current,
+                ...bucketCompletedAttachments(attachmentsRef.current),
+                quotes: quotesRef.current,
+                ...(editorStateJson ? { editorState: { v: 1 as const, json: editorStateJson } } : {}),
+            })
+        }
+        const onPageHide = () => persist()
+        const onVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') persist()
+        }
+        window.addEventListener('pagehide', onPageHide)
+        document.addEventListener('visibilitychange', onVisibilityChange)
+
         return () => {
             cancelAnimationFrame(frame)
+            window.removeEventListener('pagehide', onPageHide)
+            document.removeEventListener('visibilitychange', onVisibilityChange)
             // 仅在恢复已完成时保存，避免挂载即卸载的空态覆盖真实草稿。
             // 存储形态为完整分段：text + 完成附件双桶投影 + 引用 + 结构化快照（可选）
-            if (draftReadyRef.current) {
-                const editorStateJson = getEditorStateRef.current?.() ?? null
-                saveDraft(currentSessionId, {
-                    text: textRef.current,
-                    ...bucketCompletedAttachments(attachmentsRef.current),
-                    quotes: quotesRef.current,
-                    ...(editorStateJson ? { editorState: { v: 1 as const, json: editorStateJson } } : {}),
-                })
-            }
+            persist()
             draftReadyRef.current = false
         }
     }, [sessionId, setText, setAttachments, setQuotes, applyEditorState])

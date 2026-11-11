@@ -15,7 +15,7 @@
  */
 
 import type { Editor } from '@tiptap/core'
-import { CHAT_INPUT_QUOTE_NODE_NAME, type ChatInputQuoteAttrs } from '@/ui/base/interactive/chat-input'
+import { CHAT_INPUT_QUOTE_NODE_NAME, normalizeEditorText, type ChatInputQuoteAttrs } from '@/ui/base/interactive/chat-input'
 import {
     QUOTE_MAX_COUNT,
     withQuoteUid,
@@ -53,7 +53,8 @@ export function collectQuotesFromDoc(doc: Editor['state']['doc']): ComposerQuote
  * 混入会让消息正文重复一段 excerpt（气泡里可见、prompt 里也重复）。
  */
 export function extractWireText(doc: Editor['state']['doc']): string {
-    return doc.textBetween(0, doc.content.size, '\n')
+    // NBSP 归一同 getText（contenteditable 的行尾空格产物），wire 正文按纯文本语义落普通空格
+    return normalizeEditorText(doc.textBetween(0, doc.content.size, '\n'))
 }
 
 

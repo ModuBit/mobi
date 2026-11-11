@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, cleanup } from '@testing-library/react'
 
 // jsdom 不实现 requestAnimationFrame，stub 为 setTimeout 便于用 fake/real timer 控制
 beforeEach(() => {
@@ -25,6 +25,9 @@ beforeEach(() => {
 afterEach(() => {
     vi.unstubAllGlobals()
 })
+// vitest 未开 globals：渲染型测试需显式 cleanup，否则上一条用例的 hook 常驻，
+// pagehide 监听器跨用例累积（save 计数被幽灵监听抬高）
+afterEach(cleanup)
 
 import type { ComposerSegments } from '@/domain/chat/composerSegments'
 
@@ -164,6 +167,30 @@ describe('useComposerDraft', () => {
             images: [{ id: 'g1', filename: 'p.png', path: '/u/p.png', mimeType: 'image/png', size: 99 }],
             quotes: initialQuotes,
         })
+    })
+
+    it('pagehide 无需卸载即保存（刷新/关闭页面的真实路径）', async () => {
+        setup('typed-before-reload')
+        await act(async () => { await flushRaf() })
+        act(() => { window.dispatchEvent(new Event('pagehide')) })
+        expect(draftStore.save).toHaveBeenCalledTimes(1)
+        expect(draftStore.save.mock.calls[0]![0]).toBe('s1')
+        expect((draftStore.save.mock.calls[0]![1] as ComposerSegments).text).toBe('typed-before-reload')
+    })
+
+    it('draftReady 前 pagehide 不保存（不覆盖未恢复的真实草稿）', () => {
+        setup('x')
+        act(() => { window.dispatchEvent(new Event('pagehide')) })
+        expect(draftStore.save).not.toHaveBeenCalled()
+    })
+
+    it('卸载后 pagehide 不再触发保存（监听器已随 effect 清理）', async () => {
+        const { unmount } = setup('once')
+        await act(async () => { await flushRaf() })
+        act(() => unmount())
+        expect(draftStore.save).toHaveBeenCalledTimes(1)
+        act(() => { window.dispatchEvent(new Event('pagehide')) })
+        expect(draftStore.save).toHaveBeenCalledTimes(1)
     })
 
     it('uploading/error/无 path 的附件不进入保存的分段', async () => {

@@ -32,6 +32,10 @@
     padding: 0;
     margin: 0;
     font: inherit;
+    /* ProseMirror 官方要求：不设 pre-wrap 时空白按 HTML 规则折叠，
+       行尾空格会被浏览器改写成 NBSP 写进模型（消费方按纯文本语义判定会失准） */
+    white-space: pre-wrap;
+    word-wrap: break-word;
 }
 
 /* placeholder：官方扩展的 emptyEditorClass（默认 is-editor-empty），::before 悬浮展示不占布局 */
