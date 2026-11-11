@@ -65,8 +65,8 @@ function AnnotationTooltipContent({ quote }: { quote: UserQuoteBlock }) {
     )
 }
 
-/** 「引用 N」上标标记（默认色 tag + 引用 icon）：外层 inline-block 盒高锁死 1em 且基线
- *  对齐——tag 视觉溢出不参与行高，首行与其余行基线严格一致。参数由 MobiDirective
+/** 「引用 N」行内标记（默认色 tag + 引用 icon）：line-height:0 零行盒影响 + vertical-align
+ *  middle 与正文垂直居中——tag 视觉溢出不参与行高，首行与其余行基线严格一致。参数由 MobiDirective
  *  从指令 attrs 解析后注入（index 缺省/非法按原文降级——伪造索引/越界/用户手打字面量） */
 export const QuoteDirectiveMarker: FC<{ index?: string; children?: ReactNode }> = ({ index, children }) => {
     const { token } = theme.useToken()
@@ -91,8 +91,14 @@ export const QuoteDirectiveMarker: FC<{ index?: string; children?: ReactNode }> 
             style={{
                 // 零行盒影响方案（2026-09-23 三轮验收收敛）：整体纯 inline + line-height:0——
                 // inline 非替换元素的行盒贡献只由 line-height 决定；仿 tag 的 border/background
-                // 是纯视觉溢出、icon 绝对定位脱流，首行与其余行基线严格一致
+                // 是纯视觉溢出、icon 绝对定位脱流，首行与其余行基线严格一致。
+                // vertical-align 用负长度降锚：sup 默认 super 把 tag 抬到基线上方悬浮（超出
+                // 段落顶 6.9px）；middle/baseline 仍偏心 -4px 且超出 2px（2026-11-08 真机
+                // 对照实验，CJK 视觉中心高于 middle 锚点 baseline+x-height/2 所致）；
+                // -0.35em（相对自身 0.72em 字号 ≈ 降 3.5px）tag 中心与首行视觉中心偏差
+                // -0.1px、完整落在段落盒内，line-height:0 仍保证零行盒影响
                 position: 'relative',
+                verticalAlign: '-0.35em',
                 lineHeight: 0,
                 fontSize: '0.72em',
                 margin: '0 2px',
@@ -102,15 +108,19 @@ export const QuoteDirectiveMarker: FC<{ index?: string; children?: ReactNode }> 
             }}
         >
             {/* 引用 icon 与用户消息侧「N 条引用」chip 同款（lucide Quote）；svg 是替换元素
-                （高度参与行盒），必须绝对定位脱流 */}
-            <Quote size={10} style={{ position: 'absolute', left: 3, top: 0 }} />
+                （高度参与行盒），必须绝对定位脱流。top:2 使 icon 与文字基线排版后的视觉
+                中心对齐（top:0 时 icon 偏高 1.8px——inline 文字按基线落位，icon 锚盒顶，
+                两者中心天然错位；真机实测每 +1px 下移 1px，2px 时差 +0.3px） */}
+            <Quote size={10} style={{ position: 'absolute', left: 3, top: 2 }} />
             <span style={{
                 display: 'inline',
                 // 仿 antd 默认 Tag（border + 弱填充背景）；inline 元素的垂直 border/padding
-                // 是纯视觉，不参与行盒
+                // 是纯视觉，不参与行盒。内距按 QuoteChip（3px 10px / gap 6px / 12px 字号）
+                // 等比缩放：icon(10px, left 3) → 文字间隙 5px（padding-left 18）、右距 8px；
+                // 垂直保持 1px——2px 会使 tag 高 19.5px、顶边距只剩 0.9px，行内显臃肿
                 border: '1px solid var(--ant-color-border)',
                 borderRadius: 'var(--radius-control-sm)',
-                padding: '1px 6px 1px 15px',
+                padding: '1px 8px 1px 18px',
                 background: 'var(--ant-color-fill-quaternary)',
             }}>
                 {t('chat.annotationMarker', { count: idx })}
