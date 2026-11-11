@@ -78,7 +78,6 @@ describe('installHapticFeedback 全局委托', () => {
 
     it.each([
         ['select 触发器（combobox，弹层语义的 aria-expanded 不受展开收起排除影响）', '<div role="combobox" aria-expanded="false">选择</div>'],
-        ['switch 开关', '<button role="switch" aria-checked="false"></button>'],
         ['tab 页签', '<div role="tab">标签</div>'],
         ['menuitem 菜单项', '<div role="menuitem">操作</div>'],
         ['原生 checkbox', '<input type="checkbox" />'],
@@ -97,6 +96,7 @@ describe('installHapticFeedback 全局委托', () => {
         ['aria-expanded（分组展开收起，真机反馈不要震）', '<button role="button" aria-expanded="true">组</button>'],
         ['treeitem 展开', '<div role="treeitem" aria-expanded="false">目录</div>'],
         ['summary 折叠头（原生展开语义）', '<summary>更多</summary>'],
+        ['switch（状态切换控件，反馈由 onChange 按新状态决定）', '<button role="switch" aria-checked="false"></button>'],
     ])('%s 按下 → 不震', (_label, html) => {
         const host = mount(html)
         down(host.firstElementChild!)

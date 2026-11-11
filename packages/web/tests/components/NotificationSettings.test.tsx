@@ -32,8 +32,6 @@ const mockState = vi.hoisted(() => ({
 
 // message.error spy：mock antd App.useApp，捕获失败反馈调用
 const messageErrorSpy = vi.hoisted(() => vi.fn())
-// message.info spy：「试一下」在震动关闭/设备不支持时的提示通道
-const messageInfoSpy = vi.hoisted(() => vi.fn())
 
 // mock useNotificationSetup(避免真实 pushManager/Service Worker/hook 逻辑)。
 // awaitServiceWorkerReady 已移到独立模块(pwa/swReady),NotificationSettings 直接 import,真实可用。
@@ -74,14 +72,14 @@ vi.mock('@/core/data/stores/uiStore', () => ({
         selector ? selector(feedbackState) : feedbackState,
 }))
 
-// mock antd App.useApp：拦截 message.error / message.info（其余 antd 真实，含 ConfigProvider/Button）
+// mock antd App.useApp：拦截 message.error（其余 antd 真实，含 ConfigProvider/Button）
 vi.mock('antd', async (orig) => {
     const actual = await orig()
     return {
         ...actual,
         App: {
             ...actual.App,
-            useApp: () => ({ message: { error: messageErrorSpy, info: messageInfoSpy } }),
+            useApp: () => ({ message: { error: messageErrorSpy } }),
         },
     }
 })
@@ -331,24 +329,11 @@ describe('NotificationSettings', () => {
         expect(haptic).toHaveAttribute('aria-checked', 'true')
         fireEvent.click(sound)
         fireEvent.click(haptic)
-        // uiStore 是 mock 的普通对象：开关翻转回写 feedbackState（组件受控值跟随）
+        // uiStore 是 mock 的普通对象：开关翻转回写 feedbackState（组件受控值跟随）；
+        // 开启分支的即时示范（previewAttentionSound/hapticTap）在 jsdom 下各自静默降级
         await vi.waitFor(() => {
             expect(feedbackState.soundFeedbackEnabled).toBe(false)
             expect(feedbackState.hapticFeedbackEnabled).toBe(false)
         })
-    })
-
-    it('震动关闭时「试一下」给出已关闭提示而非静默', async () => {
-        // vibrateSupported 需 API 在场（jsdom 默认无）——注入桩避免走「不支持」分支
-        const nav = navigator as { vibrate?: unknown } & typeof navigator
-        const original = Object.getOwnPropertyDescriptor(nav, 'vibrate')?.value
-        Object.defineProperty(nav, 'vibrate', { value: () => true, configurable: true })
-        feedbackState.hapticFeedbackEnabled = false
-        const { fireEvent } = await import('@testing-library/react')
-        renderUi()
-        fireEvent.click(screen.getByText('notification.settings.testVibration'))
-        expect(messageInfoSpy).toHaveBeenCalledWith('notification.settings.vibrationDisabled')
-        Object.defineProperty(nav, 'vibrate', { value: original, configurable: true })
-        feedbackState.hapticFeedbackEnabled = true
     })
 })

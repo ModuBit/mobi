@@ -204,3 +204,15 @@ export function notifyAttention(kind: AttentionKind): void {
     }
     vibrate(kind)
 }
+
+/**
+ * 声音即时预览：设置页打开「声音反馈」开关的瞬间播一声 ready 双音（音效示范）。
+ * 走 playSound 正常链路（soundGate/浏览器自动播放策略各自生效）。
+ */
+export function previewAttentionSound(): void {
+    try {
+        playSound('ready')
+    } catch {
+        // 音频环境异常静默
+    }
+}

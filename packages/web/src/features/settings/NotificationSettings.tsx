@@ -24,7 +24,8 @@ import { css, keyframes } from '@emotion/react'
 import styled from '@emotion/styled'
 import { useNotificationSetup } from '@/core/data/hooks/useNotificationSetup'
 import { awaitServiceWorkerReady } from '@/core/pwa/swReady'
-import { vibrateSupported } from '@/core/notifications/haptics'
+import { hapticTap } from '@/core/notifications/haptics'
+import { previewAttentionSound } from '@/core/notifications/attentionFeedback'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { SettingGroupCard } from './blocks/SettingGroupCard'
 import { SettingRow } from './blocks/SettingRow'
@@ -133,17 +134,6 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
         }
     }
 
-    /** 测试震动：按下「试一下」的震感由全局委托给（与日常按钮完全一致，2026-11-11 真机
-     *  反馈「测试 pattern 与按钮不一致且叠加成两下」后收口）。这里只负责降级提示：
-     *  无 Vibration API（iOS 等）→ 不支持；开关关闭 → 按下无感，提示先开启。 */
-    const testVibration = () => {
-        if (!vibrateSupported()) {
-            message.info(t('notification.settings.vibrationUnsupported'))
-            return
-        }
-        if (!hapticFeedbackEnabled) message.info(t('notification.settings.vibrationDisabled'))
-    }
-
     const tone: Tone = permission === 'granted' ? 'success' : permission === 'denied' ? 'error' : 'default'
     const dotColor =
         tone === 'success' ? token.colorSuccess
@@ -206,14 +196,18 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
                     />
                 )}
                 {/* 声音/震动反馈开关：默认开，persist 跟随用户偏好；gate 分别在
-                    attentionFeedback（声音）与 vibratePattern（震动）单点生效 */}
+                    attentionFeedback（声音）与 vibratePattern（震动）单点生效。
+                    开启瞬间即时示范（播一声/震一下）——开关即试玩入口，无需单独测试钮 */}
                 <SettingRow
                     label={t('notification.settings.soundFeedback')}
                     icon={Volume2}
                     description={t('notification.settings.soundFeedbackDesc')}
                     variant="switch"
                     checked={soundFeedbackEnabled}
-                    onCheckedChange={setSoundFeedbackEnabled}
+                    onCheckedChange={(v) => {
+                        setSoundFeedbackEnabled(v)
+                        if (v) previewAttentionSound()
+                    }}
                     ariaLabel={t('notification.settings.soundFeedback')}
                 />
                 <SettingRow
@@ -222,20 +216,11 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
                     description={t('notification.settings.vibrationDesc')}
                     variant="switch"
                     checked={hapticFeedbackEnabled}
-                    onCheckedChange={setHapticFeedbackEnabled}
+                    onCheckedChange={(v) => {
+                        setHapticFeedbackEnabled(v)
+                        if (v) hapticTap()
+                    }}
                     ariaLabel={t('notification.settings.vibration')}
-                />
-                {/* 震感与日常按钮完全一致（全局委托统一给）；开关关闭时按下无感，点击给提示 */}
-                <SettingRow
-                    label={t('notification.settings.vibrationTest')}
-                    icon={Vibrate}
-                    description={t('notification.settings.vibrationTestDesc')}
-                    variant="action"
-                    action={
-                        <Button variant="secondary" onClick={testVibration}>
-                            {t('notification.settings.testVibration')}
-                        </Button>
-                    }
                 />
             </SettingGroupCard>
 

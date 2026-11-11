@@ -1137,12 +1137,7 @@
       "vibration": "震动反馈",
       "soundFeedback": "声音反馈",
       "soundFeedbackDesc": "任务完成与等待审批时的提示音",
-      "vibrationTest": "震动测试",
-      "vibrationTestDesc": "按下试一下按钮，感受当前震感",
-      "vibrationDisabled": "震动反馈已关闭，请先在上方开启",
-      "vibrationDesc": "按钮点按与任务提醒的触觉反馈（Android Chrome，勿扰模式不震）",
-      "testVibration": "试一下",
-      "vibrationUnsupported": "当前设备或浏览器不支持震动"
+      "vibrationDesc": "按钮点按与任务提醒的触觉反馈（Android Chrome，勿扰模式不震）"
     },
     "pwa": {
       "updateAvailable": "发现新版本",

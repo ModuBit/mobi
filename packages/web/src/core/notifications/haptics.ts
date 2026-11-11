@@ -84,15 +84,18 @@ export function vibrateSupported(): boolean {
 
 /**
  * 带交互语义的元素 selector：button 本体 + ARIA 交互角色 + 原生 checkbox/radio。
- * antd（Switch/Checkbox/Segmented/Pagination）、Radix/Base UI（Select/Combobox/DropdownMenu）、
+ * antd（Checkbox/Segmented/Pagination）、Radix/Base UI（Select/Combobox/DropdownMenu）、
  * 自管 uiarc 件的 DOM 都带其中之一——委托命中即覆盖，新组件无需逐个接入。
- * 注意 summary 不在内：折叠头属展开收起语义（真机反馈此类不震），同 aria-expanded 排除。
+ * 注意三个刻意排除：
+ * - summary / aria-expanded：展开收起语义（分组折叠头/树展开，此类不震）；
+ *   combobox 的 aria-expanded 是弹层语义不排除（select 要震）
+ * - role="switch"（antd Switch 是 button+role）：状态切换控件，反馈由 onChange
+ *   按新状态决定——反馈开关「开启即时示范」（2026-11-11），按下即震会在关闭时也震
  */
 const HAPTIC_TARGET_SELECTOR = [
     'button',
     '[role="button"]',
     '[role="combobox"]',
-    '[role="switch"]',
     '[role="checkbox"]',
     '[role="radio"]',
     '[role="tab"]',
@@ -104,6 +107,11 @@ const HAPTIC_TARGET_SELECTOR = [
     'input[type="checkbox"]',
     'input[type="radio"]',
 ].join(',')
+
+/** 命中后仍排除的元素：switch（button+role 形态，selector 层躲不开 button） */
+function isExcludedHit(el: HTMLElement): boolean {
+    return el.getAttribute('role') === 'switch'
+}
 
 let hapticsInstalled = false
 
@@ -127,6 +135,7 @@ export function installHapticFeedback(): void {
         if (!(target instanceof Element)) return
         const el = target.closest<HTMLElement>(HAPTIC_TARGET_SELECTOR)
         if (!el) return
+        if (isExcludedHit(el)) return
         if (el.hasAttribute('disabled')) return
         if (el.getAttribute('aria-disabled') === 'true' || el.getAttribute('aria-busy') === 'true') return
         // 展开收起（分组折叠头/树展开行）：高频且状态本身可视，按下不震（2026-11-11 真机反馈）。
