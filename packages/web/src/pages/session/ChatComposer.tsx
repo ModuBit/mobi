@@ -19,7 +19,7 @@ import styled from '@emotion/styled'
 import { theme, message } from 'antd'
 import { SwapOutlined, InboxOutlined } from '@ant-design/icons'
 import { Button } from '@/ui/base/interactive/button/Button'
-import { Sender } from '@ant-design/x'
+import { ChatInput, type ChatInputHandle } from '@/ui/base/interactive/chat-input'
 import { useTranslation } from 'react-i18next'
 import type { AgentState, ContextUsage, EffortLevel, FastModeState, GoalStatus, PermissionMode, Session, StopKind } from '@mobi/shared'
 import { DEFAULT_EFFORT, getPermissionModeOptionsForFlavor } from '@mobi/shared'
@@ -32,13 +32,12 @@ import {
     withQuoteUid,
     withQuoteUids,
 } from '@/domain/chat/composerSegments'
-import { normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash } from '@/domain/command/composerInputNormalization'
 import { bucketCompletedAttachments, fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
 import { fileRefContext } from '@/core/utils/fileUrl'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { AttachPanel } from '@/features/composer/AttachPanel'
 import { QuoteChipBar } from '@/features/composer/QuoteChipBar'
-import { composerSenderCard, composerSubmitButton, COMPOSER_CARD_HEADER_INSET } from '@/features/composer/composerSurface.styles'
+import { COMPOSER_CARD_HEADER_INSET } from '@/features/composer/composerSurface.styles'
 import { ComposerInfoPanel } from '@/pages/session/ComposerInfoPanel'
 import { resolveCopyShortcut } from '@/features/composer/copyShortcut'
 import { ModelSettingsSelect } from '@/features/composer/ModelSettingsSelect'
@@ -49,6 +48,7 @@ import { consumeDraftText } from '@/core/lib/draftText'
 import { locateQuotedMessage } from '@/core/lib/quoteLocate'
 import { mergeDraftText } from '@/core/lib/composerDrafts'
 import { useComposerDraft } from '@/features/composer/useComposerDraft'
+import { useChatInputBridge } from '@/features/composer/useChatInputBridge'
 import { useMentionInteraction } from '@/features/composer/useMentionInteraction'
 import { useSlashCommandInteraction } from '@/features/composer/useSlashCommandInteraction'
 import { useSuggestionListAria } from '@/features/composer/useSuggestionListAria'
@@ -163,20 +163,21 @@ interface ChatComposerProps {
     sketchDockMetrics?: { top: number; bottom: number; left: number; right: number } | null
 }
 
-function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
-    return wrapper?.querySelector('textarea') ?? null
-}
-
 // Dock 容器：包裹整个 Composer 区域，和 BubbleList 形成视觉分隔。
 // 白卡与圆钮样式来自 composerSurface.styles 共享片段（与新会话页 InputCard 同一套）
 const ComposerDock = styled.div`
-    ${composerSenderCard}
-    ${composerSubmitButton}
-
-    /* 聊天页 Dock 无内容层时白卡上下不留垂直空隙（新会话页始终 8px）；水平只悬 8px
-       （-8）而非共享片段的 -16——-16 里本有 8px 是「抵消 Dock 内衬」的部分，空态没有
-       Dock 内衬可抵，照抄会把白卡推到贴死屏幕边（外层 16px 内衬 − 16px = 0 缝） */
-    && .ant-sender {
+    /* 白卡容器 .composer-card：header 内容行 + 输入区 + 参数条共居同一白底圆角卡
+       （原 .ant-sender 白卡视觉的平移；共享片段 composerSenderCard 仍服务新会话页的
+       Sender，票 04 迁移后统一收敛回共享片段）。左右负 margin 吃掉容器内衬 8px 再
+       真悬挑 8px；ChatInput 无 antd 内置样式对抗需求，不再需要 !important */
+    && .composer-card {
+        border: none;
+        border-radius: var(--radius-panel);
+        background: var(--ant-color-bg-container);
+        width: auto;
+        /* 空态：白卡上下不留垂直空隙（内容层存在时见下条覆盖）；水平只悬 8px（-8）
+           而非共享片段的 -16——-16 里本有 8px 是「抵消 Dock 内衬」的部分，空态没有
+           Dock 内衬可抵，照抄会把白卡推到贴死屏幕边（外层 16px 内衬 − 16px = 0 缝） */
         margin: 0 -8px;
     }
 
@@ -192,18 +193,16 @@ const ComposerDock = styled.div`
         padding: 8px 8px 0;
     }
 
-    &&:not(:has(> :only-child)) .ant-sender {
+    &&:not(:has(> :only-child)) .composer-card {
         margin: 8px -16px 0;
     }
 
-    /* bash 模式：恢复 Sender 橙色发光边框（输入 ! 空格 触发 .bash-mode）。
-       上一条 .ant-sender 规则用 (0,3,0)+!important 把 box-shadow 压成 none，
-       连 inline style 都盖得住；这里在同一 styled 内追加 .bash-mode 后代，
-       以 (0,4,0)+!important 反向覆盖自己的 none，让发光边框重新可见。
-       box-shadow 的 spread 模拟实色边框、blur 模拟外发光，不动 border-width 避免布局抖动。 */
-    && .bash-mode .ant-sender {
+    /* bash 模式：橙色发光边框（输入 ! 空格 触发 wrapper 的 .bash-mode）。
+       box-shadow 的 spread 模拟实色边框、blur 模拟外发光，不动 border-width 避免布局
+       抖动；ChatInput 无内置 box-shadow，无需再打 !important 反向覆盖 */
+    && .bash-mode .composer-card {
         box-shadow: 0 0 0 2px rgba(232, 112, 58, 0.6),
-                    0 0 16px rgba(232, 112, 58, 0.25) !important;
+                    0 0 16px rgba(232, 112, 58, 0.25);
     }
 `
 
@@ -214,7 +213,8 @@ const ComposerDock = styled.div`
 
 /**
  * 聊天输入组件
- * 基于 antd X 的 Sender 组件，支持多行输入、附件上传、@文件引用
+ * 基于 ChatInput（TipTap 封装，ui/base/interactive/chat-input）+ mention/slash 桥接
+ * （useChatInputBridge），支持多行输入、附件上传、@文件引用、/斜杠命令
  */
 export function ChatComposer(props: ChatComposerProps) {
     const { t } = useTranslation()
@@ -276,14 +276,29 @@ export function ChatComposer(props: ChatComposerProps) {
     } = props
 
     const [text, setText] = useState('')
+    // 当前输入值快照（归一判定/提交取值/编辑器就绪对账的闭包需要最新值，state 直读会 stale）
+    const textRef = useRef(text)
+    textRef.current = text
+    // shellRef：ChatInput 命令式通道（非受控编辑器是 source of truth，text state 只是镜像）
+    const shellRef = useRef<ChatInputHandle | null>(null)
+    const wrapperRef = useRef<HTMLDivElement>(null)
+    const pendingCursorRef = useRef<number | null>(null)
+
+    // 编辑器就绪对账：immediatelyRender:false 异步挂载，就绪前镜像可能已恢复草稿/跨页
+    // 草稿——就绪后把镜像一次性写入编辑器（就绪后才发生的恢复走各写入点的双写，不经此）
+    const handleShellReady = useCallback(() => {
+        if (textRef.current) shellRef.current?.setText(textRef.current)
+    }, [])
+
     // 待发送引用：极简 chip 列表展示。约束：持有条数恒 ≤ QUOTE_MAX_COUNT（3）——
     // 上限为引用入口时的前置契约：置入超出时应替换最早一条；serialize 侧 slice(0, QUOTE_MAX_COUNT) 为底线
     const [quotes, setQuotes] = useState<ComposerQuoteRef[]>([])
 
-    // 设置草稿并聚焦：suggestion 采纳共用此实现
+    // 设置草稿并聚焦：suggestion 采纳共用此实现（镜像 + 编辑器双写）
     const setDraft = useCallback((draftText: string) => {
         setText(draftText)
-        requestAnimationFrame(() => getTextarea(wrapperRef.current)?.focus())
+        shellRef.current?.setText(draftText)
+        shellRef.current?.focus()
     }, [])
 
     // rewind 收尾结构化回填请求体：经 ref 读最新值，下方 effect 只依赖 nonce——
@@ -298,6 +313,8 @@ export function ChatComposer(props: ChatComposerProps) {
         const crossPageDraft = consumeDraftText()
         if (crossPageDraft) {
             setText(crossPageDraft)
+            // 非受控编辑器双写：镜像之外编辑器也要立即显示（编辑器未就绪时由 onReady 对账兜底）
+            shellRef.current?.setText(crossPageDraft)
             // 仅更新文本，保留该 session 既有的附件草稿（避免空附件覆盖）
             mergeDraftText(sessionId, crossPageDraft)
         }
@@ -403,18 +420,15 @@ export function ChatComposer(props: ChatComposerProps) {
     const applySegments = useCallback((segments: ComposerSegments) => {
         const refs = [...segments.files, ...segments.images]
         setText(segments.text)
+        shellRef.current?.setText(segments.text)
         setAttachments(refs.map(fileRefToPlaceholderAttachment))
         setQuotes(withQuoteUids(segments.quotes.slice(0, QUOTE_MAX_COUNT)))
-        requestAnimationFrame(() => getTextarea(wrapperRef.current)?.focus())
+        shellRef.current?.focus()
     }, [setAttachments])
 
     // 回填应用门控：nonce 单调递增触发一次；空分段静默跳过
     // （数据异常无从还原时不清空用户当前草稿）
     const draftNonce = draftRequest?.nonce
-    // 瞬态窗编辑哨兵：textarea 不再被瞬态闸 DOM-disable（焦点修复），rewind/压缩/
-    // 清空进行中用户仍可键入——这段主动输入优先于完成回填（整体跳过 applySegments，
-    // 保留窗口期的 text/引用/附件状态），否则会被回退后的分段静默覆写
-    const pausedEditRef = useRef(false)
     useEffect(() => {
         if (draftNonce == null) return
         const req = draftRequestRef.current
@@ -426,17 +440,19 @@ export function ChatComposer(props: ChatComposerProps) {
     // 草稿读回的 quotes 无 uid（持久化不存条目身份）→ 经包装统一补；保存侧 ComposerQuoteRef
     // 结构兼容 PendingQuoteRef，直传即可
     const setQuotesWithUids = useCallback((qs: PendingQuoteRef[]) => setQuotes(withQuoteUids(qs)), [])
+    // 草稿恢复双写：镜像之外写回编辑器（编辑器未就绪时由 onReady 对账兜底）
+    const setTextWithEditor = useCallback((v: string) => {
+        setText(v)
+        shellRef.current?.setText(v)
+    }, [])
     useComposerDraft(
         sessionId,
         { text, attachments, quotes },
-        { setText, setAttachments, setQuotes: setQuotesWithUids },
+        { setText: setTextWithEditor, setAttachments, setQuotes: setQuotesWithUids },
     )
 
     // SDK 元数据（模型列表等）
     const { data: sdkMetadata } = useSDKMetadata(sessionId ?? null)
-
-    const wrapperRef = useRef<HTMLDivElement>(null)
-    const pendingCursorRef = useRef<number | null>(null)
 
     // 随机 placeholder 索引，每次挂载只选一次
     const placeholders = t('composer.placeholders', { returnObjects: true }) as string[]
@@ -457,6 +473,26 @@ export function ChatComposer(props: ChatComposerProps) {
         workingDir,
     })
 
+    // 瞬态窗编辑哨兵：输入区不再被瞬态闸 DOM-disable（焦点修复），rewind/压缩/
+    // 清空进行中用户仍可键入——这段主动输入优先于完成回填（整体跳过 applySegments，
+    // 保留窗口期的 text/引用/附件状态），否则会被回退后的分段静默覆写
+    const pausedEditRef = useRef(false)
+    const markUserEdit = useCallback(() => {
+        if (disabled) pausedEditRef.current = true
+    }, [disabled])
+    const markPendingCursor = useCallback((offset: number) => {
+        pendingCursorRef.current = offset
+    }, [])
+
+    // 编辑器 → 面板模型桥接（归一管线 + processChange + 选中插回，与新会话页共用实现）
+    const bridge = useChatInputBridge({
+        shellRef,
+        slash,
+        mention,
+        onPendingCursor: markPendingCursor,
+        onUserEdit: markUserEdit,
+    })
+
     const trimmed = text.trim()
     const hasText = trimmed.length > 0
     const hasAttachments = attachments.length > 0
@@ -474,8 +510,6 @@ export function ChatComposer(props: ChatComposerProps) {
         sending,
         abortPending,
     })
-    // Sender 内置按钮的 loading：stop 态时显示 LoadingButton（与自定义 SubmitButton 视觉一致）
-    const senderLoading = submitButtonState.kind === 'stop'
     const hasSubBar = !!extraItems?.length || !!(extraLeftButtons && !extraItems)
 
     // 是否展示命令提示（hint 或 description 任一存在即展示）
@@ -522,82 +556,14 @@ export function ChatComposer(props: ChatComposerProps) {
     // 光标位置恢复（无 deps：需要在每次 React commit 后检查 pending 状态）
     useEffect(() => {
         if (pendingCursorRef.current != null) {
-            const textarea = getTextarea(wrapperRef.current)
-            if (textarea) {
-                textarea.selectionStart = textarea.selectionEnd = pendingCursorRef.current
-                textarea.focus()
-            }
+            shellRef.current?.setCursorOffset(pendingCursorRef.current)
+            shellRef.current?.focus()
             pendingCursorRef.current = null
         }
     })
 
-    // 当前输入值快照（handleChange 闭包需要前值做归一判定，state 直读会 stale）
-    const textRef = useRef(text)
-    textRef.current = text
-
-    const handleChange = useCallback((value: string) => {
-        // 瞬态闸（rewind/压缩/清空）进行中的键入：标记窗口期编辑，完成回填将跳过
-        if (disabled) pausedEditRef.current = true
-        // 中文 IME 输入归一管线（归一器单一来源见 composerInputNormalization）：
-        // 命中的归一器返回新值，需要时记下光标待归一后的 DOM 稳定再恢复
-        for (const normalize of [normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash]) {
-            const normalized = normalize(value, textRef.current)
-            if (normalized !== null) {
-                const textarea = getTextarea(wrapperRef.current)
-                pendingCursorRef.current = textarea?.selectionStart ?? normalized.length
-                value = normalized
-            }
-        }
-
-        setText(value)
-
-        const textarea = getTextarea(wrapperRef.current)
-        const cursorPos = textarea?.selectionStart ?? value.length
-
-        // Slash 检测优先（内部同时处理 activeCommand 管理）
-        if (slash.processChange(value, cursorPos)) {
-            mention.close()
-            return
-        }
-
-        // Mention 检测
-        if (mention.processChange(value, cursorPos)) {
-            return
-        }
-        mention.close()
-    }, [mention, slash, disabled])
-
-    // Tab 键选中（需用 native listener 因为 Sender 的 onKeyDown 会先消费 Tab）
-    useEffect(() => {
-        const wrapper = wrapperRef.current
-        if (!wrapper) return
-        if (!mention.isOpen && !slash.isOpen) return
-
-        const handler = (e: KeyboardEvent) => {
-            if (e.key !== 'Tab') return
-            e.preventDefault()
-            e.stopPropagation()
-            if (slash.isOpen && slash.items.length > 0) {
-                const result = slash.selectCurrent(textRef.current)
-                if (result) {
-                    setText(result.text)
-                    pendingCursorRef.current = result.cursorPos
-                }
-            } else if (mention.isOpen && mention.items.length > 0) {
-                const result = mention.selectCurrent(textRef.current)
-                if (result) {
-                    setText(result.text)
-                    pendingCursorRef.current = result.cursorPos
-                }
-            }
-        }
-
-        wrapper.addEventListener('keydown', handler, true)
-        return () => wrapper.removeEventListener('keydown', handler, true)
-    }, [mention.isOpen, mention, slash.isOpen, slash])
-
-    // 键盘导航
-    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // 键盘导航（ChatInput 转发原生 KeyboardEvent；返回 true = 已消费，拦下内置 Enter 提交判定）
+    const handleKeyDown = useCallback((e: KeyboardEvent): boolean => {
         // Ctrl+C：只拦 Ctrl 不拦 Cmd（Mac 上 Cmd+C 走原生复制）。
         // 有选中文本 → 放行复制；无选中 + 有内容 → 清空；无选中 + 无内容 + running → abort
         if (e.key === 'c' && e.ctrlKey) {
@@ -610,59 +576,73 @@ export function ChatComposer(props: ChatComposerProps) {
                 canAbort: !!onAbort,
                 abortPending: !!abortPending,
             })
-            if (action === 'copy') return
+            if (action === 'copy') return false
             if (action === 'clear') {
                 e.preventDefault()
-                setText('')
+                shellRef.current?.clear()
                 mention.close()
                 slash.reset()
+                return true
             } else if (action === 'abort') {
                 e.preventDefault()
                 onAbort?.('turn')
+                return true
             }
-            return
+            return false
         }
 
         // Escape：先委托给各 hook，都未消费则 abort
         if (e.key === 'Escape') {
-            if (slash.handleKeyDown(e)) return
-            if (mention.handleKeyDown(e)) return
+            if (slash.handleKeyDown(e)) return true
+            if (mention.handleKeyDown(e)) return true
             if (running && onAbort && !abortPending) {
                 e.preventDefault()
                 onAbort('turn')
+                return true
             }
-            return
+            return false
         }
 
-        // Enter 键选中
-        if (e.key === 'Enter') {
+        // Tab 补全（原 native capture listener 迁入：ChatInput 键位层先于编辑器处理，
+        // 无需再绕 capture 变通）
+        if (e.key === 'Tab') {
             if (slash.isOpen && slash.items.length > 0) {
                 e.preventDefault()
                 e.stopPropagation()
-                const result = slash.selectCurrent(textRef.current)
-                if (result) {
-                    setText(result.text)
-                    pendingCursorRef.current = result.cursorPos
-                }
-                return
+                bridge.applySelection(slash.selectCurrent(textRef.current))
+                return true
             }
             if (mention.isOpen && mention.items.length > 0) {
                 e.preventDefault()
                 e.stopPropagation()
-                const result = mention.selectCurrent(textRef.current)
-                if (result) {
-                    setText(result.text)
-                    pendingCursorRef.current = result.cursorPos
-                }
-                return
+                bridge.applySelection(mention.selectCurrent(textRef.current))
+                return true
             }
-            return
+            return false
+        }
+
+        // Enter 键选中（面板开时是选择不是发送；返回 true 拦下 ChatInput 的提交判定）
+        if (e.key === 'Enter') {
+            if (slash.isOpen && slash.items.length > 0) {
+                e.preventDefault()
+                e.stopPropagation()
+                bridge.applySelection(slash.selectCurrent(textRef.current))
+                return true
+            }
+            if (mention.isOpen && mention.items.length > 0) {
+                e.preventDefault()
+                e.stopPropagation()
+                bridge.applySelection(mention.selectCurrent(textRef.current))
+                return true
+            }
+            return false
         }
 
         // Arrow 键导航
-        if (slash.handleKeyDown(e)) return
-        if (mention.handleKeyDown(e)) return
-    }, [running, onAbort, abortPending, mention, slash])
+        if (slash.handleKeyDown(e)) return true
+        if (mention.handleKeyDown(e)) return true
+        return false
+    }, [running, onAbort, abortPending, mention, slash, bridge])
 
     const handleSubmit = useCallback((content: string) => {
         if (import.meta.env.DEV) console.log('[Send] handleSubmit', { contentLen: content.length, canSend, mentionOpen: mention.isOpen, slashOpen: slash.isOpen, uploading: attachments.filter(a => a.status === 'uploading').length })
@@ -687,12 +667,16 @@ export function ChatComposer(props: ChatComposerProps) {
         if (isSegmentEmpty(segments)) return
 
         onSend(segments)
-        setText('')
+        // 清空走编辑器程序化通道（onUpdate programmatic 回写镜像归零）
+        shellRef.current?.clear()
         resetAttachments()
         setQuotes([])
         // 发新消息即消失: 清空当前建议(生命周期"每轮结束显示, 发送后消失")
         usePromptSuggestionStore.getState().clearSession(sessionId)
-    }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments, segmentBuckets, quotes, t, resetAttachments, sessionId])
+        // PC 发送后保持输入焦点（textarea 语义等价：清空后光标仍在原位）；触屏刻意不恢复
+        //（虚拟键盘不收起，现状语义平移）
+        if (hasFinePointer) shellRef.current?.focus()
+    }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments, segmentBuckets, quotes, t, resetAttachments, sessionId, hasFinePointer])
 
     // 引用动作：删除 / 评论编辑（excerpt 只读——引用忠实于源消息，评论才是用户的话）
     const removeQuote = useCallback((uid: string) => {
@@ -704,6 +688,14 @@ export function ChatComposer(props: ChatComposerProps) {
     // 与 senderDisabled doc 的「textarea 闸」语义不同级）
     const chromeDisabled = controlsDisabled || showLocalModeCover
     const isBashMode = text.startsWith('! ')
+
+    // 粘贴桥接：useAttachmentHandling.handlePaste 只消费 clipboardData 与 preventDefault，
+    // 与原生 ClipboardEvent 运行时同构；返回 defaultPrevented 让 ChatInput 拦下已被
+    // handlePaste preventDefault 的粘贴（文件粘贴/超阈值转附件），其余放行编辑器默认插入
+    const handlePasteBridge = useCallback((e: ClipboardEvent): boolean => {
+        handlePaste(e as unknown as React.ClipboardEvent)
+        return e.defaultPrevented
+    }, [handlePaste])
 
     // 下一轮建议(SDK prompt_suggestion, 瞬时): 有值则渲染 chip, 无则省略
     const suggestion = usePromptSuggestion(sessionId)
@@ -799,108 +791,106 @@ export function ChatComposer(props: ChatComposerProps) {
                 onDragLeave={controlsDisabled ? undefined : handleDragLeave}
                 onDrop={controlsDisabled ? undefined : handleDrop}
             >
-                {/* Sender + Dropdowns：position: relative 使下拉定位于 Sender 上方 */}
+                {/* ChatInput + Dropdowns：position: relative 使下拉定位于输入卡上方 */}
                 <div style={{ position: 'relative' }}>
-                <Sender
-                    value={text}
-                    onChange={handleChange}
-                    onSubmit={handleSubmit}
-                    submitType={hasFinePointer ? 'enter' : 'shiftEnter'}
+                {/* 白卡容器：header 内容行 + 输入区 + 参数条共居同一白底圆角卡
+                    （原 antd Sender 的 header/content/footer 白卡结构的平移） */}
+                <div
+                    className="composer-card"
+                    style={hasSubBar ? { position: 'relative', zIndex: 1 } : undefined}
+                >
+                {/* 原 Sender header：可组合内容行（提示条/建议 chip/引用条/附件列表） */}
+                {headerNodes.length > 0 && headerNodes}
+
+                <ChatInput
+                    ref={shellRef}
                     placeholder={isBashMode ? t('composer.bashPlaceholder') : t(`composer.placeholders.${placeholderIdx.current}`)}
+                    submitKey={hasFinePointer ? 'enter' : 'shiftEnter'}
                     disabled={resolveSenderDisabled({ inactiveCover, localModeCover: showLocalModeCover })}
-                    loading={senderLoading}
-                    autoSize={{ minRows: 1, maxRows: 5 }}
+                    onUpdate={bridge.onTextInput}
                     onKeyDown={handleKeyDown}
-                    onPaste={handlePaste}
-                    header={headerNodes.length > 0 ? headerNodes : null}
-                    suffix={false}
-                    style={hasSubBar ? {
-                        position: 'relative',
-                        zIndex: 1,
-                    } : undefined}
-                    footer={(oriNode) => (
-                        <>
-                            {/* 隐藏 oriNode：仅为保持 antd X 内置 SendButton 挂载，使其 effect 维持
-                                submitDisabled 与输入内容同步（Enter 提交门控依赖它）。
-                                可见按钮用下方自定义 SubmitButton（无 SVG <title>，不会 hover 弹原生 tooltip；
-                                且不挂 Sender disabled 上下文，请求权限期间仍可点）。display:none 不影响 effect 执行。 */}
-                            <div style={{ display: 'none' }} aria-hidden>{oriNode}</div>
-                            {/* 参数条：+（附件）与 send 两端固定，中间可横向拖动滚动
-                               （ResponsiveActionBar 的溢出收纳在参数条上退役，见 ToolStrip 组件注释） */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                {/* 附件面板：文件/拍照（移动端）/画板聚合入口（Codex 风格富面板）——左端固定锚 */}
-                                <AttachPanel
-                                    disabled={chromeDisabled || hasPendingPermission}
-                                    onAttach={handleAttach}
-                                    onSketch={() => handleOpenSketch()}
-                                />
-                                <ToolStrip
-                                    style={{ flex: 1, minWidth: 0 }}
-                                    items={[
-                                    // permissionmode
-                                    ...(showSettingsButton ? [{
-                                        key: 'permission',
-                                        content: (
-                                            <CompactHoverSelect
-                                                label={t('composer.permissionMode')}
-                                                iconOnly
-                                                value={permissionMode ?? 'default'}
-                                                onChange={v => onPermissionModeChange?.(v as PermissionMode)}
-                                                disabled={chromeDisabled}
-                                                options={permissionModeIconOptions}
-                                            />
-                                        ),
-                                    }] : []),
-                                    // 模型设置（模型 + 推理档位，面板形态同创建页）
-                                    ...(onModelChange ? [{
-                                        key: 'model',
-                                        content: (
-                                            <ModelSettingsSelect
-                                                label={t('composer.model')}
-                                                model={model ?? 'auto'}
-                                                effort={effort ?? DEFAULT_EFFORT}
-                                                models={sdkMetadata?.models}
-                                                fastMode={fastMode}
-                                                fastModeState={fastModeState ?? null}
-                                                onModelChange={v => onModelChange(v)}
-                                                onEffortChange={onEffortChange ? e => onEffortChange(e) : undefined}
-                                                onFastModeChange={onFastModeChange}
-                                                disabled={chromeDisabled}
-                                            />
-                                        ),
-                                    }] : []),
-                                    // output style 切换器（/clear 语义，运行中 / clear 进行中禁用）；排模型之后
-                                    {
-                                        key: 'outputStyle',
-                                        content: (
-                                            <OutputStyleSwitch
-                                                sessionId={sessionId}
-                                                outputStyle={outputStyle}
-                                                availableStyles={availableOutputStyles}
-                                                running={running}
-                                                clearInProgress={clearInProgress}
-                                                disabled={chromeDisabled}
-                                            />
-                                        ),
-                                    },
-                                    // 上下文水位圆环（仅 PC；移动端挂 ChatPane header，避免挤占底部空间）
-                                    ...(!isMobile && contextUsage ? [{
-                                        key: 'contextRing',
-                                        content: <ContextRing usage={contextUsage} onCompact={onCompact} compactDisabled={compactDisabled} />,
-                                    }] : []),
-                                ]}
-                                />
-                                {showLocalModeCover ? null : (
-                                    <SubmitButton
-                                        state={submitButtonState}
-                                        onSubmit={() => handleSubmit(text)}
-                                        onAbort={onAbort}
-                                    />
-                                )}
-                            </div>
-                        </>
-                    )}
+                    onPaste={handlePasteBridge}
+                    onSubmit={() => handleSubmit(textRef.current)}
+                    onReady={handleShellReady}
+                    minRows={1}
+                    maxRows={5}
+                    aria-label={t('composer.inputLabel', '消息输入框')}
                 />
+
+                {/* 原 Sender footer → 参数条：+（附件）与 send 两端固定，中间可横向拖动滚动
+                   （ResponsiveActionBar 的溢出收纳在参数条上退役，见 ToolStrip 组件注释） */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px 12px' }}>
+                    {/* 附件面板：文件/拍照（移动端）/画板聚合入口（Codex 风格富面板）——左端固定锚 */}
+                    <AttachPanel
+                        disabled={chromeDisabled || hasPendingPermission}
+                        onAttach={handleAttach}
+                        onSketch={() => handleOpenSketch()}
+                    />
+                    <ToolStrip
+                        style={{ flex: 1, minWidth: 0 }}
+                        items={[
+                        // permissionmode
+                        ...(showSettingsButton ? [{
+                            key: 'permission',
+                            content: (
+                                <CompactHoverSelect
+                                    label={t('composer.permissionMode')}
+                                    iconOnly
+                                    value={permissionMode ?? 'default'}
+                                    onChange={v => onPermissionModeChange?.(v as PermissionMode)}
+                                    disabled={chromeDisabled}
+                                    options={permissionModeIconOptions}
+                                />
+                            ),
+                        }] : []),
+                        // 模型设置（模型 + 推理档位，面板形态同创建页）
+                        ...(onModelChange ? [{
+                            key: 'model',
+                            content: (
+                                <ModelSettingsSelect
+                                    label={t('composer.model')}
+                                    model={model ?? 'auto'}
+                                    effort={effort ?? DEFAULT_EFFORT}
+                                    models={sdkMetadata?.models}
+                                    fastMode={fastMode}
+                                    fastModeState={fastModeState ?? null}
+                                    onModelChange={v => onModelChange(v)}
+                                    onEffortChange={onEffortChange ? e => onEffortChange(e) : undefined}
+                                    onFastModeChange={onFastModeChange}
+                                    disabled={chromeDisabled}
+                                />
+                            ),
+                        }] : []),
+                        // output style 切换器（/clear 语义，运行中 / clear 进行中禁用）；排模型之后
+                        {
+                            key: 'outputStyle',
+                            content: (
+                                <OutputStyleSwitch
+                                    sessionId={sessionId}
+                                    outputStyle={outputStyle}
+                                    availableStyles={availableOutputStyles}
+                                    running={running}
+                                    clearInProgress={clearInProgress}
+                                    disabled={chromeDisabled}
+                                />
+                            ),
+                        },
+                        // 上下文水位圆环（仅 PC；移动端挂 ChatPane header，避免挤占底部空间）
+                        ...(!isMobile && contextUsage ? [{
+                            key: 'contextRing',
+                            content: <ContextRing usage={contextUsage} onCompact={onCompact} compactDisabled={compactDisabled} />,
+                        }] : []),
+                    ]}
+                    />
+                    {showLocalModeCover ? null : (
+                        <SubmitButton
+                            state={submitButtonState}
+                            onSubmit={() => handleSubmit(text)}
+                            onAbort={onAbort}
+                        />
+                    )}
+                </div>
+                </div>
 
                 {/* Sub Bar：Sender 下方次要操作，宽度不够时自动收起 */}
                 {hasSubBar && (
@@ -931,13 +921,7 @@ export function ChatComposer(props: ChatComposerProps) {
                         loading={mention.isLoading}
                         activeIndex={mention.activeIndex}
                         query={mention.query}
-                        onSelect={(item) => {
-                            const result = mention.selectItem(item, text)
-                            if (result) {
-                                setText(result.text)
-                                pendingCursorRef.current = result.cursorPos
-                            }
-                        }}
+                        onSelect={(item) => bridge.applySelection(mention.selectItem(item, text))}
                         onHover={mention.setActiveIndex}
                     />
                 )}
@@ -949,13 +933,7 @@ export function ChatComposer(props: ChatComposerProps) {
                         loading={slash.isLoading}
                         activeIndex={slash.activeIndex}
                         query={slash.filter}
-                        onSelect={(item) => {
-                            const result = slash.selectItem(item, text)
-                            if (result) {
-                                setText(result.text)
-                                pendingCursorRef.current = result.cursorPos
-                            }
-                        }}
+                        onSelect={(item) => bridge.applySelection(slash.selectItem(item, text))}
                         onHover={slash.setActiveIndex}
                     />
                 )}

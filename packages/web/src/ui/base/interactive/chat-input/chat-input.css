@@ -19,6 +19,9 @@
 .chat-input {
     display: flex;
     flex-direction: column;
+    /* 内衬对齐原 antd Sender（paddingSM=12px 四周，textarea 行 paddingInline:0——
+       内衬由卡容器承载）；由消费方按需覆盖 */
+    padding: 12px;
     min-height: var(--chat-input-min-h, 22px);
     max-height: var(--chat-input-max-h, 110px);
 }

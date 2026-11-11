@@ -54,7 +54,7 @@ describe('ChatInput', () => {
         const { handle, ready } = setup({ onUpdate })
         await ready()
         handle.current!.insertAtCursor('ab')
-        expect(onUpdate).toHaveBeenLastCalledWith({ text: 'ab', programmatic: false })
+        expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ text: 'ab', programmatic: false }))
     })
 
     it('setText → onUpdate({ text, programmatic: true }) 且 getText 同步', async () => {
@@ -63,7 +63,7 @@ describe('ChatInput', () => {
         await ready()
         handle.current!.setText('x')
         expect(handle.current!.getText()).toBe('x')
-        expect(onUpdate).toHaveBeenLastCalledWith({ text: 'x', programmatic: true })
+        expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ text: 'x', programmatic: true }))
     })
 
     it('setText 不入 undo 栈：Cmd+Z 不回滚内容', async () => {
@@ -167,5 +167,38 @@ describe('ChatInput', () => {
         expect(document.querySelector('.ProseMirror p.is-editor-empty')).not.toBeNull()
         handle.current!.setText('x')
         expect(document.querySelector('.ProseMirror p.is-editor-empty')).toBeNull()
+    })
+
+    it('onUpdate ctx 携带 cursorOffset（光标前文本长度）', async () => {
+        const onUpdate = vi.fn()
+        const { handle, ready } = setup({ onUpdate })
+        await ready()
+        handle.current!.setText('abc') // 写入后光标置尾
+        expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ cursorOffset: 3 }))
+    })
+
+    it('setCursorOffset 定位光标 → insertAtCursor 落点正确', async () => {
+        const { handle, ready } = setup()
+        await ready()
+        handle.current!.setText('ab')
+        handle.current!.setCursorOffset(1) // 光标到 'a' 之后
+        handle.current!.insertAtCursor('X')
+        expect(handle.current!.getText()).toBe('aXb')
+    })
+
+    it('setCursorOffset 越界/空文档不抛（置尾）', async () => {
+        const { handle, ready } = setup()
+        await ready()
+        expect(() => handle.current!.setCursorOffset(99)).not.toThrow()
+        handle.current!.insertAtCursor('!')
+        expect(handle.current!.getText()).toBe('!')
+    })
+
+    it('onReady：编辑器就绪后回调一次', async () => {
+        const onReady = vi.fn()
+        const { ready } = setup({ onReady })
+        await ready()
+        await new Promise((r) => setTimeout(r, 50))
+        expect(onReady).toHaveBeenCalledTimes(1)
     })
 })

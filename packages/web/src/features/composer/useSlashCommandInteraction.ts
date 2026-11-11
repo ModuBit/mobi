@@ -129,7 +129,9 @@ export function useSlashCommandInteraction({
         return selectItem(items[activeIndex], text)
     }, [isOpen, items, activeIndex, selectItem])
 
-    const handleKeyDown = useCallback((e: React.KeyboardEvent): boolean => {
+    // 键位事件参数取结构类型（key/preventDefault）：React 合成事件与 ChatInput 转发的
+    // 原生 KeyboardEvent 都满足（composer 换底座后两个来源并存）
+    const handleKeyDown = useCallback((e: { key: string; preventDefault(): void }): boolean => {
         if (!isOpen || items.length === 0) return false
 
         switch (e.key) {

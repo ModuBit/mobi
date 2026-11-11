@@ -25,12 +25,12 @@ export interface ActiveSuggestionList {
 }
 
 /**
- * 建议列表 ARIA：textarea 由 antd X Sender 管理，属性经 DOM 直写。
- * 不在 Sender 上声明 role/aria——Sender 会把 restProps 同时铺到根容器，
- * 整个输入卡会被读成 combobox。
+ * 建议列表 ARIA：输入控件由组件自管，属性经 DOM 直写（不在组件上声明 role/aria——
+ * 会与组件内建 ARIA 叠加误报 combobox 语义）。
  *
  * 两个 composer 页（新会话 / 聊天）共用同一份属性方案，id 约定 `${listId}-option-<index>`
- * 与 SuggestionList 保持一致。
+ * 与 SuggestionList 保持一致。输入底座两页不同代：聊天页已是 ChatInput（TipTap，
+ * .ProseMirror），新会话页暂还是 antd X Sender（textarea）——双通道探测，后者迁移后收敛。
  */
 export function useSuggestionListAria(
     wrapperRef: RefObject<HTMLElement | null>,
@@ -44,21 +44,21 @@ export function useSuggestionListAria(
     const expanded = listId !== null && count > 0
 
     useEffect(() => {
-        const textarea = wrapperRef.current?.querySelector('textarea')
-        if (!textarea) return
-        textarea.setAttribute('role', 'combobox')
-        textarea.setAttribute('aria-autocomplete', 'list')
-        textarea.setAttribute('aria-expanded', expanded ? 'true' : 'false')
+        const inputEl = wrapperRef.current?.querySelector('textarea') ?? wrapperRef.current?.querySelector('.ProseMirror')
+        if (!inputEl) return
+        inputEl.setAttribute('role', 'combobox')
+        inputEl.setAttribute('aria-autocomplete', 'list')
+        inputEl.setAttribute('aria-expanded', expanded ? 'true' : 'false')
         if (!expanded || !listId) {
-            textarea.removeAttribute('aria-controls')
-            textarea.removeAttribute('aria-activedescendant')
+            inputEl.removeAttribute('aria-controls')
+            inputEl.removeAttribute('aria-activedescendant')
             return
         }
-        textarea.setAttribute('aria-controls', listId)
+        inputEl.setAttribute('aria-controls', listId)
         if (activeIndex >= 0) {
-            textarea.setAttribute('aria-activedescendant', `${listId}-option-${activeIndex}`)
+            inputEl.setAttribute('aria-activedescendant', `${listId}-option-${activeIndex}`)
         } else {
-            textarea.removeAttribute('aria-activedescendant')
+            inputEl.removeAttribute('aria-activedescendant')
         }
     }, [wrapperRef, expanded, listId, activeIndex, count])
 }

@@ -43,10 +43,14 @@ export interface ChatInputProps {
     onSubmit?: () => void
     /** 原生键盘事件转发（消费方处理 Tab/Esc/Ctrl+C/方向键）；返回 true 表示已消费，跳过内置 Enter 判定 */
     onKeyDown?: (e: KeyboardEvent) => boolean | void
-    /** 内容变化；programmatic=true 表示来自 setText/setEditorStateJSON 等程序化写入 */
-    onUpdate?: (ctx: { text: string; programmatic: boolean }) => void
+    /** 内容变化；programmatic=true 表示来自 setText/setEditorStateJSON 等程序化写入；
+     *  cursorOffset = 光标前的纯文本长度（'\n' 分段计 1，与 getText 同语义）——
+     *  mention/slash 的 (text, cursorPos) 模型对接用 */
+    onUpdate?: (ctx: { text: string; programmatic: boolean; cursorOffset: number }) => void
     onFocus?: () => void
     onBlur?: () => void
+    /** 编辑器实例就绪（immediatelyRender:false 异步挂载完成）后回调一次 */
+    onReady?: () => void
     /** 粘贴事件（消费方分流文件粘贴）；返回 true 阻止默认 */
     onPaste?: (e: ClipboardEvent) => boolean | void
     className?: string
@@ -70,6 +74,8 @@ export interface ChatInputHandle {
     setEditorStateJSON(json: string): void
     /** 在当前光标处插入纯文本，光标落插入内容之后 */
     insertAtCursor(text: string): void
+    /** 把光标移到纯文本 offset 处（与 onUpdate ctx.cursorOffset 同语义；越界/空文档置尾） */
+    setCursorOffset(offset: number): void
     clear(): void
 }
 
@@ -94,6 +100,7 @@ export function ChatInput({
     onFocus,
     onBlur,
     onPaste,
+    onReady,
     className,
     style,
     'aria-label': ariaLabel,
@@ -103,6 +110,8 @@ export function ChatInput({
     // （MarkdownEditorView 的 onChangeRef 同款）；placeholderRef 供 Placeholder 扩展函数读取
     const propsRef = useRef({ onSubmit, onKeyDown, onUpdate, onFocus, onBlur, onPaste, placeholder, submitKey })
     propsRef.current = { onSubmit, onKeyDown, onUpdate, onFocus, onBlur, onPaste, placeholder, submitKey }
+    const onReadyRef = useRef(onReady)
+    onReadyRef.current = onReady
 
     // editor 实例 ref：editorProps 回调在 options 求值时创建，闭包捕获不到后续就绪的 editor——经 ref 读取
     const editorRef = useRef<Editor | null>(null)
@@ -147,11 +156,14 @@ export function ChatInput({
             },
         },
         onUpdate: ({ editor, transaction }) => {
+            // 光标 offset 语义与 setCursorOffset 对称：光标前的文本长度（'\n' 计 1）
             propsRef.current.onUpdate?.({
                 text: editor.getText({ blockSeparator: '\n' }),
                 programmatic: transaction.getMeta(PROGRAMMATIC_META) === true,
+                cursorOffset: editor.state.doc.textBetween(0, editor.state.selection.from, '\n', '\n').length,
             })
         },
+        onCreate: () => { onReadyRef.current?.() },
     })
     // 每渲染同步（挂载后 editor 由 null → 实例触发重渲染，ref 随之就位）
     editorRef.current = editor
@@ -255,6 +267,27 @@ export function ChatInput({
         insertAtCursor: (text: string) => {
             // JSON text 节点插入，规避 insertContent(string) 的 HTML 解析歧义
             editorRef.current?.chain().focus().insertContent({ type: 'text', text }).run()
+        },
+        /**
+         * 光标定位到纯文本 offset（与 onUpdate ctx.cursorOffset 对称的定义：
+         * textBetween(0, pos, '\n', '\n').length === offset）。doc 顺序扫描文本节点，
+         * 找到累计长度首次覆盖 offset 的节点内部位置；无文本节点（空文档/越界）置尾。
+         */
+        setCursorOffset: (offset: number) => {
+            const ed = editorRef.current
+            if (!ed) return
+            const doc = ed.state.doc
+            let target: number | null = null
+            doc.descendants((node, pos) => {
+                if (target != null || !node.isText) return true
+                const before = doc.textBetween(0, pos, '\n', '\n').length
+                if (before + node.nodeSize >= offset) {
+                    target = pos + (offset - before)
+                    return false
+                }
+                return true
+            })
+            ed.commands.setTextSelection(target ?? TextSelection.atEnd(doc).from)
         },
         clear: () => setText(''),
     }), [])
