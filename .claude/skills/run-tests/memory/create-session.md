@@ -37,8 +37,7 @@ metadata:
 
 ## URL 预选
 
-`/sessions/new?projectId=<id>`（项目组「+」入口）：projects 缓存就绪后自动选中，
-Sender 即刻可用。`?cwd=` 已从路由移除。
+`/sessions/new?workspaceId=<id>`（项目组「+」入口）：**2026-11-08 实测 `?projectId=` 已失效**（页面加载后 combobox 仍空，须手动点开下拉选项目；选中后 URL 翻转为 `?workspaceId=`），projects 缓存就绪后是否恢复自动选中未复验。`?cwd=` 已从路由移除。
 
 ## 坑
 

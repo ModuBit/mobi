@@ -3,7 +3,7 @@ name: quote-verify
 description: 引用特性 E2E 验证——划选 popover / 评论浮层 / chip 列表卡 / 气泡引用组 / 点击定位 / 出向标注 / 降级矩阵的 recipe 与合成事件坑
 metadata:
   type: recipe
-  last_verified: 2026-10-26
+  last_verified: 2026-11-08
 ---
 
 # 引用特性验证
@@ -54,7 +54,7 @@ metadata:
 
 链路：划选 agent 回复 → 添加到对话 → 评论保存（CommentField 的 `.anticon-check` 按钮，Enter 只换行）→ 发探针 → 回复中断言：
 
-1. `[data-testid="quote-annotation-N"]`「引用 N」上标按钮渲染（新 XML 与旧 directive 经 MobiDirective 收敛到同一 QuoteDirectiveMarker）；正文无标签原文残留
+1. `[data-testid="quote-annotation-N"]`「引用 N」上标按钮渲染（新 XML 与旧 directive 经 MobiDirective 收敛到同一 QuoteDirectiveMarker）；正文无标签原文残留。**几何验收判据（2026-11-08 定稿，非可选）**：tag 视觉盒（内层 span 的 rect）中心 vs 首行文本 glyph 中心差值 **必须 ≈0**（>0.5px 即未修）、tag 完整落在段落盒内（`tagFullyInsideP`）、段落行距不变（零行盒影响，lineGap=22）、**tag 内部 icon vs 文字中心差 ≈0**（`iconVsTextCenter`，icon 绝对定位锚 `top:2` 对齐基线排版的文字；top:0 偏高 1.8px）。组件现用 `verticalAlign: '-0.35em'` + `padding: 1px 8px 1px 18px`（icon@left:3/10px → 文字间隙 5px；竖距 2px 会使 tag 高 19.5px 顶边距只剩 0.9px 显臃肿故保持 1px；**内层禁改 inline-flex**——原子盒参与行盒，实测行距 22→27.2 且溢出段落盒）。改对齐/内距值时在同页面批量渲染变体量差值选型（about:blank 上无效——app 的 @font-face 不在，字体度量失真），勿凭 CSS 语义猜
 2. tooltip 内容 = excerpt + 评论（合成 PointerEvent 验证法见坑一节；CDP hover 测不出 AppTooltip）
 3. 点击按钮 → `CSS.highlights` 注册 `quote-fragment-flash`（Chrome 155 用 forEach 遍历，见片段高亮节）
 4. **降级矩阵 seed recipe**（Store 造混合形态历史行真机断言）：越界 `index="9"` / 伪造 `index="0"` 原文保留、同 index 重复只留首处、回显形态 `<mobi:quote index="1">…</mobi:quote>` 整体渲染为标注无内容残留。**混合形态行的 markers 基线（2026-10-26 legacy `<quote/>` 移除后，未真机重验）**：`:mobi-quote{}` DSL 与 `<mobi:quote/>` XML 同 index 各一次 + 重复一次时 markers 恰好 **2 个**（DSL 族首处 + XML 族首处各一；XML 族同 index 去重、DSL↔XML 互不跨族合并）；无命名空间 `<quote index="1"/>` **不再渲染标注**（被剥，只算正文）；正文字面量残留仅代码围栏内那处；**seed 会话 workspace_id 需手工 UPDATE 补绑**（getOrCreateSession 的 workspaceId 传 undefined 落 loose session，UI 列表不可见）**坑：user 行 seed 时 localId 必须传 null**——带 localId 的 user 行会被 isQueueableUserSubmission 判入 queued 轨道，UI 按排队消息从线程剔除 → 配对输入缺 user → 全部标注降级原文（2026-10-26 实踩：表现为 markers 全消失 + directive 原文回潮）。**纯 Store 造的 session 行没有 executor 执行体，发消息静默排队不回复**——真实模型链路必须走 UI 新对话
