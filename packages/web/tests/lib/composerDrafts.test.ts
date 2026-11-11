@@ -169,6 +169,30 @@ describe('composerDrafts', () => {
         expect(getDraft('s1')).toBeNull()
     })
 
+    it('mergeDraftText：正文替换使 editorState 作废，调用方转入的 chip 落入 quotes 桶', () => {
+        const old = {
+            ...seg('old', { quotes: [{ messageId: 'm1', role: 'user' as const, excerpt: '旧' }] }),
+            editorState: { v: 1 as const, json: '{"type":"doc"}' },
+        }
+        saveDraft('s1', old)
+        const carried = [
+            { messageId: 'm2', role: 'agent' as const, excerpt: '乙', comment: '为什么' },
+            // 与既有 quotes 桶重复：按「同消息同片段」判重
+            { messageId: 'm1', role: 'user' as const, excerpt: '旧' },
+        ]
+        mergeDraftText('s1', 'new text', carried)
+        expect(getDraft('s1')).toEqual({
+            text: 'new text',
+            files: [],
+            images: [],
+            quotes: [
+                { messageId: 'm1', role: 'user', excerpt: '旧' },
+                { messageId: 'm2', role: 'agent', excerpt: '乙', comment: '为什么' },
+            ],
+        })
+        expect(getDraft('s1')).not.toHaveProperty('editorState')
+    })
+
     it('getDraft 读刷新 LRU 顺序（高频读的老 session 不被优先淘汰）', () => {
         for (let i = 0; i < 50; i++) saveDraft(`s${i}`, seg(`t${i}`))
         getDraft('s0') // 读刷新 s0 到最新

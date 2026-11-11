@@ -85,9 +85,11 @@ export function useComposerScaffold(params: UseComposerScaffoldParams) {
     const slash = useSlashCommandInteraction({ commandsData, commandsLoading, workingDir })
 
     // 编辑器 → 面板模型桥接（归一管线 + processChange + 选中插回）
-    // 状态事件单出口：页面的「用户编辑哨兵」与「文本镜像」在此编排（顺序即语义）
+    // 状态事件单出口：页面的「用户编辑哨兵」与「文本镜像」在此编排（顺序即语义）。
+    // 哨兵只认用户输入：程序化写入（草稿恢复/rewind 回填/清空）不算「用户已编辑」，
+    // 否则会话页的 pausedEditRef 会被回填自身置位，后续 rewind 回填被整体跳过
     const handleEditorUpdate = useCallback((ctx: TextInputCtx) => {
-        onUserEdit?.()
+        if (!ctx.programmatic) onUserEdit?.()
         onTextChange(ctx.text)
     }, [onTextChange, onUserEdit])
     const bridge = useChatInputBridge({

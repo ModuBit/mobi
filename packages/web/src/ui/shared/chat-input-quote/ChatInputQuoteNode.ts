@@ -49,12 +49,28 @@ export const ChatInputQuoteNode = Node.create<ChatInputQuoteOptions>({
                 return value == null ? {} : { [`data-${name}`]: String(value) }
             },
         })
+        // 偏移是数字语义：HTML 往返（复制粘贴）后保持 number，收集侧不用二次转换
+        const numericFromData = (name: string) => ({
+            default: null as unknown,
+            parseHTML: (element: HTMLElement) => {
+                const raw = element.getAttribute(`data-${name}`)
+                if (raw == null || raw === '') return null
+                const value = Number(raw)
+                return Number.isFinite(value) ? value : null
+            },
+            renderHTML: (attributes: Record<string, unknown>) => {
+                const value = attributes[name]
+                return value == null ? {} : { [`data-${name}`]: String(value) }
+            },
+        })
         return {
             uid: fromData('uid'),
             messageId: fromData('message-id'),
             role: fromData('role'),
             excerpt: fromData('excerpt'),
             comment: fromData('comment'),
+            startOffset: numericFromData('start-offset'),
+            endOffset: numericFromData('end-offset'),
         }
     },
 

@@ -127,6 +127,24 @@ describe('ChatInput', () => {
         expect(onSubmit).not.toHaveBeenCalled()
     })
 
+    it('IME 守卫先于消费方：组合中的按键不交给 onKeyDown（否则面板吞掉候选词确认）', async () => {
+        const onKeyDown = vi.fn(() => true)
+        const { ready, typeKey } = setup({ onKeyDown })
+        await ready()
+        typeKey({ key: 'Enter', isComposing: true })
+        typeKey({ key: 'Escape', keyCode: 229 })
+        expect(onKeyDown).not.toHaveBeenCalled()
+
+        typeKey({ key: 'Enter' })
+        expect(onKeyDown).toHaveBeenCalledTimes(1)
+    })
+
+    it('link 扩展关闭：URL 不会自动变成链接 mark', async () => {
+        const { handle, ready } = setup()
+        await ready()
+        expect(handle.current!.getEditor()!.schema.marks.link).toBeUndefined()
+    })
+
     it('onKeyDown 返回 true 时内置 Enter 判定被跳过', async () => {
         const onSubmit = vi.fn()
         const onKeyDown = vi.fn(() => true)
@@ -163,6 +181,37 @@ describe('ChatInput', () => {
         handle.current!.setText('keep')
         expect(() => handle.current!.setEditorStateJSON('{not json')).not.toThrow()
         expect(handle.current!.getText()).toBe('keep')
+    })
+
+    it('setEditorStateJSON 遇 schema 不认的节点：静默保留当前文档（不降级为空 doc）', async () => {
+        const { handle, ready } = setup()
+        await ready()
+        handle.current!.setText('keep')
+        expect(() => handle.current!.setEditorStateJSON(JSON.stringify({
+            type: 'doc',
+            content: [{ type: 'nodeThatDoesNotExist' }],
+        }))).not.toThrow()
+        expect(handle.current!.getText()).toBe('keep')
+    })
+
+    it('replaceTextRange：按纯文本区间替换并保留前后内容', async () => {
+        const { handle, ready } = setup()
+        await ready()
+        handle.current!.setText('abcdef')
+        handle.current!.replaceTextRange(2, 4, 'XY')
+        expect(handle.current!.getText()).toBe('abXYef')
+        // 光标落在替换段之后（offset 4），继续输入不跳到末尾
+        handle.current!.insertAtCursor('!')
+        expect(handle.current!.getText()).toBe('abXY!ef')
+    })
+
+    it('replaceTextRange 走程序化通道：onUpdate 标 programmatic', async () => {
+        const onUpdate = vi.fn()
+        const { handle, ready } = setup({ onUpdate })
+        await ready()
+        handle.current!.setText('ab')
+        handle.current!.replaceTextRange(1, 2, 'X')
+        expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ text: 'aX', programmatic: true }))
     })
 
     it('disabled → 编辑器不可编辑（contenteditable=false）', async () => {

@@ -18,6 +18,8 @@
  * useChatInputBridge 契约（编辑器 → mention/slash 模型的换算桥）：
  * - 状态事件单出口：每次 onUpdate（含 programmatic）都先通知消费方
  * - programmatic 短路：归一写回/选中插回不得重新唤起面板、不得再写回
+ * - 写回按「前值 → 新值」的最小差异段替换（replaceTextRange），不整档 setText——
+ *   整档重写会销毁文档里的引用 chip
  * - 归一顺序：先取前值快照再比对（先覆盖再比会让顿号归一永不命中）
  * - 面板优先级：slash 命中先于 mention，命中 slash 时关闭 mention
  * - 光标重定位是桥内部事务：归一写回后恢复光标并聚焦
@@ -31,6 +33,7 @@ import { useChatInputBridge, type TextInputCtx } from '@/features/composer/useCh
 function makeShell() {
     return {
         setText: vi.fn(),
+        replaceTextRange: vi.fn(),
         setCursorOffset: vi.fn(),
         focus: vi.fn(),
     } as unknown as ChatInputHandle
@@ -68,7 +71,7 @@ describe('useChatInputBridge', () => {
         feed(programmatic('/cmd '))
 
         expect(onUpdate).toHaveBeenCalledWith(programmatic('/cmd '))
-        expect(shell.setText).not.toHaveBeenCalled()
+        expect(shell.replaceTextRange).not.toHaveBeenCalled()
         expect(slash.processChange).not.toHaveBeenCalled()
         expect(mention.processChange).not.toHaveBeenCalled()
     })
@@ -79,7 +82,9 @@ describe('useChatInputBridge', () => {
         feed(user(''))
         feed(user('、', 1))
 
-        expect(shell.setText).toHaveBeenCalledWith('/')
+        // 只替换差异字符，文档其余内容（含引用 chip）原样保留
+        expect(shell.replaceTextRange).toHaveBeenCalledWith(0, 1, '/')
+        expect(shell.setText).not.toHaveBeenCalled()
         expect(slash.processChange).toHaveBeenCalledWith('/', 1)
         expect(mention.processChange).toHaveBeenCalledWith('/', 1)
 
@@ -95,7 +100,7 @@ describe('useChatInputBridge', () => {
         feed(programmatic('abc'))
         feed(user('、abc', 1))
 
-        expect(shell.setText).toHaveBeenCalledWith('/abc')
+        expect(shell.replaceTextRange).toHaveBeenCalledWith(0, 1, '/')
     })
 
     it('前值以顿号开头时不重复归一（连续输入的语义保持原样）', () => {
@@ -105,7 +110,7 @@ describe('useChatInputBridge', () => {
         feed(user('、、', 2))
 
         // 第一次已归一为「/」；第二次前值「/」不满足「、+前值」形态，保持原值不再写回
-        expect(shell.setText).toHaveBeenCalledTimes(1)
+        expect(shell.replaceTextRange).toHaveBeenCalledTimes(1)
     })
 
     it('感叹号归一：行首「！ 」→「! 」', () => {
@@ -113,7 +118,7 @@ describe('useChatInputBridge', () => {
 
         feed(user('！ hi'))
 
-        expect(shell.setText).toHaveBeenCalledWith('! hi')
+        expect(shell.replaceTextRange).toHaveBeenCalledWith(0, 1, '!')
     })
 
     it('slash 优先：命中时关闭 mention 并跳过 mention.processChange', () => {
@@ -140,21 +145,27 @@ describe('useChatInputBridge', () => {
         expect(mention.close).toHaveBeenCalled()
     })
 
-    it('applySelection：精确落点设置光标；null 落点保持 setText 默认置尾；空结果无动作', () => {
-        const { shell, hook } = setup()
+    it('applySelection：只替换差异段并设置精确落点；null 落点置文本末尾；空结果无动作', () => {
+        const { shell, hook, feed } = setup()
 
-        hook.result.current.applySelection({ text: 'hello', cursorPos: 3 })
-        expect(shell.setText).toHaveBeenCalledWith('hello')
-        expect(shell.setCursorOffset).toHaveBeenCalledWith(3)
+        // 先吃一次用户输入建立前值（真实链路里 applySelection 总发生在键入之后）
+        feed(user('@src'))
+        hook.result.current.applySelection({ text: '@src/file.ts ', cursorPos: 14 })
 
-        shell.setText.mockClear()
+        // 触发词只在末尾增长：前缀 @src 之后的差异段被替换，chip 等其余节点不被重写
+        expect(shell.replaceTextRange).toHaveBeenCalledWith(4, 4, '/file.ts ')
+        expect(shell.setCursorOffset).toHaveBeenCalledWith(14)
+        expect(shell.setText).not.toHaveBeenCalled()
+
+        shell.replaceTextRange.mockClear()
         shell.setCursorOffset.mockClear()
         hook.result.current.applySelection({ text: 'world', cursorPos: null })
-        expect(shell.setText).toHaveBeenCalledWith('world')
-        expect(shell.setCursorOffset).not.toHaveBeenCalled()
+        expect(shell.setCursorOffset).toHaveBeenCalledWith(5)
 
-        shell.setText.mockClear()
+        shell.replaceTextRange.mockClear()
+        shell.setCursorOffset.mockClear()
         hook.result.current.applySelection(null)
-        expect(shell.setText).not.toHaveBeenCalled()
+        expect(shell.replaceTextRange).not.toHaveBeenCalled()
+        expect(shell.setCursorOffset).not.toHaveBeenCalled()
     })
 })

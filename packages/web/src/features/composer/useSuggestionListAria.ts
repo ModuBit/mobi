@@ -29,6 +29,10 @@ export interface ActiveSuggestionList {
  *
  * 两个 composer 页（新会话 / 聊天）共用同一份属性方案，id 约定 `${listId}-option-<index>`
  * 与 SuggestionList 保持一致。
+ *
+ * 编辑器是异步挂载的（immediatelyRender:false）：挂载首帧拿不到 .ProseMirror 时
+ * 逐帧重试，直到出现或超出上限；出现后用 MutationObserver 兜住「编辑器 setProps /
+ * 重建 DOM 把 role 等属性冲掉」的情况（属性与期望不一致时补回）。
  */
 export function useSuggestionListAria(
     wrapperRef: RefObject<HTMLElement | null>,
@@ -42,21 +46,68 @@ export function useSuggestionListAria(
     const expanded = listId !== null && count > 0
 
     useEffect(() => {
-        const inputEl = wrapperRef.current?.querySelector('.ProseMirror')
-        if (!inputEl) return
-        inputEl.setAttribute('role', 'combobox')
-        inputEl.setAttribute('aria-autocomplete', 'list')
-        inputEl.setAttribute('aria-expanded', expanded ? 'true' : 'false')
-        if (!expanded || !listId) {
-            inputEl.removeAttribute('aria-controls')
-            inputEl.removeAttribute('aria-activedescendant')
-            return
+        let cancelled = false
+        let frame: number | null = null
+        let observer: MutationObserver | null = null
+        let retries = 0
+        // ~2s 内等编辑器挂载；仍未出现则等下一次状态变化触发本 effect 重跑
+        const MAX_FRAMES = 120
+
+        const expectedAttrs = (): Record<string, string | null> => ({
+            role: 'combobox',
+            'aria-autocomplete': 'list',
+            'aria-expanded': expanded ? 'true' : 'false',
+            'aria-controls': expanded && listId ? listId : null,
+            'aria-activedescendant': expanded && listId && activeIndex >= 0
+                ? `${listId}-option-${activeIndex}`
+                : null,
+        })
+
+        /** 写入期望属性；null 值表示移除。返回是否发生了改动 */
+        const apply = (inputEl: HTMLElement): boolean => {
+            let changed = false
+            for (const [name, value] of Object.entries(expectedAttrs())) {
+                if (value == null) {
+                    if (inputEl.hasAttribute(name)) {
+                        inputEl.removeAttribute(name)
+                        changed = true
+                    }
+                } else if (inputEl.getAttribute(name) !== value) {
+                    inputEl.setAttribute(name, value)
+                    changed = true
+                }
+            }
+            return changed
         }
-        inputEl.setAttribute('aria-controls', listId)
-        if (activeIndex >= 0) {
-            inputEl.setAttribute('aria-activedescendant', `${listId}-option-${activeIndex}`)
-        } else {
-            inputEl.removeAttribute('aria-activedescendant')
+
+        const findInput = (): HTMLElement | null => (
+            wrapperRef.current?.querySelector('.ProseMirror') as HTMLElement | null
+        )
+
+        const attach = () => {
+            if (cancelled) return
+            const inputEl = findInput()
+            if (!inputEl) {
+                if (retries++ < MAX_FRAMES) frame = requestAnimationFrame(attach)
+                return
+            }
+            apply(inputEl)
+            observer = new MutationObserver(() => {
+                if (cancelled) return
+                // 只在属性被外部改写时补写（apply 自身写入后属性已一致，不会自激循环）
+                apply(inputEl)
+            })
+            observer.observe(inputEl, {
+                attributes: true,
+                attributeFilter: ['role', 'aria-autocomplete', 'aria-expanded', 'aria-controls', 'aria-activedescendant'],
+            })
+        }
+
+        attach()
+        return () => {
+            cancelled = true
+            if (frame != null) cancelAnimationFrame(frame)
+            observer?.disconnect()
         }
     }, [wrapperRef, expanded, listId, activeIndex, count])
 }

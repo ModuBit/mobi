@@ -287,22 +287,43 @@ export function saveDraft(sessionId: string, segments: ComposerSegments & Pick<P
     persist(next)
 }
 
+/** 引用去重键：同消息同片段即同一条（与 addQuoteToEditor 的判重口径一致） */
+function quoteKey(q: PendingQuoteRef): string {
+    return `${q.messageId}\u0000${q.excerpt}`
+}
+
 /**
  * 仅更新草稿文本，保留该 session 既有的文件/图片/引用分段。
  * 供跨页草稿落入既有 session 时使用，避免用空分段覆盖既有内容。
+ *
+ * editorState（结构化快照）随正文一起作废：快照描述的是被替换掉的旧文本。
+ * 旧快照里的引用 chip 由调用方摘出后经 carriedQuotes 转入 quotes 桶（恢复时
+ * 在 setText 之后逐条插回），因此不会随快照删除而丢失。
  */
-export function mergeDraftText(sessionId: string, text: string): void {
+export function mergeDraftText(
+    sessionId: string,
+    text: string,
+    carriedQuotes: readonly PendingQuoteRef[] = [],
+): void {
     if (!sessionId) return
     const existing = hydrate()[sessionId]
     const keptFiles = existing?.files ?? []
     const keptImages = existing?.images ?? []
-    const keptQuotes = existing?.quotes ?? []
+    // 旧格式草稿的 quotes 桶 + 调用方从 editorState 摘出的 chip，按判重口径合并
+    const seen = new Set<string>()
+    const quotes: PendingQuoteRef[] = []
+    for (const quote of [...(existing?.quotes ?? []), ...carriedQuotes]) {
+        const key = quoteKey(quote)
+        if (seen.has(key)) continue
+        seen.add(key)
+        quotes.push(quote)
+    }
     const next: DraftsMap = { ...hydrate() }
-    if (text.trim().length === 0 && keptFiles.length === 0 && keptImages.length === 0 && keptQuotes.length === 0) {
+    if (text.trim().length === 0 && keptFiles.length === 0 && keptImages.length === 0 && quotes.length === 0) {
         delete next[sessionId]
     } else {
         delete next[sessionId]
-        next[sessionId] = { text, files: keptFiles, images: keptImages, quotes: keptQuotes }
+        next[sessionId] = { text, files: keptFiles, images: keptImages, quotes }
     }
     evict(next)
     persist(next)

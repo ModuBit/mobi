@@ -16,7 +16,7 @@
 
 import type { Editor } from '@tiptap/core'
 import { CHAT_INPUT_QUOTE_NODE_NAME, type ChatInputQuoteAttrs } from './chatInputQuoteTypes'
-import { normalizeEditorText } from './chatInputText'
+import { normalizeEditorText } from '@/ui/base/interactive/chat-input/chatInputText'
 import {
     QUOTE_MAX_COUNT,
     withQuoteUid,
@@ -29,24 +29,29 @@ import {
  * composer 引用 chip 的 doc 级操作（source of truth = 编辑器文档）：
  * chip 节点即数据，序列化时从 doc 遍历收集；不再有独立的 quotes state。
  *
- * 实现归属 ui 层（ChatInputHandle 内部调用），业务层只见 Handle 方法与 domain 类型——
- * 此前这些函数住在 features/composer 并直接 import @tiptap/core，使 TipTap 的
- * doc/tr/view 细节穿透 seam 进入业务层。视觉/节点定义同样在 ui（ChatInputQuoteNode）。
+ * 归属 ui/shared（多域共享的业务呈现 + 其文档操作）：chip 的节点定义/NodeView/
+ * 文档遍历都带引用业务语义，不放进零业务的 ui/base；ChatInput 经装配注入节点、
+ * 经 Handle 方法调用这里的实现。
  */
+
+/** chip 节点 attrs → 待发送引用条目（消息级 + 片段级偏移；空评论不收） */
+function quoteFromAttrs(attrs: ChatInputQuoteAttrs): PendingQuoteRef {
+    return {
+        messageId: attrs.messageId,
+        role: attrs.role,
+        excerpt: attrs.excerpt,
+        ...(attrs.comment != null && attrs.comment !== '' ? { comment: attrs.comment } : {}),
+        ...(typeof attrs.startOffset === 'number' ? { startOffset: attrs.startOffset } : {}),
+        ...(typeof attrs.endOffset === 'number' ? { endOffset: attrs.endOffset } : {}),
+    }
+}
 
 /** 遍历 doc 收集全部引用条目（文档顺序 = prompt quote index 序） */
 export function collectQuotesFromDoc(doc: Editor['state']['doc']): ComposerQuoteRef[] {
     const out: ComposerQuoteRef[] = []
     doc.descendants((node) => {
         if (node.type.name !== CHAT_INPUT_QUOTE_NODE_NAME) return true
-        const attrs = node.attrs as ChatInputQuoteAttrs
-        out.push({
-            uid: attrs.uid,
-            messageId: attrs.messageId,
-            role: attrs.role,
-            excerpt: attrs.excerpt,
-            ...(attrs.comment != null && attrs.comment !== '' ? { comment: attrs.comment } : {}),
-        })
+        out.push({ ...quoteFromAttrs(node.attrs as ChatInputQuoteAttrs), uid: (node.attrs as ChatInputQuoteAttrs).uid })
         return false
     })
     return out
@@ -72,14 +77,55 @@ function quoteNodeJSON(quote: ComposerQuoteRef) {
             role: quote.role,
             excerpt: quote.excerpt,
             comment: quote.comment ?? null,
+            // 片段级定位事实：丢了它，引用回到消息列表只能按 excerpt 模糊命中
+            startOffset: quote.startOffset ?? null,
+            endOffset: quote.endOffset ?? null,
         },
     }
+}
+
+/**
+ * 结构化草稿 JSON → 引用条目（纯 JSON 遍历，不需要 editor 实例）。
+ * 跨页草稿合并时把旧快照里的 chip 摘出来转入 quotes 桶，避免随 editorState
+ * 一起被丢弃（旧快照的正文已被跨页文本替换，chip 是仍可复用的引用上下文）。
+ */
+export function extractQuotesFromEditorStateJSON(json: string): PendingQuoteRef[] {
+    let parsed: unknown
+    try {
+        parsed = JSON.parse(json) as unknown
+    } catch {
+        return []
+    }
+    const out: PendingQuoteRef[] = []
+    const seen = new Set<string>()
+    const walk = (node: unknown) => {
+        if (!node || typeof node !== 'object') return
+        const obj = node as { type?: unknown; attrs?: Record<string, unknown>; content?: unknown }
+        if (obj.type === CHAT_INPUT_QUOTE_NODE_NAME && obj.attrs) {
+            const attrs = obj.attrs as unknown as ChatInputQuoteAttrs
+            if (
+                typeof attrs.messageId === 'string'
+                && typeof attrs.excerpt === 'string'
+                && (attrs.role === 'user' || attrs.role === 'agent')
+            ) {
+                const key = `${attrs.messageId}\u0000${attrs.excerpt}`
+                if (!seen.has(key)) {
+                    seen.add(key)
+                    out.push(quoteFromAttrs(attrs))
+                }
+            }
+        }
+        if (Array.isArray(obj.content)) obj.content.forEach(walk)
+    }
+    walk(parsed)
+    return out.slice(0, QUOTE_MAX_COUNT)
 }
 
 /**
  * 灌入一条引用（消息列表选区动作 → composer）：去重（同消息同文本返回已有条目）、
  * 上限（QUOTE_MAX_COUNT 达上限返回 null）、插入光标处 + 尾随空格，返回落位条目。
  * 不抢焦点：引用是消息列表里的动作，焦点可能仍在消息区。
+ * 有选区/节点选中时插到文档末尾而不替换选区——引用是「追加上下文」，不是「改写正文」。
  */
 export function addQuoteToEditor(editor: Editor, quote: PendingQuoteRef): ComposerQuoteRef | null {
     const existingQuotes = collectQuotesFromDoc(editor.state.doc)
@@ -89,7 +135,9 @@ export function addQuoteToEditor(editor: Editor, quote: PendingQuoteRef): Compos
     if (existing) return existing
     if (existingQuotes.length >= QUOTE_MAX_COUNT) return null
     const entry = withQuoteUid(quote)
-    editor.commands.insertContent([quoteNodeJSON(entry), { type: 'text', text: ' ' }])
+    const { selection } = editor.state
+    const insertPos = selection.empty ? selection.from : editor.state.doc.content.size - 1
+    editor.commands.insertContentAt(insertPos, [quoteNodeJSON(entry), { type: 'text', text: ' ' }])
     return entry
 }
 
@@ -131,6 +179,8 @@ export function clearQuotesInEditor(editor: Editor): number {
 /**
  * 回填：把一组引用按文档末尾顺序追加（wire 回填数据无 uid——生成规则照旧 withQuoteUid）。
  * 每条 chip 后带一个空格，与手输插入形态一致。
+ * 不抢焦点：草稿恢复可能发生在页面挂载/移动端首屏，focus 会弹键盘并抢走滚动；
+ * 需要焦点的调用方（如 rewind 回填）自己显式 focus。
  */
 export function insertQuotesAtEnd(editor: Editor, quotes: PendingQuoteRef[]): void {
     if (quotes.length === 0) return
@@ -138,5 +188,5 @@ export function insertQuotesAtEnd(editor: Editor, quotes: PendingQuoteRef[]): vo
         quoteNodeJSON(q),
         { type: 'text', text: ' ' },
     ])
-    editor.chain().focus('end').insertContent(items).run()
+    editor.commands.insertContentAt(editor.state.doc.content.size - 1, items)
 }

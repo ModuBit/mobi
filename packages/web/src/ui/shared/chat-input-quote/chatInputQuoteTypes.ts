@@ -22,13 +22,16 @@
 /** 节点名（消费方遍历/计数以此寻址） */
 export const CHAT_INPUT_QUOTE_NODE_NAME = 'chatInputQuote'
 
-/** 节点属性：业务无关透传（uid/messageId/role/excerpt/comment 由装配方约定语义） */
+/** 节点属性：业务无关透传（uid/messageId/role/excerpt/comment/offset 由装配方约定语义） */
 export interface ChatInputQuoteAttrs {
     uid: string
     messageId: string
     role: 'user' | 'agent'
     excerpt: string
     comment?: string | null
+    /** 选区在源 text block 容器内的 UTF-16 偏移（片段级定位用；老快照没有此字段） */
+    startOffset?: number | null
+    endOffset?: number | null
 }
 
 export interface ChatInputQuoteOptions {

@@ -30,7 +30,7 @@ import {
     extractWireText,
     insertQuotesAtEnd,
     updateQuoteCommentInEditor,
-} from './chatInputQuoteDoc'
+} from '@/ui/shared/chat-input-quote/chatInputQuoteDoc'
 import './chat-input.css'
 
 /** 行高常量：对齐现 Sender 输入区视觉（14px 字号 / 22px 行高），min/max 行数 → 像素换算 */
@@ -65,6 +65,29 @@ function serializersFor(schema: Editor['schema']): ReturnType<typeof getTextSeri
 /** 光标前的纯文本长度（getText 段落语义单源；onUpdate 与 setCursorOffset 共用） */
 function textLengthBefore(doc: PMNode, pos: number, serializers: ReturnType<typeof getTextSerializersFromSchema>): number {
     return getTextBetween(doc, { from: 0, to: pos }, { blockSeparator: '\n', textSerializers: serializers }).length
+}
+
+/**
+ * 纯文本 offset → 文档位置（与 cursorOffset 同一定义：getTextBetween(0, pos) 长度 === offset）。
+ * 只映射文本节点：offset 落在 chip 的降级文本区间时落到其后文本节点起点，不会插进 atom 内部。
+ * 空文档/越界返回 null，调用方回落到文档末尾。
+ */
+function positionAtOffset(
+    doc: PMNode,
+    offset: number,
+    serializers: ReturnType<typeof getTextSerializersFromSchema>,
+): number | null {
+    let target: number | null = null
+    doc.descendants((node, pos) => {
+        if (target != null || !node.isText) return true
+        const before = textLengthBefore(doc, pos, serializers)
+        if (before + node.nodeSize >= offset) {
+            target = Math.max(pos, pos + (offset - before))
+            return false
+        }
+        return true
+    })
+    return target
 }
 
 /** 编辑器更新上下文（ChatInput.onUpdate 载荷；消费方桥接层按需收窄） */
@@ -122,6 +145,11 @@ export interface ChatInputHandle {
     setEditorStateJSON(json: string): void
     /** 在当前光标处插入纯文本，光标落插入内容之后 */
     insertAtCursor(text: string): void
+    /**
+     * 程序化替换纯文本区间 [from, to)（offset 与 cursorOffset 同语义），**保留 extra 节点**。
+     * 供面板选中插回/归一写回使用：整档 setText 会销毁文档里的引用 chip。
+     */
+    replaceTextRange(from: number, to: number, text: string): void
     /** 把光标移到纯文本 offset 处（与 onUpdate ctx.cursorOffset 同语义；越界/空文档置尾） */
     setCursorOffset(offset: number): void
     /** 编辑器是否已就绪（程序化写入前的判据；未就绪时其余方法均为 no-op） */
@@ -184,16 +212,19 @@ export function ChatInput({
     )
 
     /**
-     * 键位层（顺序固定）：消费方接管 → IME 守卫 → Enter 判定（语义抄 antx TextArea.js：
+     * 键位层（顺序固定）：IME 守卫 → 消费方接管 → Enter 判定（语义抄 antx TextArea.js：
      * 修饰键不放行、submitKey 分流）。换行不自己造命令形态——裸 Enter 放行给 TipTap
      * 默认 splitBlock；shift+Enter 因 hardBreak 关闭无默认绑定，主动 splitBlock 保持
      * getText 段落语义单源。
+     *
+     * IME 守卫必须在消费方之前：组合中的 Enter/Escape 是输入法确认/取消候选词，
+     * 被面板当成「选中/关闭」抢走会让中文输入无法落字。
      */
     const handleKeyDown = useCallback((event: KeyboardEvent): boolean => {
-        // 1. 消费方接管（面板导航/快捷键等）
-        if (propsRef.current.onKeyDown?.(event) === true) return true
-        // 2. IME 组合残留：isComposing + keyCode 229 兜底，放行给编辑器
+        // 1. IME 组合残留：isComposing + keyCode 229 兜底，放行给编辑器/输入法
         if (isComposingEvent({ nativeEvent: event })) return false
+        // 2. 消费方接管（面板导航/快捷键等）
+        if (propsRef.current.onKeyDown?.(event) === true) return true
         if (event.key !== 'Enter') return false
         // 3. 修饰键组合不放行提交（Ctrl+Enter 等留给消费方）
         if (event.ctrlKey || event.altKey || event.metaKey) return false
@@ -244,6 +275,9 @@ export function ChatInput({
                 bold: false, italic: false, strike: false, code: false, codeBlock: false,
                 blockquote: false, bulletList: false, orderedList: false, listItem: false,
                 horizontalRule: false, heading: false, hardBreak: false,
+                // link 关闭：输入 URL 会自动变成可点击链接（autolink/linkOnPaste），
+                // 点击会 window.open——composer 是纯文本输入区，链接语义只属于消息正文
+                link: false,
                 dropcursor: false, gapcursor: false, // undoRedo 保持默认启用（v3 options 只接受 false|配置对象，开=省略）
             }),
             // 函数形式读 ref：动态文案（bash 模式占位切换）不重建 editor
@@ -313,6 +347,15 @@ export function ChatInput({
         } catch {
             return // 非法 JSON 静默降级为 no-op（调用方自己兜底 setText）
         }
+        const ed = editorRef.current
+        if (!ed) return
+        try {
+            // schema 校验：不认识的节点/结构在这里抛错。不能直接交给 setContent——
+            // TipTap 解析失败会静默降级为空文档，反而把调用方的 setText 文本兜底清掉
+            ed.schema.nodeFromJSON(parsed)
+        } catch {
+            return // 快照与当前 schema 不兼容：保留当前文档（文本兜底已生效）
+        }
         replaceDoc(parsed)
     }
 
@@ -342,18 +385,27 @@ export function ChatInput({
             const ed = editorRef.current
             if (!ed) return
             const doc = ed.state.doc
-            const serializers = serializersFor(ed.schema)
-            let target: number | null = null
-            doc.descendants((node, pos) => {
-                if (target != null || !node.isText) return true
-                const before = textLengthBefore(doc, pos, serializers)
-                if (before + node.nodeSize >= offset) {
-                    target = pos + (offset - before)
-                    return false
-                }
-                return true
-            })
+            const target = positionAtOffset(doc, offset, serializersFor(ed.schema))
             ed.commands.setTextSelection(target ?? TextSelection.atEnd(doc).from)
+        },
+        replaceTextRange: (from, to, text) => {
+            const ed = editorRef.current
+            if (!ed) return
+            const doc = ed.state.doc
+            const serializers = serializersFor(ed.schema)
+            const fallback = TextSelection.atEnd(doc).from
+            const fromPos = positionAtOffset(doc, Math.max(0, from), serializers) ?? fallback
+            const toPos = positionAtOffset(doc, Math.max(0, to), serializers) ?? fallback
+            if (toPos < fromPos) return
+            const tr = ed.state.tr
+            // 程序化通道：面板/归一不得因这次写回再次触发（onUpdate 会带 programmatic 标记）
+            tr.setMeta(PROGRAMMATIC_META, true)
+            tr.setMeta('addToHistory', false)
+            if (toPos > fromPos) tr.delete(fromPos, toPos)
+            const insertAt = Math.min(fromPos, tr.doc.content.size - 1)
+            if (text) tr.insertText(text, insertAt)
+            tr.setSelection(TextSelection.create(tr.doc, Math.min(insertAt + text.length, tr.doc.content.size - 1)))
+            ed.view.dispatch(tr)
         },
         isReady: () => editorRef.current != null,
         getWireText: () => (editorRef.current ? extractWireText(editorRef.current.state.doc) : ''),

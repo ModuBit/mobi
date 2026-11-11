@@ -20,19 +20,20 @@ import { render, waitFor, cleanup } from '@testing-library/react'
 import type { Editor } from '@tiptap/core'
 import {
     ChatInput,
-    ChatInputQuoteNode,
-    CHAT_INPUT_QUOTE_NODE_NAME,
     type ChatInputHandle,
     type ChatInputProps,
 } from '@/ui/base/interactive/chat-input'
 import {
+    ChatInputQuoteNode,
+    CHAT_INPUT_QUOTE_NODE_NAME,
     addQuoteToEditor,
     clearQuotesInEditor,
     collectQuotesFromDoc,
+    extractQuotesFromEditorStateJSON,
     extractWireText,
     insertQuotesAtEnd,
     updateQuoteCommentInEditor,
-} from '@/ui/base/interactive/chat-input/chatInputQuoteDoc'
+} from '@/ui/shared/chat-input-quote'
 import { __resetDraftCacheForTesting, getDraft, saveDraft } from '@/core/lib/composerDrafts'
 
 // vitest 未开 globals：渲染型测试需显式 cleanup
@@ -159,6 +160,69 @@ describe('ChatInputQuoteNode（引用 chip 节点）', () => {
         expect(collectQuotesFromDoc(editor.state.doc)[0]).not.toHaveProperty('comment')
 
         expect(updateQuoteCommentInEditor(editor, 'missing-uid', 'x')).toBe(false)
+    })
+
+    it('addQuoteToEditor 带片段偏移：collect 保留 startOffset/endOffset 并随快照 round-trip', async () => {
+        const { handle, ready } = setup()
+        await ready()
+        const editor = handle.current!.getEditor()!
+        const entry = addQuoteToEditor(editor, { ...QUOTE, startOffset: 3, endOffset: 9 })!
+        expect(collectQuotesFromDoc(editor.state.doc)[0]).toMatchObject({
+            uid: entry.uid, startOffset: 3, endOffset: 9,
+        })
+
+        const json = handle.current!.getEditorStateJSON()
+        cleanup()
+        const second = setup()
+        await second.ready()
+        second.handle.current!.setEditorStateJSON(json)
+        expect(collectQuotesFromDoc(second.handle.current!.getEditor()!.state.doc)[0]).toMatchObject({
+            uid: entry.uid, startOffset: 3, endOffset: 9,
+        })
+    })
+
+    it('addQuoteToEditor 遇非折叠选区：追加到文档末尾，不替换被选中的正文', async () => {
+        const { handle, ready } = setup()
+        await ready()
+        const editor = handle.current!.getEditor()!
+        handle.current!.setText('abcdef')
+        editor.commands.setTextSelection({ from: 2, to: 4 })
+
+        addQuoteToEditor(editor, QUOTE)
+
+        expect(handle.current!.getText().startsWith('abcdef')).toBe(true)
+        expect(collectQuotesFromDoc(editor.state.doc)).toHaveLength(1)
+    })
+
+    it('replaceTextRange 保留 chip：只改差异文本，引用节点与评论原样存活', async () => {
+        const { handle, ready } = setup()
+        await ready()
+        const editor = handle.current!.getEditor()!
+        const entry = addQuoteToEditor(editor, QUOTE)!
+        updateQuoteCommentInEditor(editor, entry.uid, '批注')
+        handle.current!.insertAtCursor('abc')
+        // 文本镜像：「原文片段」 + 空格 + abc ——替换 chip 之后的 abc 段
+        const text = handle.current!.getText()
+        const from = text.indexOf('abc')
+        handle.current!.replaceTextRange(from, from + 3, 'XYZ')
+
+        expect(handle.current!.getText()).toBe('「原文片段」 XYZ')
+        expect(collectQuotesFromDoc(editor.state.doc)).toHaveLength(1)
+        expect(collectQuotesFromDoc(editor.state.doc)[0]).toMatchObject({ uid: entry.uid, comment: '批注' })
+    })
+
+    it('extractQuotesFromEditorStateJSON：从快照摘出 chip（含评论/偏移），坏 JSON 返回空', async () => {
+        const { handle, ready } = setup()
+        await ready()
+        const editor = handle.current!.getEditor()!
+        const entry = addQuoteToEditor(editor, { ...QUOTE, startOffset: 1, endOffset: 2 })!
+        updateQuoteCommentInEditor(editor, entry.uid, '批注')
+        const json = handle.current!.getEditorStateJSON()
+
+        expect(extractQuotesFromEditorStateJSON(json)).toEqual([
+            { ...QUOTE, comment: '批注', startOffset: 1, endOffset: 2 },
+        ])
+        expect(extractQuotesFromEditorStateJSON('{broken')).toEqual([])
     })
 
     it('clearQuotesInEditor 倒序删全部；insertQuotesAtEnd 回填带尾随空格', async () => {

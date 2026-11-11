@@ -321,6 +321,11 @@ export function NewSessionPage() {
     // （面板选中切分 selectCurrent(text) 与提交读取共用同一快照）
     const inputTextRef = useRef(inputText)
     inputTextRef.current = inputText
+    // isPending 分支会卸载 ChatInput（非受控编辑器实例随之销毁）；spawn 失败回挂的是
+    // 全新空编辑器，而文本镜像还在——就绪时用镜像对账，避免「发送键亮着、原文却被清空」
+    const handleShellReady = useCallback(() => {
+        if (inputTextRef.current) shellRef.current?.setText(inputTextRef.current)
+    }, [])
     const attachmentsRef = useRef(attachments)
     attachmentsRef.current = attachments
     // 同步防重入标志（ref 即时生效，弥补 isPending setState 的异步窗口）(#13)
@@ -691,6 +696,7 @@ export function NewSessionPage() {
                         onUpdate={bridge.onTextInput}
                         onKeyDown={handleKeyDown}
                         onPaste={inputDisabled ? undefined : handlePasteNative}
+                        onReady={handleShellReady}
                         onSubmit={() => {
                             // dropdown 打开时 Enter 是选择，不是提交
                             if (slash.isOpen || mention.isOpen) return

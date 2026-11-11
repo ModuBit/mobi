@@ -34,7 +34,10 @@ import { fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
 import { fileRefContext } from '@/core/utils/fileUrl'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { AttachPanel } from '@/features/composer/AttachPanel'
-import { ChatInputQuoteNode } from '@/ui/base/interactive/chat-input'
+import {
+    ChatInputQuoteNode,
+    extractQuotesFromEditorStateJSON,
+} from '@/ui/shared/chat-input-quote'
 import { composerCard } from '@/features/composer/composerSurface.styles'
 import { ComposerInfoPanel } from '@/pages/session/ComposerInfoPanel'
 import { resolveCopyShortcut } from '@/features/composer/copyShortcut'
@@ -46,7 +49,7 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { useMobiApi } from '@/core/data/api/client'
 import { consumeDraftText } from '@/core/lib/draftText'
 import { locateQuotedMessage } from '@/core/lib/quoteLocate'
-import { mergeDraftText } from '@/core/lib/composerDrafts'
+import { mergeDraftText, getDraft } from '@/core/lib/composerDrafts'
 import { useComposerDraft } from '@/features/composer/useComposerDraft'
 import { useComposerScaffold } from '@/features/composer/useComposerScaffold'
 import type { CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
@@ -338,8 +341,14 @@ export function ChatComposer(props: ChatComposerProps) {
         const crossPageDraft = consumeDraftText()
         if (crossPageDraft) {
             setTextWithEditor(crossPageDraft)
-            // 仅更新文本，保留该 session 既有的附件草稿（避免空附件覆盖）
-            mergeDraftText(sessionId, crossPageDraft)
+            // 仅更新文本，保留该 session 既有的附件/引用草稿（避免空分段覆盖）。
+            // 结构化快照随正文作废，但其中的 chip 先摘出来转入 quotes 桶——
+            // 否则快照一删，引用与评论就彻底丢了
+            const existing = getDraft(sessionId)
+            const carriedQuotes = existing?.editorState
+                ? extractQuotesFromEditorStateJSON(existing.editorState.json)
+                : []
+            mergeDraftText(sessionId, crossPageDraft, carriedQuotes)
         }
     }, [sessionId, setTextWithEditor])
 
@@ -457,7 +466,9 @@ export function ChatComposer(props: ChatComposerProps) {
     // 草稿保存时的结构化快照（含引用 chip 节点）：空态返回 null——isPersistedEmpty 以
     // 「editorState 存在」判定结构化内容非空（chip-only 草稿靠它存活，纯空态不落空文档）
     const getEditorState = useCallback(() => {
-        if (!textRef.current && quoteCountRef.current === 0) return null
+        // 纯空白（空格/换行）不算内容：否则空草稿也会带出 editorState，绕开
+        // isPersistedEmpty 的清理并挤占 MAX_DRAFTS 名额；chip-only 草稿靠 quoteCount 存活
+        if (!textRef.current.trim() && quoteCountRef.current === 0) return null
         return editorStateJsonRef.current
     }, [])
     // 结构化恢复：编辑器程序化写入（解析失败静默 no-op，此前 setText 的文本兜底已生效）；

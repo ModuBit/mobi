@@ -16,5 +16,3 @@
 
 export { ChatInput } from './ChatInput'
 export type { ChatInputHandle, ChatInputProps, ChatInputUpdateContext } from './ChatInput'
-export { ChatInputQuoteNode } from './ChatInputQuoteNode'
-export { CHAT_INPUT_QUOTE_NODE_NAME } from './chatInputQuoteTypes'
