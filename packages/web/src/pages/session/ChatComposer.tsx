@@ -30,15 +30,16 @@ import {
     type ComposerSegments,
     type PendingQuoteRef,
 } from '@/domain/chat/composerSegments'
-import { bucketCompletedAttachments, fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
+import { fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
 import { fileRefContext } from '@/core/utils/fileUrl'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { AttachPanel } from '@/features/composer/AttachPanel'
 import { ChatInputQuoteNode } from '@/ui/base/interactive/chat-input'
-import { collectQuotesFromDoc, addQuoteToEditor, updateQuoteCommentInEditor, clearQuotesInEditor, insertQuotesAtEnd, extractWireText } from '@/features/composer/quoteDoc'
 import { composerCard } from '@/features/composer/composerSurface.styles'
 import { ComposerInfoPanel } from '@/pages/session/ComposerInfoPanel'
 import { resolveCopyShortcut } from '@/features/composer/copyShortcut'
+import { resolveComposerPanelKeyDown } from '@/features/composer/composerPanelKeys'
+import { resolveComposerSubmit } from '@/features/composer/resolveComposerSubmit'
 import { ModelSettingsSelect } from '@/features/composer/ModelSettingsSelect'
 import { GoalRow } from '@/ui/shared/GoalRow'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
@@ -47,16 +48,11 @@ import { consumeDraftText } from '@/core/lib/draftText'
 import { locateQuotedMessage } from '@/core/lib/quoteLocate'
 import { mergeDraftText } from '@/core/lib/composerDrafts'
 import { useComposerDraft } from '@/features/composer/useComposerDraft'
-import { useChatInputBridge } from '@/features/composer/useChatInputBridge'
-import { useMentionInteraction } from '@/features/composer/useMentionInteraction'
-import { useSlashCommandInteraction } from '@/features/composer/useSlashCommandInteraction'
-import { useSuggestionListAria } from '@/features/composer/useSuggestionListAria'
-import { useAttachmentHandling } from '@/features/composer/useAttachmentHandling'
-import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
-import { useDirectoryCommands } from '@/features/composer/useDirectoryCommands'
+import { useComposerScaffold } from '@/features/composer/useComposerScaffold'
+import type { CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useSDKMetadata } from '@/core/data/hooks/queries/useSDKMetadata'
-import { MentionDropdown, MENTION_LISTBOX_ID } from '@/features/composer/MentionDropdown'
-import { SlashCommandDropdown, SLASH_LISTBOX_ID } from '@/features/composer/SlashCommandDropdown'
+import { MentionDropdown } from '@/features/composer/MentionDropdown'
+import { SlashCommandDropdown } from '@/features/composer/SlashCommandDropdown'
 import { CommandHintBar } from '@/features/composer/CommandHintBar'
 import { ResponsiveActionBar, type ActionItem } from '@/features/composer/ResponsiveActionBar'
 import { ToolStrip } from '@/features/composer/ToolStrip'
@@ -93,8 +89,6 @@ export interface ChatComposerHandle {
     addQuote: (quote: PendingQuoteRef) => ComposerQuoteRef | null
     /** 补充/清空某条引用的评论（「添加到对话」即落条目，评论只是后续补充） */
     updateQuoteComment: (uid: string, comment: string | undefined) => void
-    /** 一键清空全部引用（引用胶囊旁 ×） */
-    clearQuotes: () => void
 }
 
 
@@ -277,10 +271,9 @@ export function ChatComposer(props: ChatComposerProps) {
     // shellRef：ChatInput 命令式通道（非受控编辑器是 source of truth，text state 只是镜像）
     const shellRef = useRef<ChatInputHandle | null>(null)
     const wrapperRef = useRef<HTMLDivElement>(null)
-    const pendingCursorRef = useRef<number | null>(null)
 
     // 待发送引用：source of truth = 编辑器文档（chip 节点即数据），quoteCount 只是镜像
-    // （canSend 派生 / 空判定）；增删改走 quoteDoc 的 doc 级操作。上限 QUOTE_MAX_COUNT
+    // （canSend 派生 / 空判定）；增删改走 ChatInputHandle 的引用方法。上限 QUOTE_MAX_COUNT
     // 是引用入口的前置契约（addQuoteToEditor 拦截），serialize 侧 slice 为底线
     const [quoteCount, setQuoteCount] = useState(0)
     const quoteCountRef = useRef(0)
@@ -296,11 +289,11 @@ export function ChatComposer(props: ChatComposerProps) {
     // （否则 setEditorStateJSON 因 shellRef 为 null 静默丢弃，只剩 text 降级文本）
     const pendingEditorStateRef = useRef<string | null>(null)
     const insertPendingQuotesIfReady = useCallback(() => {
-        const editor = shellRef.current?.getEditor()
+        const shell = shellRef.current
         const pending = pendingQuotesRef.current
-        if (!editor || !pending) return false
+        if (!shell?.isReady() || !pending) return false
         pendingQuotesRef.current = null
-        insertQuotesAtEnd(editor, pending)
+        shell.insertQuotesAtEnd(pending)
         return true
     }, [])
 
@@ -347,8 +340,6 @@ export function ChatComposer(props: ChatComposerProps) {
         () => sessionId ? { kind: 'session', sessionId } : null,
         [sessionId],
     )
-    const capabilities = useDirectoryCapabilities(capTarget)
-    const { data: commandsData, isLoading: commandsLoading } = useDirectoryCommands(capabilities)
 
     // 失活覆盖谓词：会话失活/被归档（允许发送时除外）。单一命名，Sender 遮罩与
     // 控件禁用（controlsDisabled）共引——失活判据加条件只改这里
@@ -356,16 +347,45 @@ export function ChatComposer(props: ChatComposerProps) {
     // 控件禁用：失活时禁用输入与拖拽，并需重置拖拽计数避免覆盖层残留
     const controlsDisabled = disabled || inactiveCover
 
-    // 附件管理（共享 hook）
+    // 瞬态窗编辑哨兵：输入区不再被瞬态闸 DOM-disable（焦点修复），rewind/压缩/
+    // 清空进行中用户仍可键入——这段主动输入优先于完成回填（整体跳过 applySegments，
+    // 保留窗口期的 text/引用/附件状态），否则会被回退后的分段静默覆写
+    const pausedEditRef = useRef(false)
+    const markUserEdit = useCallback(() => {
+        if (disabled) pausedEditRef.current = true
+    }, [disabled])
+
+    // 装配骨架（与新会话页共用单源）：能力探测 / 目录命令 / 附件 / 面板 /
+    // 编辑器桥接 / 粘贴桥 / 光标恢复 / 点外关闭 / 建议列表 ARIA / placeholder
+    const {
+        attachments: attachmentHandling,
+        mention,
+        slash,
+        bridge,
+        handlePasteNative,
+        placeholderIndex,
+        showGhostHint,
+    } = useComposerScaffold({
+        capTarget,
+        workingDir,
+        placeholderCount: (t('composer.placeholders', { returnObjects: true }) as string[]).length,
+        text,
+        wrapperRef,
+        shellRef,
+        onTextChange: setText,
+        onUserEdit: markUserEdit,
+        attachmentsDisabled: controlsDisabled,
+        attachmentSessionId: sessionId,
+    })
     const {
         attachments,
         setAttachments,
         isDragOver,
-        handleAttach, handleRemoveAttachment, handlePaste,
+        handleAttach, handleRemoveAttachment,
         addSketchFile,
         handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
         resetAttachments,
-    } = useAttachmentHandling(sessionId, capabilities, controlsDisabled)
+    } = attachmentHandling
 
     // ── 画板（入口按钮 / 附件卡重编辑 / 气泡重编辑落回，spec D3/D4/D5）──
     // 会话状态机（everOpened 门控 / 完成语义 / 回源守卫）收在 useSketchSession
@@ -384,21 +404,14 @@ export function ChatComposer(props: ChatComposerProps) {
     // 气泡重编辑入口：完成后产物同样落回 composer 附件（历史不可变）。
     // getQuoteCount/addQuote/updateQuoteComment：消息列表选区引用动作的手柄通道
     //（引用是即时动作，「添加到对话」即落条目，后续评论只是补充，无需信箱防重放）。
-    // source of truth = 编辑器文档：增删改直接操作 doc（quoteDoc），quoteCount 镜像随 onUpdate 更新
-    const addQuote = useCallback((quote: PendingQuoteRef): ComposerQuoteRef | null => {
-        const editor = shellRef.current?.getEditor()
-        if (!editor) return null
-        return addQuoteToEditor(editor, quote)
-    }, [])
+    // source of truth = 编辑器文档：增删改经 ChatInputHandle 的引用方法（业务层不见 TipTap），
+    // quoteCount 镜像随 onUpdate 更新
+    const addQuote = useCallback((quote: PendingQuoteRef): ComposerQuoteRef | null => (
+        shellRef.current?.addQuote(quote) ?? null
+    ), [])
     // 评论补充入口（「添加到对话」即落条目，评论浮层保存/清空都走这里；undefined = 清空）
     const updateQuoteComment = useCallback((uid: string, comment: string | undefined) => {
-        const editor = shellRef.current?.getEditor()
-        if (editor) updateQuoteCommentInEditor(editor, uid, comment)
-    }, [])
-    // 一键清空全部引用（程序式通道；inline 形态下用户逐个 × 删除即可）
-    const clearQuotes = useCallback(() => {
-        const editor = shellRef.current?.getEditor()
-        if (editor) clearQuotesInEditor(editor)
+        shellRef.current?.updateQuoteComment(uid, comment)
     }, [])
     useImperativeHandle(ref, () => ({
         openSketch: handleOpenSketch,
@@ -406,17 +419,7 @@ export function ChatComposer(props: ChatComposerProps) {
         getQuoteCount: () => quoteCountRef.current,
         addQuote,
         updateQuoteComment,
-        clearQuotes,
-    }), [handleOpenSketch, sketchSession.openFromBubble, addQuote, updateQuoteComment, clearQuotes])
-
-    // 上传完成附件 → 分段文件引用，按 MIME 分桶为 images / files（document）。
-    // 粘贴截图、文件上传、拖拽三入口都汇入同一 attachments 数组后再分桶；
-    // 投影与分桶判定单一来源在 fileAttachments.bucketCompletedAttachments
-    // （isImageFileAttachment：MIME 优先 + 扩展名兜底，覆盖草稿恢复态占位 File 无 MIME 的情况）
-    const segmentBuckets = useMemo(
-        () => bucketCompletedAttachments(attachments),
-        [attachments],
-    )
+    }), [handleOpenSketch, sketchSession.openFromBubble, addQuote, updateQuoteComment])
 
     // 结构化回填（排队消息编辑 / rewind 收尾共用）：text + 附件双桶（占位附件还原，
     // 不再上传，MIME 由扩展名兜底重 derive）+ 引用 chip 一并恢复并聚焦。
@@ -467,7 +470,7 @@ export function ChatComposer(props: ChatComposerProps) {
     // 编辑器就绪前（shellRef 已挂但 editor 实例未创建，immediateRender:false）先排队到 onReady
     const applyEditorState = useCallback((json: string) => {
         const shell = shellRef.current
-        if (shell?.getEditor()) shell.setEditorStateJSON(json)
+        if (shell?.isReady()) shell.setEditorStateJSON(json)
         else pendingEditorStateRef.current = json
     }, [])
     useComposerDraft(
@@ -478,46 +481,6 @@ export function ChatComposer(props: ChatComposerProps) {
 
     // SDK 元数据（模型列表等）
     const { data: sdkMetadata } = useSDKMetadata(sessionId ?? null)
-
-    // 随机 placeholder 索引，每次挂载只选一次
-    const placeholders = t('composer.placeholders', { returnObjects: true }) as string[]
-    const placeholderIdx = useRef(Math.floor(Math.random() * placeholders.length))
-
-    // @ 文件引用交互
-    const mention = useMentionInteraction({
-        target: capTarget,
-        searchFiles: capabilities.searchFiles,
-        listDirectory: capabilities.listDirectory,
-        workingDir,
-    })
-
-    // / 斜杠命令交互
-    const slash = useSlashCommandInteraction({
-        commandsData,
-        commandsLoading,
-        workingDir,
-    })
-
-    // 瞬态窗编辑哨兵：输入区不再被瞬态闸 DOM-disable（焦点修复），rewind/压缩/
-    // 清空进行中用户仍可键入——这段主动输入优先于完成回填（整体跳过 applySegments，
-    // 保留窗口期的 text/引用/附件状态），否则会被回退后的分段静默覆写
-    const pausedEditRef = useRef(false)
-    const markUserEdit = useCallback(() => {
-        if (disabled) pausedEditRef.current = true
-    }, [disabled])
-    const markPendingCursor = useCallback((offset: number) => {
-        pendingCursorRef.current = offset
-    }, [])
-
-    // 编辑器 → 面板模型桥接（归一管线 + processChange + 选中插回，与新会话页共用实现）
-    const bridge = useChatInputBridge({
-        shellRef,
-        slash,
-        mention,
-        onTextChange: setText,
-        onPendingCursor: markPendingCursor,
-        onUserEdit: markUserEdit,
-    })
 
     const trimmed = text.trim()
     const hasText = trimmed.length > 0
@@ -538,11 +501,6 @@ export function ChatComposer(props: ChatComposerProps) {
     })
     const hasSubBar = !!extraItems?.length || !!(extraLeftButtons && !extraItems)
 
-    // 是否展示命令提示（hint 或 description 任一存在即展示）
-    const showGhostHint = !!(slash.activeCommand?.hint || slash.activeCommand?.description)
-        && text === `${slash.activeCommand!.value} `
-        && !slash.isOpen
-
     const permissionModeOptions = useMemo(
         () => getPermissionModeOptionsForFlavor(agentFlavor),
         [agentFlavor]
@@ -555,38 +513,6 @@ export function ChatComposer(props: ChatComposerProps) {
         () => buildPermissionModeHoverOptions(t, token),
         [t, token],
     )
-
-    // 点击外部关闭下拉
-    useEffect(() => {
-        if (!mention.isOpen && !slash.isOpen) return
-        const handler = (e: MouseEvent) => {
-            if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-                mention.close()
-                slash.close()
-            }
-        }
-        document.addEventListener('mousedown', handler)
-        return () => document.removeEventListener('mousedown', handler)
-    }, [mention.isOpen, slash.isOpen, mention, slash])
-
-    // 建议列表 ARIA（textarea 由 antd X 管理，属性经 DOM 直写，见 useSuggestionListAria）
-    useSuggestionListAria(
-        wrapperRef,
-        mention.isOpen
-            ? { listId: MENTION_LISTBOX_ID, activeIndex: mention.activeIndex, count: mention.items.length }
-            : slash.isOpen
-                ? { listId: SLASH_LISTBOX_ID, activeIndex: slash.activeIndex, count: slash.items.length }
-                : null,
-    )
-
-    // 光标位置恢复（无 deps：需要在每次 React commit 后检查 pending 状态）
-    useEffect(() => {
-        if (pendingCursorRef.current != null) {
-            shellRef.current?.setCursorOffset(pendingCursorRef.current)
-            shellRef.current?.focus()
-            pendingCursorRef.current = null
-        }
-    })
 
     // 键盘导航（ChatInput 转发原生 KeyboardEvent；返回 true = 已消费，拦下内置 Enter 提交判定）
     const handleKeyDown = useCallback((e: KeyboardEvent): boolean => {
@@ -617,84 +543,39 @@ export function ChatComposer(props: ChatComposerProps) {
             return false
         }
 
-        // Escape：先委托给各 hook，都未消费则 abort
-        if (e.key === 'Escape') {
-            if (slash.handleKeyDown(e)) return true
-            if (mention.handleKeyDown(e)) return true
-            if (running && onAbort && !abortPending) {
-                e.preventDefault()
-                onAbort('turn')
-                return true
-            }
-            return false
+        // 面板键位（Tab/Enter 选择、Escape/Arrow 委托）：与 NewSessionPage 共用单源
+        if (resolveComposerPanelKeyDown(e, { text: textRef.current, slash, mention, applySelection: bridge.applySelection })) {
+            return true
         }
 
-        // Tab 补全（原 native capture listener 迁入：ChatInput 键位层先于编辑器处理，
-        // 无需再绕 capture 变通）
-        if (e.key === 'Tab') {
-            if (slash.isOpen && slash.items.length > 0) {
-                e.preventDefault()
-                e.stopPropagation()
-                bridge.applySelection(slash.selectCurrent(textRef.current))
-                return true
-            }
-            if (mention.isOpen && mention.items.length > 0) {
-                e.preventDefault()
-                e.stopPropagation()
-                bridge.applySelection(mention.selectCurrent(textRef.current))
-                return true
-            }
-            return false
+        // Escape：面板都未消费 → running 时 abort
+        if (e.key === 'Escape' && running && onAbort && !abortPending) {
+            e.preventDefault()
+            onAbort('turn')
+            return true
         }
-
-        // Enter 键选中（面板开时是选择不是发送；返回 true 拦下 ChatInput 的提交判定）
-        if (e.key === 'Enter') {
-            if (slash.isOpen && slash.items.length > 0) {
-                e.preventDefault()
-                e.stopPropagation()
-                bridge.applySelection(slash.selectCurrent(textRef.current))
-                return true
-            }
-            if (mention.isOpen && mention.items.length > 0) {
-                e.preventDefault()
-                e.stopPropagation()
-                bridge.applySelection(mention.selectCurrent(textRef.current))
-                return true
-            }
-            return false
-        }
-
-        // Arrow 键导航
-        if (slash.handleKeyDown(e)) return true
-        if (mention.handleKeyDown(e)) return true
         return false
     }, [running, onAbort, abortPending, mention, slash, bridge])
 
     const handleSubmit = useCallback((content: string) => {
-        if (import.meta.env.DEV) console.log('[Send] handleSubmit', { contentLen: content.length, canSend, mentionOpen: mention.isOpen, slashOpen: slash.isOpen, uploading: attachments.filter(a => a.status === 'uploading').length })
-        if (!canSend) return
-        if (mention.isOpen || slash.isOpen) return
-
-        // 上传中守卫：未完成附件没有 path，进不了分段会被静默丢弃，故阻止发送（沿用既有 warning）
-        const pendingUploads = attachments.filter(a => a.status === 'uploading')
-        if (pendingUploads.length > 0) {
-            message.warning(t('composer.uploadPendingWarning'))
+        // 正文用 getWireText 剥掉 chip 的降级文本：引用由 quote block 承载，
+        // 正文重复 excerpt 会成为气泡可见的重复内容；引用从编辑器文档收集（chip 节点即数据）
+        const shell = shellRef.current
+        const ready = shell?.isReady() === true
+        const resolution = resolveComposerSubmit({
+            text: ready ? shell!.getWireText() : content,
+            quotes: ready ? shell!.getQuotes() : [],
+            attachments,
+            panelOpen: mention.isOpen || slash.isOpen,
+            enabled: canSend,
+        })
+        if (!resolution.ok) {
+            // 上传中附件没有 path，进不了分段会被静默丢弃，故阻止发送并提示
+            if (resolution.blocked === 'uploading') message.warning(t('composer.uploadPendingWarning'))
             return
         }
 
-        // 组装完整分段直传——引用从编辑器文档收集（chip 节点即数据），序列化为
-        // wire blocks 由 useSendMessage 内统一完成。正文用 extractWireText 剥掉 chip 的
-        // 降级文本：引用由 quote block 承载，正文重复 excerpt 会成为气泡可见的重复内容
-        const editor = shellRef.current?.getEditor()
-        const segments: ComposerSegments = {
-            text: editor ? extractWireText(editor.state.doc) : content,
-            files: segmentBuckets.files,
-            images: segmentBuckets.images,
-            quotes: editor ? collectQuotesFromDoc(editor.state.doc) : [],
-        }
-        if (isSegmentEmpty(segments)) return
-
-        onSend(segments)
+        onSend(resolution.segments)
         // 清空走编辑器程序化通道（onUpdate programmatic 回写镜像/引用计数归零）
         shellRef.current?.clear()
         resetAttachments()
@@ -703,21 +584,13 @@ export function ChatComposer(props: ChatComposerProps) {
         // PC 发送后保持输入焦点（textarea 语义等价：清空后光标仍在原位）；触屏刻意不恢复
         //（虚拟键盘不收起，现状语义平移）
         if (hasFinePointer) shellRef.current?.focus()
-    }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments, segmentBuckets, t, resetAttachments, sessionId, hasFinePointer])
+    }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments, t, resetAttachments, sessionId, hasFinePointer])
 
     const showLocalModeCover = active && mode === 'local'
     // 参数条按钮闸：控件禁用 + 本地模式遮罩（按钮不持有焦点，挂 DOM disabled 无失焦风险，
     // 与 senderDisabled doc 的「textarea 闸」语义不同级）
     const chromeDisabled = controlsDisabled || showLocalModeCover
     const isBashMode = text.startsWith('! ')
-
-    // 粘贴桥接：useAttachmentHandling.handlePaste 只消费 clipboardData 与 preventDefault，
-    // 与原生 ClipboardEvent 运行时同构；返回 defaultPrevented 让 ChatInput 拦下已被
-    // handlePaste preventDefault 的粘贴（文件粘贴/超阈值转附件），其余放行编辑器默认插入
-    const handlePasteBridge = useCallback((e: ClipboardEvent): boolean => {
-        handlePaste(e as unknown as React.ClipboardEvent)
-        return e.defaultPrevented
-    }, [handlePaste])
 
     // 引用 chip 节点（装配注入 ChatInput）：onLocate 装配时绑定，节点 options 是
     // editor 创建期快照——onQuoteLocate 属稳定回调（父组件传入），变化场景随重挂生效
@@ -823,17 +696,17 @@ export function ChatComposer(props: ChatComposerProps) {
 
                 <ChatInput
                     ref={shellRef}
-                    placeholder={isBashMode ? t('composer.bashPlaceholder') : t(`composer.placeholders.${placeholderIdx.current}`)}
+                    placeholder={isBashMode ? t('composer.bashPlaceholder') : t(`composer.placeholders.${placeholderIndex}`)}
                     submitKey={hasFinePointer ? 'enter' : 'shiftEnter'}
                     disabled={resolveSenderDisabled({ inactiveCover, localModeCover: showLocalModeCover })}
                     onUpdate={(ctx) => {
                         // quoteCount 镜像（canSend/空判定派生）+ 桥接（归一/面板检测）
-                        setQuoteCount(ctx.quoteCount)
+                        setQuoteCount(ctx.extraNodeCount)
                         editorStateJsonRef.current = ctx.editorStateJSON
                         bridge.onTextInput(ctx)
                     }}
                     onKeyDown={handleKeyDown}
-                    onPaste={handlePasteBridge}
+                    onPaste={handlePasteNative}
                     onSubmit={() => handleSubmit(textRef.current)}
                     onReady={handleShellReady}
                     extraNodes={quoteNodes}

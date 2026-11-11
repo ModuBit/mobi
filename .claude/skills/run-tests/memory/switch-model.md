@@ -3,12 +3,12 @@ name: switch-model
 description: E2E 会话切模型 — 模型下拉为空时改走 POST /api/sessions/:id/model；CC Switch 本地 proxy 前缀路由与模型 ID 取法
 metadata:
   type: recipe
-  last_verified: 2026-10-12
+  last_verified: 2026-11-11
 ---
 
 # E2E 切模型（模型不可用 / 429 配额耗尽时）
 
-## 现象（2026-10-12）
+## 现象（2026-10-12；2026-11-11 复核）
 
 - 新建会话页模型下拉显示 `Sonnet`，会话内显示宿主当前模型（如 `glm-5.3-flash`），
   **两处点开 listbox 都是空的**——UI 无从切换。
@@ -19,6 +19,9 @@ metadata:
   **列表为空 ≠ 不能切模型**，接口接受任意 model 值。
 
 ## 切换 recipe（不用重启 daemon）
+
+**2026-11-11 实测：UI 模型弹窗已列出可用模型**（Auto / glm-5.3-flash / deepseek-flash / claude-opus-5-5 等，
+来自 sdkMetadata），点选即切、下一回合生效——优先走 UI；下拉仍为空时用下面的 API。
 
 页面内 fetch（cookie 认证，`credentials: 'include'`）：
 

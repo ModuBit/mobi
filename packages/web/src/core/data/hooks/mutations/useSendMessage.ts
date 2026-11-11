@@ -19,8 +19,7 @@ import { useMutation } from '@tanstack/react-query'
 import { buildUiAnchorMeta } from '@mobi/shared'
 import type { UiMessageOrigin, UserContentBlock } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
-import { makeClientSideId } from '@/core/lib/messages'
-import { serializeSegments, type ComposerSegments } from '@/domain/chat/composerSegments'
+import { toMessagePayload, type ComposerSegments } from '@/domain/chat/composerSegments'
 import { appendOptimisticMessage, fetchLatestMessages } from '@/core/data/stores/messageWindowStore'
 import { useRewindStore } from '@/core/data/stores/rewindStore'
 import type { DecryptedMessage } from '@/core/data/api/types'
@@ -118,8 +117,7 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
 type SendOpts = Pick<SendVars, 'sentFrom' | 'sourceBlock' | 'formState' | 'stateVar'>
 
     const send = (segments: ComposerSegments, opts?: SendOpts): SendVars => ({
-        blocks: serializeSegments(segments),
-        localId: makeClientSideId('local'),
+        ...toMessagePayload(segments),
         // undefined 字段 JSON 序列化时被丢弃，等价于「未传」（与 client.ts send 同语义）
         ...(opts ?? {}),
     })

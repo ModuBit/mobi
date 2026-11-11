@@ -22,6 +22,16 @@ import { TextSelection } from '@tiptap/pm/state'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { getTextBetween, getTextSerializersFromSchema, type AnyExtension, type JSONContent } from '@tiptap/core'
 import { isComposingEvent } from '@/core/lib/inputEnterKeys'
+import type { ComposerQuoteRef, PendingQuoteRef } from '@/domain/chat/composerSegments'
+import { normalizeEditorText } from './chatInputText'
+import {
+    addQuoteToEditor,
+    clearQuotesInEditor,
+    collectQuotesFromDoc,
+    extractWireText,
+    insertQuotesAtEnd,
+    updateQuoteCommentInEditor,
+} from './chatInputQuoteDoc'
 import './chat-input.css'
 
 /** 行高常量：对齐现 Sender 输入区视觉（14px 字号 / 22px 行高），min/max 行数 → 像素换算 */
@@ -30,17 +40,8 @@ const LINE_HEIGHT_PX = 22
 /** 程序化写入 meta 标记：区分 setText/setEditorStateJSON 等程序写入与用户输入（防 onUpdate 回环误消费） */
 const PROGRAMMATIC_META = 'chat-input-programmatic'
 
-/**
- * contenteditable 产物归一：行尾空格经浏览器落 DOM 时会被写成 NBSP，
- * ProseMirror 解析后模型里同样是 NBSP。纯文本语义应与 textarea 一致（普通空格），
- * 否则消费方的 `text.startsWith('! ')` 一类判定会在「行尾空格」时失效——
- * 所有对外读数（getText / onUpdate.text / wire 正文）统一经此归一。
- */
-export function normalizeEditorText(text: string): string {
-    return text.includes('\u00a0') ? text.replace(/\u00a0/g, ' ') : text
-}
 
-/** doc 中装配节点的实例数（quoteCount 派生源；未装节点恒 0） */
+/** doc 中装配节点的实例数（extraNodeCount 派生源；未装节点恒 0） */
 function countExtraNodes(doc: PMNode, extraNodes: AnyExtension[] | undefined): number {
     if (!extraNodes?.length) return 0
     const names = new Set(extraNodes.map((n) => n.name))
@@ -71,7 +72,7 @@ export interface ChatInputProps {
      *  mention/slash 的 (text, cursorPos) 模型对接用；
      *  editorStateJSON = 当前 doc 序列化快照（草稿持久化用：消费方镜像持有，
      *  卸载清理时 handle ref 已被 React 置 null，不能再回调本组件） */
-    onUpdate?: (ctx: { text: string; programmatic: boolean; cursorOffset: number; quoteCount: number; editorStateJSON: string }) => void
+    onUpdate?: (ctx: { text: string; programmatic: boolean; cursorOffset: number; extraNodeCount: number; editorStateJSON: string }) => void
     onFocus?: () => void
     onBlur?: () => void
     /** 编辑器实例就绪（immediatelyRender:false 异步挂载完成）后回调一次 */
@@ -103,7 +104,21 @@ export interface ChatInputHandle {
     insertAtCursor(text: string): void
     /** 把光标移到纯文本 offset 处（与 onUpdate ctx.cursorOffset 同语义；越界/空文档置尾） */
     setCursorOffset(offset: number): void
-    /** 编辑器实例逃生舱（业务方做节点级操作：引用 chip 的增删改遍历等）；未就绪返回 null */
+    /** 编辑器是否已就绪（程序化写入前的判据；未就绪时其余方法均为 no-op） */
+    isReady(): boolean
+    /** wire 正文（剥掉 extra 节点的降级文本、NBSP 归一；发送序列化用） */
+    getWireText(): string
+    /** 按文档顺序收集引用条目（编辑器未就绪返回空数组） */
+    getQuotes(): ComposerQuoteRef[]
+    /** 插入一条引用（同消息同文本去重、达上限拒绝）；返回落位条目，未就绪/上限返回 null */
+    addQuote(quote: PendingQuoteRef): ComposerQuoteRef | null
+    /** 按 uid 更新/清空某条引用的评论；返回是否命中 */
+    updateQuoteComment(uid: string, comment: string | undefined): boolean
+    /** 清空全部引用；返回删除条数 */
+    clearQuotes(): number
+    /** 在文档末尾回填一组引用（回填数据无 uid，内部补） */
+    insertQuotesAtEnd(quotes: PendingQuoteRef[]): void
+    /** 编辑器实例逃生舱（**仅测试与节点级断言使用，业务层禁止调用**——业务操作走上面的 Handle 方法）；未就绪返回 null */
     getEditor(): Editor | null
     clear(): void
 }
@@ -199,7 +214,7 @@ export function ChatInput({
                     blockSeparator: '\n',
                     textSerializers: serializers,
                 }).length,
-                quoteCount: countExtraNodes(editor.state.doc, extraNodes),
+                extraNodeCount: countExtraNodes(editor.state.doc, extraNodes),
                 editorStateJSON: JSON.stringify(editor.getJSON()),
             })
         },
@@ -335,6 +350,17 @@ export function ChatInput({
                 return true
             })
             ed.commands.setTextSelection(target ?? TextSelection.atEnd(doc).from)
+        },
+        isReady: () => editorRef.current != null,
+        getWireText: () => (editorRef.current ? extractWireText(editorRef.current.state.doc) : ''),
+        getQuotes: () => (editorRef.current ? collectQuotesFromDoc(editorRef.current.state.doc) : []),
+        addQuote: (quote) => (editorRef.current ? addQuoteToEditor(editorRef.current, quote) : null),
+        updateQuoteComment: (uid, comment) => (
+            editorRef.current ? updateQuoteCommentInEditor(editorRef.current, uid, comment) : false
+        ),
+        clearQuotes: () => (editorRef.current ? clearQuotesInEditor(editorRef.current) : 0),
+        insertQuotesAtEnd: (quotes) => {
+            if (editorRef.current) insertQuotesAtEnd(editorRef.current, quotes)
         },
         getEditor: () => editorRef.current,
         clear: () => setText(''),

@@ -17,6 +17,7 @@
 import type { SketchMark, UserContentBlock } from '@mobi/shared'
 import { QUOTE_EXCERPT_MAX } from '@mobi/shared'
 import { uuid } from '@/core/lib/uuid'
+import { makeClientSideId } from '@/core/lib/messages'
 
 /**
  * Composer 分段模型：输入框 text + 附件双桶 + 引用，用户消息的 UI 侧权威形态。
@@ -155,6 +156,16 @@ export function serializeSegments(segments: ComposerSegments): UserContentBlock[
     if (text.length > 0) out.push({ type: 'text', text })
 
     return out
+}
+
+/**
+ * 发送载荷单源：wire blocks + 客户端 localId。
+ *
+ * 会话页（useSendMessage）与新会话页（spawn 后首条消息）都必须走本函数——
+ * localId 前缀与服务端 echo 去重语义由此保持一处定义。
+ */
+export function toMessagePayload(segments: ComposerSegments): { blocks: UserContentBlock[]; localId: string } {
+    return { blocks: serializeSegments(segments), localId: makeClientSideId('local') }
 }
 
 /**

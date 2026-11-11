@@ -22,7 +22,8 @@ import { ChatInput, type ChatInputHandle } from '@/ui/base/interactive/chat-inpu
 import styled from '@emotion/styled'
 import { AttachPanel } from '@/features/composer/AttachPanel'
 import { composerCard } from '@/features/composer/composerSurface.styles'
-import { useChatInputBridge } from '@/features/composer/useChatInputBridge'
+import { useComposerScaffold } from '@/features/composer/useComposerScaffold'
+import { resolveComposerPanelKeyDown } from '@/features/composer/composerPanelKeys'
 import { PlusOutlined, InboxOutlined, BranchesOutlined, SendOutlined } from '@ant-design/icons'
 import { Cpu } from 'lucide-react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
@@ -34,14 +35,9 @@ import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
 import { SessionCreating } from '@/pages/session/SessionCreating'
 import { WorkspaceFormModal } from '@/ui/shared/WorkspaceFormModal'
-import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
-import { useDirectoryCommands } from '@/features/composer/useDirectoryCommands'
-import { useAttachmentHandling } from '@/features/composer/useAttachmentHandling'
-import { useMentionInteraction } from '@/features/composer/useMentionInteraction'
-import { useSlashCommandInteraction } from '@/features/composer/useSlashCommandInteraction'
-import { useSuggestionListAria } from '@/features/composer/useSuggestionListAria'
-import { MentionDropdown, MENTION_LISTBOX_ID } from '@/features/composer/MentionDropdown'
-import { SlashCommandDropdown, SLASH_LISTBOX_ID } from '@/features/composer/SlashCommandDropdown'
+import { type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
+import { MentionDropdown } from '@/features/composer/MentionDropdown'
+import { SlashCommandDropdown } from '@/features/composer/SlashCommandDropdown'
 import { CommandHintBar } from '@/features/composer/CommandHintBar'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { ResponsiveActionBar, type ActionItem } from '@/features/composer/ResponsiveActionBar'
@@ -73,11 +69,10 @@ import { unlockDebug, isDebugUnlocked } from '@/core/lib/debug'
 import { MobileMenuButton } from '@/features/layout/mobileMenu'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
 import { normalizeDirectoryPath } from '@/core/utils/path'
-import { makeClientSideId } from '@/core/lib/messages'
+import { resolveComposerSubmit } from '@/features/composer/resolveComposerSubmit'
 import { saveDraftText } from '@/core/lib/draftText'
 
-import { bucketCompletedAttachments } from '@/core/lib/fileAttachments'
-import { isSegmentEmpty, serializeSegments, type ComposerSegments } from '@/domain/chat/composerSegments'
+import { toMessagePayload } from '@/domain/chat/composerSegments'
 import { buildPermissionModeHoverOptions } from '@/features/composer/permissionModeOption'
 // 紧凑 Select 与 dropdown 全局样式均收口在共享模块（与 ChatComposer 同源，不再本地复制）
 import { CompactHoverSelect } from '@/features/composer/CompactHoverSelect'
@@ -286,40 +281,42 @@ export function NewSessionPage() {
         // host 通道单机即宿主，cwd 单参数
         return confirmedDirectory ? { kind: 'host', cwd: confirmedDirectory } : null
     }, [confirmedDirectory])
-    // 选定工作区（confirmedDirectory 就绪）即取宿主元数据：模型清单要在建会话前就可见。
-    // confirmedDirectory 仅在工作区提交时变化，不会逐字符触发；capTarget 为空时 hook 自身
-    // 也不会发请求，故无需额外的「延迟到首次 '/'」开关
-    const capabilities = useDirectoryCapabilities(capTarget, {
-        metadataEnabled: Boolean(confirmedDirectory),
-    })
-    const { data: commandsData, isLoading: commandsLoading } = useDirectoryCommands(capabilities)
-
-    // 附件管理（共享 hook）
-    const {
-        attachments, isDragOver,
-        handleAttach, handleRemoveAttachment, handlePaste,
-        handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
-    } = useAttachmentHandling(undefined, capabilities)
-
-    // @ 文件引用交互
-    const mention = useMentionInteraction({
-        target: capTarget,
-        searchFiles: capabilities.searchFiles,
-        listDirectory: capabilities.listDirectory,
-        workingDir: selectedDirectory || undefined,
-    })
-
-    // / 斜杠命令交互
-    const slash = useSlashCommandInteraction({
-        commandsData,
-        commandsLoading,
-        workingDir: selectedDirectory || undefined,
-    })
 
     const wrapperRef = useRef<HTMLDivElement>(null)
-    const pendingCursorRef = useRef<number | null>(null)
     // shellRef：ChatInput 命令式通道（非受控编辑器是 source of truth，inputText 只是镜像）
     const shellRef = useRef<ChatInputHandle | null>(null)
+
+    // 装配骨架（与 ChatComposer 共用单源）：能力探测 / 目录命令 / 附件 / 面板 /
+    // 编辑器桥接 / 粘贴桥 / 光标恢复 / 点外关闭 / 建议列表 ARIA / placeholder
+    const {
+        capabilities,
+        attachments: attachmentHandling,
+        mention,
+        slash,
+        bridge,
+        handlePasteNative,
+        placeholderIndex,
+        showGhostHint,
+    } = useComposerScaffold({
+        capTarget,
+        workingDir: selectedDirectory || undefined,
+        placeholderCount: (t('composer.placeholders', { returnObjects: true }) as string[]).length,
+        text: inputText,
+        wrapperRef,
+        shellRef,
+        onTextChange: setInputText,
+        attachmentSessionId: undefined,
+        // 选定工作区（confirmedDirectory 就绪）即取宿主元数据：模型清单要在建会话前就可见。
+        // confirmedDirectory 仅在工作区提交时变化，不会逐字符触发；capTarget 为空时 hook
+        // 自身也不会发请求，故无需额外的「延迟到首次 '/'」开关
+        capabilitiesOptions: { metadataEnabled: Boolean(confirmedDirectory) },
+    })
+    const {
+        attachments,
+        isDragOver,
+        handleAttach, handleRemoveAttachment,
+        handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
+    } = attachmentHandling
 
     // ref 持有最新值，避免 handleSubmit 因 attachments/inputText 变化而重建
     const inputTextRef = useRef(inputText)
@@ -391,128 +388,35 @@ export function NewSessionPage() {
         }, 1500)
     }, [messageApi, t])
 
-    // 随机 placeholder，与 session 详情页一致
-    const placeholders = t('composer.placeholders', { returnObjects: true }) as string[]
-    const placeholderIdx = useRef(Math.floor(Math.random() * placeholders.length))
-
-    // 是否展示命令提示（hint 或 description 任一存在即展示）
-    const showGhostHint = !!(slash.activeCommand?.hint || slash.activeCommand?.description)
-        && inputText === `${slash.activeCommand!.value} `
-        && !slash.isOpen
-
-    // 点击外部关闭下拉
-    useEffect(() => {
-        if (!mention.isOpen && !slash.isOpen) return
-        const handler = (e: MouseEvent) => {
-            if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-                mention.close()
-                slash.close()
-            }
-        }
-        document.addEventListener('mousedown', handler)
-        return () => document.removeEventListener('mousedown', handler)
-    }, [mention.isOpen, slash.isOpen, mention, slash])
-
-    // 建议列表 ARIA（输入底座 ChatInput，属性经 DOM 直写，见 useSuggestionListAria）
-    useSuggestionListAria(
-        wrapperRef,
-        mention.isOpen
-            ? { listId: MENTION_LISTBOX_ID, activeIndex: mention.activeIndex, count: mention.items.length }
-            : slash.isOpen
-                ? { listId: SLASH_LISTBOX_ID, activeIndex: slash.activeIndex, count: slash.items.length }
-                : null,
-    )
-
-    // 编辑器 → 面板模型桥接（归一管线 + processChange + 选中插回，与聊天页共用实现；
-    // 本页无中文归一需求差异——bridge 的归一管线两页一致）
-    const markPendingCursor = useCallback((offset: number) => {
-        pendingCursorRef.current = offset
-    }, [])
-    const bridge = useChatInputBridge({
-        shellRef,
-        slash,
-        mention,
-        onTextChange: setInputText,
-        onPendingCursor: markPendingCursor,
-    })
-
-    // 粘贴桥接：useAttachmentHandling.handlePaste 只消费 clipboardData 与 preventDefault，
-    // 与原生 ClipboardEvent 运行时同构；返回 defaultPrevented 让 ChatInput 拦下已被
-    // handlePaste preventDefault 的粘贴（文件粘贴/超阈值转附件），其余放行编辑器默认插入
-    const handlePasteNative = useCallback((e: ClipboardEvent): boolean => {
-        handlePaste(e as unknown as React.ClipboardEvent)
-        return e.defaultPrevented
-    }, [handlePaste])
-
-    // 光标位置恢复
-    useEffect(() => {
-        if (pendingCursorRef.current != null) {
-            shellRef.current?.setCursorOffset(pendingCursorRef.current)
-            shellRef.current?.focus()
-            pendingCursorRef.current = null
-        }
-    })
-
     // 键盘导航（ChatInput 转发原生 KeyboardEvent；返回 true = 已消费，拦下内置 Enter 提交判定）
-    const handleKeyDown = useCallback((e: KeyboardEvent): boolean => {
-        if (e.key === 'Escape') {
-            if (slash.handleKeyDown(e)) return true
-            if (mention.handleKeyDown(e)) return true
-            return false
-        }
-
-        // Tab 补全（原 native capture listener 迁入：ChatInput 键位层先于编辑器处理）
-        if (e.key === 'Tab') {
-            if (slash.isOpen && slash.items.length > 0) {
-                e.preventDefault()
-                e.stopPropagation()
-                bridge.applySelection(slash.selectCurrent(textRef.current))
-                return true
-            }
-            if (mention.isOpen && mention.items.length > 0) {
-                e.preventDefault()
-                e.stopPropagation()
-                bridge.applySelection(mention.selectCurrent(textRef.current))
-                return true
-            }
-            return false
-        }
-
-        if (e.key === 'Enter') {
-            if (slash.isOpen && slash.items.length > 0) {
-                e.preventDefault()
-                e.stopPropagation()
-                bridge.applySelection(slash.selectCurrent(textRef.current))
-                return true
-            }
-            if (mention.isOpen && mention.items.length > 0) {
-                e.preventDefault()
-                e.stopPropagation()
-                bridge.applySelection(mention.selectCurrent(textRef.current))
-                return true
-            }
-            return false
-        }
-
-        if (slash.handleKeyDown(e)) return true
-        if (mention.handleKeyDown(e)) return true
-        return false
-    }, [mention, slash, bridge])
+    // 面板键位与 ChatComposer 共用单源：Tab/Enter 选择、Escape/Arrow 委托
+    const handleKeyDown = useCallback((e: KeyboardEvent): boolean => (
+        resolveComposerPanelKeyDown(e, {
+            text: textRef.current,
+            slash,
+            mention,
+            applySelection: bridge.applySelection,
+        })
+    ), [mention, slash, bridge])
 
     // ============ 提交处理 ============
     const handleSubmit = useCallback(async () => {
         if (!selectedDirectory || isPending || submittingRef.current) return
-        // 附件上传中不允许提交（与 ChatComposer 一致），避免 uploading 附件被静默丢弃 (#1)
-        if (attachmentsRef.current.some(a => a.status === 'uploading')) {
-            messageApi.warning('附件上传中，请稍候')
+
+        // 守卫与分段组装与 ChatComposer 共用单源。上传中附件没有 path，会被静默丢弃；
+        // empty 不是拦截——空内容仍要创建会话（按钮语义「创建会话」）
+        const resolution = resolveComposerSubmit({
+            text: inputTextRef.current,
+            attachments: attachmentsRef.current,
+            panelOpen: false,
+            enabled: true,
+        })
+        if (!resolution.ok && resolution.blocked === 'uploading') {
+            messageApi.warning(t('composer.uploadPendingWarning'))
             return
         }
         submittingRef.current = true
         setIsPending(true)
-
-        // 从 ref 读取最新值
-        const currentText = inputTextRef.current.trim()
-        const currentAttachments = attachmentsRef.current
 
         // 持久化配置
         savePreferredAgent(agent)
@@ -546,31 +450,21 @@ export function NewSessionPage() {
 
             const sessionId = result.sessionId
 
-            // 有内容时发送消息：分段直传 blocks（document/image 结构化，与 ChatComposer 同源
-            // bucketCompletedAttachments 分桶）——P5 起删除「@path 拼接进文本」的旧通道
-            if (currentText || currentAttachments.length > 0) {
-                const buckets = bucketCompletedAttachments(currentAttachments)
-                const segments: ComposerSegments = {
-                    text: currentText,
-                    files: buckets.files,
-                    images: buckets.images,
-                    quotes: [],
-                }
-
-                if (!isSegmentEmpty(segments)) {
-                    try {
-                        // 生成客户端 localId 供 SSE 早到消息去重（与 useSendMessage 一致）(#14)
-                        const localId = makeClientSideId('local')
-                        await api.messages.send(sessionId, serializeSegments(segments), localId)
-                    } catch {
-                        // 发送失败：把内容暂存，详情页 sender 预填供用户重试 (#2)。
-                        // 跨页草稿通道（draftText）是纯文本：附件以 @path 行保留，提示用户文件已上传
-                        // 可引用（附件本身已落服务器，重发时无需重传）
-                        saveDraftText([
-                            currentText,
-                            ...[...buckets.files, ...buckets.images].map(r => `@${r.path}`),
-                        ].filter(Boolean).join('\n'))
-                    }
+            // 有内容时发送消息：分段直传 blocks（与 ChatComposer 同源 toMessagePayload）
+            if (resolution.ok) {
+                const { segments } = resolution
+                try {
+                    // 客户端 localId 供 SSE 早到消息去重（与 useSendMessage 一致）(#14)
+                    const { blocks, localId } = toMessagePayload(segments)
+                    await api.messages.send(sessionId, blocks, localId)
+                } catch {
+                    // 发送失败：把内容暂存，详情页 sender 预填供用户重试 (#2)。
+                    // 跨页草稿通道（draftText）是纯文本：附件以 @path 行保留，提示用户文件已上传
+                    // 可引用（附件本身已落服务器，重发时无需重传）
+                    saveDraftText([
+                        segments.text.trim(),
+                        ...[...segments.files, ...segments.images].map(r => `@${r.path}`),
+                    ].filter(Boolean).join('\n'))
                 }
             }
 
@@ -796,7 +690,7 @@ export function NewSessionPage() {
 
                     <ChatInput
                         ref={shellRef}
-                        placeholder={t(`composer.placeholders.${placeholderIdx.current}`)}
+                        placeholder={t(`composer.placeholders.${placeholderIndex}`)}
                         submitKey={hasFinePointer ? 'enter' : 'shiftEnter'}
                         disabled={inputDisabled}
                         onUpdate={bridge.onTextInput}

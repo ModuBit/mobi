@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-import { useCallback, useRef, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import type { ChatInputHandle } from '@/ui/base/interactive/chat-input'
 import { normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash } from '@/domain/command/composerInputNormalization'
 
 /** ChatInput.onUpdate 的 ctx（与 ChatInputProps.onUpdate 定义一致，此处独立声明避免 ui 层类型回泄） */
-interface TextInputCtx {
+export interface TextInputCtx {
     text: string
     programmatic: boolean
     cursorOffset: number
@@ -41,12 +41,8 @@ interface UseChatInputBridgeParams {
     shellRef: RefObject<ChatInputHandle | null>
     slash: ChatInputBridgePanel
     mention: ChatInputBridgePanel
-    /** 镜像同步：任何 onUpdate（**含 programmatic**——程序化写回也要跟镜像）先同步消费方 text 镜像 */
-    onTextChange?: (text: string) => void
-    /** 归一命中后的光标待恢复（消费方接 pendingCursorRef——归一写回后 DOM 光标需重定位） */
-    onPendingCursor?: (offset: number) => void
-    /** 用户主动键入标记（ChatComposer 的瞬态窗编辑哨兵 pausedEditRef） */
-    onUserEdit?: () => void
+    /** 编辑器每次更新（**含 programmatic**）的统一出口；消费方按 ctx.programmatic 自行分流 */
+    onUpdate?: (ctx: TextInputCtx) => void
 }
 
 /**
@@ -57,16 +53,18 @@ interface UseChatInputBridgeParams {
  *   processChange。**programmatic onUpdate 提前返回**——受控 Sender 的 setState 写回
  *   不会回触发 onChange，非受控编辑器的写回必然触发 onUpdate，programmatic meta 就是
  *   这里的防线：插回的命令文本（如 `/cmd `）不得重新唤起面板
+ * - 归一命中后的光标重定位是桥内部事务（写回后 DOM 光标需恢复），不暴露给消费方
  * - applySelection：面板选中插回 = setText + setCursorOffset（两步都走程序化通道）
  */
-export function useChatInputBridge({ shellRef, slash, mention, onTextChange, onPendingCursor, onUserEdit }: UseChatInputBridgeParams) {
+export function useChatInputBridge({ shellRef, slash, mention, onUpdate }: UseChatInputBridgeParams) {
     // 前值快照：归一器判定「本次变更是否为手输插入」需要对比前值（state 直读会 stale）
     const prevTextRef = useRef('')
+    // 归一命中后的待恢复光标（写回会以 programmatic onUpdate 再进来一次，恢复要等它之后）
+    const pendingCursorRef = useRef<number | null>(null)
 
     const onTextInput = useCallback((ctx: TextInputCtx) => {
-        onUserEdit?.()
-        // 镜像同步（含程序化写入——清空/回填/归一写回后镜像必须一致，canSend 等派生源）
-        onTextChange?.(ctx.text)
+        // 统一出口（含程序化写入——清空/回填/归一写回后消费方镜像必须一致，canSend 等派生源）
+        onUpdate?.(ctx)
         // 前值必须在跟进之前取出：归一器对比的是「本次值 vs 上一值」，
         // 先覆盖再比对会让两者恒等（顿号归一因此永不命中）
         const previousText = prevTextRef.current
@@ -80,7 +78,7 @@ export function useChatInputBridge({ shellRef, slash, mention, onTextChange, onP
         for (const normalize of [normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash]) {
             const normalized = normalize(value, previousText)
             if (normalized !== null) {
-                onPendingCursor?.(ctx.cursorOffset)
+                pendingCursorRef.current = ctx.cursorOffset
                 value = normalized
             }
         }
@@ -98,7 +96,16 @@ export function useChatInputBridge({ shellRef, slash, mention, onTextChange, onP
         // Mention 检测
         if (mention.processChange(value, ctx.cursorOffset)) return
         mention.close()
-    }, [shellRef, slash, mention, onTextChange, onPendingCursor, onUserEdit])
+    }, [shellRef, slash, mention, onUpdate])
+
+    // 归一命中后的光标恢复：写回触发的 programmatic onUpdate 已让消费方重渲染，此处补光标
+    useEffect(() => {
+        if (pendingCursorRef.current != null) {
+            shellRef.current?.setCursorOffset(pendingCursorRef.current)
+            shellRef.current?.focus()
+            pendingCursorRef.current = null
+        }
+    })
 
     const applySelection = useCallback((result: PanelSelectionResult | null) => {
         if (!result) return

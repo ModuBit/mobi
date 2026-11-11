@@ -3,7 +3,7 @@ name: input-box
 description: 自定义输入框通用操作规范（登录 token / 聊天框共用）
 metadata:
   type: recipe
-  last_verified: 2026-10-13
+  last_verified: 2026-11-11
 ---
 
 # 自定义输入框操作
@@ -13,8 +13,8 @@ mobi 的输入框（登录 token、聊天框）多为自定义组件，标准三
 ## 标准步骤
 
 1. `click` 目标输入框（聚焦）
-2. `press_key Control+A`（全选清空已有内容）
-3. `type_text` 输入新内容
+2. `press_key Meta+A`（全选清空已有内容）——**macOS 上是 Meta 不是 Control**：2026-11-11 实测 `Control+A` 在 contenteditable 里只把光标移到行首（随后 Backspace 只删前一个字符，导致新输入插到旧文本中间，真机看到 `/autocompact` 变 `@/autocompact `）
+3. `type_text` 输入新内容（清空后用 `evaluate_script` 读一次编辑器 innerText 确认，别只看按键回执）
 
 ## 坑
 

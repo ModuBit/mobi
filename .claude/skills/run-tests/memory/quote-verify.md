@@ -3,7 +3,7 @@ name: quote-verify
 description: 引用特性 E2E 验证——划选 popover / 评论浮层 / chip 列表卡 / 气泡引用组 / 点击定位 / 出向标注 / 降级矩阵的 recipe 与合成事件坑
 metadata:
   type: recipe
-  last_verified: 2026-11-08
+  last_verified: 2026-11-11
 ---
 
 # 引用特性验证
@@ -12,6 +12,7 @@ metadata:
 
 1. **划选**：`evaluate_script` 内 Range 选区（`data-quote-block` 锚内找 Text 节点起止）+ 对 `.chat-scroll-container` dispatch `mouseup({bubbles:true})` → `[data-quote-layer="popover"]` 出现「添加到对话」。注意 popover 挂载是异步的——**同一次 evaluate 里造选区后立刻查 DOM 会查空**，分开两次调用（或 Promise+setTimeout）再断言
 2. **添加到对话**：popover 内找文本 `添加到对话` 的叶子 span，mousedown/mouseup/click 三连 → `[data-quote-layer="comment"]` 出现，textarea 自动聚焦 → `type_text + Enter` 保存；空评论直接点「保 存」按钮
+   - **2026-11-11 修正**：合成三连对 popover 按钮**不生效**（React 未收到），改用 MCP `click` 传 snapshot uid；评论层里**保存按钮只在评论非空时渲染**（`[data-testid="quote-comment-save"]`，为空时只有 `quote-comment-close`）；评论用 native setter + input 事件填 `[data-testid="quote-comment-input"]` 后，`document.querySelector('[data-testid="quote-comment-save"]').click()` 可保存并写入编辑器内联引用节点
 3. **chip**：`[data-testid="quote-chip"]` 文案 `N 条引用`；click 打开 `[data-testid="quote-list"]`（编号+excerpt+评论），胶囊旁 `[data-testid="quote-clear-all"]` × 清空全部；点条目 excerpt 定位源消息；Escape 关闭
 4. **发送后**：气泡内引用**收起为 chip**（2026-09-23 起，图片/附件/引用统一挪到 bubble header）：`[data-testid="user-quote-chip"]` → click 开 `[data-testid="user-quote-list"]` → 点 `user-quote-item-N` 定位源消息；落库断言 `sqlite3 ~/.mobi-e2e/mobi.db`：user 消息 `$.role='user'`，`content[0].type='quote'` 含 messageId/role/excerpt/comment
 5. **模型收到引用的硬证据**：下一条 assistant 消息的 `thinking` 会复述引用与评论内容（XML prompt 被 SDK 正常解析；落库的是结构化 blocks，XML 原文不落库）

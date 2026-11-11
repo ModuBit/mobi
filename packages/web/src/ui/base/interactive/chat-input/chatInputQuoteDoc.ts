@@ -15,7 +15,8 @@
  */
 
 import type { Editor } from '@tiptap/core'
-import { CHAT_INPUT_QUOTE_NODE_NAME, normalizeEditorText, type ChatInputQuoteAttrs } from '@/ui/base/interactive/chat-input'
+import { CHAT_INPUT_QUOTE_NODE_NAME, type ChatInputQuoteAttrs } from './chatInputQuoteTypes'
+import { normalizeEditorText } from './chatInputText'
 import {
     QUOTE_MAX_COUNT,
     withQuoteUid,
@@ -26,11 +27,15 @@ import {
 /**
  * composer 引用 chip 的 doc 级操作（source of truth = 编辑器文档）：
  * chip 节点即数据，序列化时从 doc 遍历收集；不再有独立的 quotes state。
- * 视觉/节点定义在 ui 层（ChatInputQuoteNode），业务语义（去重/上限/uid）在此。
+ *
+ * 实现归属 ui 层（ChatInputHandle 内部调用），业务层只见 Handle 方法与 domain 类型——
+ * 此前这些函数住在 features/composer 并直接 import @tiptap/core，使 TipTap 的
+ * doc/tr/view 细节穿透 seam 进入业务层。视觉/节点定义同样在 ui（ChatInputQuoteNode）。
  */
 
 /** 遍历 doc 收集全部引用条目（文档顺序 = prompt quote index 序） */
-export function collectQuotesFromDoc(doc: Editor['state']['doc']): ComposerQuoteRef[] {    const out: ComposerQuoteRef[] = []
+export function collectQuotesFromDoc(doc: Editor['state']['doc']): ComposerQuoteRef[] {
+    const out: ComposerQuoteRef[] = []
     doc.descendants((node) => {
         if (node.type.name !== CHAT_INPUT_QUOTE_NODE_NAME) return true
         const attrs = node.attrs as ChatInputQuoteAttrs
@@ -56,7 +61,6 @@ export function extractWireText(doc: Editor['state']['doc']): string {
     // NBSP 归一同 getText（contenteditable 的行尾空格产物），wire 正文按纯文本语义落普通空格
     return normalizeEditorText(doc.textBetween(0, doc.content.size, '\n'))
 }
-
 
 function quoteNodeJSON(quote: ComposerQuoteRef) {
     return {

@@ -32,7 +32,7 @@ import {
     extractWireText,
     insertQuotesAtEnd,
     updateQuoteCommentInEditor,
-} from '@/features/composer/quoteDoc'
+} from '@/ui/base/interactive/chat-input/chatInputQuoteDoc'
 import { __resetDraftCacheForTesting, getDraft, saveDraft } from '@/core/lib/composerDrafts'
 
 // vitest 未开 globals：渲染型测试需显式 cleanup
@@ -75,7 +75,7 @@ function setup(props: Partial<ChatInputProps> = {}) {
 }
 
 describe('ChatInputQuoteNode（引用 chip 节点）', () => {
-    it('addQuoteToEditor → chip 渲染 + 文档收集 + onUpdate quoteCount/文本降级同源', async () => {
+    it('addQuoteToEditor → chip 渲染 + 文档收集 + onUpdate extraNodeCount/文本降级同源', async () => {
         const onUpdate = vi.fn()
         const { handle, ready } = setup({ onUpdate })
         await ready()
@@ -95,7 +95,7 @@ describe('ChatInputQuoteNode（引用 chip 节点）', () => {
 
         // renderText 降级：「excerpt」进 getText（canSend/面板检测与纯文本同源）
         expect(handle.current!.getText()).toBe('「原文片段」 ')
-        expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ quoteCount: 1 }))
+        expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ extraNodeCount: 1 }))
     })
 
     it('去重与上限：同消息同文本不重复插入；达 QUOTE_MAX_COUNT 返回 null', async () => {
