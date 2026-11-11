@@ -18,12 +18,13 @@ import { useState, useEffect } from 'react'
 import { App, theme as antTheme } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { SyncOutlined } from '@ant-design/icons'
-import { Bell, Cloud } from 'lucide-react'
+import { Bell, Cloud, Vibrate } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { css, keyframes } from '@emotion/react'
 import styled from '@emotion/styled'
 import { useNotificationSetup } from '@/core/data/hooks/useNotificationSetup'
 import { awaitServiceWorkerReady } from '@/core/pwa/swReady'
+import { vibratePattern } from '@/core/notifications/haptics'
 import { SettingGroupCard } from './blocks/SettingGroupCard'
 import { SettingRow } from './blocks/SettingRow'
 import { GuideSection } from './blocks/GuideSection'
@@ -126,6 +127,13 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
         }
     }
 
+    /** 测试震动：比日常 tap 稍重的三脉冲（总 ~170ms），确保「震/没震」明确可判。
+     *  不依赖通知权限（Vibration API 独立）；无 API（iOS 等）→ false，提示不支持。 */
+    const testVibration = () => {
+        if (vibratePattern([60, 50, 60])) return
+        message.info(t('notification.settings.vibrationUnsupported'))
+    }
+
     const tone: Tone = permission === 'granted' ? 'success' : permission === 'denied' ? 'error' : 'default'
     const dotColor =
         tone === 'success' ? token.colorSuccess
@@ -187,6 +195,18 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
                         value={<SubValue $token={token} $on>{t('notification.settings.subscribed')}</SubValue>}
                     />
                 )}
+                {/* 震动与通知权限相互独立（Vibration API 不走 Notification permission），恒常驻 */}
+                <SettingRow
+                    label={t('notification.settings.vibration')}
+                    icon={Vibrate}
+                    description={t('notification.settings.vibrationDesc')}
+                    variant="action"
+                    action={
+                        <Button variant="secondary" onClick={testVibration}>
+                            {t('notification.settings.testVibration')}
+                        </Button>
+                    }
+                />
             </SettingGroupCard>
 
             <GuideSection guideOpen={guideOpen} onToggle={() => setGuideOpen((v) => !v)} />

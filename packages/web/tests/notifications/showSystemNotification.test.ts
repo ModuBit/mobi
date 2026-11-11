@@ -39,7 +39,7 @@ describe('showSystemNotification', () => {
         })
     }
 
-    it('ready 就绪 → 调 registration.showNotification 透传 title/body/icon/tag/data，返回 true', async () => {
+    it('ready 就绪 → 调 registration.showNotification 透传 title/body/icon/tag/renotify/vibrate/data，返回 true', async () => {
         const showNotification = vi.fn().mockResolvedValue(undefined)
         mockServiceWorker(Promise.resolve({ showNotification }))
 
@@ -49,6 +49,7 @@ describe('showSystemNotification', () => {
             icon: '/i.png',
             tag: 't1',
             renotify: true,
+            vibrate: [30, 60, 30],
             data: { url: '/x' },
         })
 
@@ -58,8 +59,19 @@ describe('showSystemNotification', () => {
             icon: '/i.png',
             tag: 't1',
             renotify: true,
+            vibrate: [30, 60, 30],
             data: { url: '/x' },
         })
+    })
+
+    it('vibrate 传 readonly pattern 也接受（拷贝为可变数组）', async () => {
+        const showNotification = vi.fn().mockResolvedValue(undefined)
+        mockServiceWorker(Promise.resolve({ showNotification }))
+
+        const pattern: readonly number[] = [20]
+        const ok = await showSystemNotification({ title: 'T', vibrate: pattern })
+        expect(ok).toBe(true)
+        expect(showNotification).toHaveBeenCalledWith('T', expect.objectContaining({ vibrate: [20] }))
     })
 
     it('ready reject（SW 未注册/孤儿）→ 返回 false，调用方降级', async () => {
@@ -85,6 +97,7 @@ describe('showSystemNotification', () => {
             icon: undefined,
             tag: undefined,
             renotify: undefined,
+            vibrate: undefined,
             data: undefined,
         })
     })

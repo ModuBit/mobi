@@ -32,6 +32,7 @@
  */
 
 import { derivePendingRequestsCount } from '@/core/lib/pendingRequests'
+import { HAPTIC_PATTERNS, vibratePattern } from './haptics'
 
 /** 反馈类型：ready=输出完成等待输入；pending=等待审批/提问 */
 export type AttentionKind = 'ready' | 'pending'
@@ -170,19 +171,16 @@ function playSound(kind: AttentionKind): void {
     }
 }
 
-// ==================== 震动（Vibration API） ====================
+// ==================== 震动（Vibration API，pattern 与入口见 ./haptics 单源） ====================
 
 /**
  * 震动反馈。pattern 与声音同构（pending 双脉冲更急）；
  * iOS Safari / 主屏 PWA 无 navigator.vibrate，静默降级为仅声音。
+ * 注意：页面 hidden（切走/锁屏）时 Chrome 会拦截页面层震动——后台场景由
+ * SSEProvider 的 SW 系统通知（携带同一 pattern）承担，见 haptics.ts 头注释。
  */
 function vibrate(kind: AttentionKind): void {
-    if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return
-    try {
-        navigator.vibrate(kind === 'ready' ? [80] : [120, 80, 120])
-    } catch {
-        // 某些环境 vibrate 存在但调用抛错（权限/无振动器），静默
-    }
+    vibratePattern(kind === 'ready' ? HAPTIC_PATTERNS.ready : HAPTIC_PATTERNS.pending)
 }
 
 /** 对外入口：按类型同时给声音 + 震动（各自独立降级，互不阻塞） */

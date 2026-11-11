@@ -17,6 +17,7 @@
 import { theme as antTheme } from 'antd'
 import { LoadingOutlined } from '@ant-design/icons'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
+import { hapticTap } from '@/core/notifications/haptics'
 import { forwardRef } from 'react'
 import type { ReactNode, ButtonHTMLAttributes } from 'react'
 import styled from '@emotion/styled'
@@ -95,6 +96,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
     variant = 'ghost',
     'aria-label': ariaLabel,
     onClick,
+    onPointerDown,
     ...props
 }, ref) {
     const { token } = useToken()
@@ -115,6 +117,10 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
             aria-busy={loading || undefined}
             // loading 不禁用（保键盘焦点），靠吞点击实现
             onClick={loading ? (event) => event.preventDefault() : onClick}
+            // 按下即触觉反馈（Android 原生 touch haptics 同时机，无振动器环境静默）；
+            // loading 吞点击时同样不震；消费方自己的 onPointerDown 原样接续
+            //（disabled 由浏览器不派发 pointer 事件兜住）
+            onPointerDown={loading ? onPointerDown : (event) => { hapticTap(); onPointerDown?.(event); }}
             {...props}
         >
             {loading ? <LoadingOutlined spin aria-hidden="true" /> : icon}

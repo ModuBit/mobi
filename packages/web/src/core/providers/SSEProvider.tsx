@@ -29,6 +29,7 @@ import { useNotificationStore } from '@/core/data/stores/notificationStore'
 import type { Session, SyncEvent, DecryptedMessage, UserContentBlock } from '@mobi/shared'
 import { isObject } from '@mobi/shared'
 import { decideToastAction, parseActiveSessionId, showSystemNotification } from '@/core/notifications'
+import { HAPTIC_PATTERNS } from '@/core/notifications/haptics'
 import {
     notifyAttention,
     trackAttentionTransition,
@@ -594,12 +595,14 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     // 点击跳转由 sw.ts notificationclick 处理（读 data.url）；SW 不可用则降级 antd。
                     // 聚合:固定 tag(按 kind+session)让同会话新通知替换旧的,通知中心只留一条而非堆积
                     // (Chrome 见堆积+低点击 → 判定垃圾内容);renotify=true 替换时再次提醒,避免静默漏看。
+                    // vibrate 显式携带:页面 hidden 时页面层震动被 Chrome 拦截,触觉反馈只能走系统通知通道。
                     void showSystemNotification({
                         title,
                         body,
                         icon: '/brand/favicon.ico',
                         tag: `mobi-${kind}-${sessionId}`,
                         renotify: true,
+                        vibrate: kind === 'ready' ? HAPTIC_PATTERNS.ready : HAPTIC_PATTERNS.pending,
                         data: { url },
                     }).then((ok) => {
                         if (ok) return

@@ -26,6 +26,7 @@ import type { ButtonHTMLAttributes, ReactNode, Ref, RefObject } from "react";
 import { AnimatePresence, motion, useIsPresent, useReducedMotion } from "motion/react";
 import type { Variants } from "motion/react";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
+import { hapticTap } from "@/core/notifications/haptics";
 // morph 基建（宽度 spring / glyph diff / 进出场常量）与 ActionButton/SplitButton/ButtonGroup 共享单源
 import { fadeIn, fadeOut, iconEnter, iconIn, iconOut, labelKey, rest, textIn, textOut, useMorphWidth } from "../morphShared";
 import styles from "./button.module.css";
@@ -76,7 +77,7 @@ function LabelPhase({ children, icon, reduced, ref }: { children: ReactNode; ico
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { className, variant = "primary", size = "md", loading = false, block = false, danger = false, disabled, children, onClick, ...props },
+  { className, variant = "primary", size = "md", loading = false, block = false, danger = false, disabled, children, onClick, onPointerDown, ...props },
   ref,
 ) {
   const reduceMotion = useReducedMotion() ?? false;
@@ -113,6 +114,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       // Loading keeps the button focusable (a disabled button would drop keyboard focus mid-action) and swallows presses instead.
       aria-disabled={loading || props["aria-disabled"] || undefined}
       onClick={loading ? event => event.preventDefault() : onClick}
+      // 按下即触觉反馈（Android 原生 touch haptics 同时机，无振动器环境静默）；
+      // 不可交互态（disabled/loading/aria-disabled）不震；消费方自己的 onPointerDown 原样接续
+      onPointerDown={inert ? onPointerDown : event => { hapticTap(); onPointerDown?.(event); }}
     >
       <motion.span className={styles.labelSlot} style={{ width }}>
         <span ref={contentRef} className={styles.labelContent}>

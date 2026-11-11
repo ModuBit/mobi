@@ -33,6 +33,7 @@ interface PushPayload {
     title: string
     body: string
     tag?: string
+    vibrate?: number[]
     data?: { type: string; sessionId: string; url: string }
 }
 
@@ -51,13 +52,20 @@ self.addEventListener('push', (event) => {
     } catch {
         payload = { title: 'Mobi', body: event.data?.text() ?? '' }
     }
+    // vibrate 白名单校验:推送 payload 来自传输层,非数字数组直接丢弃由系统默认行为兜底
+    // TS 6.0 webworker lib 的 NotificationOptions 未收录 vibrate(Chrome 已支持),扩本地类型
+    const vibrate = Array.isArray(payload.vibrate)
+        ? payload.vibrate.filter((ms): ms is number => typeof ms === 'number')
+        : undefined
+    const options: NotificationOptions & { vibrate?: number[] } = {
+        body: payload.body,
+        tag: payload.tag,
+        vibrate: vibrate && vibrate.length > 0 ? vibrate : undefined,
+        data: payload.data,
+        icon: '/brand/favicon.ico',
+    }
     event.waitUntil(
-        self.registration.showNotification(payload.title, {
-            body: payload.body,
-            tag: payload.tag,
-            data: payload.data,
-            icon: '/brand/favicon.ico',
-        })
+        self.registration.showNotification(payload.title, options)
     )
 })
 

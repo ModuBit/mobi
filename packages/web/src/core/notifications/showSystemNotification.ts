@@ -24,8 +24,8 @@
  *
  * @returns true=已显示；false=SW 未就绪或显示失败（调用方应降级为页面内通知）
  */
-/** 扩展 NotificationOptions 纳入 renotify（TS 6.0 lib.dom 未收录,但 Chrome 已支持,需 tag 同时设置） */
-type ShowNotificationOptions = NotificationOptions & { renotify?: boolean }
+/** 扩展 NotificationOptions 纳入 renotify 与 vibrate（TS 6.0 lib.dom 未收录,但 Chrome 已支持;renotify 需 tag 同时设置） */
+type ShowNotificationOptions = NotificationOptions & { renotify?: boolean; vibrate?: number[] }
 
 export async function showSystemNotification(options: {
     title: string
@@ -37,6 +37,12 @@ export async function showSystemNotification(options: {
      * 配合固定 tag 实现「聚合 + 有更新再提醒」：renotify 要求 tag 必须设置。
      */
     renotify?: boolean
+    /**
+     * 震动 pattern（毫秒，系统通知通道）。页面 hidden 时 Chrome 拦截页面层
+     * navigator.vibrate，后台提醒的触觉反馈只能靠这里——不传则由系统
+     * NotificationChannel 默认行为决定（不可控），传了才有稳定短震。
+     */
+    vibrate?: readonly number[]
     data?: Record<string, unknown>
 }): Promise<boolean> {
     try {
@@ -46,6 +52,8 @@ export async function showSystemNotification(options: {
             icon: options.icon,
             tag: options.tag,
             renotify: options.renotify,
+            // NotificationOptions.vibrate 签名是可变数组，拷贝适配
+            vibrate: options.vibrate ? [...options.vibrate] : undefined,
             data: options.data,
         }
         await reg.showNotification(options.title, opts)
