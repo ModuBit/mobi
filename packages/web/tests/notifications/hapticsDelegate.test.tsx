@@ -25,7 +25,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import { Button } from '@/ui/base/interactive/button/Button'
-import { HAPTIC_PATTERNS, installHapticFeedback, vibrateSupported } from '@/core/notifications/haptics'
+import { HAPTIC_PATTERNS, installHapticFeedback, setHapticGate, vibratePattern, vibrateSupported } from '@/core/notifications/haptics'
 
 const nav = navigator as { vibrate?: unknown } & typeof navigator
 let originalVibrate: unknown
@@ -77,13 +77,12 @@ describe('installHapticFeedback 全局委托', () => {
     })
 
     it.each([
-        ['select 触发器（combobox）', '<div role="combobox" aria-expanded="false">选择</div>'],
+        ['select 触发器（combobox，弹层语义的 aria-expanded 不受展开收起排除影响）', '<div role="combobox" aria-expanded="false">选择</div>'],
         ['switch 开关', '<button role="switch" aria-checked="false"></button>'],
         ['tab 页签', '<div role="tab">标签</div>'],
         ['menuitem 菜单项', '<div role="menuitem">操作</div>'],
         ['原生 checkbox', '<input type="checkbox" />'],
         ['原生 radio（Segmented 底座）', '<input type="radio" />'],
-        ['summary 折叠头', '<summary>更多</summary>'],
     ])('%s 按下 → 震', (_label, html) => {
         const host = mount(html)
         down(host.firstElementChild!)
@@ -95,6 +94,9 @@ describe('installHapticFeedback 全局委托', () => {
         ['disabled', '<button disabled>禁</button>'],
         ['aria-disabled', '<button aria-disabled="true">禁</button>'],
         ['aria-busy（loading）', '<button aria-busy="true">载</button>'],
+        ['aria-expanded（分组展开收起，真机反馈不要震）', '<button role="button" aria-expanded="true">组</button>'],
+        ['treeitem 展开', '<div role="treeitem" aria-expanded="false">目录</div>'],
+        ['summary 折叠头（原生展开语义）', '<summary>更多</summary>'],
     ])('%s 按下 → 不震', (_label, html) => {
         const host = mount(html)
         down(host.firstElementChild!)
@@ -137,5 +139,23 @@ describe('vibrateSupported', () => {
     it('无 vibrate API → false', () => {
         Object.defineProperty(nav, 'vibrate', { value: undefined, configurable: true })
         expect(vibrateSupported()).toBe(false)
+    })
+})
+
+describe('震动开关 gate（setHapticGate 注入）', () => {
+    it('gate 关闭后 vibratePattern 与委托都不震', () => {
+        setHapticGate(() => false)
+        expect(vibratePattern([10])).toBe(false)
+        const host = mount('<button>点</button>')
+        down(host.querySelector('button')!)
+        expect(vibrate).not.toHaveBeenCalled()
+    })
+
+    it('gate 恢复放行后委托恢复震动', () => {
+        setHapticGate(() => false)
+        setHapticGate(() => true)
+        const host = mount('<button>点</button>')
+        down(host.querySelector('button')!)
+        expect(vibrate).toHaveBeenCalledWith([...HAPTIC_PATTERNS.tap])
     })
 })

@@ -83,6 +83,10 @@ interface UiState {
     /** OS 暗色偏好——system 档的解析输入，由 subscribeSystemTheme 同步；不持久化 */
     systemIsDark: boolean
     locale: Locale
+    /** 声音反馈开关（turn 完成/等待审批提示音；persist 跟随用户偏好，默认开） */
+    soundFeedbackEnabled: boolean
+    /** 震动反馈开关（按钮点按/任务提醒触觉；persist 跟随用户偏好，默认开） */
+    hapticFeedbackEnabled: boolean
     mobileMenuOpen: boolean
     /**
      * 菜单内导航的待执行闭包：点会话/导航项时只关菜单，路由提交推迟到 sheet 离场动画
@@ -103,6 +107,8 @@ interface UiState {
     // 操作方法
     setTheme: (theme: Theme) => void
     setLocale: (locale: Locale) => void
+    setSoundFeedbackEnabled: (enabled: boolean) => void
+    setHapticFeedbackEnabled: (enabled: boolean) => void
     setMobileMenuOpen: (open: boolean) => void
     /** 登记一次菜单内导航并关闭菜单。返回 true = 等抽屉离场回调取走；false = 没有在场
      *  的抽屉（不存在「离场」这回事），调用方应立即执行 */
@@ -134,6 +140,10 @@ export const useUiStore = create<UiState>()(
                 i18n.changeLanguage(locale)
                 return set({ locale })
             },
+            soundFeedbackEnabled: true,
+            hapticFeedbackEnabled: true,
+            setSoundFeedbackEnabled: (enabled) => set({ soundFeedbackEnabled: enabled }),
+            setHapticFeedbackEnabled: (enabled) => set({ hapticFeedbackEnabled: enabled }),
             // 重新打开菜单即作废未执行的导航：待执行闭包只活一次「关 → 离场」窗口，
             // 离场途中被重新打开（边缘手势）时不能留到下一次关闭才突然跳转
             setMobileMenuOpen: (open) => set(open

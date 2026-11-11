@@ -18,13 +18,14 @@ import { useState, useEffect } from 'react'
 import { App, theme as antTheme } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { SyncOutlined } from '@ant-design/icons'
-import { Bell, Cloud, Vibrate } from 'lucide-react'
+import { Bell, Cloud, Volume2, Vibrate } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { css, keyframes } from '@emotion/react'
 import styled from '@emotion/styled'
 import { useNotificationSetup } from '@/core/data/hooks/useNotificationSetup'
 import { awaitServiceWorkerReady } from '@/core/pwa/swReady'
 import { vibrateSupported } from '@/core/notifications/haptics'
+import { useUiStore } from '@/core/data/stores/uiStore'
 import { SettingGroupCard } from './blocks/SettingGroupCard'
 import { SettingRow } from './blocks/SettingRow'
 import { GuideSection } from './blocks/GuideSection'
@@ -95,6 +96,11 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
     const { t } = useTranslation()
     const { permission, subscribed, error, enable, refreshPermission } = useNotificationSetup(namespace)
     const { message } = App.useApp()
+    // 反馈开关（默认开；persist 跟随用户偏好）
+    const soundFeedbackEnabled = useUiStore((s) => s.soundFeedbackEnabled)
+    const hapticFeedbackEnabled = useUiStore((s) => s.hapticFeedbackEnabled)
+    const setSoundFeedbackEnabled = useUiStore((s) => s.setSoundFeedbackEnabled)
+    const setHapticFeedbackEnabled = useUiStore((s) => s.setHapticFeedbackEnabled)
     // 说明区块折叠态：denied 时默认展开（被禁用户最需要指引）
     const [guideOpen, setGuideOpen] = useState(permission === 'denied')
 
@@ -129,10 +135,13 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
 
     /** 测试震动：按下「试一下」的震感由全局委托给（与日常按钮完全一致，2026-11-11 真机
      *  反馈「测试 pattern 与按钮不一致且叠加成两下」后收口）。这里只负责降级提示：
-     *  无 Vibration API（iOS 等）时按下无感，显式告知不支持。 */
+     *  无 Vibration API（iOS 等）→ 不支持；开关关闭 → 按下无感，提示先开启。 */
     const testVibration = () => {
-        if (vibrateSupported()) return
-        message.info(t('notification.settings.vibrationUnsupported'))
+        if (!vibrateSupported()) {
+            message.info(t('notification.settings.vibrationUnsupported'))
+            return
+        }
+        if (!hapticFeedbackEnabled) message.info(t('notification.settings.vibrationDisabled'))
     }
 
     const tone: Tone = permission === 'granted' ? 'success' : permission === 'denied' ? 'error' : 'default'
@@ -196,11 +205,31 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
                         value={<SubValue $token={token} $on>{t('notification.settings.subscribed')}</SubValue>}
                     />
                 )}
-                {/* 震动与通知权限相互独立（Vibration API 不走 Notification permission），恒常驻 */}
+                {/* 声音/震动反馈开关：默认开，persist 跟随用户偏好；gate 分别在
+                    attentionFeedback（声音）与 vibratePattern（震动）单点生效 */}
+                <SettingRow
+                    label={t('notification.settings.soundFeedback')}
+                    icon={Volume2}
+                    description={t('notification.settings.soundFeedbackDesc')}
+                    variant="switch"
+                    checked={soundFeedbackEnabled}
+                    onCheckedChange={setSoundFeedbackEnabled}
+                    ariaLabel={t('notification.settings.soundFeedback')}
+                />
                 <SettingRow
                     label={t('notification.settings.vibration')}
                     icon={Vibrate}
                     description={t('notification.settings.vibrationDesc')}
+                    variant="switch"
+                    checked={hapticFeedbackEnabled}
+                    onCheckedChange={setHapticFeedbackEnabled}
+                    ariaLabel={t('notification.settings.vibration')}
+                />
+                {/* 震感与日常按钮完全一致（全局委托统一给）；开关关闭时按下无感，点击给提示 */}
+                <SettingRow
+                    label={t('notification.settings.vibrationTest')}
+                    icon={Vibrate}
+                    description={t('notification.settings.vibrationTestDesc')}
                     variant="action"
                     action={
                         <Button variant="secondary" onClick={testVibration}>

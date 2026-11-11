@@ -56,6 +56,7 @@ export function MobileSessionItem({ session, active, onClick, onLongPress }: Mob
     return (
         <SessionItem
             $token={token}
+            role="button"
             data-glide-row
             data-glide-active={active || undefined}
             onClick={longPress.withClickGuard(onClick)}

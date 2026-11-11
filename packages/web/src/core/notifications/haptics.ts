@@ -31,6 +31,17 @@
  * - 桌面端通常无振动器，调用返回 false，静默无害
  */
 
+/**
+ * 震动开关读取器（注入式）：notifications 层不直接认识 uiStore（避免把 store/
+ * i18n 初始化拖进一切引用方的模块加载链），app 入口（main.tsx）安装时注入读取。
+ * 默认放行——未注入（纯函数测试等）视为开启。
+ */
+let hapticGate: () => boolean = () => true
+
+export function setHapticGate(read: () => boolean): void {
+    hapticGate = read
+}
+
 /** 反馈 pattern（毫秒，[震,停,震...]）。语义与 attentionFeedback 的声音方向对偶 */
 export const HAPTIC_PATTERNS = {
     /** 按钮点击：极短一触 */
@@ -45,9 +56,12 @@ export type HapticPatternName = keyof typeof HAPTIC_PATTERNS
 
 /**
  * 按给定 pattern 触发一次震动。
- * @returns 请求是否被环境接受（API 缺失/被浏览器拦截/抛错都算 false；调用方无需感知）
+ * 用户关闭震动反馈（设置页开关，经 setHapticGate 注入读取）时直接跳过——gate 在此
+ * 统一生效，页面层一切调用（委托/turn 反馈/试一下）自动跟随。
+ * @returns 请求是否被环境接受（开关关闭/API 缺失/被拦截/抛错都算 false；调用方无需感知）
  */
 export function vibratePattern(pattern: readonly number[]): boolean {
+    if (!hapticGate()) return false
     if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return false
     try {
         // 展开拷贝：readonly pattern 满足 vibrate 的可变数组签名，同时防止实现方改写入参
@@ -72,6 +86,7 @@ export function vibrateSupported(): boolean {
  * 带交互语义的元素 selector：button 本体 + ARIA 交互角色 + 原生 checkbox/radio。
  * antd（Switch/Checkbox/Segmented/Pagination）、Radix/Base UI（Select/Combobox/DropdownMenu）、
  * 自管 uiarc 件的 DOM 都带其中之一——委托命中即覆盖，新组件无需逐个接入。
+ * 注意 summary 不在内：折叠头属展开收起语义（真机反馈此类不震），同 aria-expanded 排除。
  */
 const HAPTIC_TARGET_SELECTOR = [
     'button',
@@ -86,7 +101,6 @@ const HAPTIC_TARGET_SELECTOR = [
     '[role="menuitemcheckbox"]',
     '[role="menuitemradio"]',
     '[role="treeitem"]',
-    'summary',
     'input[type="checkbox"]',
     'input[type="radio"]',
 ].join(',')
@@ -101,7 +115,9 @@ let hapticsInstalled = false
  * - 组件层 + 局部叠加会出现一次点击两次调用（「试一下」曾 pointerdown tap + click
  *   测试 pattern 叠成「震两下」）；委托单点消费，一次按下至多一触
  * - capture 阶段先于 React 合成事件，消费方 handler 与震动互不干扰
- * 不可交互态（disabled / aria-disabled / aria-busy）不震。
+ * 不震的三类：不可交互态（disabled / aria-disabled / aria-busy）；展开收起语义
+ * （带 aria-expanded 的元素——分组折叠头等，此类高频且无确认价值，真机反馈不要震）；
+ * 用户关闭震动反馈（uiStore.hapticFeedbackEnabled，在 vibratePattern 内统一 gate）。
  */
 export function installHapticFeedback(): void {
     if (hapticsInstalled || typeof document === 'undefined') return
@@ -113,6 +129,9 @@ export function installHapticFeedback(): void {
         if (!el) return
         if (el.hasAttribute('disabled')) return
         if (el.getAttribute('aria-disabled') === 'true' || el.getAttribute('aria-busy') === 'true') return
+        // 展开收起（分组折叠头/树展开行）：高频且状态本身可视，按下不震（2026-11-11 真机反馈）。
+        // combobox 的 aria-expanded 是自身弹层开合语义而非区域展开收起——用户点名 select 要震，不排除
+        if (el.hasAttribute('aria-expanded') && el.getAttribute('role') !== 'combobox') return
         hapticTap()
     }, { capture: true })
 }

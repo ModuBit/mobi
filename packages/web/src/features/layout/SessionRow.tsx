@@ -125,6 +125,7 @@ export function SessionRow({
     return (
         <SessionItem
             $token={token}
+            role="button"
             data-glide-row
             data-glide-active={active || undefined}
             onClick={onClick}

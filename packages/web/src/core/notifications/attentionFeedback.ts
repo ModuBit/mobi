@@ -34,6 +34,16 @@
 import { derivePendingRequestsCount } from '@/core/lib/pendingRequests'
 import { HAPTIC_PATTERNS, vibratePattern } from './haptics'
 
+/**
+ * 声音开关读取器（注入式，理由同 haptics 的 setHapticGate）：app 入口安装时注入
+ * uiStore 的 soundFeedbackEnabled 读取；默认放行。
+ */
+let soundGate: () => boolean = () => true
+
+export function setSoundGate(read: () => boolean): void {
+    soundGate = read
+}
+
 /** 反馈类型：ready=输出完成等待输入；pending=等待审批/提问 */
 export type AttentionKind = 'ready' | 'pending'
 
@@ -160,6 +170,8 @@ function playTone(ctx: AudioContext, opts: {
  * - pending：上行双音「叮-叮」（880 → 1319Hz，渐强 = 需要你行动）
  */
 function playSound(kind: AttentionKind): void {
+    // 用户关闭声音反馈（设置页开关，注入读取）→ 静默
+    if (!soundGate()) return
     const ctx = getAudioContext()
     if (!ctx || ctx.state !== 'running') return
     if (kind === 'ready') {

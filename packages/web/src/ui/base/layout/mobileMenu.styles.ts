@@ -28,8 +28,11 @@ type SidebarToken = ReturnType<typeof antTheme.useToken>['token']
  *   子级会话行 14px、分区标签 13px，形成三级层次
  * - 双列行（主题/语言、刷新/重启）列内也用本样式左对齐，
  *   左列图标起点与其他行一致，不再居中
+ *
+ * button 本体（非 div）：菜单行是可交互动作，button 语义 + 键盘可达免费获得，
+ * 全局触觉委托（installHapticFeedback）也按 button 命中；原生默认外观整体重置。
  */
-export const MobileMenuItem = styled.div<{
+export const MobileMenuItem = styled.button<{
     $active?: boolean
     $danger?: boolean
     $token: SidebarToken
@@ -37,10 +40,14 @@ export const MobileMenuItem = styled.div<{
     display: flex;
     align-items: center;
     gap: 12px;
+    width: 100%;
     padding: 16px 20px;
     cursor: pointer;
     font-size: 15px;
     font-weight: 500;
+    text-align: left;
+    border: none;
+    font-family: inherit;
     color: ${props => {
         if (props.$danger) return props.$token.colorError
         return props.$active ? props.$token.colorPrimary : props.$token.colorText

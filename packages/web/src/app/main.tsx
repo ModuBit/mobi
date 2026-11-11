@@ -23,7 +23,9 @@ import { router } from './router'
 import { ThemeProvider } from '@/core/config/theme/ThemeProvider'
 import { initDiag } from '@/core/lib/diag'
 import { initXMarkdownDebugFromQuery } from '@/core/lib/xMarkdownDebug'
-import { installHapticFeedback } from '@/core/notifications/haptics'
+import { installHapticFeedback, setHapticGate } from '@/core/notifications/haptics'
+import { setSoundGate } from '@/core/notifications/attentionFeedback'
+import { useUiStore } from '@/core/data/stores/uiStore'
 import { queryClient } from '@/core/lib/queryClient'
 import '@/index.css'
 
@@ -32,6 +34,11 @@ initDiag()
 
 // XMarkdown 调试面板开关：?xmd-debug=1 一次性入口 → localStorage 常驻（默认关，见 core/lib/xMarkdownDebug.ts）
 initXMarkdownDebugFromQuery()
+
+// 反馈开关注入（notifications 层不认识 uiStore，避免把 store/i18n 初始化拖进引用方的
+// 模块加载链，见 setHapticGate/setSoundGate 注释）：设置页开关分别 gate 震动与声音
+setHapticGate(() => useUiStore.getState().hapticFeedbackEnabled)
+setSoundGate(() => useUiStore.getState().soundFeedbackEnabled)
 
 // 触觉反馈全局委托（按下可交互元素即轻震，无 Vibration API 环境静默）：app 级一次性安装，
 // 覆盖 antd/Radix/自管件一切带交互语义的 DOM，组件层不再逐个挂载（会双震）

@@ -1144,6 +1144,11 @@
       "testBody": "Click this notification to open the app and jump to the session list",
       "subscription": "Subscription",
       "vibration": "Haptic feedback",
+      "soundFeedback": "Sound feedback",
+      "soundFeedbackDesc": "Chime when a task finishes or awaits approval",
+      "vibrationTest": "Vibration test",
+      "vibrationTestDesc": "Press “Try it” to feel the current haptic",
+      "vibrationDisabled": "Haptic feedback is off — enable it above first",
       "vibrationDesc": "Short vibration on button presses and task alerts (Android Chrome; silenced by Do Not Disturb)",
       "testVibration": "Try it",
       "vibrationUnsupported": "Vibration is not supported on this device or browser"
