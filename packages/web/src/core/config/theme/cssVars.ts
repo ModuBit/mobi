@@ -193,11 +193,14 @@ const UIARC_ALIAS_VARS: ReadonlyArray<readonly [string, string]> = [
     ['--ease-enter', 'var(--mobi-ease-out)'],
     ['--ease-spring', 'var(--mobi-ease-in-out)'],
     // 控件语义色（switch/checkbox/radio 族，2026-11-11 迁移）：轨道取 muted（未选）/primary（选中），
-    // 双档随 shadcn token 自动翻转；拇指固定白为双档同值的有意识选择——dark 深轨道配白拇指对比成立
+    // 双档随 shadcn token 自动翻转；拇指固定白为双档同值的有意识选择——dark 深轨道配白拇指对比成立。
+    // glyph（填充态字形）取 background 反色：primary 是中性墨族（light 墨黑/dark 浅白），
+    // 其上的字形恰为画布反色——不能用 --primary-foreground（它映射 colorPrimaryText=主色本身，
+    // 黑勾画黑底会糊死，E2E 实锤）
     ['--control-track', 'var(--muted)'],
     ['--control-track-hover', 'var(--accent)'],
     ['--control-on', 'var(--primary)'],
-    ['--control-glyph', 'var(--primary-foreground)'],
+    ['--control-glyph', 'var(--background)'],
     ['--control-thumb', 'hsl(0 0% 100%)'],
     ['--control-thumb-on', 'hsl(0 0% 100%)'],
     ['--control-thumb-shadow', '0 1px 2px rgb(0 0 0 / 0.2)'],

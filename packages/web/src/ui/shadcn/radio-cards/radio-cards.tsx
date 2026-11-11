@@ -37,6 +37,22 @@ export interface RadioCardOption {
   disabledReason?: ReactNode;
 }
 
+export interface RadioIndicatorProps {
+  checked: boolean;
+  disabled?: boolean;
+}
+
+/**
+ * The round on/off dot of a radio card, standalone. Exists so embedders that keep their own row chrome
+ * (e.g. a shared option row with previews) can reuse the exact indicator instead of re-drawing one.
+ */
+export function RadioIndicator({ checked, disabled }: RadioIndicatorProps) {
+  const reduced = useReducedFlag();
+  return <span className={styles.indicator} data-checked={checked || undefined} aria-disabled={disabled || undefined} aria-hidden="true">
+    <motion.span className={styles.indicatorDot} initial={false} animate={{ scale: checked ? 1 : 0 }} transition={reduced ? { duration: 0 } : motionTokens.spring.snappy} />
+  </span>;
+}
+
 /**
  * Selectable option cards for choices that need more than a label: plans, shipping speeds, regions. One selection ring
  * glides from card to card on a spring, so the eye follows the change. Behaves as a native radio group: one tab stop,
@@ -149,9 +165,7 @@ export const RadioCards = forwardRef<HTMLDivElement, RadioCardsProps>(function R
       return <div key={option.value} role="radio" data-card={index} className={styles.card} aria-checked={checked} aria-disabled={off || undefined}
         aria-labelledby={labelId} aria-describedby={description ? descriptionId : undefined} tabIndex={index === tabStop ? 0 : -1}
         data-checked={checked || undefined} onClick={() => { if (!off) select(option.value); }} onKeyDown={event => onKeyDown(event, index)}>
-        <span className={styles.indicator} aria-hidden="true">
-          <motion.span className={styles.indicatorDot} initial={false} animate={{ scale: checked ? 1 : 0 }} transition={reduced ? { duration: 0 } : motionTokens.spring.snappy} />
-        </span>
+        <RadioIndicator checked={checked} disabled={off} />
         <span className={styles.body}>
           <span id={labelId} className={styles.label}>
             {option.icon && <span className={styles.icon}>{option.icon}</span>}

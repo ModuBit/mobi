@@ -20,7 +20,7 @@
             "localMods": [
                 "Apache 版权头",
                 "motion-tokens import 接线（上游 lib/motion-tokens → @/ui/base/motion/motionTokens 单源）",
-                "visual 方块圆角 5px → var(--radius-square)（档位重映射：DESIGN.md「复选框归 square 档」）"
+                "visual 方块圆角 → var(--radius-icon)（档位重映射：贴近上游 5px 观感的最近档）"
             ],
             "note": "antd Checkbox 已全站清零且 eslint 禁新增。消费点：OptionRow multi 模式 mark（纯视觉 aria-hidden，点击穿透到行 div；完成态选中色局部覆盖 --control-on/--control-glyph 为成功色）"
         },
@@ -33,7 +33,7 @@
                 "Apache 版权头",
                 "motion-tokens import 接线（上游 lib/motion-tokens → @/ui/base/motion/motionTokens 单源）"
             ],
-            "note": "已装待消费（底座预铺）：antd Radio 消费端（OptionRow single mark 等）待首个真实迁移场景到达时启用，勿重复造轮子"
+            "note": "已装待消费（底座预铺）：antd Radio 整组消费端待首个真实迁移场景到达时启用（OptionRow single mark 已由 radio-cards 的 RadioIndicator 承接），勿重复造轮子"
         },
         {
             "name": "radio-cards",
@@ -43,9 +43,10 @@
             "localMods": [
                 "Apache 版权头",
                 "motion-tokens import 接线（上游 lib/motion-tokens → @/ui/base/motion/motionTokens 单源）",
-                "ring/card 圆角 20px → var(--radius-panel)（档位重映射：卡片归 panel 档）"
+                "ring/card 圆角 20px → var(--radius-panel)（档位重映射：卡片归 panel 档）",
+                "导出 RadioIndicator（受控圆点指示器，卡片内部同款单源；css 增 .indicator[data-checked] 自身选中分支）"
             ],
-            "note": "已装待消费（底座预铺）：卡片式单选形态，与 radio-group 同批安装、消费端未替换；适合设置页分组单选等场景，勿重复造轮子"
+            "note": "已消费：OptionRow single 模式 mark（AskUserQuestion 单选行，纯视觉 aria-hidden；preview/Other 行为保留行级结构故不整组换 RadioCards）。整组组件待首个真实场景（设置页分组单选等）"
         }
     ]
 }

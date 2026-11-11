@@ -265,11 +265,15 @@ describe('AskUserQuestionView', () => {
                 { 'Which?': ['A', 'deno'] }
             )
             const { container } = renderView(props)
-            // jsdom 把 hex 序列化为 rgb — 这是双保险，验证渲染层也无残留
-            expect(container.innerHTML).not.toContain('#52c41a')
-            expect(container.innerHTML).not.toContain('#f6ffed')
-            expect(container.innerHTML).not.toContain('#237804')
-            expect(container.innerHTML).not.toContain('#999')
+            // token 化完成态：成功色只允许经 --control-* CSS 变量投影（token 运行时取值），
+            // 不允许硬编码在常规属性；jsdom 变量值保留 hex 原样，据此逐行甄别
+            const html = container.innerHTML
+            expect(html).toContain('--control-on')
+            const hexLines = html.match(/[-a-z]+\s*:\s*#52c41a/g) ?? []
+            expect(hexLines.every((m) => m.startsWith('--control-'))).toBe(true)
+            expect(html).not.toContain('#f6ffed')
+            expect(html).not.toContain('#237804')
+            expect(html).not.toContain('#999')
         })
 
         it('自由格式答案路径也不含硬编码绿色 hex 字面量', () => {
@@ -284,10 +288,13 @@ describe('AskUserQuestionView', () => {
                 { 'Describe': ['I prefer TDD'] }
             )
             const { container } = renderView(props)
-            expect(container.innerHTML).not.toContain('#52c41a')
-            expect(container.innerHTML).not.toContain('#f6ffed')
-            expect(container.innerHTML).not.toContain('#237804')
-            expect(container.innerHTML).not.toContain('#999')
+            const html = container.innerHTML
+            expect(html).toContain('--control-on')
+            const hexLines = html.match(/[-a-z]+\s*:\s*#52c41a/g) ?? []
+            expect(hexLines.every((m) => m.startsWith('--control-'))).toBe(true)
+            expect(html).not.toContain('#f6ffed')
+            expect(html).not.toContain('#237804')
+            expect(html).not.toContain('#999')
         })
     })
 

@@ -93,8 +93,14 @@ describe('OptionRow', () => {
                 onClick={() => {}}
             />
         )
-        expect(container.innerHTML).not.toContain('#52c41a')
-        expect(container.innerHTML).not.toContain('#f6ffed')
+        // token 化完成态：成功色只允许经 --control-* CSS 变量投影（token 运行时取值），
+        // 不允许硬编码在常规 CSS 属性（jsdom 把变量值保留 hex 原样，常规属性转 rgb——据此区分）
+        const html = container.innerHTML
+        expect(html).toContain('--control-on')
+        // 常规属性路径若出现 hex 会以 `property: #52c41a` 形态存在；变量取值行以 `--control-*: #52c41a` 结尾
+        const hexLines = html.match(/[-a-z]+\s*:\s*#52c41a/g) ?? []
+        expect(hexLines.every((m) => m.startsWith('--control-'))).toBe(true)
+        expect(html).not.toContain('#f6ffed')
     })
 
     it('interactive + disabled 压低透明度（提交中锁定反馈）', () => {
@@ -113,12 +119,12 @@ describe('OptionRow', () => {
         expect(getComputedStyle(btn).opacity).toBe('1')
     })
 
-    it('single 模式渲染 antd Radio，multi 模式渲染 uiarc Checkbox', () => {
+    it('single 模式渲染 uiarc RadioIndicator，multi 模式渲染 uiarc Checkbox', () => {
         const { rerender } = wrap(
             <OptionRow data-testid="opt" checked={false} mode="single" disabled={false} tone="interactive" title="A" onClick={() => {}} />
         )
-        // single → antd Radio（实心圆点选中态由 antd 承载）
-        expect(screen.getByTestId('opt').querySelector('input[type="radio"]')).not.toBeNull()
+        // single → uiarc RadioIndicator（圆点指示器，aria-hidden 纯视觉）
+        expect(screen.getByTestId('opt').querySelector('span[class*="indicator"]')).not.toBeNull()
 
         rerender(
             <ConfigProvider>

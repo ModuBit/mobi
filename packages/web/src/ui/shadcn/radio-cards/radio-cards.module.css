@@ -57,9 +57,11 @@
   transition: border-color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard);
 }
 .root[data-layout="grid"] .indicator { margin-top: 1px; }
-.card[data-checked] .indicator { border-color: var(--control-on); background: var(--control-on); }
+.card[data-checked] .indicator, .indicator[data-checked] { border-color: var(--control-on); background: var(--control-on); }
 .indicatorDot { width: 6px; height: 6px; border-radius: 50%; background: var(--control-glyph); }
 .card[aria-disabled="true"] .indicator { border-color: var(--border); }
+/* Standalone indicator: selected wins over disabled (a completed read-only row keeps its on-color). */
+.indicator[aria-disabled="true"]:not([data-checked]) { border-color: var(--border); }
 
 .body { display: grid; min-width: 0; gap: 2px; grid-area: body; }
 .label { display: flex; min-width: 0; align-items: center; gap: 8px; font-weight: 500; }
