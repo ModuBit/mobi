@@ -24,7 +24,7 @@ import { css, keyframes } from '@emotion/react'
 import styled from '@emotion/styled'
 import { useNotificationSetup } from '@/core/data/hooks/useNotificationSetup'
 import { awaitServiceWorkerReady } from '@/core/pwa/swReady'
-import { vibratePattern } from '@/core/notifications/haptics'
+import { vibrateSupported } from '@/core/notifications/haptics'
 import { SettingGroupCard } from './blocks/SettingGroupCard'
 import { SettingRow } from './blocks/SettingRow'
 import { GuideSection } from './blocks/GuideSection'
@@ -127,10 +127,11 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
         }
     }
 
-    /** 测试震动：比日常 tap 稍重的三脉冲（总 ~170ms），确保「震/没震」明确可判。
-     *  不依赖通知权限（Vibration API 独立）；无 API（iOS 等）→ false，提示不支持。 */
+    /** 测试震动：按下「试一下」的震感由全局委托给（与日常按钮完全一致，2026-11-11 真机
+     *  反馈「测试 pattern 与按钮不一致且叠加成两下」后收口）。这里只负责降级提示：
+     *  无 Vibration API（iOS 等）时按下无感，显式告知不支持。 */
     const testVibration = () => {
-        if (vibratePattern([60, 50, 60])) return
+        if (vibrateSupported()) return
         message.info(t('notification.settings.vibrationUnsupported'))
     }
 

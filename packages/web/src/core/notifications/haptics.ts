@@ -26,6 +26,8 @@
  * - Chrome 要求 sticky user activation（页面被点过才允许震），且页面 hidden
  *   （切走/锁屏）时直接 block——后台提醒的震动因此由 SW 系统通知的 vibrate
  *   字段承担（系统通知通道不受该限制），本模块只负责前台场景
+ * - Android 系统勿扰/专注模式会拦截 Vibration API（2026-11-11 真机实测），
+ *   属系统级行为，应用层无法绕过
  * - 桌面端通常无振动器，调用返回 false，静默无害
  */
 
@@ -59,4 +61,58 @@ export function vibratePattern(pattern: readonly number[]): boolean {
 /** 按钮点击触觉反馈：按下即一触（与 Android 原生 touch haptics 同时机） */
 export function hapticTap(): void {
     vibratePattern(HAPTIC_PATTERNS.tap)
+}
+
+/** 设备/浏览器是否具备 Vibration API（不代表有振动器；「试一下」的降级提示判据） */
+export function vibrateSupported(): boolean {
+    return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'
+}
+
+/**
+ * 带交互语义的元素 selector：button 本体 + ARIA 交互角色 + 原生 checkbox/radio。
+ * antd（Switch/Checkbox/Segmented/Pagination）、Radix/Base UI（Select/Combobox/DropdownMenu）、
+ * 自管 uiarc 件的 DOM 都带其中之一——委托命中即覆盖，新组件无需逐个接入。
+ */
+const HAPTIC_TARGET_SELECTOR = [
+    'button',
+    '[role="button"]',
+    '[role="combobox"]',
+    '[role="switch"]',
+    '[role="checkbox"]',
+    '[role="radio"]',
+    '[role="tab"]',
+    '[role="option"]',
+    '[role="menuitem"]',
+    '[role="menuitemcheckbox"]',
+    '[role="menuitemradio"]',
+    '[role="treeitem"]',
+    'summary',
+    'input[type="checkbox"]',
+    'input[type="radio"]',
+].join(',')
+
+let hapticsInstalled = false
+
+/**
+ * 全局「按下即震」：document capture 阶段委托 pointerdown，命中可交互元素就 tap 一下。
+ *
+ * 为什么是全局委托而非逐组件挂载（2026-11-11 真机反馈后重构）：
+ * - 逐组件挂载覆盖不全（antd/Radix 内部 DOM 挂不到），select/switch/tab 等没震感
+ * - 组件层 + 局部叠加会出现一次点击两次调用（「试一下」曾 pointerdown tap + click
+ *   测试 pattern 叠成「震两下」）；委托单点消费，一次按下至多一触
+ * - capture 阶段先于 React 合成事件，消费方 handler 与震动互不干扰
+ * 不可交互态（disabled / aria-disabled / aria-busy）不震。
+ */
+export function installHapticFeedback(): void {
+    if (hapticsInstalled || typeof document === 'undefined') return
+    hapticsInstalled = true
+    document.addEventListener('pointerdown', (e) => {
+        const target = e.target
+        if (!(target instanceof Element)) return
+        const el = target.closest<HTMLElement>(HAPTIC_TARGET_SELECTOR)
+        if (!el) return
+        if (el.hasAttribute('disabled')) return
+        if (el.getAttribute('aria-disabled') === 'true' || el.getAttribute('aria-busy') === 'true') return
+        hapticTap()
+    }, { capture: true })
 }

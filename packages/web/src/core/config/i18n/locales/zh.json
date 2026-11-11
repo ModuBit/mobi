@@ -1135,7 +1135,7 @@
       "testBody": "点击此通知将打开应用并跳转到会话列表",
       "subscription": "订阅状态",
       "vibration": "震动反馈",
-      "vibrationDesc": "按钮点按与任务提醒的触觉反馈（Android Chrome）",
+      "vibrationDesc": "按钮点按与任务提醒的触觉反馈（Android Chrome，勿扰模式不震）",
       "testVibration": "试一下",
       "vibrationUnsupported": "当前设备或浏览器不支持震动"
     },

@@ -23,6 +23,7 @@ import { router } from './router'
 import { ThemeProvider } from '@/core/config/theme/ThemeProvider'
 import { initDiag } from '@/core/lib/diag'
 import { initXMarkdownDebugFromQuery } from '@/core/lib/xMarkdownDebug'
+import { installHapticFeedback } from '@/core/notifications/haptics'
 import { queryClient } from '@/core/lib/queryClient'
 import '@/index.css'
 
@@ -31,6 +32,10 @@ initDiag()
 
 // XMarkdown 调试面板开关：?xmd-debug=1 一次性入口 → localStorage 常驻（默认关，见 core/lib/xMarkdownDebug.ts）
 initXMarkdownDebugFromQuery()
+
+// 触觉反馈全局委托（按下可交互元素即轻震，无 Vibration API 环境静默）：app 级一次性安装，
+// 覆盖 antd/Radix/自管件一切带交互语义的 DOM，组件层不再逐个挂载（会双震）
+installHapticFeedback()
 
 // excalidraw 字体自托管（vite 插件 excalidrawAssetsPlugin 提供 dev/产物同路径静态服务）：
 // 内网/离线环境画板字体不依赖 CDN。需在 excalidraw 首次加载前设置（本入口先于懒加载画板 chunk）
