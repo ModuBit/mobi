@@ -36,8 +36,8 @@ describe('HAPTIC_PATTERNS', () => {
         }
     })
 
-    it('三档语义齐备：tap / ready / pending', () => {
-        expect(Object.keys(HAPTIC_PATTERNS).sort()).toEqual(['pending', 'ready', 'tap'])
+    it('四档语义齐备：tap / confirm / ready / pending', () => {
+        expect(Object.keys(HAPTIC_PATTERNS).sort()).toEqual(['confirm', 'pending', 'ready', 'tap'])
     })
 })
 

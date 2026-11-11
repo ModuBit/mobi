@@ -46,6 +46,8 @@ export function setHapticGate(read: () => boolean): void {
 export const HAPTIC_PATTERNS = {
     /** 按钮点击：极短一触 */
     tap: [10],
+    /** 危险/有后果的确认（删除等）：双脉冲，比 tap 明显（Material 的 confirm 语义） */
+    confirm: [15, 40, 15],
     /** turn 完成（ready）：单次轻点，落定感 */
     ready: [20],
     /** 等待审批/提问（pending）：双脉冲，比 ready 略急（需要你行动） */
@@ -83,34 +85,41 @@ export function vibrateSupported(): boolean {
 }
 
 /**
- * 带交互语义的元素 selector：button 本体 + ARIA 交互角色 + 原生 checkbox/radio。
- * antd（Checkbox/Segmented/Pagination）、Radix/Base UI（Select/Combobox/DropdownMenu）、
+ * 带交互语义的元素 selector：button 本体 + ARIA 交互角色 + 原生 checkbox。
+ * antd（Checkbox/Pagination）、Radix/Base UI（Select/Combobox/DropdownMenu）、
  * 自管 uiarc 件的 DOM 都带其中之一——委托命中即覆盖，新组件无需逐个接入。
- * 注意三个刻意排除：
- * - summary / aria-expanded：展开收起语义（分组折叠头/树展开，此类不震）；
+ *
+ * 刻意不在内（2026-11-11 真机反馈 + 打扰面收窄）：
+ * - summary / aria-expanded：展开收起语义（分组折叠头/树展开不震）；
  *   combobox 的 aria-expanded 是弹层语义不排除（select 要震）
- * - role="switch"（antd Switch 是 button+role）：状态切换控件，反馈由 onChange
- *   按新状态决定——反馈开关「开启即时示范」（2026-11-11），按下即震会在关闭时也震
+ * - role="switch"：状态切换控件，反馈由 onChange 按新状态决定（反馈开关即时示范）
+ * - [role="tab"] / [role="option"] / [role="menuitem"] 系：高频导航/选择，
+ *   每次都震是最大打扰源；视觉高亮已是即时反馈
+ * - input[type="radio"]（antd Segmented/RadioGroup 底座）：同高频理由
  */
 const HAPTIC_TARGET_SELECTOR = [
     'button',
     '[role="button"]',
     '[role="combobox"]',
     '[role="checkbox"]',
-    '[role="radio"]',
-    '[role="tab"]',
-    '[role="option"]',
-    '[role="menuitem"]',
-    '[role="menuitemcheckbox"]',
-    '[role="menuitemradio"]',
     '[role="treeitem"]',
     'input[type="checkbox"]',
-    'input[type="radio"]',
 ].join(',')
 
 /** 命中后仍排除的元素：switch（button+role 形态，selector 层躲不开 button） */
 function isExcludedHit(el: HTMLElement): boolean {
     return el.getAttribute('role') === 'switch'
+}
+
+/**
+ * 命中元素声明的 pattern：`data-haptic="confirm"` → 危险确认（双脉冲），
+ * 缺省 → tap。给「有后果的操作」留一个声明通道（如 Button danger 自动携带），
+ * 委托层不感知业务语义。
+ */
+function resolveHapticPattern(el: HTMLElement): readonly number[] {
+    return el.closest<HTMLElement>('[data-haptic="confirm"]')
+        ? HAPTIC_PATTERNS.confirm
+        : HAPTIC_PATTERNS.tap
 }
 
 let hapticsInstalled = false
@@ -141,6 +150,6 @@ export function installHapticFeedback(): void {
         // 展开收起（分组折叠头/树展开行）：高频且状态本身可视，按下不震（2026-11-11 真机反馈）。
         // combobox 的 aria-expanded 是自身弹层开合语义而非区域展开收起——用户点名 select 要震，不排除
         if (el.hasAttribute('aria-expanded') && el.getAttribute('role') !== 'combobox') return
-        hapticTap()
+        vibratePattern(resolveHapticPattern(el))
     }, { capture: true })
 }

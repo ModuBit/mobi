@@ -78,15 +78,36 @@ describe('installHapticFeedback 全局委托', () => {
 
     it.each([
         ['select 触发器（combobox，弹层语义的 aria-expanded 不受展开收起排除影响）', '<div role="combobox" aria-expanded="false">选择</div>'],
-        ['tab 页签', '<div role="tab">标签</div>'],
-        ['menuitem 菜单项', '<div role="menuitem">操作</div>'],
         ['原生 checkbox', '<input type="checkbox" />'],
-        ['原生 radio（Segmented 底座）', '<input type="radio" />'],
+        ['treeitem 叶子（点击文件）', '<div role="treeitem">文件</div>'],
     ])('%s 按下 → 震', (_label, html) => {
         const host = mount(html)
         down(host.firstElementChild!)
         expect(vibrate).toHaveBeenCalledTimes(1)
         expect(vibrate).toHaveBeenCalledWith([...HAPTIC_PATTERNS.tap])
+    })
+
+    it('data-haptic="confirm"（危险操作声明）→ confirm 双脉冲', () => {
+        const host = mount('<button data-haptic="confirm">删除</button>')
+        down(host.firstElementChild!)
+        expect(vibrate).toHaveBeenCalledWith([...HAPTIC_PATTERNS.confirm])
+    })
+
+    it('danger 按钮子元素按下 → closest 命中声明，confirm 双脉冲', () => {
+        const { getByRole } = render(<Button danger>删除</Button>)
+        down(getByRole('button').querySelector('span') ?? getByRole('button'))
+        expect(vibrate).toHaveBeenCalledWith([...HAPTIC_PATTERNS.confirm])
+    })
+
+    it.each([
+        ['tab 页签（高频导航，2026-11-11 打扰面收窄移出）', '<div role="tab">标签</div>'],
+        ['option 弹层选项', '<div role="option">选项</div>'],
+        ['menuitem 菜单项', '<div role="menuitem">操作</div>'],
+        ['radio（Segmented/RadioGroup 底座）', '<input type="radio" />'],
+    ])('%s 按下 → 不震', (_label, html) => {
+        const host = mount(html)
+        down(host.firstElementChild!)
+        expect(vibrate).not.toHaveBeenCalled()
     })
 
     it.each([

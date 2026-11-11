@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { copyTextToClipboard } from "@/core/utils/clipboard";
+import { hapticTap } from "@/core/notifications/haptics";
 
 export type CopyFeedbackState = "idle" | "copied" | "error";
 
@@ -48,6 +49,8 @@ export function useCopyFeedback(duration = COPY_FEEDBACK_RESET_MS) {
     if (timeout.current) clearTimeout(timeout.current);
     setActiveKey(key);
     const ok = await copyTextToClipboard(value);
+    // 复制结果本身不可见，轻震确认「已在剪贴板」（失败不震，错误态由图标呈现）
+    if (ok) hapticTap();
     setState(ok ? "copied" : "error");
     timeout.current = setTimeout(reset, duration);
     return ok;

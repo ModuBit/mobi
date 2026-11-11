@@ -103,6 +103,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={setRefs}
       tabIndex={props.tabIndex ?? 0}
       className={classes}
+      // 危险语义 → 触觉委托给 confirm 双脉冲（haptics.ts resolveHapticPattern），区别于普通 tap
+      {...(danger ? { "data-haptic": "confirm" } : {})}
       disabled={disabled}
       aria-busy={loading || undefined}
       custom={buttonRef}
