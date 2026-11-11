@@ -21,17 +21,18 @@
 // ④aria-label "Clear search" 改走 i18n（ui.searchField.clear）
 // ⑤shell 圆角暴露 --search-field-radius 变量 seam——胶囊形态由调用方声明意图，
 //   不再依赖「field 的直接子即 shell」的内部 DOM 结构
+// ⑥清除钮接 ClearButton 单源（与 combobox/multi-select 同一编排，消漂移副本）
 "use client";
 
 import { forwardRef, useCallback, useId, useRef } from "react";
 import type { InputHTMLAttributes } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Search, X as Xmark } from "lucide-react";
-import { motionTokens } from "@/ui/base/motion/motionTokens";
+import { AnimatePresence, useReducedMotion } from "motion/react";
+import { Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ClearButton } from "@/ui/base/motion/ClearButton";
 import styles from "./search-field.module.css";
 
-export interface SearchFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type"> {
+export interface SearchFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "onChange"> {
   label?: string;
   value: string;
   onValueChange: (value: string) => void;
@@ -51,7 +52,8 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
       <Search width={18} height={18} aria-hidden="true" />
       <input {...props} ref={setRefs} id={controlId} type="search" value={value} onChange={event => onValueChange(event.target.value)} className={styles.input} aria-label={props["aria-label"] ?? (label ? undefined : props.placeholder)} />
       {/* The clear button has a reserved slot, so the field never changes width when it appears or leaves. */}
-      <span className={styles.clearSlot}><AnimatePresence initial={false}>{value ? <motion.button key="clear" type="button" tabIndex={0} onClick={clear} aria-label={clearLabel} initial={reduced ? { opacity: 0 } : { opacity: 0, scale: .8, filter: `blur(${motionTokens.blur.subtle}px)` }} animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }} exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, scale: .8, filter: `blur(${motionTokens.blur.subtle}px)`, transition: { duration: motionTokens.duration.instant, ease: [...motionTokens.ease.standard] } }} whileTap={reduced ? undefined : { scale: .96, transition: { duration: motionTokens.duration.instant, ease: [...motionTokens.ease.standard] } }} transition={reduced ? { duration: motionTokens.duration.instant } : { ...motionTokens.spring.snappy, opacity: { duration: motionTokens.duration.fast }, filter: { duration: motionTokens.duration.fast } }}><Xmark width={16} height={16} aria-hidden="true" /></motion.button> : null}</AnimatePresence></span>
+      {/* 清除钮走 ClearButton 单源（combobox/multi-select 同一编排），外观归 .shell button 规则 */}
+      <span className={styles.clearSlot}><AnimatePresence initial={false}>{value ? <ClearButton key="clear" reduce={reduced} onClick={clear} ariaLabel={clearLabel} iconSize={16} /> : null}</AnimatePresence></span>
     </div>
   </div>;
 });

@@ -35,6 +35,8 @@
 .viewport { position: relative; padding: 2px 0; }
 .item { position: relative; display: flex; align-items: center; min-height: 36px; border-radius: calc(var(--radius-panel) - 6px); padding: 0 34px 0 11px; color: var(--foreground); font-size: var(--text-sm); white-space: nowrap; cursor: pointer; outline: none; user-select: none; transition: color var(--duration-instant) var(--ease-standard); }
 .item[data-disabled] { opacity: .45; cursor: not-allowed; }
+/* 长选项截断指示：面板 fit-content 涨到 24rem 上限后 nowrap 项收缩省略，不半字硬裁 */
+.itemText { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* 高亮不再逐项瞬时刷背景（上游风格），由 gliding highlight 色块弹簧跟随当前项 */
 .highlight { position: absolute; top: 0; right: 2px; left: 2px; border-radius: calc(var(--radius-panel) - 6px); background: color-mix(in oklab, var(--foreground) 6.5%, transparent); opacity: 0; pointer-events: none; transition: opacity var(--duration-instant) var(--ease-standard); }
 .highlight[data-on] { opacity: 1; }

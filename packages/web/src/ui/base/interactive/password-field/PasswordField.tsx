@@ -21,6 +21,7 @@
 // ④messages 默认文案改走 i18n（ui.passwordField.*；上游默认英文，仍可传 messages 覆写）
 // ⑤补 error prop——与 input 同语言（aria-invalid 红边 + alert 红字；上游仅 description）
 // ⑥消息动效链收拢 fieldMessageShared（与 input 同源，reduced-motion 首帧修复随之同步）
+// ⑦补 onPressEnter prop——bindInput 四件套的回车提交（IME 组合中的 Enter 不触发）
 "use client";
 
 import { forwardRef, useId, useState } from "react";
@@ -38,6 +39,8 @@ export interface PasswordFieldProps extends Omit<InputHTMLAttributes<HTMLInputEl
   error?: string;
   /** Translated or reworded toggle names（默认取 i18n）。 */
   messages?: Partial<PasswordFieldMessages>;
+  /** 回车提交（bindInput 四件套）：IME 组合中的 Enter（确认候选词）不触发 */
+  onPressEnter?: () => void;
 }
 
 /** One eye that a slash draws across, cutting the outline beneath it, instead of swapping two icons. */
@@ -52,7 +55,7 @@ function EyeMorph({ slashed }: { slashed: boolean }) {
   </svg>;
 }
 
-export const PasswordField = forwardRef<HTMLInputElement, PasswordFieldProps>(function PasswordField({ label, description, error, messages: messagesProp, id, className, ...props }, ref) {
+export const PasswordField = forwardRef<HTMLInputElement, PasswordFieldProps>(function PasswordField({ label, description, error, messages: messagesProp, onPressEnter, id, className, ...props }, ref) {
   const { t } = useTranslation();
   // 上游默认英文；这里默认值取 i18n，messages 仍可覆写
   const messages: PasswordFieldMessages = { showPassword: t("ui.passwordField.show"), hidePassword: t("ui.passwordField.hide"), ...messagesProp };
@@ -64,7 +67,8 @@ export const PasswordField = forwardRef<HTMLInputElement, PasswordFieldProps>(fu
   return <div className={[styles.field, className].filter(Boolean).join(" ")}>
     {label && <label htmlFor={controlId}>{label}</label>}
     <div className={styles.shell}>
-      <input {...props} ref={ref} id={controlId} type={visible ? "text" : "password"} data-reveal={toggled ? (visible ? "shown" : "hidden") : undefined} aria-invalid={error ? true : props["aria-invalid"]} aria-describedby={describedBy} className={styles.input} />
+      <input {...props} ref={ref} id={controlId} type={visible ? "text" : "password"} data-reveal={toggled ? (visible ? "shown" : "hidden") : undefined} aria-invalid={error ? true : props["aria-invalid"]} aria-describedby={describedBy} className={styles.input}
+        onKeyDown={onPressEnter ? (event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) onPressEnter(); } : props.onKeyDown} />
       <button type="button" onClick={() => { setVisible(current => !current); setToggled(true); }} aria-label={visible ? messages.hidePassword : messages.showPassword} aria-pressed={visible}><EyeMorph slashed={visible} /></button>
     </div>
     <FieldMessage id={hintId} text={description} className={styles.hint} />

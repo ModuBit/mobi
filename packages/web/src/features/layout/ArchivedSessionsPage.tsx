@@ -47,15 +47,14 @@ const { useToken } = antTheme
 
 /**
  * 页面壳（票 09 分页改造）：不再页面级滚动——滚动容器移交 Listy（虚拟滚动 +
- * 触底加载），壳只做 flex 纵向布局与安全区内衬。内衬归设置壳（layout:'fill' 满
- * 高内滚链），只保留底部安全区避让。
+ * 触底加载），壳只做 flex 纵向布局。内衬全部归设置壳（layout:'fill' 满高内滚链：
+ * mobile SettingsContent / PC SectionMain 自带四向内衬与安全区避让），本组件零内衬。
  */
 const PageShell = styled.div`
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: 0 0 max(24px, env(safe-area-inset-bottom));
 `
 
 const Inner = styled.div`
@@ -77,11 +76,6 @@ const TitleRow = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['toke
     gap: 12px;
     min-height: 48px;
     padding: 10px 0 16px;
-
-    /* 移动端 PWA standalone 顶部贴状态栏，避让刘海区域（对齐 PageHeader 的避让规则） */
-    @media (hover: none) and (pointer: coarse) {
-        padding-top: max(10px, env(safe-area-inset-top));
-    }
 
     .title-delete-all {
         margin-left: auto;

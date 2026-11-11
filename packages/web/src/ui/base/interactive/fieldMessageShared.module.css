@@ -22,4 +22,5 @@
 /* One column per character of a count. Tabular digits keep columns equal, so only a gained or lost digit changes the width. */
 .column { position: relative; display: inline-flex; justify-content: center; font-variant-numeric: tabular-nums; }
 .column > span { display: inline-block; }
-.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* 视觉隐藏走全局唯一实现（base.css：fixed 而非 absolute，不参与滚动几何） */
+.srOnly { composes: sr-only from global; }

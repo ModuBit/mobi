@@ -300,7 +300,7 @@ export function MultiSelect({ label, options, value, defaultValue = [], onValueC
           exit={{ opacity: 0, ...(reduce ? {} : { y: dropUp ? 4 : -4, scale: .98 }), transition: { duration: motionTokens.duration.instant, ease: standard } }}>
           {/* gliding highlight 的当前项（键盘 activeIndex 与悬停 onPointerMove 同源） */}
           <GlidingHighlight className={styles.highlight} target={(activeIndex >= 0 ? optionRefs.current[menuOptions[activeIndex]?.value ?? ""] : null) ?? null} />
-          {menuOptions.length === 0 && emptyMessage !== undefined && <div className={styles.empty} role="presentation">{emptyMessage}</div>}
+          {menuOptions.length === 0 && emptyMessage !== undefined && <div className={styles.empty} role="status">{emptyMessage}</div>}
           {menuOptions.map((option, index) => <button type="button" role="option" aria-selected={selectedSet.has(option.value)} aria-disabled={option.disabled || undefined} key={option.value} ref={(el) => { if (el) optionRefs.current[option.value] = el; else delete optionRefs.current[option.value]; }} className={styles.option} data-active={activeIndex === index} disabled={option.disabled} onPointerMove={() => { if (activeIndex !== index) setActiveIndex(index); }} onClick={() => pick(option)}>
             <span>{option.label}</span><AnimatePresence initial={false}>{selectedSet.has(option.value) && <CheckMark key="check" reduce={reduce} />}</AnimatePresence>
           </button>)}

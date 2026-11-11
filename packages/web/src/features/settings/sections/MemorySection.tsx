@@ -410,7 +410,7 @@ export function MemorySection() {
                                     style={{ width: 220 }}
                                     value={pathDraft}
                                     onChange={(e) => setPathDraft(e.target.value)}
-                                    onKeyDown={(e) => { if (e.key === 'Enter') addPathRule() }}
+                                    onPressEnter={addPathRule}
                                     placeholder={t('settings.memory.rulePathPlaceholder')}
                                     aria-label={t('settings.memory.ruleAddPath')}
                                 />

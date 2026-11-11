@@ -151,6 +151,18 @@ const InputSlot = styled.div`
     min-width: 0;
 `
 
+/* 行内字段撑满插槽：uiarc Input/PasswordField 根节点无宽度语义（布局尺寸从根上给，
+ * 见组件头注释③），flex 子项按内容收缩——插槽内必须显式伸展（旧 antd width:100% 的等价重建） */
+const SlotInput = styled(Input)`
+    flex: 1;
+    min-width: 0;
+`
+
+const SlotSecretInput = styled(PasswordField)`
+    flex: 1;
+    min-width: 0;
+`
+
 const ActionSlot = styled.div`
     flex-shrink: 0;
     display: flex;
@@ -207,9 +219,9 @@ export function SettingRow(props: SettingRowProps) {
                         surface 底 + border-strong 边框，focus 边框变 --foreground——
                         与自管 Select/Combobox 同一套控件语言 */}
                     {props.secret ? (
-                        <PasswordField {...props.input} aria-label={accessibleName} />
+                        <SlotSecretInput {...props.input} aria-label={accessibleName} />
                     ) : (
-                        <Input {...props.input} aria-label={accessibleName} />
+                        <SlotInput {...props.input} aria-label={accessibleName} />
                     )}
                 </InputSlot>
             )

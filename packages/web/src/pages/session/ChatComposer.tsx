@@ -411,10 +411,15 @@ export function ChatComposer(props: ChatComposerProps) {
     // 回填应用门控：nonce 单调递增触发一次；空分段静默跳过
     // （数据异常无从还原时不清空用户当前草稿）
     const draftNonce = draftRequest?.nonce
+    // 瞬态窗编辑哨兵：textarea 不再被瞬态闸 DOM-disable（焦点修复），rewind/压缩/
+    // 清空进行中用户仍可键入——这段主动输入优先于完成回填（整体跳过 applySegments，
+    // 保留窗口期的 text/引用/附件状态），否则会被回退后的分段静默覆写
+    const pausedEditRef = useRef(false)
     useEffect(() => {
         if (draftNonce == null) return
         const req = draftRequestRef.current
-        if (req && !isSegmentEmpty(req.segments)) applySegments(req.segments)
+        if (req && !isSegmentEmpty(req.segments) && !pausedEditRef.current) applySegments(req.segments)
+        pausedEditRef.current = false
     }, [draftNonce, applySegments])
 
     // per-session 草稿生命周期：挂载恢复、切走保存（依赖上面的 text/attachments/setters）
@@ -531,6 +536,8 @@ export function ChatComposer(props: ChatComposerProps) {
     textRef.current = text
 
     const handleChange = useCallback((value: string) => {
+        // 瞬态闸（rewind/压缩/清空）进行中的键入：标记窗口期编辑，完成回填将跳过
+        if (disabled) pausedEditRef.current = true
         // 中文 IME 输入归一管线（归一器单一来源见 composerInputNormalization）：
         // 命中的归一器返回新值，需要时记下光标待归一后的 DOM 稳定再恢复
         for (const normalize of [normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash]) {
@@ -558,7 +565,7 @@ export function ChatComposer(props: ChatComposerProps) {
             return
         }
         mention.close()
-    }, [mention, slash])
+    }, [mention, slash, disabled])
 
     // Tab 键选中（需用 native listener 因为 Sender 的 onKeyDown 会先消费 Tab）
     useEffect(() => {

@@ -51,8 +51,10 @@ const EmptyHint = styled.div<{ $token: Token }>`
     color: ${p => p.$token.colorTextTertiary};
 `
 
-/** 底部悬浮搜索（ChatGPT 移动端设置首页形态）：胶囊浮在视口底部，视觉（边/底/圆角）归 SearchField */
-const FloatingSearch = styled(SearchField)<{ $token: Token }>`
+/** 底部悬浮搜索（ChatGPT 移动端设置首页形态）：胶囊浮在视口底部，视觉（边/底/圆角）归 SearchField。
+ * 不用 styled $token 透传：emotion 对组件目标不剥 $ 前缀，$token 会经 SearchField 的 {...props}
+ * 泄到 <input> DOM（Invalid attribute name）——主题相关值经 style prop 传（阴影） */
+const FloatingSearch = styled(SearchField)`
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
@@ -63,7 +65,6 @@ const FloatingSearch = styled(SearchField)<{ $token: Token }>`
     transition: bottom var(--kb-anim, 0ms);
     width: min(420px, calc(100% - 24px));
     z-index: 10;
-    box-shadow: ${p => `0 4px 16px ${p.$token.colorBgMask}`};
 
     /* 胶囊形态：经 --search-field-radius 声明意图（SearchField 公开 seam），
        不 reach-in 组件内部 DOM 结构 */
@@ -105,7 +106,7 @@ export function SettingsIndex() {
                 {groups.length === 0 && <EmptyHint $token={token}>{t('settings.searchEmpty')}</EmptyHint>}
             </GroupList>
             <FloatingSearch
-                $token={token}
+                style={{ boxShadow: `0 4px 16px ${token.colorBgMask}` }}
                 value={keyword}
                 onValueChange={setKeyword}
                 placeholder={t('settings.search')}

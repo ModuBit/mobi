@@ -114,12 +114,16 @@ const archivedRoute = createRoute({
 })
 
 // 设置页 layout 路由（左侧分区导航 / mobile 子页由 SettingsPage 响应式分流）。
-// 未知设置段（如手输 /settings/worktree 单数）：不渲染裸 Not Found——重定向到上次分区，
-// 与 index 的「记住上次分区」同一语义；replace 不留历史项，effect 里跳避免渲染期副作用
+// 未知设置段（如手输 /settings/worktree 单数）：不渲染裸 Not Found——重定向按断点分流：
+// 宽屏对齐 index 的「记住上次分区」；窄屏 index 语义是入口列表，落回 /settings。
+// replace 不留历史项，effect 里跳避免渲染期副作用
 function SettingsSectionRedirect() {
     const navigate = useNavigate()
     useEffect(() => {
-        void navigate({ to: `/settings/${readLastSettingsSection() ?? DEFAULT_SETTINGS_SECTION}`, replace: true })
+        const to = window.matchMedia(SETTINGS_WIDE_QUERY).matches
+            ? `/settings/${readLastSettingsSection() ?? DEFAULT_SETTINGS_SECTION}`
+            : '/settings'
+        void navigate({ to, replace: true })
     }, [navigate])
     return null
 }

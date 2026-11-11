@@ -151,7 +151,7 @@ export const Select = forwardRef(function SelectInner<T extends string>(
               <GlidingHighlight className={styles.highlight} target={activeEl} />
               {options.map((option) => (
                 <SelectPrimitive.Item key={option.value} value={option.value} disabled={option.disabled} title={option.title} className={styles.item}>
-                  <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
+                  <SelectPrimitive.ItemText className={styles.itemText}>{option.label}</SelectPrimitive.ItemText>
                   <SelectPrimitive.ItemIndicator className={styles.indicator}>
                     <Check size={16} strokeWidth={1.75} aria-hidden="true" />
                   </SelectPrimitive.ItemIndicator>
