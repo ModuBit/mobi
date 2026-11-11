@@ -36,11 +36,22 @@ export function computeSplitRatio(
 }
 
 /**
- * 拖动后判定是否应收起：右侧占比 < 阈值即收起。
- * @param splitRatio 左侧占比（0~1）
+ * 拖动后判定是否应收起：**指针推过「分隔条视觉可达的最右位置」即收起**——
+ * 该位置 = 右缘 - max(rightMinPx, COLLAPSE_THRESHOLD × 容器宽)。
+ * rightMinPx 抬住右栏时分隔条停在下限处不再跟随指针（死区），指针继续右推意图已
+ * 明确，越过下限点即收起；无下限时退化为「右侧占比 < COLLAPSE_THRESHOLD」原语义
+ * （分隔条贴指针走，右缘容差带即触发）。直接判指针 ratio 会形成死区里毫无反馈的
+ * 长路程（2026-11-11 code-review 实锤）。
+ * @param clientX 指针位置；rectLeft/rectWidth 容器矩形；rightMinPx 右栏宽度下限
  */
-export function shouldCollapseOnDrag(splitRatio: number): boolean {
-    return 1 - splitRatio < COLLAPSE_THRESHOLD
+export function shouldCollapseOnDrag(
+    clientX: number,
+    rectLeft: number,
+    rectWidth: number,
+    rightMinPx: number,
+): boolean {
+    if (rectWidth <= 0) return false
+    return clientX > rectLeft + rectWidth - Math.max(rightMinPx, COLLAPSE_THRESHOLD * rectWidth)
 }
 
 /**

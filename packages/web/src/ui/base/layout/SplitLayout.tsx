@@ -212,7 +212,8 @@ export function SplitLayout({
             pendingX = null
             const rect = el.getBoundingClientRect()
             const ratio = computeSplitRatio(x, rect.left, rect.width, leftMinRatio)
-            if (shouldCollapseOnDrag(ratio)) {
+            // 折叠判定用指针与容器矩形（视觉到底即折叠，见 shouldCollapseOnDrag 注释）
+            if (shouldCollapseOnDrag(x, rect.left, rect.width, rightMinPx)) {
                 // 拖到收起：重置占比为默认值，避免再次展开时右侧过窄
                 onExpandedChange(false)
                 onSplitRatioChange(defaultSplitRatio)

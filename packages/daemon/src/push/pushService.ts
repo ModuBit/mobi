@@ -23,12 +23,21 @@ export type PushPayload = {
     title: string
     body: string
     tag?: string
+    /** 通知震动 pattern（毫秒，[震,停,震...]；sw.ts 白名单校验后透传 showNotification）。
+     *  值与 web haptics.ts 的 HAPTIC_PATTERNS 对齐（ready/pending）。
+     *  ⚠️ gate 缺口：Web Push 通道绕过 web 端震动开关——daemon 不感知用户偏好
+     *  （hapticFeedbackEnabled 在浏览器 localStorage），SW 系统通知的震动无法被
+     *  页面 gate 拦截；要彻底跟随开关须订阅时上报偏好（未做，如实标注） */
+    vibrate?: number[]
     data?: {
         type: string
         sessionId: string
         url: string
     }
 }
+
+/** 与 web haptics.ts HAPTIC_PATTERNS 对齐的 pattern 值（daemon 侧本地常量，协议体只传数组） */
+export const PUSH_VIBRATE = { ready: [20], pending: [30, 60, 30] } as const
 
 type StoredSubscription = {
     endpoint: string

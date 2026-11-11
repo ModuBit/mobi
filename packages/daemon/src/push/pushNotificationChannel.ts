@@ -19,6 +19,7 @@ import type { NotificationChannel } from '../notifications/notificationTypes'
 import { getAgentName, getSessionName } from '../notifications/sessionInfo'
 import type { SSEManager } from '../sse/sseManager'
 import type { PushPayload, PushService } from './pushService'
+import { PUSH_VIBRATE } from './pushService'
 
 type ToastData = Extract<SyncEvent, { type: 'toast' }>['data']
 
@@ -44,6 +45,8 @@ export class PushNotificationChannel implements NotificationChannel {
             title: 'Permission Request',
             body: `${name}${toolName}`,
             tag: `permission-${session.id}`,
+            // SW 通知的震动是后台触觉唯一通道（页面 hidden 时 Chrome 拦页面层 vibrate）
+            vibrate: [...PUSH_VIBRATE.pending],
             data: {
                 type: 'permission-request',
                 sessionId: session.id,
@@ -79,6 +82,7 @@ export class PushNotificationChannel implements NotificationChannel {
             title: 'Ready for input',
             body: `${agentName} is waiting in ${name}`,
             tag: `ready-${session.id}`,
+            vibrate: [...PUSH_VIBRATE.ready],
             data: {
                 type: 'ready',
                 sessionId: session.id,

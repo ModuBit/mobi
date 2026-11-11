@@ -29,7 +29,7 @@ import { useNotificationStore } from '@/core/data/stores/notificationStore'
 import type { Session, SyncEvent, DecryptedMessage, UserContentBlock } from '@mobi/shared'
 import { isObject } from '@mobi/shared'
 import { decideToastAction, parseActiveSessionId, showSystemNotification } from '@/core/notifications'
-import { HAPTIC_PATTERNS } from '@/core/notifications/haptics'
+import { HAPTIC_PATTERNS, hapticsEnabled } from '@/core/notifications/haptics'
 import {
     notifyAttention,
     trackAttentionTransition,
@@ -602,8 +602,11 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                         icon: '/brand/favicon.ico',
                         tag: `mobi-${kind}-${sessionId}`,
                         renotify: true,
-                        // permission 提醒沿用 pending 同款急迫双脉冲；ready/pending 索引直取同键 pattern
-                        vibrate: kind === 'ready' ? HAPTIC_PATTERNS.ready : HAPTIC_PATTERNS.pending,
+                        // permission 提醒沿用 pending 同款急迫双脉冲；ready/pending 索引直取同键 pattern。
+                        // 经 gate 自查（系统通知通道绕过 vibratePattern 的统一 gate，这里显式问）
+                        vibrate: hapticsEnabled()
+                            ? (kind === 'ready' ? HAPTIC_PATTERNS.ready : HAPTIC_PATTERNS.pending)
+                            : undefined,
                         data: { url },
                     }).then((ok) => {
                         if (ok) return

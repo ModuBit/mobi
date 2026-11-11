@@ -15,7 +15,7 @@
  */
 
 import { useRef, useCallback, useEffect } from 'react'
-import { hapticTap } from '@/core/notifications/haptics'
+import { hapticGesture } from '@/core/notifications/haptics'
 
 /** 默认长按延迟（ms） */
 const DEFAULT_DELAY = 500
@@ -50,7 +50,7 @@ export function useLongPress(onLongPress: () => void, delay = DEFAULT_DELAY) {
         timerRef.current = setTimeout(() => {
             triggeredRef.current = true
             // 长按是隐藏手势，屏幕无视觉预兆——震动是「长按已生效」的唯一确认通道
-            hapticTap()
+            hapticGesture()
             onLongPress()
         }, delay)
     }, [onLongPress, delay])

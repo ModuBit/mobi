@@ -56,7 +56,8 @@ export function MobileSessionItem({ session, active, onClick, onLongPress }: Mob
     return (
         <SessionItem
             $token={token}
-            role="button"
+            /* 触觉委托命中声明（无 tabIndex/键盘处理的 div 不假宣告 role=button） */
+            data-haptic=""
             data-glide-row
             data-glide-active={active || undefined}
             onClick={longPress.withClickGuard(onClick)}

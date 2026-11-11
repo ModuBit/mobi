@@ -16,7 +16,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useUiStore } from '@/core/data/stores/uiStore'
-import { hapticTap } from '@/core/notifications/haptics'
+import { hapticGesture } from '@/core/notifications/haptics'
 import { EDGE_WIDTH, resolveEdgeSwipeDirection } from '@/ui/base/interactive/shouldTriggerSwipe'
 
 /** 被跟踪的左缘起手指针 */
@@ -98,7 +98,7 @@ export function EdgeSwipeBack() {
                 if (!triggered) {
                     triggered = true
                     // 手势识别成功（右滑开菜单）的即时确认：滑动全程无视觉预兆，震一下标记「已越过判定线」
-                    hapticTap()
+                    hapticGesture()
                     // 惰性取 store：避免组件层订阅造成多余渲染
                     useUiStore.getState().setMobileMenuOpen(true)
                 }

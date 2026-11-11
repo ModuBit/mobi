@@ -125,7 +125,9 @@ export function SessionRow({
     return (
         <SessionItem
             $token={token}
-            role="button"
+            /* 触觉委托命中声明（无 tabIndex/键盘处理的 div 不假宣告 role=button——
+               屏幕阅读器会告知「可聚焦按钮」却无法聚焦） */
+            data-haptic=""
             data-glide-row
             data-glide-active={active || undefined}
             onClick={onClick}

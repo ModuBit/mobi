@@ -22,15 +22,17 @@
 // ⑤补 error prop——与 input 同语言（aria-invalid 红边 + alert 红字；上游仅 description）
 // ⑥消息动效链收拢 fieldMessageShared（与 input 同源，reduced-motion 首帧修复随之同步）
 // ⑦补 onPressEnter prop——bindInput 四件套的回车提交（IME 组合中的 Enter 不触发）
+// ⑧style 上提组件根（同 input⑥）——布局用 style、文字用 inputStyle 分轨
+// ⑨眼睛钮 onMouseDown preventDefault——点击切可见性不夺走 input 焦点（输到一半切明文不断输入）
 "use client";
 
 import { forwardRef, useId, useState } from "react";
-import type { InputHTMLAttributes } from "react";
+import type { CSSProperties, InputHTMLAttributes, MouseEvent } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
 import { useTranslation } from "react-i18next";
 import { FieldMessage } from "@/ui/base/interactive/fieldMessageShared";
-import { isSubmitEnter } from "@/ui/base/interactive/inputEnterKeys";
+import { isSubmitEnter } from "@/core/lib/inputEnterKeys";
 import styles from "./password-field.module.css";
 
 export interface PasswordFieldMessages { showPassword: string; hidePassword: string }
@@ -42,6 +44,8 @@ export interface PasswordFieldProps extends Omit<InputHTMLAttributes<HTMLInputEl
   messages?: Partial<PasswordFieldMessages>;
   /** 回车提交（bindInput 四件套）：IME 组合中的 Enter（确认候选词）不触发 */
   onPressEnter?: () => void;
+  /** 内层 input 的文字样式（fontSize/fontFamily 等）；布局尺寸走 style（落组件根） */
+  inputStyle?: CSSProperties;
 }
 
 /** One eye that a slash draws across, cutting the outline beneath it, instead of swapping two icons. */
@@ -56,7 +60,7 @@ function EyeMorph({ slashed }: { slashed: boolean }) {
   </svg>;
 }
 
-export const PasswordField = forwardRef<HTMLInputElement, PasswordFieldProps>(function PasswordField({ label, description, error, messages: messagesProp, onPressEnter, id, className, ...props }, ref) {
+export const PasswordField = forwardRef<HTMLInputElement, PasswordFieldProps>(function PasswordField({ label, description, error, messages: messagesProp, onPressEnter, id, className, style, inputStyle, ...props }, ref) {
   const { t } = useTranslation();
   // 上游默认英文；这里默认值取 i18n，messages 仍可覆写
   const messages: PasswordFieldMessages = { showPassword: t("ui.passwordField.show"), hidePassword: t("ui.passwordField.hide"), ...messagesProp };
@@ -65,15 +69,15 @@ export const PasswordField = forwardRef<HTMLInputElement, PasswordFieldProps>(fu
   const errorId = error ? `${controlId}-error` : undefined;
   const describedBy = [props["aria-describedby"], hintId, errorId].filter(Boolean).join(" ") || undefined;
   // data-reveal only appears after the first toggle, so the value resolves on each change but never on mount.
-  return <div className={[styles.field, className].filter(Boolean).join(" ")}>
+  return <div style={style} className={[styles.field, className].filter(Boolean).join(" ")}>
     {label && <label htmlFor={controlId}>{label}</label>}
     <div className={styles.shell}>
-      <input {...props} ref={ref} id={controlId} type={visible ? "text" : "password"} data-reveal={toggled ? (visible ? "shown" : "hidden") : undefined} aria-invalid={error ? true : props["aria-invalid"]} aria-describedby={describedBy} className={styles.input}
+      <input {...props} style={inputStyle} ref={ref} id={controlId} type={visible ? "text" : "password"} data-reveal={toggled ? (visible ? "shown" : "hidden") : undefined} aria-invalid={error ? true : props["aria-invalid"]} aria-describedby={describedBy} className={styles.input}
         onKeyDown={onPressEnter ? (event) => {
           if (isSubmitEnter(event)) onPressEnter();
           props.onKeyDown?.(event);
         } : props.onKeyDown} />
-      <button type="button" onClick={() => { setVisible(current => !current); setToggled(true); }} aria-label={visible ? messages.hidePassword : messages.showPassword} aria-pressed={visible}><EyeMorph slashed={visible} /></button>
+      <button type="button" onMouseDown={(event: MouseEvent) => event.preventDefault()} onClick={() => { setVisible(current => !current); setToggled(true); }} aria-label={visible ? messages.hidePassword : messages.showPassword} aria-pressed={visible}><EyeMorph slashed={visible} /></button>
     </div>
     <FieldMessage id={hintId} text={description} className={styles.hint} />
     <FieldMessage id={errorId} text={error} className={styles.error} alert />

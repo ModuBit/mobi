@@ -20,12 +20,14 @@
 // ③className 挂组件根（field）——布局尺寸从根上给，消费方无需包裹 div
 // ④消息动效链收拢 fieldMessageShared（与 password-field 同源）
 // ⑤补 onPressEnter prop——bindInput 四件套的回车提交（IME 组合中的 Enter 不触发）
+// ⑥style 上提组件根（.field 是 display:grid 无宽度语义，消费方的 flex/width 挂内层 input
+//   在 flex 行里失效缩到固有宽）——布局用 style、文字用 inputStyle 分轨
 "use client";
 
 import { forwardRef, useId } from "react";
-import type { InputHTMLAttributes } from "react";
+import type { CSSProperties, InputHTMLAttributes } from "react";
 import { FieldMessage } from "@/ui/base/interactive/fieldMessageShared";
-import { isSubmitEnter } from "@/ui/base/interactive/inputEnterKeys";
+import { isSubmitEnter } from "@/core/lib/inputEnterKeys";
 import styles from "./input.module.css";
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -36,19 +38,21 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   inputSize?: "sm" | "md";
   /** 回车提交（bindInput 四件套）：IME 组合中的 Enter（确认候选词）不触发 */
   onPressEnter?: () => void;
+  /** 内层 input 的文字样式（fontSize/fontFamily 等）；布局尺寸走 style（落组件根） */
+  inputStyle?: CSSProperties;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, description, error, inputSize, onPressEnter, id, className, ...props }, ref,
+  { label, description, error, inputSize, onPressEnter, id, className, style, inputStyle, ...props }, ref,
 ) {
   const generatedId = useId();
   const controlId = id ?? generatedId;
   const hintId = description ? `${controlId}-description` : undefined;
   const errorId = error ? `${controlId}-error` : undefined;
   const describedBy = [props["aria-describedby"], hintId, errorId].filter(Boolean).join(" ") || undefined;
-  return <div className={[styles.field, inputSize === "sm" ? styles.sm : "", className].filter(Boolean).join(" ")}>
+  return <div style={style} className={[styles.field, inputSize === "sm" ? styles.sm : "", className].filter(Boolean).join(" ")}>
     {label && <label className={styles.label} htmlFor={controlId}>{label}</label>}
-    <input {...props} id={controlId} ref={ref} className={styles.input} aria-invalid={error ? true : props["aria-invalid"]} aria-describedby={describedBy}
+    <input {...props} style={inputStyle} id={controlId} ref={ref} className={styles.input} aria-invalid={error ? true : props["aria-invalid"]} aria-describedby={describedBy}
       onKeyDown={onPressEnter ? (event) => {
         // Enter 提交与消费方 onKeyDown 共存（Escape 取消等场景），组合态不触发
         if (isSubmitEnter(event)) onPressEnter();

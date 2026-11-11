@@ -55,16 +55,31 @@ describe('splitLayoutUtils', () => {
         })
     })
 
-    describe('shouldCollapseOnDrag', () => {
-        it('右侧占比 < 2%（左侧>0.98）判定收起', () => {
-            expect(shouldCollapseOnDrag(0.99)).toBe(true)
-            expect(shouldCollapseOnDrag(1)).toBe(true)
+    describe('shouldCollapseOnDrag（指针越过视觉分隔条 + 容差即收起）', () => {
+        // 容器 left=0 width=1000；容差 = 2% × 1000 = 20px
+        it('无下限：右侧占比 < 2%（视觉分隔条贴右缘）判定收起', () => {
+            // x=990 → 右占 1% < 2% → 收起；x=980 → 恰 2% 不收起
+            expect(shouldCollapseOnDrag(990, 0, 1000, 0)).toBe(true)
+            expect(shouldCollapseOnDrag(1000, 0, 1000, 0)).toBe(true)
+            expect(shouldCollapseOnDrag(980, 0, 1000, 0)).toBe(false)
+            expect(shouldCollapseOnDrag(500, 0, 1000, 0)).toBe(false)
         })
 
-        it('正常比例不收起', () => {
-            expect(shouldCollapseOnDrag(0.5)).toBe(false)
-            expect(shouldCollapseOnDrag(0.8)).toBe(false)
-            expect(shouldCollapseOnDrag(0.98)).toBe(false)
+        it('下限抬住右栏：指针推过分隔条可达的最右位置（右缘-下限）即收起（视觉到底即折叠）', () => {
+            // rightMinPx=200：分隔条最右只能到 x=800；死区里推进到 810 已越过即收起
+            expect(shouldCollapseOnDrag(810, 0, 1000, 200)).toBe(true)
+            expect(shouldCollapseOnDrag(850, 0, 1000, 200)).toBe(true)
+            // 790 分隔条仍在跟随指针（右栏 210px 未触下限）→ 不收起
+            expect(shouldCollapseOnDrag(790, 0, 1000, 200)).toBe(false)
+        })
+
+        it('考虑容器偏移（rectLeft>0）', () => {
+            // 容器从 200 起、宽 1000；指针 1050 = 相对 850，同上收起
+            expect(shouldCollapseOnDrag(1050, 200, 1000, 200)).toBe(true)
+        })
+
+        it('rectWidth<=0（首帧未测量）不收起', () => {
+            expect(shouldCollapseOnDrag(990, 0, 0, 0)).toBe(false)
         })
     })
 

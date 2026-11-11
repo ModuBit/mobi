@@ -102,15 +102,18 @@ function EnumSelect({ field, value, onChange, disabled }: {
 }
 
 /**
- * boolean 字段控件：桥接 antd Form.Item 注入的 value/onChange 与 uiarc Switch 的
- * checked/onCheckedChange；表单值始终为原生 boolean，保证 onFinish 收到 boolean
+ * boolean 字段控件：桥接 antd Form.Item 注入的 checked/onChange 与 uiarc Switch 的
+ * checked/onCheckedChange（Form.Item valuePropName='checked'，注入 prop 名是 checked
+ * 不是 value——解构错名则开关受控值恒 false，UI 与表单真实状态背离）；表单值始终为
+ * 原生 boolean，保证 onFinish 收到 boolean
  */
-function BooleanSwitch({ value, onChange }: {
-    value?: boolean
-    onChange?: (value: boolean) => void
+function BooleanSwitch({ checked, onChange, disabled }: {
+    checked?: boolean
+    onChange?: (checked: boolean) => void
+    disabled?: boolean
 }) {
     return (
-        <Switch checked={value ?? false} onCheckedChange={onChange} />
+        <Switch checked={checked ?? false} onCheckedChange={onChange} disabled={disabled} />
     )
 }
 
@@ -128,9 +131,11 @@ function renderFieldControl(field: ElicitationFieldSchema, disabled: boolean) {
         case 'integer':
             return <InputNumber style={{ width: '100%' }} />
         case 'boolean':
-            return <BooleanSwitch />
+            return <BooleanSwitch disabled={disabled} />
         case 'string':
-            return <Input />
+            // disabled 走显式 prop（uiarc Input 不消费 antd Form 的 DisabledContext，
+            // Form 级 disabled 传不到它——提交中锁定靠这里）
+            return <Input disabled={disabled} />
         default:
             // array/object 等不支持的字段类型：cli 端无法转型，禁用输入避免必败 decline
             return <Input disabled placeholder="不支持的字段类型" />

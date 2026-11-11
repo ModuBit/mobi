@@ -7,6 +7,9 @@
 .thumb { flex: 0 0 auto; width: 18px; height: 18px; border-radius: var(--radius-pill); background: var(--control-thumb); box-shadow: var(--control-thumb-shadow); will-change: transform; transition: background-color var(--duration-standard) var(--ease-standard); }
 .switch[data-state="checked"] .thumb { background: var(--control-thumb-on); }
 @media (hover: hover) and (pointer: fine) { .switch[data-state="unchecked"]:hover:not(:disabled) .track { background: var(--control-track-hover); } }
+/* 焦点环落在 track（视觉本体）而非 button 整行（含 label 文本，框住难看）——
+   用色对齐全局基线（--ant-color-text-tertiary 中性灰，双主题自适应），不取消指示 */
 .switch:focus-visible { outline: none; }
+.switch:focus-visible .track { box-shadow: 0 0 0 2px var(--ant-color-text-tertiary); }
 .label { line-height: var(--leading-body); }
 @media (prefers-reduced-motion: reduce) { .track, .track::before, .thumb { transition: none; } }

@@ -290,9 +290,13 @@ const bubbleInputShell: CSSProperties = {
     background: 'var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04))',
     borderRadius: 'var(--ant-border-radius, 8px)', padding: '0 6px',
 }
-/** bubble 输入框本体的共同样式（等宽字体、贴行高） */
+/** bubble 输入框的布局样式（撑满 shell 剩余宽度；Input 的 style 落组件根） */
+const bubbleInputLayout: CSSProperties = {
+    flex: 1, minWidth: 0,
+}
+/** bubble 输入框的文字样式（等宽字体、贴行高；inputStyle 落内层 input） */
 const bubbleInputStyle: CSSProperties = {
-    flex: 1, minWidth: 0, fontSize: 12, fontFamily: 'var(--font-mono, JetBrains Mono, monospace)',
+    fontSize: 12, fontFamily: 'var(--font-mono, JetBrains Mono, monospace)',
 }
 
 /** 链接态 bubble：单行 URL + apply / open / remove（全 icon；标题在编辑器内直接改） */
@@ -358,7 +362,8 @@ function LinkBubble({ editor }: { editor: Editor }) {
                     onChange={(e) => setUrl(e.target.value)}
                     onPressEnter={apply}
                     autoFocus
-                    style={bubbleInputStyle}
+                    style={bubbleInputLayout}
+                    inputStyle={bubbleInputStyle}
                 />
             </div>
             <AppTooltip title="应用链接" mouseEnterDelay={0.4}>
@@ -433,7 +438,8 @@ function ImageBubble({ editor }: { editor: Editor }) {
                     onChange={(e) => setSrc(e.target.value)}
                     onPressEnter={apply}
                     autoFocus
-                    style={bubbleInputStyle}
+                    style={bubbleInputLayout}
+                    inputStyle={bubbleInputStyle}
                 />
             </div>
             <AppTooltip title="应用" mouseEnterDelay={0.4}>

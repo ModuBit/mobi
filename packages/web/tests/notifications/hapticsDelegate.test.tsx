@@ -16,9 +16,11 @@
 
 /**
  * 触觉反馈全局委托契约（installHapticFeedback，app 入口一次性安装）：
- * - 按下可交互语义元素（button / ARIA 交互角色 / 原生 checkbox·radio）→ tap 一下
+ * - 按下可交互语义元素（button / ARIA 交互角色 / 原生 checkbox·radio / data-haptic 声明）→ tap 一下
  * - 一次按下至多一触（组件层不再挂载，杜绝「试一下」曾经的叠加双震）
  * - 不可交互态（disabled / aria-disabled / aria-busy）不震
+ * - 展开收起语义（aria-expanded 且无 aria-haspopup）不震；弹层开合（带 haspopup）震
+ * - mouse 按下即刻震；touch 延迟确认——窗口内滚动/拖拽取消，pointerup 提前触发
  * - 非交互目标不震；无 Vibration API 环境不抛
  */
 
@@ -34,6 +36,7 @@ let vibrate: ReturnType<typeof vi.fn>
 let hosts: HTMLElement[] = []
 
 beforeAll(() => {
+    vi.useFakeTimers()
     installHapticFeedback()
 })
 
@@ -50,8 +53,16 @@ afterEach(() => {
     cleanup()
 })
 
-function down(el: Element): void {
-    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+function down(el: Element, pointerType: PointerEventInit['pointerType'] = 'mouse'): void {
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType, pointerId: 1, clientX: 100, clientY: 100 }))
+}
+
+function pointerUp(el: Element, pointerType: PointerEventInit['pointerType'] = 'mouse'): void {
+    el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType, pointerId: 1, clientX: 100, clientY: 100 }))
+}
+
+function pointerMove(el: Element, x: number, y: number, pointerType: PointerEventInit['pointerType'] = 'touch'): void {
+    el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType, pointerId: 1, clientX: x, clientY: y }))
 }
 
 function mount(html: string): HTMLElement {
@@ -62,7 +73,7 @@ function mount(html: string): HTMLElement {
     return host
 }
 
-describe('installHapticFeedback 全局委托', () => {
+describe('installHapticFeedback 全局委托（mouse 按下即刻震）', () => {
     it('按下 button → tap pattern', () => {
         const host = mount('<button>点</button>')
         down(host.querySelector('button')!)
@@ -77,9 +88,11 @@ describe('installHapticFeedback 全局委托', () => {
     })
 
     it.each([
-        ['select 触发器（combobox，弹层语义的 aria-expanded 不受展开收起排除影响）', '<div role="combobox" aria-expanded="false">选择</div>'],
+        ['select 触发器（combobox，aria-expanded + aria-haspopup 弹层语义不受展开收起排除影响）', '<div role="combobox" aria-expanded="false" aria-haspopup="listbox">选择</div>'],
         ['原生 checkbox', '<input type="checkbox" />'],
         ['treeitem 叶子（点击文件）', '<div role="treeitem">文件</div>'],
+        ['radio（离散确认动作，AskUserQuestion 单选项）', '<div role="radio" aria-checked="false">选项</div>'],
+        ['data-haptic 声明通道（无交互角色的自定义行，如会话行）', '<div data-haptic="">会话</div>'],
     ])('%s 按下 → 震', (_label, html) => {
         const host = mount(html)
         down(host.firstElementChild!)
@@ -103,7 +116,7 @@ describe('installHapticFeedback 全局委托', () => {
         ['tab 页签（高频导航，2026-11-11 打扰面收窄移出）', '<div role="tab">标签</div>'],
         ['option 弹层选项', '<div role="option">选项</div>'],
         ['menuitem 菜单项', '<div role="menuitem">操作</div>'],
-        ['radio（Segmented/RadioGroup 底座）', '<input type="radio" />'],
+        ['radio input（Segmented/RadioGroup 底座，高频选择）', '<input type="radio" />'],
     ])('%s 按下 → 不震', (_label, html) => {
         const host = mount(html)
         down(host.firstElementChild!)
@@ -114,7 +127,7 @@ describe('installHapticFeedback 全局委托', () => {
         ['disabled', '<button disabled>禁</button>'],
         ['aria-disabled', '<button aria-disabled="true">禁</button>'],
         ['aria-busy（loading）', '<button aria-busy="true">载</button>'],
-        ['aria-expanded（分组展开收起，真机反馈不要震）', '<button role="button" aria-expanded="true">组</button>'],
+        ['aria-expanded 无 haspopup（分组展开收起，真机反馈不要震）', '<button role="button" aria-expanded="true">组</button>'],
         ['treeitem 展开', '<div role="treeitem" aria-expanded="false">目录</div>'],
         ['summary 折叠头（原生展开语义）', '<summary>更多</summary>'],
         ['switch（状态切换控件，反馈由 onChange 按新状态决定）', '<button role="switch" aria-checked="false"></button>'],
@@ -149,6 +162,51 @@ describe('installHapticFeedback 全局委托', () => {
         down(getByRole('button'))
         expect(vibrate).toHaveBeenCalledTimes(1)
         expect(vibrate).toHaveBeenCalledWith([...HAPTIC_PATTERNS.tap])
+    })
+})
+
+describe('touch 延迟确认（防滚动误震）', () => {
+    it('touch 按下不动 → 延迟窗口到点后震', () => {
+        const host = mount('<button>点</button>')
+        down(host.querySelector('button')!, 'touch')
+        expect(vibrate).not.toHaveBeenCalled()
+        vi.advanceTimersByTime(80)
+        expect(vibrate).toHaveBeenCalledTimes(1)
+        expect(vibrate).toHaveBeenCalledWith([...HAPTIC_PATTERNS.tap])
+    })
+
+    it('touch 按下后快速抬起（tap）→ pointerup 提前触发震动', () => {
+        const host = mount('<button>点</button>')
+        down(host.querySelector('button')!, 'touch')
+        pointerUp(host.querySelector('button')!, 'touch')
+        expect(vibrate).toHaveBeenCalledTimes(1)
+        // 提前触发后定时器已清，到点不再二次震
+        vi.advanceTimersByTime(200)
+        expect(vibrate).toHaveBeenCalledTimes(1)
+    })
+
+    it('touch 按下后位移越过 slop（滚动/拖拽开始）→ 取消震动', () => {
+        const host = mount('<button>点</button>')
+        down(host.querySelector('button')!, 'touch')
+        pointerMove(host, 130, 100)
+        vi.advanceTimersByTime(200)
+        expect(vibrate).not.toHaveBeenCalled()
+    })
+
+    it('touch 按下后轻微位移（slop 内，手抖）→ 不取消', () => {
+        const host = mount('<button>点</button>')
+        down(host.querySelector('button')!, 'touch')
+        pointerMove(host, 104, 102)
+        vi.advanceTimersByTime(80)
+        expect(vibrate).toHaveBeenCalledTimes(1)
+    })
+
+    it('容器 scroll 开始 → 取消挂起的震动', () => {
+        const host = mount('<button>点</button>')
+        down(host.querySelector('button')!, 'touch')
+        window.dispatchEvent(new Event('scroll'))
+        vi.advanceTimersByTime(200)
+        expect(vibrate).not.toHaveBeenCalled()
     })
 })
 

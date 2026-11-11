@@ -875,7 +875,8 @@ export function NewSessionPage() {
                                         value={worktreeName}
                                         onChange={e => setWorktreeName(e.target.value)}
                                         disabled={inputDisabled}
-                                        style={{ fontSize: 12, flex: 1, minWidth: 0 }}
+                                        style={{ flex: 1, minWidth: 0 }}
+                                        inputStyle={{ fontSize: 12 }}
                                     />
                                 </div>
                             </div>

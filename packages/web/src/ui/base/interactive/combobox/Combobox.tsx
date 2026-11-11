@@ -341,6 +341,9 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
           disabled={disabled}
           aria-describedby={hintId}
           aria-expanded={open}
+          // ARIA combobox 契约：弹层语义显式声明（触觉委托以「aria-expanded 且无
+          // aria-haspopup」区分展开收起与弹层开合，缺声明会被误豁免）
+          aria-haspopup="listbox"
           aria-controls={open ? listboxId : undefined}
           aria-autocomplete="list"
           aria-activedescendant={open && activeOption ? `${controlId}-option-${activeOption.value}` : undefined}

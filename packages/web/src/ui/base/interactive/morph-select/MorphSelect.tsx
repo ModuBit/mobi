@@ -479,7 +479,7 @@ export function MorphSelect({ label, hideLabel = false, iconOnly = false, direct
             animate={showSearch ? { opacity: 1, filter: "blur(0px)" } : { opacity: 0, filter: reduced ? "blur(0px)" : `blur(${blur.subtle}px)` }}
             transition={showSearch ? { duration: .12, ease: enter } : { duration: .08, ease: standard }}>
             <Search className={styles.searchIcon} size={16} strokeWidth={1.75} aria-hidden="true" />
-            <input ref={inputRef} className={styles.input} type="text" role="combobox" aria-label={t("common.searchField", { name: label.toLowerCase() })} aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
+            <input ref={inputRef} className={styles.input} type="text" role="combobox" aria-label={t("common.searchField", { name: label.toLowerCase() })} aria-expanded={open} aria-haspopup="listbox" aria-controls={listId} aria-autocomplete="list"
               aria-activedescendant={open && current !== null ? optionId(indexOf.get(current) ?? 0) : undefined}
               placeholder={searchPlaceholder ?? selectedOption?.label ?? t("common.search")} value={query} autoComplete="off" spellCheck={false}
               onChange={event => onQuery(event.target.value)} onKeyDown={event => onKey(event, true)} />
