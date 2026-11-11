@@ -17,11 +17,13 @@
 import { useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from 'react'
 import { App, Spin, Segmented, theme as antTheme } from 'antd'
 import { Input } from '@/ui/base/interactive/input/Input'
+import { Button } from '@/ui/base/interactive/button/Button'
+import { ChatInput, type ChatInputHandle } from '@/ui/base/interactive/chat-input'
 import styled from '@emotion/styled'
 import { AttachPanel } from '@/features/composer/AttachPanel'
-import { composerSenderCard, composerSubmitButton } from '@/features/composer/composerSurface.styles'
-import { Sender } from '@ant-design/x'
-import { PlusOutlined, InboxOutlined, BranchesOutlined } from '@ant-design/icons'
+import { composerCard } from '@/features/composer/composerSurface.styles'
+import { useChatInputBridge } from '@/features/composer/useChatInputBridge'
+import { PlusOutlined, InboxOutlined, BranchesOutlined, SendOutlined } from '@ant-design/icons'
 import { Cpu } from 'lucide-react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
@@ -144,8 +146,13 @@ const InputCard = styled.div`
     border-radius: var(--radius-panel);
     padding: 8px;
 
-    ${composerSenderCard}
-    ${composerSubmitButton}
+    /* 白卡（共享片段）：左右负 margin 吃掉容器内衬 8px 再真悬挑 8px
+       （-16 = 8 内衬 + 8 悬挑），上下正 margin 与相邻层拉开呼吸空隙 */
+    ${composerCard}
+
+    && .composer-card {
+        margin: 8px -16px;
+    }
 `
 
 /* ========== 辅助组件 ========== */
@@ -311,10 +318,15 @@ export function NewSessionPage() {
 
     const wrapperRef = useRef<HTMLDivElement>(null)
     const pendingCursorRef = useRef<number | null>(null)
+    // shellRef：ChatInput 命令式通道（非受控编辑器是 source of truth，inputText 只是镜像）
+    const shellRef = useRef<ChatInputHandle | null>(null)
 
     // ref 持有最新值，避免 handleSubmit 因 attachments/inputText 变化而重建
     const inputTextRef = useRef(inputText)
     inputTextRef.current = inputText
+    // 面板选中切分（selectCurrent(text)）用的同源快照
+    const textRef = useRef(inputText)
+    textRef.current = inputText
     const attachmentsRef = useRef(attachments)
     attachmentsRef.current = attachments
     // 同步防重入标志（ref 即时生效，弥补 isPending setState 的异步窗口）(#13)
@@ -401,7 +413,7 @@ export function NewSessionPage() {
         return () => document.removeEventListener('mousedown', handler)
     }, [mention.isOpen, slash.isOpen, mention, slash])
 
-    // 建议列表 ARIA（textarea 由 antd X 管理，属性经 DOM 直写，见 useSuggestionListAria）
+    // 建议列表 ARIA（输入底座 ChatInput，属性经 DOM 直写，见 useSuggestionListAria）
     useSuggestionListAria(
         wrapperRef,
         mention.isOpen
@@ -411,105 +423,81 @@ export function NewSessionPage() {
                 : null,
     )
 
+    // 编辑器 → 面板模型桥接（归一管线 + processChange + 选中插回，与聊天页共用实现；
+    // 本页无中文归一需求差异——bridge 的归一管线两页一致）
+    const markPendingCursor = useCallback((offset: number) => {
+        pendingCursorRef.current = offset
+    }, [])
+    const bridge = useChatInputBridge({
+        shellRef,
+        slash,
+        mention,
+        onTextChange: setInputText,
+        onPendingCursor: markPendingCursor,
+    })
+
+    // 粘贴桥接：useAttachmentHandling.handlePaste 只消费 clipboardData 与 preventDefault，
+    // 与原生 ClipboardEvent 运行时同构；返回 defaultPrevented 让 ChatInput 拦下已被
+    // handlePaste preventDefault 的粘贴（文件粘贴/超阈值转附件），其余放行编辑器默认插入
+    const handlePasteNative = useCallback((e: ClipboardEvent): boolean => {
+        handlePaste(e as unknown as React.ClipboardEvent)
+        return e.defaultPrevented
+    }, [handlePaste])
+
     // 光标位置恢复
     useEffect(() => {
         if (pendingCursorRef.current != null) {
-            const textarea = wrapperRef.current?.querySelector('textarea')
-            if (textarea) {
-                textarea.selectionStart = textarea.selectionEnd = pendingCursorRef.current
-                textarea.focus()
-            }
+            shellRef.current?.setCursorOffset(pendingCursorRef.current)
+            shellRef.current?.focus()
             pendingCursorRef.current = null
         }
     })
 
-    // ============ 文本变更处理 ============
-    const handleChange = useCallback((value: string) => {
-        setInputText(value)
-
-        const textarea = wrapperRef.current?.querySelector('textarea')
-        const cursorPos = textarea?.selectionStart ?? value.length
-
-        // Slash 检测优先
-        if (slash.processChange(value, cursorPos)) {
-            mention.close()
-            return
-        }
-
-        // Mention 检测
-        if (mention.processChange(value, cursorPos)) {
-            return
-        }
-        mention.close()
-    }, [mention, slash])
-
-    // Tab 键选中
-    const textRef = useRef(inputText)
-    textRef.current = inputText
-
-    useEffect(() => {
-        const wrapper = wrapperRef.current
-        if (!wrapper) return
-        if (!mention.isOpen && !slash.isOpen) return
-
-        const handler = (e: KeyboardEvent) => {
-            if (e.key !== 'Tab') return
-            e.preventDefault()
-            e.stopPropagation()
-            if (slash.isOpen && slash.items.length > 0) {
-                const result = slash.selectCurrent(textRef.current)
-                if (result) {
-                    setInputText(result.text)
-                    pendingCursorRef.current = result.cursorPos
-                }
-            } else if (mention.isOpen && mention.items.length > 0) {
-                const result = mention.selectCurrent(textRef.current)
-                if (result) {
-                    setInputText(result.text)
-                    pendingCursorRef.current = result.cursorPos
-                }
-            }
-        }
-
-        wrapper.addEventListener('keydown', handler, true)
-        return () => wrapper.removeEventListener('keydown', handler, true)
-    }, [mention.isOpen, mention, slash.isOpen, slash])
-
-    // 键盘导航
-    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // 键盘导航（ChatInput 转发原生 KeyboardEvent；返回 true = 已消费，拦下内置 Enter 提交判定）
+    const handleKeyDown = useCallback((e: KeyboardEvent): boolean => {
         if (e.key === 'Escape') {
-            if (slash.handleKeyDown(e)) return
-            if (mention.handleKeyDown(e)) return
-            return
+            if (slash.handleKeyDown(e)) return true
+            if (mention.handleKeyDown(e)) return true
+            return false
+        }
+
+        // Tab 补全（原 native capture listener 迁入：ChatInput 键位层先于编辑器处理）
+        if (e.key === 'Tab') {
+            if (slash.isOpen && slash.items.length > 0) {
+                e.preventDefault()
+                e.stopPropagation()
+                bridge.applySelection(slash.selectCurrent(textRef.current))
+                return true
+            }
+            if (mention.isOpen && mention.items.length > 0) {
+                e.preventDefault()
+                e.stopPropagation()
+                bridge.applySelection(mention.selectCurrent(textRef.current))
+                return true
+            }
+            return false
         }
 
         if (e.key === 'Enter') {
             if (slash.isOpen && slash.items.length > 0) {
                 e.preventDefault()
                 e.stopPropagation()
-                const result = slash.selectCurrent(textRef.current)
-                if (result) {
-                    setInputText(result.text)
-                    pendingCursorRef.current = result.cursorPos
-                }
-                return
+                bridge.applySelection(slash.selectCurrent(textRef.current))
+                return true
             }
             if (mention.isOpen && mention.items.length > 0) {
                 e.preventDefault()
                 e.stopPropagation()
-                const result = mention.selectCurrent(textRef.current)
-                if (result) {
-                    setInputText(result.text)
-                    pendingCursorRef.current = result.cursorPos
-                }
-                return
+                bridge.applySelection(mention.selectCurrent(textRef.current))
+                return true
             }
-            return
+            return false
         }
 
-        if (slash.handleKeyDown(e)) return
-        if (mention.handleKeyDown(e)) return
-    }, [mention, slash])
+        if (slash.handleKeyDown(e)) return true
+        if (mention.handleKeyDown(e)) return true
+        return false
+    }, [mention, slash, bridge])
 
     // ============ 提交处理 ============
     const handleSubmit = useCallback(async () => {
@@ -798,53 +786,65 @@ export function NewSessionPage() {
                         directoryLabel={directoryLabel}
                         disabled={false}
                     />
-                    {/* Sender + Dropdowns：position: relative 使下拉定位于 Sender 上方 */}
+                    {/* ChatInput + Dropdowns：position: relative 使下拉定位于输入卡上方 */}
                     <div style={{ position: 'relative' }}>
-                    <Sender
-                        value={inputText}
-                        onChange={handleChange}
+                    {/* 白卡容器：header 内容行 + 输入区 + 参数条共居同一白底圆角卡
+                        （原 antd Sender 的 header/content/footer 白卡结构的平移） */}
+                    <div className="composer-card" style={{ position: 'relative', zIndex: 1 }}>
+                    {/* 原 Sender header：可组合内容行（命令提示条/附件列表） */}
+                    {headerNodes.length > 0 && headerNodes}
+
+                    <ChatInput
+                        ref={shellRef}
+                        placeholder={t(`composer.placeholders.${placeholderIdx.current}`)}
+                        submitKey={hasFinePointer ? 'enter' : 'shiftEnter'}
+                        disabled={inputDisabled}
+                        onUpdate={bridge.onTextInput}
+                        onKeyDown={handleKeyDown}
+                        onPaste={inputDisabled ? undefined : handlePasteNative}
                         onSubmit={() => {
                             // dropdown 打开时 Enter 是选择，不是提交
                             if (slash.isOpen || mention.isOpen) return
                             if (hasContent && canSubmit) handleSubmit()
                         }}
-                        submitType={hasFinePointer ? 'enter' : 'shiftEnter'}
-                        placeholder={t(`composer.placeholders.${placeholderIdx.current}`)}
-                        autoSize={{ minRows: 1, maxRows: 6 }}
-                        loading={isPending}
-                        disabled={inputDisabled}
-                        onKeyDown={handleKeyDown}
-                        onPaste={inputDisabled ? undefined : handlePaste}
-                        header={headerNodes.length > 0 ? headerNodes : null}
-                        style={{
-                            position: 'relative',
-                            zIndex: 1,
-                        }}
-                        suffix={false}
-                        footer={(_oriNode, { components: { SendButton } }) => (
-                            /* 参数条：+（附件）与 send 两端固定，中间可横向拖动滚动（见 ToolStrip 组件注释） */
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                {/* 附件面板（+）——左端固定锚，其余项进可拖动条 */}
-                                <AttachPanel
-                                    disabled={inputDisabled}
-                                    onAttach={handleAttach}
-                                />
-                                <ToolStrip
-                                    style={{ flex: 1, minWidth: 0 }}
-                                    items={toolStripItems}
-                                />
-                                {hasContent ? (
-                                    <SendButton disabled={!canSubmit} />
-                                ) : (
-                                    <SendButton
-                                        disabled={!canSubmit}
-                                        icon={<PlusOutlined />}
-                                        onClick={() => { if (canSubmit) handleSubmit() }}
-                                    />
-                                )}
-                            </div>
-                        )}
+                        minRows={1}
+                        maxRows={6}
+                        aria-label={t('composer.inputLabel', '消息输入框')}
                     />
+
+                    {/* 原 Sender footer → 参数条：+（附件）与 send 两端固定，中间可横向拖动滚动 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px 12px' }}>
+                        {/* 附件面板（+）——左端固定锚，其余项进可拖动条 */}
+                        <AttachPanel
+                            disabled={inputDisabled}
+                            onAttach={handleAttach}
+                        />
+                        <ToolStrip
+                            style={{ flex: 1, minWidth: 0 }}
+                            items={toolStripItems}
+                        />
+                        {/* 发送/新建圆钮（原 antd X 官方 SendButton 的等价物）：有内容 = 发送箭头，
+                            无内容 = +（同为创建会话动作）；深色圆钮（中性反色，双档主题各自成立） */}
+                        <Button
+                            variant="primary"
+                            aria-label={hasContent ? t('composer.send', '发送') : t('newSession.create', '创建会话')}
+                            disabled={!canSubmit}
+                            loading={isPending}
+                            onClick={() => { if (canSubmit) handleSubmit() }}
+                            style={{
+                                width: 40,
+                                height: 40,
+                                minWidth: 40,
+                                borderRadius: '50%',
+                                padding: 0,
+                                background: 'var(--ant-color-text)',
+                                color: 'var(--ant-color-bg-container)',
+                            }}
+                        >
+                            {hasContent ? <SendOutlined /> : <PlusOutlined />}
+                        </Button>
+                    </div>
+                    </div>
 
                     {/* SubBar：配置抽屉，从 Sender 底部滑出 */}
                     <div style={{
@@ -890,13 +890,7 @@ export function NewSessionPage() {
                             loading={mention.isLoading}
                             activeIndex={mention.activeIndex}
                             query={mention.query}
-                            onSelect={(item) => {
-                                const result = mention.selectItem(item, inputText)
-                                if (result) {
-                                    setInputText(result.text)
-                                    pendingCursorRef.current = result.cursorPos
-                                }
-                            }}
+                            onSelect={(item) => bridge.applySelection(mention.selectItem(item, inputText))}
                             onHover={mention.setActiveIndex}
                         />
                     )}
@@ -908,13 +902,7 @@ export function NewSessionPage() {
                             loading={slash.isLoading}
                             activeIndex={slash.activeIndex}
                             query={slash.filter}
-                            onSelect={(item) => {
-                                const result = slash.selectItem(item, inputText)
-                                if (result) {
-                                    setInputText(result.text)
-                                    pendingCursorRef.current = result.cursorPos
-                                }
-                            }}
+                            onSelect={(item) => bridge.applySelection(slash.selectItem(item, inputText))}
                             onHover={slash.setActiveIndex}
                         />
                     )}

@@ -174,11 +174,11 @@ async function selectOutputStyle(label: string) {
     fireEvent.click(option)
 }
 
-/** 空输入提交：点击 Sender 发送按钮（页面状态机的 create 分支，hasContent=false 时
- *  按钮直接触发 handleSubmit——不依赖 jsdom 下受控回车/输入重渲染的行为差异） */
+/** 空输入提交：点击输入卡发送圆钮（页面状态机的 create 分支，hasContent=false 时
+ *  按钮直接触发 handleSubmit——不依赖 jsdom 下受控回车/输入重渲染的行为差异）。
+ *  ChatInput 换底座后为 uiarc Button（aria-label 走 composer.send / newSession.create） */
 async function submit() {
-    const sendBtn = document.querySelector('.ant-sender-actions-btn')
-    if (!(sendBtn instanceof HTMLElement)) throw new Error('send button not found')
+    const sendBtn = screen.getByRole('button', { name: /^(发送|composer\.send|创建会话|newSession\.create)$/ })
     fireEvent.click(sendBtn)
     await waitFor(() => {
         expect(spawnSpy).toHaveBeenCalledTimes(1)

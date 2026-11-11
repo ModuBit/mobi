@@ -37,7 +37,7 @@ import { fileRefContext } from '@/core/utils/fileUrl'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { AttachPanel } from '@/features/composer/AttachPanel'
 import { QuoteChipBar } from '@/features/composer/QuoteChipBar'
-import { COMPOSER_CARD_HEADER_INSET } from '@/features/composer/composerSurface.styles'
+import { COMPOSER_CARD_HEADER_INSET, composerCard } from '@/features/composer/composerSurface.styles'
 import { ComposerInfoPanel } from '@/pages/session/ComposerInfoPanel'
 import { resolveCopyShortcut } from '@/features/composer/copyShortcut'
 import { ModelSettingsSelect } from '@/features/composer/ModelSettingsSelect'
@@ -166,18 +166,14 @@ interface ChatComposerProps {
 // Dock 容器：包裹整个 Composer 区域，和 BubbleList 形成视觉分隔。
 // 白卡与圆钮样式来自 composerSurface.styles 共享片段（与新会话页 InputCard 同一套）
 const ComposerDock = styled.div`
-    /* 白卡容器 .composer-card：header 内容行 + 输入区 + 参数条共居同一白底圆角卡
-       （原 .ant-sender 白卡视觉的平移；共享片段 composerSenderCard 仍服务新会话页的
-       Sender，票 04 迁移后统一收敛回共享片段）。左右负 margin 吃掉容器内衬 8px 再
-       真悬挑 8px；ChatInput 无 antd 内置样式对抗需求，不再需要 !important */
+    /* 白卡容器（共享片段）：header 内容行 + 输入区 + 参数条共居同一白底圆角卡。
+       margin 三档几何本页自管（空态 / 有内容层见下），共享片段只给白底与圆角 */
+    ${composerCard}
+
+    /* 空态：白卡上下不留垂直空隙（内容层存在时见下条覆盖）；水平只悬 8px（-8）
+       而非共享片段的 -16——-16 里本有 8px 是「抵消 Dock 内衬」的部分，空态没有
+       Dock 内衬可抵，照抄会把白卡推到贴死屏幕边（外层 16px 内衬 − 16px = 0 缝） */
     && .composer-card {
-        border: none;
-        border-radius: var(--radius-panel);
-        background: var(--ant-color-bg-container);
-        width: auto;
-        /* 空态：白卡上下不留垂直空隙（内容层存在时见下条覆盖）；水平只悬 8px（-8）
-           而非共享片段的 -16——-16 里本有 8px 是「抵消 Dock 内衬」的部分，空态没有
-           Dock 内衬可抵，照抄会把白卡推到贴死屏幕边（外层 16px 内衬 − 16px = 0 缝） */
         margin: 0 -8px;
     }
 
@@ -495,6 +491,7 @@ export function ChatComposer(props: ChatComposerProps) {
         shellRef,
         slash,
         mention,
+        onTextChange: setText,
         onPendingCursor: markPendingCursor,
         onUserEdit: markUserEdit,
     })

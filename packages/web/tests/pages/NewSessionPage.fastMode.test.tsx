@@ -155,8 +155,8 @@ function modelTrigger(): HTMLElement {
 }
 
 async function submit() {
-    const sendBtn = document.querySelector('.ant-sender-actions-btn')
-    if (!(sendBtn instanceof HTMLElement)) throw new Error('send button not found')
+    // ChatInput 换底座后提交圆钮（uiarc Button，aria-label 走 composer.send / newSession.create）
+    const sendBtn = screen.getByRole('button', { name: /^(发送|composer\.send|创建会话|newSession\.create)$/ })
     fireEvent.click(sendBtn)
     await waitFor(() => {
         expect(spawnSpy).toHaveBeenCalledTimes(1)

@@ -1026,6 +1026,7 @@
     "attach": "Add attachment",
     "abort": "Abort",
     "send": "Send",
+    "inputLabel": "Message input",
     "permissionMode": "Permission Mode",
     "model": "Model",
     "permissionModes": {

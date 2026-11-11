@@ -25,12 +25,10 @@ export interface ActiveSuggestionList {
 }
 
 /**
- * 建议列表 ARIA：输入控件由组件自管，属性经 DOM 直写（不在组件上声明 role/aria——
- * 会与组件内建 ARIA 叠加误报 combobox 语义）。
+ * 建议列表 ARIA：输入控件（ChatInput 的 .ProseMirror）由组件自管，属性经 DOM 直写。
  *
  * 两个 composer 页（新会话 / 聊天）共用同一份属性方案，id 约定 `${listId}-option-<index>`
- * 与 SuggestionList 保持一致。输入底座两页不同代：聊天页已是 ChatInput（TipTap，
- * .ProseMirror），新会话页暂还是 antd X Sender（textarea）——双通道探测，后者迁移后收敛。
+ * 与 SuggestionList 保持一致。
  */
 export function useSuggestionListAria(
     wrapperRef: RefObject<HTMLElement | null>,
@@ -44,7 +42,7 @@ export function useSuggestionListAria(
     const expanded = listId !== null && count > 0
 
     useEffect(() => {
-        const inputEl = wrapperRef.current?.querySelector('textarea') ?? wrapperRef.current?.querySelector('.ProseMirror')
+        const inputEl = wrapperRef.current?.querySelector('.ProseMirror')
         if (!inputEl) return
         inputEl.setAttribute('role', 'combobox')
         inputEl.setAttribute('aria-autocomplete', 'list')
