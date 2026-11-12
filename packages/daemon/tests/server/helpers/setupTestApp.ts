@@ -42,7 +42,7 @@ function ensureIsolatedMobiHome(): string {
 
 export async function setupTestApp(
     syncEngine: SyncEngine | null = null,
-    opts: { distDirOverride?: string; store?: Store } = {},
+    opts: { distDirOverride?: string; store?: Store; skillsScanRoots?: import('../../../src/skills/skillScanner').SkillScanRoots } = {},
 ) {
     // 需要「路由 deps.store 与 engine 同库」的测试可注入共享 Store（缺省独立内存库）
     const store = opts.store ?? new Store(':memory:')
@@ -69,6 +69,8 @@ export async function setupTestApp(
         embeddedAssetMap: null,
         // 注入临时 dist 目录（静态资源 Cache-Control 等测试用），不依赖真实 web/dist 构建
         distDirOverride: opts.distDirOverride,
+        // skill 扫描根 fixture（skill-mgmt 票 01）：不注入则路由会扫真实 ~/.claude
+        skillsScanRoots: opts.skillsScanRoots,
     })
 
     // 宿主通道子应用（ticket-21）：/cli/* 已从主 app 迁独立 listener，测试改打这里

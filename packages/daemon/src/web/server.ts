@@ -37,6 +37,7 @@ import { createSdkRoutes } from './routes/sdk'
 import { createHostRoutes } from './routes/host'
 import { createWebToolsRoutes } from './routes/webTools'
 import { createWorktreesRoutes } from './routes/worktrees'
+import { createSkillsRoutes } from './routes/skills'
 import { createMemoryRoutes } from './routes/memory'
 import { createTelemetryRoutes } from './routes/telemetry'
 import { createMapRoutes } from './routes/map'
@@ -159,6 +160,7 @@ export function createWebApp(options: WebAppDeps): Hono<WebAppEnv> {
     app.route('/api', createEventsRoutes(options))
     app.route('/api', createSessionsRoutes(options))
     app.route('/api', createWorkspacesRoutes(options.getSyncEngine))
+    app.route('/api', createSkillsRoutes(options.getSyncEngine, options.skillsScanRoots))
     app.route('/api', createWorktreesRoutes(options))
     app.route('/api', createMessagesRoutes(options.getSyncEngine))
     app.route('/api', createPermissionsRoutes(options.getSyncEngine))

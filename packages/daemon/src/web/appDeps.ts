@@ -30,6 +30,7 @@ import type { SSEManager } from '../sse/sseManager'
 import type { VisibilityTracker } from '../visibility/visibilityTracker'
 import type { Store } from '../store'
 import type { BackgroundTaskTracker } from '../sync/backgroundTaskTracker'
+import type { SkillScanRoots } from '../skills/skillScanner'
 import type { EmbeddedWebAsset } from './embeddedAssets'
 
 /** warm-on-open 信号出口（WarmOnOpenCoordinator 的消费面；装配缺省 noop） */
@@ -53,4 +54,6 @@ export type WebAppDeps = {
     distDirOverride?: string
     /** 活跃后台任务集合（rewind API 闸门；须与 CLI socket handler 写侧共用同一实例，生产组装层必传） */
     backgroundTaskTracker?: BackgroundTaskTracker
+    /** skill 扫描根（skill-mgmt 票 01；缺省生产值由路由内部解析，测试注入 fixture） */
+    skillsScanRoots?: SkillScanRoots
 }
