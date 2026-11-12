@@ -15,19 +15,22 @@
  */
 
 /**
- * 设置页 Skills 分区（skill-mgmt 票 02–05）：tabs（全局 + 每工作区）+ 搜索 + 列表
- * + 启停开关 + 更新/删除 + 安装弹窗。
+ * 设置页 Skills 分区（skill-mgmt 票 02–07）：tabs（全局 + 每工作区）+ 搜索 + 列表
+ * + 启停开关 + 更新/删除 + 安装弹窗 + 对话式新建入口。
  * 数据视角由 daemon 承载（global=个人+synced+插件携带；工作区 tab=该项目 skill）；
  * tabs 容器与行布局为迭代 2/3（mcp/plugin 管理页）预留同构骨架。
  */
 import { useMemo, useState } from 'react'
 import { App, theme as antTheme, Tabs, Spin, Modal, Radio } from 'antd'
-import { Plus } from 'lucide-react'
+import { FilePlus2, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from '@tanstack/react-router'
 import styled from '@emotion/styled'
 import type { SkillInfo } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useBundledSkills, useSkillDelete, useSkillInstall, useSkillUpdate, useSkillVisibility, useSkills } from '@/core/data/hooks/queries/useSkills'
+import { useMobiApi } from '@/core/data/api/client'
+import { saveDraftText } from '@/core/lib/draftText'
 import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { Input } from '@/ui/base/interactive/input/Input'
@@ -82,6 +85,13 @@ const InstallForm = styled.div<{ $token: Token }>`
     label {
         cursor: default;
     }
+`
+
+/** 弹窗内说明文字 */
+const Hint = styled.div<{ $token: Token }>`
+    font-size: 12px;
+    color: ${p => p.$token.colorTextTertiary};
+    line-height: 1.6;
 `
 
 /** 搜索匹配：名字 + 描述，大小写不敏感包含（主列表与内置行共用） */
@@ -193,6 +203,40 @@ export function SkillsSection() {
         }
     }
 
+    /** 对话式新建（票 07）：scope 弹窗 → daemon 生成预填 prompt → 跨页草稿通道预填 + 跳新会话页 */
+    const navigate = useNavigate()
+    const api = useMobiApi()
+    const [createOpen, setCreateOpen] = useState(false)
+    const [createScope, setCreateScope] = useState(GLOBAL_TAB)
+    const [creating, setCreating] = useState(false)
+
+    const openCreate = () => {
+        setCreateScope(tab)
+        setCreateOpen(true)
+    }
+
+    const submitCreate = async () => {
+        // 会话宿主工作区：scope 是工作区即宿主；global 任选一个（skill 写绝对路径与宿主无关）。
+        // 无工作区时无法建会话（会话必带 workspaceId，防 loose session）
+        const hostWorkspaceId = createScope !== GLOBAL_TAB ? createScope : (workspaces ?? [])[0]?.id
+        if (!hostWorkspaceId) {
+            message.warning(t('settings.skills.createNoWorkspace'))
+            return
+        }
+        setCreating(true)
+        try {
+            const res = await api.skills.createPrompt(createScope)
+            // 一次性信箱：新会话页发送后由会话详情页 ChatComposer 消费预填
+            saveDraftText(res.data.prompt)
+            setCreateOpen(false)
+            navigate({ to: '/sessions/new', search: { workspaceId: hostWorkspaceId } })
+        } catch {
+            message.error(t('settings.skills.createFailed'))
+        } finally {
+            setCreating(false)
+        }
+    }
+
     const tabItems = useMemo(
         () => [
             { key: GLOBAL_TAB, label: t('settings.skills.tabGlobal') },
@@ -217,10 +261,16 @@ export function SkillsSection() {
                 data-testid="skills-tabs"
                 tabBarExtraContent={{
                     right: (
-                        <Button variant="ghost" size="sm" onClick={openInstall} data-testid="skills-install">
-                            <Plus size={13} />
-                            {t('settings.skills.installAction')}
-                        </Button>
+                        <>
+                            <Button variant="ghost" size="sm" onClick={openCreate} data-testid="skills-create">
+                                <FilePlus2 size={13} />
+                                {t('settings.skills.createAction')}
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={openInstall} data-testid="skills-install">
+                                <Plus size={13} />
+                                {t('settings.skills.installAction')}
+                            </Button>
+                        </>
                     ),
                 }}
             />
@@ -267,6 +317,29 @@ export function SkillsSection() {
                     </SettingGroupCard>
                 </>
             ))}
+            <Modal
+                title={t('settings.skills.createTitle')}
+                open={createOpen}
+                onCancel={() => setCreateOpen(false)}
+                onOk={() => { void submitCreate() }}
+                okText={t('settings.skills.createSubmit')}
+                cancelText={t('common.cancel')}
+                confirmLoading={creating}
+                destroyOnHidden
+            >
+                <InstallForm $token={token}>
+                    <span>{t('settings.skills.createScopeLabel')}</span>
+                    <Radio.Group
+                        value={createScope}
+                        onChange={e => setCreateScope(e.target.value as string)}
+                        options={[
+                            { value: GLOBAL_TAB, label: t('settings.skills.tabGlobal') },
+                            ...(workspaces ?? []).map(w => ({ value: w.id, label: w.name })),
+                        ]}
+                    />
+                    <Hint $token={token}>{t('settings.skills.createHint')}</Hint>
+                </InstallForm>
+            </Modal>
             <Modal
                 title={t('settings.skills.installTitle')}
                 open={installOpen}

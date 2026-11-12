@@ -1046,7 +1046,14 @@
       },
       "groupBundled": "Built-in skills",
       "coveredByLocal": "Shadowed by a same-name skill",
-      "bundledFailed": "Failed to load built-in skills, retry later"
+      "bundledFailed": "Failed to load built-in skills, retry later",
+      "createAction": "New",
+      "createTitle": "New skill",
+      "createScopeLabel": "Save to",
+      "createSubmit": "Create in chat",
+      "createHint": "A new session opens with a pre-filled guide. Finish SKILL.md with Claude there, then come back to see it listed.",
+      "createNoWorkspace": "Create a workspace first (sessions belong to one)",
+      "createFailed": "Failed to start, please retry"
     }
   },
   "debug": {

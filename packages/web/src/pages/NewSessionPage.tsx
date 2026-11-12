@@ -70,7 +70,7 @@ import { MobileMenuButton } from '@/features/layout/mobileMenu'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
 import { normalizeDirectoryPath } from '@/core/utils/path'
 import { resolveComposerSubmit } from '@/features/composer/resolveComposerSubmit'
-import { saveDraftText } from '@/core/lib/draftText'
+import { saveDraftText, consumeDraftText } from '@/core/lib/draftText'
 
 import { toMessagePayload } from '@/domain/chat/composerSegments'
 import { buildPermissionModeHoverOptions } from '@/features/composer/permissionModeOption'
@@ -342,6 +342,13 @@ export function NewSessionPage() {
     // isPending 分支会卸载 ChatInput（非受控编辑器实例随之销毁）；spawn 失败回挂的是
     // 全新空编辑器，而文本镜像还在——就绪时用镜像对账，避免「发送键亮着、原文却被清空」
     const handleShellReady = useCallback(() => {
+        // 跨页草稿（一次性信箱）：skill 管理页对话式新建等入口的预填。setMarkdown
+        // 带 emitUpdate，镜像与发送键经既有 onUpdate 流自动同步
+        const crossPageDraft = consumeDraftText()
+        if (crossPageDraft) {
+            shellRef.current?.setMarkdown(crossPageDraft)
+            return
+        }
         if (inputTextRef.current) shellRef.current?.setText(inputTextRef.current)
         if (composerStateRef.current) shellRef.current?.setEditorStateJSON(composerStateRef.current)
     }, [])

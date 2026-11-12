@@ -586,4 +586,37 @@ describe('skills REST 路由（GET /api/skills）', () => {
             expect(data.version).toBe('2.2.0')
         })
     })
+
+    describe('POST /api/skills/create-prompt（对话式新建）', () => {
+        async function createPrompt(body: object): Promise<{ res: Response; data: any }> {
+            const res = await app.request('/api/skills/create-prompt', {
+                method: 'POST',
+                headers: { ...authHeaders, 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            })
+            return { res, data: res.status === 200 ? await res.json() : null }
+        }
+
+        test('global scope：目标目录 = claude 配置 skills 根，prompt 含路径与结构引导', async () => {
+            const { res, data } = await createPrompt({ scope: 'global' })
+            expect(res.status).toBe(200)
+            expect(data.targetDir).toBe(join(claudeDir, 'skills'))
+            expect(data.prompt).toContain(join(claudeDir, 'skills'))
+            expect(data.prompt).toContain('SKILL.md')
+            expect(data.prompt).toContain('name:')
+            expect(data.prompt).toContain('description:')
+        })
+
+        test('workspace scope：目标目录 = workspace .claude/skills', async () => {
+            const { res, data } = await createPrompt({ scope: workspaceId })
+            expect(res.status).toBe(200)
+            expect(data.targetDir).toBe(join(wsDir, '.claude', 'skills'))
+            expect(data.prompt).toContain(join(wsDir, '.claude', 'skills'))
+        })
+
+        test('未知 scope → 404；非法 body → 400', async () => {
+            expect((await createPrompt({ scope: 'nope' })).res.status).toBe(404)
+            expect((await createPrompt({})).res.status).toBe(400)
+        })
+    })
 })

@@ -34,6 +34,7 @@ import { requireSyncEngine } from './guards'
 import { defaultSkillScanRoots, listGlobalSkills, listWorkspaceSkills, type SkillScanRoots } from '../../skills/skillScanner'
 import { defaultSkillsCliRunner, installSkill, removeTrackedSkill, removeUntrackedSkill, updateSkill, type SkillsCliRunner } from '../../skills/skillCli'
 import { getBundledSkills, type BundledProber, type ClaudeVersionProber } from '../../skills/bundledSkills'
+import { buildSkillCreatePrompt, resolveSkillCreateTargetDir } from '../../skills/skillCreatePrompt'
 import { writeSkillOverride } from '../../skills/skillSettingsWriter'
 import { configuration } from '../../configuration'
 import type { SkillInfo } from '@mobi/shared'
@@ -163,6 +164,22 @@ export function createSkillsRoutes(
         const result = removeUntrackedSkill(current, scanRoots, scope)
         if (!result.ok) return c.json({ error: result.error }, 500)
         return c.json({ ok: true })
+    })
+
+    app.post('/skills/create-prompt', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const body = await c.req.json().catch(() => null) as { scope?: unknown } | null
+        if (!body || typeof body.scope !== 'string') return c.json({ error: 'Invalid body' }, 400)
+
+        const scanRoots = deps.scanRoots ?? defaultSkillScanRoots()
+        const scope = resolveScope(engine, body.scope)
+        if (scope.kind === 'not-found') return c.json({ error: 'Workspace not found' }, 404)
+        if (scope.kind === 'no-folder') return c.json({ error: 'Workspace has no folder' }, 400)
+
+        const targetDir = resolveSkillCreateTargetDir(scope, scanRoots)
+        return c.json({ targetDir, prompt: buildSkillCreatePrompt(targetDir) })
     })
 
     app.get('/skills/bundled', async (c) => {

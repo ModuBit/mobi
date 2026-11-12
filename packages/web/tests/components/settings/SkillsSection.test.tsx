@@ -19,7 +19,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import type { SkillInfo } from '@mobi/shared'
 
 /** vi.mock 工厂提升先于 const 声明，被工厂引用的桩须 vi.hoisted */
-const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync, mockInstallAsync, mockUpdateMutate, mockBundled } = vi.hoisted(() => {
+const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync, mockInstallAsync, mockUpdateMutate, mockBundled, mockNavigate, mockSaveDraftText, mockCreatePrompt } = vi.hoisted(() => {
     return {
         /** toast 断言靶（App.useApp 返回的 message） */
         mockMessage: { warning: vi.fn(), error: vi.fn(), success: vi.fn() },
@@ -41,6 +41,10 @@ const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync, moc
         mockUpdateMutate: vi.fn(),
         /** 票 06：内置名单桩（旧用例默认空；票 06 用例 mockReturnValue 覆盖） */
         mockBundled: { bundled: [], isLoading: false, error: null },
+        /** 票 07：新建流程桩 */
+        mockNavigate: vi.fn(),
+        mockSaveDraftText: vi.fn(),
+        mockCreatePrompt: vi.fn(),
     }
 })
 mockVisibility.mutate = mockMutate
@@ -68,6 +72,16 @@ vi.mock('@/core/data/hooks/queries/useSkills', () => ({
     useSkillInstall: vi.fn(() => ({ mutateAsync: mockInstallAsync, isPending: false })),
     useSkillUpdate: vi.fn(() => ({ mutate: mockUpdateMutate, isPending: false, variables: null })),
     useBundledSkills: vi.fn(() => mockBundled),
+}))
+vi.mock('@tanstack/react-router', () => ({
+    useNavigate: () => mockNavigate,
+}))
+vi.mock('@/core/lib/draftText', () => ({
+    saveDraftText: mockSaveDraftText,
+    consumeDraftText: vi.fn(() => null),
+}))
+vi.mock('@/core/data/api/client', () => ({
+    useMobiApi: () => ({ skills: { createPrompt: mockCreatePrompt } }),
 }))
 
 import { SkillsSection } from '@/features/settings/sections/SkillsSection'
@@ -413,5 +427,62 @@ describe('SkillsSection（票 06：内置分组）', () => {
         setupGlobal({ bundled: [], isLoading: false, error: new Error('probe timeout') })
 
         expect(screen.getByText('settings.skills.bundledFailed')).toBeTruthy()
+    })
+})
+
+describe('SkillsSection（票 07：对话式新建）', () => {
+    function setup(ws: { id: string; name: string }[] = [{ id: 'ws-1', name: 'Demo Workspace' }]) {
+        vi.mocked(useWorkspaces).mockReturnValue({ data: ws } as never)
+        vi.mocked(useSkills).mockImplementation(mockSkillsByScope)
+        vi.mocked(useSkillVisibility).mockReturnValue(mockVisibility as never)
+        render(<SkillsSection />)
+    }
+
+    it('新建弹窗：确认后 createPrompt → 草稿预填 + 跳新会话页（带宿主工作区）', async () => {
+        setup()
+        mockCreatePrompt.mockResolvedValueOnce({ data: { targetDir: '/x/skills', prompt: 'CREATE PROMPT' } })
+
+        screen.getByTestId('skills-create').click()
+        fireEvent.click(await screen.findByText('settings.skills.createSubmit'))
+
+        await waitFor(() => {
+            expect(mockCreatePrompt).toHaveBeenCalledWith('global')
+            expect(mockSaveDraftText).toHaveBeenCalledWith('CREATE PROMPT')
+            expect(mockNavigate).toHaveBeenCalledWith({
+                to: '/sessions/new',
+                search: { workspaceId: 'ws-1' },
+            })
+        })
+    })
+
+    it('scope 切到工作区：createPrompt 用该 ws、宿主同为该 ws', async () => {
+        setup()
+        mockCreatePrompt.mockResolvedValueOnce({ data: { targetDir: '/w/.claude/skills', prompt: 'P' } })
+
+        screen.getByTestId('skills-create').click()
+        // 弹窗内的 scope radio（与 tabs 同名文本区分，按 value 定位）
+        await screen.findByText('settings.skills.createSubmit')
+        const wsRadio = document.querySelector('input[type="radio"][value="ws-1"]') as HTMLInputElement
+        fireEvent.click(wsRadio)
+        fireEvent.click(screen.getByText('settings.skills.createSubmit'))
+
+        await waitFor(() => {
+            expect(mockCreatePrompt).toHaveBeenCalledWith('ws-1')
+            expect(mockNavigate).toHaveBeenCalledWith({
+                to: '/sessions/new',
+                search: { workspaceId: 'ws-1' },
+            })
+        })
+    })
+
+    it('global 且无工作区：提示不跳转', async () => {
+        setup([])
+        mockMessage.warning.mockClear()
+
+        screen.getByTestId('skills-create').click()
+        fireEvent.click(await screen.findByText('settings.skills.createSubmit'))
+
+        await waitFor(() => expect(mockMessage.warning).toHaveBeenCalledWith('settings.skills.createNoWorkspace'))
+        expect(mockNavigate).not.toHaveBeenCalled()
     })
 })

@@ -484,6 +484,9 @@ export function createMobiApi() {
                 client.post<{ ok: boolean }>(`/api/skills/${encodeURIComponent(name)}/update`, { workspaceId }),
             // CC 内置名单（daemon 自采 + 版本化缓存；首访可能秒级采集等待）
             bundled: () => client.get<BundledSkillsResponse>('/api/skills/bundled'),
+            // 对话式新建：scope → 目标目录映射 + 预填 prompt（daemon 侧生成权威路径）
+            createPrompt: (scope: string) =>
+                client.post<{ targetDir: string; prompt: string }>('/api/skills/create-prompt', { scope }),
         },
 
         // Host / daemon（单机：daemon 即宿主；机器列表这一层随 machine 概念移除退场）
