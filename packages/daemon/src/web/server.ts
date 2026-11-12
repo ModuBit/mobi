@@ -160,7 +160,11 @@ export function createWebApp(options: WebAppDeps): Hono<WebAppEnv> {
     app.route('/api', createEventsRoutes(options))
     app.route('/api', createSessionsRoutes(options))
     app.route('/api', createWorkspacesRoutes(options.getSyncEngine))
-    app.route('/api', createSkillsRoutes(options.getSyncEngine, options.skillsScanRoots, options.skillsCliRunner))
+    app.route('/api', createSkillsRoutes(options.getSyncEngine, {
+        scanRoots: options.skillsScanRoots,
+        cliRunner: options.skillsCliRunner,
+        bundled: options.skillsBundled,
+    }))
     app.route('/api', createWorktreesRoutes(options))
     app.route('/api', createMessagesRoutes(options.getSyncEngine))
     app.route('/api', createPermissionsRoutes(options.getSyncEngine))

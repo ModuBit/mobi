@@ -79,6 +79,21 @@ describe('skills REST 路由（GET /api/skills）', () => {
         return { ok: true, output: `removed ${name}` }
     }
 
+    /** 票 06：fake bundled 采集与版本探针（可控翻转 + 采集计数） */
+    let bundledVersion = '2.1.312'
+    let bundledProbeCount = 0
+    const fakeBundledVersionProber = async () => bundledVersion
+    const fakeBundledProber = async () => {
+        bundledProbeCount += 1
+        return {
+            claudeVersion: bundledVersion,
+            skills: [
+                { name: 'doctor', description: 'Health-check the setup' },
+                { name: 'verify', description: 'Verify a change end-to-end' },
+            ],
+        }
+    }
+
     beforeAll(async () => {
         // ── fixture：假 ~/.claude、假中央仓 + user lock、假插件、假 managed settings ──
         fixtureRoot = mkdtempSync(join(tmpdir(), 'mobi-skill-fx-'))
@@ -186,6 +201,11 @@ describe('skills REST 路由（GET /api/skills）', () => {
                 managedSettingsPath: join(fixtureRoot, 'managed-settings.json'),
             },
             skillsCliRunner: fakeSkillsCli,
+            skillsBundled: {
+                cachePath: join(fixtureRoot, 'bundled-skills.json'),
+                prober: fakeBundledProber,
+                versionProber: fakeBundledVersionProber,
+            },
         })
         app = setup.app
         cleanupApp = () => {
@@ -538,6 +558,32 @@ describe('skills REST 路由（GET /api/skills）', () => {
         test('untracked → 400；未知名 → 404', async () => {
             expect((await update('alpha', 'global')).status).toBe(400)
             expect((await update('nope', 'global')).status).toBe(404)
+        })
+    })
+
+    describe('GET /api/skills/bundled（自采 + 版本化缓存）', () => {
+        async function getBundled(): Promise<{ res: Response; data: any }> {
+            const res = await app.request('/api/skills/bundled', { headers: authHeaders })
+            return { res, data: res.status === 200 ? await res.json() : null }
+        }
+
+        test('首访自采返回名单；同版本二次请求纯缓存命中（不再采）', async () => {
+            const { res, data } = await getBundled()
+            expect(res.status).toBe(200)
+            expect(data.version).toBe('2.1.312')
+            expect(data.skills.map((s: { name: string }) => s.name)).toEqual(['doctor', 'verify'])
+            expect(bundledProbeCount).toBe(1)
+
+            // 版本不变 → 纯缓存
+            const { data: again } = await getBundled()
+            expect(again.version).toBe('2.1.312')
+            expect(bundledProbeCount).toBe(1)
+        })
+
+        test('版本升级 → miss 重采返回新版本', async () => {
+            bundledVersion = '2.2.0'
+            const { data } = await getBundled()
+            expect(data.version).toBe('2.2.0')
         })
     })
 })

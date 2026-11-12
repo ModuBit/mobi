@@ -24,15 +24,33 @@
  *   project 级 cwd=workspace），untracked 直接删 agent 目录条目（symlink 只删链接）
  * - POST /api/skills/install：包装 skills add（symlink 形态、只装 claude-code agent）
  * - POST /api/skills/:name/update：包装 skills update（tracked 限定）
+ * - GET /api/skills/bundled：CC 内置名单（daemon 自采 + 版本化缓存，票 06）
  */
 import { Hono } from 'hono'
+import { join } from 'node:path'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSyncEngine } from './guards'
 import { defaultSkillScanRoots, listGlobalSkills, listWorkspaceSkills, type SkillScanRoots } from '../../skills/skillScanner'
 import { defaultSkillsCliRunner, installSkill, removeTrackedSkill, removeUntrackedSkill, updateSkill, type SkillsCliRunner } from '../../skills/skillCli'
+import { getBundledSkills, type BundledProber, type ClaudeVersionProber } from '../../skills/bundledSkills'
 import { writeSkillOverride } from '../../skills/skillSettingsWriter'
+import { configuration } from '../../configuration'
 import type { SkillInfo } from '@mobi/shared'
+
+/** bundled 名单依赖（缺省生产值：dataDir 缓存 + 真 SDK 自采） */
+export interface SkillsBundledDeps {
+    cachePath: string
+    prober?: BundledProber
+    versionProber?: ClaudeVersionProber
+}
+
+/** 路由可注入依赖（测试 fixture；缺省生产值） */
+export interface SkillsRouteDeps {
+    scanRoots?: SkillScanRoots
+    cliRunner?: SkillsCliRunner
+    bundled?: SkillsBundledDeps
+}
 
 /** workspaceId → 扫描视角；global 返回 null，未知 id 返回 'not-found'，无 folder 返回 'no-folder' */
 function resolveScope(
@@ -55,10 +73,13 @@ function findSkill(skills: SkillInfo[], name: string): SkillInfo | undefined {
 
 export function createSkillsRoutes(
     getSyncEngine: () => SyncEngine | null,
-    roots?: SkillScanRoots,
-    skillsCliRunner: SkillsCliRunner = defaultSkillsCliRunner,
+    deps: SkillsRouteDeps = {},
 ): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
+    const roots = deps.scanRoots
+    const skillsCliRunner = deps.cliRunner ?? defaultSkillsCliRunner
+    const bundledDeps = () =>
+        deps.bundled ?? { cachePath: join(configuration.dataDir, 'bundled-skills.json') }
 
     app.get('/skills', (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
@@ -142,6 +163,19 @@ export function createSkillsRoutes(
         const result = removeUntrackedSkill(current, scanRoots, scope)
         if (!result.ok) return c.json({ error: result.error }, 500)
         return c.json({ ok: true })
+    })
+
+    app.get('/skills/bundled', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        try {
+            const result = await getBundledSkills(bundledDeps())
+            return c.json({ version: result.claudeVersion, skills: result.skills })
+        } catch (error) {
+            // 采集失败明确报错（不伪装空名单）：CLI 不可达 / init 帧缺版本等
+            return c.json({ error: error instanceof Error ? error.message : String(error) }, 502)
+        }
     })
 
     app.post('/skills/install', async (c) => {

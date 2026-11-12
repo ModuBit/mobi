@@ -1003,7 +1003,8 @@
         "personal": "个人",
         "synced": "claude.ai",
         "project": "项目",
-        "plugin": "插件"
+        "plugin": "插件",
+        "bundled": "内置"
       },
       "trackedFrom": "安装自 {{source}}",
       "modelOnly": "仅手动调用",
@@ -1033,7 +1034,10 @@
       "state": {
         "off": "已停用",
         "shadowed": "被更高层设置停用"
-      }
+      },
+      "groupBundled": "CC 内置技能",
+      "coveredByLocal": "被同名技能覆盖",
+      "bundledFailed": "内置名单获取失败，请稍后重试"
     }
   },
   "debug": {

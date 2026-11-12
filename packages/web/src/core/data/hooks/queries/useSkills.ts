@@ -15,9 +15,30 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { SkillInfo } from '@mobi/shared'
+import type { BundledSkillInfo, SkillInfo } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/queryKeys'
+
+/**
+ * CC 内置 bundled 名单（skill-mgmt 票 06）：仅全局 tab 消费；daemon 侧版本化缓存，
+ * 同版本纯缓存命中。失败不静默（明确错误态），列表行只读。
+ */
+export function useBundledSkills(enabled: boolean): {
+    bundled: BundledSkillInfo[]
+    isLoading: boolean
+    error: Error | null
+} {
+    const api = useMobiApi()
+    const query = useQuery({
+        queryKey: [...queryKeys.skills('bundled')],
+        enabled,
+        queryFn: async () => {
+            const res = await api.skills.bundled()
+            return res.data
+        },
+    })
+    return { bundled: query.data?.skills ?? [], isLoading: query.isPending, error: query.error }
+}
 
 /**
  * skill 管理列表（skill-mgmt 票 02）。

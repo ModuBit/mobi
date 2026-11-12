@@ -78,3 +78,20 @@ export const SkillListResponseSchema = z.object({
 })
 
 export type SkillListResponse = z.infer<typeof SkillListResponseSchema>
+
+/** CC 内置 bundled skill 行（GET /api/skills/bundled；名单由 daemon 自采，零硬编码） */
+export const BundledSkillInfoSchema = z.object({
+    /** 调用名（无 / 前缀） */
+    name: z.string(),
+    /** description 取自 supportedCommands 快照 */
+    description: z.string(),
+})
+
+export const BundledSkillsResponseSchema = z.object({
+    /** 采集时的 claude CLI 版本（缓存键） */
+    version: z.string(),
+    skills: z.array(BundledSkillInfoSchema),
+})
+
+export type BundledSkillInfo = z.infer<typeof BundledSkillInfoSchema>
+export type BundledSkillsResponse = z.infer<typeof BundledSkillsResponseSchema>

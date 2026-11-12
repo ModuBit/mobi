@@ -1012,7 +1012,8 @@
         "personal": "Personal",
         "synced": "claude.ai",
         "project": "Project",
-        "plugin": "Plugin"
+        "plugin": "Plugin",
+        "bundled": "Built-in"
       },
       "trackedFrom": "From {{source}}",
       "modelOnly": "Manual only",
@@ -1042,7 +1043,10 @@
       "state": {
         "off": "Disabled",
         "shadowed": "Disabled by higher settings"
-      }
+      },
+      "groupBundled": "Built-in skills",
+      "coveredByLocal": "Shadowed by a same-name skill",
+      "bundledFailed": "Failed to load built-in skills, retry later"
     }
   },
   "debug": {

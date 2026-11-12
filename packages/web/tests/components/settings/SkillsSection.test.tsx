@@ -19,7 +19,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import type { SkillInfo } from '@mobi/shared'
 
 /** vi.mock 工厂提升先于 const 声明，被工厂引用的桩须 vi.hoisted */
-const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync, mockInstallAsync, mockUpdateMutate } = vi.hoisted(() => {
+const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync, mockInstallAsync, mockUpdateMutate, mockBundled } = vi.hoisted(() => {
     return {
         /** toast 断言靶（App.useApp 返回的 message） */
         mockMessage: { warning: vi.fn(), error: vi.fn(), success: vi.fn() },
@@ -39,6 +39,8 @@ const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync, moc
         mockDeleteAsync: vi.fn(),
         mockInstallAsync: vi.fn(),
         mockUpdateMutate: vi.fn(),
+        /** 票 06：内置名单桩（旧用例默认空；票 06 用例 mockReturnValue 覆盖） */
+        mockBundled: { bundled: [], isLoading: false, error: null },
     }
 })
 mockVisibility.mutate = mockMutate
@@ -65,10 +67,11 @@ vi.mock('@/core/data/hooks/queries/useSkills', () => ({
     useSkillDelete: vi.fn(() => ({ mutateAsync: mockDeleteAsync })),
     useSkillInstall: vi.fn(() => ({ mutateAsync: mockInstallAsync, isPending: false })),
     useSkillUpdate: vi.fn(() => ({ mutate: mockUpdateMutate, isPending: false, variables: null })),
+    useBundledSkills: vi.fn(() => mockBundled),
 }))
 
 import { SkillsSection } from '@/features/settings/sections/SkillsSection'
-import { useSkills, useSkillVisibility } from '@/core/data/hooks/queries/useSkills'
+import { useSkills, useSkillVisibility, useBundledSkills } from '@/core/data/hooks/queries/useSkills'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 
 afterEach(() => {
@@ -359,5 +362,56 @@ describe('SkillsSection（票 05：安装与更新）', () => {
         await waitFor(() => expect(mockMessage.error).toHaveBeenCalledWith('settings.skills.installFailed'))
         // 弹窗未关：输入框仍在
         expect(screen.getByPlaceholderText('settings.skills.installSourcePlaceholder')).toBeTruthy()
+    })
+})
+
+describe('SkillsSection（票 06：内置分组）', () => {
+    function setupGlobal(bundled: typeof mockBundled = { bundled: [], isLoading: false, error: null }) {
+        vi.mocked(useWorkspaces).mockReturnValue({ data: [{ id: 'ws-1', name: 'Demo Workspace' }] } as never)
+        vi.mocked(useSkills).mockImplementation(mockSkillsByScope)
+        vi.mocked(useSkillVisibility).mockReturnValue(mockVisibility as never)
+        vi.mocked(useBundledSkills).mockReturnValue(bundled)
+        render(<SkillsSection />)
+    }
+
+    /** fixture：内置两行，其中 doctor 与个人 skill 同名（覆盖判定用）——GLOBAL_SKILLS 无 doctor，
+     * 用 alpha 同名场景：内置行名 alpha → covered */
+    const BUNDLED = [
+        { name: 'alpha', description: 'Bundled alpha (shadowed by personal)' },
+        { name: 'doctor', description: 'Health-check the setup' },
+    ]
+
+    it('全局 tab 渲染内置分组：分组标题 + 只读行（内置徽标、无开关/删除/更新）', () => {
+        setupGlobal({ bundled: BUNDLED, isLoading: false, error: null })
+
+        expect(screen.getByText('settings.skills.groupBundled')).toBeTruthy()
+        expect(screen.getAllByText('settings.skills.source.bundled').length).toBe(2)
+
+        const bundledRow = document.querySelector('[data-bundled="true"][data-skill-name="doctor"]')!
+        expect(bundledRow.querySelector('[role="switch"]')).toBeNull()
+        expect(bundledRow.querySelector('[data-skill-delete="doctor"]')).toBeNull()
+        expect(bundledRow.querySelector('[data-skill-update="doctor"]')).toBeNull()
+    })
+
+    it('与个人 skill 同名的内置行显示覆盖徽标（用户胜）', () => {
+        setupGlobal({ bundled: BUNDLED, isLoading: false, error: null })
+
+        const covered = document.querySelector('[data-bundled="true"][data-skill-name="alpha"]')!
+        expect(covered.textContent).toContain('settings.skills.coveredByLocal')
+        const notCovered = document.querySelector('[data-bundled="true"][data-skill-name="doctor"]')!
+        expect(notCovered.textContent).not.toContain('settings.skills.coveredByLocal')
+    })
+
+    it('工作区 tab 不渲染内置分组', () => {
+        setupGlobal({ bundled: BUNDLED, isLoading: false, error: null })
+
+        fireEvent.click(screen.getByText('Demo Workspace'))
+        expect(screen.queryByText('settings.skills.groupBundled')).toBeNull()
+    })
+
+    it('内置名单加载失败：错误提示（不伪装空名单静默）', () => {
+        setupGlobal({ bundled: [], isLoading: false, error: new Error('probe timeout') })
+
+        expect(screen.getByText('settings.skills.bundledFailed')).toBeTruthy()
     })
 })

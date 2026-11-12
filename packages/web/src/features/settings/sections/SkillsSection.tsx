@@ -27,12 +27,13 @@ import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { SkillInfo } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
-import { useSkillDelete, useSkillInstall, useSkillUpdate, useSkillVisibility, useSkills } from '@/core/data/hooks/queries/useSkills'
+import { useBundledSkills, useSkillDelete, useSkillInstall, useSkillUpdate, useSkillVisibility, useSkills } from '@/core/data/hooks/queries/useSkills'
 import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { Input } from '@/ui/base/interactive/input/Input'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { SkillRow } from '@/features/settings/skills/SkillRow'
+import { BundledSkillRow } from '@/features/settings/skills/BundledSkillRow'
 
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
@@ -58,6 +59,14 @@ const CenterSpin = styled.div`
     padding: 32px 0;
 `
 
+/** 分组小标题（内置组与主列表的视觉分隔） */
+const GroupTitle = styled.div<{ $token: Token }>`
+    font-size: 12px;
+    font-weight: 500;
+    color: ${p => p.$token.colorTextTertiary};
+    padding: 0 2px;
+`
+
 /** 安装弹窗表单：纵向排布，antd Modal 默认内衬之外自管间距 */
 const InstallForm = styled.div<{ $token: Token }>`
     display: flex;
@@ -75,8 +84,8 @@ const InstallForm = styled.div<{ $token: Token }>`
     }
 `
 
-/** 搜索匹配：名字 + 描述，大小写不敏感包含 */
-function filterSkills(skills: SkillInfo[], keyword: string): SkillInfo[] {
+/** 搜索匹配：名字 + 描述，大小写不敏感包含（主列表与内置行共用） */
+function filterSkills<T extends { name: string; description?: string }>(skills: T[], keyword: string): T[] {
     const needle = keyword.trim().toLowerCase()
     if (!needle) return skills
     return skills.filter(
@@ -93,12 +102,18 @@ export function SkillsSection() {
 
     const { data: workspaces } = useWorkspaces()
     const { skills, isLoading } = useSkills(tab)
+    const isGlobal = tab === GLOBAL_TAB
+    // 内置名单只属全局视角；搜索词也参与内置行过滤
+    const { bundled, isLoading: bundledLoading, error: bundledError } = useBundledSkills(isGlobal)
     const visibility = useSkillVisibility()
     const deletion = useSkillDelete()
     const updater = useSkillUpdate()
     const installer = useSkillInstall()
 
     const filtered = useMemo(() => filterSkills(skills, keyword), [skills, keyword])
+    const filteredBundled = useMemo(() => filterSkills(bundled, keyword), [bundled, keyword])
+    /** 当前列表里的名字集合（内置行同名遮蔽判定：用户胜） */
+    const listedNames = useMemo(() => new Set(skills.map(s => s.name)), [skills])
 
     /** 启停：失败报错；成功后归属层已开但生效仍关 → 更高层压制提示 */
     const handleToggle = (skill: SkillInfo) => (enabled: boolean) => {
@@ -236,6 +251,22 @@ export function SkillsSection() {
                     </EmptyHint>
                 </SettingGroupCard>
             )}
+            {isGlobal && (bundledLoading ? (
+                <CenterSpin><Spin size="small" /></CenterSpin>
+            ) : bundledError ? (
+                <SettingGroupCard>
+                    <EmptyHint $token={token}>{t('settings.skills.bundledFailed')}</EmptyHint>
+                </SettingGroupCard>
+            ) : filteredBundled.length > 0 && (
+                <>
+                    <GroupTitle $token={token}>{t('settings.skills.groupBundled')}</GroupTitle>
+                    <SettingGroupCard>
+                        {filteredBundled.map(b => (
+                            <BundledSkillRow key={b.name} skill={b} covered={listedNames.has(b.name)} />
+                        ))}
+                    </SettingGroupCard>
+                </>
+            ))}
             <Modal
                 title={t('settings.skills.installTitle')}
                 open={installOpen}

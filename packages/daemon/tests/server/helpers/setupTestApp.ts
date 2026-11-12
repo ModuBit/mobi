@@ -47,6 +47,7 @@ export async function setupTestApp(
         store?: Store
         skillsScanRoots?: import('../../../src/skills/skillScanner').SkillScanRoots
         skillsCliRunner?: import('../../../src/skills/skillCli').SkillsCliRunner
+        skillsBundled?: import('../../../src/web/routes/skills').SkillsBundledDeps
     } = {},
 ) {
     // 需要「路由 deps.store 与 engine 同库」的测试可注入共享 Store（缺省独立内存库）
@@ -81,6 +82,16 @@ export async function setupTestApp(
         skillsCliRunner: opts.skillsCliRunner ?? (async () => {
             throw new Error('skills CLI runner not injected for test')
         }),
+        // bundled 名单桩（票 06）：同上 fail-fast，防真 SDK probe / 真 claude --version
+        skillsBundled: opts.skillsBundled ?? {
+            cachePath: '/dev/null/mobi-test-bundled-cache.json',
+            prober: async () => {
+                throw new Error('bundled prober not injected for test')
+            },
+            versionProber: async () => {
+                throw new Error('bundled version prober not injected for test')
+            },
+        },
     })
 
     // 宿主通道子应用（ticket-21）：/cli/* 已从主 app 迁独立 listener，测试改打这里

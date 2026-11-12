@@ -57,4 +57,6 @@ export type WebAppDeps = {
     /** skill 扫描根（skill-mgmt 票 01；缺省生产值由路由内部解析，测试注入 fixture） */
     skillsScanRoots?: SkillScanRoots
     skillsCliRunner?: import('../skills/skillCli').SkillsCliRunner
+    /** bundled 名单依赖（票 06；缺省生产值 = dataDir 缓存 + 真 SDK 自采） */
+    skillsBundled?: import('../web/routes/skills').SkillsBundledDeps
 }
