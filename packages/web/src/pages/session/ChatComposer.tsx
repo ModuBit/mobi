@@ -715,8 +715,8 @@ export function ChatComposer(props: ChatComposerProps) {
                     onSubmit={() => handleSubmit()}
                     onReady={handleShellReady}
                     extraNodes={quoteNodes}
-                    minRows={1}
-                    maxRows={5}
+                    minRows={2}
+                    maxRows={10}
                     aria-label={t('composer.inputLabel', '消息输入框')}
                 />
 

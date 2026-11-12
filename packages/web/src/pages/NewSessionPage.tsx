@@ -703,8 +703,8 @@ export function NewSessionPage() {
                             if (slash.isOpen || mention.isOpen) return
                             if (hasContent && canSubmit) handleSubmit()
                         }}
-                        minRows={1}
-                        maxRows={6}
+                        minRows={2}
+                        maxRows={10}
                         aria-label={t('composer.inputLabel', '消息输入框')}
                     />
 
