@@ -50,6 +50,7 @@ export const routeChunkLoaders = {
     NotificationsSection: defineLoader(() => import('@/features/settings/sections/NotificationsSection'), 'NotificationsSection'),
     SettingsIndex: defineLoader(() => import('@/features/settings/sections/SettingsIndex'), 'SettingsIndex'),
     WebToolsSection: defineLoader(() => import('@/features/settings/sections/WebToolsSection'), 'WebToolsSection'),
+    SkillsSection: defineLoader(() => import('@/features/settings/sections/SkillsSection'), 'SkillsSection'),
     MemorySection: defineLoader(() => import('@/features/settings/sections/MemorySection'), 'MemorySection'),
     TelemetrySection: defineLoader(() => import('@/features/settings/sections/TelemetrySection'), 'TelemetrySection'),
     MapSection: defineLoader(() => import('@/features/settings/sections/MapSection'), 'MapSection'),

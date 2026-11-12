@@ -36,6 +36,7 @@ const SettingsPage = lazyRoute(routeChunkLoaders.SettingsPage)
 const NotificationsSection = lazyRoute(routeChunkLoaders.NotificationsSection)
 const SettingsIndex = lazyRoute(routeChunkLoaders.SettingsIndex)
 const WebToolsSection = lazyRoute(routeChunkLoaders.WebToolsSection)
+const SkillsSection = lazyRoute(routeChunkLoaders.SkillsSection)
 const MemorySection = lazyRoute(routeChunkLoaders.MemorySection)
 const TelemetrySection = lazyRoute(routeChunkLoaders.TelemetrySection)
 const MapSection = lazyRoute(routeChunkLoaders.MapSection)
@@ -158,6 +159,12 @@ const settingsWebToolsRoute = createRoute({
     path: 'web-tools',
     component: WebToolsSection,
 })
+// Skills 管理分区（skill-mgmt 迭代 1）
+const settingsSkillsRoute = createRoute({
+    getParentRoute: () => settingsRoute,
+    path: 'skills',
+    component: SkillsSection,
+})
 // 长期记忆分区
 const settingsMemoryRoute = createRoute({
     getParentRoute: () => settingsRoute,
@@ -221,6 +228,7 @@ export const router = createRouter({
                 settingsIndexRoute,
                 settingsNotificationsRoute,
                 settingsWebToolsRoute,
+                settingsSkillsRoute,
                 settingsMemoryRoute,
                 settingsArchivedRoute,
                 settingsTelemetryRoute,

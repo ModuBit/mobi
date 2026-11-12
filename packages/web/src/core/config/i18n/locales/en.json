@@ -750,13 +750,17 @@
         "statusUnconfigured": "Not configured",
         "statusOffline": "Offline"
       },
-      "debug": {
-        "title": "Debug",
-        "desc": "Diagnostics and feature flags"
+      "skills": {
+        "title": "Skills",
+        "desc": "View and toggle personal and project skills"
       },
       "memory": {
         "title": "Long-term Memory",
         "desc": "Mobi remembers across sessions"
+      },
+      "archived": {
+        "title": "Archived sessions",
+        "desc": "Browse and restore archived sessions"
       },
       "telemetry": {
         "title": "Telemetry",
@@ -770,9 +774,9 @@
         "title": "Worktrees",
         "desc": "Kept and leftover worktrees — inspect and dispose"
       },
-      "archived": {
-        "title": "Archived sessions",
-        "desc": "Browse and restore archived sessions"
+      "debug": {
+        "title": "Debug",
+        "desc": "Diagnostics and feature flags"
       }
     },
     "webTools": {
@@ -998,7 +1002,25 @@
       }
     },
     "search": "Search settings",
-    "searchEmpty": "No matching settings"
+    "searchEmpty": "No matching settings",
+    "skills": {
+      "tabGlobal": "Global",
+      "searchPlaceholder": "Search skills",
+      "empty": "No skills yet",
+      "emptyFiltered": "No matching skills",
+      "source": {
+        "personal": "Personal",
+        "synced": "claude.ai",
+        "project": "Project",
+        "plugin": "Plugin"
+      },
+      "trackedFrom": "From {{source}}",
+      "modelOnly": "Manual only",
+      "state": {
+        "off": "Disabled",
+        "shadowed": "Disabled by higher settings"
+      }
+    }
   },
   "debug": {
     "title": "Debug",

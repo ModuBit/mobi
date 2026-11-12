@@ -33,10 +33,10 @@ describe('registry 分组视图', () => {
         debugUnlocked.value = false
     })
 
-    it('默认可见分区归入三组：通用=通知/Web工具/记忆/归档，工具=遥测/地图/Worktree', () => {
+    it('默认可见分区归入三组：通用=通知/Web工具/技能/记忆/归档，工具=遥测/地图/Worktree', () => {
         const groups = groupedSettingsSections()
         expect(groups.map((g) => g.id)).toEqual(['general', 'tools'])
-        expect(groups[0].sections.map((s) => s.id)).toEqual(['notifications', 'web-tools', 'memory', 'archived'])
+        expect(groups[0].sections.map((s) => s.id)).toEqual(['notifications', 'web-tools', 'skills', 'memory', 'archived'])
         expect(groups[1].sections.map((s) => s.id)).toEqual(['telemetry', 'map', 'worktrees'])
     })
 

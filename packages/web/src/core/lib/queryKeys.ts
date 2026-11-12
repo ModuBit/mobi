@@ -86,4 +86,6 @@ export const queryKeys = {
     sdkMetadata: (sessionId: string) => ['sdkMetadata', sessionId] as const,
     /** Web 工具脱敏配置（子页与入口徽标共用同一缓存：状态由 select 派生，保存后失效即两处同步） */
     webToolsConfig: ['web-tools-config'] as const,
+    /** skill 管理列表（skill-mgmt 票 02；global | workspaceId 两视角） */
+    skills: (workspaceId: string) => ['skills', workspaceId] as const,
 }

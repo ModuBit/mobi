@@ -741,13 +741,17 @@
         "statusUnconfigured": "未配置",
         "statusOffline": "不在线"
       },
-      "debug": {
-        "title": "调试",
-        "desc": "诊断信息与实验开关"
+      "skills": {
+        "title": "技能",
+        "desc": "个人与项目 skill 的查看与启停"
       },
       "memory": {
         "title": "长期记忆",
         "desc": "让 mobi 越聊越了解你"
+      },
+      "archived": {
+        "title": "已归档",
+        "desc": "查看与恢复已归档的会话"
       },
       "telemetry": {
         "title": "遥测",
@@ -761,9 +765,9 @@
         "title": "Worktree 管理",
         "desc": "保留/残留工作树的状态与处置"
       },
-      "archived": {
-        "title": "已归档",
-        "desc": "查看与恢复已归档的会话"
+      "debug": {
+        "title": "调试",
+        "desc": "诊断信息与实验开关"
       }
     },
     "webTools": {
@@ -989,7 +993,25 @@
       }
     },
     "search": "搜索设置",
-    "searchEmpty": "没有匹配的设置"
+    "searchEmpty": "没有匹配的设置",
+    "skills": {
+      "tabGlobal": "全局",
+      "searchPlaceholder": "搜索技能",
+      "empty": "没有技能",
+      "emptyFiltered": "没有匹配的技能",
+      "source": {
+        "personal": "个人",
+        "synced": "claude.ai",
+        "project": "项目",
+        "plugin": "插件"
+      },
+      "trackedFrom": "安装自 {{source}}",
+      "modelOnly": "仅手动调用",
+      "state": {
+        "off": "已停用",
+        "shadowed": "被更高层设置停用"
+      }
+    }
   },
   "debug": {
     "title": "调试",

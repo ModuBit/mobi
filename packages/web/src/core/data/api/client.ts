@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, DaemonStatus, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse, ArchivedSessionsPage, ArchivedBatchResponse, ArchivedBatchItemResult } from './types'
-import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, RedactedTelemetrySettings, TelemetrySettingsSubmission, MapSettingsSubmission, MapSettingsView, PermissionAnnotations, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin, WorktreeListResponse, MergeBackResult, MergeBackRequest, DiscardResult, DeleteSessionResponse } from '@mobi/shared'
+import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, RedactedTelemetrySettings, TelemetrySettingsSubmission, MapSettingsSubmission, MapSettingsView, PermissionAnnotations, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin, WorktreeListResponse, MergeBackResult, MergeBackRequest, DiscardResult, DeleteSessionResponse, SkillListResponse } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 import { encodeArchivedWorkspaceId } from '@mobi/shared'
 
@@ -456,6 +456,15 @@ export function createMobiApi() {
             // PATCH /api/sessions/:id 为合并端点（name/workspaceId 共用），此处只发 workspaceId
             assignSession: (sessionId: string, workspaceId: string | null) =>
                 client.patch(`/api/sessions/${sessionId}`, { workspaceId }),
+        },
+
+        // Skills（skill 管理页，skill-mgmt 票 02；CC 内置名单归票 06 独立端点）
+        skills: {
+            // skill 列表（global=个人+synced+插件携带；workspaceId=该项目目录下 project skill）
+            list: (workspaceId: string) =>
+                client.get<SkillListResponse>('/api/skills', {
+                    params: { workspaceId },
+                }),
         },
 
         // Host / daemon（单机：daemon 即宿主；机器列表这一层随 machine 概念移除退场）
