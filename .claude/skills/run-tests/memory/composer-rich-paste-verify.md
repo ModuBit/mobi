@@ -29,6 +29,7 @@ pm.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true,
 - **块级 Markdown 源文本**（`# 标题`/`- 一`/围栏）：`defaultPrevented === true`，DOM 出现 `<h1>`/`<ul>`，`editor.getMarkdown()` 回吐同样结构
 - **行内标记纯文本**（`aa *beta* aa`、`const a = 2 ** 3; // *x*`）：**原样字面**，DOM 无 `<em>/<strong>/<del>`。若出现格式 = StarterKit bold/italic/strike 的 paste rule 又生效了（`enablePasteRules: ['link']` 被改掉）
 - **裸 URL 粘贴**：DOM 出现 `a[href="https://…"]`，wire `[url](url)`（link 的 paste rule 必须保留）
+- **代码块语法高亮**（2026-11-12）：`editor.commands.insertContent('```ts\nconst x = 1\n```', { contentType: 'markdown' })` 后 `pre code` 内出现 `span.hljs-keyword` 等 token；token 颜色双档（dark `rgb(255,123,114)` / light `rgb(215,58,73)`，来自全局 `styles/highlight.css`）。高亮是 Decoration：`editor.getMarkdown()` 仍回吐纯围栏、`getHTML()` 无 span
 
 ## 清理
 

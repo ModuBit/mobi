@@ -18,6 +18,8 @@ import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, type CSSP
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
+import { common, createLowlight } from 'lowlight'
 import { Markdown } from '@tiptap/markdown'
 import Link from '@tiptap/extension-link'
 import { Underline } from '@tiptap/extension-underline'
@@ -44,6 +46,12 @@ import './chat-input.css'
 
 /** 行高常量：对齐现 Sender 输入区视觉（14px 字号 / 22px 行高），min/max 行数 → 像素换算 */
 const LINE_HEIGHT_PX = 22
+
+/**
+ * 代码块语法高亮（lowlight/common 常用语言；配色复用全局 styles/highlight.css 的
+ * hljs 双档主题）。模块级单例与 MarkdownEditorView 同款——lowlight 只读注册表，可共享。
+ */
+const lowlight = createLowlight(common)
 
 /** 程序化写入 meta 标记：区分 setText/setEditorStateJSON 等程序写入与用户输入（防 onUpdate 回环误消费） */
 const PROGRAMMATIC_META = 'chat-input-programmatic'
@@ -353,12 +361,18 @@ export function ChatInput({
         extensions: [
             StarterKit.configure({
                 heading: { levels: [1, 2, 3] }, hardBreak: false, horizontalRule: false,
+                // 内置 codeBlock 关闭：改用下方 CodeBlockLowlight（围栏语言 → hljs 着色，
+                // 与 EditorContent 里看到的消息气泡代码块认知一致）
+                codeBlock: false,
                 // 内置 link 关闭：改用下方 LinkWithInputRule（带 [text](url) 打字规则）
                 link: false,
                 // 内置 underline 关闭：改用下方 UnderlineWithMarkdown（wire 协议 <u>）
                 underline: false,
                 dropcursor: false, gapcursor: false, // undoRedo 保持默认启用（v3 options 只接受 false|配置对象，开=省略）
             }),
+            // 高亮只是 Decorations，不进 doc：wire 序列化仍是 ```lang 围栏（CodeBlock 的
+            // markdownTokenName/parseMarkdown/renderMarkdown 被继承），语言信息不丢
+            CodeBlockLowlight.configure({ lowlight }),
             LinkWithInputRule.configure({ autolink: true, linkOnPaste: true, openOnClick: false }),
             UnderlineWithMarkdown,
             // 表格：只用于粘贴保留（无输入规则、无增删行列 UI，不做表格创作）

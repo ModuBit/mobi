@@ -408,6 +408,17 @@ describe('ChatInput', () => {
             expect(handle.current!.getWireText()).toMatch(/^```js$/m)
         })
 
+        it('代码块按围栏语言着色（lowlight 装饰，不进 wire）', async () => {
+            const { handle, ready } = setup()
+            await ready()
+            typeInto(handle, '```js ')
+            typeInto(handle, 'const a = 1')
+            const editor = handle.current!.getEditor()!
+            // hljs token 是 Decoration（只进视图），wire 仍是纯围栏文本
+            expect(editor.view.dom.querySelector('pre code .hljs-keyword')?.textContent).toBe('const')
+            expect(handle.current!.getWireText().trimEnd()).toBe('```js\nconst a = 1\n```')
+        })
+
         it('列表项内 Shift+Enter → 新建列表项（不退出列表）', async () => {
             const onSubmit = vi.fn()
             const { handle, ready, typeKey } = setup({ onSubmit })
