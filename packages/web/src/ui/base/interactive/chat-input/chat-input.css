@@ -95,6 +95,12 @@
     padding-left: 1.5em;
 }
 
+/* 块间节奏：消息气泡段落间距 1em，输入区压到 0.5em。纯段落分隔（粘贴/空行）必须有
+   可见间距，否则多段文本在输入区看起来只是连续换行；末块留白归容器，不白吃行数换算。 */
+.chat-input .ProseMirror > *:not(:last-child) {
+    margin-bottom: 0.5em;
+}
+
 .chat-input .ProseMirror ul {
     list-style: disc;
 }
@@ -150,12 +156,13 @@ html[data-theme='dark'] .chat-input .ProseMirror pre {
     font-size: inherit;
 }
 
-/* 表格（仅粘贴保留）：网格线/表头底色与消息表格同 token，单元格内衬收紧 */
+/* 表格（仅粘贴保留）：外框/表头底色/斑马纹与消息表格同 token，单元格内衬略收紧 */
 .chat-input .ProseMirror table {
     display: block;
     max-width: 100%;
     overflow-x: auto;
     margin: 0.25em 0;
+    border: 1px solid var(--mobi-hairline);
     border-collapse: collapse;
     font-size: 0.875em;
     line-height: 1.5;
@@ -163,18 +170,29 @@ html[data-theme='dark'] .chat-input .ProseMirror pre {
 
 .chat-input .ProseMirror th,
 .chat-input .ProseMirror td {
-    padding: 4px 8px;
+    padding: 6px 10px;
     border: 1px solid var(--mobi-hairline);
     text-align: left;
 }
 
 .chat-input .ProseMirror th {
     font-weight: 600;
+    white-space: nowrap;
     background: var(--mobi-selected);
 }
 
 html[data-theme='dark'] .chat-input .ProseMirror th {
     background: var(--mobi-elevated);
+}
+
+/* 斑马纹：偶数数据行着色、奇数行透底（与消息表格同规则）。
+   ProseMirror 表格没有 thead，表头行也是 tbody 首行（th），需跳过它再按数据行奇偶取色 */
+.chat-input .ProseMirror tbody tr:nth-child(odd):not(:first-child) {
+    background: var(--mobi-hover);
+}
+
+html[data-theme='dark'] .chat-input .ProseMirror tbody tr:nth-child(odd):not(:first-child) {
+    background: var(--mobi-selected);
 }
 
 .chat-input .ProseMirror td p,
