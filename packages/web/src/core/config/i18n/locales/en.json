@@ -1016,6 +1016,9 @@
       },
       "trackedFrom": "From {{source}}",
       "modelOnly": "Manual only",
+      "toggleAria": "Enable or disable skill {{name}}",
+      "shadowedToast": "Enabled at this layer, but still disabled by a higher (managed or local) settings layer",
+      "toggleFailed": "Operation failed, please retry",
       "state": {
         "off": "Disabled",
         "shadowed": "Disabled by higher settings"

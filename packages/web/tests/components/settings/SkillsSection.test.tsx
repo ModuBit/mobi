@@ -18,22 +18,53 @@ import { describe, expect, it, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import type { SkillInfo } from '@mobi/shared'
 
+/** vi.mock 工厂提升先于 const 声明，被工厂引用的桩须 vi.hoisted */
+const { mockMessage, mockMutate, mockVisibility } = vi.hoisted(() => {
+    return {
+        /** toast 断言靶（App.useApp 返回的 message） */
+        mockMessage: { warning: vi.fn(), error: vi.fn() },
+        /** 票 03 启停 mutation 桩：默认静默成功，用例可改写 mutate 行为 */
+        mockMutate: vi.fn(),
+        mockVisibility: {
+            mutate: null as unknown as ReturnType<typeof vi.fn>,
+            isPending: false,
+            variables: null as { name: string } | null,
+        },
+    }
+})
+mockVisibility.mutate = mockMutate
+
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
     initReactI18next: { type: '3rd-party', init: () => {} },
 }))
+vi.mock('antd', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('antd')>()
+    return {
+        ...actual,
+        // App.useApp 的 message 走 mock（toast 断言直接看调用）
+        App: { ...actual.App, useApp: () => ({ message: mockMessage }) },
+    }
+})
 vi.mock('@/core/data/hooks/queries/useWorkspaces', () => ({
     useWorkspaces: vi.fn(),
 }))
 vi.mock('@/core/data/hooks/queries/useSkills', () => ({
     useSkills: vi.fn(),
+    // 默认桩（旧用例不关心启停），票 03 用例再 mockReturnValue 覆盖
+    useSkillVisibility: vi.fn(() => mockVisibility),
 }))
 
 import { SkillsSection } from '@/features/settings/sections/SkillsSection'
-import { useSkills } from '@/core/data/hooks/queries/useSkills'
+import { useSkills, useSkillVisibility } from '@/core/data/hooks/queries/useSkills'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 
-afterEach(() => cleanup())
+afterEach(() => {
+    cleanup()
+    vi.clearAllMocks()
+    mockVisibility.isPending = false
+    mockVisibility.variables = null
+})
 
 /** fixture：三来源 + 遮蔽/停用/只读各一（字段省略处走 schema 缺省） */
 const GLOBAL_SKILLS = [
@@ -140,5 +171,61 @@ describe('SkillsSection（票 02：tabs + 列表 + 搜索）', () => {
         render(<SkillsSection />)
 
         expect(screen.getByText('settings.skills.empty')).toBeTruthy()
+    })
+})
+
+describe('SkillsSection（票 03：启停开关）', () => {
+    function setupGlobal() {
+        vi.mocked(useWorkspaces).mockReturnValue({ data: [] } as never)
+        vi.mocked(useSkills).mockImplementation(mockSkillsByScope)
+        vi.mocked(useSkillVisibility).mockReturnValue(mockVisibility as never)
+        render(<SkillsSection />)
+    }
+
+    /** 找某 skill 行内的 Switch（role=switch） */
+    function switchOf(name: string): HTMLElement {
+        const row = screen.getByText(name).closest('[data-skill-name]')!
+        return row.querySelector('[role="switch"]')!
+    }
+
+    it('overrideable 行渲染开关，点击携带当前 tab 与目标态发起 mutation', () => {
+        setupGlobal()
+
+        // alpha（personal，overrideable）有开关；plug（plugin，只读）没有
+        expect(switchOf('alpha')).toBeTruthy()
+        expect(switchOf('plug')).toBeNull()
+
+        fireEvent.click(switchOf('alpha'))
+        expect(mockMutate).toHaveBeenCalledWith(
+            { name: 'alpha', enabled: false, workspaceId: 'global' },
+            expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+        )
+    })
+
+    it('打开后被更高层压制：响应 effectiveState=off → 弹遮蔽提示', () => {
+        setupGlobal()
+
+        fireEvent.click(switchOf('plain-off')) // off → on
+        const opts = mockMutate.mock.calls[0]![1]!
+        opts.onSuccess({ effectiveState: 'off' })
+        expect(mockMessage.warning).toHaveBeenCalledWith('settings.skills.shadowedToast')
+    })
+
+    it('打开后正常生效：不弹遮蔽提示', () => {
+        setupGlobal()
+
+        fireEvent.click(switchOf('plain-off'))
+        const opts = mockMutate.mock.calls[0]![1]!
+        opts.onSuccess({ effectiveState: null })
+        expect(mockMessage.warning).not.toHaveBeenCalled()
+    })
+
+    it('失败：弹错误提示', () => {
+        setupGlobal()
+
+        fireEvent.click(switchOf('alpha'))
+        const opts = mockMutate.mock.calls[0]![1]!
+        opts.onError(new Error('x'))
+        expect(mockMessage.error).toHaveBeenCalledWith('settings.skills.toggleFailed')
     })
 })

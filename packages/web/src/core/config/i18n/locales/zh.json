@@ -1007,6 +1007,9 @@
       },
       "trackedFrom": "安装自 {{source}}",
       "modelOnly": "仅手动调用",
+      "toggleAria": "启用或停用技能 {{name}}",
+      "shadowedToast": "已在当前设置层启用，但仍被更高层（托管或本地）设置停用",
+      "toggleFailed": "操作失败，请重试",
       "state": {
         "off": "已停用",
         "shadowed": "被更高层设置停用"

@@ -15,13 +15,15 @@
  */
 
 /**
- * skill 列表行（skill-mgmt 票 02）：名字 + 描述 + 来源/渠道/调用性徽标 + 生效态。
- * 开关/删除入口归票 03/04（本票纯展示，插件/内置行只读语义由 overrideable 字段承载）。
+ * skill 列表行（skill-mgmt 票 02/03）：名字 + 描述 + 来源/渠道/调用性徽标 + 生效态 + 启停开关。
+ * 开关只在 overrideable 行出现（插件/内置行只读语义由该字段承载）；开关交互编排归分区层。
  */
 import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { SkillInfo, SkillSource } from '@mobi/shared'
+// uiarc 自管件（antd Switch 迁移）：行右槽启停
+import { Switch } from '@/ui/shadcn/switch/switch'
 
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
@@ -100,11 +102,22 @@ const SOURCE_TAG_KEY: Record<SkillSource, string> = {
     plugin: 'settings.skills.source.plugin',
 }
 
+const Right = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+`
+
 export interface SkillRowProps {
     skill: SkillInfo
+    /** 启停回调（仅 overrideable 行传入）；未传 = 只读行无开关 */
+    onToggle?: (enabled: boolean) => void
+    /** 开关请求进行中（单行级，避免整列表闪烁） */
+    toggling?: boolean
 }
 
-export function SkillRow({ skill }: SkillRowProps) {
+export function SkillRow({ skill, onToggle, toggling = false }: SkillRowProps) {
     const { token } = useToken()
     const { t } = useTranslation()
 
@@ -127,8 +140,18 @@ export function SkillRow({ skill }: SkillRowProps) {
                 </NameRow>
                 {skill.description && <Desc $token={token}>{skill.description}</Desc>}
             </Main>
-            {shadowed && <StateBadge $token={token} $warn>{t('settings.skills.state.shadowed')}</StateBadge>}
-            {!shadowed && off && <StateBadge $token={token} $warn={false}>{t('settings.skills.state.off')}</StateBadge>}
+            <Right>
+                {shadowed && <StateBadge $token={token} $warn>{t('settings.skills.state.shadowed')}</StateBadge>}
+                {!shadowed && off && <StateBadge $token={token} $warn={false}>{t('settings.skills.state.off')}</StateBadge>}
+                {onToggle && (
+                    <Switch
+                        checked={!off}
+                        disabled={toggling}
+                        onCheckedChange={onToggle}
+                        aria-label={t('settings.skills.toggleAria', { name: skill.name })}
+                    />
+                )}
+            </Right>
         </Row>
     )
 }

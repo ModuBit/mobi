@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, DaemonStatus, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse, ArchivedSessionsPage, ArchivedBatchResponse, ArchivedBatchItemResult } from './types'
-import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, RedactedTelemetrySettings, TelemetrySettingsSubmission, MapSettingsSubmission, MapSettingsView, PermissionAnnotations, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin, WorktreeListResponse, MergeBackResult, MergeBackRequest, DiscardResult, DeleteSessionResponse, SkillListResponse } from '@mobi/shared'
+import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, RedactedTelemetrySettings, TelemetrySettingsSubmission, MapSettingsSubmission, MapSettingsView, PermissionAnnotations, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin, WorktreeListResponse, MergeBackResult, MergeBackRequest, DiscardResult, DeleteSessionResponse, SkillListResponse, SkillInfo } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 import { encodeArchivedWorkspaceId } from '@mobi/shared'
 
@@ -458,12 +458,18 @@ export function createMobiApi() {
                 client.patch(`/api/sessions/${sessionId}`, { workspaceId }),
         },
 
-        // Skills（skill 管理页，skill-mgmt 票 02；CC 内置名单归票 06 独立端点）
+        // Skills（skill 管理页，skill-mgmt 票 02/03；CC 内置名单归票 06 独立端点）
         skills: {
             // skill 列表（global=个人+synced+插件携带；workspaceId=该项目目录下 project skill）
             list: (workspaceId: string) =>
                 client.get<SkillListResponse>('/api/skills', {
                     params: { workspaceId },
+                }),
+            // 启停：写归属层 skillOverrides；响应带回刷新后的行（遮蔽态即时可见）
+            setVisibility: (name: string, enabled: boolean, workspaceId: string) =>
+                client.patch<{ skill: SkillInfo }>(`/api/skills/${encodeURIComponent(name)}/visibility`, {
+                    enabled,
+                    workspaceId,
                 }),
         },
 

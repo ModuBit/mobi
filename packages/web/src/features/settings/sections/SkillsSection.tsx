@@ -15,17 +15,17 @@
  */
 
 /**
- * 设置页 Skills 分区（skill-mgmt 票 02）：tabs（全局 + 每工作区）+ 搜索 + 列表。
+ * 设置页 Skills 分区（skill-mgmt 票 02/03）：tabs（全局 + 每工作区）+ 搜索 + 列表 + 启停开关。
  * 数据视角由 daemon 承载（global=个人+synced+插件携带；工作区 tab=该项目 skill）；
  * tabs 容器与行布局为迭代 2/3（mcp/plugin 管理页）预留同构骨架。
  */
 import { useMemo, useState } from 'react'
-import { theme as antTheme, Tabs, Spin } from 'antd'
+import { App, theme as antTheme, Tabs, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { SkillInfo } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
-import { useSkills } from '@/core/data/hooks/queries/useSkills'
+import { useSkillVisibility, useSkills } from '@/core/data/hooks/queries/useSkills'
 import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { SkillRow } from '@/features/settings/skills/SkillRow'
@@ -66,13 +66,32 @@ function filterSkills(skills: SkillInfo[], keyword: string): SkillInfo[] {
 export function SkillsSection() {
     const { token } = useToken()
     const { t } = useTranslation()
+    const { message } = App.useApp()
     const [tab, setTab] = useState<string>(GLOBAL_TAB)
     const [keyword, setKeyword] = useState('')
 
     const { data: workspaces } = useWorkspaces()
     const { skills, isLoading } = useSkills(tab)
+    const visibility = useSkillVisibility()
 
     const filtered = useMemo(() => filterSkills(skills, keyword), [skills, keyword])
+
+    /** 启停：失败报错；成功后归属层已开但生效仍关 → 更高层压制提示 */
+    const handleToggle = (skill: SkillInfo) => (enabled: boolean) => {
+        visibility.mutate(
+            { name: skill.name, enabled, workspaceId: tab },
+            {
+                onSuccess: (refreshed) => {
+                    if (enabled && refreshed?.effectiveState === 'off') {
+                        message.warning(t('settings.skills.shadowedToast'))
+                    }
+                },
+                onError: () => {
+                    message.error(t('settings.skills.toggleFailed'))
+                },
+            },
+        )
+    }
 
     const tabItems = useMemo(
         () => [
@@ -102,7 +121,12 @@ export function SkillsSection() {
             ) : filtered.length > 0 ? (
                 <SettingGroupCard>
                     {filtered.map(skill => (
-                        <SkillRow key={`${skill.source}:${skill.name}`} skill={skill} />
+                        <SkillRow
+                            key={`${skill.source}:${skill.name}`}
+                            skill={skill}
+                            onToggle={skill.overrideable ? handleToggle(skill) : undefined}
+                            toggling={visibility.isPending && visibility.variables?.name === skill.name}
+                        />
                     ))}
                 </SettingGroupCard>
             ) : (

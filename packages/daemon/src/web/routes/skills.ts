@@ -15,16 +15,38 @@
  */
 
 /**
- * GET /api/skills（skill-mgmt 票 01）：skill 管理页列表。
+ * Skills 管理路由（skill-mgmt 票 01/03）。
  *
- * - workspaceId=global（或缺省）：个人 + synced + 插件携带（CC 内置归票 06 独立端点）
- * - workspaceId=<id>：该工作区目录下的 project skill（被 personal 同名遮蔽的不返回）
+ * - GET /api/skills?workspaceId=global|<id>：列表（global=个人+synced+插件携带；CC 内置归票 06 独立端点）
+ * - PATCH /api/skills/:name/visibility：启停写归属层 skillOverrides（personal→user settings、
+ *   project→workspace project settings），响应带回刷新后的行（遮蔽态即时可见）
  */
 import { Hono } from 'hono'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSyncEngine } from './guards'
 import { defaultSkillScanRoots, listGlobalSkills, listWorkspaceSkills, type SkillScanRoots } from '../../skills/skillScanner'
+import { writeSkillOverride } from '../../skills/skillSettingsWriter'
+import type { SkillInfo } from '@mobi/shared'
+
+/** workspaceId → 扫描视角；global 返回 null，未知 id 返回 'not-found'，无 folder 返回 'no-folder' */
+function resolveScope(
+    engine: SyncEngine,
+    workspaceId: string,
+): { kind: 'global' } | { kind: 'workspace'; path: string } | { kind: 'not-found' } | { kind: 'no-folder' } {
+    if (workspaceId === 'global') return { kind: 'global' }
+    const workspace = engine.getWorkspace(workspaceId)
+    if (!workspace) return { kind: 'not-found' }
+    // 多 folder workspace 以 primary folder 为 skill 扫描根（CC 语义按 cwd 所在目录）
+    const primary = workspace.folders.find(f => f.primary) ?? workspace.folders[0]
+    if (!primary) return { kind: 'no-folder' }
+    return { kind: 'workspace', path: primary.path }
+}
+
+/** 在指定视角清单中找目标 skill 行（PATCH 后回读刷新值用） */
+function findSkill(skills: SkillInfo[], name: string): SkillInfo | undefined {
+    return skills.find(s => s.name === name)
+}
 
 export function createSkillsRoutes(
     getSyncEngine: () => SyncEngine | null,
@@ -37,22 +59,50 @@ export function createSkillsRoutes(
         if (engine instanceof Response) return engine
 
         const scanRoots = roots ?? defaultSkillScanRoots()
-        const workspaceId = c.req.query('workspaceId') ?? 'global'
+        const scope = resolveScope(engine, c.req.query('workspaceId') ?? 'global')
+        if (scope.kind === 'not-found') return c.json({ error: 'Workspace not found' }, 404)
+        if (scope.kind === 'no-folder') return c.json({ error: 'Workspace has no folder' }, 400)
+        const skills = scope.kind === 'global' ? listGlobalSkills(scanRoots) : listWorkspaceSkills(scanRoots, scope.path)
+        return c.json({ skills })
+    })
 
-        if (workspaceId === 'global') {
-            return c.json({ skills: listGlobalSkills(scanRoots) })
+    app.patch('/skills/:name/visibility', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const body = await c.req.json().catch(() => null) as { enabled?: unknown; workspaceId?: unknown } | null
+        if (!body || typeof body.enabled !== 'boolean' || typeof body.workspaceId !== 'string') {
+            return c.json({ error: 'Invalid body' }, 400)
         }
 
-        const workspace = engine.getWorkspace(workspaceId)
-        if (!workspace) {
-            return c.json({ error: 'Workspace not found' }, 404)
+        const scanRoots = roots ?? defaultSkillScanRoots()
+        const scope = resolveScope(engine, body.workspaceId)
+        if (scope.kind === 'not-found') return c.json({ error: 'Workspace not found' }, 404)
+        if (scope.kind === 'no-folder') return c.json({ error: 'Workspace has no folder' }, 400)
+
+        const skillName = c.req.param('name')
+        const current = scope.kind === 'global'
+            ? findSkill(listGlobalSkills(scanRoots), skillName)
+            : findSkill(listWorkspaceSkills(scanRoots, scope.path), skillName)
+        // 未知名字与只读行（plugin/synced，skillOverrides 不生效）都不提供开关
+        if (!current) return c.json({ error: 'Skill not found' }, 404)
+        if (!current.overrideable) return c.json({ error: 'Skill is read-only' }, 400)
+
+        // 归属层：personal → user settings（~/.claude/settings.json）；project → workspace project settings
+        const ownSettingsPath = current.source === 'project' && scope.kind === 'workspace'
+            ? `${scope.path}/.claude/settings.json`
+            : `${scanRoots.claudeConfigDir}/settings.json`
+
+        const state = body.enabled ? 'on' : 'off'
+        if (!writeSkillOverride(ownSettingsPath, skillName, state)) {
+            return c.json({ error: 'Settings file is corrupted' }, 500)
         }
-        // 多 folder workspace 以 primary folder 为 skill 扫描根（CC 语义按 cwd 所在目录）
-        const primary = workspace.folders.find(f => f.primary) ?? workspace.folders[0]
-        if (!primary) {
-            return c.json({ error: 'Workspace has no folder' }, 400)
-        }
-        return c.json({ skills: listWorkspaceSkills(scanRoots, primary.path) })
+
+        // 回读刷新后的行（遮蔽态由多层合成，回读是唯一权威）
+        const refreshed = scope.kind === 'global'
+            ? findSkill(listGlobalSkills(scanRoots), skillName)
+            : findSkill(listWorkspaceSkills(scanRoots, scope.path), skillName)
+        return c.json({ skill: refreshed })
     })
 
     return app

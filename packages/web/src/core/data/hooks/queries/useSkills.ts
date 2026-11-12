@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { SkillInfo } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/queryKeys'
@@ -34,4 +34,24 @@ export function useSkills(workspaceId: string): { skills: SkillInfo[]; isLoading
         },
     })
     return { skills: query.data ?? [], isLoading: query.isPending }
+}
+
+/**
+ * skill 启停（skill-mgmt 票 03）：写归属层 skillOverrides 后 invalidate 换新列表。
+ * 本地扫描 ms 级，invalidate 同步刷新不可感知，不做显式乐观更新；
+ * 成功后带回刷新行（遮蔽态由响应承载，调用方据此弹压制提示）。
+ */
+export function useSkillVisibility() {
+    const api = useMobiApi()
+    const queryClient = useQueryClient()
+
+    return useMutation({
+        mutationFn: async (vars: { name: string; enabled: boolean; workspaceId: string }) => {
+            const res = await api.skills.setVisibility(vars.name, vars.enabled, vars.workspaceId)
+            return res.data.skill
+        },
+        onSuccess: (_skill, vars) => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.skills(vars.workspaceId) })
+        },
+    })
 }

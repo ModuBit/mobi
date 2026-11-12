@@ -23,7 +23,7 @@
  * - 同名裁决（personal 胜 project；本地胜 synced）/ 损坏条目隐藏
  */
 import { homedir, tmpdir } from 'node:os'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import type { Server } from 'socket.io'
@@ -293,5 +293,74 @@ describe('skills REST 路由（GET /api/skills）', () => {
         expect(res.status).toBe(200)
         expect(byName(skills, 'alpha')).toBeDefined()
         expect(byName(skills, 'proj-plain')).toBeUndefined()
+    })
+
+    describe('PATCH /api/skills/:name/visibility（写归属层 skillOverrides）', () => {
+        async function patchVisibility(name: string, body: object): Promise<{ res: Response; data: any }> {
+            const res = await app.request(`/api/skills/${encodeURIComponent(name)}/visibility`, {
+                method: 'PATCH',
+                headers: { ...authHeaders, 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            })
+            return { res, data: res.status === 200 ? await res.json() : null }
+        }
+
+        test('personal 开→关：写 user settings 且保留既有键；生效态刷新', async () => {
+            const { res, data } = await patchVisibility('alpha', { enabled: false, workspaceId: 'global' })
+            expect(res.status).toBe(200)
+
+            // 落盘：新键写入 + 既有 personal-off 键保留（最小侵入）
+            const written = JSON.parse(readFileSync(join(claudeDir, 'settings.json'), 'utf-8'))
+            expect(written.skillOverrides.alpha).toBe('off')
+            expect(written.skillOverrides['personal-off']).toBe('off')
+
+            // 响应带回刷新后的行（供前端即时更新遮蔽态）
+            expect(data.skill.effectiveState).toBe('off')
+            expect(data.skill.ownState).toBe('off')
+
+            // 列表复查
+            const { skills } = await listSkills('?workspaceId=global')
+            expect(byName(skills, 'alpha')!.effectiveState).toBe('off')
+
+            // 还原（后续用例依赖初始态）
+            await patchVisibility('alpha', { enabled: true, workspaceId: 'global' })
+        })
+
+        test('managed 压制下的打开：ownState=on 但响应 effectiveState 仍 off（压制反馈）', async () => {
+            // alpha 被 managed-settings 压制；写 on 后归属层 on、生效仍 off
+            await patchVisibility('alpha', { enabled: true, workspaceId: 'global' })
+            const { skills } = await listSkills('?workspaceId=global')
+            const alpha = byName(skills, 'alpha')!
+            expect(alpha.ownState).toBe('on')
+            expect(alpha.effectiveState).toBe('off')
+            expect(alpha.effectiveFromLayer).toBe('managed')
+        })
+
+        test('project 开关：写 workspace 的 project settings 且保留既有键', async () => {
+            const { res } = await patchVisibility('proj-plain', { enabled: false, workspaceId: workspaceId })
+            expect(res.status).toBe(200)
+
+            const written = JSON.parse(readFileSync(join(wsDir, '.claude', 'settings.json'), 'utf-8'))
+            expect(written.skillOverrides['proj-plain']).toBe('off')
+            expect(written.skillOverrides['proj-x']).toBe('off')
+            expect(written.skillOverrides['proj-shadow']).toBe('on')
+
+            await patchVisibility('proj-plain', { enabled: true, workspaceId: workspaceId })
+        })
+
+        test('只读行（plugin）→ 400', async () => {
+            const { res } = await patchVisibility('plug-skill', { enabled: false, workspaceId: 'global' })
+            expect(res.status).toBe(400)
+        })
+
+        test('无效 workspaceId → 404', async () => {
+            const { res } = await patchVisibility('alpha', { enabled: false, workspaceId: 'nope' })
+            expect(res.status).toBe(404)
+        })
+
+        test('非法 body → 400', async () => {
+            const { res } = await patchVisibility('alpha', { enabled: 'yes', workspaceId: 'global' })
+            expect(res.status).toBe(400)
+        })
     })
 })
