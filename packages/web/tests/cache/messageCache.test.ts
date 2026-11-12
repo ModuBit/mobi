@@ -265,6 +265,42 @@ describe('resolveMessageCache', () => {
         expect(result).toBe(cache) // 无变化，引用相等
     })
 
+    it('skipIfNotSnapshot 命中乐观行（seq=null）→ 采用服务端 positionAt/createdAt（跨设备时钟偏快防护）', () => {
+        // 乐观行排序锚点取浏览器时钟；远端设备时钟偏快时锚点落在未来，后到的 !bash
+        // 合成工具消息会被乱序守卫判成逆序 → 用户气泡坠到工具卡下方。服务端 echo
+        // 首次落库（seq 补齐）时必须以服务端锚点为准
+        const optimistic = makeMsg({
+            id: 'msg-1',
+            seq: null as unknown as number,
+            positionAt: 100_000,
+            createdAt: 100_000,
+            content: makeContent('p1', []),
+        })
+        const cache = resolveMessageCache(undefined, optimistic)
+
+        const received = makeMsg({
+            id: 'msg-1',
+            seq: 66,
+            positionAt: 2_000,
+            createdAt: 2_000,
+            content: makeContent('p1', []),
+        })
+        const result = resolveMessageCache(cache, received, { skipIfNotSnapshot: true })
+        expect(result).toHaveLength(1)
+        expect(result[0].positionAt).toBe(2_000)
+        expect(result[0].createdAt).toBe(2_000)
+    })
+
+    it('已落库行（seq 已有值）不被后续广播回改 positionAt', () => {
+        // 消费后 messages-submitted 会把 positionAt 跳到消费时刻；陈旧广播不得把它拉回旧锚点
+        const row = makeMsg({ id: 'msg-1', seq: 66, positionAt: 5_000, createdAt: 5_000, content: makeContent('p1', []) })
+        const cache = resolveMessageCache(undefined, row)
+
+        const stale = makeMsg({ id: 'msg-1', seq: 66, positionAt: 2_000, createdAt: 2_000, content: makeContent('p1', []) })
+        const result = resolveMessageCache(cache, stale, { skipIfNotSnapshot: true })
+        expect(result).toBe(cache) // 无变化，引用相等
+    })
+
     it('skipIfNotSnapshot 命中时，lifecycle 广播（rank 前进）单调合并——pushed 行推进为 done', () => {
         // hub 终态推进后逐行广播 update new-message（载荷含推进后 lifecycle/lifecycleAt），
         // 已渲染行只 merge metadata 会丢弃 lifecycle → 刷新才见（messages-bound 当年同坑），此处同点修复

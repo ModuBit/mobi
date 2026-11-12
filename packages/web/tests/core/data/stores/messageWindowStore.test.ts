@@ -361,6 +361,33 @@ describe('queued/optimistic actions', () => {
         expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'b', 'q'])
     })
 
+    it('乐观行锚点被服务端 echo 校正后重排（跨设备时钟偏快：用户消息不坠到工具卡下方）', () => {
+        ingestIncomingMessages('s1', [msg('a', 1)])
+        // 客户端时钟偏快：乐观 positionAt 落在未来（900）
+        appendOptimisticMessage('s1', {
+            ...msg('opt', null),
+            localId: 'loc-opt',
+            positionAt: 900,
+            createdAt: 900,
+            status: 'sending' as MessageStatus,
+        } as DecryptedMessage)
+        // 服务端 !bash 合成工具消息（position 150）后到：乱序守卫把工具行插到乐观行之前
+        const tool = { ...msg('tool', 2), positionAt: 150, createdAt: 150 } as DecryptedMessage
+        ingestIncomingMessages('s1', [tool])
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'tool', 'opt'])
+
+        // 用户消息 echo（同 id，服务端锚点 120）→ 锚点校正后应回到工具行之前
+        const echo = {
+            ...msg('opt', 3),
+            localId: 'loc-opt',
+            positionAt: 120,
+            createdAt: 120,
+            status: 'sent' as MessageStatus,
+        } as DecryptedMessage
+        ingestIncomingMessages('s1', [echo], { skipIfNotSnapshot: true })
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'opt', 'tool'])
+    })
+
     it('updateMessageStatus 改 status', () => {
         const m = { ...msg('x', null), localId: 'loc-1', status: 'sending' as MessageStatus } as DecryptedMessage
         appendOptimisticMessage('s1', m)

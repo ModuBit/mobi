@@ -131,6 +131,13 @@ export function resolveMessageCache(
             const merged = mergeNativeMetadata(prevMsg.metadata, msg.metadata)
             // 乐观消息 seq=null → 落库消息带真实 seq：补 seq，否则 rewindFrom 的 `seq == null` 永远保留它
             const seq = prevMsg.seq == null && msg.seq != null ? msg.seq : prevMsg.seq
+            // 排序锚点「乐观 → 落库」这一次迁移必须以服务端为准：乐观行的 positionAt/createdAt
+            // 取浏览器时钟，跨设备访问（Mobi 常态）时客户端时钟偏快会让锚点落在未来——后到的
+            // !bash 合成 tool_use 被乱序守卫判成逆序，用户气泡坠到工具卡下方。只在首次落库时采用，
+            // 之后不回改：消费后的 position 跳变（messages-submitted）不能被陈旧广播覆盖
+            const adoptServerAnchor = prevMsg.seq == null && msg.seq != null
+            const positionAt = adoptServerAnchor ? (msg.positionAt ?? prevMsg.positionAt) : prevMsg.positionAt
+            const createdAt = adoptServerAnchor ? msg.createdAt : prevMsg.createdAt
             // lifecycle 广播（daemon 终态推进的 update new-message）单调合并：rank 前进才接受——
             // 与 messages-bound 补写当年同坑（只落库 Web 不更新、刷新才见），同点修复。
             // lifecycleAt 随 lifecycle 推进同步（广播缺 lifecycleAt 时保留旧值）
@@ -141,9 +148,10 @@ export function resolveMessageCache(
                 lifecycleAt = msg.lifecycleAt ?? prevMsg.lifecycleAt
             }
             if (merged !== prevMsg.metadata || seq !== prevMsg.seq
+                || positionAt !== prevMsg.positionAt || createdAt !== prevMsg.createdAt
                 || lifecycle !== prevMsg.lifecycle || lifecycleAt !== prevMsg.lifecycleAt) {
                 const updated = base.slice()
-                updated[existingIdx] = { ...prevMsg, metadata: merged, seq, lifecycle, lifecycleAt }
+                updated[existingIdx] = { ...prevMsg, metadata: merged, seq, positionAt, createdAt, lifecycle, lifecycleAt }
                 return updated
             }
             return base
