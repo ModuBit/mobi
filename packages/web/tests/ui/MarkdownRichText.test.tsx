@@ -20,16 +20,8 @@
  * 空白工作区场景，聚焦「发送后的消息能显示 composer 富文本」这条链路。
  */
 
-import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 
-// Popconfirm（rc resize-observer）依赖 ResizeObserver，jsdom 没有
-beforeAll(() => {
-    vi.stubGlobal('ResizeObserver', class {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-    })
-})
 import { render, cleanup, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 
@@ -48,14 +40,8 @@ vi.mock('react-i18next', async (orig) => {
 
 vi.mock('@/core/data/api/client', async (orig) => {
     const actual = await orig<typeof import('@/core/data/api/client')>()
-    return {
-        ...actual,
-        useMobiApi: () => ({
-            sessions: {
-                get: async () => ({ data: { session: { id: 'sess-1', active: true } } }),
-            },
-        }),
-    }
+    const helper = await import('../helpers/sessionActionMocks')
+    return { ...actual, useMobiApi: helper.useMobiApi }
 })
 
 import { Markdown } from '@/ui/base/markdown/Markdown'

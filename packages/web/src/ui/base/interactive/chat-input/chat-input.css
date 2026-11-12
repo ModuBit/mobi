@@ -22,8 +22,8 @@
     /* 内衬对齐原 antd Sender（paddingSM=12px 四周，textarea 行 paddingInline:0——
        内衬由卡容器承载）；由消费方按需覆盖 */
     padding: 12px;
-    min-height: var(--chat-input-min-h, 22px);
-    max-height: var(--chat-input-max-h, 110px);
+    min-height: var(--chat-input-min-h, 44px);
+    max-height: var(--chat-input-max-h, 220px);
 }
 
 /* EditorContent 的包裹 div（TipTap 默认渲染）：必须参与 flex 收缩，
@@ -66,32 +66,32 @@
     font-weight: 600;
 }
 
-/* 标题：字号层级与消息一致（h1 1.25em / h2 1.1em / h3 1em），只收紧上下间距 */
-.chat-input .ProseMirror h1 {
-    font-size: 1.25em;
+/* 标题：字号层级与消息一致（h1 1.25em / h2 1.1em / h3 1em），只收紧上下间距。
+   下距由块间节奏规则统一给（非末块 0.5em） */
+.chat-input .ProseMirror h1,
+.chat-input .ProseMirror h2,
+.chat-input .ProseMirror h3 {
     font-weight: 600;
     line-height: 1.4;
-    margin: 0.5em 0 0.25em;
+    margin: 0.5em 0 0;
+}
+
+.chat-input .ProseMirror h1 {
+    font-size: 1.25em;
 }
 
 .chat-input .ProseMirror h2 {
     font-size: 1.1em;
-    font-weight: 600;
-    line-height: 1.4;
-    margin: 0.5em 0 0.25em;
 }
 
 .chat-input .ProseMirror h3 {
     font-size: 1em;
-    font-weight: 600;
-    line-height: 1.4;
-    margin: 0.5em 0 0.25em;
 }
 
 /* 列表：Tailwind preflight 清了 padding/list-style，必须显式恢复，否则条目无圆点/序号 */
 .chat-input .ProseMirror ul,
 .chat-input .ProseMirror ol {
-    margin: 0.25em 0;
+    margin: 0.25em 0 0;
     padding-left: 1.5em;
 }
 
@@ -115,15 +115,15 @@
 
 /* 引用块：左边线与消息同 token */
 .chat-input .ProseMirror blockquote {
-    margin: 0.25em 0;
+    margin: 0.25em 0 0;
     padding-left: 10px;
     border-left: 3px solid var(--mobi-ink-quaternary);
-    color: var(--ant-color-text-secondary);
+    color: var(--mobi-ink-secondary);
 }
 
 /* 行内码 */
 .chat-input .ProseMirror code {
-    font-family: var(--mobi-font-mono, 'JetBrains Mono', 'Fira Code', Consolas, monospace);
+    font-family: var(--font-mono);
     font-size: 0.9em;
     padding: 1px 4px;
     border-radius: var(--radius-control-sm);
@@ -136,7 +136,7 @@ html[data-theme='dark'] .chat-input .ProseMirror code {
 
 /* 代码块：底色/圆角与消息代码块同 token；块内 code 透底去内衬 */
 .chat-input .ProseMirror pre {
-    margin: 0.25em 0;
+    margin: 0.25em 0 0;
     padding: 8px 10px;
     border-radius: var(--radius-control-sm);
     background: var(--ant-color-fill-quaternary);
@@ -161,7 +161,7 @@ html[data-theme='dark'] .chat-input .ProseMirror pre {
     display: block;
     max-width: 100%;
     overflow-x: auto;
-    margin: 0.25em 0;
+    margin: 0.25em 0 0;
     border: 1px solid var(--mobi-hairline);
     border-collapse: collapse;
     font-size: 0.875em;

@@ -15,20 +15,20 @@
  */
 
 import { InputRule } from '@tiptap/core'
+import Link from '@tiptap/extension-link'
 
 /**
- * Link input rule：输入 `[text](url)` 完成后（打完 `)`）→
- * 删除字面语法 + 插入 text（带 link mark href=url）。
+ * 链接输入规则：`[text](url)` 打完 `)` 即转链接
+ * （@tiptap/markdown 只在 setContent/粘贴时解析，不提供逐键 inline 解析）。
  *
- * @tiptap/markdown 只在 setContent/粘贴时解析 markdown，不提供打字时 inline 解析。
- * StarterKit 的 Bold/Italic/Strike/Code 自带 input rule（`**b**`/`*i*` 等），Link 无，故自写。
+ * 排除图片语法 ![alt](url)：多个 input rule 独立触发（非短路），
+ * 不加这层守卫 linkInputRule 会抢占图片。文件编辑器（MarkdownEditorView）与
+ * composer 共用这一实现——两边都是「markdown 打字即格式化」的同一语义。
  */
-export function linkInputRule(): InputRule {
+function linkInputRule(): InputRule {
     return new InputRule({
         find: /\[([^\]]+)\]\(([^)\s]+)\)$/,
         handler: ({ match, range, chain, state }) => {
-            // 排除图片语法 ![alt](url)：[ 前一字符若是 !，本规则放行，留给 imageInputRule 处理。
-            // 多个 input rule 独立触发（非短路），不加这层守卫 linkInputRule 会抢占图片。
             const before = range.from > 0 ? state.doc.textBetween(range.from - 1, range.from) : ''
             if (before === '!') return
             const text = match[1]
@@ -46,3 +46,10 @@ export function linkInputRule(): InputRule {
         },
     })
 }
+
+/** Link 扩展 + 打字输入规则（两处富文本编辑器的统一装配件） */
+export const LinkWithInputRule = Link.extend({
+    addInputRules() {
+        return [linkInputRule()]
+    },
+})

@@ -22,15 +22,15 @@
  * 块级标记至少有一种才走富文本解析，其余原样插入。
  */
 const BLOCK_START_PATTERNS: readonly RegExp[] = [
-    /^ {0,3}#{1,6}\s/, // 标题
-    /^ {0,3}[-*+]\s/, // 无序列表
-    /^ {0,3}\d+\.\s/, // 有序列表
-    /^ {0,3}>\s/, // 引用块
-    /^ {0,3}(```|~~~)/, // 围栏代码块
-    /^ {0,3}\|.*\|\s*$/, // GFM 表格行（首尾都有竖线）
+    /^ {0,3}#{1,6}\s/m, // 标题
+    /^ {0,3}[-*+]\s/m, // 无序列表
+    /^ {0,3}\d+\.\s/m, // 有序列表
+    /^ {0,3}>\s/m, // 引用块
+    /^ {0,3}(```|~~~)/m, // 围栏代码块
+    /^ {0,3}\|.*\|\s*$/m, // GFM 表格行（首尾都有竖线）
 ]
 
-/** 文本是否含 Markdown 块级结构（逐行匹配，任一行命中即真） */
+/** 文本是否含 Markdown 块级结构（多行模式下任一行起始命中即真，整串扫描可短路） */
 export function looksLikeMarkdownBlock(text: string): boolean {
-    return text.split(/\r?\n/).some((line) => BLOCK_START_PATTERNS.some((re) => re.test(line)))
+    return BLOCK_START_PATTERNS.some((re) => re.test(text))
 }

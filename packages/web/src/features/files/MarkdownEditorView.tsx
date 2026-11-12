@@ -26,15 +26,7 @@ import { Bold, Italic, Strikethrough, Code, Link as LinkIcon, Link2, Check, Exte
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
 import { MermaidCodeBlock, MermaidPreview } from './mermaidPreview'
-import Link from '@tiptap/extension-link'
-import { linkInputRule } from './linkInputRule'
-
-// Link 扩展 + 输入规则：打字 [text](url) 自动转链接（@tiptap/markdown 不提供打字解析）
-const LinkWithInputRule = Link.extend({
-    addInputRules() {
-        return [linkInputRule()]
-    },
-})
+import { LinkWithInputRule } from '@/ui/base/markdown/LinkWithInputRule'
 import Image from '@tiptap/extension-image'
 import { imageInputRule } from './imageInputRule'
 import { Table } from '@tiptap/extension-table'

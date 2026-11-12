@@ -32,17 +32,12 @@ export function resolveNewlineAction(state: EditorState): NewlineAction {
     const { $from } = state.selection
     if ($from.parent.type.name === 'codeBlock') return 'newlineInCode'
 
-    let inListItem = false
-    let listItemEmpty = false
     for (let depth = $from.depth; depth > 0; depth--) {
+        // 列表项内的段落节点就是 $from.parent（嵌套列表时更深层的项优先）
         if ($from.node(depth).type.name === 'listItem') {
-            inListItem = true
-            // 列表项内的段落节点就是 $from.parent（嵌套列表时更深层的项优先）
-            listItemEmpty = $from.parent.content.size === 0
-            break
+            return $from.parent.content.size === 0 ? 'liftListItem' : 'splitListItem'
         }
     }
-    if (inListItem) return listItemEmpty ? 'liftListItem' : 'splitListItem'
 
     if ($from.parent.type.name === 'heading') return 'exitHeading'
     return 'splitBlock'

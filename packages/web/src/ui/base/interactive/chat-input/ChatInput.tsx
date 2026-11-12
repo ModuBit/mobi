@@ -21,7 +21,6 @@ import Placeholder from '@tiptap/extension-placeholder'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { common, createLowlight } from 'lowlight'
 import { Markdown } from '@tiptap/markdown'
-import Link from '@tiptap/extension-link'
 import { Underline } from '@tiptap/extension-underline'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
@@ -35,7 +34,7 @@ import type { ComposerQuoteRef, PendingQuoteRef } from '@/domain/chat/composerSe
 import { normalizeEditorText } from './chatInputText'
 import { resolveNewlineAction } from './newlinePolicy'
 import { looksLikeMarkdownBlock } from './richText/markdownPaste'
-import { linkInputRule } from './richText/linkInputRule'
+import { LinkWithInputRule } from '@/ui/base/markdown/LinkWithInputRule'
 import {
     addQuoteToEditor,
     collectQuotesFromDoc,
@@ -55,16 +54,6 @@ const lowlight = createLowlight(common)
 
 /** 程序化写入 meta 标记：区分 setText/setEditorStateJSON 等程序写入与用户输入（防 onUpdate 回环误消费） */
 const PROGRAMMATIC_META = 'chat-input-programmatic'
-
-/**
- * Link 扩展 + 打字输入规则：`[text](url)` 打完 `)` 即转链接
- * （@tiptap/markdown 只在粘贴/setContent 时解析，不参与逐键输入）。
- */
-const LinkWithInputRule = Link.extend({
-    addInputRules() {
-        return [linkInputRule()]
-    },
-})
 
 /**
  * 下划线：wire 协议要求 `<u>x</u>`（Underline 默认序列化为 `++x++`）。
@@ -218,8 +207,8 @@ export interface ChatInputHandle {
 export function ChatInput({
     placeholder,
     disabled,
-    minRows = 1,
-    maxRows = 5,
+    minRows = 2,
+    maxRows = 10,
     submitKey = 'enter',
     onSubmit,
     onKeyDown,
@@ -249,10 +238,12 @@ export function ChatInput({
     )
 
     /**
-     * 键位层（顺序固定）：IME 守卫 → 消费方接管 → 代码块 Tab → Enter 判定
+     * 键位层（顺序固定）：IME 守卫 → 消费方接管 → Enter 判定
      * （提交键位语义抄 antx TextArea.js：修饰键不放行、submitKey 分流）。
      * 换行键（PC Shift+Enter / 触屏 Enter）按光标上下文分流（newlinePolicy）：
      * 代码内换行 / 列表新建条目 / 空条目退出 / 标题末尾落普通段落 / 新段落。
+     * 代码块内 Tab/Shift-Tab 由 CodeBlockLowlight 的 enableTabIndentation 处理
+     * （仅 parent 是 codeBlock 时生效，低于本层）。
      *
      * IME 守卫必须在消费方之前：组合中的 Enter/Escape 是输入法确认/取消候选词，
      * 被面板当成「选中/关闭」抢走会让中文输入无法落字。
@@ -262,24 +253,10 @@ export function ChatInput({
         if (isComposingEvent({ nativeEvent: event })) return false
         // 2. 消费方接管（面板导航/快捷键等）
         if (propsRef.current.onKeyDown?.(event) === true) return true
-        // 3. 代码块内 Tab/Shift-Tab：插入/移除两个空格（面板未消费时才走到这里）
-        if (event.key === 'Tab' && !event.ctrlKey && !event.altKey && !event.metaKey) {
-            const ed = editorRef.current
-            if (!ed || ed.state.selection.$from.parent.type.name !== 'codeBlock') return false
-            event.preventDefault()
-            if (event.shiftKey) {
-                const { from } = ed.state.selection
-                const before = ed.state.doc.textBetween(Math.max(0, from - 2), from)
-                if (before === '  ') ed.chain().deleteRange({ from: from - 2, to: from }).run()
-            } else {
-                ed.commands.insertContent('  ')
-            }
-            return true
-        }
         if (event.key !== 'Enter') return false
-        // 4. 修饰键组合不放行提交（Ctrl+Enter 等留给消费方）
+        // 3. 修饰键组合不放行提交（Ctrl+Enter 等留给消费方）
         if (event.ctrlKey || event.altKey || event.metaKey) return false
-        // 5. 提交谓词（submitKey 平移自 antx Sender 的 submitType）
+        // 4. 提交谓词（submitKey 平移自 antx Sender 的 submitType）
         const sk = propsRef.current.submitKey ?? 'enter'
         const shouldSubmit = (sk === 'enter' && !event.shiftKey) || (sk === 'shiftEnter' && event.shiftKey)
         if (shouldSubmit) {
@@ -287,7 +264,7 @@ export function ChatInput({
             propsRef.current.onSubmit?.()
             return true
         }
-        // 6. 换行键：上下文分流（PC Shift+Enter / 触屏裸 Enter 都到这里）
+        // 5. 换行键：上下文分流（PC Shift+Enter / 触屏裸 Enter 都到这里）
         const ed = editorRef.current
         if (!ed) return false
         event.preventDefault()
@@ -371,8 +348,15 @@ export function ChatInput({
                 dropcursor: false, gapcursor: false, // undoRedo 保持默认启用（v3 options 只接受 false|配置对象，开=省略）
             }),
             // 高亮只是 Decorations，不进 doc：wire 序列化仍是 ```lang 围栏（CodeBlock 的
-            // markdownTokenName/parseMarkdown/renderMarkdown 被继承），语言信息不丢
-            CodeBlockLowlight.configure({ lowlight }),
+            // markdownTokenName/parseMarkdown/renderMarkdown 被继承），语言信息不丢。
+            // defaultLanguage: plaintext——无语言围栏不做 highlightAuto（37 个语法全量试跑
+            // 会随每次按键执行）；enableTabIndentation 接管代码块内 Tab/Shift-Tab
+            CodeBlockLowlight.configure({
+                lowlight,
+                defaultLanguage: 'plaintext',
+                enableTabIndentation: true,
+                tabSize: 2,
+            }),
             LinkWithInputRule.configure({ autolink: true, linkOnPaste: true, openOnClick: false }),
             UnderlineWithMarkdown,
             // 表格：只用于粘贴保留（无输入规则、无增删行列 UI，不做表格创作）

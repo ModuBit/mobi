@@ -15,12 +15,20 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import type { Node as PMNode } from '@tiptap/pm/model'
 import '@testing-library/jest-dom/vitest'
 import { render, waitFor, cleanup } from '@testing-library/react'
 import { ChatInput, type ChatInputHandle, type ChatInputProps } from '@/ui/base/interactive/chat-input'
 import { resolveNewlineAction, type NewlineAction } from '@/ui/base/interactive/chat-input/newlinePolicy'
 import { __resetDraftCacheForTesting, getDraft, saveDraft } from '@/core/lib/composerDrafts'
 import { emptySegments, isSegmentEmpty } from '@/domain/chat/composerSegments'
+
+/** 统计 doc 中某节点类型的出现次数 */
+function countNodes(doc: PMNode, typeName: string): number {
+    let count = 0
+    doc.descendants((node) => { if (node.type.name === typeName) count++ })
+    return count
+}
 
 // vitest 未开 globals：渲染型测试需显式 cleanup，否则 DOM 累积致 querySelector 命中前一个用例的节点
 afterEach(cleanup)
@@ -427,9 +435,7 @@ describe('ChatInput', () => {
             typeKey({ key: 'Enter', shiftKey: true })
             expect(onSubmit).not.toHaveBeenCalled()
             const doc = handle.current!.getEditor()!.state.doc
-            let liCount = 0
-            doc.descendants((node) => { if (node.type.name === 'listItem') liCount++ })
-            expect(liCount).toBe(2)
+            expect(countNodes(doc, 'listItem')).toBe(2)
         })
 
         it('空列表项再 Shift+Enter → 退出列表，光标落到外部段落', async () => {
@@ -439,10 +445,7 @@ describe('ChatInput', () => {
             typeKey({ key: 'Enter', shiftKey: true })
             typeKey({ key: 'Enter', shiftKey: true })
             const editor = handle.current!.getEditor()!
-            let liCount = 0
-            editor.state.doc.descendants((node) => { if (node.type.name === 'listItem') liCount++ })
-            expect(liCount).toBe(1)
-            // 列表之后的普通段落（lift 后光标所在块）
+            expect(countNodes(editor.state.doc, 'listItem')).toBe(1)            // 列表之后的普通段落（lift 后光标所在块）
             expect(editor.state.selection.$from.parent.type.name).toBe('paragraph')
             typeInto(handle, 'x')
             expect(handle.current!.getWireText()).toMatch(/^- abc$/m)
@@ -457,9 +460,7 @@ describe('ChatInput', () => {
             typeKey({ key: 'Enter', shiftKey: true })
             typeInto(handle, 'b')
             const ed = handle.current!.getEditor()!
-            let preCount = 0
-            ed.state.doc.descendants((node) => { if (node.type.name === 'codeBlock') preCount++ })
-            expect(preCount).toBe(1)
+            expect(countNodes(ed.state.doc, 'codeBlock')).toBe(1)
             expect(ed.state.selection.$from.parent.type.name).toBe('codeBlock')
             expect(handle.current!.getWireText()).toContain('a\nb')
         })
@@ -471,9 +472,7 @@ describe('ChatInput', () => {
             typeKey({ key: 'Enter', shiftKey: true })
             typeInto(handle, 'x')
             const ed = handle.current!.getEditor()!
-            let h1Count = 0
-            ed.state.doc.descendants((node) => { if (node.type.name === 'heading') h1Count++ })
-            expect(h1Count).toBe(1)
+            expect(countNodes(ed.state.doc, 'heading')).toBe(1)
             expect(ed.state.selection.$from.parent.type.name).toBe('paragraph')
             expect(handle.current!.getWireText().trimEnd()).toBe('# abc\n\nx')
         })
@@ -495,18 +494,16 @@ describe('ChatInput', () => {
             typeKey({ key: 'Enter' })
             expect(onSubmit).not.toHaveBeenCalled()
             const doc = handle.current!.getEditor()!.state.doc
-            let liCount = 0
-            doc.descendants((node) => { if (node.type.name === 'listItem') liCount++ })
-            expect(liCount).toBe(2)
+            expect(countNodes(doc, 'listItem')).toBe(2)
         })
 
-        it('代码块内 Tab 插入两个空格、Shift+Tab 移除', async () => {
+        it('代码块内 Tab 插入两空格、Shift+Tab 退掉行首缩进', async () => {
             const { handle, ready, typeKey } = setup()
             await ready()
             typeInto(handle, '```js ')
-            typeInto(handle, 'a')
             typeKey({ key: 'Tab' })
-            expect(handle.current!.getEditor()!.state.doc.textContent).toBe('a  ')
+            typeInto(handle, 'a')
+            expect(handle.current!.getEditor()!.state.doc.textContent).toBe('  a')
             typeKey({ key: 'Tab', shiftKey: true })
             expect(handle.current!.getEditor()!.state.doc.textContent).toBe('a')
         })

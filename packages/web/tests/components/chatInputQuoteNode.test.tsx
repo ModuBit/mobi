@@ -279,7 +279,8 @@ describe('ChatInputQuoteNode（引用 chip 节点）', () => {
         expect(editor.getHTML()).toContain('<ul>')
     })
 
-    it('getWireText：wire 正文剥掉 chip 降级文本（引用由 quote block 承载，不重复）', async () => {        const { handle, ready } = setup()
+    it('getWireText：wire 正文剥掉 chip 降级文本（引用由 quote block 承载，不重复）', async () => {
+        const { handle, ready } = setup()
         await ready()
         const editor = handle.current!.getEditor()!
         addQuoteToEditor(editor, QUOTE)
