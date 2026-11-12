@@ -45,10 +45,10 @@ export function CommandHintBar({ visible, hint, description }: CommandHintBarPro
 
     return (
         <HintWrapper $visible={visible} style={{
-            // 与头部其他内容行同轨：COMPOSER_CARD_HEADER_INSET 的侧向 16px
+            // 与头部其他内容行同轨：COMPOSER_CARD_HEADER_INSET 的侧向 20px
             //（见 composerSurface.styles 的同心规则注释）
-            paddingLeft: 16,
-            paddingRight: 16,
+            paddingLeft: 20,
+            paddingRight: 20,
             fontSize: 12,
             display: 'flex',
             flexDirection: 'column',
