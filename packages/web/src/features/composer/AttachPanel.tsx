@@ -148,10 +148,10 @@ export function AttachPanel({ disabled, onAttach, onSketch }: AttachPanelProps) 
     return (
         <DropdownMenu
             trigger={
-                // 光学对齐：sm ghost 钮的内容盒左缘与正文左缘齐平，但图标还缩在 12px 内衬 + 1px 描边
-                // 之后，视觉上 + 比输入文字右移 13px。负 margin 只抵消内衬（保留描边），命中区/悬浮底
-                // 的左缘恰好落在白卡边缘内；图标再单独左移 1px 补偿描边，字形左缘与编辑器正文同列。
-                // 不改用 -13px margin：那会把悬浮底推出白卡 1px，hover 时可见。
+                // 光学对齐：sm ghost 钮自身有 12px 内衬 + 1px 描边，若按钮盒与正文左缘齐平，
+                // 图标会右移 13px。负 margin 只抵消内衬（保留描边），图标再单独左移 1px 补偿
+                // 描边，字形左缘与编辑器正文同列；按钮盒仍在白卡内（侧轨 16px 时距卡缘 4px），
+                // 命中区/悬浮底不外溢。
                 <Button
                     variant="ghost"
                     size="sm"

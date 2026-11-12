@@ -189,13 +189,13 @@ const ComposerDock = styled.div`
         margin: 8px -16px 0;
     }
 
-    /* SubBar 与白卡内容同轨：容器镜像白卡的水平悬挂量，再把 12px 内衬让给
+    /* SubBar 与白卡内容同轨：容器镜像白卡的水平悬挂量，再把 16px 内衬让给
        输入区/参数条那条内容轨（白卡外缘 ≠ 内容轨，按钮盒要落在内容轨上）。
        没有内容层时白卡只悬 8px，有内容层时 Dock 内衬 8 + 白卡 -16，两种几何
        分别镜像；不镜像的话参数条会随 InfoPanel/GoalRow 的出现横跳 8px。 */
     && .composer-subbar {
         margin-inline: -8px;
-        padding: 6px 12px 4px;
+        padding: 6px 16px 4px;
     }
 
     &&:not(:has(> :only-child)) .composer-subbar {
@@ -750,7 +750,7 @@ export function ChatComposer(props: ChatComposerProps) {
 
                 {/* 原 Sender footer → 参数条：+（附件）与 send 两端固定，中间可横向拖动滚动
                    （ResponsiveActionBar 的溢出收纳在参数条上退役，见 ToolStrip 组件注释） */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 16px 12px' }}>
                     {/* 附件面板：文件/拍照（移动端）/画板聚合入口（Codex 风格富面板）——左端固定锚 */}
                     <AttachPanel
                         disabled={chromeDisabled || hasPendingPermission}
