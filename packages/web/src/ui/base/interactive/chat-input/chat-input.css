@@ -57,3 +57,140 @@
     height: 0;
     pointer-events: none;
 }
+
+/* ==================== 富文本内容样式 ==================== */
+/* composer 是输入区：块级间距比消息气泡更紧（消息 h1 上距 1.2em，输入区会平白吃空），
+   其余 token（颜色/描边/底色）与 .x-markdown 同源，保证「所输即所发」 */
+
+.chat-input .ProseMirror strong {
+    font-weight: 600;
+}
+
+/* 标题：字号层级与消息一致（h1 1.25em / h2 1.1em / h3 1em），只收紧上下间距 */
+.chat-input .ProseMirror h1 {
+    font-size: 1.25em;
+    font-weight: 600;
+    line-height: 1.4;
+    margin: 0.5em 0 0.25em;
+}
+
+.chat-input .ProseMirror h2 {
+    font-size: 1.1em;
+    font-weight: 600;
+    line-height: 1.4;
+    margin: 0.5em 0 0.25em;
+}
+
+.chat-input .ProseMirror h3 {
+    font-size: 1em;
+    font-weight: 600;
+    line-height: 1.4;
+    margin: 0.5em 0 0.25em;
+}
+
+/* 列表：Tailwind preflight 清了 padding/list-style，必须显式恢复，否则条目无圆点/序号 */
+.chat-input .ProseMirror ul,
+.chat-input .ProseMirror ol {
+    margin: 0.25em 0;
+    padding-left: 1.5em;
+}
+
+.chat-input .ProseMirror ul {
+    list-style: disc;
+}
+
+.chat-input .ProseMirror ol {
+    list-style: decimal;
+}
+
+.chat-input .ProseMirror li > p {
+    margin: 0;
+}
+
+/* 引用块：左边线与消息同 token */
+.chat-input .ProseMirror blockquote {
+    margin: 0.25em 0;
+    padding-left: 10px;
+    border-left: 3px solid var(--mobi-ink-quaternary);
+    color: var(--ant-color-text-secondary);
+}
+
+/* 行内码 */
+.chat-input .ProseMirror code {
+    font-family: var(--mobi-font-mono, 'JetBrains Mono', 'Fira Code', Consolas, monospace);
+    font-size: 0.9em;
+    padding: 1px 4px;
+    border-radius: var(--radius-control-sm);
+    background: rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme='dark'] .chat-input .ProseMirror code {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* 代码块：底色/圆角与消息代码块同 token；块内 code 透底去内衬 */
+.chat-input .ProseMirror pre {
+    margin: 0.25em 0;
+    padding: 8px 10px;
+    border-radius: var(--radius-control-sm);
+    background: var(--ant-color-fill-quaternary);
+    font-size: 0.875em;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+html[data-theme='dark'] .chat-input .ProseMirror pre {
+    background: var(--ant-color-bg-elevated);
+}
+
+.chat-input .ProseMirror pre code {
+    padding: 0;
+    background: transparent;
+    font-size: inherit;
+}
+
+/* 表格（仅粘贴保留）：网格线/表头底色与消息表格同 token，单元格内衬收紧 */
+.chat-input .ProseMirror table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 0.25em 0;
+    border-collapse: collapse;
+    font-size: 0.875em;
+    line-height: 1.5;
+}
+
+.chat-input .ProseMirror th,
+.chat-input .ProseMirror td {
+    padding: 4px 8px;
+    border: 1px solid var(--mobi-hairline);
+    text-align: left;
+}
+
+.chat-input .ProseMirror th {
+    font-weight: 600;
+    background: var(--mobi-selected);
+}
+
+html[data-theme='dark'] .chat-input .ProseMirror th {
+    background: var(--mobi-elevated);
+}
+
+.chat-input .ProseMirror td p,
+.chat-input .ProseMirror th p {
+    margin: 0;
+}
+
+/* 链接：与消息链接一致的虚线基底 */
+.chat-input .ProseMirror a {
+    color: var(--mobi-primary);
+    text-decoration: underline dashed;
+    text-decoration-color: color-mix(in srgb, var(--mobi-primary) 30%, transparent);
+    text-underline-offset: 2px;
+}
+
+html[data-theme='dark'] .chat-input .ProseMirror a {
+    color: var(--mobi-ink-secondary);
+    text-decoration-color: color-mix(in srgb, var(--mobi-ink-secondary) 30%, transparent);
+}

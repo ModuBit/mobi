@@ -18,16 +18,25 @@ import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, type CSSP
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
+import { Markdown } from '@tiptap/markdown'
+import Link from '@tiptap/extension-link'
+import { Underline } from '@tiptap/extension-underline'
+import { Table } from '@tiptap/extension-table'
+import { TableRow } from '@tiptap/extension-table-row'
+import { TableCell } from '@tiptap/extension-table-cell'
+import { TableHeader } from '@tiptap/extension-table-header'
 import { TextSelection } from '@tiptap/pm/state'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { getTextBetween, getTextSerializersFromSchema, type AnyExtension, type JSONContent } from '@tiptap/core'
 import { isComposingEvent } from '@/core/lib/inputEnterKeys'
 import type { ComposerQuoteRef, PendingQuoteRef } from '@/domain/chat/composerSegments'
 import { normalizeEditorText } from './chatInputText'
+import { resolveNewlineAction } from './newlinePolicy'
+import { looksLikeMarkdownBlock } from './richText/markdownPaste'
+import { linkInputRule } from './richText/linkInputRule'
 import {
     addQuoteToEditor,
     collectQuotesFromDoc,
-    extractWireText,
     insertQuotesAtEnd,
     updateQuoteCommentInEditor,
 } from '@/ui/shared/chat-input-quote/chatInputQuoteDoc'
@@ -38,6 +47,26 @@ const LINE_HEIGHT_PX = 22
 
 /** 程序化写入 meta 标记：区分 setText/setEditorStateJSON 等程序写入与用户输入（防 onUpdate 回环误消费） */
 const PROGRAMMATIC_META = 'chat-input-programmatic'
+
+/**
+ * Link 扩展 + 打字输入规则：`[text](url)` 打完 `)` 即转链接
+ * （@tiptap/markdown 只在粘贴/setContent 时解析，不参与逐键输入）。
+ */
+const LinkWithInputRule = Link.extend({
+    addInputRules() {
+        return [linkInputRule()]
+    },
+})
+
+/**
+ * 下划线：wire 协议要求 `<u>x</u>`（Underline 默认序列化为 `++x++`）。
+ * helpers.renderChildren 必须调用——否则嵌套在 underline 内的粗体等 marks 会丢。
+ */
+const UnderlineWithMarkdown = Underline.extend({
+    renderMarkdown(node, helpers) {
+        return `<u>${helpers.renderChildren(node)}</u>`
+    },
+})
 
 
 /** doc 中装配节点的实例数（extraNodeCount 派生源；未装节点恒 0） */
@@ -154,7 +183,7 @@ export interface ChatInputHandle {
     setCursorOffset(offset: number): void
     /** 编辑器是否已就绪（程序化写入前的判据；未就绪时其余方法均为 no-op） */
     isReady(): boolean
-    /** wire 正文（剥掉 extra 节点的降级文本、NBSP 归一；发送序列化用） */
+    /** wire 正文（Markdown 序列化；引用 chip 由节点级 renderMarkdown 排除；发送用） */
     getWireText(): string
     /** 按文档顺序收集引用条目（编辑器未就绪返回空数组） */
     getQuotes(): ComposerQuoteRef[]
@@ -212,10 +241,10 @@ export function ChatInput({
     )
 
     /**
-     * 键位层（顺序固定）：IME 守卫 → 消费方接管 → Enter 判定（语义抄 antx TextArea.js：
-     * 修饰键不放行、submitKey 分流）。换行不自己造命令形态——裸 Enter 放行给 TipTap
-     * 默认 splitBlock；shift+Enter 因 hardBreak 关闭无默认绑定，主动 splitBlock 保持
-     * getText 段落语义单源。
+     * 键位层（顺序固定）：IME 守卫 → 消费方接管 → 代码块 Tab → Enter 判定
+     * （提交键位语义抄 antx TextArea.js：修饰键不放行、submitKey 分流）。
+     * 换行键（PC Shift+Enter / 触屏 Enter）按光标上下文分流（newlinePolicy）：
+     * 代码内换行 / 列表新建条目 / 空条目退出 / 标题末尾落普通段落 / 新段落。
      *
      * IME 守卫必须在消费方之前：组合中的 Enter/Escape 是输入法确认/取消候选词，
      * 被面板当成「选中/关闭」抢走会让中文输入无法落字。
@@ -225,10 +254,24 @@ export function ChatInput({
         if (isComposingEvent({ nativeEvent: event })) return false
         // 2. 消费方接管（面板导航/快捷键等）
         if (propsRef.current.onKeyDown?.(event) === true) return true
+        // 3. 代码块内 Tab/Shift-Tab：插入/移除两个空格（面板未消费时才走到这里）
+        if (event.key === 'Tab' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+            const ed = editorRef.current
+            if (!ed || ed.state.selection.$from.parent.type.name !== 'codeBlock') return false
+            event.preventDefault()
+            if (event.shiftKey) {
+                const { from } = ed.state.selection
+                const before = ed.state.doc.textBetween(Math.max(0, from - 2), from)
+                if (before === '  ') ed.chain().deleteRange({ from: from - 2, to: from }).run()
+            } else {
+                ed.commands.insertContent('  ')
+            }
+            return true
+        }
         if (event.key !== 'Enter') return false
-        // 3. 修饰键组合不放行提交（Ctrl+Enter 等留给消费方）
+        // 4. 修饰键组合不放行提交（Ctrl+Enter 等留给消费方）
         if (event.ctrlKey || event.altKey || event.metaKey) return false
-        // 4. 提交谓词（submitKey 平移自 antx Sender 的 submitType）
+        // 5. 提交谓词（submitKey 平移自 antx Sender 的 submitType）
         const sk = propsRef.current.submitKey ?? 'enter'
         const shouldSubmit = (sk === 'enter' && !event.shiftKey) || (sk === 'shiftEnter' && event.shiftKey)
         if (shouldSubmit) {
@@ -236,13 +279,27 @@ export function ChatInput({
             propsRef.current.onSubmit?.()
             return true
         }
-        // 5. 换行路径：裸 Enter 放行（TipTap 默认 splitBlock）；shift+Enter 主动 splitBlock
-        if (event.shiftKey) {
-            event.preventDefault()
-            editorRef.current?.commands.splitBlock()
-            return true
+        // 6. 换行键：上下文分流（PC Shift+Enter / 触屏裸 Enter 都到这里）
+        const ed = editorRef.current
+        if (!ed) return false
+        event.preventDefault()
+        switch (resolveNewlineAction(ed.state)) {
+            case 'newlineInCode':
+                ed.commands.newlineInCode()
+                break
+            case 'splitListItem':
+                ed.commands.splitListItem('listItem')
+                break
+            case 'liftListItem':
+                ed.commands.liftListItem('listItem')
+                break
+            case 'exitHeading':
+                ed.chain().splitBlock().setParagraph().run()
+                break
+            default:
+                ed.commands.splitBlock()
         }
-        return false
+        return true
     }, [])
 
     // editor options 引用稳定：useEditor 每次渲染都会比较 options，内联对象/数组会触发
@@ -255,9 +312,28 @@ export function ChatInput({
             ...(ariaLabel ? { 'aria-label': ariaLabel } : {}),
         },
         handleKeyDown: (_view: unknown, event: KeyboardEvent) => handleKeyDown(event),
+        /**
+         * 粘贴管线（顺序固定，见 spec「粘贴优先级」）：
+         * 1. 消费方附件钩子（文件/图片 → 上传；超长文本 → .txt 附件）——返回 true 即已消费；
+         * 2. 剪贴板带 text/html → 放行给 ProseMirror 默认解析（schema 白名单，表格由 Table 扩展解析）；
+         * 3. 纯文本含 Markdown 块级结构 → 就地转富文本（行内标记不转，避免代码误渲染）；
+         * 4. 其余放行默认纯文本插入。
+         */
         handlePaste: (_view: unknown, event: ClipboardEvent) => {
             const handler = propsRef.current.onPaste
-            return handler ? handler(event) === true : false
+            if (handler && handler(event) === true) return true
+            const clipboardData = event.clipboardData
+            if (!clipboardData) return false
+            if (clipboardData.getData('text/html')) return false
+            const text = clipboardData.getData('text/plain')
+            const ed = editorRef.current
+            if (ed && text && looksLikeMarkdownBlock(text)) {
+                event.preventDefault()
+                // 就地插入（不整档 setContent）：保留既有正文与引用 chip
+                ed.commands.insertContent(text, { contentType: 'markdown' })
+                return true
+            }
+            return false
         },
     }), [ariaLabel, handleKeyDown])
 
@@ -267,19 +343,32 @@ export function ChatInput({
         injectCSS: false,
         // editable 初始态；运行时切换由下方 effect 走 setEditable（不重建 editor）
         editable: !disabled,
-        // 输入区无富文本格式需求，StarterKit 逐项关闭（体积与语义双收），只留
-        // document / paragraph / text / undoRedo；hardBreak 关闭 = 换行一律 splitBlock，
-        // getText 段落语义单源（Shift+Enter 换行在键位层主动 splitBlock）
+        // 行内 marks + 块级结构（标题 h1–h3/列表/引用/代码块/链接/下划线）：输入规则与快捷键
+        // 由扩展自带；hardBreak 关闭 = 换行一律走上下文命令（newlinePolicy），
+        // getText 段落语义单源
+        // 粘贴规则只留 link：StarterKit 的 bold/italic/strike 自带 markPasteRule，会把纯文本里的
+        // `*x*`/`**x**`/`~~x~~` 转成 mark（代码粘贴被误渲染）；行内 Markdown 按 spec 须原样保留。
+        // link 保留 = 粘贴裸 URL 自动变链接（linkOnPaste 语义）
+        enablePasteRules: ['link'],
         extensions: [
             StarterKit.configure({
-                bold: false, italic: false, strike: false, code: false, codeBlock: false,
-                blockquote: false, bulletList: false, orderedList: false, listItem: false,
-                horizontalRule: false, heading: false, hardBreak: false,
-                // link 关闭：输入 URL 会自动变成可点击链接（autolink/linkOnPaste），
-                // 点击会 window.open——composer 是纯文本输入区，链接语义只属于消息正文
+                heading: { levels: [1, 2, 3] }, hardBreak: false, horizontalRule: false,
+                // 内置 link 关闭：改用下方 LinkWithInputRule（带 [text](url) 打字规则）
                 link: false,
+                // 内置 underline 关闭：改用下方 UnderlineWithMarkdown（wire 协议 <u>）
+                underline: false,
                 dropcursor: false, gapcursor: false, // undoRedo 保持默认启用（v3 options 只接受 false|配置对象，开=省略）
             }),
+            LinkWithInputRule.configure({ autolink: true, linkOnPaste: true, openOnClick: false }),
+            UnderlineWithMarkdown,
+            // 表格：只用于粘贴保留（无输入规则、无增删行列 UI，不做表格创作）
+            Table.configure({ resizable: false, lastColumnResizable: false }),
+            TableRow,
+            TableCell,
+            TableHeader,
+            // wire 序列化单源：editor.getMarkdown() 把 doc 转 Markdown（含 marks/块级/表格）。
+            // breaks:false——软换行按段落语义，不生成 <br>（composer 换行一律 splitBlock）
+            Markdown.configure({ markedOptions: { gfm: true, breaks: false } }),
             // 函数形式读 ref：动态文案（bash 模式占位切换）不重建 editor
             Placeholder.configure({
                 placeholder: () => propsRef.current.placeholder ?? '',
@@ -408,7 +497,15 @@ export function ChatInput({
             ed.view.dispatch(tr)
         },
         isReady: () => editorRef.current != null,
-        getWireText: () => (editorRef.current ? extractWireText(editorRef.current.state.doc) : ''),
+        getWireText: () => {
+            const ed = editorRef.current
+            if (!ed) return ''
+            // 只有格式没有文字（空列表项 / 空引用块）：Markdown 序列化会残留 "-" ">" 等
+            // 块标记，不能当作可发送正文——正文存在性以纯文本为准（引用 chip 无 textContent，
+            // 由 quotes 分段承载）
+            if (ed.state.doc.textContent.trim() === '') return ''
+            return ed.getMarkdown()
+        },
         getQuotes: () => (editorRef.current ? collectQuotesFromDoc(editorRef.current.state.doc) : []),
         addQuote: (quote) => (editorRef.current ? addQuoteToEditor(editorRef.current, quote) : null),
         updateQuoteComment: (uid, comment) => (

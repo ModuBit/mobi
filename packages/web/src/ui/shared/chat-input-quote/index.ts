@@ -27,7 +27,6 @@ export {
     clearQuotesInEditor,
     collectQuotesFromDoc,
     extractQuotesFromEditorStateJSON,
-    extractWireText,
     insertQuotesAtEnd,
     updateQuoteCommentInEditor,
 } from './chatInputQuoteDoc'

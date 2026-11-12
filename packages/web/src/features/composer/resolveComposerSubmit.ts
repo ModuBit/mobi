@@ -34,7 +34,7 @@ export type ComposerSubmitResolution =
     | { ok: true; segments: ComposerSegments }
 
 export interface ComposerSubmitInput {
-    /** 正文（会话页 = extractWireText(编辑器文档) 已剥引用降级文本；新会话页 = 文本镜像） */
+    /** 正文（会话页 = getWireText 的 Markdown 序列化；新会话页同源，未就绪回退文本镜像） */
     text: string
     /** 引用（会话页从编辑器 chip 节点收集；新会话页无引用通道，缺省 []） */
     quotes?: ComposerQuoteRef[]

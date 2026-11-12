@@ -407,8 +407,9 @@ export function NewSessionPage() {
 
         // 守卫与分段组装与 ChatComposer 共用单源。上传中附件没有 path，会被静默丢弃；
         // empty 不是拦截——空内容仍要创建会话（按钮语义「创建会话」）
+        // 正文用 getWireText（Markdown 序列化）：与会话页发送出口一致；未就绪回退文本镜像
         const resolution = resolveComposerSubmit({
-            text: inputTextRef.current,
+            text: shellRef.current?.getWireText() ?? inputTextRef.current,
             attachments: attachmentsRef.current,
         })
         if (!resolution.ok && resolution.blocked === 'uploading') {

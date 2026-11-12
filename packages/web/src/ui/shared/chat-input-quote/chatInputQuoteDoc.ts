@@ -16,7 +16,6 @@
 
 import type { Editor } from '@tiptap/core'
 import { CHAT_INPUT_QUOTE_NODE_NAME, type ChatInputQuoteAttrs } from './chatInputQuoteTypes'
-import { normalizeEditorText } from '@/ui/base/interactive/chat-input/chatInputText'
 import {
     QUOTE_MAX_COUNT,
     withQuoteUid,
@@ -55,17 +54,6 @@ export function collectQuotesFromDoc(doc: Editor['state']['doc']): ComposerQuote
         return false
     })
     return out
-}
-
-/**
- * wire 正文（不含引用 chip 的降级文本）：发送/回填序列化用。
- * TextBetween 不带 leafText 时叶子节点不产出文本——chip 的 renderText「excerpt」只服务
- * 编辑器内的光标/面板语义（getText），不能混进 wire text：引用已由 quote block 承载，
- * 混入会让消息正文重复一段 excerpt（气泡里可见、prompt 里也重复）。
- */
-export function extractWireText(doc: Editor['state']['doc']): string {
-    // NBSP 归一同 getText（contenteditable 的行尾空格产物），wire 正文按纯文本语义落普通空格
-    return normalizeEditorText(doc.textBetween(0, doc.content.size, '\n'))
 }
 
 function quoteNodeJSON(quote: ComposerQuoteRef) {

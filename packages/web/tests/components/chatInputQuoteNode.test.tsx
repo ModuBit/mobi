@@ -30,7 +30,6 @@ import {
     clearQuotesInEditor,
     collectQuotesFromDoc,
     extractQuotesFromEditorStateJSON,
-    extractWireText,
     insertQuotesAtEnd,
     updateQuoteCommentInEditor,
 } from '@/ui/shared/chat-input-quote'
@@ -242,22 +241,58 @@ describe('ChatInputQuoteNode（引用 chip 节点）', () => {
         expect(handle.current!.getText()).toBe('「原文片段」 「第二段」 ')
     })
 
-    it('extractWireText：wire 正文剥掉 chip 降级文本（引用由 quote block 承载，不重复）', async () => {
+    it('chip + 粗体 + 列表混合：wire 只有正文 Markdown，无 chip 产物', async () => {
         const { handle, ready } = setup()
+        await ready()
+        const editor = handle.current!.getEditor()!
+        addQuoteToEditor(editor, QUOTE)
+        editor.commands.insertContent('**粗体**', { contentType: 'markdown' })
+        editor.commands.splitBlock()
+        editor.commands.insertContent('- 项目', { contentType: 'markdown' })
+
+        const wire = handle.current!.getWireText()
+        expect(collectQuotesFromDoc(editor.state.doc)).toHaveLength(1)
+        expect(wire).toContain('**粗体**')
+        expect(wire).toContain('- 项目')
+        expect(wire).not.toContain('原文片段')
+    })
+
+    it('粘贴 Markdown 块级文本不破坏引用 chip（就地插入）', async () => {
+        const { handle, ready, cursorAfterQuote } = setup()
+        await ready()
+        const editor = handle.current!.getEditor()!
+        const entry = addQuoteToEditor(editor, QUOTE)!
+        cursorAfterQuote(editor)
+
+        const pm = document.querySelector('.ProseMirror') as HTMLElement
+        const event = new Event('paste', { bubbles: true, cancelable: true })
+        Object.defineProperty(event, 'clipboardData', {
+            value: {
+                getData: (type: string) => (type === 'text/plain' ? '- 一\n- 二' : ''),
+                items: [],
+            },
+        })
+        pm.dispatchEvent(event)
+
+        expect(collectQuotesFromDoc(editor.state.doc)).toHaveLength(1)
+        expect(collectQuotesFromDoc(editor.state.doc)[0]!.uid).toBe(entry.uid)
+        expect(editor.getHTML()).toContain('<ul>')
+    })
+
+    it('getWireText：wire 正文剥掉 chip 降级文本（引用由 quote block 承载，不重复）', async () => {        const { handle, ready } = setup()
         await ready()
         const editor = handle.current!.getEditor()!
         addQuoteToEditor(editor, QUOTE)
         handle.current!.insertAtCursor('正文')
         // 编辑器内视图：chip 有降级文本（光标/面板语义）……
         expect(handle.current!.getText()).toBe('「原文片段」 正文')
-        // ……wire 正文不含它；多段分隔与 getText 同语义
-        expect(extractWireText(editor.state.doc)).toBe(' 正文')
+        // ……wire 正文（Markdown 序列化）不含它
+        const wire = handle.current!.getWireText()
+        expect(wire).toContain('正文')
+        expect(wire).not.toContain('原文片段')
         editor.commands.splitBlock()
         editor.commands.insertContent('第二段')
-        expect(extractWireText(editor.state.doc)).toBe(' 正文\n第二段')
-        // NBSP（行尾空格在模型里的形态）同样归一回普通空格
-        editor.commands.insertContent('\u00a0')
-        expect(extractWireText(editor.state.doc)).toBe(' 正文\n第二段 ')
+        expect(handle.current!.getWireText()).toContain('第二段')
     })
 
     it('草稿双路 round-trip：含 chip（含评论）的 EditorState JSON 恢复', async () => {

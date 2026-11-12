@@ -87,6 +87,15 @@ export const ChatInputQuoteNode = Node.create<ChatInputQuoteOptions>({
         return `「${node.attrs.excerpt ?? ''}」`
     },
 
+    /**
+     * Markdown 序列化排除（wire 正文不带 chip）：引用上下文由 quote block 承载，
+     * 正文再出现 excerpt 会重复（气泡可见 + prompt 重复）。
+     * 与 renderText 分离：编辑器内文本语义（getText/cursorOffset）仍保留降级文本。
+     */
+    renderMarkdown() {
+        return ''
+    },
+
     addNodeView() {
         return ReactNodeViewRenderer(QuoteChipView)
     },
