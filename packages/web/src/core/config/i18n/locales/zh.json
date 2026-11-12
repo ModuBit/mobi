@@ -32,7 +32,8 @@
     "noMatches": "没有匹配项",
     "noMatchesFor": "没有匹配「{{query}}」的结果",
     "optionsCount_one": "{{count}} 个选项",
-    "optionsCount_other": "{{count}} 个选项"
+    "optionsCount_other": "{{count}} 个选项",
+    "delete": "删除"
   },
   "ui": {
     "passwordField": {

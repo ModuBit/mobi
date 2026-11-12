@@ -71,3 +71,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [entrypoint 与 sweep 豁免验证](retention-entrypoint-verify.md) — 四组 E2E（收发/唤醒/权限/MCP）+ 离线 sweep 豁免验法；env -i 裸环境、桩 API 延迟 60s、Write 提示词才触发审批（2026-10-30）
 - [Tooltip 验证与诊断](tooltip-verify.md) — tooltip 生命周期观测（dispatchEvent hook 抓互斥广播）/ CDP hover 超时两坑（折叠分组隐形行、合成 PointerEvent 退路）/ 受控封装×Radix delayed-open timer 自毁已修 + **jsdom 测不出 stale closure 必须真机**（2026-11-03）
 - [会话保留期验证](retention-verify.md) — 归档/删除/豁免全链路：spawn+messages body schema、Radix 菜单指针序列、archived 页、批量门槛 native setter、409/transcript+墓碑断言（2026-11-03）
+- [Skills 管理页验证](skills-page-verify.md) — 开关 API 断言绕开 settings.json 读权限 / CLI 非交互预检（CLAUDE_CONFIG_DIR 隔离）/ 内置首采观测点 / composer 预填查 .tiptap 非 textarea / 页内 fetch 替代 curl cookie（2026-11-12）

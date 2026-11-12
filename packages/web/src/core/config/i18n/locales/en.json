@@ -32,7 +32,8 @@
     "noMatches": "No matches",
     "noMatchesFor": "No matches for \"{{query}}\"",
     "optionsCount_one": "{{count}} option",
-    "optionsCount_other": "{{count}} options"
+    "optionsCount_other": "{{count}} options",
+    "delete": "Delete"
   },
   "ui": {
     "passwordField": {
