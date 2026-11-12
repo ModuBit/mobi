@@ -15,15 +15,18 @@
  */
 
 /**
- * skill 列表行（skill-mgmt 票 02/03）：名字 + 描述 + 来源/渠道/调用性徽标 + 生效态 + 启停开关。
- * 开关只在 overrideable 行出现（插件/内置行只读语义由该字段承载）；开关交互编排归分区层。
+ * skill 列表行（skill-mgmt 票 02/03/04）：名字 + 描述 + 来源/渠道/调用性徽标 + 生效态 + 启停开关 + 删除入口。
+ * 开关只在 overrideable 行出现（插件/内置行只读语义由该字段承载）；删除只对 mobi 自管来源
+ * （personal/project）开放——synced 下次同步会拉回、plugin 归迭代 3；交互编排归分区层。
  */
 import { theme as antTheme } from 'antd'
+import { Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { SkillInfo, SkillSource } from '@mobi/shared'
 // uiarc 自管件（antd Switch 迁移）：行右槽启停
 import { Switch } from '@/ui/shadcn/switch/switch'
+import { IconButton } from '@/ui/base/interactive/IconButton'
 
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
@@ -115,9 +118,11 @@ export interface SkillRowProps {
     onToggle?: (enabled: boolean) => void
     /** 开关请求进行中（单行级，避免整列表闪烁） */
     toggling?: boolean
+    /** 删除回调（仅 personal/project 行传入）；未传 = 行无删除入口 */
+    onDelete?: () => void
 }
 
-export function SkillRow({ skill, onToggle, toggling = false }: SkillRowProps) {
+export function SkillRow({ skill, onToggle, toggling = false, onDelete }: SkillRowProps) {
     const { token } = useToken()
     const { t } = useTranslation()
 
@@ -149,6 +154,17 @@ export function SkillRow({ skill, onToggle, toggling = false }: SkillRowProps) {
                         disabled={toggling}
                         onCheckedChange={onToggle}
                         aria-label={t('settings.skills.toggleAria', { name: skill.name })}
+                    />
+                )}
+                {onDelete && (
+                    <IconButton
+                        icon={<Trash2 size={14} />}
+                        danger
+                        size={26}
+                        tooltip={t('settings.skills.deleteTooltip')}
+                        aria-label={t('settings.skills.deleteAria', { name: skill.name })}
+                        data-skill-delete={skill.name}
+                        onClick={onDelete}
                     />
                 )}
             </Right>

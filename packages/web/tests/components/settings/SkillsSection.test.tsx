@@ -19,10 +19,10 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import type { SkillInfo } from '@mobi/shared'
 
 /** vi.mock 工厂提升先于 const 声明，被工厂引用的桩须 vi.hoisted */
-const { mockMessage, mockMutate, mockVisibility } = vi.hoisted(() => {
+const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync } = vi.hoisted(() => {
     return {
         /** toast 断言靶（App.useApp 返回的 message） */
-        mockMessage: { warning: vi.fn(), error: vi.fn() },
+        mockMessage: { warning: vi.fn(), error: vi.fn(), success: vi.fn() },
         /** 票 03 启停 mutation 桩：默认静默成功，用例可改写 mutate 行为 */
         mockMutate: vi.fn(),
         mockVisibility: {
@@ -30,6 +30,13 @@ const { mockMessage, mockMutate, mockVisibility } = vi.hoisted(() => {
             isPending: false,
             variables: null as { name: string } | null,
         },
+        /** 票 04：modal.confirm 桩——捕获配置并同步执行 onOk */
+        mockModal: {
+            confirm: vi.fn((opts: { onOk?: () => Promise<void> }) => {
+                void opts.onOk?.()
+            }),
+        },
+        mockDeleteAsync: vi.fn(),
     }
 })
 mockVisibility.mutate = mockMutate
@@ -42,8 +49,8 @@ vi.mock('antd', async (importOriginal) => {
     const actual = await importOriginal<typeof import('antd')>()
     return {
         ...actual,
-        // App.useApp 的 message 走 mock（toast 断言直接看调用）
-        App: { ...actual.App, useApp: () => ({ message: mockMessage }) },
+        // App.useApp 的 message/modal 走 mock（toast 与确认弹窗断言直接看调用）
+        App: { ...actual.App, useApp: () => ({ message: mockMessage, modal: mockModal }) },
     }
 })
 vi.mock('@/core/data/hooks/queries/useWorkspaces', () => ({
@@ -53,6 +60,7 @@ vi.mock('@/core/data/hooks/queries/useSkills', () => ({
     useSkills: vi.fn(),
     // 默认桩（旧用例不关心启停），票 03 用例再 mockReturnValue 覆盖
     useSkillVisibility: vi.fn(() => mockVisibility),
+    useSkillDelete: vi.fn(() => ({ mutateAsync: mockDeleteAsync })),
 }))
 
 import { SkillsSection } from '@/features/settings/sections/SkillsSection'
@@ -227,5 +235,66 @@ describe('SkillsSection（票 03：启停开关）', () => {
         const opts = mockMutate.mock.calls[0]![1]!
         opts.onError(new Error('x'))
         expect(mockMessage.error).toHaveBeenCalledWith('settings.skills.toggleFailed')
+    })
+})
+
+describe('SkillsSection（票 04：删除）', () => {
+    /** 找某 skill 行内的删除钮（data 属性定位，与 i18n mock 无关） */
+    function deleteBtnOf(name: string): HTMLElement | null {
+        const row = screen.getByText(name).closest('[data-skill-name]')!
+        return row.querySelector(`[data-skill-delete="${name}"]`)
+    }
+
+    function setupGlobal() {
+        vi.mocked(useWorkspaces).mockReturnValue({ data: [] } as never)
+        vi.mocked(useSkills).mockImplementation(mockSkillsByScope)
+        vi.mocked(useSkillVisibility).mockReturnValue(mockVisibility as never)
+        render(<SkillsSection />)
+    }
+
+    it('personal/project 行有删除入口；plugin/synced 行没有', () => {
+        setupGlobal()
+
+        expect(deleteBtnOf('alpha')).not.toBeNull()
+        expect(deleteBtnOf('plug')).toBeNull()
+    })
+
+    it('untracked：确认弹窗用直删文案；确认后发起删除 + 成功 toast', async () => {
+        setupGlobal()
+        mockDeleteAsync.mockResolvedValueOnce(undefined)
+
+        deleteBtnOf('alpha')!.click()
+        await waitFor(() => expect(mockDeleteAsync).toHaveBeenCalledWith({ name: 'alpha', workspaceId: 'global' }))
+
+        const opts = mockModal.confirm.mock.calls[0]![0]!
+        expect(opts.content).toBe('settings.skills.deleteConfirmUntracked')
+        expect(mockMessage.success).toHaveBeenCalledWith('settings.skills.deleted')
+    })
+
+    it('tracked：确认弹窗用 CLI 卸载文案（带安装来源）', async () => {
+        setupGlobal()
+        mockDeleteAsync.mockResolvedValueOnce(undefined)
+
+        deleteBtnOf('beta')!.click()
+        await waitFor(() => expect(mockDeleteAsync).toHaveBeenCalled())
+
+        const opts = mockModal.confirm.mock.calls[0]![0]!
+        expect(opts.content).toBe('settings.skills.deleteConfirmTracked')
+    })
+
+    it('失败（无透传详情）：通用失败 toast', async () => {
+        setupGlobal()
+        mockDeleteAsync.mockRejectedValueOnce(new Error('network'))
+
+        deleteBtnOf('alpha')!.click()
+        await waitFor(() => expect(mockMessage.error).toHaveBeenCalledWith('settings.skills.deleteFailed'))
+    })
+
+    it('失败（daemon 透传 CLI 输出）：输出原样呈现', async () => {
+        setupGlobal()
+        mockDeleteAsync.mockRejectedValueOnce({ response: { data: { error: 'npm error: not found in lock' } } } as never)
+
+        deleteBtnOf('alpha')!.click()
+        await waitFor(() => expect(mockMessage.error).toHaveBeenCalledWith('npm error: not found in lock'))
     })
 })

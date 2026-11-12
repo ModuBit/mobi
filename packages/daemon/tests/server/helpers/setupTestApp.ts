@@ -42,7 +42,12 @@ function ensureIsolatedMobiHome(): string {
 
 export async function setupTestApp(
     syncEngine: SyncEngine | null = null,
-    opts: { distDirOverride?: string; store?: Store; skillsScanRoots?: import('../../../src/skills/skillScanner').SkillScanRoots } = {},
+    opts: {
+        distDirOverride?: string
+        store?: Store
+        skillsScanRoots?: import('../../../src/skills/skillScanner').SkillScanRoots
+        skillsRemoveRunner?: import('../../../src/skills/skillRemover').SkillsRemoveRunner
+    } = {},
 ) {
     // 需要「路由 deps.store 与 engine 同库」的测试可注入共享 Store（缺省独立内存库）
     const store = opts.store ?? new Store(':memory:')
@@ -71,6 +76,8 @@ export async function setupTestApp(
         distDirOverride: opts.distDirOverride,
         // skill 扫描根 fixture（skill-mgmt 票 01）：不注入则路由会扫真实 ~/.claude
         skillsScanRoots: opts.skillsScanRoots,
+        // skills CLI remove 桩（票 04）：不注入则 spawn 真实 npx skills
+        skillsRemoveRunner: opts.skillsRemoveRunner,
     })
 
     // 宿主通道子应用（ticket-21）：/cli/* 已从主 app 迁独立 listener，测试改打这里

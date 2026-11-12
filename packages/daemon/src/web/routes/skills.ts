@@ -15,17 +15,20 @@
  */
 
 /**
- * Skills 管理路由（skill-mgmt 票 01/03）。
+ * Skills 管理路由（skill-mgmt 票 01/03/04）。
  *
  * - GET /api/skills?workspaceId=global|<id>：列表（global=个人+synced+插件携带；CC 内置归票 06 独立端点）
  * - PATCH /api/skills/:name/visibility：启停写归属层 skillOverrides（personal→user settings、
  *   project→workspace project settings），响应带回刷新后的行（遮蔽态即时可见）
+ * - DELETE /api/skills/:name?workspaceId=：双路径删除——tracked 分派 skills CLI（user 级 -g、
+ *   project 级 cwd=workspace），untracked 直接删 agent 目录条目（symlink 只删链接）
  */
 import { Hono } from 'hono'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSyncEngine } from './guards'
 import { defaultSkillScanRoots, listGlobalSkills, listWorkspaceSkills, type SkillScanRoots } from '../../skills/skillScanner'
+import { defaultSkillsRemoveRunner, removeTrackedSkill, removeUntrackedSkill, type SkillsRemoveRunner } from '../../skills/skillRemover'
 import { writeSkillOverride } from '../../skills/skillSettingsWriter'
 import type { SkillInfo } from '@mobi/shared'
 
@@ -51,6 +54,7 @@ function findSkill(skills: SkillInfo[], name: string): SkillInfo | undefined {
 export function createSkillsRoutes(
     getSyncEngine: () => SyncEngine | null,
     roots?: SkillScanRoots,
+    skillsRemoveRunner: SkillsRemoveRunner = defaultSkillsRemoveRunner,
 ): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
@@ -103,6 +107,39 @@ export function createSkillsRoutes(
             ? findSkill(listGlobalSkills(scanRoots), skillName)
             : findSkill(listWorkspaceSkills(scanRoots, scope.path), skillName)
         return c.json({ skill: refreshed })
+    })
+
+    app.delete('/skills/:name', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const scanRoots = roots ?? defaultSkillScanRoots()
+        const scope = resolveScope(engine, c.req.query('workspaceId') ?? 'global')
+        if (scope.kind === 'not-found') return c.json({ error: 'Workspace not found' }, 404)
+        if (scope.kind === 'no-folder') return c.json({ error: 'Workspace has no folder' }, 400)
+
+        const skillName = c.req.param('name')
+        const current = scope.kind === 'global'
+            ? findSkill(listGlobalSkills(scanRoots), skillName)
+            : findSkill(listWorkspaceSkills(scanRoots, scope.path), skillName)
+        if (!current) return c.json({ error: 'Skill not found' }, 404)
+
+        // synced 下次同步会拉回、插件携带归迭代 3——都不提供删除
+        if (current.source === 'synced' || current.source === 'plugin') {
+            return c.json({ error: 'Skill is managed elsewhere' }, 400)
+        }
+
+        if (current.tracked) {
+            // tracked：真身与 lock 条目归 CLI 语义闭环，mobi 只按 scope 分派
+            const result = await removeTrackedSkill(current, scope, skillsRemoveRunner)
+            if (!result.ok) return c.json({ error: result.output || 'skills CLI failed' }, 502)
+            return c.json({ ok: true })
+        }
+
+        // untracked：mobi 自管文件，删除前二次校验目标位置
+        const result = removeUntrackedSkill(current, scanRoots, scope)
+        if (!result.ok) return c.json({ error: result.error }, 500)
+        return c.json({ ok: true })
     })
 
     return app

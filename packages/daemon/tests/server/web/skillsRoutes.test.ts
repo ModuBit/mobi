@@ -23,7 +23,7 @@
  * - 同名裁决（personal 胜 project；本地胜 synced）/ 损坏条目隐藏
  */
 import { homedir, tmpdir } from 'node:os'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, readFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, readFileSync, existsSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import type { Server } from 'socket.io'
@@ -59,6 +59,25 @@ describe('skills REST 路由（GET /api/skills）', () => {
     let wsDir: string
     let claudeDir: string
 
+    /** 票 04：fake skills CLI——按调研实锤的 remove 语义删 agent 目录条目 + lock 条目，记录调用参数 */
+    const skillsRemoveCalls: { args: string[]; cwd: string }[] = []
+    let failSkillsRemove: string | null = null
+    const fakeSkillsRemove = async (args: string[], opts: { cwd: string }) => {
+        skillsRemoveCalls.push({ args, cwd: opts.cwd })
+        const name = args[1]!
+        if (failSkillsRemove === name) return { ok: false, output: `npm error: skill ${name} not found in lock` }
+        // agent 目录条目（user 级视角；project 级真身语义同理由 CLI 闭环，此处只模拟条目删除）
+        rmSync(join(claudeDir, 'skills', name), { recursive: true, force: true })
+        // lock 条目与真身同生共死
+        const lockPath = join(fixtureRoot, 'agents', '.skill-lock.json')
+        if (existsSync(lockPath)) {
+            const lock = JSON.parse(readFileSync(lockPath, 'utf-8')) as { skills: Record<string, unknown> }
+            delete lock.skills[name]
+            writeFileSync(lockPath, JSON.stringify(lock))
+        }
+        return { ok: true, output: `removed ${name}` }
+    }
+
     beforeAll(async () => {
         // ── fixture：假 ~/.claude、假中央仓 + user lock、假插件、假 managed settings ──
         fixtureRoot = mkdtempSync(join(tmpdir(), 'mobi-skill-fx-'))
@@ -81,6 +100,12 @@ describe('skills REST 路由（GET /api/skills）', () => {
         // user 层 off 的个人 skill
         mkdirSync(join(claudeDir, 'skills', 'personal-off'), { recursive: true })
         writeFileSync(join(claudeDir, 'skills', 'personal-off', 'SKILL.md'), skillMd({ name: 'personal-off' }))
+        // 票 04 删除用：untracked 真目录 + untracked symlink（无 lock 条目）
+        mkdirSync(join(claudeDir, 'skills', 'del-plain'), { recursive: true })
+        writeFileSync(join(claudeDir, 'skills', 'del-plain', 'SKILL.md'), skillMd({ name: 'del-plain' }))
+        mkdirSync(join(centralDir, 'skills', 'orphan-target'), { recursive: true })
+        writeFileSync(join(centralDir, 'skills', 'orphan-target', 'SKILL.md'), skillMd({ name: 'del-link' }))
+        symlinkSync(join(centralDir, 'skills', 'orphan-target'), join(claudeDir, 'skills', 'del-link'))
         // 与 synced 同名（本地胜）
         mkdirSync(join(claudeDir, 'skills', 'dup-local'), { recursive: true })
         writeFileSync(join(claudeDir, 'skills', 'dup-local', 'SKILL.md'), skillMd({ name: 'dup-local' }))
@@ -136,6 +161,9 @@ describe('skills REST 路由（GET /api/skills）', () => {
         writeFileSync(join(wsDir, '.claude', 'settings.local.json'), JSON.stringify({
             skillOverrides: { 'proj-shadow': 'off' },
         }))
+        // 票 04：project untracked 删除用
+        mkdirSync(join(wsDir, '.claude', 'skills', 'del-proj'), { recursive: true })
+        writeFileSync(join(wsDir, '.claude', 'skills', 'del-proj', 'SKILL.md'), skillMd({ name: 'del-proj' }))
 
         // ── 起测试 app：注入 fixture 扫描根 ──
         const store = new Store(':memory:')
@@ -152,6 +180,7 @@ describe('skills REST 路由（GET /api/skills）', () => {
                 pluginDirs: [pluginDir],
                 managedSettingsPath: join(fixtureRoot, 'managed-settings.json'),
             },
+            skillsRemoveRunner: fakeSkillsRemove,
         })
         app = setup.app
         cleanupApp = () => {
@@ -361,6 +390,74 @@ describe('skills REST 路由（GET /api/skills）', () => {
         test('非法 body → 400', async () => {
             const { res } = await patchVisibility('alpha', { enabled: 'yes', workspaceId: 'global' })
             expect(res.status).toBe(400)
+        })
+    })
+
+    describe('DELETE /api/skills/:name（双路径删除）', () => {
+        async function deleteSkill(name: string, query: string): Promise<Response> {
+            return app.request(`/api/skills/${encodeURIComponent(name)}${query}`, {
+                method: 'DELETE',
+                headers: authHeaders,
+            })
+        }
+
+        test('untracked 真目录：目录删除、中央仓不受影响、列表行消失', async () => {
+            const res = await deleteSkill('del-plain', '?workspaceId=global')
+            expect(res.status).toBe(200)
+
+            expect(existsSync(join(claudeDir, 'skills', 'del-plain'))).toBe(false)
+            const { skills } = await listSkills('?workspaceId=global')
+            expect(byName(skills, 'del-plain')).toBeUndefined()
+        })
+
+        test('untracked symlink：只删链接不删中央仓真身', async () => {
+            const res = await deleteSkill('del-link', '?workspaceId=global')
+            expect(res.status).toBe(200)
+
+            // 链接消失，真身仍在（真身归 CLI 语义或用户自管）
+            expect(existsSync(join(claudeDir, 'skills', 'del-link'))).toBe(false)
+            expect(existsSync(join(fixtureRoot, 'agents', 'skills', 'orphan-target', 'SKILL.md'))).toBe(true)
+        })
+
+        test('CLI 失败：502 + 输出透传；条目保持原状', async () => {
+            failSkillsRemove = 'beta'
+            const res = await deleteSkill('beta', '?workspaceId=global')
+            failSkillsRemove = null
+
+            expect(res.status).toBe(502)
+            const data = await res.json() as { error: string }
+            expect(data.error).toContain('not found in lock')
+            // 失败不动文件系统
+            expect(existsSync(join(claudeDir, 'skills', 'beta'))).toBe(true)
+        })
+
+        test('tracked：分派 skills CLI（-g + claude-code agent），条目与 lock 由 CLI 语义闭环', async () => {
+            const res = await deleteSkill('beta', '?workspaceId=global')
+            expect(res.status).toBe(200)
+
+            expect(skillsRemoveCalls.length).toBe(2)
+            expect(skillsRemoveCalls.at(-1)!.args).toEqual(['remove', 'beta', '-y', '--agent', 'claude-code', '-g'])
+            // fake CLI 已按语义删条目与 lock
+            expect(existsSync(join(claudeDir, 'skills', 'beta'))).toBe(false)
+            const lock = JSON.parse(readFileSync(join(fixtureRoot, 'agents', '.skill-lock.json'), 'utf-8'))
+            expect(lock.skills.beta).toBeUndefined()
+        })
+
+        test('project untracked：删除 workspace 下 .claude/skills 条目', async () => {
+            const res = await deleteSkill('del-proj', `?workspaceId=${workspaceId}`)
+            expect(res.status).toBe(200)
+            expect(existsSync(join(wsDir, '.claude', 'skills', 'del-proj'))).toBe(false)
+        })
+
+        test('未知名 → 404 且不触达 CLI', async () => {
+            const res = await deleteSkill('nope', '?workspaceId=global')
+            expect(res.status).toBe(404)
+            expect(skillsRemoveCalls.every(c => c.args[1] !== 'nope')).toBe(true)
+        })
+
+        test('synced / plugin 行不可删除 → 400', async () => {
+            expect((await deleteSkill('cloud-skill', '?workspaceId=global')).status).toBe(400)
+            expect((await deleteSkill('plug-skill', '?workspaceId=global')).status).toBe(400)
         })
     })
 })

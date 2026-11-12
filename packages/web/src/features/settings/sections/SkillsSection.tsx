@@ -25,7 +25,7 @@ import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { SkillInfo } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
-import { useSkillVisibility, useSkills } from '@/core/data/hooks/queries/useSkills'
+import { useSkillDelete, useSkillVisibility, useSkills } from '@/core/data/hooks/queries/useSkills'
 import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { SkillRow } from '@/features/settings/skills/SkillRow'
@@ -66,13 +66,14 @@ function filterSkills(skills: SkillInfo[], keyword: string): SkillInfo[] {
 export function SkillsSection() {
     const { token } = useToken()
     const { t } = useTranslation()
-    const { message } = App.useApp()
+    const { message, modal } = App.useApp()
     const [tab, setTab] = useState<string>(GLOBAL_TAB)
     const [keyword, setKeyword] = useState('')
 
     const { data: workspaces } = useWorkspaces()
     const { skills, isLoading } = useSkills(tab)
     const visibility = useSkillVisibility()
+    const deletion = useSkillDelete()
 
     const filtered = useMemo(() => filterSkills(skills, keyword), [skills, keyword])
 
@@ -91,6 +92,29 @@ export function SkillsSection() {
                 },
             },
         )
+    }
+
+    /** 删除：确认弹窗区分双路径文案；tracked 走 skills CLI（失败透传其输出） */
+    const requestDelete = (skill: SkillInfo) => {
+        modal.confirm({
+            title: t('settings.skills.deleteConfirmTitle', { name: skill.name }),
+            content: skill.tracked
+                ? t('settings.skills.deleteConfirmTracked', { source: skill.installSource ?? '' })
+                : t('settings.skills.deleteConfirmUntracked'),
+            okText: t('common.delete'),
+            okButtonProps: { danger: true },
+            cancelText: t('common.cancel'),
+            onOk: async () => {
+                try {
+                    await deletion.mutateAsync({ name: skill.name, workspaceId: tab })
+                    message.success(t('settings.skills.deleted'))
+                } catch (error) {
+                    // 502 时 daemon 透传 CLI 输出（error.response.data.error），否则通用失败文案
+                    const detail = (error as { response?: { data?: { error?: string } } })?.response?.data?.error
+                    message.error(detail || t('settings.skills.deleteFailed'))
+                }
+            },
+        })
     }
 
     const tabItems = useMemo(
@@ -126,6 +150,11 @@ export function SkillsSection() {
                             skill={skill}
                             onToggle={skill.overrideable ? handleToggle(skill) : undefined}
                             toggling={visibility.isPending && visibility.variables?.name === skill.name}
+                            onDelete={
+                                skill.source === 'personal' || skill.source === 'project'
+                                    ? () => requestDelete(skill)
+                                    : undefined
+                            }
                         />
                     ))}
                 </SettingGroupCard>

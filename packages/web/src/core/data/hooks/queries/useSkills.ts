@@ -37,6 +37,23 @@ export function useSkills(workspaceId: string): { skills: SkillInfo[]; isLoading
 }
 
 /**
+ * skill 删除（skill-mgmt 票 04）：成功后 invalidate 换新列表（行即时移除）。
+ */
+export function useSkillDelete() {
+    const api = useMobiApi()
+    const queryClient = useQueryClient()
+
+    return useMutation({
+        mutationFn: async (vars: { name: string; workspaceId: string }) => {
+            await api.skills.remove(vars.name, vars.workspaceId)
+        },
+        onSuccess: (_data, vars) => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.skills(vars.workspaceId) })
+        },
+    })
+}
+
+/**
  * skill 启停（skill-mgmt 票 03）：写归属层 skillOverrides 后 invalidate 换新列表。
  * 本地扫描 ms 级，invalidate 同步刷新不可感知，不做显式乐观更新；
  * 成功后带回刷新行（遮蔽态由响应承载，调用方据此弹压制提示）。

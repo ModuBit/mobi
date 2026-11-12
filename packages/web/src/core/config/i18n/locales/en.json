@@ -1019,6 +1019,14 @@
       "toggleAria": "Enable or disable skill {{name}}",
       "shadowedToast": "Enabled at this layer, but still disabled by a higher (managed or local) settings layer",
       "toggleFailed": "Operation failed, please retry",
+      "deleteTooltip": "Delete",
+      "deleteAria": "Delete skill {{name}}",
+      "deleteAction": "Delete",
+      "deleteConfirmTitle": "Delete skill \"{{name}}\"?",
+      "deleteConfirmTracked": "It will be uninstalled via the skills CLI (installed from {{source}}), removing the central store copy and its lock entry. This cannot be undone.",
+      "deleteConfirmUntracked": "The skill directory will be deleted directly. This cannot be undone.",
+      "deleted": "Deleted",
+      "deleteFailed": "Delete failed, please retry",
       "state": {
         "off": "Disabled",
         "shadowed": "Disabled by higher settings"

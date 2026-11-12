@@ -1010,6 +1010,14 @@
       "toggleAria": "启用或停用技能 {{name}}",
       "shadowedToast": "已在当前设置层启用，但仍被更高层（托管或本地）设置停用",
       "toggleFailed": "操作失败，请重试",
+      "deleteTooltip": "删除",
+      "deleteAria": "删除技能 {{name}}",
+      "deleteAction": "删除",
+      "deleteConfirmTitle": "删除技能「{{name}}」？",
+      "deleteConfirmTracked": "将通过 skills CLI 卸载（安装自 {{source}}），中央仓副本与安装记录一并清理。此操作不可恢复。",
+      "deleteConfirmUntracked": "将直接删除该技能目录。此操作不可恢复。",
+      "deleted": "已删除",
+      "deleteFailed": "删除失败，请重试",
       "state": {
         "off": "已停用",
         "shadowed": "被更高层设置停用"

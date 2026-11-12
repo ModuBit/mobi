@@ -471,6 +471,11 @@ export function createMobiApi() {
                     enabled,
                     workspaceId,
                 }),
+            // 删除：tracked 分派 skills CLI（失败 502 透传 CLI 输出），untracked 直删目录
+            remove: (name: string, workspaceId: string) =>
+                client.delete<{ ok: boolean }>(`/api/skills/${encodeURIComponent(name)}`, {
+                    params: { workspaceId },
+                }),
         },
 
         // Host / daemon（单机：daemon 即宿主；机器列表这一层随 machine 概念移除退场）
