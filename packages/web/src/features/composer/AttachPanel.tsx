@@ -150,7 +150,8 @@ export function AttachPanel({ disabled, onAttach, onSketch }: AttachPanelProps) 
             trigger={
                 // 光学对齐：sm ghost 钮自身有 12px 内衬 + 1px 描边，若按钮盒与正文左缘齐平，
                 // 图标会右移 13px。负 margin 只抵消内衬（保留描边），图标再单独左移 1px 补偿
-                // 描边，字形左缘与编辑器正文同列；按钮盒仍在白卡内（侧轨 20px 时距卡缘 8px），
+                // 描边，字形左缘与编辑器正文同列；按钮盒仍在白卡内（桌面轨 20px 时
+                // 距卡缘 8px、移动端 16px 时 4px），命中区/悬浮底不外溢。
                 // 命中区/悬浮底不外溢。
                 <Button
                     variant="ghost"

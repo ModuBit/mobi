@@ -92,8 +92,10 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
             flexDirection: 'column',
             gap: 2,
             // 与白卡内容轨对齐：白卡左缘在灰卡内容左缘外 16px，内容轨 = 白卡
-            // 左缘 + 20px = 灰卡内容左缘 + 4px；本行自身 4px 内衬正好落到这条
-            // 轨上，无需负 margin，内容即与下方输入文字、参数条同列。
+            // 左缘 + var(--composer-rail) = 灰卡内容边缘 + (rail − 16)；本行自身
+            // 4px 内衬已让内容右移 4px，故负 margin 取 rail − 20（桌面 20px → 0，
+            // 移动端 16px → −4），内容即与下方输入文字、参数条同列。
+            marginInline: 'calc(var(--composer-rail, 20px) - 20px)',
             padding: '4px 4px 6px',
         }}>
             {/* 工作区选择（必选）：机器 + 工作目录由工作区派生 */}

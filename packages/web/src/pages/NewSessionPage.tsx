@@ -21,7 +21,7 @@ import { Button } from '@/ui/base/interactive/button/Button'
 import { ChatInput, type ChatInputHandle, type ChatInputUpdateContext } from '@/ui/base/interactive/chat-input'
 import styled from '@emotion/styled'
 import { AttachPanel } from '@/features/composer/AttachPanel'
-import { composerCard } from '@/features/composer/composerSurface.styles'
+import { composerCard, composerRail } from '@/features/composer/composerSurface.styles'
 import { useComposerScaffold } from '@/features/composer/useComposerScaffold'
 import { resolveComposerPanelKeyDown } from '@/features/composer/composerPanelKeys'
 import { PlusOutlined, InboxOutlined, BranchesOutlined, SendOutlined } from '@ant-design/icons'
@@ -136,6 +136,9 @@ const TitleBar = styled.div<{ $color: string }>`
 // 白卡与圆钮样式来自 composerSurface.styles 共享片段（本页 Dock 背后恒有 SubBar
 // chips 作内容层，垂直 8px 呼吸空隙由共享片段自带，无需 :has 进退场）
 const InputCard = styled.div`
+    /* 内容轨侧衬变量（桌面 20px / 移动端 16px）：本容器与白卡内所有行共享 */
+    ${composerRail}
+
     background: var(--ant-color-fill-tertiary);
     border: 1px solid var(--ant-color-border-secondary);
     border-radius: var(--radius-panel);
@@ -149,12 +152,12 @@ const InputCard = styled.div`
         margin: 8px -16px;
     }
 
-    /* SubBar 与白卡内容同轨：容器镜像白卡的水平悬挂量（-16），再让 20px 内衬，
-       使 chips 盒缘落在输入区文字/参数条按钮那条内容轨上（同一规则见聊天页
-       ComposerDock；本页灰度固定，无需 :has 分支）。 */
+    /* SubBar 与白卡内容同轨：容器镜像白卡的水平悬挂量（-16），再让
+       var(--composer-rail) 内衬，使 chips 盒缘落在输入区文字/参数条按钮那条内容轨上
+       （同一规则见聊天页 ComposerDock；本页灰度固定，无需 :has 分支）。 */
     && .composer-subbar {
         margin: 0 -16px;
-        padding: 6px 20px 4px;
+        padding: 6px var(--composer-rail, 20px) 4px;
     }
 `
 
@@ -725,7 +728,7 @@ export function NewSessionPage() {
                     />
 
                     {/* 原 Sender footer → 参数条：+（附件）与 send 两端固定，中间可横向拖动滚动 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 20px 12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px var(--composer-rail, 20px) 12px' }}>
                         {/* 附件面板（+）——左端固定锚，其余项进可拖动条 */}
                         <AttachPanel
                             disabled={inputDisabled}
@@ -778,8 +781,8 @@ export function NewSessionPage() {
                         {/* 裁切容器自身镜像白卡悬挂量：负 margin 必须落在 overflow:hidden
                             这一层，否则内层内容会被裁掉左右各 4px（图标缺口、输入框右缘消失） */}
                         <div style={{ overflow: 'hidden', marginInline: -16 }}>
-                            {/* 与白卡内容轨对齐：20px 内衬即输入区/参数条那条轨道 */}
-                            <div style={{ padding: '0 20px 4px' }}>
+                            {/* 与白卡内容轨对齐：var(--composer-rail) 内衬即输入区/参数条那条轨道 */}
+                            <div style={{ padding: '0 var(--composer-rail, 20px) 4px' }}>
                                 {/* uiarc Input 无 prefix：分支图标移外壳布局行 */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                     <BranchesOutlined style={{ fontSize: 12, opacity: 0.55, flexShrink: 0 }} />

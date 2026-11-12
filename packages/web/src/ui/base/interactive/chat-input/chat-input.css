@@ -19,10 +19,10 @@
 .chat-input {
     display: flex;
     flex-direction: column;
-    /* 侧衬 20px 与白卡头部/参数条同一条内容轨（composerSurface 的 HEADER_INSET）；
-       上下列距沿用原 antd Sender 的 12px（textarea 行 paddingInline:0——内衬由卡容器
-       承载）；由消费方按需覆盖 */
-    padding: 12px 20px;
+    /* 侧衬 var(--composer-rail)（桌面 20px / 移动端 16px）与白卡头部/参数条同一条
+       内容轨（composerSurface 的 HEADER_INSET）；上下列距沿用原 antd Sender 的 12px
+       （textarea 行 paddingInline:0——内衬由卡容器承载）；由消费方按需覆盖 */
+    padding: 12px var(--composer-rail, 20px);
     /* 兜底与组件换算同式：rows×22px 行高 + 24px 上下内衬（border-box） */
     min-height: var(--chat-input-min-h, 68px);
     max-height: var(--chat-input-max-h, 244px);

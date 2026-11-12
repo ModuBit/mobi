@@ -38,7 +38,7 @@ import {
     ChatInputQuoteNode,
     extractQuotesFromEditorStateJSON,
 } from '@/ui/shared/chat-input-quote'
-import { composerCard } from '@/features/composer/composerSurface.styles'
+import { composerCard, composerRail } from '@/features/composer/composerSurface.styles'
 import { ComposerInfoPanel } from '@/pages/session/ComposerInfoPanel'
 import { resolveCopyShortcut } from '@/features/composer/copyShortcut'
 import { resolveComposerPanelKeyDown } from '@/features/composer/composerPanelKeys'
@@ -162,6 +162,9 @@ interface ChatComposerProps {
 // Dock 容器：包裹整个 Composer 区域，和 BubbleList 形成视觉分隔。
 // 白卡与圆钮样式来自 composerSurface.styles 共享片段（与新会话页 InputCard 同一套）
 const ComposerDock = styled.div`
+    /* 内容轨侧衬变量（桌面 20px / 移动端 16px）：白卡内各行与灰层 SubBar 共享 */
+    ${composerRail}
+
     /* 白卡容器（共享片段）：header 内容行 + 输入区 + 参数条共居同一白底圆角卡。
        margin 三档几何本页自管（空态 / 有内容层见下），共享片段只给白底与圆角 */
     ${composerCard}
@@ -189,13 +192,13 @@ const ComposerDock = styled.div`
         margin: 8px -16px 0;
     }
 
-    /* SubBar 与白卡内容同轨：容器镜像白卡的水平悬挂量，再把 20px 内衬让给
-       输入区/参数条那条内容轨（白卡外缘 ≠ 内容轨，按钮盒要落在内容轨上）。
+    /* SubBar 与白卡内容同轨：容器镜像白卡的水平悬挂量，再把 var(--composer-rail)
+       内衬让给输入区/参数条那条内容轨（白卡外缘 ≠ 内容轨，按钮盒要落在内容轨上）。
        没有内容层时白卡只悬 8px，有内容层时 Dock 内衬 8 + 白卡 -16，两种几何
        分别镜像；不镜像的话参数条会随 InfoPanel/GoalRow 的出现横跳 8px。 */
     && .composer-subbar {
         margin-inline: -8px;
-        padding: 6px 20px 4px;
+        padding: 6px var(--composer-rail, 20px) 4px;
     }
 
     &&:not(:has(> :only-child)) .composer-subbar {
@@ -750,7 +753,7 @@ export function ChatComposer(props: ChatComposerProps) {
 
                 {/* 原 Sender footer → 参数条：+（附件）与 send 两端固定，中间可横向拖动滚动
                    （ResponsiveActionBar 的溢出收纳在参数条上退役，见 ToolStrip 组件注释） */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 20px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px var(--composer-rail, 20px) 12px' }}>
                     {/* 附件面板：文件/拍照（移动端）/画板聚合入口（Codex 风格富面板）——左端固定锚 */}
                     <AttachPanel
                         disabled={chromeDisabled || hasPendingPermission}
