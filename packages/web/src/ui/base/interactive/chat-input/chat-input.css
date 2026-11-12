@@ -22,8 +22,9 @@
     /* 内衬对齐原 antd Sender（paddingSM=12px 四周，textarea 行 paddingInline:0——
        内衬由卡容器承载）；由消费方按需覆盖 */
     padding: 12px;
-    min-height: var(--chat-input-min-h, 44px);
-    max-height: var(--chat-input-max-h, 220px);
+    /* 兜底与组件换算同式：rows×22px 行高 + 24px 上下内衬（border-box） */
+    min-height: var(--chat-input-min-h, 68px);
+    max-height: var(--chat-input-max-h, 244px);
 }
 
 /* EditorContent 的包裹 div（TipTap 默认渲染）：必须参与 flex 收缩，
@@ -150,7 +151,9 @@ html[data-theme='dark'] .chat-input .ProseMirror pre {
     background: var(--ant-color-bg-elevated);
 }
 
-.chat-input .ProseMirror pre code {
+.chat-input .ProseMirror pre code,
+/* 暗色行内码规则特异地命中 pre 内 code（0,3,2），必须同权重覆盖回透明 */
+html[data-theme='dark'] .chat-input .ProseMirror pre code {
     padding: 0;
     background: transparent;
     font-size: inherit;

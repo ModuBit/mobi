@@ -291,6 +291,9 @@ export function ChatComposer(props: ChatComposerProps) {
     // 结构化草稿同理：恢复的 rAF 早于编辑器就绪时先存这里，onReady 对账时再写入
     // （否则 setEditorStateJSON 因 shellRef 为 null 静默丢弃，只剩 text 降级文本）
     const pendingEditorStateRef = useRef<string | null>(null)
+    // wire（Markdown）回填同理：编辑器未就绪时排队，onReady 后按 Markdown 解析写入——
+    // 若退回 setText 纯文本通道，格式会变成字面 `**x**` 并在重发时被二次转义
+    const pendingMarkdownRef = useRef<string | null>(null)
     const insertPendingQuotesIfReady = useCallback(() => {
         const shell = shellRef.current
         const pending = pendingQuotesRef.current
@@ -306,7 +309,11 @@ export function ChatComposer(props: ChatComposerProps) {
     // 快照同时是 dev StrictMode 二次挂载（新 editor 实例）重建 chip 的来源
     const handleShellReady = useCallback(() => {
         const snapshot = pendingEditorStateRef.current ?? editorStateJsonRef.current
-        if (textRef.current) shellRef.current?.setText(textRef.current)
+        const pendingMarkdown = pendingMarkdownRef.current
+        pendingMarkdownRef.current = null
+        // 待回填的 Markdown 优先按富文本解析；纯文本镜像只作最后兜底
+        if (pendingMarkdown != null) shellRef.current?.setMarkdown(pendingMarkdown)
+        else if (textRef.current) shellRef.current?.setText(textRef.current)
         if (snapshot) shellRef.current?.setEditorStateJSON(snapshot)
         pendingEditorStateRef.current = null
         insertPendingQuotesIfReady()
@@ -316,6 +323,13 @@ export function ChatComposer(props: ChatComposerProps) {
     const setTextWithEditor = useCallback((v: string) => {
         setText(v)
         shellRef.current?.setText(v)
+    }, [])
+    // wire（Markdown）回填：未就绪时排队到 onReady；镜像同步跟进（canSend/草稿保存派生源）
+    const setMarkdownWithEditor = useCallback((v: string) => {
+        setText(v)
+        const shell = shellRef.current
+        if (shell?.isReady()) shell.setMarkdown(v)
+        else pendingMarkdownRef.current = v
     }, [])
     // 旧格式草稿的引用桶恢复（无 uid）：排队到编辑器就绪后逐条插入末尾
     const restoreDraftQuotes = useCallback((qs: PendingQuoteRef[]) => {
@@ -340,7 +354,8 @@ export function ChatComposer(props: ChatComposerProps) {
         if (!sessionId) return
         const crossPageDraft = consumeDraftText()
         if (crossPageDraft) {
-            setTextWithEditor(crossPageDraft)
+            // 跨页草稿存的是 wire（Markdown）：按富文本回填，不能走 setText 纯文本通道
+            setMarkdownWithEditor(crossPageDraft)
             // 仅更新文本，保留该 session 既有的附件/引用草稿（避免空分段覆盖）。
             // 结构化快照随正文作废，但其中的 chip 先摘出来转入 quotes 桶——
             // 否则快照一删，引用与评论就彻底丢了
@@ -350,7 +365,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 : []
             mergeDraftText(sessionId, crossPageDraft, carriedQuotes)
         }
-    }, [sessionId, setTextWithEditor])
+    }, [sessionId, setMarkdownWithEditor])
 
     // 构建目录能力目标，useMemo 保证引用稳定，避免下游 useEffect 无限循环
     const capTarget = useMemo<CapabilityTarget | null>(
@@ -442,12 +457,13 @@ export function ChatComposer(props: ChatComposerProps) {
     // wire 回填数据无 uid——chip 重建走 insertQuotesAtEnd（内部 withQuoteUid 生成）
     const applySegments = useCallback((segments: ComposerSegments) => {
         const refs = [...segments.files, ...segments.images]
-        setTextWithEditor(segments.text)
+        // segments.text 是发送时的 wire（Markdown）：按 Markdown 回填才能无损 round-trip
+        setMarkdownWithEditor(segments.text)
         setAttachments(refs.map(fileRefToPlaceholderAttachment))
         const quotesToRestore = segments.quotes.slice(0, QUOTE_MAX_COUNT)
         if (quotesToRestore.length > 0) restoreDraftQuotes(quotesToRestore)
         shellRef.current?.focus()
-    }, [setAttachments, setTextWithEditor, restoreDraftQuotes])
+    }, [setAttachments, setMarkdownWithEditor, restoreDraftQuotes])
 
     // 回填应用门控：nonce 单调递增触发一次；空分段静默跳过
     // （数据异常无从还原时不清空用户当前草稿）

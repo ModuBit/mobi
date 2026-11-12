@@ -24,7 +24,7 @@ import { Button } from '@/ui/base/interactive/button/Button'
 import { Popover } from '@/ui/base/interactive/popover/Popover'
 import { Bold, Italic, Strikethrough, Code, Link as LinkIcon, Link2, Check, ExternalLink, Unlink, Trash2, Image as ImageIcon } from 'lucide-react'
 import StarterKit from '@tiptap/starter-kit'
-import { Markdown } from '@tiptap/markdown'
+import { Markdown, type MarkdownExtensionOptions } from '@tiptap/markdown'
 import { MermaidCodeBlock, MermaidPreview } from './mermaidPreview'
 import { LinkWithInputRule } from '@/ui/base/markdown/LinkWithInputRule'
 import Image from '@tiptap/extension-image'
@@ -60,12 +60,15 @@ const TaskListWithInput = TaskList.extend({
         ]
     },
 })
-import { common, createLowlight } from 'lowlight'
+import { lowlight } from '@/ui/base/markdown/lowlight'
+import { Marked } from 'marked'
 import { MarkdownToolbar } from './MarkdownToolbar'
 import './editor.css'
 
-// lowlight 模块级单例（common 常用语言；按需可补 all）
-const lowlight = createLowlight(common)
+// 独立 marked 实例：@tiptap/markdown 未注入时改的是全局单例，会与 composer 的
+// breaks:false 互相覆盖。类型断言同 composer：web 直接依赖 marked@15，@tiptap/markdown 依赖 marked@17
+type MarkdownOptionSet = MarkdownExtensionOptions
+const editorMarked = new Marked({ gfm: true, breaks: true }) as unknown as MarkdownOptionSet['marked']
 
 // Image 扩展 + 输入规则：打字 ![alt](url) 自动转图片（@tiptap/markdown 不提供打字解析）
 const ImageWithInputRule = Image.extend({
@@ -117,8 +120,8 @@ export function MarkdownEditorView({ text, readOnly = false, onChange }: Props) 
             TableHeader,
             TaskListWithInput,
             TaskItem.configure({ nested: true }),
-            // markedOptions: gfm（表格/删除线）+ breaks（单换行→br，对齐 typora 式）
-            Markdown.configure({ markedOptions: { gfm: true, breaks: true } }),
+            // 独立 marked 实例（gfm + breaks：单换行→br，对齐 typora 式）
+            Markdown.configure({ marked: editorMarked }),
         ],
         content: text,
         onUpdate: ({ editor }) => {

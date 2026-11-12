@@ -569,6 +569,116 @@ describe('ChatInput', () => {
         })
     })
 
+    describe('wire 语义（代码评审回归）', () => {
+        it('纯文本 wire 不做 Markdown 转义（bash/斜杠命令/@路径字面送达）', async () => {
+            const { handle, ready } = setup()
+            await ready()
+            const literal = 'ls *.ts ~/proj a_b [c] R&D <div>'
+            handle.current!.setText(literal)
+            expect(handle.current!.getWireText()).toBe(literal)
+        })
+
+        it('命令消息即使带格式也走纯文本 wire（前缀判定不被 marks 包住）', async () => {
+            const { handle, ready } = setup()
+            await ready()
+            const command = '! echo hi > out.txt && ls *.md'
+            handle.current!.setText(command)
+            handle.current!.getEditor()!.chain().selectAll().toggleBold().run()
+            expect(handle.current!.getWireText()).toBe(command)
+        })
+
+        it('wire 出口 NBSP 归一为普通空格', async () => {
+            const { handle, ready } = setup()
+            await ready()
+            handle.current!.getEditor()!.commands.insertContent('! ls -la')
+            expect(handle.current!.getWireText()).toBe('! ls -la')
+        })
+
+        it('富文本 wire 不含空段落占位实体 &nbsp;', async () => {
+            const { handle, ready } = setup()
+            await ready()
+            const ed = handle.current!.getEditor()!
+            ed.commands.setContent('**a**', { contentType: 'markdown' })
+            ed.commands.splitBlock()
+            ed.commands.splitBlock()
+            ed.commands.insertContent('b')
+            const wire = handle.current!.getWireText()
+            expect(wire).toContain('**a**')
+            expect(wire).not.toContain('&nbsp;')
+        })
+
+        it('无语言代码块 wire 不注入 plaintext 语言标注', async () => {
+            const { handle, ready } = setup()
+            await ready()
+            typeInto(handle, '``` ')
+            typeInto(handle, 'const a = 1')
+            const wire = handle.current!.getWireText()
+            expect(wire.startsWith('```\n') || wire.trimEnd().startsWith('```\n')).toBe(true)
+            expect(wire).not.toContain('plaintext')
+        })
+
+        it('setMarkdown 按 Markdown 解析回填（rewind/跨页草稿格式不丢）', async () => {
+            const { handle, ready } = setup()
+            await ready()
+            handle.current!.setMarkdown('**粗体**')
+            expect(handle.current!.getEditor()!.getHTML()).toContain('<strong>粗体</strong>')
+            expect(handle.current!.getWireText()).toBe('**粗体**')
+        })
+
+        it('标题中间换行不把已有标题降级为普通段落', async () => {
+            const { handle, ready, typeKey } = setup()
+            await ready()
+            typeInto(handle, '# abc')
+            const ed = handle.current!.getEditor()!
+            ed.commands.setTextSelection(1)
+            typeKey({ key: 'Enter', shiftKey: true })
+            // 标题文字仍留在 heading 节点里（不被 setParagraph 降级）
+            expect(ed.getHTML()).toContain('<h1>abc</h1>')
+            expect(countNodes(ed.state.doc, 'heading')).toBeGreaterThanOrEqual(1)
+            expect(handle.current!.getWireText()).toContain('# abc')
+        })
+
+        it('列表项内引用块换行不被吞（命令失败回退 splitBlock）', async () => {
+            const { handle, ready, typeKey } = setup()
+            await ready()
+            const ed = handle.current!.getEditor()!
+            ed.commands.setContent(
+                '<ul><li><p>item</p><blockquote><p>quote</p></blockquote></li></ul>',
+            )
+            let quotePos: number | null = null
+            ed.state.doc.descendants((node, pos) => {
+                if (quotePos == null && node.isText && node.text === 'quote') quotePos = pos
+                return quotePos == null
+            })
+            expect(quotePos).not.toBeNull()
+            ed.commands.setTextSelection(quotePos!)
+            const before = countNodes(ed.state.doc, 'paragraph')
+            typeKey({ key: 'Enter', shiftKey: true })
+            expect(countNodes(ed.state.doc, 'paragraph')).toBeGreaterThan(before)
+        })
+
+        it('带嵌套列表的空段落列表项不被整体顶出列表', async () => {
+            const { handle, ready, typeKey } = setup()
+            await ready()
+            const ed = handle.current!.getEditor()!
+            ed.commands.setContent(
+                '<ul><li><p></p><ul><li><p>x</p></li></ul></li></ul>',
+            )
+            // 光标放进外层空段落（第一个空段落节点内部）
+            let emptyPos: number | null = null
+            ed.state.doc.descendants((node, pos) => {
+                if (emptyPos == null && node.type.name === 'paragraph' && node.content.size === 0) {
+                    emptyPos = pos + 1
+                }
+                return emptyPos == null
+            })
+            expect(emptyPos).not.toBeNull()
+            ed.commands.setTextSelection(emptyPos!)
+            typeKey({ key: 'Enter', shiftKey: true })
+            expect(ed.state.doc.firstChild?.type.name).toBe('bulletList')
+        })
+    })
+
     describe('粘贴管线（票 03）', () => {
         /**
          * 构造可控 paste 事件：jsdom 无 ClipboardEvent/DataTransfer 实现，
@@ -628,6 +738,27 @@ describe('ChatInput', () => {
             expect(html).toContain('<ul>')
             // 前缀保留（就点插入，不整档替换）
             expect(handle.current!.getText()).toContain('前缀')
+        })
+
+        it('代码块内粘贴块级 Markdown → 保持字面，不劈开代码块', async () => {
+            const { handle, ready } = setup()
+            await ready()
+            typeInto(handle, '```js ')
+            typeInto(handle, 'line1')
+            // 未走 Markdown 解析：defaultPrevented 由 ProseMirror 自身 paste 管线接管
+            pasteInto({ text: '# comment\n- a' })
+            const doc = handle.current!.getEditor()!.state.doc
+            expect(countNodes(doc, 'codeBlock')).toBe(1)
+            expect(countNodes(doc, 'heading')).toBe(0)
+            expect(countNodes(doc, 'bulletList')).toBe(0)
+        })
+
+        it('Markdown 解析失败（含未装配图片段）→ 回退字面插入，粘贴不丢', async () => {
+            const { handle, ready } = setup()
+            await ready()
+            pasteInto({ text: '# 安装\n\n![截图](https://x/a.png)\n\n- 步骤一' })
+            expect(handle.current!.getText()).toContain('安装')
+            expect(handle.current!.getText()).toContain('步骤一')
         })
 
         it('行内 Markdown（无块级结构）→ 原样纯文本，不渲染', async () => {

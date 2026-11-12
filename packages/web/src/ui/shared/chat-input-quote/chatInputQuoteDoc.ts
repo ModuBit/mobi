@@ -124,6 +124,15 @@ export function addQuoteToEditor(editor: Editor, quote: PendingQuoteRef): Compos
     if (existingQuotes.length >= QUOTE_MAX_COUNT) return null
     const entry = withQuoteUid(quote)
     const { selection } = editor.state
+    // 代码块内不能插 inline chip（会劈开围栏、把尾部代码挤出代码块）——
+    // 改为在文档末尾新起一个段落承载引用
+    if (selection.$from.parent.type.spec.code === true) {
+        editor.commands.insertContentAt(editor.state.doc.content.size, {
+            type: 'paragraph',
+            content: [quoteNodeJSON(entry), { type: 'text', text: ' ' }],
+        })
+        return entry
+    }
     const insertPos = selection.empty ? selection.from : editor.state.doc.content.size - 1
     editor.commands.insertContentAt(insertPos, [quoteNodeJSON(entry), { type: 'text', text: ' ' }])
     return entry

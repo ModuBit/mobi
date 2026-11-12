@@ -18,7 +18,7 @@ import { useState, useCallback, useMemo, useRef, useEffect, type ReactNode } fro
 import { App, Spin, Segmented, theme as antTheme } from 'antd'
 import { Input } from '@/ui/base/interactive/input/Input'
 import { Button } from '@/ui/base/interactive/button/Button'
-import { ChatInput, type ChatInputHandle } from '@/ui/base/interactive/chat-input'
+import { ChatInput, type ChatInputHandle, type ChatInputUpdateContext } from '@/ui/base/interactive/chat-input'
 import styled from '@emotion/styled'
 import { AttachPanel } from '@/features/composer/AttachPanel'
 import { composerCard } from '@/features/composer/composerSurface.styles'
@@ -321,10 +321,18 @@ export function NewSessionPage() {
     // （面板选中切分 selectCurrent(text) 与提交读取共用同一快照）
     const inputTextRef = useRef(inputText)
     inputTextRef.current = inputText
+    // 编辑器结构化快照：isPending 分支卸载 ChatInput 后回挂时，纯文本镜像会丢格式，
+    // 就绪时按快照恢复富文本（与 ChatComposer.handleShellReady 同序：文本兜底 → 快照覆盖）
+    const composerStateRef = useRef('')
+    const handleComposerUpdate = useCallback((ctx: ChatInputUpdateContext) => {
+        composerStateRef.current = ctx.editorStateJSON
+        bridge.onTextInput(ctx)
+    }, [bridge.onTextInput])
     // isPending 分支会卸载 ChatInput（非受控编辑器实例随之销毁）；spawn 失败回挂的是
     // 全新空编辑器，而文本镜像还在——就绪时用镜像对账，避免「发送键亮着、原文却被清空」
     const handleShellReady = useCallback(() => {
         if (inputTextRef.current) shellRef.current?.setText(inputTextRef.current)
+        if (composerStateRef.current) shellRef.current?.setEditorStateJSON(composerStateRef.current)
     }, [])
     const attachmentsRef = useRef(attachments)
     attachmentsRef.current = attachments
@@ -696,7 +704,7 @@ export function NewSessionPage() {
                         placeholder={placeholder}
                         submitKey={hasFinePointer ? 'enter' : 'shiftEnter'}
                         disabled={inputDisabled}
-                        onUpdate={bridge.onTextInput}
+                        onUpdate={handleComposerUpdate}
                         onKeyDown={handleKeyDown}
                         onPaste={inputDisabled ? undefined : handlePasteNative}
                         onReady={handleShellReady}

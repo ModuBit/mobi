@@ -19,8 +19,8 @@ import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
-import { common, createLowlight } from 'lowlight'
-import { Markdown } from '@tiptap/markdown'
+import { Marked } from 'marked'
+import { Markdown, type MarkdownExtensionOptions } from '@tiptap/markdown'
 import { Underline } from '@tiptap/extension-underline'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
@@ -33,8 +33,9 @@ import { isComposingEvent } from '@/core/lib/inputEnterKeys'
 import type { ComposerQuoteRef, PendingQuoteRef } from '@/domain/chat/composerSegments'
 import { normalizeEditorText } from './chatInputText'
 import { resolveNewlineAction } from './newlinePolicy'
-import { looksLikeMarkdownBlock } from './richText/markdownPaste'
+import { looksLikeMarkdownBlock } from './markdownPaste'
 import { LinkWithInputRule } from '@/ui/base/markdown/LinkWithInputRule'
+import { lowlight } from '@/ui/base/markdown/lowlight'
 import {
     addQuoteToEditor,
     collectQuotesFromDoc,
@@ -45,12 +46,29 @@ import './chat-input.css'
 
 /** 行高常量：对齐现 Sender 输入区视觉（14px 字号 / 22px 行高），min/max 行数 → 像素换算 */
 const LINE_HEIGHT_PX = 22
+/** 输入卡上下内衬（.chat-input padding 12px×2）：border-box 下 min/max-height 含内衬，换算须加回 */
+const VERTICAL_PADDING_PX = 24
 
 /**
- * 代码块语法高亮（lowlight/common 常用语言；配色复用全局 styles/highlight.css 的
- * hljs 双档主题）。模块级单例与 MarkdownEditorView 同款——lowlight 只读注册表，可共享。
+ * 未注册语言（toml/dockerfile 等）与无语言围栏一律按 plaintext 高亮：
+ * 不让 lowlight 走 highlightAuto（全部语法逐一试跑 + 惰性编译，随每次按键执行）。
+ * 不使用 CodeBlock 的 defaultLanguage 选项——它同时是 language 属性默认值，
+ * 会把无语言围栏序列化成 ```plaintext。
  */
-const lowlight = createLowlight(common)
+const composerLowlight: typeof lowlight = {
+    ...lowlight,
+    highlightAuto: (value: string) => lowlight.highlight('plaintext', value),
+}
+
+/**
+ * composer 专用 marked 实例：@tiptap/markdown 未注入实例时会改全局单例的 options，
+ * composer（breaks:false）与文件编辑器（breaks:true）会互相覆盖且卸载不恢复。
+ * 每编辑器独立实例，互不影响。
+ * 类型断言：web 直接依赖 marked@15，@tiptap/markdown 内嵌 marked@17；运行时用到的是
+ * Lexer/defaults/use/setOptions 这组两版一致的 API。
+ */
+type MarkdownOptionSet = MarkdownExtensionOptions
+const composerMarked = new Marked({ gfm: true, breaks: false }) as unknown as MarkdownOptionSet['marked']
 
 /** 程序化写入 meta 标记：区分 setText/setEditorStateJSON 等程序写入与用户输入（防 onUpdate 回环误消费） */
 const PROGRAMMATIC_META = 'chat-input-programmatic'
@@ -75,6 +93,56 @@ function countExtraNodes(doc: PMNode, names: Set<string>): number {
         return true
     })
     return count
+}
+
+/**
+ * 纯段落文档：顶层全是 paragraph，且不含 marks / 非文本节点。
+ * 这类文档直接走纯文本 wire——Markdown 序列化器会把 `* _ [ ] ~` 反斜杠转义、
+ * 把 `& < >` 实体化，bash 命令（`! `）、斜杠命令与 @路径 会因此静默失效。
+ */
+function isPlainParagraphDoc(doc: PMNode): boolean {
+    let plain = true
+    doc.forEach((child) => {
+        if (!plain) return
+        if (child.type.name !== 'paragraph') {
+            plain = false
+            return
+        }
+        child.descendants((node) => {
+            if (!node.isText || node.marks.length > 0) {
+                plain = false
+                return false
+            }
+            return true
+        })
+    })
+    return plain
+}
+
+/** 命令语义消息（`! cmd` / `/cmd`）：即使带格式也必须原文送达，否则 session 侧前缀判定失效 */
+function looksLikeCommand(plain: string): boolean {
+    const trimmed = plain.trimStart()
+    return trimmed.startsWith('! ') || trimmed.startsWith('/')
+}
+
+/**
+ * Markdown wire 后处理：连续空段落序列化出的 `&nbsp;` 占位行不发送（正文里只剩
+ * 用户真实输入）；围栏内的字面 `&nbsp;` 属于代码内容，保留。NBSP 统一归一为普通空格
+ * （与其它对外读数同一不变量）。
+ */
+function normalizeMarkdownWire(markdown: string): string {
+    const normalized = normalizeEditorText(markdown)
+    let inFence = false
+    return normalized
+        .split('\n')
+        .filter((line) => {
+            if (/^\s*(```|~~~)/.test(line)) {
+                inFence = !inFence
+                return true
+            }
+            return inFence || line !== '&nbsp;'
+        })
+        .join('\n')
 }
 
 /** schema → 文本序列化器映射：schema 每个 editor 实例稳定，跨 update 复用（避免每键重建） */
@@ -129,9 +197,9 @@ export interface ChatInputProps {
     placeholder?: string
     /** 覆盖层语义禁用（editable=false + aria-disabled；不承诺 blur——真机焦点语义在票 02 验收） */
     disabled?: boolean
-    /** 最小可见行数（CSS min-height 换算），默认 1 */
+    /** 最小可见行数（CSS min-height 换算，含上下内衬），默认 2 */
     minRows?: number
-    /** 最大可见行数（超出滚动），默认 5 */
+    /** 最大可见行数（超出滚动，含上下内衬），默认 10 */
     maxRows?: number
     /** 提交键位：'enter'（PC）| 'shiftEnter'（触屏），默认 'enter' */
     submitKey?: 'enter' | 'shiftEnter'
@@ -167,6 +235,8 @@ export interface ChatInputHandle {
     getEditorStateJSON(): string
     /** 程序化整体替换（三原则：meta 标记 + addToHistory:false + 光标置尾） */
     setText(text: string): void
+    /** 按 Markdown 解析并整体替换（wire 回填：rewind / 排队消息编辑 / 跨页草稿） */
+    setMarkdown(text: string): void
     /** 解析失败静默降级为 no-op（调用方自己兜底 setText） */
     setEditorStateJSON(json: string): void
     /** 在当前光标处插入纯文本，光标落插入内容之后 */
@@ -264,26 +334,34 @@ export function ChatInput({
             propsRef.current.onSubmit?.()
             return true
         }
-        // 5. 换行键：上下文分流（PC Shift+Enter / 触屏裸 Enter 都到这里）
+        // 5. 换行键：上下文分流（PC Shift+Enter / 触屏裸 Enter 都到这里）。
+        // 先执行命令再 preventDefault：命令失败（如 listItem 内的 blockquote 无法 split）
+        // 时回退 splitBlock，避免按键被吞成无反应的死键
         const ed = editorRef.current
         if (!ed) return false
-        event.preventDefault()
+        let applied: boolean
         switch (resolveNewlineAction(ed.state)) {
             case 'newlineInCode':
-                ed.commands.newlineInCode()
+                applied = ed.commands.newlineInCode()
                 break
             case 'splitListItem':
-                ed.commands.splitListItem('listItem')
+                applied = ed.commands.splitListItem('listItem')
                 break
             case 'liftListItem':
-                ed.commands.liftListItem('listItem')
+                applied = ed.commands.liftListItem('listItem')
                 break
             case 'exitHeading':
-                ed.chain().splitBlock().setParagraph().run()
+                // 分两步：setParagraph 对已是段落的空块可能返回 false，chain().run()
+                // 会把整体判成失败，触发下面的回退再切一次（多出空段落）
+                applied = ed.commands.splitBlock()
+                if (applied) ed.commands.setParagraph()
                 break
             default:
-                ed.commands.splitBlock()
+                applied = ed.commands.splitBlock()
         }
+        if (!applied) applied = ed.commands.splitBlock()
+        if (!applied) return false
+        event.preventDefault()
         return true
     }, [])
 
@@ -312,10 +390,17 @@ export function ChatInput({
             if (clipboardData.getData('text/html')) return false
             const text = clipboardData.getData('text/plain')
             const ed = editorRef.current
-            if (ed && text && looksLikeMarkdownBlock(text)) {
+            // 代码块内粘贴保持字面：块级 Markdown 解析会劈开围栏、注入标题/列表节点
+            if (ed && text && !ed.isActive('codeBlock') && looksLikeMarkdownBlock(text)) {
                 event.preventDefault()
-                // 就地插入（不整档 setContent）：保留既有正文与引用 chip
-                ed.commands.insertContent(text, { contentType: 'markdown' })
+                // 就地插入（不整档 setContent）：保留既有正文与引用 chip。
+                // 解析失败（如含 composer 未装配的图片段）回退字面插入，粘贴内容不丢
+                try {
+                    ed.commands.insertContent(text, { contentType: 'markdown' })
+                } catch {
+                    const { from, to } = ed.state.selection
+                    ed.view.dispatch(ed.state.tr.insertText(text, from, to))
+                }
                 return true
             }
             return false
@@ -349,11 +434,10 @@ export function ChatInput({
             }),
             // 高亮只是 Decorations，不进 doc：wire 序列化仍是 ```lang 围栏（CodeBlock 的
             // markdownTokenName/parseMarkdown/renderMarkdown 被继承），语言信息不丢。
-            // defaultLanguage: plaintext——无语言围栏不做 highlightAuto（37 个语法全量试跑
-            // 会随每次按键执行）；enableTabIndentation 接管代码块内 Tab/Shift-Tab
+            // 未注册/无语言围栏由 composerLowlight 回退 plaintext（不走 highlightAuto）；
+            // enableTabIndentation 接管代码块内 Tab/Shift-Tab
             CodeBlockLowlight.configure({
-                lowlight,
-                defaultLanguage: 'plaintext',
+                lowlight: composerLowlight,
                 enableTabIndentation: true,
                 tabSize: 2,
             }),
@@ -365,8 +449,9 @@ export function ChatInput({
             TableCell,
             TableHeader,
             // wire 序列化单源：editor.getMarkdown() 把 doc 转 Markdown（含 marks/块级/表格）。
-            // breaks:false——软换行按段落语义，不生成 <br>（composer 换行一律 splitBlock）
-            Markdown.configure({ markedOptions: { gfm: true, breaks: false } }),
+            // breaks:false——软换行按段落语义，不生成 <br>（composer 换行一律 splitBlock）；
+            // marked 实例独立注入，避免与文件编辑器共用全局单例互相覆盖 options
+            Markdown.configure({ marked: composerMarked }),
             // 函数形式读 ref：动态文案（bash 模式占位切换）不重建 editor
             Placeholder.configure({
                 placeholder: () => propsRef.current.placeholder ?? '',
@@ -427,6 +512,24 @@ export function ChatInput({
 
     const setText = (text: string) => replaceDoc(buildTextDoc(text))
 
+    /** Markdown 回填：解析成富文本文档（格式随 wire 一起还原），写入纪律同 setText */
+    const setMarkdown = (text: string) => {
+        const ed = editorRef.current
+        if (!ed) return
+        ed.chain()
+            .command(({ tr }) => {
+                tr.setMeta(PROGRAMMATIC_META, true)
+                tr.setMeta('addToHistory', false)
+                return true
+            })
+            .setContent(text, { contentType: 'markdown', emitUpdate: true })
+            .command(({ tr }) => {
+                tr.setSelection(TextSelection.atEnd(tr.doc))
+                return true
+            })
+            .run()
+    }
+
     const setEditorStateJSON = (json: string) => {
         let parsed: JSONContent
         try {
@@ -457,6 +560,7 @@ export function ChatInput({
         getText: () => normalizeEditorText(editorRef.current?.getText({ blockSeparator: '\n' }) ?? ''),
         getEditorStateJSON: () => (editorRef.current ? JSON.stringify(editorRef.current.getJSON()) : ''),
         setText,
+        setMarkdown,
         setEditorStateJSON,
         // 用户语义的插入（mention/slash 选中插回）：不打 programmatic meta、不关 addToHistory
         insertAtCursor: (text: string) => {
@@ -502,7 +606,11 @@ export function ChatInput({
             // 块标记，不能当作可发送正文——正文存在性以纯文本为准（引用 chip 无 textContent，
             // 由 quotes 分段承载）
             if (ed.state.doc.textContent.trim() === '') return ''
-            return ed.getMarkdown()
+            const plain = normalizeEditorText(ed.getText({ blockSeparator: '\n' }))
+            // 纯文本文档 / 命令语义消息：原样走纯文本。Markdown 序列化的反斜杠转义与
+            // HTML 实体编码会改写 bash 命令、斜杠命令与 @路径 的字面语义
+            if (isPlainParagraphDoc(ed.state.doc) || looksLikeCommand(plain)) return plain
+            return normalizeMarkdownWire(ed.getMarkdown())
         },
         getQuotes: () => (editorRef.current ? collectQuotesFromDoc(editorRef.current.state.doc) : []),
         addQuote: (quote) => (editorRef.current ? addQuoteToEditor(editorRef.current, quote) : null),
@@ -527,8 +635,9 @@ export function ChatInput({
 
     const shellStyle = {
         ...style,
-        '--chat-input-min-h': `${minRows * LINE_HEIGHT_PX}px`,
-        '--chat-input-max-h': `${maxRows * LINE_HEIGHT_PX}px`,
+        // border-box：高度含 .chat-input 的上下内衬（24px），只乘行高会让最小行数不生效
+        '--chat-input-min-h': `${minRows * LINE_HEIGHT_PX + VERTICAL_PADDING_PX}px`,
+        '--chat-input-max-h': `${maxRows * LINE_HEIGHT_PX + VERTICAL_PADDING_PX}px`,
     } as CSSProperties
 
     return (

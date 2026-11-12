@@ -193,6 +193,19 @@ describe('ChatInputQuoteNode（引用 chip 节点）', () => {
         expect(collectQuotesFromDoc(editor.state.doc)).toHaveLength(1)
     })
 
+    it('光标在代码块内添加引用：chip 落文档末尾，不劈开代码块', async () => {
+        const { handle, ready } = setup()
+        await ready()
+        const editor = handle.current!.getEditor()!
+        editor.commands.setContent('```\nabc\n```', { contentType: 'markdown' })
+        editor.commands.setTextSelection(2)
+        addQuoteToEditor(editor, QUOTE)
+
+        expect(collectQuotesFromDoc(editor.state.doc)).toHaveLength(1)
+        expect(editor.getHTML()).toContain('<pre><code>abc</code></pre>')
+        expect(handle.current!.getText()).toBe('abc\n\n「原文片段」 ')
+    })
+
     it('replaceTextRange 保留 chip：只改差异文本，引用节点与评论原样存活', async () => {
         const { handle, ready } = setup()
         await ready()

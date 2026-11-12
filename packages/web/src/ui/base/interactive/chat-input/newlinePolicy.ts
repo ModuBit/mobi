@@ -32,13 +32,21 @@ export function resolveNewlineAction(state: EditorState): NewlineAction {
     const { $from } = state.selection
     if ($from.parent.type.name === 'codeBlock') return 'newlineInCode'
 
+    // 标题：仅末尾落普通段落；非末尾按普通切分（保持标题语义，不改写已有标题）
+    if ($from.parent.type.name === 'heading') {
+        return $from.parentOffset === $from.parent.content.size ? 'exitHeading' : 'splitBlock'
+    }
+
     for (let depth = $from.depth; depth > 0; depth--) {
+        const node = $from.node(depth)
         // 列表项内的段落节点就是 $from.parent（嵌套列表时更深层的项优先）
-        if ($from.node(depth).type.name === 'listItem') {
-            return $from.parent.content.size === 0 ? 'liftListItem' : 'splitListItem'
+        if (node.type.name === 'listItem') {
+            // 只有「列表项自身仅含一个空段落」才算空项：项内还有嵌套列表等子节点时，
+            // 光标所在段落为空不等于空项——lift 会把有内容的整项连嵌套结构顶出列表
+            const isEmptyItem = node.childCount === 1 && node.firstChild!.content.size === 0
+            return isEmptyItem ? 'liftListItem' : 'splitListItem'
         }
     }
 
-    if ($from.parent.type.name === 'heading') return 'exitHeading'
     return 'splitBlock'
 }

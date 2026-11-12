@@ -19,18 +19,27 @@
  *
  * 只认**块级**起始标记：行内标记（`**x**`、`*x*`、`` `x` ``）不触发转换——
  * 否则粘贴代码（`const a = 2 ** 3`、JS 注释）会被当成 Markdown 渲染，语义被吃掉。
- * 块级标记至少有一种才走富文本解析，其余原样插入。
+ *
+ * 判定分两档，避免把普通代码/日志误判成 Markdown：
+ * - 强标记（围栏代码块 / GFM 表格）在任意行出现即认定；
+ * - 弱标记（标题 / 列表 / 引用）只认**首个非空行**——代码里的行首注释（`# TODO`）、
+ *   diff 的 `+ 新增` / `- 删除` 都在后续行，不应触发整段富文本化。
  */
-const BLOCK_START_PATTERNS: readonly RegExp[] = [
-    /^ {0,3}#{1,6}\s/m, // 标题
-    /^ {0,3}[-*+]\s/m, // 无序列表
-    /^ {0,3}\d+\.\s/m, // 有序列表
-    /^ {0,3}>\s/m, // 引用块
+const STRONG_BLOCK_PATTERNS: readonly RegExp[] = [
     /^ {0,3}(```|~~~)/m, // 围栏代码块
     /^ {0,3}\|.*\|\s*$/m, // GFM 表格行（首尾都有竖线）
 ]
 
-/** 文本是否含 Markdown 块级结构（多行模式下任一行起始命中即真，整串扫描可短路） */
+const FIRST_LINE_BLOCK_PATTERNS: readonly RegExp[] = [
+    /^ {0,3}#{1,3}\s/, // 标题（composer Heading 仅支持 h1–h3，h4+ 原样插入）
+    /^ {0,3}[-*+]\s/, // 无序列表
+    /^ {0,3}\d+\.\s/, // 有序列表
+    /^ {0,3}>\s/, // 引用块
+]
+
+/** 文本是否含 Markdown 块级结构（强标记整串扫描；弱标记只看首个非空行） */
 export function looksLikeMarkdownBlock(text: string): boolean {
-    return BLOCK_START_PATTERNS.some((re) => re.test(text))
+    if (STRONG_BLOCK_PATTERNS.some((re) => re.test(text))) return true
+    const firstLine = text.trimStart().split('\n', 1)[0] ?? ''
+    return FIRST_LINE_BLOCK_PATTERNS.some((re) => re.test(firstLine))
 }
