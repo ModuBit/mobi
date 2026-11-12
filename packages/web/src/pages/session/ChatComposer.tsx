@@ -189,6 +189,19 @@ const ComposerDock = styled.div`
         margin: 8px -16px 0;
     }
 
+    /* SubBar 与白卡内容同轨：容器镜像白卡的水平悬挂量，再把 12px 内衬让给
+       输入区/参数条那条内容轨（白卡外缘 ≠ 内容轨，按钮盒要落在内容轨上）。
+       没有内容层时白卡只悬 8px，有内容层时 Dock 内衬 8 + 白卡 -16，两种几何
+       分别镜像；不镜像的话参数条会随 InfoPanel/GoalRow 的出现横跳 8px。 */
+    && .composer-subbar {
+        margin-inline: -8px;
+        padding: 6px 12px 4px;
+    }
+
+    &&:not(:has(> :only-child)) .composer-subbar {
+        margin-inline: -16px;
+    }
+
     /* bash 模式：橙色发光边框（输入 ! 空格 触发 wrapper 的 .bash-mode）。
        box-shadow 的 spread 模拟实色边框、blur 模拟外发光，不动 border-width 避免布局
        抖动；ChatInput 无内置 box-shadow，无需再打 !important 反向覆盖 */
@@ -811,11 +824,10 @@ export function ChatComposer(props: ChatComposerProps) {
 
                 {/* Sub Bar：Sender 下方次要操作，宽度不够时自动收起 */}
                 {hasSubBar && (
-                    <div style={{
-                        padding: '6px 6px 4px',
-                        position: 'relative',
-                        zIndex: 0,
-                    }}>
+                    <div
+                        className="composer-subbar"
+                        style={{ position: 'relative', zIndex: 0 }}
+                    >
                         <ResponsiveActionBar
                             items={[
                                 // file terminal

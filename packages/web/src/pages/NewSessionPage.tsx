@@ -148,6 +148,14 @@ const InputCard = styled.div`
     && .composer-card {
         margin: 8px -16px;
     }
+
+    /* SubBar 与白卡内容同轨：容器镜像白卡的水平悬挂量（-16），再让 12px 内衬，
+       使 chips 盒缘落在输入区文字/参数条按钮那条内容轨上（同一规则见聊天页
+       ComposerDock；本页灰度固定，无需 :has 分支）。 */
+    && .composer-subbar {
+        margin: 0 -16px;
+        padding: 6px 12px 4px;
+    }
 `
 
 /* ========== 辅助组件 ========== */
@@ -751,11 +759,10 @@ export function NewSessionPage() {
                     </div>
 
                     {/* SubBar：配置抽屉，从 Sender 底部滑出 */}
-                    <div style={{
-                        padding: '6px 6px 4px',
-                        position: 'relative',
-                        zIndex: 0,
-                    }}>
+                    <div
+                        className="composer-subbar"
+                        style={{ position: 'relative', zIndex: 0 }}
+                    >
                         <ResponsiveActionBar
                             items={subBarItems}
                             gap={4}
@@ -768,8 +775,11 @@ export function NewSessionPage() {
                         gridTemplateRows: sessionType === 'worktree' ? '1fr' : '0fr',
                         transition: 'grid-template-rows 0.2s ease',
                     }}>
-                        <div style={{ overflow: 'hidden' }}>
-                            <div style={{ padding: '0 6px 4px' }}>
+                        {/* 裁切容器自身镜像白卡悬挂量：负 margin 必须落在 overflow:hidden
+                            这一层，否则内层内容会被裁掉左右各 4px（图标缺口、输入框右缘消失） */}
+                        <div style={{ overflow: 'hidden', marginInline: -16 }}>
+                            {/* 与白卡内容轨对齐：12px 内衬即输入区/参数条那条轨道 */}
+                            <div style={{ padding: '0 12px 4px' }}>
                                 {/* uiarc Input 无 prefix：分支图标移外壳布局行 */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                     <BranchesOutlined style={{ fontSize: 12, opacity: 0.55, flexShrink: 0 }} />

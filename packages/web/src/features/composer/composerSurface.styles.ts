@@ -23,11 +23,14 @@
 import { css } from '@emotion/react'
 
 /**
- * 白卡头部内容行（建议 chip / 引用 chips / 附件列表）的统一内衬。
+ * 白卡头部内容行（命令提示 / 建议 chip / 附件列表）的统一内衬。
  * 同心规则：外圆角 = 内圆角 + 内衬——24px 白卡圆角下，顶衬 <12px 会被上圆弧咬住
- * （曾只有 4px，chip 顶在圆角上）；侧向对齐卡片 16px 基准。
+ * （曾只有 4px，chip 顶在圆角上）。
+ * 侧向 12px 与输入区（ChatInput padding 12）、参数条（padding 左右 12）同一条
+ * 内容轨——头部 chip 的视觉左缘、正文首字、底部「+」图标同列；改这里会同时
+ * 影响所有头部行（命令提示 / 建议 chip / 附件列表）的侧衬。
  */
-export const COMPOSER_CARD_HEADER_INSET = '12px 16px 0'
+export const COMPOSER_CARD_HEADER_INSET = '12px 12px 0'
 
 /**
  * 输入白卡容器 `.composer-card`（header 内容行 + 输入区 + 参数条共居的白底大圆角卡）。

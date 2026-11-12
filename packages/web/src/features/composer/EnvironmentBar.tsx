@@ -91,6 +91,10 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
             display: 'flex',
             flexDirection: 'column',
             gap: 2,
+            // 与白卡内容轨对齐：本行在灰卡 8px 内衬里，白卡又向两侧各外悬 8px，
+            // 所以内容要左/右各拉出 8px 才与下方输入文字、参数条同列
+            //（白卡内容轨 = 灰卡内容左缘 − 16 + 12 = 灰卡内容左缘 − 4）。
+            marginInline: -8,
             padding: '4px 4px 6px',
         }}>
             {/* 工作区选择（必选）：机器 + 工作目录由工作区派生 */}
