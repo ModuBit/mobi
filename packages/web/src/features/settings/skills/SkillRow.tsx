@@ -15,12 +15,14 @@
  */
 
 /**
- * skill 列表行（skill-mgmt 票 02/03/04）：名字 + 描述 + 来源/渠道/调用性徽标 + 生效态 + 启停开关 + 删除入口。
- * 开关只在 overrideable 行出现（插件/内置行只读语义由该字段承载）；删除只对 mobi 自管来源
- * （personal/project）开放——synced 下次同步会拉回、plugin 归迭代 3；交互编排归分区层。
+ * skill 列表行（skill-mgmt 票 02–05）：名字 + 描述 + 来源/渠道/调用性徽标 + 生效态
+ * + 启停开关 + 更新/删除入口。
+ * 开关只在 overrideable 行出现（插件/内置行只读语义由该字段承载）；更新只在 tracked 行
+ * （渠道语义归 skills CLI）；删除只对 mobi 自管来源（personal/project）开放——synced 下次
+ * 同步会拉回、plugin 归迭代 3；交互编排归分区层。
  */
 import { theme as antTheme } from 'antd'
-import { Trash2 } from 'lucide-react'
+import { RefreshCw, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { SkillInfo, SkillSource } from '@mobi/shared'
@@ -118,11 +120,15 @@ export interface SkillRowProps {
     onToggle?: (enabled: boolean) => void
     /** 开关请求进行中（单行级，避免整列表闪烁） */
     toggling?: boolean
+    /** 更新回调（仅 tracked 行传入）；未传 = 行无更新入口 */
+    onUpdate?: () => void
+    /** 更新请求进行中 */
+    updating?: boolean
     /** 删除回调（仅 personal/project 行传入）；未传 = 行无删除入口 */
     onDelete?: () => void
 }
 
-export function SkillRow({ skill, onToggle, toggling = false, onDelete }: SkillRowProps) {
+export function SkillRow({ skill, onToggle, toggling = false, onUpdate, updating = false, onDelete }: SkillRowProps) {
     const { token } = useToken()
     const { t } = useTranslation()
 
@@ -154,6 +160,17 @@ export function SkillRow({ skill, onToggle, toggling = false, onDelete }: SkillR
                         disabled={toggling}
                         onCheckedChange={onToggle}
                         aria-label={t('settings.skills.toggleAria', { name: skill.name })}
+                    />
+                )}
+                {onUpdate && (
+                    <IconButton
+                        icon={<RefreshCw size={14} />}
+                        size={26}
+                        loading={updating}
+                        tooltip={t('settings.skills.updateTooltip')}
+                        aria-label={t('settings.skills.updateAria', { name: skill.name })}
+                        data-skill-update={skill.name}
+                        onClick={onUpdate}
                     />
                 )}
                 {onDelete && (

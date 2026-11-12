@@ -1027,6 +1027,18 @@
       "deleteConfirmUntracked": "The skill directory will be deleted directly. This cannot be undone.",
       "deleted": "Deleted",
       "deleteFailed": "Delete failed, please retry",
+      "installAction": "Install",
+      "installTitle": "Install skill",
+      "installSourceLabel": "Source",
+      "installSourcePlaceholder": "GitHub repo path or URL (e.g. vercel-labs/skills)",
+      "installScopeLabel": "Install to",
+      "installSubmit": "Install",
+      "installed": "Installed",
+      "installFailed": "Install failed, check the source and retry",
+      "updateTooltip": "Update",
+      "updateAria": "Update skill {{name}}",
+      "updated": "Updated",
+      "updateFailed": "Update failed, please retry",
       "state": {
         "off": "Disabled",
         "shadowed": "Disabled by higher settings"

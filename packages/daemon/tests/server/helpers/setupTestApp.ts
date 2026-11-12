@@ -46,7 +46,7 @@ export async function setupTestApp(
         distDirOverride?: string
         store?: Store
         skillsScanRoots?: import('../../../src/skills/skillScanner').SkillScanRoots
-        skillsRemoveRunner?: import('../../../src/skills/skillRemover').SkillsRemoveRunner
+        skillsCliRunner?: import('../../../src/skills/skillCli').SkillsCliRunner
     } = {},
 ) {
     // 需要「路由 deps.store 与 engine 同库」的测试可注入共享 Store（缺省独立内存库）
@@ -76,8 +76,11 @@ export async function setupTestApp(
         distDirOverride: opts.distDirOverride,
         // skill 扫描根 fixture（skill-mgmt 票 01）：不注入则路由会扫真实 ~/.claude
         skillsScanRoots: opts.skillsScanRoots,
-        // skills CLI remove 桩（票 04）：不注入则 spawn 真实 npx skills
-        skillsRemoveRunner: opts.skillsRemoveRunner,
+        // skills CLI 桩（票 04/05）：测试必须显式注入——缺省 fail-fast，
+        // 防 DI 断链时 default runner 在真实环境跑 npx（2026-11-12 实踩）
+        skillsCliRunner: opts.skillsCliRunner ?? (async () => {
+            throw new Error('skills CLI runner not injected for test')
+        }),
     })
 
     // 宿主通道子应用（ticket-21）：/cli/* 已从主 app 迁独立 listener，测试改打这里

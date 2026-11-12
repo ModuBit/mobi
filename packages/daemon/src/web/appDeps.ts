@@ -56,5 +56,5 @@ export type WebAppDeps = {
     backgroundTaskTracker?: BackgroundTaskTracker
     /** skill 扫描根（skill-mgmt 票 01；缺省生产值由路由内部解析，测试注入 fixture） */
     skillsScanRoots?: SkillScanRoots
-    skillsRemoveRunner?: import('../skills/skillRemover').SkillsRemoveRunner
+    skillsCliRunner?: import('../skills/skillCli').SkillsCliRunner
 }

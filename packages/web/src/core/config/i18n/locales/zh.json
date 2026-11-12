@@ -1018,6 +1018,18 @@
       "deleteConfirmUntracked": "将直接删除该技能目录。此操作不可恢复。",
       "deleted": "已删除",
       "deleteFailed": "删除失败，请重试",
+      "installAction": "安装",
+      "installTitle": "安装技能",
+      "installSourceLabel": "来源",
+      "installSourcePlaceholder": "GitHub 仓库路径或 URL（如 vercel-labs/skills）",
+      "installScopeLabel": "安装到",
+      "installSubmit": "安装",
+      "installed": "安装完成",
+      "installFailed": "安装失败，请检查来源后重试",
+      "updateTooltip": "更新",
+      "updateAria": "更新技能 {{name}}",
+      "updated": "已更新",
+      "updateFailed": "更新失败，请重试",
       "state": {
         "off": "已停用",
         "shadowed": "被更高层设置停用"

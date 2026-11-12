@@ -37,19 +37,48 @@ export function useSkills(workspaceId: string): { skills: SkillInfo[]; isLoading
 }
 
 /**
+ * skill 安装/更新（skill-mgmt 票 05）：影响面跨视角（global 装完全部 tab 可见），
+ * 成功后失效整个 skills 查询族。
+ */
+function useInvalidateAllSkills() {
+    const queryClient = useQueryClient()
+    return () => queryClient.invalidateQueries({ queryKey: ['skills'] })
+}
+
+export function useSkillInstall() {
+    const api = useMobiApi()
+    const invalidate = useInvalidateAllSkills()
+    return useMutation({
+        mutationFn: async (vars: { source: string; scope: string }) => {
+            await api.skills.install(vars.source, vars.scope)
+        },
+        onSuccess: invalidate,
+    })
+}
+
+export function useSkillUpdate() {
+    const api = useMobiApi()
+    const invalidate = useInvalidateAllSkills()
+    return useMutation({
+        mutationFn: async (vars: { name: string; workspaceId: string }) => {
+            await api.skills.update(vars.name, vars.workspaceId)
+        },
+        onSuccess: invalidate,
+    })
+}
+
+/**
  * skill 删除（skill-mgmt 票 04）：成功后 invalidate 换新列表（行即时移除）。
  */
 export function useSkillDelete() {
     const api = useMobiApi()
-    const queryClient = useQueryClient()
+    const invalidate = useInvalidateAllSkills()
 
     return useMutation({
         mutationFn: async (vars: { name: string; workspaceId: string }) => {
             await api.skills.remove(vars.name, vars.workspaceId)
         },
-        onSuccess: (_data, vars) => {
-            queryClient.invalidateQueries({ queryKey: queryKeys.skills(vars.workspaceId) })
-        },
+        onSuccess: invalidate,
     })
 }
 

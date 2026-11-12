@@ -15,20 +15,22 @@
  */
 
 /**
- * Skills 管理路由（skill-mgmt 票 01/03/04）。
+ * Skills 管理路由（skill-mgmt 票 01/03/04/05）。
  *
  * - GET /api/skills?workspaceId=global|<id>：列表（global=个人+synced+插件携带；CC 内置归票 06 独立端点）
  * - PATCH /api/skills/:name/visibility：启停写归属层 skillOverrides（personal→user settings、
  *   project→workspace project settings），响应带回刷新后的行（遮蔽态即时可见）
  * - DELETE /api/skills/:name?workspaceId=：双路径删除——tracked 分派 skills CLI（user 级 -g、
  *   project 级 cwd=workspace），untracked 直接删 agent 目录条目（symlink 只删链接）
+ * - POST /api/skills/install：包装 skills add（symlink 形态、只装 claude-code agent）
+ * - POST /api/skills/:name/update：包装 skills update（tracked 限定）
  */
 import { Hono } from 'hono'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSyncEngine } from './guards'
 import { defaultSkillScanRoots, listGlobalSkills, listWorkspaceSkills, type SkillScanRoots } from '../../skills/skillScanner'
-import { defaultSkillsRemoveRunner, removeTrackedSkill, removeUntrackedSkill, type SkillsRemoveRunner } from '../../skills/skillRemover'
+import { defaultSkillsCliRunner, installSkill, removeTrackedSkill, removeUntrackedSkill, updateSkill, type SkillsCliRunner } from '../../skills/skillCli'
 import { writeSkillOverride } from '../../skills/skillSettingsWriter'
 import type { SkillInfo } from '@mobi/shared'
 
@@ -54,7 +56,7 @@ function findSkill(skills: SkillInfo[], name: string): SkillInfo | undefined {
 export function createSkillsRoutes(
     getSyncEngine: () => SyncEngine | null,
     roots?: SkillScanRoots,
-    skillsRemoveRunner: SkillsRemoveRunner = defaultSkillsRemoveRunner,
+    skillsCliRunner: SkillsCliRunner = defaultSkillsCliRunner,
 ): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
@@ -131,7 +133,7 @@ export function createSkillsRoutes(
 
         if (current.tracked) {
             // tracked：真身与 lock 条目归 CLI 语义闭环，mobi 只按 scope 分派
-            const result = await removeTrackedSkill(current, scope, skillsRemoveRunner)
+            const result = await removeTrackedSkill(current, scope, skillsCliRunner)
             if (!result.ok) return c.json({ error: result.output || 'skills CLI failed' }, 502)
             return c.json({ ok: true })
         }
@@ -139,6 +141,52 @@ export function createSkillsRoutes(
         // untracked：mobi 自管文件，删除前二次校验目标位置
         const result = removeUntrackedSkill(current, scanRoots, scope)
         if (!result.ok) return c.json({ error: result.error }, 500)
+        return c.json({ ok: true })
+    })
+
+    app.post('/skills/install', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const body = await c.req.json().catch(() => null) as { source?: unknown; scope?: unknown } | null
+        // source 透传 argv 单元素（不经 shell，无注入面）；空白拒绝
+        if (!body || typeof body.source !== 'string' || !body.source.trim() || typeof body.scope !== 'string') {
+            return c.json({ error: 'Invalid body' }, 400)
+        }
+
+        const scope = resolveScope(engine, body.scope)
+        if (scope.kind === 'not-found') return c.json({ error: 'Workspace not found' }, 404)
+        if (scope.kind === 'no-folder') return c.json({ error: 'Workspace has no folder' }, 400)
+
+        const result = await installSkill(body.source.trim(), scope, skillsCliRunner)
+        if (!result.ok) return c.json({ error: result.output || 'skills CLI failed' }, 502)
+        return c.json({ ok: true })
+    })
+
+    app.post('/skills/:name/update', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const body = await c.req.json().catch(() => null) as { workspaceId?: unknown } | null
+        if (!body || typeof body.workspaceId !== 'string') {
+            return c.json({ error: 'Invalid body' }, 400)
+        }
+
+        const scope = resolveScope(engine, body.workspaceId)
+        if (scope.kind === 'not-found') return c.json({ error: 'Workspace not found' }, 404)
+        if (scope.kind === 'no-folder') return c.json({ error: 'Workspace has no folder' }, 400)
+
+        const skillName = c.req.param('name')
+        const scanRoots = roots ?? defaultSkillScanRoots()
+        const current = scope.kind === 'global'
+            ? findSkill(listGlobalSkills(scanRoots), skillName)
+            : findSkill(listWorkspaceSkills(scanRoots, scope.path), skillName)
+        if (!current) return c.json({ error: 'Skill not found' }, 404)
+        // 更新走 CLI 渠道语义，只对 tracked 行有意义
+        if (!current.tracked) return c.json({ error: 'Skill is not tracked' }, 400)
+
+        const result = await updateSkill(current, scope, skillsCliRunner)
+        if (!result.ok) return c.json({ error: result.output || 'skills CLI failed' }, 502)
         return c.json({ ok: true })
     })
 

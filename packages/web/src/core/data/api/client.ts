@@ -476,6 +476,12 @@ export function createMobiApi() {
                 client.delete<{ ok: boolean }>(`/api/skills/${encodeURIComponent(name)}`, {
                     params: { workspaceId },
                 }),
+            // 安装：包装 skills add（source = repo URL / GitHub 路径；scope = 'global' | workspaceId）
+            install: (source: string, scope: string) =>
+                client.post<{ ok: boolean }>('/api/skills/install', { source, scope }),
+            // 更新（tracked 限定）：包装 skills update
+            update: (name: string, workspaceId: string) =>
+                client.post<{ ok: boolean }>(`/api/skills/${encodeURIComponent(name)}/update`, { workspaceId }),
         },
 
         // Host / daemon（单机：daemon 即宿主；机器列表这一层随 machine 概念移除退场）

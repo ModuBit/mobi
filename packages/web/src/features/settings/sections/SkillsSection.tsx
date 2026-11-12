@@ -15,18 +15,22 @@
  */
 
 /**
- * 设置页 Skills 分区（skill-mgmt 票 02/03）：tabs（全局 + 每工作区）+ 搜索 + 列表 + 启停开关。
+ * 设置页 Skills 分区（skill-mgmt 票 02–05）：tabs（全局 + 每工作区）+ 搜索 + 列表
+ * + 启停开关 + 更新/删除 + 安装弹窗。
  * 数据视角由 daemon 承载（global=个人+synced+插件携带；工作区 tab=该项目 skill）；
  * tabs 容器与行布局为迭代 2/3（mcp/plugin 管理页）预留同构骨架。
  */
 import { useMemo, useState } from 'react'
-import { App, theme as antTheme, Tabs, Spin } from 'antd'
+import { App, theme as antTheme, Tabs, Spin, Modal, Radio } from 'antd'
+import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { SkillInfo } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
-import { useSkillDelete, useSkillVisibility, useSkills } from '@/core/data/hooks/queries/useSkills'
+import { useSkillDelete, useSkillInstall, useSkillUpdate, useSkillVisibility, useSkills } from '@/core/data/hooks/queries/useSkills'
 import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
+import { Button } from '@/ui/base/interactive/button/Button'
+import { Input } from '@/ui/base/interactive/input/Input'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { SkillRow } from '@/features/settings/skills/SkillRow'
 
@@ -54,6 +58,23 @@ const CenterSpin = styled.div`
     padding: 32px 0;
 `
 
+/** 安装弹窗表单：纵向排布，antd Modal 默认内衬之外自管间距 */
+const InstallForm = styled.div<{ $token: Token }>`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 4px;
+
+    span, label {
+        font-size: 13px;
+        color: ${p => p.$token.colorText};
+    }
+
+    label {
+        cursor: default;
+    }
+`
+
 /** 搜索匹配：名字 + 描述，大小写不敏感包含 */
 function filterSkills(skills: SkillInfo[], keyword: string): SkillInfo[] {
     const needle = keyword.trim().toLowerCase()
@@ -74,6 +95,8 @@ export function SkillsSection() {
     const { skills, isLoading } = useSkills(tab)
     const visibility = useSkillVisibility()
     const deletion = useSkillDelete()
+    const updater = useSkillUpdate()
+    const installer = useSkillInstall()
 
     const filtered = useMemo(() => filterSkills(skills, keyword), [skills, keyword])
 
@@ -117,6 +140,44 @@ export function SkillsSection() {
         })
     }
 
+    /** 更新（tracked 限定）：直接执行 + 行级 loading + 结果 toast */
+    const handleUpdate = (skill: SkillInfo) => {
+        updater.mutate(
+            { name: skill.name, workspaceId: tab },
+            {
+                onSuccess: () => message.success(t('settings.skills.updated')),
+                onError: (error) => {
+                    const detail = (error as { response?: { data?: { error?: string } } })?.response?.data?.error
+                    message.error(detail || t('settings.skills.updateFailed'))
+                },
+            },
+        )
+    }
+
+    /** 安装：弹窗内 source + scope（默认跟随当前 tab），提交 loading 防重复 */
+    const [installOpen, setInstallOpen] = useState(false)
+    const [installSource, setInstallSource] = useState('')
+    const [installScope, setInstallScope] = useState(GLOBAL_TAB)
+
+    const openInstall = () => {
+        setInstallScope(tab)
+        setInstallSource('')
+        setInstallOpen(true)
+    }
+
+    const submitInstall = async () => {
+        if (!installSource.trim()) return
+        try {
+            await installer.mutateAsync({ source: installSource.trim(), scope: installScope })
+            message.success(t('settings.skills.installed'))
+            setInstallOpen(false)
+        } catch (error) {
+            // 失败保持弹窗开着（来源可改后重试）；502 透传 CLI 输出
+            const detail = (error as { response?: { data?: { error?: string } } })?.response?.data?.error
+            message.error(detail || t('settings.skills.installFailed'))
+        }
+    }
+
     const tabItems = useMemo(
         () => [
             { key: GLOBAL_TAB, label: t('settings.skills.tabGlobal') },
@@ -139,6 +200,14 @@ export function SkillsSection() {
                 items={tabItems}
                 size="small"
                 data-testid="skills-tabs"
+                tabBarExtraContent={{
+                    right: (
+                        <Button variant="ghost" size="sm" onClick={openInstall} data-testid="skills-install">
+                            <Plus size={13} />
+                            {t('settings.skills.installAction')}
+                        </Button>
+                    ),
+                }}
             />
             {isLoading ? (
                 <CenterSpin><Spin size="small" /></CenterSpin>
@@ -150,6 +219,8 @@ export function SkillsSection() {
                             skill={skill}
                             onToggle={skill.overrideable ? handleToggle(skill) : undefined}
                             toggling={visibility.isPending && visibility.variables?.name === skill.name}
+                            onUpdate={skill.tracked ? () => handleUpdate(skill) : undefined}
+                            updating={updater.isPending && updater.variables?.name === skill.name}
                             onDelete={
                                 skill.source === 'personal' || skill.source === 'project'
                                     ? () => requestDelete(skill)
@@ -165,6 +236,37 @@ export function SkillsSection() {
                     </EmptyHint>
                 </SettingGroupCard>
             )}
+            <Modal
+                title={t('settings.skills.installTitle')}
+                open={installOpen}
+                onCancel={() => setInstallOpen(false)}
+                onOk={() => { void submitInstall() }}
+                okText={t('settings.skills.installSubmit')}
+                cancelText={t('common.cancel')}
+                okButtonProps={{ disabled: !installSource.trim() }}
+                confirmLoading={installer.isPending}
+                destroyOnHidden
+            >
+                <InstallForm $token={token}>
+                    <label htmlFor="skills-install-source">{t('settings.skills.installSourceLabel')}</label>
+                    <Input
+                        id="skills-install-source"
+                        value={installSource}
+                        onChange={e => setInstallSource(e.target.value)}
+                        placeholder={t('settings.skills.installSourcePlaceholder')}
+                        onPressEnter={() => { void submitInstall() }}
+                    />
+                    <span>{t('settings.skills.installScopeLabel')}</span>
+                    <Radio.Group
+                        value={installScope}
+                        onChange={e => setInstallScope(e.target.value as string)}
+                        options={[
+                            { value: GLOBAL_TAB, label: t('settings.skills.tabGlobal') },
+                            ...(workspaces ?? []).map(w => ({ value: w.id, label: w.name })),
+                        ]}
+                    />
+                </InstallForm>
+            </Modal>
         </Wrap>
     )
 }

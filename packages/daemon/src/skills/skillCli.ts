@@ -15,13 +15,16 @@
  */
 
 /**
- * skill 删除执行器（skill-mgmt 票 04）：tracked → skills CLI；untracked → 直接删 agent 目录条目。
+ * skills CLI 执行器（skill-mgmt 票 04/05）：tracked 删除 / 安装 / 更新的统一分派层。
  *
- * 语义依据（调研实锤，notes.md removeCommand 源码）：
- * - tracked 删除归 CLI 闭环：删 agent 目录条目 → isStillUsed 判定 → 中央仓真身与 lock 条目同生共死；
- *   mobi 只负责以正确 scope 分派（user 级传 -g；project 级 cwd=workspace），不自判真身
+ * 语义依据（调研实锤，notes.md addCommand/removeCommand 源码）：
+ * - 一律只装到 claude-code agent（--agent claude-code），不传 --copy（symlink 形态）
+ * - user 级传 -g、project 级靠 cwd 定位（update 另有显式 -p）
+ * - tracked 删除归 CLI 闭环：删 agent 目录条目 → isStillUsed 判定 → 中央仓真身与
+ *   lock 条目同生共死；mobi 不自判真身
  * - untracked 是 mobi 自管文件：symlink 行只删链接（真身归 CLI 语义或用户自管），真目录整体删除
  * - 删除前二次校验目标确为 skill 根下以 skill 名命名的直接子项（防 TOCTOU / 路径注入误删）
+ * - spawn 走 argv 数组不经 shell，source 字符串天然无注入面
  */
 import { existsSync, lstatSync, realpathSync, rmSync, unlinkSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -31,16 +34,16 @@ import { daemonLogger } from '../logger'
 import type { SkillScanRoots } from './skillScanner'
 
 /** skills CLI 单次执行结果：ok = 退出码 0；output 含 stdout+stderr（失败透传前端） */
-export interface SkillsRemoveResult {
+export interface SkillsCliResult {
     ok: boolean
     output: string
 }
 
 /** 可注入的 CLI 执行器（测试桩 fake 语义；生产 spawn npx） */
-export type SkillsRemoveRunner = (args: string[], opts: { cwd: string }) => Promise<SkillsRemoveResult>
+export type SkillsCliRunner = (args: string[], opts: { cwd: string }) => Promise<SkillsCliResult>
 
 /** 生产执行器：npx -y skills <args...>（非交互，输出全量回收） */
-export const defaultSkillsRemoveRunner: SkillsRemoveRunner = async (args, { cwd }) => {
+export const defaultSkillsCliRunner: SkillsCliRunner = async (args, { cwd }) => {
     const proc = Bun.spawn(['npx', '-y', 'skills', ...args], {
         cwd,
         stdin: 'ignore',
@@ -62,12 +65,37 @@ export type SkillScope = { kind: 'global' } | { kind: 'workspace'; path: string 
 export async function removeTrackedSkill(
     skill: SkillInfo,
     scope: SkillScope,
-    runner: SkillsRemoveRunner,
-): Promise<SkillsRemoveResult> {
+    runner: SkillsCliRunner,
+): Promise<SkillsCliResult> {
     const args = ['remove', skill.name, '-y', '--agent', 'claude-code']
     if (scope.kind === 'global') args.push('-g')
     const cwd = scope.kind === 'global' ? homedir() : scope.path
     daemonLogger.info(`[skills] tracked 删除分派 CLI：${skill.name}（cwd=${cwd}）`)
+    return runner(args, { cwd })
+}
+
+/** 安装：skills add <source>（symlink 形态不传 --copy，只装 claude-code agent） */
+export async function installSkill(
+    source: string,
+    scope: SkillScope,
+    runner: SkillsCliRunner,
+): Promise<SkillsCliResult> {
+    const args = ['add', source, '--agent', 'claude-code']
+    if (scope.kind === 'global') args.push('-g')
+    const cwd = scope.kind === 'global' ? homedir() : scope.path
+    daemonLogger.info(`[skills] 安装分派 CLI：${source}（cwd=${cwd}）`)
+    return runner(args, { cwd })
+}
+
+/** 更新（tracked 限定）：skills update（user 级 -g / project 级 -p 显式定 scope） */
+export async function updateSkill(
+    skill: SkillInfo,
+    scope: SkillScope,
+    runner: SkillsCliRunner,
+): Promise<SkillsCliResult> {
+    const args = ['update', skill.name, '-y', '--agent', 'claude-code', scope.kind === 'global' ? '-g' : '-p']
+    const cwd = scope.kind === 'global' ? homedir() : scope.path
+    daemonLogger.info(`[skills] 更新分派 CLI：${skill.name}（cwd=${cwd}）`)
     return runner(args, { cwd })
 }
 

@@ -19,7 +19,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import type { SkillInfo } from '@mobi/shared'
 
 /** vi.mock 工厂提升先于 const 声明，被工厂引用的桩须 vi.hoisted */
-const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync } = vi.hoisted(() => {
+const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync, mockInstallAsync, mockUpdateMutate } = vi.hoisted(() => {
     return {
         /** toast 断言靶（App.useApp 返回的 message） */
         mockMessage: { warning: vi.fn(), error: vi.fn(), success: vi.fn() },
@@ -37,6 +37,8 @@ const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync } = 
             }),
         },
         mockDeleteAsync: vi.fn(),
+        mockInstallAsync: vi.fn(),
+        mockUpdateMutate: vi.fn(),
     }
 })
 mockVisibility.mutate = mockMutate
@@ -61,6 +63,8 @@ vi.mock('@/core/data/hooks/queries/useSkills', () => ({
     // 默认桩（旧用例不关心启停），票 03 用例再 mockReturnValue 覆盖
     useSkillVisibility: vi.fn(() => mockVisibility),
     useSkillDelete: vi.fn(() => ({ mutateAsync: mockDeleteAsync })),
+    useSkillInstall: vi.fn(() => ({ mutateAsync: mockInstallAsync, isPending: false })),
+    useSkillUpdate: vi.fn(() => ({ mutate: mockUpdateMutate, isPending: false, variables: null })),
 }))
 
 import { SkillsSection } from '@/features/settings/sections/SkillsSection'
@@ -296,5 +300,64 @@ describe('SkillsSection（票 04：删除）', () => {
 
         deleteBtnOf('alpha')!.click()
         await waitFor(() => expect(mockMessage.error).toHaveBeenCalledWith('npm error: not found in lock'))
+    })
+})
+
+describe('SkillsSection（票 05：安装与更新）', () => {
+    function setup(ws = false) {
+        vi.mocked(useWorkspaces).mockReturnValue(
+            ws ? { data: [{ id: 'ws-1', name: 'Demo Workspace' }] } as never : { data: [] } as never,
+        )
+        vi.mocked(useSkills).mockImplementation(mockSkillsByScope)
+        vi.mocked(useSkillVisibility).mockReturnValue(mockVisibility as never)
+        render(<SkillsSection />)
+    }
+
+    it('更新入口只在 tracked 行出现；点击发起 update mutation + 成功 toast', async () => {
+        setup()
+
+        const betaRow = screen.getByText('beta').closest('[data-skill-name]')!
+        const alphaRow = screen.getByText('alpha').closest('[data-skill-name]')!
+        expect(betaRow.querySelector('[data-skill-update="beta"]')).not.toBeNull()
+        expect(alphaRow.querySelector('[data-skill-update="alpha"]')).toBeNull()
+
+        mockUpdateMutate.mockImplementationOnce((_vars, opts) => { opts?.onSuccess?.() })
+        betaRow.querySelector('[data-skill-update="beta"]')!.click()
+        await waitFor(() => {
+            expect(mockUpdateMutate).toHaveBeenCalledWith(
+                { name: 'beta', workspaceId: 'global' },
+                expect.anything(),
+            )
+        })
+        expect(mockMessage.success).toHaveBeenCalledWith('settings.skills.updated')
+    })
+
+    it('安装弹窗：输入来源提交 → installAsync(source, scope=当前 tab) + 成功 toast', async () => {
+        setup()
+        mockInstallAsync.mockResolvedValueOnce(undefined)
+
+        screen.getByTestId('skills-install').click()
+        const input = await screen.findByPlaceholderText('settings.skills.installSourcePlaceholder')
+        fireEvent.change(input, { target: { value: 'vercel-labs/skills' } })
+
+        // Modal 确认钮（okText=installSubmit）
+        fireEvent.click(screen.getByText('settings.skills.installSubmit'))
+        await waitFor(() =>
+            expect(mockInstallAsync).toHaveBeenCalledWith({ source: 'vercel-labs/skills', scope: 'global' }))
+        expect(mockMessage.success).toHaveBeenCalledWith('settings.skills.installed')
+    })
+
+    it('安装失败：弹窗保持开（可改来源重试）+ 失败 toast', async () => {
+        setup()
+        mockInstallAsync.mockRejectedValueOnce(new Error('x'))
+
+        screen.getByTestId('skills-install').click()
+        const input = await screen.findByPlaceholderText('settings.skills.installSourcePlaceholder')
+        fireEvent.change(input, { target: { value: 'bad/repo' } })
+        fireEvent.click(screen.getByText('settings.skills.installSubmit'))
+
+        await waitFor(() => expect(mockMessage.error).toHaveBeenCalledWith('settings.skills.installFailed'))
+        // 弹窗未关：输入框仍在
+        expect(screen.getByPlaceholderText('settings.skills.installSourcePlaceholder')).toBeTruthy()
     })
 })
