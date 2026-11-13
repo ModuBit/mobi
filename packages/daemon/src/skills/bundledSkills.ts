@@ -27,15 +27,16 @@
  * 会真调 LLM API（memory 实锤），init.skills 交集法同等效力且全程免费。
  *
  * 缓存键 = claude CLI 版本（`<claude> --version` 秒级探针）：CLI 升级自然 miss 重采，
- * 同版本后续请求纯缓存命中。采集 cwd = $TMPDIR/mobi-probe 固定单目录（采前 rm 重建清孤儿、
- * 用完即删；通用名供迭代 2/3 mcp/plugin 探测复用），与 workspace 解耦、零用户前置状态。
+ * 同版本后续请求纯缓存命中。采集 cwd = $TMPDIR/mobi-probe-<pid> 按进程隔离（采前 rm 重建
+ * 清孤儿、用完即删；同机生产 + E2E 双 daemon 并存时互不 rm 对方正在使用的目录）。
  */
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { BundledSkillInfo, SlashCommand } from '@mobi/shared'
 import { getClaudeExecutablePath } from '@mobi/node-core/claudeSdk/claudeExecutable'
+import { writeFileAtomic } from '@mobi/node-core/git/atomicWrite'
 import { daemonLogger } from '../logger'
 
 /** 缓存文档（{dataDir}/bundled-skills.json） */
@@ -64,13 +65,14 @@ export type CommandSnapshot = Pick<SlashCommand, 'name' | 'description' | 'built
 /**
  * 交集法：builtin 标记且出现在 init.skills 的命令 = 内置技能。
  * 名字对齐：SlashCommand.name 无 / 前缀；init.skills 同为无前缀（防御性兼容带前缀形态）。
- * description 取自 commands 快照（init.skills 只有名字数组）。
+ * description 取自 commands 快照（init.skills 只有名字数组）；缺省兜底空串——
+ * schema 侧 description 必填，undefined 会整包 safeParse 失败。
  */
 export function computeBundledSkills(initSkills: string[], commands: CommandSnapshot[]): BundledSkillInfo[] {
     const skillNames = new Set(initSkills.map(s => s.replace(/^\//, '')))
     return commands
         .filter(c => c.builtin && skillNames.has(c.name))
-        .map(c => ({ name: c.name, description: c.description }))
+        .map(c => ({ name: c.name, description: c.description ?? '' }))
 }
 
 /** 读缓存：文件缺失/损坏/形状不符 → null（自然走重采） */
@@ -85,14 +87,14 @@ export function readBundledCache(cachePath: string): BundledSkillsCache | null {
     }
 }
 
-/** 写缓存（最小文档，2 空格 + 尾换行） */
-export function writeBundledCache(cachePath: string, data: BundledSkillsCache): void {
-    writeFileSync(cachePath, `${JSON.stringify(data, null, 2)}\n`, 'utf-8')
+/** 写缓存（最小文档，2 空格 + 尾换行；writeFileAtomic——事实源落盘纪律） */
+export async function writeBundledCache(cachePath: string, data: BundledSkillsCache): Promise<void> {
+    await writeFileAtomic(cachePath, `${JSON.stringify(data, null, 2)}\n`)
 }
 
-/** mobi-probe 临时目录：固定单目录，采前 rm 重建清孤儿（防累积） */
+/** mobi-probe 临时目录：按进程隔离（同机生产 + E2E 双 daemon 并存时互不 rm 对方 cwd），采前重建清孤儿 */
 function createProbeDir(): string {
-    const dir = join(tmpdir(), 'mobi-probe')
+    const dir = join(tmpdir(), `mobi-probe-${process.pid}`)
     rmSync(dir, { recursive: true, force: true })
     mkdirSync(dir, { recursive: true })
     return dir
@@ -167,8 +169,9 @@ async function probeClaudeVersionCached(): Promise<string> {
     return value
 }
 
-/** miss 并发去重：同时到达的请求共享一次采集（~2.5s probe + 一次真实 LLM turn，不重复烧） */
-let inflightProbe: Promise<BundledProbeResult> | null = null
+/** miss 并发去重：按 cachePath 键控（同缓存共享一次采集；不同 deps 实例各自独立，
+ *  测试并行注入不同 fake prober 时不会串到别人的 probe 结果） */
+const inflightByKey = new Map<string, Promise<BundledProbeResult>>()
 
 /**
  * bundled 名单依赖（架构深化候选⑤自路由层迁入）：缺省生产值 = dataDir 缓存 + 真 SDK 自采。
@@ -181,7 +184,8 @@ export interface SkillsBundledDeps {
 
 /**
  * 编排：版本探针 → 缓存命中判定 → miss 自采 → 写缓存。
- * 采集失败异常上抛（调用方 502 透传），绝不伪装空名单、不留半截缓存。
+ * 采集失败异常上抛（调用方 502 透传），绝不伪装空名单、不留半截缓存；
+ * 缓存只是加速器不是事实源——写缓存失败（磁盘满/只读 dataDir）记日志降级，不吞已采数据。
  */
 export async function getBundledSkills(deps: SkillsBundledDeps): Promise<BundledProbeResult> {
     const prober = deps.prober ?? probeBundledSkills
@@ -193,9 +197,16 @@ export async function getBundledSkills(deps: SkillsBundledDeps): Promise<Bundled
         return { claudeVersion: cached.claudeVersion, skills: cached.skills }
     }
 
-    const probed = await (inflightProbe ??= prober().finally(() => {
-        inflightProbe = null
-    }))
-    writeBundledCache(deps.cachePath, { ...probed, cachedAt: Date.now() })
+    let inflight = inflightByKey.get(deps.cachePath)
+    if (!inflight) {
+        inflight = prober().finally(() => inflightByKey.delete(deps.cachePath))
+        inflightByKey.set(deps.cachePath, inflight)
+    }
+    const probed = await inflight
+    try {
+        await writeBundledCache(deps.cachePath, { ...probed, cachedAt: Date.now() })
+    } catch (error) {
+        daemonLogger.warn(`[skills] bundled 缓存写入失败（降级直读，不影响本次结果）：${String(error)}`)
+    }
     return probed
 }

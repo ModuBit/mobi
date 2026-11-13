@@ -23,7 +23,7 @@
  * 真 SDK probe（mobi-probe 目录管理）不进单测——归 E2E 真机验证。
  */
 import { describe, test, expect, afterEach } from 'bun:test'
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -33,6 +33,7 @@ import {
     getBundledSkills,
     type BundledSkillsCache,
     type BundledProber,
+    type CommandSnapshot,
 } from '../../../src/skills/bundledSkills'
 
 describe('computeBundledSkills（交集法）', () => {
@@ -53,6 +54,14 @@ describe('computeBundledSkills（交集法）', () => {
         const result = computeBundledSkills(['/doctor'], commands)
         expect(result.map(s => s.name)).toEqual(['doctor'])
     })
+
+    test('快照缺 description → 兜底空串（schema 侧必填，code-review 修复）', () => {
+        // 修复前：description 为 undefined → 违反 BundledSkillInfoSchema 的 z.string() 必填
+        // （类型上 description 必填，但 CLI 版本差异的运行时快照可能缺字段——as 模拟该输入）
+        const noDescription = { name: 'doctor', builtin: true } as CommandSnapshot
+        const result = computeBundledSkills(['doctor'], [noDescription])
+        expect(result).toEqual([{ name: 'doctor', description: '' }])
+    })
 })
 
 describe('版本化缓存', () => {
@@ -63,7 +72,7 @@ describe('版本化缓存', () => {
         if (dir) rmSync(dir, { recursive: true, force: true })
     })
 
-    test('写入后可读回；版本不符返回 null（自然 miss）', () => {
+    test('写入后可读回；版本不符返回 null（自然 miss）', async () => {
         dir = mkdtempSync(join(tmpdir(), 'mobi-bundled-cache-'))
         cachePath = join(dir, 'bundled-skills.json')
 
@@ -74,7 +83,7 @@ describe('版本化缓存', () => {
             skills: [{ name: 'doctor', description: 'd' }],
             cachedAt: 12345,
         }
-        writeBundledCache(cachePath, data)
+        await writeBundledCache(cachePath, data)
         expect(readBundledCache(cachePath)).toEqual(data)
     })
 
@@ -144,5 +153,34 @@ describe('getBundledSkills（编排：版本→缓存→采→写）', () => {
 
         await expect(getBundledSkills({ cachePath, prober: failingProber, versionProber })).rejects.toThrow('probe timeout')
         expect(existsSync(cachePath)).toBe(false)
+    })
+
+    test('同缓存并发 miss 共享一次采集；不同缓存互不串（inflight 按 cachePath 键控）', async () => {
+        setup('2.1.312')
+
+        // 同 cachePath 并发：两个请求共享一次 probe
+        const [a, b] = await Promise.all([
+            getBundledSkills({ cachePath, prober, versionProber }),
+            getBundledSkills({ cachePath, prober, versionProber }),
+        ])
+        expect(probeCount).toBe(1)
+        expect(a.claudeVersion).toBe(b.claudeVersion)
+
+        // 不同 cachePath（不同 deps 实例）：各自独立采集，不共享别人的结果
+        const otherPath = join(dir, 'other-bundled-skills.json')
+        const other = await getBundledSkills({ cachePath: otherPath, prober, versionProber })
+        expect(other.claudeVersion).toBe('2.1.312')
+        expect(probeCount).toBe(2)
+    })
+
+    test('写缓存失败：降级不上抛，已采数据照常返回（缓存只是加速器，code-review 修复）', async () => {
+        setup('2.1.312')
+        // cachePath 指向已存在目录 → rename 落盘必然失败
+        const badPath = join(dir, 'occupied')
+        mkdirSync(badPath)
+
+        const result = await getBundledSkills({ cachePath: badPath, prober, versionProber })
+        expect(result.claudeVersion).toBe('2.1.312')
+        expect(result.skills).toEqual([{ name: 'doctor', description: 'v2.1.312' }])
     })
 })

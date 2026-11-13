@@ -23,11 +23,11 @@
  * - tracked 删除归 CLI 闭环：删 agent 目录条目 → isStillUsed 判定 → 中央仓真身与
  *   lock 条目同生共死；mobi 不自判真身
  * - untracked 是 mobi 自管文件：symlink 行只删链接（真身归 CLI 语义或用户自管），真目录整体删除
- * - 删除前二次校验目标确为 skill 根下以 skill 名命名的直接子项（防 TOCTOU / 路径注入误删）
+ * - 删除前二次校验目标确为 skill 根下的直接子项（防 TOCTOU / 路径注入误删；realpath 比对）
  * - spawn 走 argv 数组不经 shell，source 字符串天然无注入面
  */
 import { existsSync, lstatSync, realpathSync, rmSync, unlinkSync } from 'node:fs'
-import { basename, dirname } from 'node:path'
+import { dirname } from 'node:path'
 import type { SkillInfo } from '@mobi/shared'
 import { daemonLogger } from '../logger'
 import type { SkillScanRoots } from './skillScanner'
@@ -102,9 +102,11 @@ export type UntrackedRemoveResult = { ok: true } | { ok: false; error: string }
 
 /**
  * untracked 路径：直接删 agent 目录条目。
- * 目标校验：行携带的 SKILL.md 路径，其父目录必须恰为 <skill 根>/<skill 名>——
+ * 目标校验：行携带的 SKILL.md 路径，其父目录必须恰为 skill 根的直接子项——
  * 与扫描器发现的根一致（personal → claudeConfigDir/skills；project → <ws>/.claude/skills），
  * 不一致说明行数据与磁盘已漂移（TOCTOU），拒绝执行。
+ * 目录名不要求等于 frontmatter name：CC 不强制该同形约定（dir 名与 name 可不同，
+ * 扫描器照常列出且可删），realpath 比对才是防误删的真正边界。
  */
 export function removeUntrackedSkill(
     skill: SkillInfo,
@@ -114,9 +116,6 @@ export function removeUntrackedSkill(
     const expectedRoot = scopeView(roots, scope).skillRoot
 
     const dir = dirname(skill.path)
-    if (basename(dir) !== skill.name) {
-        return { ok: false, error: `Skill directory name mismatch: ${dir}` }
-    }
     // realpath 两侧再比对：防 skill 根自身是链接时的绕过
     if (!existsSync(dir) || !existsSync(expectedRoot)) {
         return { ok: false, error: `Skill directory no longer exists: ${dir}` }

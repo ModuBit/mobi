@@ -131,10 +131,14 @@ describe('skills REST 路由（GET /api/skills）', () => {
         mkdirSync(join(claudeDir, 'skills', 'synced', 'dup-local'), { recursive: true })
         writeFileSync(join(claudeDir, 'skills', 'synced', 'dup-local', 'SKILL.md'), skillMd({ name: 'dup-local' }))
 
-        // user settings：personal-off → off（归属层即 user）
+        // user settings：personal-off → off（归属层即 user）；"Code Review" 原始大小写键
+        // （CC 手写形态——读侧须归一化命中，见 resolveOverride 用例）
         writeFileSync(join(claudeDir, 'settings.json'), JSON.stringify({
-            skillOverrides: { 'personal-off': 'off' },
+            skillOverrides: { 'personal-off': 'off', 'Code Review': 'off' },
         }))
+        // frontmatter 名含大小写与空白（settings 键同形原始名；dir 名与 name 无需一致）
+        mkdirSync(join(claudeDir, 'skills', 'review-dir'), { recursive: true })
+        writeFileSync(join(claudeDir, 'skills', 'review-dir', 'SKILL.md'), skillMd({ name: 'Code Review', description: 'Override key normalization' }))
         // user lock（v3）：beta → tracked；gamma → tracked（票 05 update 用，不随票 04 删除用例消耗）
         mkdirSync(join(centralDir, 'skills', 'gamma'), { recursive: true })
         writeFileSync(join(centralDir, 'skills', 'gamma', 'SKILL.md'), skillMd({ name: 'gamma', description: 'Gamma from store' }))
@@ -302,6 +306,15 @@ describe('skills REST 路由（GET /api/skills）', () => {
             expect(off.effectiveFromLayer).toBe('user')
             expect(off.ownState).toBe('off')
         })
+
+        test('settings 键原始大小写/空白（CC 手写形态）经归一化命中（code-review 修复）', async () => {
+            const { skills } = await listSkills('?workspaceId=global')
+            const row = byName(skills, 'Code Review')!
+            // 修复前：键 "Code Review" 查不到 → effectiveState=null，UI 与 CC 真实停用态脱节
+            expect(row.effectiveState).toBe('off')
+            expect(row.effectiveFromLayer).toBe('user')
+            expect(row.ownState).toBe('off')
+        })
     })
 
     describe('workspace 视角', () => {
@@ -435,6 +448,14 @@ describe('skills REST 路由（GET /api/skills）', () => {
             expect(existsSync(join(claudeDir, 'skills', 'del-plain'))).toBe(false)
             const { skills } = await listSkills('?workspaceId=global')
             expect(byName(skills, 'del-plain')).toBeUndefined()
+        })
+
+        test('untracked 目录名 ≠ frontmatter name：可删（realpath 校验才是边界，code-review 修复）', async () => {
+            // fixture review-dir 的 frontmatter name 为 "Code Review"（含大小写空白）——
+            // 修复前 basename!==name 拒删 500，任何命名差异的合法 skill 都删不掉
+            const res = await deleteSkill('Code Review', '?workspaceId=global')
+            expect(res.status).toBe(200)
+            expect(existsSync(join(claudeDir, 'skills', 'review-dir'))).toBe(false)
         })
 
         test('untracked symlink：只删链接不删中央仓真身', async () => {

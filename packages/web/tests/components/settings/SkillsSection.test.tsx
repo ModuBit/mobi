@@ -487,4 +487,21 @@ describe('SkillsSection（票 07：对话式新建）', () => {
         await waitFor(() => expect(mockMessage.warning).toHaveBeenCalledWith('settings.skills.createNoWorkspace'))
         expect(mockNavigate).not.toHaveBeenCalled()
     })
+
+    it('工作区清单加载中（undefined ≠ 空数组）：不误弹「无工作区」（code-review 修复）', async () => {
+        // 修复前：pending 期提交 → data undefined 被当「无工作区」→ 误弹 warning
+        vi.mocked(useWorkspaces).mockReturnValue({ data: undefined, isLoading: true } as never)
+        vi.mocked(useSkills).mockImplementation(mockSkillsByScope)
+        vi.mocked(useSkillVisibility).mockReturnValue(mockVisibility as never)
+        render(<SkillsSection />)
+        mockMessage.warning.mockClear()
+
+        screen.getByTestId('skills-create').click()
+        fireEvent.click(await screen.findByText('settings.skills.createSubmit'))
+
+        // 静默拒绝：不发请求、不弹误导提示、不跳转
+        expect(mockCreatePrompt).not.toHaveBeenCalled()
+        expect(mockMessage.warning).not.toHaveBeenCalledWith('settings.skills.createNoWorkspace')
+        expect(mockNavigate).not.toHaveBeenCalled()
+    })
 })

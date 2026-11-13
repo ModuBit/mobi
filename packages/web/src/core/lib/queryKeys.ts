@@ -93,6 +93,6 @@ export const queryKeys = {
     skillsRoot,
     /** skill 管理列表（skill-mgmt 票 02；global | workspaceId 两视角；前缀失效走 skillsRoot） */
     skills: (workspaceId: string) => [...skillsRoot, workspaceId] as const,
-    /** CC 内置名单（全局视角独立于列表；同族失效：['skills'] 前缀命中） */
-    skillsBundled: [...skillsRoot, 'bundled'] as const,
+    /** CC 内置名单（独立顶层键：与 skill 变更无因果关系，不被 skillsRoot 前缀失效连带重拉） */
+    skillsBundled: ['skills-bundled'] as const,
 }

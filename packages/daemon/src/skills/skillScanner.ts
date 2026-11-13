@@ -76,7 +76,9 @@ export function defaultSkillScanRoots(): SkillScanRoots {
 
 // ── settings skillOverrides 读取与合成 ──
 
-/** 读单个 settings.json 的 skillOverrides（文件缺失/坏 JSON/形状不对 → 空） */
+/** 读单个 settings.json 的 skillOverrides（文件缺失/坏 JSON/形状不对 → 空）。
+ *  键侧即刻经 skillNameKey 归一化（CC 与 mobi 都写原始名如 "Code Review"，
+ *  归一化索引让查找侧与写入侧在同一键空间命中——否则原始大小写/空白键永远查不到） */
 function readOverrides(path: string): Partial<Record<string, SkillOverrideState>> {
     try {
         if (!existsSync(path)) return {}
@@ -85,7 +87,7 @@ function readOverrides(path: string): Partial<Record<string, SkillOverrideState>
         const result: Partial<Record<string, SkillOverrideState>> = {}
         for (const [name, value] of Object.entries(parsed.skillOverrides as Record<string, unknown>)) {
             if (typeof value === 'string' && (SKILL_OVERRIDE_STATES as readonly string[]).includes(value)) {
-                result[name] = value as SkillOverrideState
+                result[skillNameKey(name)] = value as SkillOverrideState
             }
         }
         return result
@@ -100,13 +102,14 @@ function readOverrides(path: string): Partial<Record<string, SkillOverrideState>
  */
 export type OverrideLayers = Array<{ layer: SkillSettingsLayer; overrides: Partial<Record<string, SkillOverrideState>> }>
 
-/** 合成某 skill 名的生效覆盖：取最高层首个条目；无 → null */
+/** 合成某 skill 名的生效覆盖：取最高层首个条目；无 → null。
+ *  name 与 overrides 键均已 skillNameKey 归一化（见 readOverrides），直接命中 */
 function resolveOverride(
     name: string,
     layers: OverrideLayers,
 ): { state: SkillOverrideState; fromLayer: SkillSettingsLayer } | null {
     for (const { layer, overrides } of layers) {
-        const state = overrides[name] ?? overrides[name.toLowerCase()]
+        const state = overrides[name]
         if (state) return { state, fromLayer: layer }
     }
     return null

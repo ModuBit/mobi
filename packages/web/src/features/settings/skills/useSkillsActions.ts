@@ -33,7 +33,7 @@ export function useSkillsActions() {
     const { t } = useTranslation()
     const { message, modal } = App.useApp()
     const navigate = useNavigate()
-    const { data: workspaces } = useWorkspaces()
+    const { data: workspaces, isLoading: workspacesLoading } = useWorkspaces()
 
     const visibility = useSkillVisibility()
     const deletion = useSkillDelete()
@@ -109,6 +109,8 @@ export function useSkillsActions() {
      * 成功返回 true（caller 关弹窗）。会话宿主工作区：scope 是工作区即宿主，
      * global 任选一个（skill 写绝对路径与宿主无关）；无工作区无法建会话（必带 workspaceId）。 */
     const submitCreate = async (scope: string): Promise<boolean> => {
+        // 工作区清单还在加载（undefined ≠ 空数组）：静默拒绝，不误弹「无工作区」
+        if (workspacesLoading) return false
         const hostWorkspaceId = scope !== SKILL_SCOPE_GLOBAL ? scope : (workspaces ?? [])[0]?.id
         if (!hostWorkspaceId) {
             message.warning(t('settings.skills.createNoWorkspace'))

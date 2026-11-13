@@ -125,6 +125,8 @@ export function SkillsSection() {
 
     const submitInstall = async () => {
         if (!installSource.trim()) return
+        // Enter 直达通道不受弹窗 confirmLoading 约束，进行中早退防并发安装
+        if (actions.installing) return
         // 失败保持弹窗开着（来源可改后重试）
         if (await actions.install(installSource.trim(), installScope)) setInstallOpen(false)
     }

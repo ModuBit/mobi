@@ -120,7 +120,7 @@ export function createSkillsRoutes(
         if (!ctx.skill.overrideable) return c.json({ error: 'Skill is read-only' }, 400)
 
         // 归属层：personal → user settings；project → workspace project settings（scopeView 单源派生）
-        if (!writeSkillOverride(scopeView(scanRoots(), ctx.scope).ownSettingsPath, skillName, parsed.data.enabled ? 'on' : 'off')) {
+        if (!(await writeSkillOverride(scopeView(scanRoots(), ctx.scope).ownSettingsPath, skillName, parsed.data.enabled ? 'on' : 'off'))) {
             return c.json({ error: 'Settings file is corrupted' }, 500)
         }
 
