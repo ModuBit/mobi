@@ -997,6 +997,7 @@
     "searchEmpty": "没有匹配的设置",
     "skills": {
       "tabGlobal": "全局",
+      "tabsAria": "技能作用域",
       "searchPlaceholder": "搜索技能",
       "empty": "没有技能",
       "emptyFiltered": "没有匹配的技能",

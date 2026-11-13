@@ -1006,6 +1006,7 @@
     "searchEmpty": "No matching settings",
     "skills": {
       "tabGlobal": "Global",
+      "tabsAria": "Skill scopes",
       "searchPlaceholder": "Search skills",
       "empty": "No skills yet",
       "emptyFiltered": "No matching skills",

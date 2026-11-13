@@ -154,6 +154,7 @@ export function SkillsSection() {
                 activeScope={tab}
                 onScopeChange={setTab}
                 tabsTestId="skills-tabs"
+                tabsAriaLabel={t('settings.skills.tabsAria')}
                 actions={
                     <>
                         <Button variant="ghost" size="sm" onClick={openCreate} data-testid="skills-create">

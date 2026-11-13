@@ -18,8 +18,8 @@
  * 管理页骨架件测试（架构深化候选②⑥）：ManageRow 槽位 / useScopeOptions 构建 /
  * ScopeTabbedSection 结构。props 驱动零 mock——骨架件从第一天起就该有的独立测试面。
  */
-import { render, renderHook, screen, cleanup } from '@testing-library/react'
-import { describe, expect, it, afterEach } from 'vitest'
+import { render, renderHook, screen, cleanup, fireEvent } from '@testing-library/react'
+import { describe, expect, it, afterEach, vi } from 'vitest'
 import { SKILL_SCOPE_GLOBAL } from '@mobi/shared'
 import { ManageRow, ManageRowTag } from '@/features/settings/blocks/ManageRow'
 import { ScopeTabbedSection } from '@/features/settings/blocks/ScopeTabbedSection'
@@ -107,8 +107,9 @@ describe('ScopeTabbedSection', () => {
         expect(screen.getByText('内容区')).toBeTruthy()
     })
 
-    it('切 scope 回调透传', async () => {
-        const { ...utils } = render(
+    it('切 scope 回调透传（TabStrip 受控：点击页签即回调目标 value）', () => {
+        const onScopeChange = vi.fn()
+        render(
             <ScopeTabbedSection
                 keyword=""
                 onKeywordChange={() => {}}
@@ -118,12 +119,13 @@ describe('ScopeTabbedSection', () => {
                     { value: 'ws-1', label: 'Demo' },
                 ]}
                 activeScope={SKILL_SCOPE_GLOBAL}
-                onScopeChange={() => {}}
+                onScopeChange={onScopeChange}
             >
                 null
             </ScopeTabbedSection>,
         )
-        // antd Tabs 的点击切换走 onChange；此处仅验证 Demo tab 可聚焦（交互编排由 SkillsSection 测试覆盖）
-        expect(utils.container.querySelector('[role="tab"][id]')).toBeTruthy()
+        fireEvent.click(screen.getByRole('tab', { name: 'Demo' }))
+        expect(onScopeChange).toHaveBeenCalledWith('ws-1')
+        // 交互编排（切 tab 换数据源）由 SkillsSection 测试覆盖
     })
 })

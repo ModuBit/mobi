@@ -145,6 +145,11 @@ module.exports = tseslint.config(
             importNames: ['Checkbox'],
             message: 'antd Checkbox 已迁 uiarc（@/ui/shadcn/checkbox/checkbox），禁止新增',
           },
+          {
+            name: 'antd',
+            importNames: ['Tabs'],
+            message: 'antd Tabs 已迁自管件（@/ui/base/interactive/tabStrip 的 TabStrip 族，scope-tabbed 骨架 ScopeTabbedSection 已迁移），禁止新增',
+          },
         ],
       }],
     },
