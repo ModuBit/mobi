@@ -34,6 +34,8 @@ import { parse as parseYaml } from 'yaml'
 import { resolveClaudeConfigDir } from '@mobi/node-core/claudeSdk/claudeConfigDir'
 import { ALL_BUNDLED_PLUGIN_NAMES, bundledPluginPath } from '@mobi/node-core/runtime/bundledPlugins'
 import type { SkillInfo, SkillOverrideState, SkillSettingsLayer, SkillSource } from '@mobi/shared'
+import { SKILL_OVERRIDE_STATES, skillNameKey } from '@mobi/shared'
+import { scopeView, type SkillScope } from './skillScope'
 
 /** 扫描根（生产缺省值见 defaultSkillScanRoots；测试注入 fixture） */
 export interface SkillScanRoots {
@@ -74,8 +76,6 @@ export function defaultSkillScanRoots(): SkillScanRoots {
 
 // ── settings skillOverrides 读取与合成 ──
 
-const OVERRIDE_STATES: readonly SkillOverrideState[] = ['on', 'name-only', 'user-invocable-only', 'off']
-
 /** 读单个 settings.json 的 skillOverrides（文件缺失/坏 JSON/形状不对 → 空） */
 function readOverrides(path: string): Partial<Record<string, SkillOverrideState>> {
     try {
@@ -84,7 +84,7 @@ function readOverrides(path: string): Partial<Record<string, SkillOverrideState>
         if (!parsed.skillOverrides || typeof parsed.skillOverrides !== 'object') return {}
         const result: Partial<Record<string, SkillOverrideState>> = {}
         for (const [name, value] of Object.entries(parsed.skillOverrides as Record<string, unknown>)) {
-            if (typeof value === 'string' && (OVERRIDE_STATES as readonly string[]).includes(value)) {
+            if (typeof value === 'string' && (SKILL_OVERRIDE_STATES as readonly string[]).includes(value)) {
                 result[name] = value as SkillOverrideState
             }
         }
@@ -159,9 +159,6 @@ function parseSkillMd(path: string): ParsedSkillMd | null {
 
 // ── 目录扫描 ──
 
-/** 同名裁决的比较键：CC 忽略大小写与空白 */
-const nameKey = (name: string) => name.toLowerCase().replace(/\s+/g, '-')
-
 /** 单个 skill 目录集合（如 ~/.claude/skills 或 <ws>/.claude/skills）的一条扫描结果 */
 interface ScannedEntry {
     parsed: ParsedSkillMd
@@ -191,11 +188,11 @@ function scanSkillDirectory(dir: string): ScannedEntry[] {
         const isSymlink = entry.isSymbolicLink()
         const mdPath = join(dirPath, 'SKILL.md')
         // symlink → 从目标读 SKILL.md；断链（目标消失）按损坏隐藏
-        const readPath = isSymlink ? resolveSymlinkTarget(dirPath, mdPath) : mdPath
+        const readPath = isSymlink ? resolveSymlinkTarget(mdPath) : mdPath
         if (!readPath) continue
         const parsed = parseSkillMd(readPath)
         if (!parsed) continue
-        const key = nameKey(parsed.name)
+        const key = skillNameKey(parsed.name)
         if (seen.has(key)) continue
         seen.add(key)
         result.push({
@@ -208,15 +205,9 @@ function scanSkillDirectory(dir: string): ScannedEntry[] {
     return result
 }
 
-/** 断链解析：symlink 目录下 SKILL.md 经真实路径可达则返回，否则 null */
-function resolveSymlinkTarget(dirPath: string, mdPath: string): string | null {
-    try {
-        if (existsSync(mdPath)) return mdPath
-        // lstat 存在但 stat 不存在 = 断链
-        return null
-    } catch {
-        return null
-    }
+/** 断链解析：symlink 目录下 SKILL.md 经真实路径可达则返回，否则 null（existsSync 出错即 false，不抛） */
+function resolveSymlinkTarget(mdPath: string): string | null {
+    return existsSync(mdPath) ? mdPath : null
 }
 
 /** 读 skills CLI lock（文件缺失/坏 JSON → 空） */
@@ -238,9 +229,9 @@ function toSkillInfo(
     layers: OverrideLayers,
     ownLayer: SkillSettingsLayer | null,
 ): SkillInfo {
-    const effective = resolveOverride(nameKey(entry.parsed.name), layers)
+    const effective = resolveOverride(skillNameKey(entry.parsed.name), layers)
     const own = ownLayer
-        ? (layers.find(l => l.layer === ownLayer)?.overrides[nameKey(entry.parsed.name)] ?? null)
+        ? (layers.find(l => l.layer === ownLayer)?.overrides[skillNameKey(entry.parsed.name)] ?? null)
         : null
     return {
         name: entry.parsed.name,
@@ -254,27 +245,30 @@ function toSkillInfo(
         modelInvocationDisabled: entry.parsed.modelInvocationDisabled,
         // synced 的启停归 claude.ai 账户、plugin 归迭代 3，均不提供开关
         overrideable: source === 'personal' || source === 'project',
+        // 删除只对 mobi 自管来源开放：synced 下次同步拉回、plugin 归迭代 3（能力矩阵单源，daemon 守卫与 web 入口消费）
+        deletable: source === 'personal' || source === 'project',
         effectiveState: effective?.state ?? null,
         effectiveFromLayer: effective?.fromLayer ?? null,
         ownState: own ?? null,
     }
 }
 
-/** global 视角四层中的两层（project/local 无 workspace 语境不参与） */
+/** global 视角四层中的两层（project/local 无 workspace 语境不参与）；路径族经 scopeView 单源 */
 function globalLayers(roots: SkillScanRoots): OverrideLayers {
     return [
         { layer: 'managed', overrides: readOverrides(roots.managedSettingsPath ?? '') },
-        { layer: 'user', overrides: readOverrides(join(roots.claudeConfigDir, 'settings.json')) },
+        { layer: 'user', overrides: readOverrides(scopeView(roots, { kind: 'global' }).ownSettingsPath) },
     ]
 }
 
-/** workspace 视角全四层（managed > local > project > user） */
+/** workspace 视角全四层（managed > local > project > user）；归属/settings 路径经 scopeView 单源 */
 function workspaceLayers(roots: SkillScanRoots, wsPath: string): OverrideLayers {
+    const wsScope: SkillScope = { kind: 'workspace', path: wsPath }
     return [
         { layer: 'managed', overrides: readOverrides(roots.managedSettingsPath ?? '') },
         { layer: 'local', overrides: readOverrides(join(wsPath, '.claude', 'settings.local.json')) },
-        { layer: 'project', overrides: readOverrides(join(wsPath, '.claude', 'settings.json')) },
-        { layer: 'user', overrides: readOverrides(join(roots.claudeConfigDir, 'settings.json')) },
+        { layer: 'project', overrides: readOverrides(scopeView(roots, wsScope).ownSettingsPath) },
+        { layer: 'user', overrides: readOverrides(scopeView(roots, { kind: 'global' }).ownSettingsPath) },
     ]
 }
 
@@ -282,14 +276,14 @@ function workspaceLayers(roots: SkillScanRoots, wsPath: string): OverrideLayers 
 export function listGlobalSkills(roots: SkillScanRoots): SkillInfo[] {
     const layers = globalLayers(roots)
     const userLock = readLock(roots.userLockPath)
-    const skillsDir = join(roots.claudeConfigDir, 'skills')
+    const skillsDir = scopeView(roots, { kind: 'global' }).skillRoot
 
     const personal = scanSkillDirectory(skillsDir)
-    const personalKeys = new Set(personal.map(e => nameKey(e.parsed.name)))
+    const personalKeys = new Set(personal.map(e => skillNameKey(e.parsed.name)))
 
     // synced：目录在保留名 synced/ 下；被本地同名遮蔽的不加载
     const synced = scanSkillDirectory(join(skillsDir, 'synced'))
-        .filter(e => !personalKeys.has(nameKey(e.parsed.name)))
+        .filter(e => !personalKeys.has(skillNameKey(e.parsed.name)))
 
     const result: SkillInfo[] = [
         ...personal.map(e => toSkillInfo(e, 'personal', userLock.skills[e.parsed.name], layers, 'user')),
@@ -313,9 +307,29 @@ export function listGlobalSkills(roots: SkillScanRoots): SkillInfo[] {
 export function listWorkspaceSkills(roots: SkillScanRoots, wsPath: string): SkillInfo[] {
     const layers = workspaceLayers(roots, wsPath)
     const lock = readLock(join(wsPath, 'skills-lock.json'))
-    const personalKeys = new Set(scanSkillDirectory(join(roots.claudeConfigDir, 'skills')).map(e => nameKey(e.parsed.name)))
+    const personalKeys = new Set(
+        scanSkillDirectory(scopeView(roots, { kind: 'global' }).skillRoot).map(e => skillNameKey(e.parsed.name)),
+    )
 
-    return scanSkillDirectory(join(wsPath, '.claude', 'skills'))
-        .filter(e => !personalKeys.has(nameKey(e.parsed.name)))
+    return scanSkillDirectory(scopeView(roots, { kind: 'workspace', path: wsPath }).skillRoot)
+        .filter(e => !personalKeys.has(skillNameKey(e.parsed.name)))
         .map(e => toSkillInfo(e, 'project', lock.skills[e.parsed.name], layers, 'project'))
+}
+
+/**
+ * PATCH 回读：写完归属层 override 后只重读 override 层重算生效三态（遮蔽态由多层合成，
+ * 回读是唯一权威）。其余字段源自 SKILL.md/lock，不可能因这次写入变化——避免为回读
+ * 一行重跑整轮目录扫描（每次开关省 N 次 SKILL.md 读取 + YAML 解析）。
+ */
+export function refreshOverrideFields(skill: SkillInfo, roots: SkillScanRoots, scope: SkillScope): SkillInfo {
+    const layers = scope.kind === 'global' ? globalLayers(roots) : workspaceLayers(roots, scope.path)
+    const effective = resolveOverride(skillNameKey(skill.name), layers)
+    const ownLayer = skill.source === 'project' ? 'project' : 'user'
+    const own = layers.find(l => l.layer === ownLayer)?.overrides[skillNameKey(skill.name)] ?? null
+    return {
+        ...skill,
+        effectiveState: effective?.state ?? null,
+        effectiveFromLayer: effective?.fromLayer ?? null,
+        ownState: own,
+    }
 }

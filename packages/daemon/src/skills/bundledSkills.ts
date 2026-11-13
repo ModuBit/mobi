@@ -34,7 +34,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import type { BundledSkillInfo } from '@mobi/shared'
+import type { BundledSkillInfo, SlashCommand } from '@mobi/shared'
 import { getClaudeExecutablePath } from '@mobi/node-core/claudeSdk/claudeExecutable'
 import { daemonLogger } from '../logger'
 
@@ -58,12 +58,8 @@ export type BundledProber = () => Promise<BundledProbeResult>
 /** 可注入的版本探针（测试 fake；生产 = spawn claude --version） */
 export type ClaudeVersionProber = () => Promise<string>
 
-/** supportedCommands 快照的最小投影（SlashCommand 子集，纯函数不依赖 SDK 类型） */
-export interface CommandSnapshot {
-    name: string
-    description: string
-    builtin?: boolean
-}
+/** supportedCommands 快照的最小投影（shared SlashCommand 协议单源的子集） */
+export type CommandSnapshot = Pick<SlashCommand, 'name' | 'description' | 'builtin'>
 
 /**
  * 交集法：builtin 标记且出现在 init.skills 的命令 = 内置技能。
@@ -158,6 +154,23 @@ export async function probeClaudeVersion(): Promise<string> {
 }
 
 /**
+ * 版本探针短 TTL memo：缓存命中路径不必每请求 spawn 子进程（打开设置页/refocus/
+ * 前缀失效都会触发 bundled query）。TTL 窗口内 CLI 升级至多延迟一个窗口感知，可接受。
+ * 探针失败不缓存（下次请求重试）。
+ */
+const VERSION_TTL_MS = 60_000
+let versionMemo: { value: string; at: number } | null = null
+async function probeClaudeVersionCached(): Promise<string> {
+    if (versionMemo && Date.now() - versionMemo.at < VERSION_TTL_MS) return versionMemo.value
+    const value = await probeClaudeVersion()
+    versionMemo = { value, at: Date.now() }
+    return value
+}
+
+/** miss 并发去重：同时到达的请求共享一次采集（~2.5s probe + 一次真实 LLM turn，不重复烧） */
+let inflightProbe: Promise<BundledProbeResult> | null = null
+
+/**
  * bundled 名单依赖（架构深化候选⑤自路由层迁入）：缺省生产值 = dataDir 缓存 + 真 SDK 自采。
  */
 export interface SkillsBundledDeps {
@@ -172,7 +185,7 @@ export interface SkillsBundledDeps {
  */
 export async function getBundledSkills(deps: SkillsBundledDeps): Promise<BundledProbeResult> {
     const prober = deps.prober ?? probeBundledSkills
-    const versionProber = deps.versionProber ?? probeClaudeVersion
+    const versionProber = deps.versionProber ?? probeClaudeVersionCached
 
     const currentVersion = await versionProber()
     const cached = readBundledCache(deps.cachePath)
@@ -180,7 +193,9 @@ export async function getBundledSkills(deps: SkillsBundledDeps): Promise<Bundled
         return { claudeVersion: cached.claudeVersion, skills: cached.skills }
     }
 
-    const probed = await prober()
+    const probed = await (inflightProbe ??= prober().finally(() => {
+        inflightProbe = null
+    }))
     writeBundledCache(deps.cachePath, { ...probed, cachedAt: Date.now() })
     return probed
 }

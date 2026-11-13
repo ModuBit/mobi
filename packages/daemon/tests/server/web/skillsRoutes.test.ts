@@ -23,7 +23,7 @@
  * - 同名裁决（personal 胜 project；本地胜 synced）/ 损坏条目隐藏
  */
 import { homedir, tmpdir } from 'node:os'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, readFileSync, existsSync, unlinkSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import type { Server } from 'socket.io'

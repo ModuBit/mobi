@@ -19,14 +19,12 @@
  * 五套「mutation + toast + 确认弹窗」流程收进一个 hook——此前内联在 SkillsSection，
  * 测试只能 mock 整个模块世界；收口后 section 只剩布局与呈现，mock 边界收窄到本 hook。
  */
-import { useState } from 'react'
 import { App } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { SKILL_SCOPE_GLOBAL, extractHttpDetail, type SkillInfo } from '@mobi/shared'
+import { SKILL_SCOPE_GLOBAL, extractHttpDetail, isSkillShadowed, type SkillInfo } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
-import { useSkillDelete, useSkillInstall, useSkillUpdate, useSkillVisibility } from '@/core/data/hooks/queries/useSkills'
-import { useMobiApi } from '@/core/data/api/client'
+import { useSkillCreatePrompt, useSkillDelete, useSkillInstall, useSkillUpdate, useSkillVisibility } from '@/core/data/hooks/queries/useSkills'
 import { saveDraftText } from '@/core/lib/draftText'
 
 // CLI 失败透传走 shared 单源 extractHttpDetail（errorPresentation 家族）
@@ -35,22 +33,22 @@ export function useSkillsActions() {
     const { t } = useTranslation()
     const { message, modal } = App.useApp()
     const navigate = useNavigate()
-    const api = useMobiApi()
     const { data: workspaces } = useWorkspaces()
 
     const visibility = useSkillVisibility()
     const deletion = useSkillDelete()
     const updater = useSkillUpdate()
     const installer = useSkillInstall()
-    const [creating, setCreating] = useState(false)
+    /** 对话式新建的预填 prompt 请求（pending 态由 mutation 派生，与兄弟动作同构） */
+    const creator = useSkillCreatePrompt()
 
-    /** 启停：失败报错；成功后归属层已开但生效仍关 → 更高层压制提示 */
+    /** 启停：失败报错；成功后归属层已开但生效仍关 → 更高层压制提示（isSkillShadowed 单源） */
     const toggle = (skill: SkillInfo, enabled: boolean, scope: string) => {
         visibility.mutate(
             { name: skill.name, enabled, workspaceId: scope },
             {
                 onSuccess: (refreshed) => {
-                    if (enabled && refreshed?.effectiveState === 'off') {
+                    if (isSkillShadowed(refreshed)) {
                         message.warning(t('settings.skills.shadowedToast'))
                     }
                 },
@@ -116,9 +114,8 @@ export function useSkillsActions() {
             message.warning(t('settings.skills.createNoWorkspace'))
             return false
         }
-        setCreating(true)
         try {
-            const res = await api.skills.createPrompt(scope)
+            const res = await creator.mutateAsync(scope)
             // 一次性信箱：新会话页 shell ready 后消费预填
             saveDraftText(res.data.prompt)
             navigate({ to: '/sessions/new', search: { workspaceId: hostWorkspaceId } })
@@ -126,8 +123,6 @@ export function useSkillsActions() {
         } catch {
             message.error(t('settings.skills.createFailed'))
             return false
-        } finally {
-            setCreating(false)
         }
     }
 
@@ -144,6 +139,6 @@ export function useSkillsActions() {
         /** 安装请求进行中（提交钮 loading） */
         installing: installer.isPending,
         /** 新建请求进行中（提交钮 loading） */
-        creating,
+        creating: creator.isPending,
     }
 }

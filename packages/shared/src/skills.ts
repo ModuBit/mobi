@@ -46,6 +46,22 @@ export type SkillForm = (typeof SKILL_FORMS)[number]
  */
 export const SKILL_SCOPE_GLOBAL = 'global'
 
+/**
+ * 同名裁决的比较键：CC 忽略大小写与空白（如 `My Skill` 与 `my-skill` 视为同名）。
+ * daemon 扫描层的遮蔽裁决与 web 内置行的 covered 判定共用，禁止再手写精确匹配。
+ */
+export const skillNameKey = (name: string) => name.toLowerCase().replace(/\s+/g, '-')
+
+/**
+ * 遮蔽判定：归属层没关（on 或无条目）却被更高层关了——用户在此层开关不会生效。
+ * 行渲染（遮蔽徽标）与启停后的压制提示共用（ownState 语义见 SkillInfoSchema 注释）。
+ */
+export function isSkillShadowed(
+    skill: Pick<SkillInfo, 'effectiveState' | 'ownState'> | null | undefined,
+): boolean {
+    return skill?.effectiveState === 'off' && skill.ownState !== 'off'
+}
+
 /** 管理页列表行（GET /api/skills） */
 export const SkillInfoSchema = z.object({
     /** 调用名（frontmatter name 优先，缺省目录名） */
@@ -67,6 +83,8 @@ export const SkillInfoSchema = z.object({
     modelInvocationDisabled: z.boolean().optional(),
     /** mobi 可否提供启停开关（personal/project true；plugin false——skillOverrides 对插件 skill 无效） */
     overrideable: z.boolean(),
+    /** mobi 可否删除（personal/project true——自管来源；synced 下次同步拉回、plugin 归后续迭代） */
+    deletable: z.boolean(),
     /** 合成生效态：多层 skillOverrides 同名键取最高层；null = 无任何覆盖（视为 on） */
     effectiveState: z.enum(SKILL_OVERRIDE_STATES).nullable(),
     /** 生效覆盖来自哪层（effectiveState 非 null 时必填） */
@@ -102,3 +120,27 @@ export const BundledSkillsResponseSchema = z.object({
 
 export type BundledSkillInfo = z.infer<typeof BundledSkillInfoSchema>
 export type BundledSkillsResponse = z.infer<typeof BundledSkillsResponseSchema>
+
+// ── 变更类端点的请求体（daemon 路由 safeParse 单源，先例 MemorySettingsSubmissionSchema） ──
+
+/** PATCH /api/skills/:name/visibility（enabled + 视角） */
+export const SkillVisibilitySubmissionSchema = z.object({
+    enabled: z.boolean(),
+    workspaceId: z.string(),
+})
+
+/** POST /api/skills/install（source 非空白；trim 后透传 argv 单元素） */
+export const SkillInstallSubmissionSchema = z.object({
+    source: z.string().trim().min(1),
+    scope: z.string(),
+})
+
+/** POST /api/skills/:name/update */
+export const SkillUpdateSubmissionSchema = z.object({
+    workspaceId: z.string(),
+})
+
+/** POST /api/skills/create-prompt */
+export const SkillCreatePromptSubmissionSchema = z.object({
+    scope: z.string(),
+})

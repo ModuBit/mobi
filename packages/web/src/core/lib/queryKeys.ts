@@ -26,6 +26,9 @@ const targetKey = serializeTargetKey
 
 const workspaceSessionsRoot = ['workspaceSessions'] as const
 
+/** skill 查询族根前缀（单独导出供跨视角批量失效，同 workspaceSessionsRoot 手势） */
+const skillsRoot = ['skills'] as const
+
 /**
  * React Query 查询键定义
  * 用于缓存键的一致性管理
@@ -86,6 +89,10 @@ export const queryKeys = {
     sdkMetadata: (sessionId: string) => ['sdkMetadata', sessionId] as const,
     /** Web 工具脱敏配置（子页与入口徽标共用同一缓存：状态由 select 派生，保存后失效即两处同步） */
     webToolsConfig: ['web-tools-config'] as const,
-    /** skill 管理列表（skill-mgmt 票 02；global | workspaceId 两视角） */
-    skills: (workspaceId: string) => ['skills', workspaceId] as const,
+    /** skill 查询族根前缀（批量失效所有视角的 skills/skillsBundled 查询） */
+    skillsRoot,
+    /** skill 管理列表（skill-mgmt 票 02；global | workspaceId 两视角；前缀失效走 skillsRoot） */
+    skills: (workspaceId: string) => [...skillsRoot, workspaceId] as const,
+    /** CC 内置名单（全局视角独立于列表；同族失效：['skills'] 前缀命中） */
+    skillsBundled: [...skillsRoot, 'bundled'] as const,
 }

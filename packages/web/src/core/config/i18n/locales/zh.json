@@ -1014,7 +1014,6 @@
       "toggleFailed": "操作失败，请重试",
       "deleteTooltip": "删除",
       "deleteAria": "删除技能 {{name}}",
-      "deleteAction": "删除",
       "deleteConfirmTitle": "删除技能「{{name}}」？",
       "deleteConfirmTracked": "将通过 skills CLI 卸载（安装自 {{source}}），中央仓副本与安装记录一并清理。此操作不可恢复。",
       "deleteConfirmUntracked": "将直接删除该技能目录。此操作不可恢复。",

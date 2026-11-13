@@ -32,14 +32,20 @@
  */
 import { Hono, type Context } from 'hono'
 import { join } from 'node:path'
-import { SKILL_SCOPE_GLOBAL } from '@mobi/shared'
+import {
+    SKILL_SCOPE_GLOBAL,
+    SkillCreatePromptSubmissionSchema,
+    SkillInstallSubmissionSchema,
+    SkillUpdateSubmissionSchema,
+    SkillVisibilitySubmissionSchema,
+} from '@mobi/shared'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSyncEngine } from './guards'
-import { defaultSkillScanRoots, listGlobalSkills, listWorkspaceSkills, type SkillScanRoots } from '../../skills/skillScanner'
+import { defaultSkillScanRoots, listGlobalSkills, listWorkspaceSkills, refreshOverrideFields, type SkillScanRoots } from '../../skills/skillScanner'
 import { defaultSkillsCliRunner, installSkill, removeTrackedSkill, removeUntrackedSkill, updateSkill } from '../../skills/skillCli'
 import { getBundledSkills } from '../../skills/bundledSkills'
-import { buildSkillCreatePrompt, resolveSkillCreateTargetDir } from '../../skills/skillCreatePrompt'
+import { buildSkillCreatePrompt } from '../../skills/skillCreatePrompt'
 import { resolveScope, scopeView, type SkillScope } from '../../skills/skillScope'
 import type { SkillsDeps } from '../../skills/skillDeps'
 import { writeSkillOverride } from '../../skills/skillSettingsWriter'
@@ -103,24 +109,23 @@ export function createSkillsRoutes(
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        const body = await c.req.json().catch(() => null) as { enabled?: unknown; workspaceId?: unknown } | null
-        if (!body || typeof body.enabled !== 'boolean' || typeof body.workspaceId !== 'string') {
-            return c.json({ error: 'Invalid body' }, 400)
-        }
+        const body = await c.req.json().catch(() => null)
+        const parsed = SkillVisibilitySubmissionSchema.safeParse(body)
+        if (!parsed.success) return c.json({ error: 'Invalid body' }, 400)
 
         const skillName = c.req.param('name')
-        const ctx = skillContext(c, engine, body.workspaceId, skillName)
+        const ctx = skillContext(c, engine, parsed.data.workspaceId, skillName)
         if (ctx instanceof Response) return ctx
         // 未知名字与只读行（plugin/synced，skillOverrides 不生效）都不提供开关
         if (!ctx.skill.overrideable) return c.json({ error: 'Skill is read-only' }, 400)
 
         // 归属层：personal → user settings；project → workspace project settings（scopeView 单源派生）
-        if (!writeSkillOverride(scopeView(scanRoots(), ctx.scope).ownSettingsPath, skillName, body.enabled ? 'on' : 'off')) {
+        if (!writeSkillOverride(scopeView(scanRoots(), ctx.scope).ownSettingsPath, skillName, parsed.data.enabled ? 'on' : 'off')) {
             return c.json({ error: 'Settings file is corrupted' }, 500)
         }
 
-        // 回读刷新后的行（遮蔽态由多层合成，回读是唯一权威）
-        return c.json({ skill: findSkill(listFor(ctx.scope), skillName) })
+        // 回读刷新生效三态（只重读 override 层，不重扫目录——refreshOverrideFields）
+        return c.json({ skill: refreshOverrideFields(ctx.skill, scanRoots(), ctx.scope) })
     })
 
     app.delete('/skills/:name', async (c) => {
@@ -130,8 +135,8 @@ export function createSkillsRoutes(
         const ctx = skillContext(c, engine, c.req.query('workspaceId') ?? SKILL_SCOPE_GLOBAL, c.req.param('name'))
         if (ctx instanceof Response) return ctx
 
-        // synced 下次同步会拉回、插件携带归迭代 3——都不提供删除
-        if (ctx.skill.source === 'synced' || ctx.skill.source === 'plugin') {
+        // 能力矩阵单源：deletable=false（synced 下次同步拉回、插件携带归迭代 3）不提供删除
+        if (!ctx.skill.deletable) {
             return c.json({ error: 'Skill is managed elsewhere' }, 400)
         }
 
@@ -152,14 +157,15 @@ export function createSkillsRoutes(
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        const body = await c.req.json().catch(() => null) as { scope?: unknown } | null
-        if (!body || typeof body.scope !== 'string') return c.json({ error: 'Invalid body' }, 400)
+        const body = await c.req.json().catch(() => null)
+        const parsed = SkillCreatePromptSubmissionSchema.safeParse(body)
+        if (!parsed.success) return c.json({ error: 'Invalid body' }, 400)
 
         // 形态与取清单端点不同（只要 scope），保留直调
-        const scope = scopeOrResponse(c, engine, body.scope)
+        const scope = scopeOrResponse(c, engine, parsed.data.scope)
         if (scope instanceof Response) return scope
 
-        const targetDir = resolveSkillCreateTargetDir(scope, scanRoots())
+        const targetDir = scopeView(scanRoots(), scope).skillRoot
         return c.json({ targetDir, prompt: buildSkillCreatePrompt(targetDir) })
     })
 
@@ -180,17 +186,16 @@ export function createSkillsRoutes(
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        const body = await c.req.json().catch(() => null) as { source?: unknown; scope?: unknown } | null
-        // source 透传 argv 单元素（不经 shell，无注入面）；空白拒绝
-        if (!body || typeof body.source !== 'string' || !body.source.trim() || typeof body.scope !== 'string') {
-            return c.json({ error: 'Invalid body' }, 400)
-        }
+        const body = await c.req.json().catch(() => null)
+        // source 已 trim 校验，透传 argv 单元素（不经 shell，无注入面）
+        const parsed = SkillInstallSubmissionSchema.safeParse(body)
+        if (!parsed.success) return c.json({ error: 'Invalid body' }, 400)
 
         // 只要 scope 不取清单（安装目标行尚不存在），直调前奏原子
-        const scope = scopeOrResponse(c, engine, body.scope)
+        const scope = scopeOrResponse(c, engine, parsed.data.scope)
         if (scope instanceof Response) return scope
 
-        const result = await installSkill(body.source.trim(), scope, skillsCliRunner)
+        const result = await installSkill(parsed.data.source, scope, skillsCliRunner)
         if (!result.ok) return c.json({ error: result.output || 'skills CLI failed' }, 502)
         return c.json({ ok: true })
     })
@@ -199,12 +204,11 @@ export function createSkillsRoutes(
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        const body = await c.req.json().catch(() => null) as { workspaceId?: unknown } | null
-        if (!body || typeof body.workspaceId !== 'string') {
-            return c.json({ error: 'Invalid body' }, 400)
-        }
+        const body = await c.req.json().catch(() => null)
+        const parsed = SkillUpdateSubmissionSchema.safeParse(body)
+        if (!parsed.success) return c.json({ error: 'Invalid body' }, 400)
 
-        const ctx = skillContext(c, engine, body.workspaceId, c.req.param('name'))
+        const ctx = skillContext(c, engine, parsed.data.workspaceId, c.req.param('name'))
         if (ctx instanceof Response) return ctx
         // 更新走 CLI 渠道语义，只对 tracked 行有意义
         if (!ctx.skill.tracked) return c.json({ error: 'Skill is not tracked' }, 400)

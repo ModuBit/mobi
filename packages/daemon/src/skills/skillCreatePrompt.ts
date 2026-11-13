@@ -22,14 +22,6 @@
  * 与引导文本生成；SKILL.md 的编写由用户在会话里对话完成，落盘后经列表刷新可见
  * （untracked 真目录形态）。
  */
-import type { SkillScanRoots } from './skillScanner'
-import { scopeView, type SkillScope } from './skillScope'
-
-/** scope → skill 目标目录（新 skill 将落盘的父目录；scopeView 单源派生） */
-export function resolveSkillCreateTargetDir(scope: SkillScope, roots: SkillScanRoots): string {
-    return scopeView(roots, scope).skillRoot
-}
-
 /**
  * 预填 prompt：目标目录绝对路径 + SKILL.md 基本结构引导 + 完成后回管理页可见的提示。
  * 目录已存在时不覆盖（同名防御写进引导）。

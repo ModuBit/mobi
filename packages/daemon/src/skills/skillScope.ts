@@ -25,10 +25,14 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { SKILL_SCOPE_GLOBAL } from '@mobi/shared'
-import type { SkillScanRoots } from './skillScanner'
 
 /** 视角：user 级（global tab）或某 workspace（project skill） */
 export type SkillScope = { kind: 'global' } | { kind: 'workspace'; path: string }
+
+/** scopeView 所需的最小根输入（SkillScanRoots 的结构子集；保持依赖单向：scanner → 本模块） */
+export interface ScopeViewRoots {
+    claudeConfigDir: string
+}
 
 /** resolveScope 四态：前两态可用，后两态由 HTTP 层翻译 404/400 */
 export type ScopeResolution = SkillScope | { kind: 'not-found' } | { kind: 'no-folder' }
@@ -60,7 +64,7 @@ export function cliCwd(scope: SkillScope): string {
 }
 
 /** 视角派生路径族（扫描/新建目标/untracked 删除校验/归属 settings/CLI cwd 共用） */
-export function scopeView(roots: SkillScanRoots, scope: SkillScope): {
+export function scopeView(roots: ScopeViewRoots, scope: SkillScope): {
     /** agent 目录下 skill 根（personal → claudeConfigDir/skills；project → <ws>/.claude/skills） */
     skillRoot: string
     /** 归属层 settings（user 级 → user settings；project → workspace project settings） */

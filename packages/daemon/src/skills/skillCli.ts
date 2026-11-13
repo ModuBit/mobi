@@ -58,6 +58,13 @@ export const defaultSkillsCliRunner: SkillsCliRunner = async (args, { cwd }) => 
     return { ok: exitCode === 0, output: `${stdout}\n${stderr}`.trim() }
 }
 
+/** 统一分派尾巴：cwd 定位 + 日志 + 执行（三个 CLI 动作共用，args 构造差异留在各自入口） */
+async function dispatchCli(args: string[], scope: SkillScope, runner: SkillsCliRunner, label: string): Promise<SkillsCliResult> {
+    const cwd = cliCwd(scope)
+    daemonLogger.info(`[skills] ${label}（cwd=${cwd}）`)
+    return runner(args, { cwd })
+}
+
 /** tracked 路径：分派 skills remove（user 级 -g；project 级 cwd=workspace 让 CLI 自动定位 scope） */
 export async function removeTrackedSkill(
     skill: SkillInfo,
@@ -66,9 +73,7 @@ export async function removeTrackedSkill(
 ): Promise<SkillsCliResult> {
     const args = ['remove', skill.name, '-y', '--agent', 'claude-code']
     if (scope.kind === 'global') args.push('-g')
-    const cwd = cliCwd(scope)
-    daemonLogger.info(`[skills] tracked 删除分派 CLI：${skill.name}（cwd=${cwd}）`)
-    return runner(args, { cwd })
+    return dispatchCli(args, scope, runner, `tracked 删除分派 CLI：${skill.name}`)
 }
 
 /** 安装：skills add <source>（symlink 形态不传 --copy，只装 claude-code agent） */
@@ -79,9 +84,7 @@ export async function installSkill(
 ): Promise<SkillsCliResult> {
     const args = ['add', source, '--agent', 'claude-code']
     if (scope.kind === 'global') args.push('-g')
-    const cwd = cliCwd(scope)
-    daemonLogger.info(`[skills] 安装分派 CLI：${source}（cwd=${cwd}）`)
-    return runner(args, { cwd })
+    return dispatchCli(args, scope, runner, `安装分派 CLI：${source}`)
 }
 
 /** 更新（tracked 限定）：skills update（user 级 -g / project 级 -p 显式定 scope） */
@@ -91,9 +94,7 @@ export async function updateSkill(
     runner: SkillsCliRunner,
 ): Promise<SkillsCliResult> {
     const args = ['update', skill.name, '-y', '--agent', 'claude-code', scope.kind === 'global' ? '-g' : '-p']
-    const cwd = cliCwd(scope)
-    daemonLogger.info(`[skills] 更新分派 CLI：${skill.name}（cwd=${cwd}）`)
-    return runner(args, { cwd })
+    return dispatchCli(args, scope, runner, `更新分派 CLI：${skill.name}`)
 }
 
 /** untracked 路径删除结果：refused = 目标校验失败（不动文件系统） */

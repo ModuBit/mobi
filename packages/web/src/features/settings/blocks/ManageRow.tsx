@@ -26,7 +26,7 @@ import styled from '@emotion/styled'
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
 
-const Row = styled.div<{ $token: Token; $opacity: number }>`
+const Row = styled.div<{ $opacity: number }>`
     display: flex;
     align-items: center;
     gap: 12px;
@@ -111,7 +111,7 @@ export function ManageRow({ name, description, badges, right, opacity = 1, ...at
     const { token } = useToken()
 
     return (
-        <Row $token={token} $opacity={opacity} {...attrs}>
+        <Row $opacity={opacity} {...attrs}>
             <Main>
                 <NameRow>
                     <Name $token={token}>{name}</Name>

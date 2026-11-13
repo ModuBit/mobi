@@ -26,6 +26,7 @@ import { RefreshCw, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { SkillInfo, SkillSource } from '@mobi/shared'
+import { isSkillShadowed } from '@mobi/shared'
 // uiarc 自管件（antd Switch 迁移）：行右槽启停
 import { Switch } from '@/ui/shadcn/switch/switch'
 import { IconButton } from '@/ui/base/interactive/IconButton'
@@ -71,8 +72,8 @@ export function SkillRow({ skill, onToggle, toggling = false, onUpdate, updating
     const { t } = useTranslation()
 
     const off = skill.effectiveState === 'off'
-    // 遮蔽：归属层没关（on 或无条目）却被更高层关了——用户在此层开关不会生效
-    const shadowed = off && skill.ownState !== 'off'
+    // 遮蔽：归属层没关却被更高层关了——用户在此层开关不会生效（isSkillShadowed 单源）
+    const shadowed = isSkillShadowed(skill)
 
     return (
         <ManageRow

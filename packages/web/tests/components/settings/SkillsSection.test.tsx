@@ -71,6 +71,8 @@ vi.mock('@/core/data/hooks/queries/useSkills', () => ({
     useSkillDelete: vi.fn(() => ({ mutateAsync: mockDeleteAsync })),
     useSkillInstall: vi.fn(() => ({ mutateAsync: mockInstallAsync, isPending: false })),
     useSkillUpdate: vi.fn(() => ({ mutate: mockUpdateMutate, isPending: false, variables: null })),
+    // createPrompt 桩保持 api 返回形状（res.data.prompt），useSkillsActions 透明消费
+    useSkillCreatePrompt: vi.fn(() => ({ mutateAsync: mockCreatePrompt, isPending: false })),
     useBundledSkills: vi.fn(() => mockBundled),
 }))
 vi.mock('@tanstack/react-router', () => ({
@@ -99,27 +101,27 @@ afterEach(() => {
 const GLOBAL_SKILLS = [
     {
         name: 'alpha', description: 'Alpha personal skill', source: 'personal',
-        form: 'directory', path: '/x/alpha/SKILL.md', tracked: false, overrideable: true,
+        form: 'directory', path: '/x/alpha/SKILL.md', tracked: false, overrideable: true, deletable: true,
         effectiveState: null, effectiveFromLayer: null, ownState: null,
     },
     {
         name: 'beta', description: 'From skills CLI', source: 'personal',
         form: 'symlink', path: '/x/beta/SKILL.md', tracked: true, installSource: 'vercel-labs/skills',
-        overrideable: true, effectiveState: null, effectiveFromLayer: null, ownState: null,
+        overrideable: true, deletable: true, effectiveState: null, effectiveFromLayer: null, ownState: null,
     },
     {
         name: 'plug', description: 'From plugin', source: 'plugin', pluginName: 'demo-plugin',
-        form: 'directory', path: '/x/plug/SKILL.md', tracked: false, overrideable: false,
+        form: 'directory', path: '/x/plug/SKILL.md', tracked: false, overrideable: false, deletable: false,
         effectiveState: null, effectiveFromLayer: null, ownState: null,
     },
     {
         name: 'shadowed-one', source: 'personal', form: 'directory', path: '/x/s/SKILL.md',
-        tracked: false, overrideable: true,
+        tracked: false, overrideable: true, deletable: true,
         effectiveState: 'off', effectiveFromLayer: 'local', ownState: 'on',
     },
     {
         name: 'plain-off', source: 'personal', form: 'directory', path: '/x/o/SKILL.md',
-        tracked: false, overrideable: true,
+        tracked: false, overrideable: true, deletable: true,
         effectiveState: 'off', effectiveFromLayer: 'user', ownState: 'off',
     },
 ] satisfies SkillInfo[]
@@ -127,7 +129,7 @@ const GLOBAL_SKILLS = [
 const WS_SKILLS = [
     {
         name: 'proj-plain', description: 'Project skill', source: 'project',
-        form: 'directory', path: '/w/p/SKILL.md', tracked: false, overrideable: true,
+        form: 'directory', path: '/w/p/SKILL.md', tracked: false, overrideable: true, deletable: true,
         effectiveState: null, effectiveFromLayer: null, ownState: null,
     },
 ] satisfies SkillInfo[]

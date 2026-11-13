@@ -30,7 +30,7 @@ export function useBundledSkills(enabled: boolean): {
 } {
     const api = useMobiApi()
     const query = useQuery({
-        queryKey: [...queryKeys.skills('bundled')],
+        queryKey: queryKeys.skillsBundled,
         enabled,
         queryFn: async () => {
             const res = await api.skills.bundled()
@@ -58,48 +58,49 @@ export function useSkills(workspaceId: string): { skills: SkillInfo[]; isLoading
 }
 
 /**
- * skill 安装/更新（skill-mgmt 票 05）：影响面跨视角（global 装完全部 tab 可见），
+ * skill 安装/更新/删除（skill-mgmt 票 04/05）：影响面跨视角（global 装完全部 tab 可见），
  * 成功后失效整个 skills 查询族。
  */
 function useInvalidateAllSkills() {
     const queryClient = useQueryClient()
-    return () => queryClient.invalidateQueries({ queryKey: ['skills'] })
+    return () => queryClient.invalidateQueries({ queryKey: queryKeys.skillsRoot })
+}
+
+/** mutation 工厂：api 调用差异注入，「失败静默 + 成功失效全族」声明一次（后续动作零复制） */
+function useSkillMutation<TVars>(
+    call: (api: ReturnType<typeof useMobiApi>, vars: TVars) => Promise<unknown>,
+) {
+    const api = useMobiApi()
+    const invalidate = useInvalidateAllSkills()
+    return useMutation({
+        mutationFn: (vars: TVars) => call(api, vars),
+        onSuccess: invalidate,
+    })
 }
 
 export function useSkillInstall() {
-    const api = useMobiApi()
-    const invalidate = useInvalidateAllSkills()
-    return useMutation({
-        mutationFn: async (vars: { source: string; scope: string }) => {
-            await api.skills.install(vars.source, vars.scope)
-        },
-        onSuccess: invalidate,
-    })
+    return useSkillMutation((api, vars: { source: string; scope: string }) =>
+        api.skills.install(vars.source, vars.scope))
 }
 
 export function useSkillUpdate() {
-    const api = useMobiApi()
-    const invalidate = useInvalidateAllSkills()
-    return useMutation({
-        mutationFn: async (vars: { name: string; workspaceId: string }) => {
-            await api.skills.update(vars.name, vars.workspaceId)
-        },
-        onSuccess: invalidate,
-    })
+    return useSkillMutation((api, vars: { name: string; workspaceId: string }) =>
+        api.skills.update(vars.name, vars.workspaceId))
+}
+
+export function useSkillDelete() {
+    return useSkillMutation((api, vars: { name: string; workspaceId: string }) =>
+        api.skills.remove(vars.name, vars.workspaceId))
 }
 
 /**
- * skill 删除（skill-mgmt 票 04）：成功后 invalidate 换新列表（行即时移除）。
+ * 对话式新建的预填 prompt 请求（票 07）：纯读端点，不动列表数据，
+ * 不失效缓存；pending 态由调用方从 isPending 派生。
  */
-export function useSkillDelete() {
+export function useSkillCreatePrompt() {
     const api = useMobiApi()
-    const invalidate = useInvalidateAllSkills()
-
     return useMutation({
-        mutationFn: async (vars: { name: string; workspaceId: string }) => {
-            await api.skills.remove(vars.name, vars.workspaceId)
-        },
-        onSuccess: invalidate,
+        mutationFn: (scope: string) => api.skills.createPrompt(scope),
     })
 }
 

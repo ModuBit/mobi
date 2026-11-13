@@ -1023,7 +1023,6 @@
       "toggleFailed": "Operation failed, please retry",
       "deleteTooltip": "Delete",
       "deleteAria": "Delete skill {{name}}",
-      "deleteAction": "Delete",
       "deleteConfirmTitle": "Delete skill \"{{name}}\"?",
       "deleteConfirmTracked": "It will be uninstalled via the skills CLI (installed from {{source}}), removing the central store copy and its lock entry. This cannot be undone.",
       "deleteConfirmUntracked": "The skill directory will be deleted directly. This cannot be undone.",

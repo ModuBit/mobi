@@ -25,7 +25,7 @@ import { theme as antTheme, Spin, Modal, Radio } from 'antd'
 import { FilePlus2, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import { SKILL_SCOPE_GLOBAL } from '@mobi/shared'
+import { SKILL_SCOPE_GLOBAL, skillNameKey } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useBundledSkills, useSkills } from '@/core/data/hooks/queries/useSkills'
 import { filterByNameOrDescription } from '@/domain/filterList'
@@ -109,8 +109,8 @@ export function SkillsSection() {
 
     const filtered = useMemo(() => filterByNameOrDescription(skills, keyword), [skills, keyword])
     const filteredBundled = useMemo(() => filterByNameOrDescription(bundled, keyword), [bundled, keyword])
-    /** 当前列表里的名字集合（内置行同名遮蔽判定：用户胜） */
-    const listedNames = useMemo(() => new Set(skills.map(s => s.name)), [skills])
+    /** 当前列表的名字键集合（内置行同名遮蔽判定：用户胜；与 daemon 扫描层同一 nameKey 规则） */
+    const listedNames = useMemo(() => new Set(skills.map(s => skillNameKey(s.name))), [skills])
 
     /** 安装：弹窗内 source + scope（默认跟随当前 tab），提交 loading 防重复 */
     const [installOpen, setInstallOpen] = useState(false)
@@ -178,7 +178,7 @@ export function SkillsSection() {
                                 onUpdate={skill.tracked ? () => actions.update(skill, tab) : undefined}
                                 updating={actions.isUpdating(skill.name)}
                                 onDelete={
-                                    skill.source === 'personal' || skill.source === 'project'
+                                    skill.deletable
                                         ? () => actions.requestDelete(skill, tab)
                                         : undefined
                                 }
@@ -203,7 +203,7 @@ export function SkillsSection() {
                         <GroupTitle $token={token}>{t('settings.skills.groupBundled')}</GroupTitle>
                         <SettingGroupCard>
                             {filteredBundled.map(b => (
-                                <BundledSkillRow key={b.name} skill={b} covered={listedNames.has(b.name)} />
+                                <BundledSkillRow key={b.name} skill={b} covered={listedNames.has(skillNameKey(b.name))} />
                             ))}
                         </SettingGroupCard>
                     </>
