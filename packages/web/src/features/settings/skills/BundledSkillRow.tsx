@@ -15,70 +15,13 @@
  */
 
 /**
- * CC 内置 bundled skill 行（skill-mgmt 票 06）：纯只读展示——名字 + 描述 + 「内置」徽标，
- * 无开关/更新/删除（bundled 不受 mobi 管理操作管辖）。
+ * CC 内置 bundled skill 行（skill-mgmt 票 06）：ManageRow 上的纯只读皮肤——
+ * 名字 + 描述 + 「内置」徽标，无开关/更新/删除（bundled 不受 mobi 管理操作管辖）。
  * 与个人 skill 同名时按 CC 规则用户胜，此行加「被同名技能覆盖」徽标提示。
  */
-import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
-import styled from '@emotion/styled'
 import type { BundledSkillInfo } from '@mobi/shared'
-
-const { useToken } = antTheme
-type Token = ReturnType<typeof useToken>['token']
-
-const Row = styled.div<{ $token: Token }>`
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
-    min-width: 0;
-    opacity: 0.75;
-`
-
-const Main = styled.div`
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-`
-
-const NameRow = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-    flex-wrap: wrap;
-`
-
-const Name = styled.span<{ $token: Token }>`
-    font-size: 13px;
-    font-weight: 500;
-    color: ${p => p.$token.colorText};
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 100%;
-`
-
-const Desc = styled.div<{ $token: Token }>`
-    font-size: 12px;
-    color: ${p => p.$token.colorTextTertiary};
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-`
-
-const Tag = styled.span<{ $token: Token }>`
-    font-size: 11px;
-    line-height: 1;
-    padding: 3px 7px;
-    border-radius: var(--radius-square);
-    color: ${p => p.$token.colorTextTertiary};
-    background: ${p => p.$token.colorFillQuaternary};
-    white-space: nowrap;
-`
+import { ManageRow, ManageRowTag } from '@/features/settings/blocks/ManageRow'
 
 export interface BundledSkillRowProps {
     skill: BundledSkillInfo
@@ -87,19 +30,22 @@ export interface BundledSkillRowProps {
 }
 
 export function BundledSkillRow({ skill, covered = false }: BundledSkillRowProps) {
-    const { token } = useToken()
     const { t } = useTranslation()
 
     return (
-        <Row $token={token} data-skill-name={skill.name} data-bundled="true">
-            <Main>
-                <NameRow>
-                    <Name $token={token}>{skill.name}</Name>
-                    <Tag $token={token}>{t('settings.skills.source.bundled')}</Tag>
-                    {covered && <Tag $token={token}>{t('settings.skills.coveredByLocal')}</Tag>}
-                </NameRow>
-                {skill.description && <Desc $token={token}>{skill.description}</Desc>}
-            </Main>
-        </Row>
+        <ManageRow
+            name={skill.name}
+            description={skill.description}
+            // 只读行轻弱化（与可操作行的视觉层级区分）
+            opacity={0.75}
+            data-skill-name={skill.name}
+            data-bundled="true"
+            badges={
+                <>
+                    <ManageRowTag>{t('settings.skills.source.bundled')}</ManageRowTag>
+                    {covered && <ManageRowTag>{t('settings.skills.coveredByLocal')}</ManageRowTag>}
+                </>
+            }
+        />
     )
 }
