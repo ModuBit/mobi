@@ -79,6 +79,8 @@ export async function verifyForkAnchorExists(
             ? 'ok'
             : 'anchor-invalidated'
     } catch (e) {
+        // chainContains 正常路径不抛（读取失败内部已归并 not-found）——此处仅防
+        // 意外异常（如实现 bug 的 TypeError）打断激活流程，按预检失败收口
         logger.debug(`[forkActivation] scan parent transcript failed`, e)
         return 'parent-transcript-missing'
     }

@@ -28,7 +28,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 import { logger } from '@mobi/node-core/logger'
 import { configuration } from '@mobi/node-core/configuration'
 import { getClaudeExecutablePath } from './claudeExecutable'
-import { stripBunDebuggerEnv } from '@mobi/node-core/utils/spawnMobiCli'
+import { childEnvWithoutDebugger } from '@mobi/node-core/utils/spawnMobiCli'
 import { buildBundledPluginOptions } from '@mobi/node-core/runtime/bundledPlugins'
 import type { SDKMetadata } from '@mobi/shared'
 
@@ -125,17 +125,13 @@ async function runProbe(cwd: string | undefined, withPlugins: boolean): Promise<
     let timedOut = false
 
     try {
-        // 清理 IDE 调试器环境变量，避免子进程继承后绑定同一 socket 导致启动失败
-        const childEnv = { ...process.env } as Record<string, string | undefined>
-        stripBunDebuggerEnv(childEnv)
-
         // dev 模式返回 undefined，由 SDK 自动 require.resolve
         const claudeExecutable = await getClaudeExecutablePath()
         const options: Parameters<typeof query>[0]['options'] = {
             abortController,
             pathToClaudeCodeExecutable: claudeExecutable,
             persistSession: false,
-            env: childEnv,
+            env: childEnvWithoutDebugger(),
             // 探针只读配置，不执行任何东西：默认权限 + 全拒工具 + 禁用户 hooks。
             // settingSources 保持默认——mobi 没有 workspace trust 流程，收窄会静默丢项目命令。
             permissionMode: 'default',

@@ -36,7 +36,7 @@ import { join } from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { BundledSkillInfo, SlashCommand } from '@mobi/shared'
 import { getClaudeExecutablePath } from '@mobi/node-core/claudeSdk/claudeExecutable'
-import { stripBunDebuggerEnv } from '@mobi/node-core/utils/spawnMobiCli'
+import { childEnvWithoutDebugger } from '@mobi/node-core/utils/spawnMobiCli'
 import { writeFileAtomic } from '@mobi/node-core/git/atomicWrite'
 import { daemonLogger } from '../logger'
 
@@ -112,9 +112,6 @@ export async function probeBundledSkills(): Promise<BundledProbeResult> {
         // （"Native CLI binary not found"）——必须显式传提取路径（session 侧同款先例；
         // dev 态返回 undefined 交 SDK 自动解析，语义不变）
         const claudeExecutable = await getClaudeExecutablePath()
-        // IDE 调试器 env 会随子进程继承后绑定同一 socket 导致启动失败（cli 包已知陷阱）
-        const childEnv = { ...process.env } as Record<string, string | undefined>
-        stripBunDebuggerEnv(childEnv)
         const q = query({
             // 一轮极短 turn：只求 init 帧 + supportedCommands，不消耗结果内容
             prompt: 'Reply with just: OK',
@@ -123,7 +120,7 @@ export async function probeBundledSkills(): Promise<BundledProbeResult> {
                 permissionMode: 'bypassPermissions',
                 maxTurns: 1,
                 pathToClaudeCodeExecutable: claudeExecutable,
-                env: childEnv,
+                env: childEnvWithoutDebugger(),
             },
         })
 
@@ -152,15 +149,13 @@ export async function probeBundledSkills(): Promise<BundledProbeResult> {
 /** 版本探针：spawn claude --version（秒级；CLI 独立升级后自然触发重采） */
 export async function probeClaudeVersion(): Promise<string> {
     const claudePath = (await getClaudeExecutablePath()) ?? 'claude'
-    // claude 是 bun-compile 二进制，会读 BUN_INSPECT 尝试开 inspector——IDE 调试态
+    // claude 是 bun-compile 二进制，会读 BUN_INSPECT 尝试开 inspector——调试态
     // daemon 的 env 里该 socket 已被本进程占用，子进程 bind 即 EADDRINUSE 退出 1
-    const childEnv = { ...process.env } as Record<string, string | undefined>
-    stripBunDebuggerEnv(childEnv)
     const proc = Bun.spawn([claudePath, '--version'], {
         stdin: 'ignore',
         stdout: 'pipe',
         stderr: 'pipe',
-        env: childEnv,
+        env: childEnvWithoutDebugger(),
     })
     const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
     if (exitCode !== 0) throw new Error(`claude --version exited ${exitCode}`)

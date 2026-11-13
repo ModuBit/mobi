@@ -112,8 +112,9 @@ async function scanOnce(filePath: string, opts?: TailScanOptions): Promise<{ sca
         let end = startStat.size;
         while (end > 0 && scanned < maxWindow) {
             const remaining = maxWindow - scanned;
+            // position 已保证 end - position ≤ remaining（块大小受剩余预算钳制）
             const position = Math.max(0, end - Math.min(chunkSize, remaining));
-            const length = Math.min(end - position, remaining);
+            const length = end - position;
             const buffer = Buffer.alloc(length);
             const { bytesRead } = await fd.read(buffer, 0, length, position);
             chunks.unshift(buffer.subarray(0, bytesRead));
