@@ -387,6 +387,20 @@ export function extractRequestId(text: string | null | undefined): string | null
     return match ? match[0] : null
 }
 
+/**
+ * 提取 HTTP 错误响应体下发的业务错误文案（`{ error: string }`，如 daemon 502 透传的
+ * CLI 输出）。仅当确实下发时返回，否则 null——调用方应回退自己的通用文案
+ * （与 extractApiError 的「message 兜底」语义不同：这里的 null 就是要触发 i18n 兜底）。
+ *
+ * 鸭子探测 `{ response: { data: { error } } }` 结构而非依赖 axios 类型——
+ * daemon Hono 与 web axios 共用同一 wire 事实，本函数对两侧裸错误对象同样适用。
+ */
+export function extractHttpDetail(error: unknown): string | null {
+    if (error == null || typeof error !== 'object') return null
+    const data = (error as { response?: { data?: { error?: unknown } } }).response?.data
+    return typeof data?.error === 'string' && data.error ? data.error : null
+}
+
 // ============================================================================
 // 上下文满状态机
 // ============================================================================

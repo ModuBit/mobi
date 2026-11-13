@@ -23,16 +23,13 @@ import { useState } from 'react'
 import { App } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { SKILL_SCOPE_GLOBAL, type SkillInfo } from '@mobi/shared'
+import { SKILL_SCOPE_GLOBAL, extractHttpDetail, type SkillInfo } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useSkillDelete, useSkillInstall, useSkillUpdate, useSkillVisibility } from '@/core/data/hooks/queries/useSkills'
 import { useMobiApi } from '@/core/data/api/client'
 import { saveDraftText } from '@/core/lib/draftText'
 
-/** 502 时 daemon 透传 CLI 输出（error.response.data.error），否则回退通用文案 */
-function cliErrorDetail(error: unknown): string | undefined {
-    return (error as { response?: { data?: { error?: string } } })?.response?.data?.error
-}
+// CLI 失败透传走 shared 单源 extractHttpDetail（errorPresentation 家族）
 
 export function useSkillsActions() {
     const { t } = useTranslation()
@@ -79,7 +76,7 @@ export function useSkillsActions() {
                     await deletion.mutateAsync({ name: skill.name, workspaceId: scope })
                     message.success(t('settings.skills.deleted'))
                 } catch (error) {
-                    message.error(cliErrorDetail(error) || t('settings.skills.deleteFailed'))
+                    message.error(extractHttpDetail(error) || t('settings.skills.deleteFailed'))
                 }
             },
         })
@@ -92,7 +89,7 @@ export function useSkillsActions() {
             {
                 onSuccess: () => message.success(t('settings.skills.updated')),
                 onError: (error) => {
-                    message.error(cliErrorDetail(error) || t('settings.skills.updateFailed'))
+                    message.error(extractHttpDetail(error) || t('settings.skills.updateFailed'))
                 },
             },
         )
@@ -105,7 +102,7 @@ export function useSkillsActions() {
             message.success(t('settings.skills.installed'))
             return true
         } catch (error) {
-            message.error(cliErrorDetail(error) || t('settings.skills.installFailed'))
+            message.error(extractHttpDetail(error) || t('settings.skills.installFailed'))
             return false
         }
     }

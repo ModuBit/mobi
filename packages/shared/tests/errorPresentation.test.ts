@@ -21,6 +21,7 @@ import {
     deriveContextFullState,
     extractResetAt,
     extractRequestId,
+    extractHttpDetail,
     type ErrorContext,
     type ErrorInput,
 } from '../src/errorPresentation'
@@ -395,5 +396,24 @@ describe('extractRequestId', () => {
     it('无 ID → null', () => {
         expect(extractRequestId('plain error')).toBeNull()
         expect(extractRequestId(undefined)).toBeNull()
+    })
+})
+
+describe('extractHttpDetail', () => {
+    it('标准形态：axios 错误透传 daemon 下发的文案', () => {
+        const err = { response: { status: 502, data: { error: 'skills CLI failed: network' } } }
+        expect(extractHttpDetail(err)).toBe('skills CLI failed: network')
+    })
+
+    it('无 response / 无 data → null（触发调用方 i18n 兜底）', () => {
+        expect(extractHttpDetail(new Error('plain'))).toBeNull()
+        expect(extractHttpDetail({ response: {} })).toBeNull()
+        expect(extractHttpDetail(null)).toBeNull()
+        expect(extractHttpDetail(undefined)).toBeNull()
+    })
+
+    it('error 非字符串或空串 → null（不把空文案当有效 detail）', () => {
+        expect(extractHttpDetail({ response: { data: { error: 500 } } })).toBeNull()
+        expect(extractHttpDetail({ response: { data: { error: '' } } })).toBeNull()
     })
 })

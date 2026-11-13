@@ -33,6 +33,7 @@ import { MobiLogo } from '@/ui/base/brand/MobiLogo'
 import { MobiWordmark } from '@/ui/base/brand/MobiWordmark'
 import { Helmet } from 'react-helmet-async'
 import axios from 'axios'
+import { extractHttpDetail } from '@mobi/shared'
 import { useState } from 'react'
 import styled from '@emotion/styled'
 
@@ -247,13 +248,9 @@ export function LoginPage() {
             navigate({ to: '/' })
         } catch (err) {
             console.error('Login error:', err)
-            if (axios.isAxiosError(err) && err.response?.data?.error) {
-                message.error(
-                    `${t('login.authFailed')}：${err.response.data.error}`,
-                )
-            } else {
-                message.error(t('login.authFailed'))
-            }
+            // daemon 下发的失败原因（如 token 无效）拼接展示，否则通用文案（extractHttpDetail 单源）
+            const detail = extractHttpDetail(err)
+            message.error(detail ? `${t('login.authFailed')}：${detail}` : t('login.authFailed'))
         } finally {
             setLoading(false)
         }
