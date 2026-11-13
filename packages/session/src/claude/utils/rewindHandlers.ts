@@ -15,8 +15,7 @@
  */
 
 import { logger } from '@mobi/node-core/logger';
-import { findRewindAnchor } from './rewindAnchor';
-import { analyzeDropRange, type DropRangeAnalysis } from './transcriptScan';
+import { analyzeRewindTarget, type DropRangeAnalysis } from './transcriptChain';
 import type { QueryRestartController } from './queryRestart';
 import type { EnhancedMode, QueryControlRef } from '../types';
 import type { MessageQueue } from '@mobi/node-core/utils/MessageQueue';
@@ -35,13 +34,19 @@ export interface RewindSessionView {
 }
 
 export interface RewindHandlerDeps {
-    rpcManager: { registerHandler: (method: string, handler: (params: unknown) => Promise<unknown>) => void };
+    rpcManager: {
+        registerHandler: (
+            method: string,
+            handler: (params: unknown) => Promise<unknown>,
+            options?: { countsAsUserActivity?: boolean },
+        ) => void
+    };
     /** 取当前 Session 视图（loop 创建后经 onSessionReady 回填，回填前为 null） */
     getRewindSession: () => RewindSessionView | null;
     messageQueue: MessageQueue<EnhancedMode>;
     /** SDK Query 控制引用（rewindFiles 需要 running query 句柄） */
     queryControl: QueryControlRef;
-    /** 工作目录（getSessionMessages 的 dir） */
+    /** 工作目录（transcript 定位与读取的 dir） */
     workingDirectory: string;
 }
 
@@ -58,16 +63,16 @@ const CROSS_SESSION_REJECT_REASON =
 
 /** 「携带 CLI 守卫」判定的单一事实源（dry-run 与执行侧共用，防两处表达式漂移）。
  *  CLI resumeDropsTurn 只接受丢弃区间恰好 = 声明的一轮：恰好一轮 → 携带（白拿区间
- *  归因校验的防呆）；多轮/零轮/分析不可得 → 省略，走官方未校验截断语义。 */
-function carriesDropsTurnGuard(analysis: DropRangeAnalysis | null): boolean {
-    return analysis?.droppedTurns === 1;
+ *  归因校验的防呆）；多轮/零轮 → 省略，走官方未校验截断语义。 */
+function carriesDropsTurnGuard(analysis: DropRangeAnalysis): boolean {
+    return analysis.droppedTurns === 1;
 }
 
 /** 「跨会话污染」判定的单一事实源：单轮量级（含零轮 = 区间无本会话 prompt，只剩
  *  跨会话/载体行）区间内混入跨会话条目即拒——守卫可覆盖的浅区间不该带走他链消息；
  *  多轮深回退是用户明确选择的深度，跨会话消息随区间一并丢弃不拦。 */
-function crossSessionContaminated(analysis: DropRangeAnalysis | null): boolean {
-    return analysis != null && analysis.droppedTurns <= 1 && analysis.crossSessionEntry != null;
+function crossSessionContaminated(analysis: DropRangeAnalysis): boolean {
+    return analysis.droppedTurns <= 1 && analysis.crossSessionEntry != null;
 }
 
 /** 校验 rewind 载荷中的 nativeId（用户消息 native uuid） */
@@ -82,8 +87,8 @@ function parseNativeId(payload: unknown): string {
 /**
  * 注册 rewind 两个 RPC handler（Web → daemon → CLI，对齐 rename-session 模式）：
  *
- * - `rewind-dry-run`：预检。锚点存在性（getSessionMessages，假锚点/换链旧行 → 拒绝）
- *   + rewindFiles dryRun（file checkpoint 可达性）
+ * - `rewind-dry-run`：预检。目标分析（transcriptChain 反向活链回溯：锚点存在性 +
+ *   丢弃区间一次产出，假锚点/换链旧行 → 拒绝）+ rewindFiles dryRun（file checkpoint 可达性）
  * - `rewind`：执行。闸门复检（队列/running，放行侧唯一权威——daemon 只查了后台任务）→
  *   锚点复检 → 文件回滚（**先于截断**：PoC poc8 实测截断后被截区间的 checkpoint 立即
  *   作废，截断前调用才有效）→ 向 restart module 提交 rewind 请求 → 退出当前 query；
@@ -112,20 +117,18 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
             return { canRewind: false, canRestoreFiles: false, reason: REWIND_IN_PROGRESS_REASON };
         }
 
-        // 锚点存在性预检（假锚点/换链旧行不在当前 transcript chain → null）
-        const resumeAt = await findRewindAnchor(session.sessionId, workingDirectory, nativeId);
-        if (!resumeAt) {
+        // 目标分析（transcriptChain 反向活链回溯，一次产出锚点 + 丢弃区间）：假锚点/
+        // 换链旧行不在当前活链 → not-found；链首目标 → anchor null（两者都按锚点拒绝）
+        const analysis = await analyzeRewindTarget(session.sessionId, workingDirectory, nativeId);
+        if (analysis.status === 'not-found' || analysis.anchor === null) {
             return { canRewind: false, canRestoreFiles: false, reason: ANCHOR_REJECT_REASON };
         }
+        const { dropRange } = analysis;
 
-        // 丢弃区间分析：轮数决定守卫携带（单轮带 resumeDropsTurn 防呆 / 多轮省略走未校验
-        // 截断——CLI 守卫只接受区间恰好等于声明的一轮，多轮必拒）；跨会话归因预检保留在
-        // 单轮路径（守卫必拒，提前拒绝免掉「点了确认必失败」的体验断点，2026-09-29 实踩；
-        // 多轮省略守卫后截断照常成功，跨会话消息随用户明确选择的深度回退一并丢弃）
-        const analysis = await analyzeDropRange(session.sessionId, workingDirectory, resumeAt);
-        const droppedTurns = analysis?.droppedTurns;
-        if (crossSessionContaminated(analysis)) {
-            logger.warn(`[rewind] dry-run rejected: cross-session entry ${analysis?.crossSessionEntry} in drop range`);
+        // 跨会话归因预检（单轮路径：守卫必拒，提前拒绝免掉「点了确认必失败」的体验断点，
+        // 2026-09-29 实踩；多轮省略守卫后截断照常成功，跨会话消息随用户明确选择的深度回退一并丢弃）
+        if (crossSessionContaminated(dropRange)) {
+            logger.warn(`[rewind] dry-run rejected: cross-session entry ${dropRange.crossSessionEntry} in drop range`);
             return { canRewind: false, canRestoreFiles: false, reason: CROSS_SESSION_REJECT_REASON };
         }
 
@@ -134,12 +137,12 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
         // 真实调用裁决，部分失败降级语义（"仅回退对话"）已覆盖
         try {
             const dry = await queryControl.current?.rewindFiles(nativeId, { dryRun: true });
-            return { canRewind: true, canRestoreFiles: dry?.canRewind ?? true, droppedTurns };
+            return { canRewind: true, canRestoreFiles: dry?.canRewind ?? true, droppedTurns: dropRange.droppedTurns };
         } catch (e) {
             logger.debug('[rewind] dry-run rewindFiles unavailable, defaulting canRestoreFiles=true', e);
-            return { canRewind: true, canRestoreFiles: true, droppedTurns };
+            return { canRewind: true, canRestoreFiles: true, droppedTurns: dropRange.droppedTurns };
         }
-    });
+    }, { countsAsUserActivity: true });
 
     rpcManager.registerHandler('rewind', async (payload: unknown) => {
         const nativeId = parseNativeId(payload);
@@ -164,23 +167,19 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
                 return { ready: false, reason: 'session is running' };
             }
 
-            // 锚点复检（与 dry-run 同源；受理窗口内 transcript 可能已变）
-            const resumeAt = await findRewindAnchor(sessionId, workingDirectory, nativeId);
-            if (!resumeAt) {
+            // 目标复检（与 dry-run 同源；受理窗口内 transcript 可能已变）：锚点 + 区间
+            // 一次产出。区间轮数复检决定守卫携带（carriesDropsTurnGuard 单一事实源）；
+            // 跨会话污染复检与 dry-run 对称——直连 API 绕过 dry-run 的窗口内变化同样拦住
+            const analysis = await analyzeRewindTarget(sessionId, workingDirectory, nativeId);
+            if (analysis.status === 'not-found' || analysis.anchor === null) {
                 return { ready: false, reason: ANCHOR_REJECT_REASON };
             }
-
-            // 区间轮数复检决定守卫携带（判定与 dry-run 同源：carriesDropsTurnGuard 单一
-            // 事实源）；跨会话污染复检与 dry-run 对称——直连 API 绕过 dry-run 的窗口内
-            // 变化同样拦住。分析不可得（超页 / 窗口内 compact 重写）保守携带守卫：
-            // 单轮 → 校验通过照常成功；多轮/跨会话 → CLI deterministic 拒绝走 refusal
-            // recovery（会话不坏）——省略守卫则未校验截断会静默丢跨会话消息
-            const analysis = await analyzeDropRange(sessionId, workingDirectory, resumeAt);
-            if (crossSessionContaminated(analysis)) {
-                logger.warn(`[rewind] rejected: cross-session entry ${analysis?.crossSessionEntry} in drop range`);
+            const { anchor: resumeAt, dropRange } = analysis;
+            if (crossSessionContaminated(dropRange)) {
+                logger.warn(`[rewind] rejected: cross-session entry ${dropRange.crossSessionEntry} in drop range`);
                 return { ready: false, reason: CROSS_SESSION_REJECT_REASON };
             }
-            const dropsTurn = carriesDropsTurnGuard(analysis) || analysis === null ? nativeId : undefined;
+            const dropsTurn = carriesDropsTurnGuard(dropRange) ? nativeId : undefined;
 
             // 文件回滚先于截断（PoC poc8 实测：截断后被截区间的 file checkpoint 立即作废，
             // 截断前调用才有效）。失败 → 干净失败：不截断、不清队列
@@ -216,5 +215,5 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
             return { accepted: false, reason: REWIND_IN_PROGRESS_REASON };
         }
         return result;
-    });
+    }, { countsAsUserActivity: true });
 }

@@ -22,7 +22,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { writeFile, mkdtemp, stat, symlink, rm, open } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { scanTailLines } from '../../src/claude/bridge/tailReader';
+import { scanTailLines } from '../../../src/claude/utils/tailReader';
 
 async function makeFixture(lines: string[]): Promise<string> {
     const dir = await mkdtemp(join(tmpdir(), 'tail-reader-'));

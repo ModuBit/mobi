@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
     resolveForkActivation,
     verifyForkAnchorExists,
@@ -27,28 +29,18 @@ import {
 import type { Metadata } from '@mobi/node-core/api/types'
 import { buildForkStartupFields, resolveStartSessionId } from '../../../src/claude/claudeRemote'
 
-vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-    getSessionMessages: vi.fn(),
-}))
-
 vi.mock('../../../src/claude/utils/claudeCheckSession', () => ({
     claudeCheckSession: vi.fn(),
 }))
 
 import { claudeCheckSession } from '../../../src/claude/utils/claudeCheckSession'
 
-const mockedGetSessionMessages = vi.mocked(getSessionMessages)
 const mockedCheckSession = vi.mocked(claudeCheckSession)
 
 const plan: ForkActivationPlan = {
     parentNativeId: 'parent-native-1',
     anchorNativeId: 'anchor-uuid-1',
     forkNativeId: 'fork-native-1',
-}
-
-/** 构造最小 SessionMessage 形态（同 rewindAnchor.test.ts） */
-function msg(type: 'user' | 'assistant' | 'system', uuid: string) {
-    return { type, uuid, session_id: 'sess', message: null, parent_tool_use_id: null, parent_agent_id: null }
 }
 
 describe('resolveForkActivation', () => {
@@ -121,49 +113,42 @@ describe('resolveStartSessionId（fork 分支绕过 claudeCheckSession 守卫）
     })
 })
 
-describe('verifyForkAnchorExists（激活前预检：命中即止的存在性扫描）', () => {
+describe('verifyForkAnchorExists（激活前预检：活链存在性判定）', () => {
     beforeEach(() => {
-        mockedGetSessionMessages.mockReset()
+        // 隔离 transcript 定位（不触真实 ~/.claude）
+        process.env.CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'mobi-fork-'))
     })
 
-    it('锚点在第一页命中 → ok，且不再翻页', async () => {
-        mockedGetSessionMessages.mockResolvedValueOnce([
-            msg('assistant', 'a1'),
-            msg('user', 'u1'),
-            msg('assistant', 'anchor-uuid-1'),
-        ] as never)
+    afterEach(() => {
+        rmSync(process.env.CLAUDE_CONFIG_DIR!, { recursive: true, force: true })
+        delete process.env.CLAUDE_CONFIG_DIR
+    })
+
+    it('锚点在活链上（真实 transcript fast path）→ ok', async () => {
+        const dir = join(process.env.CLAUDE_CONFIG_DIR!, 'projects', '-dir')
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, 'parent-native-1.jsonl'), [
+            JSON.stringify({ type: 'user', uuid: 'u1', message: { content: 'q' }, parentUuid: null }),
+            JSON.stringify({ type: 'assistant', uuid: 'anchor-uuid-1', message: { content: [] }, parentUuid: 'u1' }),
+        ].join('\n') + '\n')
 
         await expect(verifyForkAnchorExists('parent-native-1', '/dir', 'anchor-uuid-1')).resolves.toBe('ok')
-        expect(mockedGetSessionMessages).toHaveBeenCalledTimes(1)
-        expect(mockedGetSessionMessages).toHaveBeenCalledWith('parent-native-1', { dir: '/dir', limit: 50, offset: 0 })
     })
 
-    it('锚点在第二页命中 → ok', async () => {
-        mockedGetSessionMessages.mockResolvedValueOnce(
-            Array.from({ length: 50 }, (_, i) => msg('assistant', `p1-${i}`)) as never
-        )
-        mockedGetSessionMessages.mockResolvedValueOnce([msg('assistant', 'anchor-uuid-1')] as never)
-
-        await expect(verifyForkAnchorExists('parent-native-1', '/dir', 'anchor-uuid-1')).resolves.toBe('ok')
-        expect(mockedGetSessionMessages).toHaveBeenNthCalledWith(2, 'parent-native-1', { dir: '/dir', limit: 50, offset: 50 })
-    })
-
-    it('扫完 transcript 未命中（parent 已 rewind 深于锚点）→ anchor-invalidated', async () => {
-        mockedGetSessionMessages.mockResolvedValueOnce([msg('assistant', 'a1'), msg('user', 'u1')] as never)
+    it('锚点不在链上（parent 已 rewind 深于锚点）→ anchor-invalidated', async () => {
+        const dir = join(process.env.CLAUDE_CONFIG_DIR!, 'projects', '-dir')
+        mkdirSync(dir, { recursive: true })
+        // rewind 后的 transcript：锚点行已被截断丢弃
+        writeFileSync(join(dir, 'parent-native-1.jsonl'), [
+            JSON.stringify({ type: 'user', uuid: 'u1', message: { content: 'q' }, parentUuid: null }),
+            JSON.stringify({ type: 'assistant', uuid: 'a1', message: { content: [] }, parentUuid: 'u1' }),
+        ].join('\n') + '\n')
 
         await expect(verifyForkAnchorExists('parent-native-1', '/dir', 'anchor-uuid-1')).resolves.toBe('anchor-invalidated')
     })
 
-    it('空页（parent transcript 文件丢失）→ anchor-invalidated（无法区分时按常态失败码）', async () => {
-        mockedGetSessionMessages.mockResolvedValueOnce([] as never)
-
+    it('transcript 文件不存在（parent transcript 丢失）→ anchor-invalidated（无法确认存在按常态失败码）', async () => {
         await expect(verifyForkAnchorExists('parent-native-1', '/dir', 'anchor-uuid-1')).resolves.toBe('anchor-invalidated')
-    })
-
-    it('扫描抛错（读文件失败等）→ parent-transcript-missing（按预检失败处理，不向上抛）', async () => {
-        mockedGetSessionMessages.mockRejectedValueOnce(new Error('read failed'))
-
-        await expect(verifyForkAnchorExists('parent-native-1', '/dir', 'anchor-uuid-1')).resolves.toBe('parent-transcript-missing')
     })
 })
 

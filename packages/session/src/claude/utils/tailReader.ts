@@ -14,13 +14,17 @@
  * limitations under the License.
  */
 
-// 尾部窗口反向分块扫读取器（spec mods-goal-channel「goal 订阅者」节契约）：
-// 手写 read(fd, position) 反向定长读（readline 无反向接口），goal_status 行落在
-// turn 末尾、距 EOF 通常几 KB——首块（64KB）命中即停，未命中再向前取块，累计到
-// 窗口硬上限（256KB）放弃。与 goal 无关的通用读取原语，消费端自行过滤/解析。
+// 尾部窗口反向分块扫读取器——transcript 尾读的通用原语（utils 层，两族消费方）：
+// - bridge 订阅者（mods goal/wakeup/transcriptTap 通道，spec mods-goal-channel
+//   「goal 订阅者」节契约）：手写 read(fd, position) 反向定长读（readline 无反向
+//   接口），goal_status 行落在 turn 末尾、距 EOF 通常几 KB——首块（64KB）命中即停，
+//   未命中再向前取块，累计到窗口硬上限（256KB）放弃。
+// - transcriptChain（rewind/fork 活链回溯）：不传 hitTest 读满大窗口（50MB）后
+//   parse 留档。注意 hitTest 逐块重拼是 O(块数²)，只适合小窗口；大窗口勿传。
 //
 // 契约要点：
-// - 行边界按字节 \n 切分（0x0A 不会出现在 UTF-8 多字节序列中间）；跨块的半行丢弃
+// - 行边界按字节 \n 切分（0x0A 不会出现在 UTF-8 多字节序列中间）；跨块的半行丢弃，
+//   窗口起点恰逢行边界时按前一字节精确判定、不误丢完整行
 // - 并发追加无害：所有位置读锚定在开扫时捕获的 EOF 之内，新字节落在窗口外
 // - 截断/重写防护：前后 stat 的 ino/mtime 指纹校验，变化即丢弃重扫一轮
 // - 读取前校验 regular file（拒符号链接）
@@ -99,14 +103,17 @@ async function scanOnce(filePath: string, opts?: TailScanOptions): Promise<{ sca
         }
         const startFingerprint = `${startStat.ino}:${startStat.mtimeMs}:${startStat.size}`;
 
-        // 反向定长读：全部位置读锚定在开扫捕获的 EOF（startStat.size）之内
+        // 反向定长读：全部位置读锚定在开扫捕获的 EOF（startStat.size）之内；
+        // 单块同时受 chunkSize 与剩余窗口预算约束——末块不超窗，且文件小于一整块时
+        // 窗口正确锚在尾部而非头部（2026-11-13 transcriptChain 差分用例抓出的边界）
         const chunks: Buffer[] = [];
         let scanned = 0;
         let found = false;
         let end = startStat.size;
         while (end > 0 && scanned < maxWindow) {
-            const position = Math.max(0, end - chunkSize);
-            const length = end - position;
+            const remaining = maxWindow - scanned;
+            const position = Math.max(0, end - Math.min(chunkSize, remaining));
+            const length = Math.min(end - position, remaining);
             const buffer = Buffer.alloc(length);
             const { bytesRead } = await fd.read(buffer, 0, length, position);
             chunks.unshift(buffer.subarray(0, bytesRead));

@@ -15,7 +15,7 @@
  */
 
 import { logger } from '@mobi/node-core/logger'
-import { scanTranscriptForUuid } from './transcriptScan'
+import { chainContains } from './transcriptChain'
 import type { Metadata } from '@mobi/node-core/api/types'
 
 /**
@@ -62,13 +62,12 @@ export function resolveForkActivation(
 }
 
 /**
- * 激活前预检（spec §5.2 步骤 3）：分页扫描 parent transcript，验证 anchorNativeId 仍在
- * （parent 可能已 rewind 深于锚点 / transcript 文件丢失——spec §5.3 前两行场景）。
- * 复用 scanTranscriptForUuid 共享骨架（与 findRewindAnchor 同一分页语义），
- * 只做存在性判定（fork 直接用 agent 回复 uuid 作 resumeSessionAt，无需向前换算
- * assistant 前驱）。失败细分：transcript 读取抛错 = 'parent-transcript-missing'；
- * 扫完未命中 = 'anchor-invalidated'（parent rewind 深于锚点的常态失败方向是
- * 「不激活」，不向上抛）。
+ * 激活前预检（spec §5.2 步骤 3）：沿 parent transcript 活链回溯验证 anchorNativeId
+ * 仍在（parent 可能已 rewind 深于锚点 / transcript 文件丢失——spec §5.3 前两行场景）。
+ * chainContains 与 rewind 锚点预检同一底座（尾部窗口 + parentUuid 回溯，成本
+ * O(锚点深度) 与 transcript 大小无关；深于窗口预算同样诚实 false）。失败细分：
+ * 意外异常 = 'parent-transcript-missing'（防御分支）；链上未见 = 'anchor-invalidated'
+ *（parent rewind 深于锚点的常态失败方向是「不激活」，不向上抛）。
  */
 export async function verifyForkAnchorExists(
     parentNativeId: string,
@@ -76,7 +75,7 @@ export async function verifyForkAnchorExists(
     anchorNativeId: string,
 ): Promise<ForkPrecheckResult> {
     try {
-        return await scanTranscriptForUuid(parentNativeId, dir, anchorNativeId) === 'found'
+        return await chainContains(parentNativeId, dir, anchorNativeId)
             ? 'ok'
             : 'anchor-invalidated'
     } catch (e) {

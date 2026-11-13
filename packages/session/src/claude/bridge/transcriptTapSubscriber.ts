@@ -36,7 +36,7 @@ import {
 import { logger } from '@mobi/node-core/logger'
 import type { BridgeListener } from './bridgeListener'
 import { BoundedUuidSet } from './boundedUuidSet'
-import { scanTailLines } from './tailReader'
+import { scanTailLines } from '../utils/tailReader'
 
 /**
  * 落盘竞态退避（session.append 在落盘**前**触发，读不到目标行属正常）。

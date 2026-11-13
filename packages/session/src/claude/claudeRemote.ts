@@ -927,7 +927,7 @@ export async function applyStartupOutputStyle(response: Query, outputStyle: stri
  */
 export interface RemoteRewindPlan {
     /**
-     * rewind 截断轮保留锚（锚点用户消息前最近一条 user/assistant entry uuid，见 rewindAnchor）：
+     * rewind 截断轮保留锚（锚点用户消息前最近一条 user/assistant entry uuid，见 transcriptChain 的 analyzeRewindTarget）：
      * 携带时本轮为截断轮——startup 预热 boot 时按 resume 加载历史到锚点即截断，
      * 截断确认后经 onTruncated 回报（先截断后软删除），再等用户消息
      */

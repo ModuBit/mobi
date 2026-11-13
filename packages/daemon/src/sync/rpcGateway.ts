@@ -109,7 +109,7 @@ export class RpcGateway {
         await this.sessionRpc(sessionId, 'rename-session', { title })
     }
 
-    // rewind 预检：CLI 用 getSessionMessages 锚点预检 + rewindFiles(dryRun)，返回 { canRewind, canRestoreFiles }
+    // rewind 预检：CLI 用 transcriptChain 活链回溯做锚点预检 + rewindFiles(dryRun)，返回 { canRewind, canRestoreFiles }
     async rewindDryRun(sessionId: string, nativeId: string): Promise<unknown> {
         return await this.sessionRpc(sessionId, 'rewind-dry-run', { nativeId })
     }

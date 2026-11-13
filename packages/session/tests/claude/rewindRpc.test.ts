@@ -20,21 +20,19 @@ import { MessageQueue } from '@mobi/node-core/utils/MessageQueue'
 import { QueryRestartController, RESTART_EXIT_SENTINEL } from '../../src/claude/utils/queryRestart'
 import type { EnhancedMode, QueryControlRef } from '../../src/claude/types'
 
-vi.mock('../../src/claude/utils/rewindAnchor', () => ({
-    findRewindAnchor: vi.fn(),
-}))
-vi.mock('../../src/claude/utils/transcriptScan', () => ({
-    analyzeDropRange: vi.fn(),
+vi.mock('../../src/claude/utils/transcriptChain', () => ({
+    analyzeRewindTarget: vi.fn(),
 }))
 vi.mock('@mobi/node-core/logger', () => ({
     logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
 }))
 
-import { findRewindAnchor } from '../../src/claude/utils/rewindAnchor'
-import { analyzeDropRange } from '../../src/claude/utils/transcriptScan'
+import { analyzeRewindTarget } from '../../src/claude/utils/transcriptChain'
 
-const mockedFindAnchor = vi.mocked(findRewindAnchor)
-const mockedAnalyzeDropRange = vi.mocked(analyzeDropRange)
+const mockedAnalyze = vi.mocked(analyzeRewindTarget)
+
+/** 默认分析结果：锚 a1 + 单轮区间（带守卫）——多数用例的基线形态 */
+const FOUND_A1 = { status: 'found' as const, anchor: 'a1', dropRange: { droppedTurns: 1, crossSessionEntry: null } }
 
 /** 装配 handler 并返回捕获的处理函数表 */
 function setup(opts: {
@@ -86,22 +84,21 @@ function setup(opts: {
  */
 describe('rewind RPC handlers', () => {
     beforeEach(() => {
-        mockedFindAnchor.mockReset()
-        // 默认单轮区间（带守卫）：多数用例的基线形态
-        mockedAnalyzeDropRange.mockReset()
-        mockedAnalyzeDropRange.mockResolvedValue({ droppedTurns: 1, crossSessionEntry: null })
+        mockedAnalyze.mockReset()
+        // 默认：锚 a1 + 单轮区间（带守卫）——多数用例的基线形态
+        mockedAnalyze.mockResolvedValue(FOUND_A1)
     })
 
     describe('rewind-dry-run', () => {
         it('锚点不存在 → canRewind false（reason 带 /clear 引导）', async () => {
-            mockedFindAnchor.mockResolvedValue(null)
+            mockedAnalyze.mockResolvedValue({ status: 'not-found' })
             const { handlers } = setup()
 
             const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; reason?: string }
 
             expect(result.canRewind).toBe(false)
             expect(result.reason).toContain('/clear')
-            expect(mockedFindAnchor).toHaveBeenCalledWith('native-sess-1', '/work/dir', 'u1')
+            expect(mockedAnalyze).toHaveBeenCalledWith('native-sess-1', '/work/dir', 'u1')
         })
 
         it('session 未知（未回填）→ canRewind false', async () => {
@@ -110,11 +107,10 @@ describe('rewind RPC handlers', () => {
             const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean }
 
             expect(result.canRewind).toBe(false)
-            expect(mockedFindAnchor).not.toHaveBeenCalled()
+            expect(mockedAnalyze).not.toHaveBeenCalled()
         })
 
         it('锚点存在 + rewindFiles dryRun canRewind true → 双 true + droppedTurns 透出', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
             const rewindFiles = vi.fn().mockResolvedValue({ canRewind: true })
             const { handlers } = setup({ rewindFiles })
 
@@ -122,13 +118,12 @@ describe('rewind RPC handlers', () => {
 
             expect(result).toEqual({ canRewind: true, canRestoreFiles: true, droppedTurns: 1 })
             expect(rewindFiles).toHaveBeenCalledWith('u1', { dryRun: true })
-            // 区间分析以保留锚为起点（锚后才是丢弃区间）
-            expect(mockedAnalyzeDropRange).toHaveBeenCalledWith('native-sess-1', '/work/dir', 'a1')
+            // 锚点 + 区间分析一次产出（transcriptChain 单次回溯）
+            expect(mockedAnalyze).toHaveBeenCalledWith('native-sess-1', '/work/dir', 'u1')
         })
 
         it('多轮区间 → canRewind true 且 droppedTurns 如实透出（多轮可回退）', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
-            mockedAnalyzeDropRange.mockResolvedValue({ droppedTurns: 3, crossSessionEntry: null })
+            mockedAnalyze.mockResolvedValue({ status: 'found', anchor: 'a1', dropRange: { droppedTurns: 3, crossSessionEntry: null } })
             const { handlers } = setup({ rewindFiles: vi.fn().mockResolvedValue({ canRewind: true }) })
 
             const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; droppedTurns: number }
@@ -136,19 +131,17 @@ describe('rewind RPC handlers', () => {
             expect(result).toEqual({ canRewind: true, canRestoreFiles: true, droppedTurns: 3 })
         })
 
-        it('分析不可得（超页 / 窗口内 transcript 变化）→ droppedTurns 缺省透出，不当 0 轮解读', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
-            mockedAnalyzeDropRange.mockResolvedValue(null)
+        it('链首目标（anchor null）→ canRewind false（reason 带 /clear 引导）', async () => {
+            mockedAnalyze.mockResolvedValue({ status: 'found', anchor: null, dropRange: { droppedTurns: 1, crossSessionEntry: null } })
             const { handlers } = setup({ rewindFiles: vi.fn().mockResolvedValue({ canRewind: true }) })
 
-            const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; droppedTurns?: number }
+            const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; reason?: string }
 
-            expect(result.canRewind).toBe(true)
-            expect(result.droppedTurns).toBeUndefined()
+            expect(result.canRewind).toBe(false)
+            expect(result.reason).toContain('/clear')
         })
 
         it('rewindFiles dryRun canRewind false → canRestoreFiles false（动态降级）', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
             const { handlers } = setup({ rewindFiles: vi.fn().mockResolvedValue({ canRewind: false, error: 'checkpoint window exceeded' }) })
 
             const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRestoreFiles: boolean }
@@ -157,7 +150,6 @@ describe('rewind RPC handlers', () => {
         })
 
         it('query 句柄不可达 → 保守 canRestoreFiles true（执行阶段以实际结果为准）', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
             const { handlers } = setup()
 
             const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRestoreFiles: boolean }
@@ -166,7 +158,6 @@ describe('rewind RPC handlers', () => {
         })
 
         it('rewindFiles dryRun 抛错 → 保守 canRestoreFiles true', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
             const { handlers } = setup({ rewindFiles: vi.fn().mockRejectedValue(new Error('rpc down')) })
 
             const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRestoreFiles: boolean }
@@ -175,31 +166,26 @@ describe('rewind RPC handlers', () => {
         })
 
         it('重启通道已占用 → canRewind false（reason 含 in progress）', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
             const occupied = setup({ occupyRestart: true })
             const result = await occupied.handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; reason?: string }
             expect(result.canRewind).toBe(false)
             expect(result.reason).toContain('in progress')
-            // 不做锚点预检（busy 与锚点无关，省一次 transcript 读取）
-            expect(mockedFindAnchor).not.toHaveBeenCalled()
+            // 不做目标分析（busy 与锚点无关，省一次 transcript 读取）
+            expect(mockedAnalyze).not.toHaveBeenCalled()
         })
 
         it('丢弃区间含跨会话条目且区间单轮 → canRewind false（守卫路径 SDK 必拒，提前拒绝）', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
-            mockedAnalyzeDropRange.mockResolvedValue({ droppedTurns: 1, crossSessionEntry: 'cs-1' })
+            mockedAnalyze.mockResolvedValue({ status: 'found', anchor: 'a1', dropRange: { droppedTurns: 1, crossSessionEntry: 'cs-1' } })
             const { handlers } = setup()
 
             const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; reason?: string }
 
             expect(result.canRewind).toBe(false)
             expect(result.reason).toContain('cross-session')
-            // 区间分析以保留锚为起点（锚后才是丢弃区间）
-            expect(mockedAnalyzeDropRange).toHaveBeenCalledWith('native-sess-1', '/work/dir', 'a1')
         })
 
         it('丢弃区间含跨会话条目但跨多轮 → 放行（省略守卫，截断照常成功）', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
-            mockedAnalyzeDropRange.mockResolvedValue({ droppedTurns: 2, crossSessionEntry: 'cs-1' })
+            mockedAnalyze.mockResolvedValue({ status: 'found', anchor: 'a1', dropRange: { droppedTurns: 2, crossSessionEntry: 'cs-1' } })
             const rewindFiles = vi.fn().mockResolvedValue({ canRewind: true })
             const { handlers } = setup({ rewindFiles })
 
@@ -210,8 +196,6 @@ describe('rewind RPC handlers', () => {
         })
 
         it('丢弃区间无跨会话条目 → 放行进入 rewindFiles dryRun', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
-            mockedAnalyzeDropRange.mockResolvedValue({ droppedTurns: 1, crossSessionEntry: null })
             const rewindFiles = vi.fn().mockResolvedValue({ canRewind: true })
             const { handlers } = setup({ rewindFiles })
 
@@ -223,16 +207,14 @@ describe('rewind RPC handlers', () => {
 
     describe('rewind 执行', () => {
         it('重启通道已占用 → busy 拒绝，不动队列不查锚点', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
             const occupied = setup({ occupyRestart: true })
             const result = await occupied.handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean; reason: string }
             expect(result.accepted).toBe(false)
             expect(result.reason).toContain('in progress')
-            expect(mockedFindAnchor).not.toHaveBeenCalled()
+            expect(mockedAnalyze).not.toHaveBeenCalled()
         })
 
         it('并发窗口互斥：第一个请求 await 文件回滚期间，第二个请求 busy 拒绝（占位先于任何 await）', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
             let releaseRestore: (() => void) | null = null
             const rewindFiles = vi.fn().mockImplementation(() => new Promise(resolve => {
                 releaseRestore = () => resolve({ canRewind: true })
@@ -257,7 +239,7 @@ describe('rewind RPC handlers', () => {
 
         it('干净失败后释放占位：后续请求可再次发起（finally 兜底，不残留死锁）', async () => {
             // 第一次：锚点复检失败被拒
-            mockedFindAnchor.mockResolvedValueOnce(null).mockResolvedValueOnce('a1')
+            mockedAnalyze.mockResolvedValueOnce({ status: 'not-found' }).mockResolvedValueOnce(FOUND_A1)
             const { handlers, session } = setup()
             const first = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean }
             expect(first.accepted).toBe(false)
@@ -270,7 +252,6 @@ describe('rewind RPC handlers', () => {
         })
 
         it('队列非空 → 拒绝且不清队列', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
             const { handlers, messageQueue } = setup()
             messageQueue.push('queued', { permissionMode: 'default' }, 'loc-q')
 
@@ -279,11 +260,10 @@ describe('rewind RPC handlers', () => {
             expect(result.accepted).toBe(false)
             expect(result.reason).toContain('queue')
             expect(messageQueue.size()).toBe(1)
-            expect(mockedFindAnchor).not.toHaveBeenCalled()
+            expect(mockedAnalyze).not.toHaveBeenCalled()
         })
 
         it('running → 拒绝', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
             const { handlers } = setup({ session: { running: true } })
 
             const result = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean; reason: string }
@@ -293,7 +273,7 @@ describe('rewind RPC handlers', () => {
         })
 
         it('锚点复检不存在 → 拒绝（reason 带 /clear 引导）', async () => {
-            mockedFindAnchor.mockResolvedValue(null)
+            mockedAnalyze.mockResolvedValue({ status: 'not-found' })
             const { handlers, session } = setup()
 
             const result = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean; reason: string }
@@ -304,7 +284,6 @@ describe('rewind RPC handlers', () => {
         })
 
         it('restoreFiles 但 query 句柄不可达 → 干净失败（不截断不清队列）', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
             const { handlers, session } = setup()
 
             const result = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: true }) as { accepted: boolean; reason: string }
@@ -315,7 +294,6 @@ describe('rewind RPC handlers', () => {
         })
 
         it('restoreFiles 且 rewindFiles canRewind false → 干净失败，文件未回滚', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
             const { handlers, session } = setup({
                 rewindFiles: vi.fn().mockResolvedValue({ canRewind: false, error: 'No file checkpoint found' }),
             })
@@ -329,7 +307,6 @@ describe('rewind RPC handlers', () => {
         })
 
         it('restoreFiles 且 rewindFiles 抛错 → 干净失败', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
             const { handlers, session } = setup({
                 rewindFiles: vi.fn().mockRejectedValue(new Error('boom')),
             })
@@ -342,7 +319,6 @@ describe('rewind RPC handlers', () => {
         })
 
         it('闸门通过（restoreFiles false）→ accepted：restart 请求 + 哨兵入队', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
             const { handlers, session, messageQueue } = setup()
 
             const result = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean }
@@ -358,8 +334,7 @@ describe('rewind RPC handlers', () => {
         })
 
         it('多轮区间 → restart 请求省略 dropsTurn（未校验截断，SDK 不会拒绝）', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
-            mockedAnalyzeDropRange.mockResolvedValue({ droppedTurns: 2, crossSessionEntry: null })
+            mockedAnalyze.mockResolvedValue({ status: 'found', anchor: 'a1', dropRange: { droppedTurns: 2, crossSessionEntry: null } })
             const { handlers, session } = setup()
 
             const result = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean }
@@ -370,8 +345,7 @@ describe('rewind RPC handlers', () => {
         })
 
         it('复检区间含跨会话条目且单轮量级 → 拒绝（与 dry-run 对称，直连 API 绕过预检的窗口内变化拦住）', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
-            mockedAnalyzeDropRange.mockResolvedValue({ droppedTurns: 1, crossSessionEntry: 'cs-1' })
+            mockedAnalyze.mockResolvedValue({ status: 'found', anchor: 'a1', dropRange: { droppedTurns: 1, crossSessionEntry: 'cs-1' } })
             const { handlers, session } = setup()
 
             const result = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean; reason: string }
@@ -381,19 +355,18 @@ describe('rewind RPC handlers', () => {
             expect(session.restart.current()).toBeNull()
         })
 
-        it('分析不可得 → 保守携带守卫（单轮照常校验成功；多轮 CLI 拒绝走 refusal recovery，不静默丢跨会话消息）', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
-            mockedAnalyzeDropRange.mockResolvedValue(null)
+        it('链首目标（anchor null）→ 拒绝（reason 带 /clear 引导，与 dry-run 同语义）', async () => {
+            mockedAnalyze.mockResolvedValue({ status: 'found', anchor: null, dropRange: { droppedTurns: 1, crossSessionEntry: null } })
             const { handlers, session } = setup()
 
-            const result = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean }
+            const result = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean; reason: string }
 
-            expect(result.accepted).toBe(true)
-            expect(session.restart.current()).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: false, dropsTurn: 'u1' })
+            expect(result.accepted).toBe(false)
+            expect(result.reason).toContain('/clear')
+            expect(session.restart.current()).toBeNull()
         })
 
         it('闸门通过（restoreFiles true + rewindFiles 成功）→ accepted 且 filesRestored true', async () => {
-            mockedFindAnchor.mockResolvedValue('a1')
             const rewindFiles = vi.fn().mockResolvedValue({ canRewind: true, filesChanged: ['a.txt'] })
             const { handlers, session } = setup({ rewindFiles })
 
