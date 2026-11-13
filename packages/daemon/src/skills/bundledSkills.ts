@@ -152,10 +152,15 @@ export async function probeBundledSkills(): Promise<BundledProbeResult> {
 /** 版本探针：spawn claude --version（秒级；CLI 独立升级后自然触发重采） */
 export async function probeClaudeVersion(): Promise<string> {
     const claudePath = (await getClaudeExecutablePath()) ?? 'claude'
+    // claude 是 bun-compile 二进制，会读 BUN_INSPECT 尝试开 inspector——IDE 调试态
+    // daemon 的 env 里该 socket 已被本进程占用，子进程 bind 即 EADDRINUSE 退出 1
+    const childEnv = { ...process.env } as Record<string, string | undefined>
+    stripBunDebuggerEnv(childEnv)
     const proc = Bun.spawn([claudePath, '--version'], {
         stdin: 'ignore',
         stdout: 'pipe',
         stderr: 'pipe',
+        env: childEnv,
     })
     const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
     if (exitCode !== 0) throw new Error(`claude --version exited ${exitCode}`)
