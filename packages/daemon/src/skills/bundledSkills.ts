@@ -36,6 +36,7 @@ import { join } from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { BundledSkillInfo, SlashCommand } from '@mobi/shared'
 import { getClaudeExecutablePath } from '@mobi/node-core/claudeSdk/claudeExecutable'
+import { stripBunDebuggerEnv } from '@mobi/node-core/utils/spawnMobiCli'
 import { writeFileAtomic } from '@mobi/node-core/git/atomicWrite'
 import { daemonLogger } from '../logger'
 
@@ -107,6 +108,13 @@ function createProbeDir(): string {
 export async function probeBundledSkills(): Promise<BundledProbeResult> {
     const probeDir = createProbeDir()
     try {
+        // 编译态二进制内没有 node_modules，SDK 自动解析 native CLI 必失败
+        // （"Native CLI binary not found"）——必须显式传提取路径（session 侧同款先例；
+        // dev 态返回 undefined 交 SDK 自动解析，语义不变）
+        const claudeExecutable = await getClaudeExecutablePath()
+        // IDE 调试器 env 会随子进程继承后绑定同一 socket 导致启动失败（cli 包已知陷阱）
+        const childEnv = { ...process.env } as Record<string, string | undefined>
+        stripBunDebuggerEnv(childEnv)
         const q = query({
             // 一轮极短 turn：只求 init 帧 + supportedCommands，不消耗结果内容
             prompt: 'Reply with just: OK',
@@ -114,6 +122,8 @@ export async function probeBundledSkills(): Promise<BundledProbeResult> {
                 cwd: probeDir,
                 permissionMode: 'bypassPermissions',
                 maxTurns: 1,
+                pathToClaudeCodeExecutable: claudeExecutable,
+                env: childEnv,
             },
         })
 
