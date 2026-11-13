@@ -25,73 +25,78 @@
  * - POST /api/skills/install：包装 skills add（symlink 形态、只装 claude-code agent）
  * - POST /api/skills/:name/update：包装 skills update（tracked 限定）
  * - GET /api/skills/bundled：CC 内置名单（daemon 自采 + 版本化缓存，票 06）
+ *
+ * 前奏单源（架构深化候选③）：scope 解析 + 404/400 翻译 + 视角取清单收成
+ * scopeOrResponse / listContext / skillContext 三层入口，handler 只留端点差异；
+ * scope 与路径派生知识归 skillScope 模块（候选①），依赖声明归 skillDeps（候选⑤）。
  */
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { join } from 'node:path'
+import { SKILL_SCOPE_GLOBAL } from '@mobi/shared'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSyncEngine } from './guards'
 import { defaultSkillScanRoots, listGlobalSkills, listWorkspaceSkills, type SkillScanRoots } from '../../skills/skillScanner'
-import { defaultSkillsCliRunner, installSkill, removeTrackedSkill, removeUntrackedSkill, updateSkill, type SkillsCliRunner } from '../../skills/skillCli'
-import { getBundledSkills, type BundledProber, type ClaudeVersionProber } from '../../skills/bundledSkills'
+import { defaultSkillsCliRunner, installSkill, removeTrackedSkill, removeUntrackedSkill, updateSkill } from '../../skills/skillCli'
+import { getBundledSkills } from '../../skills/bundledSkills'
 import { buildSkillCreatePrompt, resolveSkillCreateTargetDir } from '../../skills/skillCreatePrompt'
+import { resolveScope, scopeView, type SkillScope } from '../../skills/skillScope'
+import type { SkillsDeps } from '../../skills/skillDeps'
 import { writeSkillOverride } from '../../skills/skillSettingsWriter'
 import { configuration } from '../../configuration'
 import type { SkillInfo } from '@mobi/shared'
 
-/** bundled 名单依赖（缺省生产值：dataDir 缓存 + 真 SDK 自采） */
-export interface SkillsBundledDeps {
-    cachePath: string
-    prober?: BundledProber
-    versionProber?: ClaudeVersionProber
-}
-
-/** 路由可注入依赖（测试 fixture；缺省生产值） */
-export interface SkillsRouteDeps {
-    scanRoots?: SkillScanRoots
-    cliRunner?: SkillsCliRunner
-    bundled?: SkillsBundledDeps
-}
-
-/** workspaceId → 扫描视角；global 返回 null，未知 id 返回 'not-found'，无 folder 返回 'no-folder' */
-function resolveScope(
-    engine: SyncEngine,
-    workspaceId: string,
-): { kind: 'global' } | { kind: 'workspace'; path: string } | { kind: 'not-found' } | { kind: 'no-folder' } {
-    if (workspaceId === 'global') return { kind: 'global' }
-    const workspace = engine.getWorkspace(workspaceId)
-    if (!workspace) return { kind: 'not-found' }
-    // 多 folder workspace 以 primary folder 为 skill 扫描根（CC 语义按 cwd 所在目录）
-    const primary = workspace.folders.find(f => f.primary) ?? workspace.folders[0]
-    if (!primary) return { kind: 'no-folder' }
-    return { kind: 'workspace', path: primary.path }
-}
-
-/** 在指定视角清单中找目标 skill 行（PATCH 后回读刷新值用） */
+/** 在指定视角清单中找目标 skill 行（PATCH 回读刷新值用） */
 function findSkill(skills: SkillInfo[], name: string): SkillInfo | undefined {
     return skills.find(s => s.name === name)
 }
 
 export function createSkillsRoutes(
     getSyncEngine: () => SyncEngine | null,
-    deps: SkillsRouteDeps = {},
+    deps: SkillsDeps = {},
 ): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
     const roots = deps.scanRoots
+    const scanRoots = (): SkillScanRoots => roots ?? defaultSkillScanRoots()
     const skillsCliRunner = deps.cliRunner ?? defaultSkillsCliRunner
     const bundledDeps = () =>
         deps.bundled ?? { cachePath: join(configuration.dataDir, 'bundled-skills.json') }
+
+    /** scope 解析 + 404/400 翻译（前奏原子；union 沿 requireSyncEngine 手势） */
+    const scopeOrResponse = (c: Context, engine: SyncEngine, workspaceId: string): SkillScope | Response => {
+        const scope = resolveScope(id => engine.getWorkspace(id), workspaceId)
+        if (scope.kind === 'not-found') return c.json({ error: 'Workspace not found' }, 404)
+        if (scope.kind === 'no-folder') return c.json({ error: 'Workspace has no folder' }, 400)
+        return scope
+    }
+
+    /** 视角取清单（listContext 的列表半边，PATCH 回读复用） */
+    const listFor = (scope: SkillScope): SkillInfo[] =>
+        scope.kind === 'global' ? listGlobalSkills(scanRoots()) : listWorkspaceSkills(scanRoots(), scope.path)
+
+    /** 前奏组合①：scope + 视角清单 */
+    const listContext = (c: Context, engine: SyncEngine, workspaceId: string): { skills: SkillInfo[]; scope: SkillScope } | Response => {
+        const scope = scopeOrResponse(c, engine, workspaceId)
+        if (scope instanceof Response) return scope
+        return { skills: listFor(scope), scope }
+    }
+
+    /** 前奏组合②：scope + 视角清单 + 目标行（skill 缺失由 handler 翻译语义化 404） */
+    const skillContext = (c: Context, engine: SyncEngine, workspaceId: string, skillName: string): { skill: SkillInfo; scope: SkillScope } | Response => {
+        const ctx = listContext(c, engine, workspaceId)
+        if (ctx instanceof Response) return ctx
+        const skill = findSkill(ctx.skills, skillName)
+        if (!skill) return c.json({ error: 'Skill not found' }, 404)
+        return { skill, scope: ctx.scope }
+    }
 
     app.get('/skills', (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        const scanRoots = roots ?? defaultSkillScanRoots()
-        const scope = resolveScope(engine, c.req.query('workspaceId') ?? 'global')
-        if (scope.kind === 'not-found') return c.json({ error: 'Workspace not found' }, 404)
-        if (scope.kind === 'no-folder') return c.json({ error: 'Workspace has no folder' }, 400)
-        const skills = scope.kind === 'global' ? listGlobalSkills(scanRoots) : listWorkspaceSkills(scanRoots, scope.path)
-        return c.json({ skills })
+        const ctx = listContext(c, engine, c.req.query('workspaceId') ?? SKILL_SCOPE_GLOBAL)
+        if (ctx instanceof Response) return ctx
+        return c.json({ skills: ctx.skills })
     })
 
     app.patch('/skills/:name/visibility', async (c) => {
@@ -103,65 +108,42 @@ export function createSkillsRoutes(
             return c.json({ error: 'Invalid body' }, 400)
         }
 
-        const scanRoots = roots ?? defaultSkillScanRoots()
-        const scope = resolveScope(engine, body.workspaceId)
-        if (scope.kind === 'not-found') return c.json({ error: 'Workspace not found' }, 404)
-        if (scope.kind === 'no-folder') return c.json({ error: 'Workspace has no folder' }, 400)
-
         const skillName = c.req.param('name')
-        const current = scope.kind === 'global'
-            ? findSkill(listGlobalSkills(scanRoots), skillName)
-            : findSkill(listWorkspaceSkills(scanRoots, scope.path), skillName)
+        const ctx = skillContext(c, engine, body.workspaceId, skillName)
+        if (ctx instanceof Response) return ctx
         // 未知名字与只读行（plugin/synced，skillOverrides 不生效）都不提供开关
-        if (!current) return c.json({ error: 'Skill not found' }, 404)
-        if (!current.overrideable) return c.json({ error: 'Skill is read-only' }, 400)
+        if (!ctx.skill.overrideable) return c.json({ error: 'Skill is read-only' }, 400)
 
-        // 归属层：personal → user settings（~/.claude/settings.json）；project → workspace project settings
-        const ownSettingsPath = current.source === 'project' && scope.kind === 'workspace'
-            ? `${scope.path}/.claude/settings.json`
-            : `${scanRoots.claudeConfigDir}/settings.json`
-
-        const state = body.enabled ? 'on' : 'off'
-        if (!writeSkillOverride(ownSettingsPath, skillName, state)) {
+        // 归属层：personal → user settings；project → workspace project settings（scopeView 单源派生）
+        if (!writeSkillOverride(scopeView(scanRoots(), ctx.scope).ownSettingsPath, skillName, body.enabled ? 'on' : 'off')) {
             return c.json({ error: 'Settings file is corrupted' }, 500)
         }
 
         // 回读刷新后的行（遮蔽态由多层合成，回读是唯一权威）
-        const refreshed = scope.kind === 'global'
-            ? findSkill(listGlobalSkills(scanRoots), skillName)
-            : findSkill(listWorkspaceSkills(scanRoots, scope.path), skillName)
-        return c.json({ skill: refreshed })
+        return c.json({ skill: findSkill(listFor(ctx.scope), skillName) })
     })
 
     app.delete('/skills/:name', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        const scanRoots = roots ?? defaultSkillScanRoots()
-        const scope = resolveScope(engine, c.req.query('workspaceId') ?? 'global')
-        if (scope.kind === 'not-found') return c.json({ error: 'Workspace not found' }, 404)
-        if (scope.kind === 'no-folder') return c.json({ error: 'Workspace has no folder' }, 400)
-
-        const skillName = c.req.param('name')
-        const current = scope.kind === 'global'
-            ? findSkill(listGlobalSkills(scanRoots), skillName)
-            : findSkill(listWorkspaceSkills(scanRoots, scope.path), skillName)
-        if (!current) return c.json({ error: 'Skill not found' }, 404)
+        const ctx = skillContext(c, engine, c.req.query('workspaceId') ?? SKILL_SCOPE_GLOBAL, c.req.param('name'))
+        if (ctx instanceof Response) return ctx
 
         // synced 下次同步会拉回、插件携带归迭代 3——都不提供删除
-        if (current.source === 'synced' || current.source === 'plugin') {
+        if (ctx.skill.source === 'synced' || ctx.skill.source === 'plugin') {
             return c.json({ error: 'Skill is managed elsewhere' }, 400)
         }
 
-        if (current.tracked) {
+        if (ctx.skill.tracked) {
             // tracked：真身与 lock 条目归 CLI 语义闭环，mobi 只按 scope 分派
-            const result = await removeTrackedSkill(current, scope, skillsCliRunner)
+            const result = await removeTrackedSkill(ctx.skill, ctx.scope, skillsCliRunner)
             if (!result.ok) return c.json({ error: result.output || 'skills CLI failed' }, 502)
             return c.json({ ok: true })
         }
 
         // untracked：mobi 自管文件，删除前二次校验目标位置
-        const result = removeUntrackedSkill(current, scanRoots, scope)
+        const result = removeUntrackedSkill(ctx.skill, scanRoots(), ctx.scope)
         if (!result.ok) return c.json({ error: result.error }, 500)
         return c.json({ ok: true })
     })
@@ -173,12 +155,11 @@ export function createSkillsRoutes(
         const body = await c.req.json().catch(() => null) as { scope?: unknown } | null
         if (!body || typeof body.scope !== 'string') return c.json({ error: 'Invalid body' }, 400)
 
-        const scanRoots = deps.scanRoots ?? defaultSkillScanRoots()
-        const scope = resolveScope(engine, body.scope)
-        if (scope.kind === 'not-found') return c.json({ error: 'Workspace not found' }, 404)
-        if (scope.kind === 'no-folder') return c.json({ error: 'Workspace has no folder' }, 400)
+        // 形态与取清单端点不同（只要 scope），保留直调
+        const scope = scopeOrResponse(c, engine, body.scope)
+        if (scope instanceof Response) return scope
 
-        const targetDir = resolveSkillCreateTargetDir(scope, scanRoots)
+        const targetDir = resolveSkillCreateTargetDir(scope, scanRoots())
         return c.json({ targetDir, prompt: buildSkillCreatePrompt(targetDir) })
     })
 
@@ -205,9 +186,9 @@ export function createSkillsRoutes(
             return c.json({ error: 'Invalid body' }, 400)
         }
 
-        const scope = resolveScope(engine, body.scope)
-        if (scope.kind === 'not-found') return c.json({ error: 'Workspace not found' }, 404)
-        if (scope.kind === 'no-folder') return c.json({ error: 'Workspace has no folder' }, 400)
+        // 只要 scope 不取清单（安装目标行尚不存在），直调前奏原子
+        const scope = scopeOrResponse(c, engine, body.scope)
+        if (scope instanceof Response) return scope
 
         const result = await installSkill(body.source.trim(), scope, skillsCliRunner)
         if (!result.ok) return c.json({ error: result.output || 'skills CLI failed' }, 502)
@@ -223,20 +204,12 @@ export function createSkillsRoutes(
             return c.json({ error: 'Invalid body' }, 400)
         }
 
-        const scope = resolveScope(engine, body.workspaceId)
-        if (scope.kind === 'not-found') return c.json({ error: 'Workspace not found' }, 404)
-        if (scope.kind === 'no-folder') return c.json({ error: 'Workspace has no folder' }, 400)
-
-        const skillName = c.req.param('name')
-        const scanRoots = roots ?? defaultSkillScanRoots()
-        const current = scope.kind === 'global'
-            ? findSkill(listGlobalSkills(scanRoots), skillName)
-            : findSkill(listWorkspaceSkills(scanRoots, scope.path), skillName)
-        if (!current) return c.json({ error: 'Skill not found' }, 404)
+        const ctx = skillContext(c, engine, body.workspaceId, c.req.param('name'))
+        if (ctx instanceof Response) return ctx
         // 更新走 CLI 渠道语义，只对 tracked 行有意义
-        if (!current.tracked) return c.json({ error: 'Skill is not tracked' }, 400)
+        if (!ctx.skill.tracked) return c.json({ error: 'Skill is not tracked' }, 400)
 
-        const result = await updateSkill(current, scope, skillsCliRunner)
+        const result = await updateSkill(ctx.skill, ctx.scope, skillsCliRunner)
         if (!result.ok) return c.json({ error: result.output || 'skills CLI failed' }, 502)
         return c.json({ ok: true })
     })

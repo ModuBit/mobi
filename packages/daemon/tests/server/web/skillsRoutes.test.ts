@@ -194,17 +194,19 @@ describe('skills REST 路由（GET /api/skills）', () => {
 
         const setup = await setupTestApp(engine, {
             store,
-            skillsScanRoots: {
-                claudeConfigDir: claudeDir,
-                userLockPath: join(centralDir, '.skill-lock.json'),
-                pluginDirs: [pluginDir],
-                managedSettingsPath: join(fixtureRoot, 'managed-settings.json'),
-            },
-            skillsCliRunner: fakeSkillsCli,
-            skillsBundled: {
-                cachePath: join(fixtureRoot, 'bundled-skills.json'),
-                prober: fakeBundledProber,
-                versionProber: fakeBundledVersionProber,
+            skills: {
+                scanRoots: {
+                    claudeConfigDir: claudeDir,
+                    userLockPath: join(centralDir, '.skill-lock.json'),
+                    pluginDirs: [pluginDir],
+                    managedSettingsPath: join(fixtureRoot, 'managed-settings.json'),
+                },
+                cliRunner: fakeSkillsCli,
+                bundled: {
+                    cachePath: join(fixtureRoot, 'bundled-skills.json'),
+                    prober: fakeBundledProber,
+                    versionProber: fakeBundledVersionProber,
+                },
             },
         })
         app = setup.app

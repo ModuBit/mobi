@@ -26,7 +26,7 @@ import { FilePlus2, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import styled from '@emotion/styled'
-import type { SkillInfo } from '@mobi/shared'
+import { SKILL_SCOPE_GLOBAL, type SkillInfo } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useBundledSkills, useSkillDelete, useSkillInstall, useSkillUpdate, useSkillVisibility, useSkills } from '@/core/data/hooks/queries/useSkills'
 import { useMobiApi } from '@/core/data/api/client'
@@ -41,7 +41,8 @@ import { BundledSkillRow } from '@/features/settings/skills/BundledSkillRow'
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
 
-const GLOBAL_TAB = 'global'
+/** 全局视角 tab key = wire 协议 scope 哨兵（shared 单源，禁止再写字面量） */
+const GLOBAL_TAB = SKILL_SCOPE_GLOBAL
 
 const Wrap = styled.div<{ $token: Token }>`
     display: flex;

@@ -22,14 +22,12 @@
  * 与引导文本生成；SKILL.md 的编写由用户在会话里对话完成，落盘后经列表刷新可见
  * （untracked 真目录形态）。
  */
-import { join } from 'node:path'
 import type { SkillScanRoots } from './skillScanner'
+import { scopeView, type SkillScope } from './skillScope'
 
-/** scope → skill 目标目录（新 skill 将落盘的父目录） */
-export function resolveSkillCreateTargetDir(scope: { kind: 'global' } | { kind: 'workspace'; path: string }, roots: SkillScanRoots): string {
-    return scope.kind === 'global'
-        ? join(roots.claudeConfigDir, 'skills')
-        : join(scope.path, '.claude', 'skills')
+/** scope → skill 目标目录（新 skill 将落盘的父目录；scopeView 单源派生） */
+export function resolveSkillCreateTargetDir(scope: SkillScope, roots: SkillScanRoots): string {
+    return scopeView(roots, scope).skillRoot
 }
 
 /**

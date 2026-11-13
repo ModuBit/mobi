@@ -27,11 +27,11 @@
  * - spawn 走 argv 数组不经 shell，source 字符串天然无注入面
  */
 import { existsSync, lstatSync, realpathSync, rmSync, unlinkSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname } from 'node:path'
 import type { SkillInfo } from '@mobi/shared'
 import { daemonLogger } from '../logger'
 import type { SkillScanRoots } from './skillScanner'
+import { cliCwd, scopeView, type SkillScope } from './skillScope'
 
 /** skills CLI 单次执行结果：ok = 退出码 0；output 含 stdout+stderr（失败透传前端） */
 export interface SkillsCliResult {
@@ -58,9 +58,6 @@ export const defaultSkillsCliRunner: SkillsCliRunner = async (args, { cwd }) => 
     return { ok: exitCode === 0, output: `${stdout}\n${stderr}`.trim() }
 }
 
-/** 视角：user 级（global tab）或某 workspace（project skill） */
-export type SkillScope = { kind: 'global' } | { kind: 'workspace'; path: string }
-
 /** tracked 路径：分派 skills remove（user 级 -g；project 级 cwd=workspace 让 CLI 自动定位 scope） */
 export async function removeTrackedSkill(
     skill: SkillInfo,
@@ -69,7 +66,7 @@ export async function removeTrackedSkill(
 ): Promise<SkillsCliResult> {
     const args = ['remove', skill.name, '-y', '--agent', 'claude-code']
     if (scope.kind === 'global') args.push('-g')
-    const cwd = scope.kind === 'global' ? homedir() : scope.path
+    const cwd = cliCwd(scope)
     daemonLogger.info(`[skills] tracked 删除分派 CLI：${skill.name}（cwd=${cwd}）`)
     return runner(args, { cwd })
 }
@@ -82,7 +79,7 @@ export async function installSkill(
 ): Promise<SkillsCliResult> {
     const args = ['add', source, '--agent', 'claude-code']
     if (scope.kind === 'global') args.push('-g')
-    const cwd = scope.kind === 'global' ? homedir() : scope.path
+    const cwd = cliCwd(scope)
     daemonLogger.info(`[skills] 安装分派 CLI：${source}（cwd=${cwd}）`)
     return runner(args, { cwd })
 }
@@ -94,7 +91,7 @@ export async function updateSkill(
     runner: SkillsCliRunner,
 ): Promise<SkillsCliResult> {
     const args = ['update', skill.name, '-y', '--agent', 'claude-code', scope.kind === 'global' ? '-g' : '-p']
-    const cwd = scope.kind === 'global' ? homedir() : scope.path
+    const cwd = cliCwd(scope)
     daemonLogger.info(`[skills] 更新分派 CLI：${skill.name}（cwd=${cwd}）`)
     return runner(args, { cwd })
 }
@@ -113,9 +110,7 @@ export function removeUntrackedSkill(
     roots: SkillScanRoots,
     scope: SkillScope,
 ): UntrackedRemoveResult {
-    const expectedRoot = scope.kind === 'global'
-        ? join(roots.claudeConfigDir, 'skills')
-        : join(scope.path, '.claude', 'skills')
+    const expectedRoot = scopeView(roots, scope).skillRoot
 
     const dir = dirname(skill.path)
     if (basename(dir) !== skill.name) {

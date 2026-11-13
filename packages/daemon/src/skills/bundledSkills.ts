@@ -158,14 +158,19 @@ export async function probeClaudeVersion(): Promise<string> {
 }
 
 /**
- * 编排：版本探针 → 缓存命中判定 → miss 自采 → 写缓存。
- * 采集失败异常上抛（调用方 502 透传），绝不伪装空名单、不留半截缓存。
+ * bundled 名单依赖（架构深化候选⑤自路由层迁入）：缺省生产值 = dataDir 缓存 + 真 SDK 自采。
  */
-export async function getBundledSkills(deps: {
+export interface SkillsBundledDeps {
     cachePath: string
     prober?: BundledProber
     versionProber?: ClaudeVersionProber
-}): Promise<BundledProbeResult> {
+}
+
+/**
+ * 编排：版本探针 → 缓存命中判定 → miss 自采 → 写缓存。
+ * 采集失败异常上抛（调用方 502 透传），绝不伪装空名单、不留半截缓存。
+ */
+export async function getBundledSkills(deps: SkillsBundledDeps): Promise<BundledProbeResult> {
     const prober = deps.prober ?? probeBundledSkills
     const versionProber = deps.versionProber ?? probeClaudeVersion
 

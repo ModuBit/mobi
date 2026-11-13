@@ -39,6 +39,13 @@ export type SkillSettingsLayer = (typeof SKILL_SETTINGS_LAYERS)[number]
 export const SKILL_FORMS = ['symlink', 'directory'] as const
 export type SkillForm = (typeof SKILL_FORMS)[number]
 
+/**
+ * scope 哨兵（wire 协议单源）：workspaceId 参数取此值表示全局（user 级）视角。
+ * daemon 的 scope 解析与 web 的 tab/表单取值共用，禁止再写字面量
+ * （同构先例：archivedScope 的 ARCHIVED_WORKSPACE_NONE）。
+ */
+export const SKILL_SCOPE_GLOBAL = 'global'
+
 /** 管理页列表行（GET /api/skills） */
 export const SkillInfoSchema = z.object({
     /** 调用名（frontmatter name 优先，缺省目录名） */

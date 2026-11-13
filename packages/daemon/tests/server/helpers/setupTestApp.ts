@@ -20,6 +20,7 @@ import { createConfiguration, resetConfiguration } from '../../../src/configurat
 import type { SSEManager } from '../../../src/sse/sseManager'
 import type { VisibilityTracker } from '../../../src/visibility/visibilityTracker'
 import type { SyncEngine } from '../../../src/sync/syncEngine'
+import type { SkillsDeps } from '../../../src/skills/skillDeps'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -45,9 +46,7 @@ export async function setupTestApp(
     opts: {
         distDirOverride?: string
         store?: Store
-        skillsScanRoots?: import('../../../src/skills/skillScanner').SkillScanRoots
-        skillsCliRunner?: import('../../../src/skills/skillCli').SkillsCliRunner
-        skillsBundled?: import('../../../src/web/routes/skills').SkillsBundledDeps
+        skills?: SkillsDeps
     } = {},
 ) {
     // 需要「路由 deps.store 与 engine 同库」的测试可注入共享 Store（缺省独立内存库）
@@ -75,21 +74,21 @@ export async function setupTestApp(
         embeddedAssetMap: null,
         // 注入临时 dist 目录（静态资源 Cache-Control 等测试用），不依赖真实 web/dist 构建
         distDirOverride: opts.distDirOverride,
-        // skill 扫描根 fixture（skill-mgmt 票 01）：不注入则路由会扫真实 ~/.claude
-        skillsScanRoots: opts.skillsScanRoots,
-        // skills CLI 桩（票 04/05）：测试必须显式注入——缺省 fail-fast，
-        // 防 DI 断链时 default runner 在真实环境跑 npx（2026-11-12 实踩）
-        skillsCliRunner: opts.skillsCliRunner ?? (async () => {
-            throw new Error('skills CLI runner not injected for test')
-        }),
-        // bundled 名单桩（票 06）：同上 fail-fast，防真 SDK probe / 真 claude --version
-        skillsBundled: opts.skillsBundled ?? {
-            cachePath: '/dev/null/mobi-test-bundled-cache.json',
-            prober: async () => {
-                throw new Error('bundled prober not injected for test')
-            },
-            versionProber: async () => {
-                throw new Error('bundled version prober not injected for test')
+        // skills 域依赖打包（候选⑤）：扫描根 fixture + CLI/bundled fail-fast 桩——
+        // 测试必须显式注入，防 DI 断链时 default runner 在真实环境跑 npx / 真 SDK probe（2026-11-12 实踩）
+        skills: {
+            scanRoots: opts.skills?.scanRoots,
+            cliRunner: opts.skills?.cliRunner ?? (async () => {
+                throw new Error('skills CLI runner not injected for test')
+            }),
+            bundled: opts.skills?.bundled ?? {
+                cachePath: '/dev/null/mobi-test-bundled-cache.json',
+                prober: async () => {
+                    throw new Error('bundled prober not injected for test')
+                },
+                versionProber: async () => {
+                    throw new Error('bundled version prober not injected for test')
+                },
             },
         },
     })
