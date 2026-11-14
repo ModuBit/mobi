@@ -418,6 +418,7 @@
     "compacting": "Optimizing conversation...",
     "clearing": "Clearing conversation...",
     "durationValue": "Duration: {{value}}",
+    "modelChange": "Model switched → {{model}}",
     "switchMode": "Switch to {{mode}} mode",
     "aborted": "Session aborted",
     "abortedStillQueued": "Session aborted · {{count}} message(s) will still run",
@@ -1005,7 +1006,7 @@
     "search": "Search settings",
     "searchEmpty": "No matching settings",
     "skills": {
-      "tabGlobal": "Global",
+      "tabGlobal": "Personal",
       "tabsAria": "Skill scopes",
       "searchPlaceholder": "Search skills",
       "empty": "No skills yet",
@@ -1045,7 +1046,6 @@
         "off": "Disabled",
         "shadowed": "Disabled by higher settings"
       },
-      "groupBundled": "Built-in skills",
       "coveredByLocal": "Shadowed by a same-name skill",
       "bundledFailed": "Failed to load built-in skills, retry later",
       "createAction": "New",
@@ -1054,7 +1054,9 @@
       "createSubmit": "Create in chat",
       "createHint": "A new session opens with a pre-filled guide. Finish SKILL.md with Claude there, then come back to see it listed.",
       "createNoWorkspace": "Create a workspace first (sessions belong to one)",
-      "createFailed": "Failed to start, please retry"
+      "createFailed": "Failed to start, please retry",
+      "tabBundled": "System",
+      "emptyBundled": "No built-in skills"
     }
   },
   "debug": {

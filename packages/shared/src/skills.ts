@@ -45,6 +45,8 @@ export type SkillForm = (typeof SKILL_FORMS)[number]
  * （同构先例：archivedScope 的 ARCHIVED_WORKSPACE_NONE）。
  */
 export const SKILL_SCOPE_GLOBAL = 'global'
+/** 系统（CC 内置）视角哨兵：仅 tab 消费（bundled 只读、不可装/建/删），wire 上不作为目标 scope */
+export const SKILL_SCOPE_BUNDLED = 'bundled'
 
 /**
  * 同名裁决的比较键：CC 忽略大小写与空白（如 `My Skill` 与 `my-skill` 视为同名）。

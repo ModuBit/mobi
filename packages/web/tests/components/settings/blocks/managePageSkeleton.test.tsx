@@ -62,21 +62,41 @@ describe('ManageRow', () => {
 })
 
 describe('useScopeOptions', () => {
-    it('global 哨兵项（shared 单源）在前 + workspaces 随后', () => {
-        const { result } = renderHook(() => useScopeOptions(
-            [{ id: 'ws-1', name: 'Demo' }, { id: 'ws-2', name: 'Other' }],
-            '全局',
-        ))
-        expect(result.current).toEqual([
-            { value: SKILL_SCOPE_GLOBAL, label: '全局' },
+    const BASE = { bundledLabel: '系统', personalLabel: '个人' }
+
+    it('tabOptions：系统在前 + 个人 + 非空项目；promptOptions：个人 + 全量项目（无系统项）', () => {
+        const { result } = renderHook(() => useScopeOptions({
+            ...BASE,
+            workspaces: [{ id: 'ws-1', name: 'Demo' }, { id: 'ws-2', name: 'Other' }],
+            occupiedWorkspaceIds: ['ws-1'],
+        }))
+        expect(result.current.tabOptions).toEqual([
+            { value: 'bundled', label: '系统' },
+            { value: SKILL_SCOPE_GLOBAL, label: '个人' },
+            { value: 'ws-1', label: 'Demo' },
+        ])
+        expect(result.current.promptOptions).toEqual([
+            { value: SKILL_SCOPE_GLOBAL, label: '个人' },
             { value: 'ws-1', label: 'Demo' },
             { value: 'ws-2', label: 'Other' },
         ])
     })
 
-    it('workspaces 未加载时只有全局项', () => {
-        const { result } = renderHook(() => useScopeOptions(undefined, '全局'))
-        expect(result.current).toEqual([{ value: SKILL_SCOPE_GLOBAL, label: '全局' }])
+    it('workspaces 未加载时只有系统 + 个人两项', () => {
+        const { result } = renderHook(() => useScopeOptions({ ...BASE, workspaces: undefined }))
+        expect(result.current.tabOptions).toEqual([
+            { value: 'bundled', label: '系统' },
+            { value: SKILL_SCOPE_GLOBAL, label: '个人' },
+        ])
+        expect(result.current.promptOptions).toEqual([{ value: SKILL_SCOPE_GLOBAL, label: '个人' }])
+    })
+
+    it('occupancy 未到位（undefined）不过滤项目', () => {
+        const { result } = renderHook(() => useScopeOptions({
+            ...BASE,
+            workspaces: [{ id: 'ws-1', name: 'Demo' }],
+        }))
+        expect(result.current.tabOptions.some(o => o.value === 'ws-1')).toBe(true)
     })
 })
 

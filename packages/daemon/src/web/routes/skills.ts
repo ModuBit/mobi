@@ -24,6 +24,7 @@
  *   project 级 cwd=workspace），untracked 直接删 agent 目录条目（symlink 只删链接）
  * - POST /api/skills/install：包装 skills add（symlink 形态、只装 claude-code agent）
  * - POST /api/skills/:name/update：包装 skills update（tracked 限定）
+ * - GET /api/skills/occupancy：有技能的 workspaceId 集合（web tabs 空项目隐藏的数据源）
  * - GET /api/skills/bundled：CC 内置名单（daemon 自采 + 版本化缓存，票 06）
  *
  * 前奏单源（架构深化候选③）：scope 解析 + 404/400 翻译 + 视角取清单收成
@@ -42,7 +43,7 @@ import {
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSyncEngine } from './guards'
-import { defaultSkillScanRoots, listGlobalSkills, listWorkspaceSkills, refreshOverrideFields, type SkillScanRoots } from '../../skills/skillScanner'
+import { defaultSkillScanRoots, listGlobalSkills, listWorkspaceSkills, occupiedWorkspaceIds, refreshOverrideFields, type SkillScanRoots } from '../../skills/skillScanner'
 import { defaultSkillsCliRunner, installSkill, removeTrackedSkill, removeUntrackedSkill, updateSkill } from '../../skills/skillCli'
 import { getBundledSkills } from '../../skills/bundledSkills'
 import { buildSkillCreatePrompt } from '../../skills/skillCreatePrompt'
@@ -167,6 +168,14 @@ export function createSkillsRoutes(
 
         const targetDir = scopeView(scanRoots(), scope).skillRoot
         return c.json({ targetDir, prompt: buildSkillCreatePrompt(targetDir) })
+    })
+
+    app.get('/skills/occupancy', (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        // 有技能的 workspaceId 集合（web tabs 空项目隐藏的数据源；与列表同口径同名遮蔽判定）
+        return c.json({ workspaceIds: occupiedWorkspaceIds(scanRoots(), engine.getWorkspaces(c.get('namespace'))) })
     })
 
     app.get('/skills/bundled', async (c) => {

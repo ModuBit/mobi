@@ -320,6 +320,28 @@ export function listWorkspaceSkills(roots: SkillScanRoots, wsPath: string): Skil
 }
 
 /**
+ * 项目占用判定（web tabs 空项目隐藏的数据源）：与 listWorkspaceSkills 同一口径
+ * （同名遮蔽后为空 = 未占用），personal 扫描只做一次（N 个 workspace 不重复全扫）。
+ * 传 `{ id, folders }` 形状（SyncEngine Workspace 的结构子集），返回有技能的 workspaceId。
+ */
+export function occupiedWorkspaceIds(
+    roots: SkillScanRoots,
+    workspaces: ReadonlyArray<{ id: string; folders: ReadonlyArray<{ path: string; primary: boolean }> }>,
+): string[] {
+    const personalKeys = new Set(
+        scanSkillDirectory(scopeView(roots, { kind: 'global' }).skillRoot).map(e => skillNameKey(e.parsed.name)),
+    )
+    return workspaces
+        .filter(ws => {
+            const primary = ws.folders.find(f => f.primary) ?? ws.folders[0]
+            if (!primary) return false
+            const dir = scopeView(roots, { kind: 'workspace', path: primary.path }).skillRoot
+            return scanSkillDirectory(dir).some(e => !personalKeys.has(skillNameKey(e.parsed.name)))
+        })
+        .map(ws => ws.id)
+}
+
+/**
  * PATCH 回读：写完归属层 override 后只重读 override 层重算生效三态（遮蔽态由多层合成，
  * 回读是唯一权威）。其余字段源自 SKILL.md/lock，不可能因这次写入变化——避免为回读
  * 一行重跑整轮目录扫描（每次开关省 N 次 SKILL.md 读取 + YAML 解析）。

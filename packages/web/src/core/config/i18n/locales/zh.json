@@ -409,6 +409,7 @@
     "compacting": "正在优化对话...",
     "clearing": "正在清空对话...",
     "durationValue": "耗时: {{value}}",
+    "modelChange": "已切换模型 → {{model}}",
     "switchMode": "切换到 {{mode}} 模式",
     "aborted": "会话已中断",
     "abortedStillQueued": "会话已中断 · {{count}} 条消息仍会执行",
@@ -996,7 +997,7 @@
     "search": "搜索设置",
     "searchEmpty": "没有匹配的设置",
     "skills": {
-      "tabGlobal": "全局",
+      "tabGlobal": "个人",
       "tabsAria": "技能作用域",
       "searchPlaceholder": "搜索技能",
       "empty": "没有技能",
@@ -1036,7 +1037,6 @@
         "off": "已停用",
         "shadowed": "被更高层设置停用"
       },
-      "groupBundled": "CC 内置技能",
       "coveredByLocal": "被同名技能覆盖",
       "bundledFailed": "内置名单获取失败，请稍后重试",
       "createAction": "新建",
@@ -1045,7 +1045,9 @@
       "createSubmit": "去会话创建",
       "createHint": "将打开一个新会话并预填创建引导，你与 Claude 对话完成 SKILL.md 的编写后，回到本页即可看到新技能。",
       "createNoWorkspace": "请先创建一个工作区（会话需要归属工作区）",
-      "createFailed": "创建失败，请重试"
+      "createFailed": "创建失败，请重试",
+      "tabBundled": "系统",
+      "emptyBundled": "没有内置技能"
     }
   },
   "debug": {

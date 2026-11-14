@@ -491,6 +491,8 @@ export function createMobiApi() {
             // 更新（tracked 限定）：包装 skills update
             update: (name: string, workspaceId: string) =>
                 client.post<{ ok: boolean }>(`/api/skills/${encodeURIComponent(name)}/update`, { workspaceId }),
+            // 有技能的 workspaceId 集合（tabs 空项目隐藏的数据源；与列表同口径同名遮蔽判定）
+            occupancy: () => client.get<{ workspaceIds: string[] }>('/api/skills/occupancy'),
             // CC 内置名单（daemon 自采 + 版本化缓存；首访可能秒级采集等待）
             bundled: () => client.get<BundledSkillsResponse>('/api/skills/bundled'),
             // 对话式新建：scope → 目标目录映射 + 预填 prompt（daemon 侧生成权威路径）

@@ -20,7 +20,7 @@ import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/queryKeys'
 
 /**
- * CC 内置 bundled 名单（skill-mgmt 票 06）：仅全局 tab 消费；daemon 侧版本化缓存，
+ * CC 内置 bundled 名单（skill-mgmt 票 06）：系统 tab 消费；daemon 侧版本化缓存，
  * 同版本纯缓存命中。失败不静默（明确错误态），列表行只读。
  */
 export function useBundledSkills(enabled: boolean): {
@@ -43,18 +43,37 @@ export function useBundledSkills(enabled: boolean): {
 /**
  * skill 管理列表（skill-mgmt 票 02）。
  * workspaceId='global' 为全局视角（个人 + synced + 插件携带），否则为该项目视角。
+ * bundled 是纯前端视角（数据走 useBundledSkills），不发列表请求——enabled=false 挡住。
  * 失败（404 等）静默为空列表：tab 切走的工作区被删时不弹错。
  */
-export function useSkills(workspaceId: string): { skills: SkillInfo[]; isLoading: boolean } {
+export function useSkills(workspaceId: string, options?: { enabled?: boolean }): { skills: SkillInfo[]; isLoading: boolean } {
     const api = useMobiApi()
     const query = useQuery({
         queryKey: queryKeys.skills(workspaceId),
+        enabled: options?.enabled ?? true,
         queryFn: async () => {
             const res = await api.skills.list(workspaceId)
             return res.data.skills
         },
     })
     return { skills: query.data ?? [], isLoading: query.isPending }
+}
+
+/**
+ * 项目占用（有技能的 workspaceId 集合）：web tabs 空项目隐藏的数据源。
+ * 与列表同口径（同名遮蔽后为空 = 未占用）；装/删/建改变占用态——键在 skillsRoot
+ * 前缀内，被 mutation 成功后的全族失效连带重拉。
+ */
+export function useSkillOccupancy(): { workspaceIds: string[] } {
+    const api = useMobiApi()
+    const query = useQuery({
+        queryKey: queryKeys.skillsOccupancy,
+        queryFn: async () => {
+            const res = await api.skills.occupancy()
+            return res.data.workspaceIds
+        },
+    })
+    return { workspaceIds: query.data ?? [] }
 }
 
 /**

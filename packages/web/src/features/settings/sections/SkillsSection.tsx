@@ -25,9 +25,9 @@ import { theme as antTheme, Spin, Modal, Radio } from 'antd'
 import { FilePlus2, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import { SKILL_SCOPE_GLOBAL, skillNameKey } from '@mobi/shared'
+import { SKILL_SCOPE_BUNDLED, SKILL_SCOPE_GLOBAL, skillNameKey } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
-import { useBundledSkills, useSkills } from '@/core/data/hooks/queries/useSkills'
+import { useBundledSkills, useSkillOccupancy, useSkills } from '@/core/data/hooks/queries/useSkills'
 import { filterByNameOrDescription } from '@/domain/filterList'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { Input } from '@/ui/base/interactive/input/Input'
@@ -58,14 +58,6 @@ const CenterSpin = styled.div`
     display: flex;
     justify-content: center;
     padding: 32px 0;
-`
-
-/** 分组小标题（内置组与主列表的视觉分隔） */
-const GroupTitle = styled.div<{ $token: Token }>`
-    font-size: 12px;
-    font-weight: 500;
-    color: ${p => p.$token.colorTextTertiary};
-    padding: 0 2px;
 `
 
 /** 弹窗表单：纵向排布，antd Modal 默认内衬之外自管间距 */
@@ -99,18 +91,27 @@ export function SkillsSection() {
     const [keyword, setKeyword] = useState('')
 
     const { data: workspaces } = useWorkspaces()
-    const { skills, isLoading } = useSkills(tab)
-    const isGlobal = tab === SKILL_SCOPE_GLOBAL
-    // 内置名单只属全局视角；搜索词也参与内置行过滤
-    const { bundled, isLoading: bundledLoading, error: bundledError } = useBundledSkills(isGlobal)
+    const { workspaceIds: occupiedWorkspaceIds } = useSkillOccupancy()
+    // bundled 是纯前端视角（数据走 useBundledSkills），不发列表请求
+    const isBundled = tab === SKILL_SCOPE_BUNDLED
+    const { skills, isLoading } = useSkills(tab, { enabled: !isBundled })
+    // bundled 行的同名遮蔽判定基准恒为个人视角名单（bundled tab 下 useSkills 停发）
+    const { skills: personalSkills } = useSkills(SKILL_SCOPE_GLOBAL)
+    // 内置名单只属系统 tab；搜索词也参与内置行过滤
+    const { bundled, isLoading: bundledLoading, error: bundledError } = useBundledSkills(isBundled)
     const actions = useSkillsActions()
 
-    const scopeOptions = useScopeOptions(workspaces, t('settings.skills.tabGlobal'))
+    const { tabOptions, promptOptions } = useScopeOptions({
+        workspaces,
+        occupiedWorkspaceIds,
+        bundledLabel: t('settings.skills.tabBundled'),
+        personalLabel: t('settings.skills.tabGlobal'),
+    })
 
     const filtered = useMemo(() => filterByNameOrDescription(skills, keyword), [skills, keyword])
     const filteredBundled = useMemo(() => filterByNameOrDescription(bundled, keyword), [bundled, keyword])
-    /** 当前列表的名字键集合（内置行同名遮蔽判定：用户胜；与 daemon 扫描层同一 nameKey 规则） */
-    const listedNames = useMemo(() => new Set(skills.map(s => skillNameKey(s.name))), [skills])
+    /** 个人视角名单的名字键集合（内置行同名遮蔽判定：用户胜；与 daemon 扫描层同一 nameKey 规则） */
+    const listedNames = useMemo(() => new Set(personalSkills.map(s => skillNameKey(s.name))), [personalSkills])
 
     /** 安装：弹窗内 source + scope（默认跟随当前 tab），提交 loading 防重复 */
     const [installOpen, setInstallOpen] = useState(false)
@@ -150,7 +151,7 @@ export function SkillsSection() {
                 keyword={keyword}
                 onKeywordChange={setKeyword}
                 searchPlaceholder={t('settings.skills.searchPlaceholder')}
-                options={scopeOptions}
+                options={tabOptions}
                 activeScope={tab}
                 onScopeChange={setTab}
                 tabsTestId="skills-tabs"
@@ -168,7 +169,25 @@ export function SkillsSection() {
                     </>
                 }
             >
-                {isLoading ? (
+                {isBundled ? (bundledLoading ? (
+                    <CenterSpin><Spin size="small" /></CenterSpin>
+                ) : bundledError ? (
+                    <SettingGroupCard>
+                        <EmptyHint $token={token}>{t('settings.skills.bundledFailed')}</EmptyHint>
+                    </SettingGroupCard>
+                ) : filteredBundled.length > 0 ? (
+                    <SettingGroupCard>
+                        {filteredBundled.map(b => (
+                            <BundledSkillRow key={b.name} skill={b} covered={listedNames.has(skillNameKey(b.name))} />
+                        ))}
+                    </SettingGroupCard>
+                ) : (
+                    <SettingGroupCard>
+                        <EmptyHint $token={token}>
+                            {t(keyword.trim() ? 'settings.skills.emptyFiltered' : 'settings.skills.emptyBundled')}
+                        </EmptyHint>
+                    </SettingGroupCard>
+                )) : isLoading ? (
                     <CenterSpin><Spin size="small" /></CenterSpin>
                 ) : filtered.length > 0 ? (
                     <SettingGroupCard>
@@ -195,22 +214,6 @@ export function SkillsSection() {
                         </EmptyHint>
                     </SettingGroupCard>
                 )}
-                {isGlobal && (bundledLoading ? (
-                    <CenterSpin><Spin size="small" /></CenterSpin>
-                ) : bundledError ? (
-                    <SettingGroupCard>
-                        <EmptyHint $token={token}>{t('settings.skills.bundledFailed')}</EmptyHint>
-                    </SettingGroupCard>
-                ) : filteredBundled.length > 0 && (
-                    <>
-                        <GroupTitle $token={token}>{t('settings.skills.groupBundled')}</GroupTitle>
-                        <SettingGroupCard>
-                            {filteredBundled.map(b => (
-                                <BundledSkillRow key={b.name} skill={b} covered={listedNames.has(skillNameKey(b.name))} />
-                            ))}
-                        </SettingGroupCard>
-                    </>
-                ))}
             </ScopeTabbedSection>
             <Modal
                 title={t('settings.skills.createTitle')}
@@ -227,7 +230,7 @@ export function SkillsSection() {
                     <Radio.Group
                         value={createScope}
                         onChange={e => setCreateScope(e.target.value as string)}
-                        options={scopeOptions}
+                        options={promptOptions}
                     />
                     <Hint $token={token}>{t('settings.skills.createHint')}</Hint>
                 </FormBody>
@@ -256,7 +259,7 @@ export function SkillsSection() {
                     <Radio.Group
                         value={installScope}
                         onChange={e => setInstallScope(e.target.value as string)}
-                        options={scopeOptions}
+                        options={promptOptions}
                     />
                 </FormBody>
             </Modal>

@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import type { SkillInfo } from '@mobi/shared'
 
 /** vi.mock 工厂提升先于 const 声明，被工厂引用的桩须 vi.hoisted */
@@ -74,6 +74,8 @@ vi.mock('@/core/data/hooks/queries/useSkills', () => ({
     // createPrompt 桩保持 api 返回形状（res.data.prompt），useSkillsActions 透明消费
     useSkillCreatePrompt: vi.fn(() => ({ mutateAsync: mockCreatePrompt, isPending: false })),
     useBundledSkills: vi.fn(() => mockBundled),
+    // 占用桩：默认 ws-1 有技能（tabs 显示工作区）；空项目隐藏用例再覆盖
+    useSkillOccupancy: vi.fn(() => ({ workspaceIds: ['ws-1'] })),
 }))
 vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => mockNavigate,
@@ -87,12 +89,14 @@ vi.mock('@/core/data/api/client', () => ({
 }))
 
 import { SkillsSection } from '@/features/settings/sections/SkillsSection'
-import { useSkills, useSkillVisibility, useBundledSkills } from '@/core/data/hooks/queries/useSkills'
+import { useSkills, useSkillVisibility, useBundledSkills, useSkillOccupancy } from '@/core/data/hooks/queries/useSkills'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 
 afterEach(() => {
     cleanup()
-    vi.clearAllMocks()
+    // resetAllMocks（非 clearAllMocks）：mockReturnValue 的用例级覆盖必须随用例结束恢复
+    // vi.fn(impl) 原始工厂，否则空项目用例的 occupancy 覆盖会泄漏进后续用例
+    vi.resetAllMocks()
     mockVisibility.isPending = false
     mockVisibility.variables = null
 })
@@ -202,6 +206,22 @@ describe('SkillsSection（票 02：tabs + 列表 + 搜索）', () => {
         render(<SkillsSection />)
 
         expect(screen.getByText('settings.skills.empty')).toBeTruthy()
+    })
+
+    it('无技能的工作区不出现在 tabs，但弹窗 radio 仍可选（空项目可建第一个 skill）', async () => {
+        vi.mocked(useWorkspaces).mockReturnValue({ data: [{ id: 'ws-1', name: 'Demo Workspace' }] } as never)
+        vi.mocked(useSkills).mockImplementation(mockSkillsByScope)
+        vi.mocked(useSkillOccupancy).mockReturnValue({ workspaceIds: [] })
+
+        render(<SkillsSection />)
+
+        // tabs 里没有空项目（tabs 容器内限定——弹窗 radio 的同名文本不参与）
+        expect(within(screen.getByTestId('skills-tabs')).queryByText('Demo Workspace')).toBeNull()
+
+        // 新建弹窗 radio 仍有该项目（目标 scope 用全量清单）
+        screen.getByTestId('skills-create').click()
+        await screen.findByText('settings.skills.createSubmit')
+        expect(document.querySelector('input[type="radio"][value="ws-1"]')).not.toBeNull()
     })
 })
 
@@ -381,8 +401,8 @@ describe('SkillsSection（票 05：安装与更新）', () => {
     })
 })
 
-describe('SkillsSection（票 06：内置分组）', () => {
-    function setupGlobal(bundled: typeof mockBundled = { bundled: [], isLoading: false, error: null }) {
+describe('SkillsSection（票 06：系统 tab 内置名单）', () => {
+    function setup(bundled: typeof mockBundled = { bundled: [], isLoading: false, error: null }) {
         vi.mocked(useWorkspaces).mockReturnValue({ data: [{ id: 'ws-1', name: 'Demo Workspace' }] } as never)
         vi.mocked(useSkills).mockImplementation(mockSkillsByScope)
         vi.mocked(useSkillVisibility).mockReturnValue(mockVisibility as never)
@@ -390,17 +410,23 @@ describe('SkillsSection（票 06：内置分组）', () => {
         render(<SkillsSection />)
     }
 
-    /** fixture：内置两行，其中 doctor 与个人 skill 同名（覆盖判定用）——GLOBAL_SKILLS 无 doctor，
-     * 用 alpha 同名场景：内置行名 alpha → covered */
+    /** fixture：内置两行，其中 alpha 与个人 skill 同名（覆盖判定用） */
     const BUNDLED = [
         { name: 'alpha', description: 'Bundled alpha (shadowed by personal)' },
         { name: 'doctor', description: 'Health-check the setup' },
     ]
 
-    it('全局 tab 渲染内置分组：分组标题 + 只读行（内置徽标、无开关/删除/更新）', () => {
-        setupGlobal({ bundled: BUNDLED, isLoading: false, error: null })
+    /** 进入系统 tab（bundled 数据只属该 tab，i18n mock 下 tab 文本 = 键名） */
+    function openBundledTab() {
+        fireEvent.click(screen.getByText('settings.skills.tabBundled'))
+    }
 
-        expect(screen.getByText('settings.skills.groupBundled')).toBeTruthy()
+    it('个人 tab 默认不渲染内置名单；系统 tab 渲染只读行（内置徽标、无开关/删除/更新）', () => {
+        setup({ bundled: BUNDLED, isLoading: false, error: null })
+
+        expect(screen.queryByText('settings.skills.source.bundled')).toBeNull()
+        openBundledTab()
+
         expect(screen.getAllByText('settings.skills.source.bundled').length).toBe(2)
 
         const bundledRow = document.querySelector('[data-bundled="true"][data-skill-name="doctor"]')!
@@ -410,7 +436,8 @@ describe('SkillsSection（票 06：内置分组）', () => {
     })
 
     it('与个人 skill 同名的内置行显示覆盖徽标（用户胜）', () => {
-        setupGlobal({ bundled: BUNDLED, isLoading: false, error: null })
+        setup({ bundled: BUNDLED, isLoading: false, error: null })
+        openBundledTab()
 
         const covered = document.querySelector('[data-bundled="true"][data-skill-name="alpha"]')!
         expect(covered.textContent).toContain('settings.skills.coveredByLocal')
@@ -418,15 +445,23 @@ describe('SkillsSection（票 06：内置分组）', () => {
         expect(notCovered.textContent).not.toContain('settings.skills.coveredByLocal')
     })
 
-    it('工作区 tab 不渲染内置分组', () => {
-        setupGlobal({ bundled: BUNDLED, isLoading: false, error: null })
+    it('系统 tab 空名单：空态文案（与个人 tab 空态区分）', () => {
+        setup()
+        openBundledTab()
 
-        fireEvent.click(screen.getByText('Demo Workspace'))
-        expect(screen.queryByText('settings.skills.groupBundled')).toBeNull()
+        expect(screen.getByText('settings.skills.emptyBundled')).toBeTruthy()
+    })
+
+    it('工作区 tab 不渲染内置名单', () => {
+        setup({ bundled: BUNDLED, isLoading: false, error: null })
+
+        fireEvent.click(within(screen.getByTestId('skills-tabs')).getByText('Demo Workspace'))
+        expect(screen.queryByText('settings.skills.source.bundled')).toBeNull()
     })
 
     it('内置名单加载失败：错误提示（不伪装空名单静默）', () => {
-        setupGlobal({ bundled: [], isLoading: false, error: new Error('probe timeout') })
+        setup({ bundled: [], isLoading: false, error: new Error('probe timeout') })
+        openBundledTab()
 
         expect(screen.getByText('settings.skills.bundledFailed')).toBeTruthy()
     })

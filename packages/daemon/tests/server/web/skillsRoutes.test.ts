@@ -642,4 +642,28 @@ describe('skills REST 路由（GET /api/skills）', () => {
             expect((await createPrompt({})).res.status).toBe(400)
         })
     })
+
+    describe('GET /api/skills/occupancy（tabs 空项目隐藏）', () => {
+        test('有技能的 workspace 在集合里；空项目不在（同名遮蔽后为空 = 未占用）', async () => {
+            // fixture workspace 有可见 project skill（proj-plain 等）→ 占用
+            // 动态建空 workspace（无 .claude/skills）→ 不占用
+            const emptyWs = mkdtempSync(join(HOST_HOME, 'mobi-skill-empty-ws-'))
+            try {
+                const res = await app.request('/api/workspaces', {
+                    method: 'POST',
+                    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: 'skill-empty-ws', folders: [{ path: emptyWs, primary: true }] }),
+                })
+                const { workspace } = await res.json() as { workspace: { id: string } }
+
+                const occ = await app.request('/api/skills/occupancy', { headers: authHeaders })
+                expect(occ.status).toBe(200)
+                const { workspaceIds } = await occ.json() as { workspaceIds: string[] }
+                expect(workspaceIds).toContain(workspaceId)
+                expect(workspaceIds).not.toContain(workspace.id)
+            } finally {
+                rmSync(emptyWs, { recursive: true, force: true })
+            }
+        })
+    })
 })
