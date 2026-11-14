@@ -31,7 +31,7 @@ import { saveDraftText } from '@/core/lib/draftText'
 
 export function useSkillsActions() {
     const { t } = useTranslation()
-    const { message, modal } = App.useApp()
+    const { message } = App.useApp()
     const navigate = useNavigate()
     const { data: workspaces, isLoading: workspacesLoading } = useWorkspaces()
 
@@ -57,27 +57,6 @@ export function useSkillsActions() {
                 },
             },
         )
-    }
-
-    /** 删除：确认弹窗区分双路径文案；tracked 走 skills CLI（失败透传其输出） */
-    const requestDelete = (skill: SkillInfo, scope: string) => {
-        modal.confirm({
-            title: t('settings.skills.deleteConfirmTitle', { name: skill.name }),
-            content: skill.tracked
-                ? t('settings.skills.deleteConfirmTracked', { source: skill.installSource ?? '' })
-                : t('settings.skills.deleteConfirmUntracked'),
-            okText: t('common.delete'),
-            okButtonProps: { danger: true },
-            cancelText: t('common.cancel'),
-            onOk: async () => {
-                try {
-                    await deletion.mutateAsync({ name: skill.name, workspaceId: scope })
-                    message.success(t('settings.skills.deleted'))
-                } catch (error) {
-                    message.error(extractHttpDetail(error) || t('settings.skills.deleteFailed'))
-                }
-            },
-        })
     }
 
     /** 更新（tracked 限定）：结果 toast（失败透传 CLI 输出） */
@@ -130,7 +109,17 @@ export function useSkillsActions() {
 
     return {
         toggle,
-        requestDelete,
+        /** 详情 sheet 卸载：确认已由 ConfirmMorph 就地承担，直接执行（成功 toast，失败透传） */
+        deleteDirect: async (skill: SkillInfo, scope: string) => {
+            try {
+                await deletion.mutateAsync({ name: skill.name, workspaceId: scope })
+                message.success(t('settings.skills.deleted'))
+                return true
+            } catch (error) {
+                message.error(extractHttpDetail(error) || t('settings.skills.deleteFailed'))
+                return false
+            }
+        },
         update,
         install,
         submitCreate,

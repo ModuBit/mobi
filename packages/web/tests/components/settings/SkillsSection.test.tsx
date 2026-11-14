@@ -15,6 +15,7 @@
  */
 
 import { describe, expect, it, vi, afterEach } from 'vitest'
+import { useState } from 'react'
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import type { SkillInfo } from '@mobi/shared'
 
@@ -53,6 +54,24 @@ vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
     initReactI18next: { type: '3rd-party', init: () => {} },
 }))
+// ConfirmMorph（详情 sheet 卸载钮）：motion stub 下默认 6s confirmTimeout 窗口不可靠
+// （自有测试也须关超时才能测）——此处以双击等价件替身，保留「两击确认」行为断言；
+// ConfirmMorph 自身契约由 tests/ui/base/ConfirmMorph.test.tsx 守护
+vi.mock('@/ui/base/interactive/confirm-morph/ConfirmMorph', () => ({
+    ConfirmMorph: function ConfirmMorphStub({ label, prompt, onConfirm }: { label: string; prompt?: string; onConfirm?: () => Promise<boolean> | boolean }) {
+        const [armed, setArmed] = useState(false)
+        return (
+            <button
+                type="button"
+                data-testid="confirm-morph"
+                title={prompt}
+                onClick={() => { if (armed) void onConfirm?.(); else setArmed(true) }}
+            >
+                {armed ? (prompt ?? `${label}?`) : label}
+            </button>
+        )
+    },
+}))
 vi.mock('antd', async (importOriginal) => {
     const actual = await importOriginal<typeof import('antd')>()
     return {
@@ -76,6 +95,13 @@ vi.mock('@/core/data/hooks/queries/useSkills', () => ({
     useBundledSkills: vi.fn(() => mockBundled),
     // 占用桩：默认 ws-1 有技能（tabs 显示工作区）；空项目隐藏用例再覆盖
     useSkillOccupancy: vi.fn(() => ({ workspaceIds: ['ws-1'] })),
+    // 详情桩：正文 + 空 meta（detail 请求随 sheet 开启发出；用例可覆盖）。
+    // skill 行数据头部展示走列表行 prop，桩内对象仅占位（vi.hoisted 早于 fixture 声明）
+    useSkillDetail: vi.fn(() => ({
+        detail: { skill: { name: '' } as never, body: 'SKILL BODY', meta: {} },
+        isLoading: false,
+        error: null,
+    })),
 }))
 vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => mockNavigate,
@@ -89,7 +115,7 @@ vi.mock('@/core/data/api/client', () => ({
 }))
 
 import { SkillsSection } from '@/features/settings/sections/SkillsSection'
-import { useSkills, useSkillVisibility, useBundledSkills, useSkillOccupancy } from '@/core/data/hooks/queries/useSkills'
+import { useSkills, useSkillVisibility, useBundledSkills, useSkillOccupancy, useSkillDetail } from '@/core/data/hooks/queries/useSkills'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 
 afterEach(() => {
@@ -281,63 +307,78 @@ describe('SkillsSection（票 03：启停开关）', () => {
     })
 })
 
-describe('SkillsSection（票 04：删除）', () => {
-    /** 找某 skill 行内的删除钮（data 属性定位，与 i18n mock 无关） */
-    function deleteBtnOf(name: string): HTMLElement | null {
-        const row = screen.getByText(name).closest('[data-skill-name]')!
-        return row.querySelector(`[data-skill-delete="${name}"]`)
+describe('SkillsSection（票 04：删除——详情 sheet 内 ConfirmMorph 就地确认）', () => {
+    /** ConfirmMorph 双击替身：一击 armed（armed 面显示 prompt 文案），再击确认 */
+    async function confirmDelete() {
+        fireEvent.click(screen.getByText('settings.skills.detail.delete'))
+        fireEvent.click(screen.getByText('settings.skills.deleteConfirmUntracked'))
     }
 
-    function setupGlobal() {
+    function setup() {
         vi.mocked(useWorkspaces).mockReturnValue({ data: [] } as never)
         vi.mocked(useSkills).mockImplementation(mockSkillsByScope)
         vi.mocked(useSkillVisibility).mockReturnValue(mockVisibility as never)
         render(<SkillsSection />)
     }
 
-    it('personal/project 行有删除入口；plugin/synced 行没有', () => {
-        setupGlobal()
+    it('行点击开详情 sheet：deletable 行有卸载入口；只读行没有', async () => {
+        setup()
 
-        expect(deleteBtnOf('alpha')).not.toBeNull()
-        expect(deleteBtnOf('plug')).toBeNull()
+        // alpha（personal，deletable）→ sheet 内有 ConfirmMorph
+        fireEvent.click(screen.getByText('alpha'))
+        await screen.findByText('settings.skills.detail.delete')
+
+        // 关闭后开 plug（plugin，deletable=false）→ 无卸载入口
+        fireEvent.keyDown(document.body, { key: 'Escape' })
+        fireEvent.click(screen.getByText('plug'))
+        await screen.findByText('SKILL BODY')
+        expect(screen.queryByText('settings.skills.detail.delete')).toBeNull()
     })
 
-    it('untracked：确认弹窗用直删文案；确认后发起删除 + 成功 toast', async () => {
-        setupGlobal()
+    it('untracked 卸载：两击确认后发起删除 + 成功 toast', async () => {
+        setup()
         mockDeleteAsync.mockResolvedValueOnce(undefined)
 
-        deleteBtnOf('alpha')!.click()
-        await waitFor(() => expect(mockDeleteAsync).toHaveBeenCalledWith({ name: 'alpha', workspaceId: 'global' }))
+        fireEvent.click(screen.getByText('alpha'))
+        await screen.findByText('settings.skills.detail.delete')
+        await confirmDelete()
 
-        const opts = mockModal.confirm.mock.calls[0]![0]!
-        expect(opts.content).toBe('settings.skills.deleteConfirmUntracked')
+        await waitFor(() => expect(mockDeleteAsync).toHaveBeenCalledWith({ name: 'alpha', workspaceId: 'global' }))
         expect(mockMessage.success).toHaveBeenCalledWith('settings.skills.deleted')
     })
 
-    it('tracked：确认弹窗用 CLI 卸载文案（带安装来源）', async () => {
-        setupGlobal()
+    it('tracked 卸载：确认提示用 CLI 卸载文案（带安装来源）', async () => {
+        setup()
         mockDeleteAsync.mockResolvedValueOnce(undefined)
 
-        deleteBtnOf('beta')!.click()
-        await waitFor(() => expect(mockDeleteAsync).toHaveBeenCalled())
+        fireEvent.click(screen.getByText('beta'))
+        await screen.findByText('settings.skills.detail.delete')
 
-        const opts = mockModal.confirm.mock.calls[0]![0]!
-        expect(opts.content).toBe('settings.skills.deleteConfirmTracked')
+        // armed 文案 = tracked 分支（deleteConfirmTracked，带安装来源）；确认后发起删除
+        fireEvent.click(screen.getByText('settings.skills.detail.delete'))
+        fireEvent.click(screen.getByText('settings.skills.deleteConfirmTracked'))
+        await waitFor(() => expect(mockDeleteAsync).toHaveBeenCalled())
     })
 
     it('失败（无透传详情）：通用失败 toast', async () => {
-        setupGlobal()
+        setup()
         mockDeleteAsync.mockRejectedValueOnce(new Error('network'))
 
-        deleteBtnOf('alpha')!.click()
+        fireEvent.click(screen.getByText('alpha'))
+        await screen.findByText('settings.skills.detail.delete')
+        await confirmDelete()
+
         await waitFor(() => expect(mockMessage.error).toHaveBeenCalledWith('settings.skills.deleteFailed'))
     })
 
     it('失败（daemon 透传 CLI 输出）：输出原样呈现', async () => {
-        setupGlobal()
+        setup()
         mockDeleteAsync.mockRejectedValueOnce({ response: { data: { error: 'npm error: not found in lock' } } } as never)
 
-        deleteBtnOf('alpha')!.click()
+        fireEvent.click(screen.getByText('alpha'))
+        await screen.findByText('settings.skills.detail.delete')
+        await confirmDelete()
+
         await waitFor(() => expect(mockMessage.error).toHaveBeenCalledWith('npm error: not found in lock'))
     })
 })
@@ -352,16 +393,14 @@ describe('SkillsSection（票 05：安装与更新）', () => {
         render(<SkillsSection />)
     }
 
-    it('更新入口只在 tracked 行出现；点击发起 update mutation + 成功 toast', async () => {
+    it('更新入口在详情 sheet（tracked 行）：点击发起 update mutation + 成功 toast', async () => {
         setup()
-
-        const betaRow = screen.getByText('beta').closest('[data-skill-name]')!
-        const alphaRow = screen.getByText('alpha').closest('[data-skill-name]')!
-        expect(betaRow.querySelector('[data-skill-update="beta"]')).not.toBeNull()
-        expect(alphaRow.querySelector('[data-skill-update="alpha"]')).toBeNull()
-
         mockUpdateMutate.mockImplementationOnce((_vars, opts) => { opts?.onSuccess?.() })
-        betaRow.querySelector('[data-skill-update="beta"]')!.click()
+
+        // 点 tracked 行 beta 开 sheet → sheet 内更新钮
+        fireEvent.click(screen.getByText('beta'))
+        const updateBtn = await screen.findByText('settings.skills.detail.update')
+        fireEvent.click(updateBtn)
         await waitFor(() => {
             expect(mockUpdateMutate).toHaveBeenCalledWith(
                 { name: 'beta', workspaceId: 'global' },

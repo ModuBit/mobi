@@ -1047,7 +1047,27 @@
       "createNoWorkspace": "请先创建一个工作区（会话需要归属工作区）",
       "createFailed": "创建失败，请重试",
       "tabBundled": "系统",
-      "emptyBundled": "没有内置技能"
+      "emptyBundled": "没有内置技能",
+      "detail": {
+        "meta": "元数据",
+        "body": "指令正文",
+        "invocation": "调用方式",
+        "invocationClaudeOnly": "仅 Claude 调用",
+        "argumentHint": "参数提示",
+        "arguments": "参数",
+        "paths": "生效文件",
+        "model": "模型",
+        "effort": "投入等级",
+        "fork": "运行上下文",
+        "forkPlain": "子代理（fork）",
+        "forkAgent": "子代理 {{agent}}",
+        "background": "执行方式",
+        "backgroundWait": "等待结果",
+        "license": "许可证",
+        "compatibility": "环境要求",
+        "update": "更新",
+        "delete": "卸载"
+      }
     }
   },
   "debug": {

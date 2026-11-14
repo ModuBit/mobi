@@ -15,9 +15,26 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { BundledSkillInfo, SkillInfo } from '@mobi/shared'
+import type { BundledSkillInfo, SkillDetailResponse, SkillInfo } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/queryKeys'
+
+/**
+ * skill 详情（行数据 + 正文 + 扩展元数据）：点击列表行时按 name+scope 请求。
+ * 键挂 skillsRoot 前缀内——启停/更新等 mutation 成功后全族失效，重开 sheet 拿到新值。
+ */
+export function useSkillDetail(name: string | null, workspaceId: string): { detail: SkillDetailResponse | undefined; isLoading: boolean; error: Error | null } {
+    const api = useMobiApi()
+    const query = useQuery({
+        queryKey: queryKeys.skillsDetail(name ?? '', workspaceId),
+        enabled: name !== null,
+        queryFn: async () => {
+            const res = await api.skills.detail(name!, workspaceId)
+            return res.data
+        },
+    })
+    return { detail: query.data, isLoading: query.isPending, error: query.error }
+}
 
 /**
  * CC 内置 bundled 名单（skill-mgmt 票 06）：系统 tab 消费；daemon 侧版本化缓存，

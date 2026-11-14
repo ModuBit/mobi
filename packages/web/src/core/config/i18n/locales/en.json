@@ -1056,7 +1056,27 @@
       "createNoWorkspace": "Create a workspace first (sessions belong to one)",
       "createFailed": "Failed to start, please retry",
       "tabBundled": "System",
-      "emptyBundled": "No built-in skills"
+      "emptyBundled": "No built-in skills",
+      "detail": {
+        "meta": "Metadata",
+        "body": "Instructions",
+        "invocation": "Invocation",
+        "invocationClaudeOnly": "Claude only",
+        "argumentHint": "Argument hint",
+        "arguments": "Arguments",
+        "paths": "Active paths",
+        "model": "Model",
+        "effort": "Effort",
+        "fork": "Run context",
+        "forkPlain": "Subagent (fork)",
+        "forkAgent": "Subagent {{agent}}",
+        "background": "Execution",
+        "backgroundWait": "Wait for result",
+        "license": "License",
+        "compatibility": "Compatibility",
+        "update": "Update",
+        "delete": "Uninstall"
+      }
     }
   },
   "debug": {

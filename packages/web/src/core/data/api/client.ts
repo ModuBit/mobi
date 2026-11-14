@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, DaemonStatus, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse, ArchivedSessionsPage, ArchivedBatchResponse, ArchivedBatchItemResult } from './types'
-import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, RedactedTelemetrySettings, TelemetrySettingsSubmission, MapSettingsSubmission, MapSettingsView, PermissionAnnotations, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin, WorktreeListResponse, MergeBackResult, MergeBackRequest, DiscardResult, DeleteSessionResponse, SkillListResponse, SkillInfo, BundledSkillsResponse } from '@mobi/shared'
+import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, RedactedTelemetrySettings, TelemetrySettingsSubmission, MapSettingsSubmission, MapSettingsView, PermissionAnnotations, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin, WorktreeListResponse, MergeBackResult, MergeBackRequest, DiscardResult, DeleteSessionResponse, SkillListResponse, SkillInfo, BundledSkillsResponse, SkillDetailResponse } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 import { encodeArchivedWorkspaceId } from '@mobi/shared'
 
@@ -491,6 +491,11 @@ export function createMobiApi() {
             // 更新（tracked 限定）：包装 skills update
             update: (name: string, workspaceId: string) =>
                 client.post<{ ok: boolean }>(`/api/skills/${encodeURIComponent(name)}/update`, { workspaceId }),
+            // 详情：行数据 + SKILL.md 正文 + frontmatter 扩展元数据（点击行按需请求）
+            detail: (name: string, workspaceId: string) =>
+                client.get<SkillDetailResponse>('/api/skills/detail', {
+                    params: { name, workspaceId },
+                }),
             // 有技能的 workspaceId 集合（tabs 空项目隐藏的数据源；与列表同口径同名遮蔽判定）
             occupancy: () => client.get<{ workspaceIds: string[] }>('/api/skills/occupancy'),
             // CC 内置名单（daemon 自采 + 版本化缓存；首访可能秒级采集等待）

@@ -123,6 +123,51 @@ export const BundledSkillsResponseSchema = z.object({
 export type BundledSkillInfo = z.infer<typeof BundledSkillInfoSchema>
 export type BundledSkillsResponse = z.infer<typeof BundledSkillsResponseSchema>
 
+// ── skill 详情（GET /api/skills/detail；点击列表行时按需请求，列表接口不带 body 保持轻） ──
+
+/**
+ * SKILL.md frontmatter 扩展字段（官方 20 字段全集的用户可理解子集）。
+ * optional = 磁盘上没写（undefined = 详情页不显示该行）；scanner 列表路径不解析这些，
+ * 详情端点单独读取，保持列表扫描轻。
+ */
+export const SkillFrontmatterMetaSchema = z.object({
+    /** 补充触发时机/短语（与 description 拼进 listing，共享 1536 字符帽） */
+    whenToUse: z.string().optional(),
+    /** 自动补全参数提示，如 "[issue-number]" */
+    argumentHint: z.string().optional(),
+    /** 命名位置参数（$name 替换；空格串或 YAML 列表归一为数组） */
+    arguments: z.array(z.string()).optional(),
+    /** frontmatter user-invocable（false = 仅 Claude 可用，/ 菜单隐藏） */
+    userInvocable: z.boolean().optional(),
+    /** 激活 turn 的模型覆盖（或 fork 的模型） */
+    model: z.string().optional(),
+    /** low | medium | high | xhigh | max */
+    effort: z.string().optional(),
+    /** frontmatter context: fork（在子代理上下文运行） */
+    fork: z.boolean().optional(),
+    /** context: fork 时的子代理类型 */
+    agent: z.string().optional(),
+    /** fork 后台运行（false = 等结果；缺省 true，只有显式 false 才带值） */
+    background: z.boolean().optional(),
+    /** 自动激活限定的文件 glob（相对 cwd） */
+    paths: z.array(z.string()).optional(),
+    /** 许可证（Agent Skills spec） */
+    license: z.string().optional(),
+    /** 环境要求（500 字符内） */
+    compatibility: z.string().optional(),
+})
+
+export type SkillFrontmatterMeta = z.infer<typeof SkillFrontmatterMetaSchema>
+
+/** skill 详情响应：行数据（与列表同源）+ SKILL.md 正文（frontmatter 后全文）+ 扩展元数据 */
+export const SkillDetailResponseSchema = z.object({
+    skill: SkillInfoSchema,
+    body: z.string(),
+    meta: SkillFrontmatterMetaSchema,
+})
+
+export type SkillDetailResponse = z.infer<typeof SkillDetailResponseSchema>
+
 // ── 变更类端点的请求体（daemon 路由 safeParse 单源，先例 MemorySettingsSubmissionSchema） ──
 
 /** PATCH /api/skills/:name/visibility（enabled + 视角） */

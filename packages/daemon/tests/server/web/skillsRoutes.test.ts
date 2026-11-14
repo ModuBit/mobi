@@ -643,6 +643,79 @@ describe('skills REST 路由（GET /api/skills）', () => {
         })
     })
 
+    describe('GET /api/skills/detail（正文 + frontmatter 扩展元数据）', () => {
+        /** detail 请求（query 串形式，行内 skill 名走 URL 编码） */
+        async function getDetail(name: string, workspaceId?: string): Promise<Response> {
+            const params = new URLSearchParams({ name })
+            if (workspaceId) params.set('workspaceId', workspaceId)
+            return app.request(`/api/skills/detail?${params}`, { headers: authHeaders })
+        }
+
+        test('frontmatter 扩展字段 + 正文全量解析；未写的字段不出现在 meta', async () => {
+            // 动态建一个 meta-rich fixture（beforeAll 的 alpha 只有 name/description）
+            const mdPath = join(claudeDir, 'skills', 'meta-rich', 'SKILL.md')
+            mkdirSync(join(claudeDir, 'skills', 'meta-rich'), { recursive: true })
+            writeFileSync(mdPath, [
+                '---',
+                'name: meta-rich',
+                'description: Rich frontmatter',
+                'when_to_use: when debugging skills',
+                'argument-hint: "[issue-number]"',
+                'arguments: issue branch',
+                'user-invocable: false',
+                'model: opus',
+                'effort: high',
+                'context: fork',
+                'agent: Explore',
+                'background: false',
+                'paths: "src/**/*.ts"',
+                'license: MIT',
+                'compatibility: Claude Code v2.1+',
+                '---',
+                '',
+                '# 正文标题',
+                '',
+                '指令正文第一段。',
+            ].join('\n'))
+
+            try {
+                const res = await getDetail('meta-rich')
+                expect(res.status).toBe(200)
+                const { skill, body, meta } = await res.json() as { skill: { name: string }; body: string; meta: Record<string, unknown> }
+                expect(skill.name).toBe('meta-rich')
+                expect(body).toContain('# 正文标题')
+                expect(body).toContain('指令正文第一段。')
+                expect(meta).toMatchObject({
+                    whenToUse: 'when debugging skills',
+                    argumentHint: '[issue-number]',
+                    arguments: ['issue', 'branch'],
+                    userInvocable: false,
+                    model: 'opus',
+                    effort: 'high',
+                    fork: true,
+                    agent: 'Explore',
+                    background: false,
+                    paths: ['src/**/*.ts'],
+                    license: 'MIT',
+                    compatibility: 'Claude Code v2.1+',
+                })
+
+                // 对照：无扩展字段的 skill → meta 全空 + 正文为 markdown 全文
+                const plain = await getDetail('alpha')
+                const plainData = await plain.json() as { body: string; meta: Record<string, unknown> }
+                expect(Object.keys(plainData.meta).filter(k => plainData.meta[k] !== undefined)).toEqual([])
+                expect(plainData.body).toContain('instructions')
+            } finally {
+                rmSync(join(claudeDir, 'skills', 'meta-rich'), { recursive: true, force: true })
+            }
+        })
+
+        test('未知名 → 404；未知 workspace → 404', async () => {
+            expect((await getDetail('nope')).status).toBe(404)
+            expect((await getDetail('alpha', 'nope-ws')).status).toBe(404)
+        })
+    })
+
     describe('GET /api/skills/occupancy（tabs 空项目隐藏）', () => {
         test('有技能的 workspace 在集合里；空项目不在（同名遮蔽后为空 = 未占用）', async () => {
             // fixture workspace 有可见 project skill（proj-plain 等）→ 占用

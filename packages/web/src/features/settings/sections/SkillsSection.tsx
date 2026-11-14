@@ -26,6 +26,7 @@ import { FilePlus2, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { SKILL_SCOPE_BUNDLED, SKILL_SCOPE_GLOBAL, skillNameKey } from '@mobi/shared'
+import type { SkillInfo } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useBundledSkills, useSkillOccupancy, useSkills } from '@/core/data/hooks/queries/useSkills'
 import { filterByNameOrDescription } from '@/domain/filterList'
@@ -36,6 +37,7 @@ import { ScopeTabbedSection } from '@/features/settings/blocks/ScopeTabbedSectio
 import { useScopeOptions } from '@/features/settings/blocks/useScopeOptions'
 import { SkillRow } from '@/features/settings/skills/SkillRow'
 import { BundledSkillRow } from '@/features/settings/skills/BundledSkillRow'
+import { SkillDetailSheet } from '@/features/settings/skills/SkillDetailSheet'
 import { useSkillsActions } from '@/features/settings/skills/useSkillsActions'
 
 const { useToken } = antTheme
@@ -145,6 +147,15 @@ export function SkillsSection() {
         if (await actions.submitCreate(createScope)) setCreateOpen(false)
     }
 
+    /** 详情 sheet（点击行展开；scope 跟随打开行所在 tab） */
+    const [detailSkill, setDetailSkill] = useState<SkillInfo | null>(null)
+    const [detailOpen, setDetailOpen] = useState(false)
+
+    const openDetail = (skill: SkillInfo) => {
+        setDetailSkill(skill)
+        setDetailOpen(true)
+    }
+
     return (
         <Wrap $token={token}>
             <ScopeTabbedSection
@@ -197,13 +208,7 @@ export function SkillsSection() {
                                 skill={skill}
                                 onToggle={skill.overrideable ? (enabled: boolean) => actions.toggle(skill, enabled, tab) : undefined}
                                 toggling={actions.isToggling(skill.name)}
-                                onUpdate={skill.tracked ? () => actions.update(skill, tab) : undefined}
-                                updating={actions.isUpdating(skill.name)}
-                                onDelete={
-                                    skill.deletable
-                                        ? () => actions.requestDelete(skill, tab)
-                                        : undefined
-                                }
+                                onOpen={() => openDetail(skill)}
                             />
                         ))}
                     </SettingGroupCard>
@@ -263,6 +268,25 @@ export function SkillsSection() {
                     />
                 </FormBody>
             </Modal>
+            {/* 详情 sheet：动作按行能力字段降级（overrideable/tracked/deletable），卸载走 ConfirmMorph 就地确认 */}
+            <SkillDetailSheet
+                skill={detailSkill}
+                scope={tab}
+                open={detailOpen}
+                onClose={() => setDetailOpen(false)}
+                onToggle={detailSkill?.overrideable ? (enabled: boolean) => actions.toggle(detailSkill!, enabled, tab) : undefined}
+                toggling={detailSkill ? actions.isToggling(detailSkill.name) : false}
+                onUpdate={detailSkill?.tracked ? () => actions.update(detailSkill!, tab) : undefined}
+                updating={detailSkill ? actions.isUpdating(detailSkill.name) : false}
+                onDelete={detailSkill?.deletable
+                    ? async () => {
+                        const ok = await actions.deleteDirect(detailSkill!, tab)
+                        if (ok) setDetailOpen(false)
+                        return ok
+                    }
+                    : undefined}
+                deleting={false}
+            />
         </Wrap>
     )
 }

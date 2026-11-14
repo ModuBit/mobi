@@ -93,6 +93,8 @@ export const queryKeys = {
     skillsRoot,
     /** skill 管理列表（skill-mgmt 票 02；global | workspaceId 两视角；前缀失效走 skillsRoot） */
     skills: (workspaceId: string) => [...skillsRoot, workspaceId] as const,
+    /** skill 详情（行数据 + 正文 + 扩展元数据；按 name+scope 键控，启停后随 skills(name) 失效） */
+    skillsDetail: (name: string, workspaceId: string) => [...skillsRoot, 'detail', workspaceId, name] as const,
     /** 项目占用（有技能的 workspaceId 集合；装/删/建改变占用态——挂 skillsRoot 前缀内被连带失效） */
     skillsOccupancy: [...skillsRoot, 'occupancy'] as const,
     /** CC 内置名单（独立顶层键：与 skill 变更无因果关系，不被 skillsRoot 前缀失效连带重拉） */

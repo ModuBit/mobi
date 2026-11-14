@@ -15,21 +15,18 @@
  */
 
 /**
- * skill 列表行（skill-mgmt 票 02–05）：ManageRow 槽位结构上的语义皮肤——
- * 来源/渠道/调用性徽标 + 生效态 + 启停开关 + 更新/删除入口。
- * 开关只在 overrideable 行出现（插件/内置行只读语义由该字段承载）；更新只在 tracked 行
- * （渠道语义归 skills CLI）；删除只对 mobi 自管来源（personal/project）开放——synced 下次
- * 同步会拉回、plugin 归迭代 3；交互编排归 useSkillsActions。
+ * skill 列表行（skill-mgmt 票 02–05；2026-11-14 详情化改版）：ManageRow 槽位结构上的
+ * 语义皮肤——来源/渠道/调用性徽标 + 生效态 + 启停开关；行点击开详情 sheet
+ * （更新/卸载入口随详情 sheet 承载，行右槽只留开关）。
+ * 开关只在 overrideable 行出现（插件/内置行只读语义由该字段承载）；交互编排归 useSkillsActions。
  */
 import { theme as antTheme } from 'antd'
-import { RefreshCw, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { SkillInfo, SkillSource } from '@mobi/shared'
 import { isSkillShadowed } from '@mobi/shared'
 // uiarc 自管件（antd Switch 迁移）：行右槽启停
 import { Switch } from '@/ui/shadcn/switch/switch'
-import { IconButton } from '@/ui/base/interactive/IconButton'
 import { ManageRow, ManageRowTag } from '@/features/settings/blocks/ManageRow'
 
 const { useToken } = antTheme
@@ -59,15 +56,11 @@ export interface SkillRowProps {
     onToggle?: (enabled: boolean) => void
     /** 开关请求进行中（单行级，避免整列表闪烁） */
     toggling?: boolean
-    /** 更新回调（仅 tracked 行传入）；未传 = 行无更新入口 */
-    onUpdate?: () => void
-    /** 更新请求进行中 */
-    updating?: boolean
-    /** 删除回调（仅 personal/project 行传入）；未传 = 行无删除入口 */
-    onDelete?: () => void
+    /** 行点击 → 详情 sheet */
+    onOpen: () => void
 }
 
-export function SkillRow({ skill, onToggle, toggling = false, onUpdate, updating = false, onDelete }: SkillRowProps) {
+export function SkillRow({ skill, onToggle, toggling = false, onOpen }: SkillRowProps) {
     const { token } = useToken()
     const { t } = useTranslation()
 
@@ -82,6 +75,7 @@ export function SkillRow({ skill, onToggle, toggling = false, onUpdate, updating
             // 生效态 off 整行弱化（遮蔽行保留对比度：它的可操作性与表象不同）
             opacity={off && !shadowed ? 0.55 : 1}
             data-skill-name={skill.name}
+            onClick={onOpen}
             badges={
                 <>
                     <ManageRowTag>{t(SOURCE_TAG_KEY[skill.source])}</ManageRowTag>
@@ -94,7 +88,8 @@ export function SkillRow({ skill, onToggle, toggling = false, onUpdate, updating
                 </>
             }
             right={
-                <>
+                // 右槽内交互（开关）不触发行点击进详情
+                <div onClick={e => e.stopPropagation()} role="presentation">
                     {shadowed && <StateBadge $token={token} $warn>{t('settings.skills.state.shadowed')}</StateBadge>}
                     {!shadowed && off && <StateBadge $token={token} $warn={false}>{t('settings.skills.state.off')}</StateBadge>}
                     {onToggle && (
@@ -105,29 +100,7 @@ export function SkillRow({ skill, onToggle, toggling = false, onUpdate, updating
                             aria-label={t('settings.skills.toggleAria', { name: skill.name })}
                         />
                     )}
-                    {onUpdate && (
-                        <IconButton
-                            icon={<RefreshCw size={14} />}
-                            size={26}
-                            loading={updating}
-                            tooltip={t('settings.skills.updateTooltip')}
-                            aria-label={t('settings.skills.updateAria', { name: skill.name })}
-                            data-skill-update={skill.name}
-                            onClick={onUpdate}
-                        />
-                    )}
-                    {onDelete && (
-                        <IconButton
-                            icon={<Trash2 size={14} />}
-                            danger
-                            size={26}
-                            tooltip={t('settings.skills.deleteTooltip')}
-                            aria-label={t('settings.skills.deleteAria', { name: skill.name })}
-                            data-skill-delete={skill.name}
-                            onClick={onDelete}
-                        />
-                    )}
-                </>
+                </div>
             }
         />
     )

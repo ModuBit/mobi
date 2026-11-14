@@ -24,6 +24,7 @@
  *   project 级 cwd=workspace），untracked 直接删 agent 目录条目（symlink 只删链接）
  * - POST /api/skills/install：包装 skills add（symlink 形态、只装 claude-code agent）
  * - POST /api/skills/:name/update：包装 skills update（tracked 限定）
+ * - GET /api/skills/detail：行数据 + SKILL.md 正文 + frontmatter 扩展元数据（点击行按需请求）
  * - GET /api/skills/occupancy：有技能的 workspaceId 集合（web tabs 空项目隐藏的数据源）
  * - GET /api/skills/bundled：CC 内置名单（daemon 自采 + 版本化缓存，票 06）
  *
@@ -47,6 +48,7 @@ import { defaultSkillScanRoots, listGlobalSkills, listWorkspaceSkills, occupiedW
 import { defaultSkillsCliRunner, installSkill, removeTrackedSkill, removeUntrackedSkill, updateSkill } from '../../skills/skillCli'
 import { getBundledSkills } from '../../skills/bundledSkills'
 import { buildSkillCreatePrompt } from '../../skills/skillCreatePrompt'
+import { parseSkillDetail } from '../../skills/skillDetail'
 import { resolveScope, scopeView, type SkillScope } from '../../skills/skillScope'
 import type { SkillsDeps } from '../../skills/skillDeps'
 import { writeSkillOverride } from '../../skills/skillSettingsWriter'
@@ -168,6 +170,19 @@ export function createSkillsRoutes(
 
         const targetDir = scopeView(scanRoots(), scope).skillRoot
         return c.json({ targetDir, prompt: buildSkillCreatePrompt(targetDir) })
+    })
+
+    app.get('/skills/detail', (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const ctx = skillContext(c, engine, c.req.query('workspaceId') ?? SKILL_SCOPE_GLOBAL, c.req.query('name') ?? '')
+        if (ctx instanceof Response) return ctx
+
+        // 正文 + 扩展元数据按需读（列表路径不解析这些）；symlink 行的 path 已归一可读
+        const detail = parseSkillDetail(ctx.skill.path)
+        if (!detail) return c.json({ error: 'Skill file is unreadable' }, 410)
+        return c.json({ skill: ctx.skill, body: detail.body, meta: detail.meta })
     })
 
     app.get('/skills/occupancy', (c) => {
