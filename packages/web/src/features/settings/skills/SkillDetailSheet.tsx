@@ -165,7 +165,7 @@ export function SkillDetailSheet({ skill, scope, open, onClose, onToggle, toggli
     if (!skill) return null
 
     return (
-        <BottomSheet open={open} onClose={onClose} showClose title={skill.name}>
+        <BottomSheet open={open} onClose={onClose} title={skill.name}>
             <SkillDetailContent
                 skill={skill}
                 scope={scope}
@@ -238,7 +238,7 @@ function SkillDetailContent({ skill, scope, token, t, onToggle, toggling, onUpda
                 </>
             )}
 
-            <SectionTitle $token={token}>{t('settings.skills.detail.body')}</SectionTitle>
+            {/* 正文不加小标题：sheet 里唯一的大块内容，标题是冗余（元数据区标题保留） */}
             {isLoading ? (
                 <Loading><Spin size="small" /></Loading>
             ) : (

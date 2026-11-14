@@ -845,8 +845,12 @@ function Sheet({
         <>
             {/* 遮罩自己渲染：Radix 的 Overlay 在 modal={false} 下**根本不渲染**（源码里
                 `context.modal ? <DialogOverlayImpl/> : null`），而遮罩的视觉、层级、随位移变暗
-                本来就全归本组件。点它＝点在 Content 外部 → 走 DismissableLayer 的
-                onPointerDownOutside 关闭（下面 Content 上挂着）。
+                本来就全归本组件。关闭**自己绑在 mask 上**：Radix 的 pointerDownOutside 在
+                dialog 1.3.x 的 deferPointerDownOutside 机制下会落到 click 再派发，而 click 的
+                capture 记账（handleInteractionCapture）发现 target 不在 dismissableSurfaces
+                （我们的 mask 没注册进去——Radix Overlay 不渲染）就把 dispatch 吞掉，点遮罩
+                从此永远关不掉（真机实锤：handlePointerDown 被调、pointerDownOutside 零派发）。
+                守卫与 onPointerDownOutside 一致：在场时刻 / 呈现途中不关，统一走 requestClose。
                 data-state 自己写：Radix 那套 data-state 随 Overlay 一起没了，而 CSS 的
                 「离场途中不拦截指针事件」正是按它判的（不写就整段滑出动画挡着下层点不到） */}
             <motion.div
@@ -854,6 +858,14 @@ function Sheet({
                 data-state={isPresent ? 'open' : 'closed'}
                 className={[sheetClass.mask, styles.mask].join(' ')}
                 style={{ opacity: backdrop, ['--sheet-z' as string]: layerZ } as unknown as CSSProperties}
+                onClick={(event) => {
+                    const { present, at } = presenceChange.current
+                    if (!present || event.timeStamp < at) return
+                    // 呈现途中（屏下收敛等待 + 弹入上升）不关：sheet 还没「到位」，点按
+                    // 落在遮罩上只是差了零点几秒，用户瞄准的是即将盖住的条目
+                    if (!presentedRef.current) return
+                    requestCloseRef.current?.()
+                }}
             />
             <DialogPrimitive.Content
                 asChild
