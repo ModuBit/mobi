@@ -57,8 +57,15 @@ export interface RpcHandlerConfig {
  * RPC 处理器选项
  */
 export interface RpcHandlerOptions {
-    /** 是否跳过空闲计时器重置，默认 false */
-    skipIdleTimerReset?: boolean;
+    /**
+     * 本次 RPC 是否算作「用户交互活动」（计入会话空闲判定），默认 false。
+     *
+     * 白名单语义是刻意的：daemon→session 的 RPC 大多由系统动作发起（能力刷新、
+     * gate 查询、跨会话投递），把它们算作活动会让空闲计时被无限期清零——历史上
+     * 三次复发都在这里（逐个加 skip 补丁，每新增一条 RPC 就重新引入）。只有明确
+     * 由用户操作触发的 RPC 才标 true。
+     */
+    countsAsUserActivity?: boolean;
 }
 
 /**

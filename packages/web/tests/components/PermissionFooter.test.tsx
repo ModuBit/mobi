@@ -45,6 +45,7 @@ vi.mock('react-i18next', async (importOriginal) => {
                     'chat.tool.allowAll': '全部允许',
                     'chat.tool.waitingForApproval': '等待审批',
                     'chat.tool.requestFailed': '请求失败',
+                    'chat.error.title.network': '网络连接中断',
                     'chat.tool.irreversibleHint': '不可逆，谨慎',
                     'chat.tool.approveAutoAccept': '批准（自动接受编辑）',
                     'chat.tool.approveAuto': '批准（自动审批）',
@@ -183,6 +184,16 @@ describe('PermissionFooter', () => {
         renderFooter(makeTool())
         fireEvent.click(screen.getByText('允许'))
         await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    })
+
+    it('网络层断连（无 response）显示本地化文案，不透传 axios 原文 Network Error', async () => {
+        // 回归：axios 网络层错误的 message 是英文原文 "Network Error"，直译上屏（2026-11-13 用户截图）
+        const networkDown = new AxiosError('Network Error')
+        mockApprove.mockRejectedValueOnce(networkDown)
+        renderFooter(makeTool())
+        fireEvent.click(screen.getByText('允许'))
+        await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('网络连接中断'))
+        expect(screen.queryByText('Network Error')).not.toBeInTheDocument()
     })
 
     it('approve 成功后失效 session 缓存，UI 移除 permission 不依赖 SSE', async () => {

@@ -157,9 +157,10 @@ export class ApiSessionClient extends EventEmitter {
             onIdleTimeoutBlockedRecheck: () => this.dormancyDecide?.() ?? true
         })
 
-        // 设置 RPC 调用回调
-        this.rpcHandlerManager.setOnRpcCalled(() => {
-            this.idleTimer?.reset()
+        // 设置 RPC 调用回调：只有显式标记 countsAsUserActivity 的 RPC 才到达这里
+        // （白名单语义见 RpcHandlerOptions，历史三次复发的收口点）
+        this.rpcHandlerManager.setOnRpcCalled((method) => {
+            this.idleTimer?.reset(`rpc:${method}`)
         })
 
         const rpcHandlerManager = this.rpcHandlerManager
@@ -185,8 +186,9 @@ export class ApiSessionClient extends EventEmitter {
             session,
             transport: this.transport,
             onMessage: (content) => this.emit('message', content),
-            // 版本化更新等协议活动重置空闲计时器（生命周期语义留在门面）
-            onActivity: () => this.idleTimer?.reset(),
+            // 版本化更新（metadata/agentState）不算用户活动：会话自身写入会让空闲计时
+            // 被无限期清零（同样的自我击败语义见 RpcHandlerOptions）。用户活动只认
+            // 消息出队 / 显式 RPC / 终端输入三类信号。
         })
     }
 
@@ -471,6 +473,9 @@ export class ApiSessionClient extends EventEmitter {
     /** 治理水位快照（票 1.2）：state/lastActivityAt 本地可得；blockers 经 provider；rss 抽稀采样；
      *  mode（票 2.2 裁决 #12）——local 仅占名额，daemon 侧逐出与内存汇总据此排除 */
     private buildGovernanceSnapshot(running: boolean, mode: 'local' | 'remote'): SessionGovernanceSnapshot {
+        // 心跳顺带驱动空闲自愈：空闲定时器链丢失时按 lastActivityAt 补判到点
+        // （心跳是会话存活的必要信号，用它兜底生命周期判定，见 IdleTimer.tick）
+        this.idleTimer?.tick()
         this.keepAliveBeatCount++
         if (this.keepAliveBeatCount % ApiSessionClient.RSS_SAMPLE_EVERY_N_BEATS === 1) {
             this.lastRssSample = sampleProcessTreeRss()
@@ -578,9 +583,11 @@ export class ApiSessionClient extends EventEmitter {
 
     /**
      * 重置空闲计时器（有活动时）
+     *
+     * @param source 活动来源（观测维度，见 IdleTimer.reset）
      */
-    resetIdleTimer(): void {
-        this.idleTimer?.reset()
+    resetIdleTimer(source: string = 'api-session'): void {
+        this.idleTimer?.reset(source)
     }
 
     private handleDisconnectTimeout(): void {

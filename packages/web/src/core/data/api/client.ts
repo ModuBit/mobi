@@ -57,6 +57,15 @@ export function setUnauthorizedHandler(handler: () => void): () => void {
 // 不再手写 Authorization header（CORS credentials 配套见 daemon server.ts）
 
 /**
+ * 网络层失败的判据：请求根本没到服务端（无 response）。此时 axios 的 message 是
+ * 英文原文 "Network Error"，直译上屏即通知卡片里的红框英文——UI 层应换本地化提示，
+ * 判定收口在此处，勿在消费方各写一遍 isAxiosError && !response。
+ */
+export function isNetworkError(error: unknown): boolean {
+    return axios.isAxiosError(error) && !error.response
+}
+
+/**
  * 从请求异常中提取服务端下发的业务错误文案。
  * axios 对非 2xx 抛 AxiosError，其 message 只有笼统的「Request failed with status code N」；
  * daemon 的错误响应 body 恒为 { success:false, error }，把真实原因（如读边界的

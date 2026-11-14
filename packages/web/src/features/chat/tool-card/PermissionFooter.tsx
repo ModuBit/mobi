@@ -21,7 +21,8 @@ import type { PermissionUpdate, PermissionUpdateDestination, SDKUIHints } from '
 import { memo, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
-import { Alert, Input, theme as antTheme } from 'antd'
+import { describeActionError } from '@/domain/chat/actionError'
+import { Input, theme as antTheme } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
@@ -254,7 +255,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                 && e.response?.status === 404
                 && (data?.code === 'permission_request_gone' || data?.error === 'Request not found')
             if (!isHandled) {
-                setError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
+                setError(describeActionError(e, t))
                 handled = false
             }
         }
@@ -398,14 +399,12 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                         </div>
                     ) : null}
 
-                    {/* 错误提示：以 Alert 形式呈现，role=alert 便于无障碍 + 测试 */}
+                    {/* 错误提示：行内小字（对齐 denied reason 与 RequestUserInputFooter 的既有语言）——
+                        错误是操作的附属反馈，满宽色块会压过下方按钮组的视觉焦点；role=alert 便于无障碍 + 测试 */}
                     {error ? (
-                        <Alert
-                            type="error"
-                            showIcon
-                            message={error}
-                            style={{ fontSize: 12, padding: '8px 12px' }}
-                        />
+                        <div role="alert" style={{ fontSize: 12, color: token.colorError, wordBreak: 'break-word' }}>
+                            {error}
+                        </div>
                     ) : null}
 
                     {/* 不可逆提示不在此处渲染：四条分支各自承载——移动端在 actions 内的分隔线，

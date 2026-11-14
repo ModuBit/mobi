@@ -652,7 +652,7 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
             void applied.then(() => apiSession.refreshFastModeState());
         }
         return { applied: { permissionMode: currentPermissionMode, model: currentModel, effort: currentEffort, fastMode: currentFastMode } };
-    });
+    }, { countsAsUserActivity: true });
 
     // Web UI 重命名 → daemon rename-session RPC → 回写 agent 侧标题（Mobi → agent 单向同步）
     apiSession.rpcHandlerManager.registerHandler('rename-session', async (payload: unknown) => {
@@ -664,7 +664,7 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
             throw new Error('rename requires non-empty title string');
         }
         await syncAgentRename(claudeLocator(currentSessionRef.current), title);
-    });
+    }, { countsAsUserActivity: true });
 
     // rewind RPC（Web → daemon → CLI）：dry-run 预检与执行闸门。restart module 挂在 Session 上——
     // launcher while 循环与此处共享同一实例（loop 创建、onSessionReady 回填 currentSessionRef），
@@ -703,7 +703,7 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
             setOutputStyle: session.setOutputStyle,
             clearSessionId: session.clearSessionId,
         }, styleParsed.data);
-    });
+    }, { countsAsUserActivity: true });
 
     let loopError: unknown = null;
     let loopFailed = false;

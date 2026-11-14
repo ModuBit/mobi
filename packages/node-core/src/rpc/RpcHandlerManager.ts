@@ -36,7 +36,7 @@ export class RpcHandlerManager {
     private readonly scopePrefix: string
     private readonly logger: (message: string, data?: unknown) => void
     private socket: Socket | null = null
-    private onRpcCalled?: () => void
+    private onRpcCalled?: (method: string) => void
 
     constructor(config: RpcHandlerConfig) {
         this.scopePrefix = config.scopePrefix
@@ -44,9 +44,9 @@ export class RpcHandlerManager {
     }
 
     /**
-     * 设置 RPC 调用回调（用于重置空闲计时器）
+     * 设置 RPC 调用回调（用户活动类 RPC 到达时触发，用于重置空闲计时器）
      */
-    setOnRpcCalled(callback: (() => void) | undefined): void {
+    setOnRpcCalled(callback: ((method: string) => void) | undefined): void {
         this.onRpcCalled = callback;
     }
 
@@ -76,9 +76,9 @@ export class RpcHandlerManager {
                 return { error: 'Method not found' }
             }
 
-            // 检查是否跳过计时器重置
-            if (!entry.options?.skipIdleTimerReset && this.onRpcCalled) {
-                this.onRpcCalled()
+            // 只有显式标记为用户操作的 RPC 才算活动（白名单语义见 RpcHandlerOptions）
+            if (entry.options?.countsAsUserActivity && this.onRpcCalled) {
+                this.onRpcCalled(request.method)
             }
 
             // params 已是对象（RPC 边界不再 JSON.stringify）

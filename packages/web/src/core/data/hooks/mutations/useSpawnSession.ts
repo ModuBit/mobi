@@ -16,7 +16,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { useMobiApi } from '@/core/data/api/client'
+import { useMobiApi, extractApiError, isNetworkError } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/queryKeys'
 import type { SpawnResponse } from '@/core/data/api/types'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
@@ -78,7 +78,11 @@ export function useSpawnSession(): {
                 // shape 异常（machine 离线 / RPC 返回非预期结构）
                 return { type: 'error', message: t('newSession.createFailed') }
             } catch (e) {
-                const message = e instanceof Error ? e.message : t('newSession.createFailed')
+                // core 层不能引 domain 的 describeActionError（依赖只许向下）——用同源
+                // 原语组合：网络层失败给本地化提示，其余走业务 detail 提取
+                const message = isNetworkError(e)
+                    ? t('chat.error.title.network')
+                    : extractApiError(e)
                 return { type: 'error', message }
             }
         },

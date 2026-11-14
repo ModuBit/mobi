@@ -41,15 +41,11 @@ export function registerCommandHandlers(
     workingDirectory?: string,
     opts?: RefreshMetadataOptions,
 ): void {
-    // skipIdleTimerReset（pending #114）：refreshMetadata 是 daemon→session RPC 全集里
-    // 唯一的 ambient 成员（SWR 后台刷新，metadata 端点命中缓存时 fire-and-forget、
-    // 周期性发生）——进 idle reset 会持续清零空闲倒计时（后台刷新期间会话永不休眠）。
-    // 其余 daemon→session RPC（permission/abort/rewind/config 族）都是用户显式动作，
-    // 保持重置语义。与 daemon 侧 touchUpdatedAt 的 ambient opt-out 同一分类学
+    // refreshMetadata 是 daemon→session RPC 里的 ambient 成员（SWR 后台刷新、周期性发生）——
+    // 不计入用户活动（RpcHandlerOptions 的白名单默认即 false，无需标注）
     rpcHandlerManager.registerHandler<{ cwd?: string }, RefreshMetadataResponse>(
         'refreshMetadata',
         (params) => refreshMetadataImpl(params, workingDirectory, opts),
-        { skipIdleTimerReset: true },
     )
 }
 

@@ -548,7 +548,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             if (this.queryRef) {
                 await this.queryRef.stopTask(taskId)
             }
-        });
+        }, { countsAsUserActivity: true });
 
         // 取消排队消息（web → daemon → cli 两阶段取消的 CLI 侧）
         // CLI 是「是否仍可安全取消」的权威：in-flight（已 collectBatch/steal，即将喂 agent）→ 不可取消，
@@ -557,7 +557,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             const { localId } = (params ?? {}) as { localId?: string }
             if (!localId) return { status: 'submitted' }
             return { status: session.queue.tryCancel(localId) }
-        });
+        }, { countsAsUserActivity: true });
 
         // steer 排队消息（web → daemon → cli）：把仍排队的消息从内存队列取出，
         // 立即 push 进 SDK input stream，由 Claude Code 在内部安全点处理。
@@ -607,7 +607,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             // push 成功 → 立即通知 daemon 已提交（与 collectBatch 同路径）
             session.client.emitMessagesSubmitted([localId])
             return { status: 'steered' }
-        });
+        }, { countsAsUserActivity: true });
 
         // 跨会话消息投递（daemon → CLI）：别的会话的 agent 把一条消息投给本会话。
         //
@@ -1028,7 +1028,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                 if (!msg) return null;
 
                                 // 重置空闲计时器（用户发送消息）
-                                session.client.resetIdleTimer();
+                                session.client.resetIdleTimer('message-dequeue');
 
                                 // 退出哨兵（rewind / output style 切换共用 RESTART_EXIT_SENTINEL）：
                                 // 识别后不暂存 pending、不推送 SDK（NUL 前缀串作为 prompt 会污染会话）。

@@ -42,6 +42,7 @@ import { ArchivedListSkeleton } from './ArchivedListSkeleton'
 import { SkeletonBar } from './SkeletonBar'
 import { RectHoverGlideLayer } from '@/ui/base/motion/RectHoverGlideLayer'
 import { useMobiApi } from '@/core/data/api/client'
+import { describeActionError } from '@/domain/chat/actionError'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session } from '@/core/data/api/types'
 
@@ -494,7 +495,7 @@ export function ArchivedSessionsPage() {
         notification.error({
             key: 'archived-batch-result',
             message: t('archived.batch.resultTitle'),
-            description: error instanceof Error ? error.message : t('common.error'),
+            description: describeActionError(error, t, 'common.error'),
             duration: 6,
         })
     }

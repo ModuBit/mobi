@@ -15,7 +15,7 @@
  */
 
 import { useMutation } from '@tanstack/react-query'
-import { useMobiApi } from '@/core/data/api/client'
+import { useMobiApi, extractApiError, isNetworkError } from '@/core/data/api/client'
 
 export interface SaveFileArgs {
     path: string
@@ -58,7 +58,8 @@ export function useSaveFile(sessionId: string) {
             } catch (e) {
                 // validateStatus 已放行 409/500，此处仅断网 / 超时 / axios 拦截器 reject 等网络异常。
                 // 包成 error 而非抛出，兑现「mutationFn 永不抛错」契约，避免 doSave 的 setTimeout 产生未处理 rejection。
-                return { conflict: false, error: e instanceof Error ? e.message : 'save failed' }
+                // 断网时 message 是英文 "Network Error" 原文——与上传/审批同口径换可读提示
+                return { conflict: false, error: isNetworkError(e) ? 'Network error' : extractApiError(e) }
             }
         },
         retry: false,

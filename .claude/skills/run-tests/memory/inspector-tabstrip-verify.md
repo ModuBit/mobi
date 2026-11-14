@@ -19,9 +19,13 @@ const shell = document.querySelector('[data-left]')
 const vp = [...shell.children].find(c => getComputedStyle(c).overflowX === 'auto')  // 滚动视口
 const sel = document.querySelector('[data-tab-selection]')                          // 滑移的选中块
 // 每个页签的 aria-controls 都必须有落点：未激活的面板渲染成空壳 + display:none（内容不挂载）
-;[...document.querySelectorAll('[role="tab"]')].every(t => !!document.getElementById(t.getAttribute('aria-controls')))
+;[...document.querySelectorAll('[role="tab"]')].every(t => !t.hasAttribute('aria-controls') || !!document.getElementById(t.getAttribute('aria-controls')))
 // 且任一时刻只有一个面板 display 不为 none（其余 hidden 的不进无障碍树——a11y snapshot 里只该有一个 tabpanel）
 ```
+- 上面的 aria-controls 探针**只适用于有面板的页签**（InspectorPane 场景）。`panelless`
+  页签（纯分段控件，如 ScopeTabbedSection 的 scope 切换）**不渲染 aria-controls 也不渲染
+  面板**——对它们跑原版探针（`getElementById(t.getAttribute('aria-controls'))`）会把
+  `getAttribute` 返回的 null 当 id 查而误报；断言前先放过无该属性的 tab（2026-11-14）。
 - 外壳：`backgroundColor` = 轨道底色（`--mobi-hover`）、1px 描边、`border-radius: 14px`；
   `data-left` / `data-right` 两个属性是两端渐隐的机器可读态（**没有** `data-overflow`——溢出直接量
   `list.scrollWidth > list.clientWidth`，见 §2）

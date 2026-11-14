@@ -31,7 +31,8 @@ import type { ReactNode } from 'react'
 const mocks = vi.hoisted(() => ({
     spawn: vi.fn(),
 }))
-vi.mock('@/core/data/api/client', () => ({
+vi.mock('@/core/data/api/client', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@/core/data/api/client')>()),
     useMobiApi: () => ({ sessions: { spawn: mocks.spawn } }),
 }))
 // t 仅作兜底文案，返回 key 即可

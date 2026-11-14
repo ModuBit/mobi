@@ -29,6 +29,7 @@ import {
 import { useMobiApi } from '@/core/data/api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/core/lib/queryKeys'
+import { describeActionError } from '@/domain/chat/actionError'
 import { GlideLayer, HoverGlideLayer } from '@/ui/base/motion/GlideLayer'
 import { useGlideHighlight } from '@/ui/base/motion/useGlideHighlight'
 
@@ -111,7 +112,7 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
             queryClient.invalidateQueries({ queryKey: queryKeys.session(props.sessionId) })
             props.onDone()
         } catch (e) {
-            setError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
+            setError(describeActionError(e, t))
         } finally {
             setLoading(false)
         }

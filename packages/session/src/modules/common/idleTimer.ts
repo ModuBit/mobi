@@ -43,6 +43,14 @@ export const DEFAULT_RECHECK_MS = 30_000;
  */
 const MAX_IDLE_TICK_MS = 60_000;
 
+/**
+ * reset 观测窗口（毫秒）：窗口内首次 reset 落 INFO（带来源），窗口结束时若累计
+ * 多于一次再落一条汇总。历史上「会话空闲数天不休眠」多次复发，每次都无法回答
+ * 「是没启动、定时器丢了、还是被谁 reset 了」——start 与到点有 INFO，唯独 reset
+ * 只有 debug（生产不落盘）。本窗口让高频 reset 可定位且不刷屏。
+ */
+const RESET_LOG_WINDOW_MS = 60_000;
+
 export interface IdleTimerOptions {
     /** 实例名（日志/遥测维度；缺省 'idle'——向后兼容会话实例的既有构造） */
     name?: string;
@@ -97,6 +105,10 @@ export class IdleTimer {
     private lastActivityAt = 0;
     private idleTimer: ReturnType<typeof setTimeout> | null = null;
     private blockedRecheckTimer: ReturnType<typeof setTimeout> | null = null;
+    /** reset 观测窗口状态（见 RESET_LOG_WINDOW_MS） */
+    private resetWindowStart = 0;
+    private resetWindowCount = 0;
+    private resetWindowSources = new Map<string, number>();
     private readonly onIdleTimeoutBlockedRecheck?: () => boolean;
     private readonly recheckIntervalMs: number;
     private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -135,6 +147,7 @@ export class IdleTimer {
      */
     stop(): void {
         this.clearAllTimers();
+        this.closeResetWindow();
         this.state = 'stopped';
         this.isDisconnected = false;
         this.isHidden = false;
@@ -143,8 +156,11 @@ export class IdleTimer {
 
     /**
      * 重置计时器（有活动时）
+     *
+     * @param source 重置来源（观测维度，如 'message-dequeue' / 'rpc:permission'）。
+     * 生产日志据此定位「谁在重置空闲计时」——不要传常量兜底掩盖来源。
      */
-    reset(): void {
+    reset(source: string = 'unspecified'): void {
         if (this.state === 'stopped') {
             return;
         }
@@ -162,7 +178,75 @@ export class IdleTimer {
         this.state = 'running';
         this.lastActivityAt = Date.now();
         this.scheduleIdleTimers();
-        logger.debug('[IdleTimer] Reset');
+        this.noteReset(source);
+    }
+
+    /**
+     * 外部活信号驱动的自愈检查（心跳每 2s 调用一次）。
+     *
+     * 空闲定时器链依赖每 60s 一拍的 setTimeout 自持重排；定时器一旦丢失，链就永久
+     * 停摆（历史复发：空闲 30+ 小时无任何到点日志）。心跳是会话存活的必要信号，
+     * 用它的节拍按 lastActivityAt 兜底补判到点——与 scheduleIdleTimers 的折算语义
+     * 同源，只是驱动源换成外部活信号。
+     */
+    tick(): void {
+        if (this.isDisconnected || this.isHidden) {
+            return;
+        }
+        // blocked 态自愈：复查靠单发 setTimeout，一旦静默丢失，gate 解除后既不复查
+        // 也不退出（与 2026-10-22 事故同一丢失类；setHidden 恢复路径已补排，心跳
+        // 路径此前是同一个洞）——按心跳节拍补回。blocked 无 deadline 可判（到点
+        // 已发生过，在等 gate），只需保活复查链
+        if (this.state === 'blocked') {
+            if (!this.blockedRecheckTimer) this.scheduleBlockedRecheck();
+            return;
+        }
+        if (this.state !== 'running') {
+            return;
+        }
+        if (!this.idleTimer) {
+            // 链已断（本应在 running 态持有切片定时器）→ 重排补回
+            this.scheduleIdleTimers();
+            return;
+        }
+        if (Date.now() - this.lastActivityAt >= this.resolveIdleTimeoutMs()) {
+            this.handleDeadline();
+        }
+    }
+
+    /** reset 观测：窗口首次落 INFO，窗口结束时超过一次则落汇总（见 RESET_LOG_WINDOW_MS） */
+    private noteReset(source: string): void {
+        const now = Date.now();
+        const windowExpired = this.resetWindowStart === 0 || now - this.resetWindowStart >= RESET_LOG_WINDOW_MS;
+        if (windowExpired) {
+            this.flushResetWindow();
+            this.resetWindowStart = now;
+            logger.info(`[IdleTimer] reset (source=${source})`);
+        }
+        this.resetWindowCount++;
+        this.resetWindowSources.set(source, (this.resetWindowSources.get(source) ?? 0) + 1);
+    }
+
+    private flushResetWindow(): void {
+        if (this.resetWindowCount > 1) {
+            const sources = [...this.resetWindowSources.entries()]
+                .map(([source, count]) => `${source}=${count}`)
+                .join(', ');
+            logger.info(`[IdleTimer] reset ×${this.resetWindowCount} in ${RESET_LOG_WINDOW_MS}ms (${sources})`);
+        }
+        this.resetWindowCount = 0;
+        this.resetWindowSources.clear();
+    }
+
+    /**
+     * 生命周期收尾（stop/destroy）：末窗口的 reset ×N 汇总此刻落盘（否则只在「下一次
+     * reset 到来」时惰性冲刷，长期空闲后再无 reset，汇总行永远不出现——post-mortem
+     * 答不出「hang 前谁在反复 reset」），窗口状态归零——跨生命周期不混算来源，
+     * 新生命周期首条 reset 视为新窗口正常落 INFO。
+     */
+    private closeResetWindow(): void {
+        this.flushResetWindow();
+        this.resetWindowStart = 0;
     }
 
     /**
@@ -222,6 +306,7 @@ export class IdleTimer {
      */
     destroy(): void {
         this.clearAllTimers();
+        this.closeResetWindow();
         this.state = 'stopped';
         this.isDisconnected = false;
         this.isHidden = false;
@@ -275,21 +360,30 @@ export class IdleTimer {
 
         // 超时计时器
         this.idleTimer = setTimeout(() => {
-            if (this.isDisconnected) {
-                // 到点落在断开窗口内：不在这里排程，等 onReconnect 按 lastActivityAt 折算补发。
-                // INFO 落盘——这条是「为什么没休眠」的现场证据，此前是静默返回
-                logger.info('[IdleTimer] idle deadline reached while disconnected, waiting for reconnect');
-                return;
-            }
-            // 休眠 gate：阻塞则进入复查状态，等阻塞事务解除（周期复查通过）再退出
-            if (this.onIdleTimeoutBlockedRecheck && !this.onIdleTimeoutBlockedRecheck()) {
-                logger.info('[IdleTimer] idle deadline blocked by dormancy gate, entering recheck');
-                this.enterBlocked();
-                return;
-            }
-            logger.info(`[IdleTimer] idle deadline reached (idle for ${Date.now() - this.lastActivityAt}ms), exiting`);
-            this.onIdleTimeout();
+            this.idleTimer = null;
+            this.handleDeadline();
         }, remainingMs);
+    }
+
+    /**
+     * 空闲到点的单一判定路径（切片定时器与 tick 兜底共用）。
+     * 断开窗口内不在这里排程，等 onReconnect 按 lastActivityAt 折算补发。
+     */
+    private handleDeadline(): void {
+        this.clearIdleTimers();
+        if (this.isDisconnected) {
+            // INFO 落盘——这条是「为什么没休眠」的现场证据，此前是静默返回
+            logger.info('[IdleTimer] idle deadline reached while disconnected, waiting for reconnect');
+            return;
+        }
+        // 休眠 gate：阻塞则进入复查状态，等阻塞事务解除（周期复查通过）再退出
+        if (this.onIdleTimeoutBlockedRecheck && !this.onIdleTimeoutBlockedRecheck()) {
+            logger.info('[IdleTimer] idle deadline blocked by dormancy gate, entering recheck');
+            this.enterBlocked();
+            return;
+        }
+        logger.info(`[IdleTimer] idle deadline reached (idle for ${Date.now() - this.lastActivityAt}ms), exiting`);
+        this.onIdleTimeout();
     }
 
     /** 空闲超时值（支持动态读取，每次排程求值的单一入口） */

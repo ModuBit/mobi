@@ -48,7 +48,6 @@ function makeHarness() {
     } as unknown as SessionTransport
 
     const onMessage = vi.fn()
-    const onActivity = vi.fn()
     const channel = new SessionChannel({
         token: 'token',
         session: {
@@ -60,9 +59,8 @@ function makeHarness() {
         } as never,
         transport,
         onMessage,
-        onActivity,
     })
-    return { channel, transport, emitted, onMessage, onActivity }
+    return { channel, transport, emitted, onMessage }
 }
 
 const userUpdate = (seq: number, text = 'hi'): Update => ({
@@ -216,29 +214,29 @@ describe('SessionChannel：连接反应', () => {
 })
 
 describe('SessionChannel：版本化更新', () => {
-    it('updateMetadata 走 ack 咽喉并通知活动（门面据此重置空闲计时）', async () => {
-        const { channel, transport, onActivity } = makeHarness()
+    // 版本化写入不再通知活动（2026-11 修复）：metadata/agentState 是协议缓存维护，
+    // 不是用户活动——曾把空闲倒计时反复清零导致会话永不休眠。
+    it('updateMetadata 走 ack 咽喉（不触发空闲计时重置）', async () => {
+        const { channel, transport } = makeHarness()
         channel.updateMetadata((m) => ({ ...m, name: '新名字' }))
 
-        await vi.waitFor(() => expect(onActivity).toHaveBeenCalled())
         const fake = transport as unknown as { emitWithAck: ReturnType<typeof vi.fn> }
-        expect(fake.emitWithAck).toHaveBeenCalledWith(
+        await vi.waitFor(() => expect(fake.emitWithAck).toHaveBeenCalledWith(
             'update-metadata',
             expect.objectContaining({ sid: 'session-1', expectedVersion: 0, metadata: { name: '新名字' } }),
             5_000,
-        )
+        ))
     })
 
-    it('updateAgentState 对称走 update-state 咽喉（票②参数化后的行为锁）', async () => {
-        const { channel, transport, onActivity } = makeHarness()
+    it('updateAgentState 对称走 update-state 咽喉（不触发空闲计时重置）', async () => {
+        const { channel, transport } = makeHarness()
         channel.updateAgentState((s) => ({ ...s, paused: true }))
 
-        await vi.waitFor(() => expect(onActivity).toHaveBeenCalled())
         const fake = transport as unknown as { emitWithAck: ReturnType<typeof vi.fn> }
-        expect(fake.emitWithAck).toHaveBeenCalledWith(
+        await vi.waitFor(() => expect(fake.emitWithAck).toHaveBeenCalledWith(
             'update-state',
             expect.objectContaining({ sid: 'session-1', expectedVersion: 0, agentState: { paused: true } }),
             5_000,
-        )
+        ))
     })
 })

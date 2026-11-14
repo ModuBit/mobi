@@ -58,24 +58,23 @@ describe('RpcHandlerManager', () => {
         expect(res).toEqual({ error: 'Unknown error' })
     })
 
-    it('skipIdleTimerReset: true 跳过 onRpcCalled 回调', async () => {
+    it('默认（未标 countsAsUserActivity）不触发 onRpcCalled 回调', async () => {
         const m = new RpcHandlerManager({ scopePrefix: 's' })
         const cb = vi.fn()
         m.setOnRpcCalled(cb)
-        m.registerHandler('silent', async () => null, {
-            skipIdleTimerReset: true
-        })
-        await m.handleRequest({ method: 's:silent', params: {} })
+        m.registerHandler('ambient', async () => null)
+        await m.handleRequest({ method: 's:ambient', params: {} })
         expect(cb).not.toHaveBeenCalled()
     })
 
-    it('默认（无 skipIdleTimerReset）触发 onRpcCalled 回调', async () => {
+    it('countsAsUserActivity: true 触发 onRpcCalled 回调并带方法名', async () => {
         const m = new RpcHandlerManager({ scopePrefix: 's' })
         const cb = vi.fn()
         m.setOnRpcCalled(cb)
-        m.registerHandler('loud', async () => null)
+        m.registerHandler('loud', async () => null, { countsAsUserActivity: true })
         await m.handleRequest({ method: 's:loud', params: {} })
         expect(cb).toHaveBeenCalledTimes(1)
+        expect(cb).toHaveBeenCalledWith('s:loud')
     })
 
     it('hasHandler 检查带前缀的处理器存在', () => {

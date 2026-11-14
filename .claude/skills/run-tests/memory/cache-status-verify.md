@@ -13,7 +13,15 @@ metadata:
 - goal → composer 上方独占整行的 `GoalRow`（`data-testid="goal-row"`，StatusBar 唯一内容）
 - 运行指示 → 聊天流末尾的 `AgentLoadingBubble`（borderless 尾行，与 compact/clear 并排规则见 ChatContainer）
 
-## 核心 E2E 手法：socket 注入（绕过 CLI）
+## 核心 E2E 手法：socket 注入（仅 cache-status；goal-status 已失效）
+
+**⚠️ goal-status socket 注入已失效（2026-11-13 实踩）**：daemon 侧 goal 投影已改版——
+`sessionMessageRuntimeProjector` 受理消息时从 `attachment.goal_status` 原始行投影
+`runtimeState.goalStatus`（goalStatusProjection.ts），socket 的 goal-status 事件
+handler 已不存在（emit 后静默丢弃，cache-status 同批仍成功——以此可辨）。goal 的
+E2E 改走：SQL 直写 `runtime_state.goalStatus` 验渲染（`json_set`），全链路真实触发
+需 CC 端 goal 激活的 turn（goal_status 是 CC 内建吊顶 attachment 行，mods 只发信号，
+手动改 transcript 文件不触发进程内 hook）。
 
 `/cli` namespace 在**宿主通道**（`daemon.state.json` 的 `hostPort` = 主端口 + 10000，e2e 为 **12224**），
 不是主端口 2224——连 2224 会报 `Invalid namespace`（2026-10-17 实踩；旧 recipe 的 2224 已失效）。
@@ -28,7 +36,6 @@ const socket = io('http://localhost:12224/cli', {
 })
 socket.on('connect', () => {
   socket.emit('cache-status', { sid, cacheStatus: { expired: true, contextTokens: 24000, secondsSinceLastResponse: 3720, estimatedCacheWriteUsd: 0.12, observedAt: Date.now() } })
-  socket.emit('goal-status', { sid, goalStatus: { met: false, condition: '我只说结束时才结束', iterations: 2, durationMs: 638000, tokens: 12400 } })
   setTimeout(() => process.exit(0), 600)
 })
 ```

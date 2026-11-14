@@ -15,6 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { logger } from '@mobi/node-core/logger'
 import { IdleTimer } from '../../../src/modules/common/idleTimer'
 
 vi.mock('@mobi/node-core/logger', () => ({
@@ -131,6 +132,54 @@ describe('IdleTimer', () => {
         expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
         vi.advanceTimersByTime(1)
         expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1)
+    })
+
+    it('tick 兜底：时钟越过空闲期而定时器未触发时，心跳驱动补判到点（链丢失自愈）', () => {
+        const { timer, callbacks } = makeTimer()
+        timer.start()
+
+        // 时钟推进越期但不泵定时器——模拟切片链丢失 / 系统睡眠后定时器未补发
+        vi.setSystemTime(Date.now() + IDLE_TIMEOUT_MS)
+        expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
+
+        timer.tick()
+        expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1)
+    })
+
+    it('tick 在空闲期内/未启动时不触发退出', () => {
+        const { timer, callbacks } = makeTimer()
+        timer.tick() // stopped
+        expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
+
+        timer.start()
+        timer.tick() // running 但未越期
+        expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
+    })
+
+    it('reset 落 INFO 观测（带来源）', () => {
+        const { timer } = makeTimer()
+        timer.start()
+        timer.reset('message-dequeue')
+        expect(vi.mocked(logger.info)).toHaveBeenCalledWith(expect.stringContaining('source=message-dequeue'))
+    })
+
+    it('reset 观测窗口跨生命周期：stop 冲刷末窗口汇总并归零，新周期首条 reset 重新落 INFO', () => {
+        vi.mocked(logger.info).mockClear()
+        const { timer } = makeTimer()
+        timer.start()
+        timer.reset('rpc:rename-session')
+        timer.reset('message-dequeue')
+
+        // 生命周期收尾：末窗口 ×2 汇总此刻落盘（不再等「下一次 reset」惰性冲刷）
+        timer.stop()
+        expect(vi.mocked(logger.info)).toHaveBeenCalledWith(expect.stringContaining('reset ×2'))
+        expect(vi.mocked(logger.info)).toHaveBeenCalledWith(expect.stringContaining('rpc:rename-session=1'))
+
+        // 新周期首条 reset 视为新窗口，正常落 INFO（旧窗口状态不得混算进来）
+        vi.mocked(logger.info).mockClear()
+        timer.start()
+        timer.reset('message-dequeue')
+        expect(vi.mocked(logger.info)).toHaveBeenCalledWith(expect.stringContaining('source=message-dequeue'))
     })
 
     it('重连后真实活动（reset）重新等完整空闲期', () => {
@@ -269,6 +318,31 @@ describe('IdleTimer 阻塞复查', () => {
 
         vi.advanceTimersByTime(IDLE_TIMEOUT_MS)                  // 新的完整空闲期满
         expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1)
+    })
+
+    it('blocked 态复查定时器静默丢失 → tick 心跳补排自愈（gate 解除后照常退出）', () => {
+        let allow = false
+        const decide = vi.fn(() => allow)
+        const { timer, callbacks } = makeBlockedTimer(decide)
+        timer.start()
+
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS)
+        expect(decide).toHaveBeenCalledTimes(1) // 进入阻塞复查
+
+        // 模拟复查定时器静默丢失（运行时丢弃/被误清——与 2026-10-22 事故同丢失类）：
+        // clear 掉持引用的定时器并把引用置空，如同它从未存在
+        const internals = timer as unknown as { blockedRecheckTimer: ReturnType<typeof setTimeout> | null }
+        if (internals.blockedRecheckTimer) clearTimeout(internals.blockedRecheckTimer)
+        internals.blockedRecheckTimer = null
+
+        allow = true
+        vi.advanceTimersByTime(120_000)
+        expect(callbacks.onIdleTimeout).not.toHaveBeenCalled() // 丢失态：无人复查，永久停摆
+
+        timer.tick() // 心跳自愈：补排复查
+        vi.advanceTimersByTime(30_000)
+        expect(decide).toHaveBeenCalledTimes(2)                // 补排的复查执行
+        expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1) // gate 已解除 → 退出
     })
 
     it('未提供复查判定时行为不变：到点直接退出', () => {

@@ -15,11 +15,11 @@
  */
 
 /**
- * registerCommandHandlers 的 idle 分类接线（pending #114）：
- * refreshMetadata 是 daemon→session RPC 全集里唯一的 ambient 成员（SWR 后台刷新，
+ * registerCommandHandlers 的 idle 分类接线：
+ * refreshMetadata 是 daemon→session RPC 全集里的 ambient 成员（SWR 后台刷新，
  * fire-and-forget 周期性发生）——它进 idle reset 会持续清零空闲倒计时，会话永不
- * 休眠。其余 daemon→session RPC（permission/abort/rewind/config 族）都是用户显式
- * 动作，保持重置语义。本测试锁接线：refreshMetadata 注册必须带 skipIdleTimerReset。
+ * 休眠。RpcHandlerOptions 采用白名单（countsAsUserActivity 默认 false），本测试
+ * 锁接线：refreshMetadata 注册不得标为用户活动。
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -32,8 +32,8 @@ const { RpcHandlerManager } = await import('../../src/rpc/RpcHandlerManager')
 const { registerCommandHandlers, refreshMetadataImpl } = await import('../../src/handlers/commands')
 const { extractSDKMetadata } = await import('../../src/claudeSdk/metadataExtractor')
 
-describe('registerCommandHandlers：ambient RPC 不重置 idle（pending #114）', () => {
-    it('refreshMetadata 被调时 onRpcCalled 不触发（skipIdleTimerReset 接线）', async () => {
+describe('registerCommandHandlers：ambient RPC 不重置 idle', () => {
+    it('refreshMetadata 被调时 onRpcCalled 不触发（不在用户活动白名单）', async () => {
         const m = new RpcHandlerManager({ scopePrefix: 'sess-1' })
         const idleReset = vi.fn()
         m.setOnRpcCalled(idleReset)

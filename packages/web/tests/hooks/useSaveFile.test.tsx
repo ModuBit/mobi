@@ -22,7 +22,8 @@ import React from 'react'
 
 // mock useMobiApi：files.save 返回可控 axios-like 响应
 const saveMock = vi.fn()
-vi.mock('@/core/data/api/client', () => ({
+vi.mock('@/core/data/api/client', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@/core/data/api/client')>()),
     useMobiApi: () => ({ files: { save: saveMock } }),
 }))
 

@@ -34,6 +34,7 @@ import { AskUserQuestionFooter } from '@/features/chat/tool-card/AskUserQuestion
 import { RequestUserInputFooter } from '@/features/chat/tool-card/RequestUserInputFooter'
 import { isAskUserQuestionToolName, joinQuestionHeaders } from '@/domain/tool/askUserQuestion'
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
+import { describeActionError } from '@/domain/chat/actionError'
 import { isElicitationToolName, parseElicitationPayload } from '@/domain/tool/elicitation'
 import { buildPendingToolInfo } from '@/domain/tool/pendingRequest'
 import { ElicitationFormCard } from '@/features/composer/ElicitationFormCard'
@@ -205,7 +206,7 @@ function ElicitationRequestsSection({
             await action()
         } catch (e) {
             if (!isPermissionRequestGone(e)) {
-                setSubmitError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
+                setSubmitError(describeActionError(e, t))
                 return
             }
         } finally {

@@ -19,6 +19,7 @@ import { message } from 'antd'
 import type { DirectoryCapabilities } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
 import { createFileAttachment, validateFile, getAcceptExtensions } from '@/core/lib/fileAttachments'
+import { extractApiError, isNetworkError } from '@/core/data/api/client'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import type { UploadFileResponse } from '@/core/data/api/types'
 import type { SketchMark } from '@mobi/shared'
@@ -153,7 +154,12 @@ export function useAttachmentHandling(
             if (controller.signal.aborted) return
             setAttachments(prev => prev.map(a =>
                 a.id === attachmentId
-                    ? { ...a, status: 'error' as const, error: err instanceof Error ? err.message : '上传失败' }
+                    ? {
+                        ...a, status: 'error' as const,
+                        // 断网时 message 是英文 "Network Error"，换中文提示；其余走
+                        // 业务 detail 提取（core 原语，domain 的 describeActionError 需 t）
+                        error: isNetworkError(err) ? '网络连接中断' : extractApiError(err),
+                    }
                     : a
             ))
         } finally {

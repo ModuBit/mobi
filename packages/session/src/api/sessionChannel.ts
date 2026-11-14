@@ -124,8 +124,6 @@ export type SessionChannelOptions = {    token: string
     transport: SessionTransport
     /** 非用户内容入站（session-update 事件体 / 无法解析的消息 content）向上冒泡 */
     onMessage: (content: unknown) => void
-    /** 协议活动信号（版本化更新等——调用方据此重置空闲计时器） */
-    onActivity?: () => void
 }
 
 /**
@@ -142,7 +140,6 @@ export class SessionChannel {
     private readonly token: string
     private readonly transport: SessionTransport
     private readonly onMessage: (content: unknown) => void
-    private readonly onActivity?: () => void
 
     private metadata: Metadata | null
     private metadataVersion: number
@@ -173,7 +170,6 @@ export class SessionChannel {
         this.sessionId = opts.session.id
         this.transport = opts.transport
         this.onMessage = opts.onMessage
-        this.onActivity = opts.onActivity
         this.metadata = opts.session.metadata
         this.metadataVersion = opts.session.metadataVersion
         this.agentState = opts.session.agentState
@@ -190,7 +186,7 @@ export class SessionChannel {
         })
 
         this.metadataSlot = new VersionedUpdateSlot(
-            { transport, sessionId: this.sessionId, onActivity: opts.onActivity },
+            { transport, sessionId: this.sessionId },
             {
                 event: 'update-metadata',
                 valueKey: 'metadata',
@@ -212,7 +208,7 @@ export class SessionChannel {
         )
 
         this.agentStateSlot = new VersionedUpdateSlot(
-            { transport, sessionId: this.sessionId, onActivity: opts.onActivity },
+            { transport, sessionId: this.sessionId },
             {
                 event: 'update-state',
                 valueKey: 'agentState',
@@ -864,7 +860,7 @@ class VersionedUpdateSlot<TValue> {
     readonly lock = new AsyncLock()
 
     constructor(
-        private readonly deps: { transport: SessionTransport; sessionId: string; onActivity?: () => void },
+        private readonly deps: { transport: SessionTransport; sessionId: string },
         private readonly opts: {
             /** socket 事件名（update-metadata / update-state） */
             event: string
@@ -883,8 +879,6 @@ class VersionedUpdateSlot<TValue> {
     /** 版本化 CAS 更新：值提交 + 版本冲突由 backoff 重试收敛（applyVersionedAck 推进本地版本） */
     update(handler: (current: TValue) => TValue): void {
         this.lock.inLock(async () => {
-            this.deps.onActivity?.()
-
             await backoff(async () => {
                 const { value: current, version } = this.opts.getCurrent()
                 const updated = handler(current ?? ({} as TValue))

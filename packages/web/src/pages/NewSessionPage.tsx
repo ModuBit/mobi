@@ -73,6 +73,7 @@ import { resolveComposerSubmit } from '@/features/composer/resolveComposerSubmit
 import { saveDraftText, consumeDraftText } from '@/core/lib/draftText'
 
 import { toMessagePayload } from '@/domain/chat/composerSegments'
+import { describeActionError } from '@/domain/chat/actionError'
 import { buildPermissionModeHoverOptions } from '@/features/composer/permissionModeOption'
 // 紧凑 Select 与 dropdown 全局样式均收口在共享模块（与 ChatComposer 同源，不再本地复制）
 import { CompactHoverSelect } from '@/features/composer/CompactHoverSelect'
@@ -499,7 +500,7 @@ export function NewSessionPage() {
 
             navigate({ to: '/sessions/$sessionId', params: { sessionId } })
         } catch (e) {
-            messageApi.error(e instanceof Error ? e.message : '创建会话失败')
+            messageApi.error(describeActionError(e, t, 'newSession.createFailed'))
         } finally {
             submittingRef.current = false
             setIsPending(false)

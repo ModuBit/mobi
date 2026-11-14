@@ -36,7 +36,8 @@ export type RemoteLauncherAbortHandlers = {
 type RpcHandlerManagerLike = {
     registerHandler<TRequest = unknown, TResponse = unknown>(
         method: string,
-        handler: (params: TRequest) => Promise<TResponse> | TResponse
+        handler: (params: TRequest) => Promise<TResponse> | TResponse,
+        options?: { countsAsUserActivity?: boolean }
     ): void;
 };
 
@@ -81,15 +82,17 @@ export abstract class RemoteLauncherBase {
         rpcHandlerManager: RpcHandlerManagerLike,
         handlers: RemoteLauncherAbortHandlers
     ): void {
+        // abort/switch 是用户显式操作（Web 停止按钮 / 切换模式），必须重置空闲计时——
+        // 漏标会让用户刚点完停止的会话在 ~30s 后休眠退出（黑名单翻白名单时的漏网项）
         rpcHandlerManager.registerHandler('abort', async (params: { stopKind?: StopKind }) => {
             // stopKind 入口校验：缺省（旧 daemon / 本地触发）或未知值（未来第 4 档 / 手误字符串）
             // 一律回落 'turn'——isCancelQueued 负向默认下，未知值透传会静默升级为破坏性清队列
             await handlers.onAbort(normalizeStopKind(params?.stopKind));
-        });
+        }, { countsAsUserActivity: true });
 
         rpcHandlerManager.registerHandler('switch', async () => {
             await handlers.onSwitch();
-        });
+        }, { countsAsUserActivity: true });
     }
 
     protected clearAbortHandlers(rpcHandlerManager: RpcHandlerManagerLike): void {

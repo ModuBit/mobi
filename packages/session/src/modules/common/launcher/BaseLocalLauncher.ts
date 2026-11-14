@@ -26,7 +26,7 @@ type QueueLike = {
 }
 
 type RpcHandlerManagerLike = {
-    registerHandler(method: string, handler: () => Promise<void> | void): void
+    registerHandler(method: string, handler: () => Promise<void> | void, options?: { countsAsUserActivity?: boolean }): void
 }
 
 export type LocalLauncherControl = {
@@ -104,8 +104,9 @@ export class BaseLocalLauncher {
                 await abortProcess()
             }
 
-            rpcHandlerManager.registerHandler('abort', doAbort)
-            rpcHandlerManager.registerHandler('switch', doSwitch)
+            // abort/switch 是用户显式操作，与 remote 侧同语义标记（重置空闲计时）
+            rpcHandlerManager.registerHandler('abort', doAbort, { countsAsUserActivity: true })
+            rpcHandlerManager.registerHandler('switch', doSwitch, { countsAsUserActivity: true })
             queue.setOnMessage(() => {
                 // 收到remote消息，先切换
                 void doSwitch()

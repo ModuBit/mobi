@@ -17,7 +17,7 @@
 import type { MobiApi } from '@/core/data/api/client'
 import type { ToolInfo } from '@/domain/tool/types'
 import { memo, useEffect, useMemo, useState } from 'react'
-import { Alert, theme as antTheme, Input } from 'antd'
+import { theme as antTheme, Input } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { CheckOutlined } from '@ant-design/icons'
 import { TabStrip, TabStripList, TabStripPanel, TabStripTab } from '@/ui/base/interactive/tabStrip'
@@ -26,6 +26,7 @@ import { isAskUserQuestionToolName, parseAskUserQuestionInput, buildChatAboutThi
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
+import { describeActionError } from '@/domain/chat/actionError'
 import { queryKeys } from '@/core/lib/queryKeys'
 import { OptionRow } from './OptionRow'
 
@@ -219,7 +220,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                 && e.response?.status === 404
                 && (data?.code === 'permission_request_gone' || data?.error === 'Request not found')
             if (!isHandled) {
-                setError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
+                setError(describeActionError(e, t))
                 handled = false
             }
         } finally {
@@ -412,13 +413,11 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
             flexDirection: 'column',
             gap: 8
         }}>
+            {/* 错误提示：行内小字（对齐 PermissionFooter denied reason 的既有语言），色块会压过选项按钮的视觉焦点 */}
             {error ? (
-                <Alert
-                    type="error"
-                    showIcon
-                    message={error}
-                    style={{ fontSize: 12, padding: '8px 12px', marginBottom: 8 }}
-                />
+                <div role="alert" style={{ fontSize: 12, color: token.colorError, wordBreak: 'break-word' }}>
+                    {error}
+                </div>
             ) : null}
 
             {questions.length === 0 ? (
