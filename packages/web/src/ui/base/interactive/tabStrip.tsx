@@ -45,7 +45,9 @@
  *   方向键在「页签」这一层移动，焦点落到某个页签内的关闭 × 上时算作它所在的那个页签；
  *   但 x 是原生 `<button>`，**自带停留点**——Tab 会走「选中页签 → 它的 × → 下一个页签的 × …」，
  *   不是「整条只停一次」（想只停一次就得把 × 移出 tab 序，代价是键盘用户没有关页签的入口）
- * - a11y：`role=tablist` / `role=tab` + `aria-controls` / `role=tabpanel` + `aria-labelledby` 全程串联
+ * - a11y：`role=tablist` / `role=tab` + `aria-controls` / `role=tabpanel` + `aria-labelledby` 全程串联；
+ *   纯分段控件形态（内容不在 panel 里，见 `panelless`）省略 `aria-controls`——ARIA 允许
+ *   tab 不带它，悬空引用反而比没有更糟
  * - 关闭：关非活动 tab 不动焦点与选中（关闭按钮的 click 不外冒）；关活动 tab 后焦点落到顶上来的那一项；
  *   消费方拦下这次关闭（tab 还在，如未保存文件的确认框）则待办作废，绝不抢焦点
  * - `fill`：外壳吃满行内余量（页签宽度不受影响；与右端槽位之间照常留出间距，不外扩到它身上）
@@ -502,11 +504,15 @@ export interface TabStripTabProps {
     onClose?: () => void
     /** 关闭按钮的无障碍名称（形如「关闭 终端 1」——光一个 × 读屏读不出来） */
     closeLabel?: string
+    /** 无面板页签（纯分段控件：内容恒渲染在页签条外，如 ScopeTabbedSection 的 scope
+     *  切换）——省略 aria-controls 而非指向不存在的元素。别为凑 aria-controls 渲染
+     *  空壳 TabStripPanel（那只是把悬空引用换成 display:none 的死元素） */
+    panelless?: boolean
     className?: string
     style?: CSSProperties
 }
 
-export function TabStripTab({ value, children, disabled, onClose, closeLabel, className, style }: TabStripTabProps) {
+export function TabStripTab({ value, children, disabled, onClose, closeLabel, panelless, className, style }: TabStripTabProps) {
     const { value: selectedValue, setValue, baseId } = useTabStripContext('TabStripTab')
     const { notifyClosed } = useTabStripListContext('TabStripTab')
     const selected = selectedValue === value
@@ -518,7 +524,8 @@ export function TabStripTab({ value, children, disabled, onClose, closeLabel, cl
             role="tab"
             id={`${baseId}-tab-${encoded}`}
             aria-selected={selected}
-            aria-controls={`${baseId}-panel-${encoded}`}
+            // 有面板才指；panelless（分段控件）不渲染——见文件头 a11y 契约
+            aria-controls={panelless ? undefined : `${baseId}-panel-${encoded}`}
             aria-disabled={disabled || undefined}
             // roving tabindex：整条页签只留一个 Tab 停留点（选中的那个）
             tabIndex={selected ? 0 : -1}

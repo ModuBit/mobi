@@ -145,6 +145,24 @@ describe('analyzeRewindTarget（反向活链回溯）', () => {
         })
     })
 
+    it('区间含死分支 user 行 → 文件序口径一并计数（CLI 截断按位置切，活链计数会低估）', async () => {
+        // target 在活链上（a2 → target），锚 a1 与 target 之间文件序夹着死分支行：
+        // CLI resumeDropsTurn 归因读的物理区间 [a1 之后..文件尾] 会把它一并丢弃
+        writeTranscript([
+            userMsg('u1', '第一轮'),
+            assistantMsg('a1'),
+            userMsg('dead-branch', '被放弃的分叉'),
+            userMsg('target', '回退我'),
+            assistantMsg('a2'),
+        ], { parents: { 'dead-branch': 'a1', target: 'a1' } })
+
+        await expect(analyzeRewindTarget(SESSION_ID, WORK_DIR, 'target')).resolves.toEqual({
+            status: 'found',
+            anchor: 'a1',
+            dropRange: { droppedTurns: 2, crossSessionEntry: null },
+        })
+    })
+
     it('区间含跨会话条目 → 不计轮但 crossSessionEntry 透出', async () => {
         writeTranscript([
             userMsg('anchor-prev', '前一轮'),
@@ -157,6 +175,23 @@ describe('analyzeRewindTarget（反向活链回溯）', () => {
             status: 'found',
             anchor: 'a1',
             dropRange: { droppedTurns: 1, crossSessionEntry: 'cs-1' },
+        })
+    })
+
+    it('用户消息只是引用信封字面量（不在开头）→ 不误判跨会话、正常计轮', async () => {
+        // 真实跨会话行的 content 恒以信封开头；文中引用/粘贴通常带前置文字或代码块，
+        // 开头锚定把这类误判压掉（误判会把正常轮标成跨会话、污染守卫判定）
+        writeTranscript([
+            assistantMsg('a1'),
+            userMsg('target', '回退我'),
+            userMsg('quote', '看我引用 <cross-session-message from-name="x">hi</cross-session-message> 完事'),
+            assistantMsg('a2'),
+        ])
+
+        await expect(analyzeRewindTarget(SESSION_ID, WORK_DIR, 'target')).resolves.toEqual({
+            status: 'found',
+            anchor: 'a1',
+            dropRange: { droppedTurns: 2, crossSessionEntry: null },
         })
     })
 
@@ -244,7 +279,7 @@ describe('analyzeRewindTarget（反向活链回溯）', () => {
             assistantMsg('a2'),
         ], { parents: { 'dead-branch': 'a1', 'u2': 'a1', 'a2': 'u2' } })
 
-        await expect(analyzeRewindTarget(SESSION_ID, WORK_DIR, 'dead-branch')).resolves.toEqual({ status: 'not-found' })
+        await expect(analyzeRewindTarget(SESSION_ID, WORK_DIR, 'dead-branch')).resolves.toEqual({ status: 'not-found', cause: 'absent' })
     })
 
     it('sidechain entry 不作叶子、不入链', async () => {
@@ -303,11 +338,11 @@ describe('analyzeRewindTarget（反向活链回溯）', () => {
     it('目标不存在（假锚点）→ not-found（链首确定性判定）', async () => {
         writeTranscript([userMsg('u1', '第一轮'), assistantMsg('a1')])
 
-        await expect(analyzeRewindTarget(SESSION_ID, WORK_DIR, 'ghost')).resolves.toEqual({ status: 'not-found' })
+        await expect(analyzeRewindTarget(SESSION_ID, WORK_DIR, 'ghost')).resolves.toEqual({ status: 'not-found', cause: 'absent' })
     })
 
-    it('transcript 文件不存在 → not-found（路径解析失败）', async () => {
-        await expect(analyzeRewindTarget('no-such-session', WORK_DIR, 'u1')).resolves.toEqual({ status: 'not-found' })
+    it('transcript 文件不存在 → not-found + unavailable（与「锚点不在」的确定性拒绝分开报）', async () => {
+        await expect(analyzeRewindTarget('no-such-session', WORK_DIR, 'u1')).resolves.toEqual({ status: 'not-found', cause: 'unavailable' })
     })
 })
 
@@ -381,7 +416,7 @@ describe('analyzeRewindTarget（窗口预算：诚实拒绝，零全量 load）'
         ])
 
         // 10 字节窗口只够读到尾部半行——目标在窗口外，诚实拒绝
-        await expect(analyzeRewindTarget(SESSION_ID, WORK_DIR, 'target', { maxBytes: 10 })).resolves.toEqual({ status: 'not-found' })
+        await expect(analyzeRewindTarget(SESSION_ID, WORK_DIR, 'target', { maxBytes: 10 })).resolves.toEqual({ status: 'not-found', cause: 'absent' })
     })
 
     it('链在窗口内断开（parent 指向窗口外）→ not-found（window-limit）', async () => {
@@ -395,12 +430,40 @@ describe('analyzeRewindTarget（窗口预算：诚实拒绝，零全量 load）'
         ].join('\n') + '\n')
         appendLine(dir, { type: 'assistant', uuid: 'big-tail', message: { content: 'x'.repeat(20 * 1024) }, parentUuid: 'a0' })
 
-        await expect(analyzeRewindTarget(SESSION_ID, WORK_DIR, 'target', { maxBytes: 2 * 1024 })).resolves.toEqual({ status: 'not-found' })
+        await expect(analyzeRewindTarget(SESSION_ID, WORK_DIR, 'target', { maxBytes: 2 * 1024 })).resolves.toEqual({ status: 'not-found', cause: 'absent' })
+    })
+
+    it('目标在窗内但锚前驱走不通（窗外/断链）→ not-found（window-limit），绝不误报 found+anchor null 伪装链首', async () => {
+        // 目标的 parentUuid 指向不存在的行（窗外/断链的超集形态）：锚前探失败必须
+        // 走 window-limit 扩窗/拒绝，而非 anchor null——后者会让调用方给出 /clear
+        // 引导的错文案（#1：锚前驱窗外≠目标是链首）
+        writeTranscript([
+            userMsg('u1', '第一轮'),
+            assistantMsg('a1'),
+            userMsg('target', '回退我'),
+            assistantMsg('a2'),
+        ], { parents: { target: 'ghost-parent' } })
+
+        await expect(analyzeRewindTarget(SESSION_ID, WORK_DIR, 'target')).resolves.toEqual({ status: 'not-found', cause: 'absent' })
+    })
+
+    it('目标紧邻锚、锚前驱是窗外 attachment 跳板 → 扩窗后仍断则诚实拒绝', async () => {
+        // 跳板行的 parentUuid 空（compact_boundary 实测形态：raw 链物理断开）——
+        // 锚前探经跳板走到链尽，按 window-limit 拒绝（与 CLI resume 裁判同语义）
+        writeTranscript([
+            userMsg('u1', '压缩前'),
+            assistantMsg('a1'),
+            { type: 'system', uuid: 'cb-1', subtype: 'compact_boundary' },
+            userMsg('target', '边界后首条'),
+            assistantMsg('a2'),
+        ], { parents: { 'cb-1': null, target: 'cb-1' } })
+
+        await expect(analyzeRewindTarget(SESSION_ID, WORK_DIR, 'target')).resolves.toEqual({ status: 'not-found', cause: 'absent' })
     })
 })
 
-describe('chainContains（fork 激活预检）', () => {
-    it('uuid 在活链上 → true', async () => {
+describe('chainContains（fork 激活预检：窗口内存在性，不走活链）', () => {
+    it('uuid 在活链上 → found', async () => {
         writeTranscript([
             userMsg('u1', '第一轮'),
             assistantMsg('anchor'),
@@ -408,23 +471,35 @@ describe('chainContains（fork 激活预检）', () => {
             assistantMsg('a2'),
         ])
 
-        await expect(chainContains(SESSION_ID, WORK_DIR, 'anchor')).resolves.toBe(true)
+        await expect(chainContains(SESSION_ID, WORK_DIR, 'anchor')).resolves.toEqual({ found: true })
     })
 
-    it('uuid 不在（假锚点 / 已被 rewind 丢弃）→ false', async () => {
+    it('uuid 在死分支上（文件中存在、活链不可达）→ 仍 found（fork 锚点按文件存在性判定）', async () => {
+        writeTranscript([
+            userMsg('u1', '第一轮'),
+            assistantMsg('a1'),
+            userMsg('dead-branch', '被放弃的分叉'),
+            userMsg('u2', '活链续行'),
+            assistantMsg('a2'),
+        ], { parents: { 'dead-branch': 'a1', u2: 'a1' } })
+
+        await expect(chainContains(SESSION_ID, WORK_DIR, 'dead-branch')).resolves.toEqual({ found: true })
+    })
+
+    it('uuid 不在（假锚点 / 已被 rewind 丢弃）→ absent', async () => {
         writeTranscript([userMsg('u1', '第一轮'), assistantMsg('a1')])
 
-        await expect(chainContains(SESSION_ID, WORK_DIR, 'gone')).resolves.toBe(false)
+        await expect(chainContains(SESSION_ID, WORK_DIR, 'gone')).resolves.toEqual({ found: false, cause: 'absent' })
     })
 
-    it('文件不存在 → false', async () => {
-        await expect(chainContains('no-such-session', WORK_DIR, 'x')).resolves.toBe(false)
+    it('文件不存在 → unavailable（parent transcript 丢失，与「不在」分开报）', async () => {
+        await expect(chainContains('no-such-session', WORK_DIR, 'x')).resolves.toEqual({ found: false, cause: 'unavailable' })
     })
 
-    it('深于窗口预算 → false（诚实拒绝，与 rewind 同底座）', async () => {
+    it('深于窗口预算 → absent（诚实拒绝，与 rewind 同底座）', async () => {
         writeTranscript([userMsg('u1', '第一轮'), assistantMsg('a1')])
 
-        await expect(chainContains(SESSION_ID, WORK_DIR, 'a1', { maxBytes: 10 })).resolves.toBe(false)
+        await expect(chainContains(SESSION_ID, WORK_DIR, 'a1', { maxBytes: 10 })).resolves.toEqual({ found: false, cause: 'absent' })
     })
 })
 

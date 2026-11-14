@@ -48,8 +48,15 @@ export interface TailScanOptions {
 export interface TailScanResult {
     /** 窗口内完整行（按文件顺序）；跨块半行已丢弃，空行已过滤 */
     lines: string[];
+    /** 文件不存在 / 打不开（落盘竞态早期路径）——消费方可据此分流「读不到」语义，
+     *  与「空文件」（lines 空但 headReached=true）区分 */
+    unavailable: boolean;
     /** 窗口未覆盖到文件头（头部截断行已丢弃） */
     truncated: boolean;
+    /** 窗口确实读到了文件头（循环因文件耗尽终止，而非预算耗尽）。truncated 只回答
+     *  「首段是不是半行」——窗口起点恰逢行边界时 truncated=false 但并未到文件头，
+     *  消费方判定「确定性未命中」必须用本字段，不能用 !truncated 代理 */
+    headReached: boolean;
     /** 窗口耗尽仍未命中 hitTest（无 hitTest 时恒 false） */
     exhausted: boolean;
 }
@@ -82,7 +89,7 @@ async function scanOnce(filePath: string, opts?: TailScanOptions): Promise<{ sca
         linkStat = await lstat(filePath);
     } catch (e) {
         logger.debug(`[TAIL_READER] file unavailable: ${filePath}`, e);
-        return { scan: { lines: [], truncated: false, exhausted: Boolean(opts?.hitTest) }, fingerprintChanged: false };
+        return { scan: { lines: [], unavailable: true, truncated: false, headReached: false, exhausted: Boolean(opts?.hitTest) }, fingerprintChanged: false };
     }
     if (linkStat.isSymbolicLink()) {
         throw new Error(`refusing to scan non-regular file (symlink): ${filePath}`);
@@ -93,7 +100,7 @@ async function scanOnce(filePath: string, opts?: TailScanOptions): Promise<{ sca
         fd = await open(filePath, 'r');
     } catch (e) {
         logger.debug(`[TAIL_READER] cannot open file: ${filePath}`, e);
-        return { scan: { lines: [], truncated: false, exhausted: Boolean(hitTest) }, fingerprintChanged: false };
+        return { scan: { lines: [], unavailable: true, truncated: false, headReached: false, exhausted: Boolean(hitTest) }, fingerprintChanged: false };
     }
 
     try {
@@ -135,6 +142,8 @@ async function scanOnce(filePath: string, opts?: TailScanOptions): Promise<{ sca
         const exhausted = hitTest !== undefined && !found;
 
         const truncated = !(await isFirstSegmentComplete(fd, end));
+        // 到没到文件头只看循环终止原因（end 归零 = 文件耗尽），与首段是否半行无关
+        const headReached = end === 0;
         const lines = splitLines(Buffer.concat(chunks), truncated);
 
         // 截断/重写防护：扫完再 stat 一次，指纹变化 → 丢弃本轮
@@ -143,7 +152,7 @@ async function scanOnce(filePath: string, opts?: TailScanOptions): Promise<{ sca
         const endFingerprint = `${endStat.ino}:${endStat.mtimeMs}:${endStat.size}`;
         const fingerprintChanged = endFingerprint !== startFingerprint;
 
-        return { scan: { lines, truncated, exhausted }, fingerprintChanged };
+        return { scan: { lines, unavailable: false, truncated, headReached, exhausted }, fingerprintChanged };
     } finally {
         await fd.close();
     }

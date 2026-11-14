@@ -91,6 +91,24 @@ describe('scanTailLines', () => {
         expect(JSON.parse(scan.lines[1]).uuid).toBe('u-2');
     });
 
+    it('headReached：窗口读满文件 → true（确定性未命中可判）', async () => {
+        const file = await makeFixture([FILLER(1), FILLER(2)]);
+        const scan = await scanTailLines(file, { chunkSize: 64, maxWindow: 4096 });
+        expect(scan.headReached).toBe(true);
+    });
+
+    it('headReached：窗口停在行边界（truncated=false）但未到文件头 → false（!truncated 不是到头判据）', async () => {
+        const line1 = FILLER(1);
+        const file = await makeFixture([line1, FILLER(2)]);
+        // 窗口 = 第一行之后的所有字节：起点恰在行边界（首段是完整行，truncated=false），
+        // 但窗口没有覆盖文件头——headReached 必须据此区分，不能拿 !truncated 代理
+        const window = Buffer.byteLength(FILLER(2) + '\n', 'utf8');
+        const scan = await scanTailLines(file, { chunkSize: 64, maxWindow: window });
+        expect(scan.truncated).toBe(false);
+        expect(scan.headReached).toBe(false);
+        expect(scan.lines).toHaveLength(1);
+    });
+
     it('窗口耗尽未命中：exhausted=true 且无 goal 行（订阅者据此重试/放弃）', async () => {
         const file = await makeFixture([FILLER(1), FILLER(2), FILLER(3)]);
         const scan = await scanTailLines(file, {

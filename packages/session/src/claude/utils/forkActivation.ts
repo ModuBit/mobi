@@ -62,12 +62,13 @@ export function resolveForkActivation(
 }
 
 /**
- * 激活前预检（spec §5.2 步骤 3）：沿 parent transcript 活链回溯验证 anchorNativeId
+ * 激活前预检（spec §5.2 步骤 3）：在 parent transcript 尾部窗口内验证 anchorNativeId
  * 仍在（parent 可能已 rewind 深于锚点 / transcript 文件丢失——spec §5.3 前两行场景）。
- * chainContains 与 rewind 锚点预检同一底座（尾部窗口 + parentUuid 回溯，成本
- * O(锚点深度) 与 transcript 大小无关；深于窗口预算同样诚实 false）。失败细分：
- * 意外异常 = 'parent-transcript-missing'（防御分支）；链上未见 = 'anchor-invalidated'
- *（parent rewind 深于锚点的常态失败方向是「不激活」，不向上抛）。
+ * chainContains 与 rewind 同底座（尾部窗口 + 几何扩窗，成本 O(锚点深度) 与 transcript
+ * 大小无关；深于窗口预算同样诚实拒绝）。失败细分按未命中 cause 分流：
+ * unavailable（文件读不到）→ 'parent-transcript-missing'（重发消息可重试）；
+ * absent（窗口内确实没有）→ 'anchor-invalidated'（parent rewind 深于锚点的常态
+ * 失败方向是「不激活」，不向上抛）。
  */
 export async function verifyForkAnchorExists(
     parentNativeId: string,
@@ -75,12 +76,12 @@ export async function verifyForkAnchorExists(
     anchorNativeId: string,
 ): Promise<ForkPrecheckResult> {
     try {
-        return await chainContains(parentNativeId, dir, anchorNativeId)
-            ? 'ok'
-            : 'anchor-invalidated'
+        const lookup = await chainContains(parentNativeId, dir, anchorNativeId)
+        if (lookup.found) return 'ok'
+        return lookup.cause === 'unavailable' ? 'parent-transcript-missing' : 'anchor-invalidated'
     } catch (e) {
-        // chainContains 正常路径不抛（读取失败内部已归并 not-found）——此处仅防
-        // 意外异常（如实现 bug 的 TypeError）打断激活流程，按预检失败收口
+        // chainContains 正常路径不抛（读取失败已归并进 cause）——此处仅防意外异常
+        //（如实现 bug 的 TypeError）打断激活流程，按预检失败收口
         logger.debug(`[forkActivation] scan parent transcript failed`, e)
         return 'parent-transcript-missing'
     }

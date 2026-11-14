@@ -34,6 +34,7 @@ import { join } from 'node:path'
 import { isBunCompiled, projectPath, runtimePath } from '@mobi/node-core/projectPath'
 import { getClaudeExecutablePath } from '@mobi/node-core/claudeSdk/claudeExecutable'
 import { withBunRuntimeEnv } from '@mobi/node-core/utils/bunRuntime'
+import { childEnvWithoutDebugger } from '@mobi/node-core/utils/spawnMobiCli'
 import packageJson from '../../package.json'
 
 // getEnvironmentInfo 已抽 @mobi/node-core/environmentInfo（ticket-12：runner/session/cli 三侧共用），此处 re-export
@@ -312,7 +313,7 @@ export async function runDoctorCommand(): Promise<void> {
             await new Promise<void>((resolve) => {
                 const child = spawn(claudePath, ['doctor'], {
                     stdio: 'inherit',
-                    env: withBunRuntimeEnv(),
+                    env: childEnvWithoutDebugger(withBunRuntimeEnv()),
                     shell: false,
                 })
 

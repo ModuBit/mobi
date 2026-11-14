@@ -52,7 +52,11 @@ export interface RewindHandlerDeps {
 
 /** 锚点换算失败（假锚点 / 链首）的拒绝文案——链首场景带 /clear 引导 */
 const ANCHOR_REJECT_REASON =
-    'rewind anchor not found in transcript (cannot rewind the first message of a session — use /clear instead)';
+    'rewind anchor not found in transcript (cannot rewind the first message of a session — use /clear instead)'
+
+/** transcript 读不到的拒绝文案（与锚点不在这类确定性拒绝分开报：瞬时态，重试可能恢复） */
+const TRANSCRIPT_UNAVAILABLE_REASON =
+    'session transcript is unavailable (read failed — try again shortly)';
 
 /** rewind 已在途的 busy 拒绝文案（Web 据此映射「回退正在进行中」提示） */
 const REWIND_IN_PROGRESS_REASON = 'rewind is already in progress';
@@ -118,8 +122,12 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
         }
 
         // 目标分析（transcriptChain 反向活链回溯，一次产出锚点 + 丢弃区间）：假锚点/
-        // 换链旧行不在当前活链 → not-found；链首目标 → anchor null（两者都按锚点拒绝）
+        // 换链旧行不在当前活链 → not-found；链首目标 → anchor null（两者都按锚点拒绝）；
+        // transcript 读不到按 unavailable 分流（瞬时态文案，不误导用户去 /clear）
         const analysis = await analyzeRewindTarget(session.sessionId, workingDirectory, nativeId);
+        if (analysis.status === 'not-found' && analysis.cause === 'unavailable') {
+            return { canRewind: false, canRestoreFiles: false, reason: TRANSCRIPT_UNAVAILABLE_REASON };
+        }
         if (analysis.status === 'not-found' || analysis.anchor === null) {
             return { canRewind: false, canRestoreFiles: false, reason: ANCHOR_REJECT_REASON };
         }
@@ -171,6 +179,9 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
             // 一次产出。区间轮数复检决定守卫携带（carriesDropsTurnGuard 单一事实源）；
             // 跨会话污染复检与 dry-run 对称——直连 API 绕过 dry-run 的窗口内变化同样拦住
             const analysis = await analyzeRewindTarget(sessionId, workingDirectory, nativeId);
+            if (analysis.status === 'not-found' && analysis.cause === 'unavailable') {
+                return { ready: false, reason: TRANSCRIPT_UNAVAILABLE_REASON };
+            }
             if (analysis.status === 'not-found' || analysis.anchor === null) {
                 return { ready: false, reason: ANCHOR_REJECT_REASON };
             }

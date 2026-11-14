@@ -147,8 +147,8 @@ describe('verifyForkAnchorExists（激活前预检：活链存在性判定）', 
         await expect(verifyForkAnchorExists('parent-native-1', '/dir', 'anchor-uuid-1')).resolves.toBe('anchor-invalidated')
     })
 
-    it('transcript 文件不存在（parent transcript 丢失）→ anchor-invalidated（无法确认存在按常态失败码）', async () => {
-        await expect(verifyForkAnchorExists('parent-native-1', '/dir', 'anchor-uuid-1')).resolves.toBe('anchor-invalidated')
+    it('transcript 文件不存在（parent transcript 丢失）→ parent-transcript-missing（重发消息可重试，与 anchor-invalidated 分开报）', async () => {
+        await expect(verifyForkAnchorExists('parent-native-1', '/dir', 'anchor-uuid-1')).resolves.toBe('parent-transcript-missing')
     })
 })
 

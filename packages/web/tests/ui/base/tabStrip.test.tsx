@@ -135,6 +135,21 @@ describe('TabStrip 受控与键盘', () => {
         expect(t).toHaveAttribute('aria-controls', panel.id)
         expect(panel).toHaveAttribute('aria-labelledby', t.id)
     })
+
+    it('panelless（纯分段控件，内容在页签条外）：不渲染 aria-controls，也不留空壳面板', () => {
+        render(
+            <TabStrip value="a" onValueChange={() => {}}>
+                <TabStripList ariaLabel="分段">
+                    <TabStripTab value="a" panelless>A</TabStripTab>
+                    <TabStripTab value="b" panelless>B</TabStripTab>
+                </TabStripList>
+            </TabStrip>,
+        )
+
+        // 不带 aria-controls 而非指向不存在的元素；页面里也不该有 tabpanel
+        expect(tab('A')).not.toHaveAttribute('aria-controls')
+        expect(screen.queryByRole('tabpanel')).toBeNull()
+    })
 })
 
 describe('TabStrip 关闭语义', () => {

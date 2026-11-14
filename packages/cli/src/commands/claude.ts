@@ -23,6 +23,7 @@ import { logger } from '@mobi/node-core/logger'
 import { initializeToken } from '@/ui/tokenInit'
 import { ensureDaemonRunning } from '@/utils/autoStartServer'
 import { withBunRuntimeEnv } from '@mobi/node-core/utils/bunRuntime'
+import { childEnvWithoutDebugger } from '@mobi/node-core/utils/spawnMobiCli'
 import { extractErrorInfo } from '@mobi/node-core/utils/errorUtils'
 import { getClaudeExecutablePath } from '@mobi/node-core/claudeSdk/claudeExecutable'
 import { parseStartOptions } from './claudeArgs'
@@ -80,7 +81,9 @@ async function runLocalMode(options: StartOptions): Promise<void> {
     const claudeCommand = (await getClaudeExecutablePath()) ?? 'claude'
     const claudeProcess = spawn(claudeCommand, claudeArgs, {
         stdio: 'inherit',
-        env: withBunRuntimeEnv(),
+        // BUN_BE_BUN 照注入，调试器 env 剥掉——调试态 mobi 的 BUN_INSPECT socket
+        // 已被本进程占用，claude（bun-compile 二进制）继承后 bind 即 EADDRINUSE 退出
+        env: childEnvWithoutDebugger(withBunRuntimeEnv()),
         shell: false
     })
 
@@ -159,7 +162,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
                 const claudeHelp = execFileSync(
                     (await getClaudeExecutablePath()) ?? 'claude',
                     ['--help'],
-                    { encoding: 'utf8', env: withBunRuntimeEnv(), shell: false }
+                    { encoding: 'utf8', env: childEnvWithoutDebugger(withBunRuntimeEnv()), shell: false }
                 )
                 console.log(claudeHelp)
             } catch {

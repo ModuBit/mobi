@@ -70,11 +70,15 @@ export function stripBunDebuggerEnv(env: Record<string, string | undefined>): vo
  * 构造剥离 IDE 调试器 env 的子进程环境——spawn claude 二进制的统一入口。
  * 调试态进程的 BUN_INSPECT socket 已被本进程占用，子进程继承后 bind 即
  * EADDRINUSE 退出（cli 包已知陷阱）；调用点只管拿返回值，陷阱在此处收口。
+ * 基座 env 缺省 process.env；需要叠加其他注入（如 withBunRuntimeEnv 的
+ * BUN_BE_BUN）时传入组合。
  */
-export function childEnvWithoutDebugger(): Record<string, string | undefined> {
-  const env = { ...process.env } as Record<string, string | undefined>;
-  stripBunDebuggerEnv(env);
-  return env;
+export function childEnvWithoutDebugger(
+  env: Record<string, string | undefined> = process.env
+): Record<string, string | undefined> {
+  const childEnv = { ...env };
+  stripBunDebuggerEnv(childEnv);
+  return childEnv;
 }
 
 /**

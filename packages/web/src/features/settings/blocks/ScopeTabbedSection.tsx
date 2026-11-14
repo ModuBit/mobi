@@ -22,11 +22,12 @@
  *
  * 页签条用自管 TabStrip 族（2026-11-13 起替代 antd Tabs，antd Tabs 全站清零且 eslint 禁新增）：
  * - 右上动作槽走 TabStripList 的 `extra` 槽——它位于 tablist **之外**，不会被页签的键盘/焦点链路牵动；
- * - children **不进面板**：与旧 antd 版一致恒渲染在页签条下方，切 scope 只换数据不重挂结构；
- *   各 value 仍渲染空壳 TabStripPanel，让每个页签的 aria-controls 都有落点（tabStrip 契约）。
+ * - children **不进面板**：与旧 antd 版一致恒渲染在页签条下方，切 scope 只换数据不重挂结构。
+ *   页签因此是**纯分段控件**（panelless）：内容不在 tabpanel 里，aria-controls 不渲染，
+ *   也不渲染空壳 TabStripPanel 去凑落点（display:none 的死元素不是 a11y 落点）。
  */
 import type { ReactNode } from 'react'
-import { TabStrip, TabStripList, TabStripPanel, TabStripTab } from '@/ui/base/interactive/tabStrip'
+import { TabStrip, TabStripList, TabStripTab } from '@/ui/base/interactive/tabStrip'
 import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
 
 export interface ScopeTabbedSectionProps {
@@ -75,13 +76,9 @@ export function ScopeTabbedSection({
                         tabBarExtraContent={{ right }} 的布局由它收口 */}
                     <TabStripList ariaLabel={tabsAriaLabel ?? 'tabs'} extra={actions} fill>
                         {options.map(o => (
-                            <TabStripTab key={o.value} value={o.value}>{o.label}</TabStripTab>
+                            <TabStripTab key={o.value} value={o.value} panelless>{o.label}</TabStripTab>
                         ))}
                     </TabStripList>
-                    {/* 空壳面板：仅承接各页签的 aria-controls（内容恒在页签条下方，见头注释） */}
-                    {options.map(o => (
-                        <TabStripPanel key={o.value} value={o.value}>{null}</TabStripPanel>
-                    ))}
                 </TabStrip>
             </div>
             {children}
