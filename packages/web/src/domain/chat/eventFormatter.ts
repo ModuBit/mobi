@@ -75,6 +75,10 @@ export function formatEvent(event: { type: string; [key: string]: unknown }, cre
             const ms = Number(event.durationMs) || 0
             return { kind: 'lines', lines: [{ segments: [{ key: 'chat.durationValue', params: { value: formatDurationMs(ms) } }] }] }
         }
+        case 'model-change': {
+            const model = String(event.model || '')
+            return { kind: 'lines', lines: [{ segments: [{ key: 'chat.modelChange', params: { model } }] }] }
+        }
         case 'switch': {
             const mode = String(event.mode || '')
             return { kind: 'lines', lines: [{ segments: [{ key: 'chat.switchMode', params: { mode } }] }] }

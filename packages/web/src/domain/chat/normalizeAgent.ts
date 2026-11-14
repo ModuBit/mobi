@@ -454,6 +454,13 @@ const handleTurnDurationOutput: OutputHandler = (data, ctx) => {
     })
 }
 
+/** 处理 system:model_change 消息（mobi 合成的模型切换时间线事件） */
+const handleModelChangeOutput: OutputHandler = (data, ctx) => {
+    const model = asString(data.model)
+    if (!model) return null
+    return createEventMessage(ctx, { type: 'model-change', model })
+}
+
 /** 处理 system:microcompact_boundary 消息 */
 const handleMicrocompactBoundaryOutput: OutputHandler = (data, ctx) => {
     const metadata = isObject(data.microcompactMetadata) ? data.microcompactMetadata : null
@@ -755,6 +762,7 @@ const outputHandlers = new Map<string, OutputHandler>([
     ['system:api_retry', handleApiRetryOutput],
     ['system:api_error', handleApiErrorOutput],
     ['system:turn_duration', handleTurnDurationOutput],
+    ['system:model_change', handleModelChangeOutput],
     ['system:microcompact_boundary', handleMicrocompactBoundaryOutput],
     ['system:compact_boundary', handleCompactBoundaryOutput],
     ['system:informational', handleInformationalOutput],

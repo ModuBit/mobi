@@ -118,6 +118,8 @@ const VISIBLE_CLAUDE_SYSTEM_SUBTYPES = new Set([
     'task_notification',
     'task_started',
     'task_updated',
+    // mobi 合成的模型切换时间线事件（CLI 在程序化切换成功后发）：渲染成系统事件行
+    'model_change',
     // SDKInformationalMessage（CC 2.1.283+ warnings/notices）：放行到 web normalize handler。
     // 放行 ≠ 渲染——是否产出横幅由 web domain 层收窄判据
     // （level === 'warning' || prevent_continuation === true）二次决定，其余维持忽略

@@ -103,6 +103,11 @@ describe('formatEvent 结构化产出（分层治理票 01）', () => {
         expect(sw).toEqual({ kind: 'lines', lines: [{ segments: [{ key: 'chat.switchMode', params: { mode: 'plan' } }] }] })
     })
 
+    it('model-change → 单行 i18n（模型名进插值参数）', () => {
+        const ev = formatEvent({ type: 'model-change', model: 'opus' })
+        expect(ev).toEqual({ kind: 'lines', lines: [{ segments: [{ key: 'chat.modelChange', params: { model: 'opus' } }] }] })
+    })
+
     it('error → 交给 ErrorEventCard（formatEvent 不产出行）', () => {
         const f = formatEvent({ type: 'error', category: 'rate_limit', attempt: 1, maxRetries: 3, message: 'x' })
         expect(f).toBeNull()

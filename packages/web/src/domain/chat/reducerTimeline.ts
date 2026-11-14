@@ -30,6 +30,8 @@ import { messageBlockKeyPrefix } from './blockId'
 function getEventDisplay(event: { type: string; [key: string]: unknown }): EventDisplay | undefined {
     switch (event.type) {
         case 'turn-duration': return { align: 'left', padding: false }
+        // 模型切换时间线（mobi 合成）：与 turn-duration 同为过程性系统行
+        case 'model-change': return { align: 'left', padding: false }
         case 'error': return { color: errorSeverity(event.category as ErrorCategory), align: 'left' }
         // goal 达成(success 绿) vs active(中性灰)，对齐 GoalChip 的颜色语义
         case 'goal-progress': return { color: event.met === true ? 'success' : 'default', align: 'left' }

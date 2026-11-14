@@ -15,11 +15,12 @@
  */
 
 import { logger } from '@mobi/node-core/logger';
+import { randomUUID } from 'node:crypto';
 import { loop } from './loop';
 import { evaluateDormancyGate, type DormancyFacts, type LauncherDormancyFacts } from './utils/dormancyGate';
 import { DEFAULT_RECHECK_MS } from '../modules/common/idleTimer';
 import { AgentState, SessionModel } from '@mobi/node-core/api/types';
-import { EnhancedMode, PermissionMode, type QueryControlRef } from './types';
+import { EnhancedMode, PermissionMode, type QueryControlRef, type RawJSONLines } from './types';
 import { MessageQueue } from '@mobi/node-core/utils/MessageQueue';
 import { hashObject } from '@mobi/node-core/utils/deterministicJson';
 import { extractSDKMetadataAsync } from '@mobi/node-core/claudeSdk/metadataExtractor';
@@ -615,13 +616,16 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
             throw new Error('Invalid session config payload');
         }
         const config = payload as { permissionMode?: unknown; model?: unknown; effort?: unknown; fastMode?: unknown };
+        let modelChanged = false;
 
         if (config.permissionMode !== undefined) {
             currentPermissionMode = resolvePermissionMode(config.permissionMode);
         }
 
         if (config.model !== undefined) {
-            currentModel = resolveModel(config.model);
+            const nextModel = resolveModel(config.model);
+            modelChanged = nextModel !== currentModel;
+            currentModel = nextModel;
         }
 
         if (config.effort !== undefined) {
@@ -650,6 +654,22 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
         // reinitialize 有「重投挂起审批」的副作用，所以只在用户显式切换时调，不做周期刷新。
         if (fastModeChanged) {
             void applied.then(() => apiSession.refreshFastModeState());
+        }
+        // 模型切换时间线：程序化 setModel（web UI → RPC）不产生任何 CC 帧，时间线原本无痕。
+        // flag 层落地且 SDK 权威值核对一致后才合成 system/model_change 行落库——
+        // applyLive 失败（syncSessionModes 内部吞错）或会话未起时不发，不报假消息。
+        // 文案由 web 渲染端按语言拼装，行内只带模型标识
+        if (modelChanged) {
+            void applied.then(() => {
+                const sessionInstance = currentSessionRef.current;
+                if (!sessionInstance || LIVE_CONFIG_APPLIERS.model.get(sessionInstance) !== currentModel) return;
+                apiSession.sendClaudeSessionMessage({
+                    type: 'system',
+                    subtype: 'model_change',
+                    model: currentModel,
+                    uuid: randomUUID(),
+                } as unknown as RawJSONLines);
+            });
         }
         return { applied: { permissionMode: currentPermissionMode, model: currentModel, effort: currentEffort, fastMode: currentFastMode } };
     }, { countsAsUserActivity: true });

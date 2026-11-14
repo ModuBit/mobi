@@ -434,6 +434,28 @@ describe('normalizeAgentRecord', () => {
         }
     })
 
+    it('system:model_change → model-change 事件（模型切换时间线）', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'system',
+                    subtype: 'model_change',
+                    model: 'opus',
+                },
+            },
+        )
+
+        expect(result).not.toBeNull()
+        expect(result?.role).toBe('event')
+        if (result && 'type' in result.content) {
+            expect(result.content).toMatchObject({ type: 'model-change', model: 'opus' })
+        }
+    })
+
     it('should handle system:compact_boundary with snake_case metadata', () => {
         const result = normalizeAgentRecord(
             baseParams.messageId,

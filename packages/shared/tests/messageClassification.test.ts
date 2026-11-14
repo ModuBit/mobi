@@ -228,6 +228,12 @@ describe('isClaudeChatVisibleMessage', () => {
         expect(isClaudeChatVisibleMessage({ type: 'system', subtype: 'compact_boundary' })).toBe(true)
     })
 
+    it('system:model_change 可见（mobi 合成的模型切换时间线事件）', () => {
+        // 程序化切换（web UI → RPC → query.setModel）不产生 CC 帧，时间线无痕迹；
+        // CLI 在切换成功后合成此行落库，web 渲染成系统事件行
+        expect(isClaudeChatVisibleMessage({ type: 'system', subtype: 'model_change' })).toBe(true)
+    })
+
     it('system + 不可见子类型返回 false', () => {
         expect(isClaudeChatVisibleMessage({ type: 'system', subtype: 'init' })).toBe(false)
         expect(isClaudeChatVisibleMessage({ type: 'system', subtype: 'other' })).toBe(false)

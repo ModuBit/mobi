@@ -52,6 +52,8 @@ export type AgentEvent =
     // 统一错误事件：api_error / 历史 api_retry / result 错误都归一到这里（error-presentation 票 01）
     | ({ type: 'error' } & NormalizedErrorEvent)
     | { type: 'turn-duration'; durationMs: number }
+    // 模型切换时间线（CLI 合成 system:model_change）：model 为切换后的模型标识
+    | { type: 'model-change'; model: string }
     | { type: 'microcompact'; trigger: string; preTokens: number; tokensSaved: number }
     | { type: 'compact'; trigger: string; preTokens: number; postTokens: number; durationMs: number }
     // 压缩开始（手动 /compact 与自动压缩统一 started 信号，CLI 幂等收口后发出）
