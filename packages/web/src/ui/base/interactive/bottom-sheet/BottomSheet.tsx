@@ -423,10 +423,40 @@ function Sheet({
                 return undefined
             }
             const anim = animate(y, target, velocity === undefined ? spring.momentum : { ...spring.momentum, velocity })
-            if (onArrive) anim.then(onArrive, onArrive)
+            if (onArrive) {
+                // motion 13 实测：动画视觉到位（y 稳定）后 promise 偶发永不 settle——挂在
+                // anim.then 上的回调（弹入 presentedRef / 离场 finishExit）就永不执行，
+                // 表现为「点遮罩关不掉 / sheet 永不卸载」。到点兜底（momentum 0.3s + 余量），
+                // 与 promise 回调竞速、只触发一次。
+                let fired = false
+                const arrive = () => {
+                    if (fired) return
+                    fired = true
+                    window.clearTimeout(fallback)
+                    onArrive()
+                }
+                const fallback = window.setTimeout(arrive, 1000)
+                anim.then(arrive, arrive)
+            }
             return anim
         },
         [reduced, y],
+    )
+
+    /** 入场起跳：位移 + 「到位即呈现」判定。到位判据走 y 的帧级逼近（差值 < 2px），
+     *  不押在动画 promise 上（motion 13 偶发不 settle——视觉到位后回调 3s+ 不触发，
+     *  presentedRef 卡 false → 点遮罩关不掉）；go 内的 1s 兜底是第二道保险 */
+    const enterTowards = useCallback(
+        (target: number) => {
+            const unsub = y.on('change', (v) => {
+                if (Math.abs(v - target) < 2) {
+                    unsub()
+                    markPresented()
+                }
+            })
+            go(target, undefined, markPresented)
+        },
+        [go, markPresented, y],
     )
 
     /** 落档：先切档位状态再跑位移——`data-scroll-locked`（决定内容区可否滚动）与读屏播报
@@ -596,13 +626,13 @@ function Sheet({
             // 父直调重开（已起跳过）立即起跳——收敛等待已走过，高度早已稳定。
             if (enterDoneRef.current) {
                 y.jump(closedY())
-                go(detentY(detentRef.current), undefined, markPresented)
+                enterTowards(detentY(detentRef.current))
                 return undefined
             }
             const startEnter = () => {
                 enterDoneRef.current = true
                 y.jump(closedY())
-                go(detentY(detentRef.current), undefined, markPresented)
+                enterTowards(detentY(detentRef.current))
             }
             return waitForContentSettle(sheet, startEnter)
         }
