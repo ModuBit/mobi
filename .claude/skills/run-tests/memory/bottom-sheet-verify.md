@@ -3,7 +3,7 @@ name: bottom-sheet-verify
 description: 移动端底部 sheet（BottomSheet，2026-10-13 起全量替代旧 MobileDrawer）真机化验证 —— CDP 移动视口 + 合成拖拽采样（跟手/遮罩连续、嵌套层号、内容自滚、关闭路径）
 metadata:
   type: recipe
-  last_verified: 2026-10-21
+  last_verified: 2026-11-14
 ---
 
 # 移动端 sheet 验证（CDP 移动视口）
@@ -51,9 +51,16 @@ computed style 的 `transform` 与 overlay `opacity`：
   移出屏外的，节点还在、`innerText` 照收。判据用承载 pane 的 `getBoundingClientRect().left`
   （展开 = 无平移或 left 0；收起 = 平移满宽）。
 - **遮罩在 peek 档停在 0.78**（LOW_DIM），展开档回 1——两段斜坡在 peek 档接续，不是单段。
-- **遮罩关闭需完整 pointerdown → pointerup → click**（2026-10-13 实测）：Radix 1.1.20 的
-  DismissableLayer 对「dismissable surface」在 click 阶段才判 dismiss；只发 down/up 会
-  看到 sheet 纹丝不动，极易误判成组件坏了。同理测「点遮罩关闭」不要只发 pointerdown。
+- **遮罩关闭走 mask 自己的 onClick（2026-11-14 根修）**：dialog 1.3.x `deferPointerDownOutside: true`
+  把 pointerDownOutside 推迟到 click 派发，而 click 的 capture 记账（handleInteractionCapture）
+  发现 target 不在 dismissableSurfaces（modal=false 时 Radix Overlay 不渲染、自画 mask 未注册）
+  就拦截 dispatch——**点遮罩全站关不掉**（症状：document bubble 收到 pointerdown、
+  `dismissableLayer.pointerDownOutside` 零派发、handlePointerDown 被调但空手而归）。修法 =
+  mask 自己绑 onClick 走 requestClose（守卫：在场时刻 `presenceChange.at` + `presentedRef`）。
+  验证判据：`document.querySelector('[data-testid="bottom-sheet-overlay"]').click()` 后
+  `[role="dialog"]` 应消失。**合成事件单发 pointerdown 不触发任何关闭路径**——判关闭必须派
+  click（或 CDP 真实点击）。多版本 Radix 并存（.bun 下 1.1.5/1.1.20/1.2.1），读源码前先对
+  dialog package.json 确认实际 resolve 的 dismissable-layer 版本。
 - **历史哨兵在 dev 会累积**：StrictMode 双调用 effect → 一次 open 推两个哨兵、close 只弹一个，
   `history.length` 每轮 +1。**生产构建无此问题**（实测临时摘掉 StrictMode 后每轮净 0）。
   验证哨兵别拿 dev 的 history.length 当结论。
