@@ -15,18 +15,20 @@
  */
 
 /**
- * scope-tabbed 管理页骨架（架构深化候选②）：「搜索框 + scope tabs + 右上动作槽 +
+ * scope-tabbed 管理页骨架（架构深化候选②）：「搜索行（搜索框 + 右上动作槽）+ scope tabs +
  * 内容区」的不变结构。skill / mcp / plugin 三张管理页共用（spec 决策 15 的兑现）；
  * 数据（workspaces/列表）与过滤谓词归调用方，骨架零数据依赖、零 mock 可测。
  * 弹窗不进骨架（各域表单字段差异大，scope radio 那一角由 useScopeOptions 根治）。
  *
  * 页签条用自管 TabStrip 族（2026-11-13 起替代 antd Tabs，antd Tabs 全站清零且 eslint 禁新增）：
- * - 右上动作槽走 TabStripList 的 `extra` 槽——它位于 tablist **之外**，不会被页签的键盘/焦点链路牵动；
+ * - 动作槽不在 tablist 行内（原 extra 槽方案随「搜索+动作同行」改版退役）——页签条是
+ *   纯分段控件，不被动作按钮牵动键盘/焦点链路；
  * - children **不进面板**：与旧 antd 版一致恒渲染在页签条下方，切 scope 只换数据不重挂结构。
  *   页签因此是**纯分段控件**（panelless）：内容不在 tabpanel 里，aria-controls 不渲染，
  *   也不渲染空壳 TabStripPanel 去凑落点（display:none 的死元素不是 a11y 落点）。
  */
 import type { ReactNode } from 'react'
+import styled from '@emotion/styled'
 import { TabStrip, TabStripList, TabStripTab } from '@/ui/base/interactive/tabStrip'
 import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
 
@@ -49,6 +51,13 @@ export interface ScopeTabbedSectionProps {
     tabsTestId?: string
 }
 
+/** 搜索行：搜索框吃满余量 + 动作槽贴行右端（gap 同时作用于框与按钮、按钮与按钮之间） */
+const ToolbarRow = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+`
+
 export function ScopeTabbedSection({
     keyword,
     onKeywordChange,
@@ -63,18 +72,21 @@ export function ScopeTabbedSection({
 }: ScopeTabbedSectionProps) {
     return (
         <>
-            <SearchField
-                value={keyword}
-                onValueChange={onKeywordChange}
-                placeholder={searchPlaceholder}
-                aria-label={searchPlaceholder}
-            />
+            {/* 搜索行：搜索框吃满余量，动作槽（安装/新建等）推到行右端 */}
+            <ToolbarRow>
+                <SearchField
+                    value={keyword}
+                    onValueChange={onKeywordChange}
+                    placeholder={searchPlaceholder}
+                    aria-label={searchPlaceholder}
+                    style={{ flex: 1 }}
+                />
+                {actions}
+            </ToolbarRow>
             {/* data-testid 落在包裹层（TabStrip 不收 testid）：E2E 以此为锚点找页签条 */}
             <div data-testid={tabsTestId}>
                 <TabStrip value={activeScope} onValueChange={onScopeChange}>
-                    {/* fill：外壳吃满行内余量，extra 槽（动作钮）照常推到行右端——旧 antd
-                        tabBarExtraContent={{ right }} 的布局由它收口 */}
-                    <TabStripList ariaLabel={tabsAriaLabel ?? 'tabs'} extra={actions} fill>
+                    <TabStripList ariaLabel={tabsAriaLabel ?? 'tabs'} fill>
                         {options.map(o => (
                             <TabStripTab key={o.value} value={o.value} panelless>{o.label}</TabStripTab>
                         ))}
