@@ -45,3 +45,8 @@ metadata:
 - 权限模式残留（见上）：会话进 plan 的第一嫌疑，先查下拉当前值再排查代码
 - 输入操作通用规范见 [[input-box]]
 
+
+## spawn API 直建（绕过 UI）
+
+`POST /api/sessions/spawn`（cookie 认证）：`{"directory":"~/workspace/demo","permissionMode":"acceptEdits"}`。
+**`workspaceId` 传 `null` 会 Invalid body**（schema 是 `z.string().optional()` 不收 null，2026-11-14 实踩）——不归属工作区就整个键省掉。就绪后等 ~6s 再发消息（CLI 未起时消息静默排队）。

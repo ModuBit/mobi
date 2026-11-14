@@ -147,15 +147,17 @@ export function useSkillCreatePrompt() {
  */
 export function useSkillVisibility() {
     const api = useMobiApi()
-    const queryClient = useQueryClient()
+    const invalidateAll = useInvalidateAllSkills()
 
     return useMutation({
         mutationFn: async (vars: { name: string; enabled: boolean; workspaceId: string }) => {
             const res = await api.skills.setVisibility(vars.name, vars.enabled, vars.workspaceId)
             return res.data.skill
         },
-        onSuccess: (_skill, vars) => {
-            queryClient.invalidateQueries({ queryKey: queryKeys.skills(vars.workspaceId) })
+        onSuccess: () => {
+            // 全族失效（与安装/删除对齐）：生效状态跨视角计算（global off 遮蔽 workspace on），
+            // 且详情 sheet（skillsDetail 键）头部开关也读同一份数据——只失效列表键会让 sheet 持旧值
+            invalidateAll()
         },
     })
 }

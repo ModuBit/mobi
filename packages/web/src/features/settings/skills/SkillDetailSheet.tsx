@@ -123,6 +123,7 @@ const Loading = styled.div`
 /** 元数据行构建：undefined 字段整行不出现（「有才显示」收拢在此一处） */
 function metaRows(meta: SkillFrontmatterMeta, t: (k: string, opts?: Record<string, unknown>) => string): { key: string; value: string }[] {
     const rows: { key: string; value: string }[] = []
+    if (meta.whenToUse) rows.push({ key: t('settings.skills.detail.whenToUse'), value: meta.whenToUse })
     if (meta.userInvocable === false) rows.push({ key: t('settings.skills.detail.invocation'), value: t('settings.skills.detail.invocationClaudeOnly') })
     if (meta.argumentHint) rows.push({ key: t('settings.skills.detail.argumentHint'), value: meta.argumentHint })
     if (meta.arguments?.length) rows.push({ key: t('settings.skills.detail.arguments'), value: meta.arguments.join(', ') })
@@ -195,7 +196,10 @@ function SkillDetailContent({ skill, scope, token, t, onToggle, toggling, onUpda
     deleting?: boolean
 }) {
     const { detail, isLoading } = useSkillDetail(skill.name, scope)
-    const shadowed = isSkillShadowed(skill)
+    // 以 detail 请求返回的行数据为准（与列表同源、键挂 skillsRoot——sheet 内启停后
+    // mutation 失效重拉，头部开关/遮蔽态即时刷新；请求未回来前用行数据兜底渲染）
+    const current = detail?.skill ?? skill
+    const shadowed = isSkillShadowed(current)
     const rows = metaRows(detail?.meta ?? {}, t)
     const hasActions = Boolean(onUpdate) || Boolean(onDelete)
 
@@ -204,16 +208,16 @@ function SkillDetailContent({ skill, scope, token, t, onToggle, toggling, onUpda
             <Head $token={token}>
                 <Box size={18} />
                 <HeadText>
-                    <Name $token={token}>{skill.name}</Name>
-                    {skill.description && <Desc $token={token}>{skill.description}</Desc>}
+                    <Name $token={token}>{current.name}</Name>
+                    {current.description && <Desc $token={token}>{current.description}</Desc>}
                 </HeadText>
                 {onToggle && (
                     <div onClick={e => e.stopPropagation()} role="presentation">
                         <Switch
-                            checked={skill.effectiveState !== 'off'}
+                            checked={current.effectiveState !== 'off'}
                             disabled={toggling}
                             onCheckedChange={onToggle}
-                            aria-label={t('settings.skills.toggleAria', { name: skill.name })}
+                            aria-label={t('settings.skills.toggleAria', { name: current.name })}
                         />
                     </div>
                 )}

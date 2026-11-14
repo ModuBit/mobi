@@ -1060,6 +1060,7 @@
       "detail": {
         "meta": "Metadata",
         "body": "Instructions",
+        "whenToUse": "When to use",
         "invocation": "Invocation",
         "invocationClaudeOnly": "Claude only",
         "argumentHint": "Argument hint",
