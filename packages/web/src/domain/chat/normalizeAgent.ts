@@ -183,6 +183,8 @@ const handleAssistantOutput: OutputHandler = (data, ctx) => {
     const outputTokens = usage ? asNumber(getField(usage, 'output_tokens')) : null
     // 官方回戳（票 03）单次取值（review #5）：getField+asString 求值一次存局部
     const userMessageUuid = asString(getField(data, 'user_message_uuid'))
+    // assistant 实际使用的模型：turn-result 的模型标注靠它（result.modelUsage 是会话累计，含旧模型）
+    const assistantModel = asString(getField(message, 'model'))
 
     return {
         id: ctx.messageId,
@@ -192,6 +194,8 @@ const handleAssistantOutput: OutputHandler = (data, ctx) => {
         isSidechain,
         content: blocks,
         meta: ctx.meta,
+        // 真实使用模型（缺省不带，旧格式/无 model 帧由 turn-result 的 modelUsage 兜底）
+        ...(assistantModel ? { model: assistantModel } : {}),
         // SDK 顶层 aborted（cli 展开整个 assistantMsg 带入，spec D6）：正文被截断的中性标注信号。
         // 显式构造会丢顶层字段，需在此补读；仅 true 时携带，与 cli 侧落库口径一致（缺省不带）。
         ...(getField(data, 'aborted') === true ? { aborted: true } : {}),
@@ -650,7 +654,10 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
     const costUsd = asNumber(getField(data, 'total_cost_usd')) ?? undefined
     const ttftMs = asNumber(getField(data, 'ttft_ms')) ?? undefined
     const modelUsage = isObject(data.modelUsage) ? data.modelUsage : null
-    const model = modelUsage ? (Object.keys(modelUsage)[0] ?? undefined) : undefined
+    // 取最后一个 key：modelUsage 按首次使用顺序累积，本轮中途切模型时含多个模型——
+    // 最后加入的才是本轮结束时生效的模型。取第一个会把「刚切到新模型」的轮次仍标成旧模型
+    const modelKeys = modelUsage ? Object.keys(modelUsage) : []
+    const model = modelKeys.length > 0 ? modelKeys[modelKeys.length - 1] : undefined
 
     if (isAborted) {
         // CLI 批在中断 result 上附带的停止对账字段（stopKind/stillQueuedCount，下划线/驼峰双格式

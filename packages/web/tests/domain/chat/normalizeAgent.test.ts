@@ -846,6 +846,39 @@ describe('normalizeAgentRecord', () => {
         expect(camel?.content).toMatchObject({ type: 'aborted', stopKind: 'turn', stillQueuedCount: 0 })
     })
 
+    it('turn-result：本轮中途切模型（modelUsage 多 key）→ 模型取最后一个（本轮结束时生效）', () => {
+        // SDK 按首次使用顺序累积 modelUsage；中途 /model 切换后两模型都在。
+        // 取第一个会把「刚切到新模型」的轮次仍标成旧模型（2026-11-14 用户截图实锤）
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'result',
+                    subtype: 'success',
+                    duration_ms: 65000,
+                    num_turns: 15,
+                    is_error: false,
+                    stop_reason: null,
+                    modelUsage: {
+                        'ccs-claude-zhipu--glm-5.3-flash[1m]': { inputTokens: 477403 },
+                        'ccs-claude-deepseek--deepseek-flash[1m]': { inputTokens: 9000 },
+                    },
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        if (result && 'type' in result.content) {
+            expect(result.content).toMatchObject({
+                type: 'turn-result',
+                model: 'ccs-claude-deepseek--deepseek-flash[1m]',
+            })
+        }
+    })
+
     it('should handle result with success and return turn-result event', () => {
         const result = normalizeAgentRecord(
             baseParams.messageId,

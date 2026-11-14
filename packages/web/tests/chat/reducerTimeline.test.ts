@@ -596,6 +596,90 @@ describe('reduceTimeline', () => {
         })
     })
 
+    describe('turn-result 模型标注（本轮最后主链 assistant 的 model）', () => {
+        const ctx = () => ({
+            permissionsById: new Map<string, PermissionEntry>(),
+            groups: new Map<string, TracedMessage[]>(),
+            consumedGroupIds: new Set<string>(),
+            titleChangesByToolUseId: new Map<string, string>(),
+            emittedTitleChangeToolUseIds: new Set<string>(),
+            hiddenToolUseIds: new Map<string, string>(),
+        })
+
+        const userMsg = (id: string, createdAt: number): TracedMessage => ({
+            id, localId: null, createdAt, role: 'user', isSidechain: false,
+            content: { type: 'text', text: 'hi', blocks: [] },
+        })
+
+        const assistantMsg = (id: string, model: string, createdAt: number, isSidechain = false): TracedMessage => ({
+            id, localId: null, createdAt, role: 'agent', isSidechain, model,
+            content: [{ type: 'text', text: 'ok', uuid: id, parentUUID: null }],
+        })
+
+        // result 的 modelUsage 是会话累计统计：切模型后旧模型条目仍在（数值冻结），
+        // normalizeAgent 推导的 event.model 可能是旧模型——reducer 须用本轮 assistant 的 model 覆盖
+        const resultMsg = (id: string, createdAt: number, fallbackModel?: string): TracedMessage => ({
+            id, localId: null, createdAt, role: 'event', isSidechain: false,
+            content: {
+                type: 'turn-result', durationMs: 1000, tokens: 10, numTurns: 1,
+                ...(fallbackModel !== undefined ? { model: fallbackModel } : {}),
+            },
+        })
+
+        const turnResultModel = (blocks: ReturnType<typeof reduceTimeline>['blocks']): string | undefined => {
+            const block = blocks.find((b) => b.kind === 'agent-event' && b.event.type === 'turn-result')
+            return block && block.kind === 'agent-event' && block.event.type === 'turn-result'
+                ? block.event.model
+                : undefined
+        }
+
+        it('assistant 的 model 覆盖 modelUsage 推导出的旧模型', () => {
+            const messages: TracedMessage[] = [
+                userMsg('u1', 1000),
+                assistantMsg('a1', 'deepseek-flash', 1100),
+                resultMsg('r1', 1200, 'ccs-claude-zhipu--glm-5.3-flash[1m]'),
+            ]
+            const { blocks } = reduceTimeline(messages, ctx())
+            expect(turnResultModel(blocks)).toBe('deepseek-flash')
+        })
+
+        it('每轮独立：切回旧模型后的新一轮显示旧模型', () => {
+            const messages: TracedMessage[] = [
+                userMsg('u1', 1000),
+                assistantMsg('a1', 'deepseek-flash', 1100),
+                resultMsg('r1', 1200),
+                userMsg('u2', 2000),
+                assistantMsg('a2', 'glm-5.3-flash', 2100),
+                resultMsg('r2', 2200),
+            ]
+            const { blocks } = reduceTimeline(messages, ctx())
+            const models = blocks
+                .filter((b) => b.kind === 'agent-event' && b.event.type === 'turn-result')
+                .map((b) => (b.kind === 'agent-event' && b.event.type === 'turn-result' ? b.event.model : undefined))
+            expect(models).toEqual(['deepseek-flash', 'glm-5.3-flash'])
+        })
+
+        it('sidechain（子代理）assistant 的 model 不参与本轮标注', () => {
+            const messages: TracedMessage[] = [
+                userMsg('u1', 1000),
+                assistantMsg('a1', 'deepseek-flash', 1100),
+                assistantMsg('a2', 'haiku', 1150, true),
+                resultMsg('r1', 1200),
+            ]
+            const { blocks } = reduceTimeline(messages, ctx())
+            expect(turnResultModel(blocks)).toBe('deepseek-flash')
+        })
+
+        it('本轮无 assistant 时保留 normalizeAgent 推导的 fallback', () => {
+            const messages: TracedMessage[] = [
+                userMsg('u1', 1000),
+                resultMsg('r1', 1200, 'glm-5.3-flash'),
+            ]
+            const { blocks } = reduceTimeline(messages, ctx())
+            expect(turnResultModel(blocks)).toBe('glm-5.3-flash')
+        })
+    })
+
     describe('错误处理', () => {
         it('应正确标记错误的 tool-result', () => {
             const messages: TracedMessage[] = [

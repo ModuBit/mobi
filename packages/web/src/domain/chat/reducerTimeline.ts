@@ -118,6 +118,11 @@ export function reduceTimeline(
     // 追踪 compact 事件，用于识别下一条 compact 总结消息
     let pendingCompactMetadata: { preTokens: number; postTokens: number; durationMs: number } | null = null
 
+    // 本轮最后一条主链 assistant 实际使用的模型：result.modelUsage 是**会话累计**统计
+    // （切模型后旧模型条目仍在、数值冻结），无法回答「本轮用了什么」——turn-result 的模型
+    // 标注以本轮 assistant 的 message.model 为准。user 消息标志新一轮开始，重置
+    let lastAssistantModel: string | undefined
+
     for (const msg of messages) {
         if (msg.role === 'event') {
             if (msg.content.type === 'ready') {
@@ -215,7 +220,11 @@ export function reduceTimeline(
             blocks.push(createEventBlock({
                 id: msg.id,
                 createdAt: msg.createdAt,
-                event: msg.content,
+                // turn-result 的模型以本轮主链 assistant 的实际使用为准；无 assistant 时
+                // 保留 normalizeAgent 从 modelUsage 推导的值（旧格式/空轮兜底）
+                event: msg.content.type === 'turn-result' && lastAssistantModel
+                    ? { ...msg.content, model: lastAssistantModel }
+                    : msg.content,
                 meta: msg.meta
             }))
             continue
@@ -248,6 +257,8 @@ export function reduceTimeline(
         }
 
         if (msg.role === 'user') {
+            // 新一轮开始：本轮模型标注从零累计
+            lastAssistantModel = undefined
             // 【过渡】blocks 化后纯文本经 getUserPlainText 提取（多 block 消息取首个非空 text）
             const plainText = getUserPlainText(msg.content.blocks)
             // 检测 compact 总结消息：来自 CLI 且之前有 compact 事件。
@@ -311,6 +322,8 @@ export function reduceTimeline(
 
         if (msg.role === 'agent') {
             const isSnapshot = msg.snapshot === true
+            // 本轮模型标注只认主链（子代理的模型与本轮无关）
+            if (!msg.isSidechain && msg.model) lastAssistantModel = msg.model
             // 截断标注（spec D6）挂在消息最后一个渲染为 agent-text 的块上（气泡尾部）：
             // 正文被截断的诚实呈现。末尾 text 可能被分流为 cli-output / synthetic 而非 agent-text，
             // 预计算索引会指到不接收标志的块——改为循环内跟踪实际渲染的最后一个 agent-text，

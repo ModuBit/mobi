@@ -481,11 +481,18 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
         },
     };
 
-    /** 把当前配置下发到活会话；返回的 Promise 在 flag 层落地（或无事可做）后 resolve */
-    const syncSessionModes = (): Promise<void> => {
+    /**
+     * 把当前配置下发到活会话。解析为 `true` = 目标状态已在活查询上落地（或本就已达成），
+     * `false` = 未下发（无会话实例 / 无活查询）或 applyLive 有失败。
+     *
+     * 返回值只服务「切换动作是否受理成功」的即时判定（模型切换时间线）；applyLive 失败
+     * 不再静默吞成成功。注意它**不是**模型可用性的证明——模型字符串 CLI 侧不校验，
+     * 真正「用上了」的最终证据是下一轮 API 调用（失败会产出 model_not_found 错误事件）。
+     */
+    const syncSessionModes = (): Promise<boolean> => {
         const sessionInstance = currentSessionRef.current;
         if (!sessionInstance) {
-            return Promise.resolve();
+            return Promise.resolve(false);
         }
 
         const nextConfig: Record<LiveConfigKey, LiveConfigValue | undefined> = {
@@ -497,7 +504,8 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
         const changed = (Object.keys(LIVE_CONFIG_APPLIERS) as LiveConfigKey[])
             .filter((key) => LIVE_CONFIG_APPLIERS[key].get(sessionInstance) !== nextConfig[key]);
         if (changed.length === 0) {
-            return Promise.resolve();
+            // 记账值已等于目标值 = 已生效（上一轮已下发或启动参数即此值）
+            return Promise.resolve(true);
         }
 
         for (const key of changed) {
@@ -505,14 +513,18 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
         }
 
         const control = queryControlRef.current;
-        let applied: Promise<void> = Promise.resolve();
-        if (control) {
-            applied = Promise.all(changed.map((key) => LIVE_CONFIG_APPLIERS[key].applyLive(control, nextConfig[key] as LiveConfigValue)))
-                .then(() => undefined)
-                .catch(err => {
-                    logger.debug(`[loop] dynamic config apply failed: ${err}`);
-                });
+        if (!control) {
+            // 无活查询：只记账，等下次 query 建立时由 spawn/resume 参数生效，本轮不算已切换
+            logger.debug(`[loop] config changed but no live query, deferred: ${changed.join(',')}`);
+            return Promise.resolve(false);
         }
+
+        const applied = Promise.all(changed.map((key) => LIVE_CONFIG_APPLIERS[key].applyLive(control, nextConfig[key] as LiveConfigValue)))
+            .then(() => true)
+            .catch(err => {
+                logger.debug(`[loop] dynamic config apply failed: ${err}`);
+                return false;
+            });
 
         logger.debug(`[loop] Synced session config: permissionMode=${currentPermissionMode}, model=${currentModel ?? 'auto'}, effort=${currentEffort}`);
         return applied;
@@ -656,13 +668,14 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
             void applied.then(() => apiSession.refreshFastModeState());
         }
         // 模型切换时间线：程序化 setModel（web UI → RPC）不产生任何 CC 帧，时间线原本无痕。
-        // flag 层落地且 SDK 权威值核对一致后才合成 system/model_change 行落库——
-        // applyLive 失败（syncSessionModes 内部吞错）或会话未起时不发，不报假消息。
+        // 只有 applyLive 真正落地（syncSessionModes 返回 true）才合成 system/model_change 落库；
+        // 无会话实例 / 无活查询 / applyLive 失败一律不发——宁可没有这行，不发假消息。
+        // 「受理成功」≠「模型可用」：CLI 不校验模型字符串，可用性的最终证据是下一轮
+        // API 调用（失败会产出 model_not_found 错误事件，走既有错误卡片）。
         // 文案由 web 渲染端按语言拼装，行内只带模型标识
         if (modelChanged) {
-            void applied.then(() => {
-                const sessionInstance = currentSessionRef.current;
-                if (!sessionInstance || LIVE_CONFIG_APPLIERS.model.get(sessionInstance) !== currentModel) return;
+            void applied.then((ok) => {
+                if (!ok) return;
                 apiSession.sendClaudeSessionMessage({
                     type: 'system',
                     subtype: 'model_change',

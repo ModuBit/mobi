@@ -221,6 +221,12 @@ export type NormalizedMessage = ({
     userMessageUuid?: string
     /** Anthropic 分配的 message.id（snapshot 与 full 共享，双保险第二道按 (messageId, type) 去重的键） */
     messageId?: string
+    /**
+     * assistant 消息实际使用的模型（SDK assistant 帧 message.model，如 deepseek-flash）。
+     * 仅 agent 角色携带；reducer 用它为同轮 turn-result 标注模型——result 的 modelUsage
+     * 是**会话累计**统计（含切模型前的旧模型条目），无法直接回答「本轮用了什么」。
+     */
+    model?: string
 }
 
 export type ToolPermission = {
