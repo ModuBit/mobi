@@ -73,7 +73,32 @@ computed style 的 `transform` 与 overlay `opacity`：
 - 安全区：`getComputedStyle(sheet).paddingBottom` 应为 `160px + max(24px, env(safe-area-inset-bottom))`，
   且 `bottom: -160px`（sheet 底缘贴屏，不露遮罩缝）。
 
+## 第八轮（2026-11-15）：单档慢拖判据 + 把手死区 + 合成拖拽的速度 artifact
+
+**合成 PointerEvent 拖拽的判读陷阱（压测下结论前必看）**：
+- **事件连发（无 sleep 间隔）→ dt≈0 → velocity 爆炸**（30px/0.001s=30000）→ 投影飞过 closedY 误判关闭。真实设备事件间隔 ≥8ms 不会出现，判「误关」前先检查脚本采样间隔。
+- 反向陷阱：**40ms 采样 + 松手前 120ms 停顿 → velocity=0**（dragVelocity 80ms 窗 + 60ms 失效门），这是合法的「慢拖停顿」语义，不是 artifact。
+- endDrag 的 `offset` 是 **y 位移（从屏顶算）** 不是拖动量：从 peek 档（y=490）拖 500px → offset=990，投影距 closedY(1080) 仅 90 → 关。按拖动量心算投影会得出错误预期。
+
+**单档 sheet（peek={false}/矮内容）慢拖不关（2026-11-15 修，fbf26b54）**：三档表退化成
+[0,0,closedY] 时投影中点=closedY/2，比原两档判据 `height/3` 晚一截——「两档重合等价于两档
+判定」只对回位成立，对关闭不成立（拖 500、height 1040 时 500 距 0 更近 → 弹回）。修法 =
+`peekY()<=0` 时直接走 `resolveDragDisposition`（快甩关/上推回位/慢拖过 height/3 关）。
+
+**把手（data-grabber）曾是拖拽死区（同提交修）**：hasPeek 时把手是 `<button>`，
+`DRAG_EXEMPT_SELECTOR`（含 button）让 headerDown 整段跳过——用户圈着把手拖无反应（真机
+实锤的「拖动区不能拖动」）。修法 = 把手豁免于控件豁免 + 拖后 click 100ms 抑制窗（touch 拖动
+浏览器不派发 click，窗口自然过期；键盘 Enter 不受残留影响）。
+
+**详情 sheet 弹跳「先弹出好高再收回」**：两档形态下 Spin 占位先稳定、detail 回来后内容暴增
+→ RO 改道重定位。「打开就要看全」的 sheet 传 `peek={false}`（单档无改道），见 SkillDetailSheet。
+
+**两档把手验证靶子（无会话时）**：vite 动态 import 挂真组件——react/react-dom_client 的
+dep hash 各自独立（`curl /src/main.tsx` 逐个拿），`import('/src/.../BottomSheet.tsx?t=...)`
+拿最新模块。靶子 `<BottomSheet open peek title>` + 2000px 长内容 → BUTTON 把手、y=peekY。
+
 ## 环境
+
 
 见 [[env-bootstrap]]：`env -u MOBI_* perl setsid … e2e-bootstrap.sh`，
 **后台 timeout 要给足**（10 分钟会被回收，触发 trap 连数据目录一起 rm）。
