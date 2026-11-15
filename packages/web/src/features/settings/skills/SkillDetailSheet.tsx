@@ -165,7 +165,7 @@ export function SkillDetailSheet({ skill, scope, open, onClose, onToggle, toggli
     if (!skill) return null
 
     return (
-        <BottomSheet open={open} onClose={onClose} title={skill.name}>
+        <BottomSheet open={open} onClose={onClose} title={skill.name} peek={false}>
             <SkillDetailContent
                 skill={skill}
                 scope={scope}
