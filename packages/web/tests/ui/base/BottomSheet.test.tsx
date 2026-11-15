@@ -479,6 +479,24 @@ describe('BottomSheet', () => {
         expect(animateCalls.some((call) => call.target === CLOSED_TARGET)).toBe(false)
     })
 
+    it('单档 sheet 慢拖过 1/3 高：松手关闭（空 peek 档不得把投影判回 top 弹回）', async () => {
+        const onClose = vi.fn()
+        const restore = forceOffsetHeightOnPrototype(LONG_SURFACE_H)
+        try {
+            render(<Host peek={false} onClose={onClose} />)
+            await waitSettled()
+            animateCalls.length = 0
+
+            // 慢拖 500px（> 可见高 1040 的 1/3），松手前停顿（释放晚 80ms → 速度归零）。
+            // 三档表退化成 [0,0,1080] 时投影 500 距 top 档(0) 比 closed 档更近 → 曾弹回不关
+            drag([{ y: 100, t: 100 }, { y: 600, t: 300 }], 80)
+
+            expect(onClose).toHaveBeenCalledTimes(1)
+        } finally {
+            restore()
+        }
+    })
+
     it('遮罩强度随位移连续：拖拽起步无亮度台阶', async () => {
         const restore = forceOffsetHeightOnPrototype()
         try {
@@ -735,6 +753,56 @@ describe('BottomSheet', () => {
             await waitFor(() => expect(surface()!.hasAttribute('data-scroll-locked')).toBe(false))
             await waitFor(() => expect(offsetY()).toBeLessThan(PEEK_Y / 2))
             expect(grabberEl()!.getAttribute('aria-expanded')).toBe('true')
+        } finally {
+            restore()
+        }
+    })
+
+    it('把手（button）按下也能拖：拖过阈值松手关闭，收尾 click 不切档', async () => {
+        const onClose = vi.fn()
+        const restore = forceOffsetHeightOnPrototype(LONG_SURFACE_H)
+        try {
+            render(<Host onClose={onClose} />)
+            await waitFor(() => expect(offsetY()).toBeCloseTo(PEEK_Y, 1))
+            animateCalls.length = 0
+
+            const grabber = grabberEl()!
+            // 从把手本体按下：button 命中控件豁免表——曾整段跳过，把手成了拖拽死区
+            grabber.dispatchEvent(pointerEvent('pointerdown', { clientY: 500, timeStamp: 100 }))
+            grabber.dispatchEvent(pointerEvent('pointermove', { clientY: 1000, timeStamp: 150 }))
+            grabber.dispatchEvent(pointerEvent('pointerup', { clientY: 1000, timeStamp: 170 }))
+            // 拖后浏览器仍会派发 click（down/up 同元素）：不得触发切档
+            grabber.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+            expect(onClose).toHaveBeenCalledTimes(1)
+            // 从 peek 位拖 500px 已越过屏下延伸（origin=peekY，y≈1194 > 可见高−8）→
+            // 走「已出屏直卸载」分支，不跑滑出动画；收尾 click 不得再切档（无 target 0）
+            await waitFor(() => expect(surface()).toBeNull())
+            expect(animateCalls.some((call) => call.target === 0)).toBe(false)
+        } finally {
+            restore()
+        }
+    })
+
+    it('把手点按（无位移）仍切档：拖后抑制不误杀纯 click', async () => {
+        const restore = forceOffsetHeightOnPrototype(LONG_SURFACE_H)
+        try {
+            render(<Host />)
+            await waitFor(() => expect(offsetY()).toBeCloseTo(PEEK_Y, 1))
+            const grabber = grabberEl()!
+
+            // 拖一小段（moved 成立）→ 收尾 click 被抑制，档位不变
+            grabber.dispatchEvent(pointerEvent('pointerdown', { clientY: 500, timeStamp: 100 }))
+            grabber.dispatchEvent(pointerEvent('pointermove', { clientY: 520, timeStamp: 120 }))
+            grabber.dispatchEvent(pointerEvent('pointerup', { clientY: 520, timeStamp: 140 }))
+            grabber.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+            expect(grabberEl()!.getAttribute('aria-expanded')).toBe('false')
+
+            // 纯点按（down→up 同位置）→ click 正常切档
+            grabber.dispatchEvent(pointerEvent('pointerdown', { clientY: 500, timeStamp: 300 }))
+            grabber.dispatchEvent(pointerEvent('pointerup', { clientY: 500, timeStamp: 320 }))
+            grabber.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+            await waitFor(() => expect(grabberEl()!.getAttribute('aria-expanded')).toBe('true'))
         } finally {
             restore()
         }

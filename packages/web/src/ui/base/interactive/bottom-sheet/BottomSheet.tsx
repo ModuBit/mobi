@@ -484,6 +484,20 @@ function Sheet({
         rest(detentRef.current === 'top' ? 'peek' : 'top')
     }, [rest])
 
+    /**
+     * 拖后把手 click 的抑制时刻（performance.now）：拖完松手浏览器仍会派发 click
+     * （down/up 都落在把手上），不能让它再切一次档。只拦紧随 pointerup 的那一下
+     * （100ms 窗，endDrag 与 click 同任务链间隔 <10ms）；touch 拖动浏览器本就不派发
+     * click，窗口自然过期，之后的键盘 Enter 切档不受残留影响
+     */
+    const grabberDragClickAt = useRef(0)
+
+    /** 把手 click 入口：拖动序列收尾的 click 不切档（判据见 grabberDragClickAt） */
+    const handleGrabberClick = useCallback(() => {
+        if (performance.now() - grabberDragClickAt.current < 100) return
+        toggleDetent()
+    }, [toggleDetent])
+
     /** peek 档下内容区不可滚，滚动意图（滚轮下滚）即展开；用 4px 死区滤掉触控板的抖动 */
     const handleBodyWheel = useCallback(
         (event: React.WheelEvent<HTMLDivElement>) => {
@@ -691,6 +705,7 @@ function Sheet({
         (clientY: number, time: number) => {
             // 抓在当前位置（动画途中也能抓住）；已拉伸的负位移换算回手指距离，避免跳变
             y.stop()
+            grabberDragClickAt.current = 0
             const current = y.get()
             drag.current = {
                 startY: clientY,
@@ -727,6 +742,9 @@ function Sheet({
             drag.current = null
             sheetRef.current?.removeAttribute('data-dragging')
             if (!state) return
+            // 拖动过的序列：拦下紧随的把手 click（见 grabberDragClickAt）；未拖动置 0，
+            // 点按收尾的 click 照常切档
+            grabberDragClickAt.current = state.moved ? performance.now() : 0
             if (!state.moved) {
                 settleBack()
                 return
@@ -738,9 +756,14 @@ function Sheet({
             // 速度可能是抖动点按的收尾，行程不足不得借速度关面板（见 MIN_FLICK_TRAVEL_PX）
             const travel = current - state.origin
             const full = height.get()
-            if (!full) {
-                // 高度不可测（首帧）：退回两档判定，避免档位表退化成「任何位移都算关闭」
-                const disposition = resolveDragDisposition({ offset: current, velocity, height: window.innerHeight, travel })
+            const peekOffset = peekY()
+            if (!full || peekOffset <= 0) {
+                // 两档判定：高度不可测（首帧，防「任何位移都算关闭」）或**单档形态**
+                // （peek=false / 内容矮于 peek 档）。后者不能走下面的三档表：peek 槽与
+                // top 重合会让投影把「过 1/3 高的慢拖」判回 top 档弹回（拖 500、表
+                // [0,0,1080] 时 500 距 0 比 1080 近）——「等价于两档判定」只对回位成立，
+                // 对关闭不成立。快甩关 / 上推回位 / 慢拖过 height/3 关，判据回归两档版
+                const disposition = resolveDragDisposition({ offset: current, velocity, height: full || window.innerHeight, travel })
                 if (disposition === 'close') {
                     requestCloseRef.current?.(velocity)
                     return
@@ -748,8 +771,8 @@ function Sheet({
                 settleBack(velocity)
                 return
             }
-            // 三档：top(0) → peek → closed。两档重合时 peek 与 top 同值，等价于原来的两档判定
-            const detents = [0, peekY(), closedY()]
+            // 真两档：top(0) → peek → closed 三档表，按投影落档
+            const detents = [0, peekOffset, closedY()]
             const from = detentRef.current === 'top' ? 0 : 1
             const landed = resolveDetentRelease({ offset: current, velocity, detents, from, travel })
             if (landed === detents.length - 1) {
@@ -823,8 +846,11 @@ function Sheet({
     /** header 按下即拖动；落在按钮/链接/输入上时不接管（extra 槽与关闭按钮要能点） */
     function headerDown(event: ReactPointerEvent<HTMLDivElement>) {
         const target = event.target instanceof Element ? event.target : null
+        // 把手豁免于控件豁免：它是拖拽 affordance 而非功能控件——用户直觉就是抓它拖，
+        // 而 button 命中下面的豁免表会整段跳过，把手成了拖拽死区（真机实锤：圈着把手拖
+        // 无反应）。无位移的点按 click 照常派发走切档；拖后 click 由抑制窗拦下
+        if (target?.closest(DRAG_EXEMPT_SELECTOR) && !target.closest('[data-grabber]')) return
         if (event.button !== 0 || !event.isPrimary) return
-        if (target?.closest(DRAG_EXEMPT_SELECTOR)) return
         beginDrag(event.clientY, event.timeStamp)
         // 快速甩动可能在第一帧 move 落地前就离开 header：未捕获指针前由 window 接管，
         // 捕获后交回 header 自己的处理器
@@ -890,10 +916,10 @@ function Sheet({
                 style={{ opacity: backdrop, ['--sheet-z' as string]: layerZ } as unknown as CSSProperties}
                 onClick={(event) => {
                     const { present, at } = presenceChange.current
+                    // 重开竞态（离场途中落在触发按钮上的点按会先重开 sheet）不关；
+                    // 弹入途中也关：click 的 target 就是 mask 本体（下层收不到事件，
+                    // 无「瞄准下层条目误关」歧义），PC 上点遮罩几乎总是明确关闭意图
                     if (!present || event.timeStamp < at) return
-                    // 呈现途中（屏下收敛等待 + 弹入上升）不关：sheet 还没「到位」，点按
-                    // 落在遮罩上只是差了零点几秒，用户瞄准的是即将盖住的条目
-                    if (!presentedRef.current) return
                     requestCloseRef.current?.()
                 }}
             />
@@ -959,7 +985,7 @@ function Sheet({
                                     interactive={hasPeek}
                                     expanded={detent === 'top'}
                                     label={detent === 'top' ? t('common.collapseSheet') : t('common.expandSheet')}
-                                    onClick={toggleDetent}
+                                    onClick={handleGrabberClick}
                                 />
                             )
                         }
