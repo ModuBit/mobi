@@ -152,6 +152,47 @@ describe('ChatInput', () => {
         expect(onSubmit).not.toHaveBeenCalled()
     })
 
+    it('composition 中删拼音字符：不得派发 composition 之外的命令性 transaction（打断合成＝拼音字面上屏的根因，prosemirror-view ≥1.42.9 已修）', async () => {
+        const { handle, ready, pm } = setup()
+        await ready()
+        const editor = handle.current!.getEditor()!
+        const view = editor.view
+        // jsdom 无 layout：readDOMChange 的 scrollIntoView → coordsAtPos 会抛错，桩掉
+        view.coordsAtPos = () => ({ left: 0, right: 0, top: 0, bottom: 0 }) as ReturnType<typeof view.coordsAtPos>
+        handle.current!.setText('woshi')
+        // 拼音合成进行中（IME 直改 DOM，ProseMirror 只持 composition 态）
+        pm().dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+        expect(view.composing).toBe(true)
+
+        // 记录合成期间全部 dispatch，识别「composition 同步链」与「命令性 dispatch」
+        const dispatches: { docChanged: boolean; composition: unknown }[] = []
+        const onTr = ({ transaction }: { transaction: { docChanged: boolean; getMeta(k: string): unknown } }) =>
+            dispatches.push({ docChanged: transaction.docChanged, composition: transaction.getMeta('composition') })
+        editor.on('transaction', onTr)
+
+        // IME 层删一个拼音字母：直改 DOM 文本 + 光标随删后尾移（浏览器默认行为执行后的 DOM 形态）
+        const p = pm().querySelector('p')!
+        p.firstChild!.textContent = 'wosh'
+        const range = document.createRange()
+        range.setStart(p.firstChild!, 4)
+        range.collapse(true)
+        const sel = document.getSelection()!
+        sel.removeAllRanges()
+        sel.addRange(range)
+        pm().dispatchEvent(new CompositionEvent('compositionupdate', { bubbles: true, data: 'wosh' }))
+
+        // MutationObserver → flush → readDOMChange 是异步批处理
+        await new Promise((r) => setTimeout(r, 120))
+
+        editor.off('transaction', onTr)
+        // readDOMChange 的合成同步 tr 带 composition meta；keymap 命令 tr 不带。
+        // 出现无 meta 的 dispatch = readDOMChange 把合成 Backspace 派给了 keymap
+        // （undoInputRule/joinBackward…），其 updateView 重写合成锚定 DOM → 浏览器 abort 合成
+        const alien = dispatches.filter((d) => d.composition === undefined)
+        expect(alien).toEqual([])
+        expect(view.composing).toBe(true)
+    })
+
     it('IME 守卫先于消费方：组合中的按键不交给 onKeyDown（否则面板吞掉候选词确认）', async () => {
         const onKeyDown = vi.fn(() => true)
         const { ready, typeKey } = setup({ onKeyDown })
