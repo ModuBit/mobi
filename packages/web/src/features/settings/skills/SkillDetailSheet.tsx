@@ -280,6 +280,8 @@ function SkillDetailContent({ skill, scope, token, t, onToggle, toggling, onUpda
                             prompt={skill.tracked
                                 ? t('settings.skills.deleteConfirmTracked', { source: skill.installSource ?? '' })
                                 : t('settings.skills.deleteConfirmUntracked')}
+                            // 内层确认钮与外层 label 同词（卸载）：外「卸载」内「删除」读起来像两个动作
+                            confirmLabel={t('settings.skills.detail.delete')}
                             pendingLabel={t('common.loading')}
                             onConfirm={onDelete}
                             disabled={deleting}

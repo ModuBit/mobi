@@ -118,9 +118,10 @@
   position: relative;
   display: inline-flex;
   flex: none;
-  /* 高度对齐 Button sm 档（28px）：与 uiarc Button 并排时必须等高（上游 -8px 收缩是
-     独立 chip 场景的紧凑设计，2026-11-16 skill 详情 sheet 双钮并排实锤不等高） */
-  height: var(--control-height-sm);
+/* 高度 = 静默 pill 高度 - 8px（上游值）：取消/删除是 pill **内层**按钮，上下各留 4px 呼吸位，
+   满高会紧贴外缘（2026-11-16 用户对照 uiarc 官网实锤）。此前误改为满高去对齐并排 Button——
+   「等高对齐」只适用于静默态触发钮（trigger 已是满高），内层钮不适用。 */
+  height: calc(var(--control-height-sm) - 8px);
   align-items: center;
   justify-content: center;
   padding: 0 12px;
