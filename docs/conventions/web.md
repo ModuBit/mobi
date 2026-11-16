@@ -124,7 +124,8 @@ src/
    - 已迁移的弹层组件与 antd Modal/Drawer **禁止叠开**（body 滚动锁冲突）
    - uiarc 组件若引入，不可全局 import 其 `foundation.css`（暗档判据特异性会盖过主题注入），token 由 `core/config/theme/cssVars.ts` 单源供给
 5. **登记入表**：在 `packages/web/registry.json` 加 entry（name/source/upstream/migratedIn，本地修改记入 localMods），同步更新本章投影表——一致性测试要求目录里的组件必须已登记，登记与实现同提交
-6. **真机（Android Chrome）验收**：迁移完成的收尾条件，不是后续优化（registry 组件 desktop-first，mobi 是移动 PWA 重度场景）
+6. **css 上游原样快照**（2026-11-16 ConfirmMorph 二次返工教训）：组件 css **一律上游原样落盘**（保留上游注释），本地化以独立覆盖块 + 头注 localMods 注明——**禁止整份手改编重写**：手改编丢规则无机制可发现，上游注释照抄还会掩盖丢失（先例：trigger 留白/圆角/字重/icon 槽整批丢失）。落位后跑一次选择器级 diff（curl 上游 registry json vs 本地 css）作门禁，逐条裁决「真回归 vs 有意偏离」，有意偏离写进头注
+7. **真机（Android Chrome）验收**：迁移完成的收尾条件，不是后续优化（registry 组件 desktop-first，mobi 是移动 PWA 重度场景）。**引入类交付的验收必须含「与官方渲染对照」一步**（官网截图或上游 demo 对照）——自己的渲染不能当自己的尺子，self-review 对「从未见过的正确样子」没有判别力
 
 ### 单一来源（禁止重复实现）
 
