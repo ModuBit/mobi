@@ -59,7 +59,7 @@
   border-radius: var(--radius-pill);
   background: var(--surface-raised);
   box-shadow: var(--shadow-resting);
-  transition: background-color var(--duration-standard) var(--ease-standard), box-shadow var(--duration-standard) var(--ease-standard);
+  transition: background-color var(--duration-standard) var(--ease-standard), box-shadow var(--duration-standard) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
 }
 .surface::after { content: ""; position: absolute; inset: 0; border: 1px solid var(--border); border-radius: inherit; pointer-events: none; transition: border-color var(--duration-standard) var(--ease-standard); }
 .root[data-disabled][data-state="idle"] .surface { box-shadow: none; }
@@ -69,15 +69,36 @@
 .root[data-variant="ghost"] .surface::after { border-color: transparent; }
 .root[data-variant="ghost"] .secondary { color: var(--text-secondary); }
 
-/* 危险语义的静默态就着 danger 色（icon 随 currentColor）：破坏性动作在按下去之前就该读得出来。
-   hover/active 的中性淡底叠加不变（色块只着字），neutral tone 不受影响。 */
-.root[data-tone="danger"] .trigger { color: var(--danger); }
+/* 危险语义的静默态就着 danger 色（icon 随 currentColor，下方 .icon 不设色）：破坏性动作
+   在按下去之前就该读得出来。禁用回落灰（:not(:disabled) 让位给 .trigger:disabled）。 */
+.root[data-tone="danger"] .trigger:not(:disabled) { color: var(--danger); }
 
-/* 静默态触发钮是 button：给指针光标（secondary/confirm/prompt 已各自有），禁用回落默认；
-   几何对齐 secondary/confirm（满高 + icon-文字间距），否则内容 20px 悬在 28px pill 里，
-   与并排的 uiarc Button 视觉差一号（2026-11-16 skill 详情 sheet 实锤） */
-.trigger { cursor: pointer; display: inline-flex; align-items: center; height: var(--control-height-sm); gap: 6px; }
-.trigger:disabled { cursor: default; }
+/* 静默态触发钮恢复上游全套按钮几何（gap 8 + 两侧留白 14/16 + pill 圆角 + 字重 500 +
+   active 挤压淡底 + disabled 灰）：此前本地化只剩 flex/gap/height，静默 pill 瘪成贴内容、
+   icon 粘字、hover 直角色块（2026-11-16 用户对照 uiarc 官网截图实锤）。
+   高度保留本地 sm 档对齐并排 Button（28px）。 */
+.trigger {
+  cursor: pointer;
+  display: inline-flex;
+  height: var(--control-height-sm);
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 0 14px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-weight: 500;
+  transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+.trigger:active:not(:disabled) { background: color-mix(in oklab, var(--foreground) 9%, transparent); transition-duration: 0ms; }
+.trigger:disabled { color: var(--text-muted); cursor: not-allowed; }
+
+/* icon 槽：上游 16px grid 保持节奏；不强改 svg 尺寸（本地化）——icon 大小随消费方，
+   与并排 uiarc Button 的前置 icon（13px）同大，同排不差一号 */
+.icon { display: grid; width: 16px; height: 16px; place-items: center; }
+.trigger:disabled .icon { opacity: .7; }
 
 /* face 内 icon+文字 / spinner+文字 的间距：对齐 Button 的 gap 档（2px 是上游无 icon 场景的紧凑值，
    带 icon 时会粘连，2026-11-16 skill 详情 sheet 实锤） */
@@ -153,6 +174,8 @@
 .srOnly { composes: sr-only from global; }
 
 @media (hover: hover) and (pointer: fine) {
+  /* 静默态按压缩放（上游 press squeeze）：整 pill 轻捏，松开由 morph 接管 */
+  .root[data-state="idle"]:has(.trigger:active:not(:disabled)) .surface { transform: scale(.97); }
   .trigger:hover:not(:disabled):not(:active) { background: color-mix(in oklab, var(--foreground) 5%, transparent); }
   .secondary:hover:not(:active) { background: color-mix(in oklab, var(--foreground) 7%, transparent); color: var(--foreground); }
   .confirm:hover:not(:active) { background: color-mix(in oklab, var(--danger) 18%, transparent); }
