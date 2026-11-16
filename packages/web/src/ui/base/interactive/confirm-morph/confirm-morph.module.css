@@ -73,11 +73,15 @@
    hover/active 的中性淡底叠加不变（色块只着字），neutral tone 不受影响。 */
 .root[data-tone="danger"] .trigger { color: var(--danger); }
 
-/* 静默态触发钮是 button：给指针光标（secondary/confirm/prompt 已各自有），禁用回落默认 */
-.trigger { cursor: pointer; }
+/* 静默态触发钮是 button：给指针光标（secondary/confirm/prompt 已各自有），禁用回落默认；
+   几何对齐 secondary/confirm（满高 + icon-文字间距），否则内容 20px 悬在 28px pill 里，
+   与并排的 uiarc Button 视觉差一号（2026-11-16 skill 详情 sheet 实锤） */
+.trigger { cursor: pointer; display: inline-flex; align-items: center; height: var(--control-height-sm); gap: 6px; }
 .trigger:disabled { cursor: default; }
 
-.face { display: flex; flex: none; height: 100%; align-items: center; gap: 2px; padding: 0 4px; white-space: nowrap; }
+/* face 内 icon+文字 / spinner+文字 的间距：对齐 Button 的 gap 档（2px 是上游无 icon 场景的紧凑值，
+   带 icon 时会粘连，2026-11-16 skill 详情 sheet 实锤） */
+.face { display: flex; flex: none; height: 100%; align-items: center; gap: 6px; padding: 0 4px; white-space: nowrap; }
 .face[data-face="idle"] { padding: 0; }
 /* A leaving face steps out of the flow, exactly where it was, and fades while the pill springs to the next one. */
 .face[inert] { position: absolute; top: 0; inset-inline-start: 0; pointer-events: none; }
@@ -93,7 +97,9 @@
   position: relative;
   display: inline-flex;
   flex: none;
-  height: calc(var(--control-height-sm) - 8px);
+  /* 高度对齐 Button sm 档（28px）：与 uiarc Button 并排时必须等高（上游 -8px 收缩是
+     独立 chip 场景的紧凑设计，2026-11-16 skill 详情 sheet 双钮并排实锤不等高） */
+  height: var(--control-height-sm);
   align-items: center;
   justify-content: center;
   padding: 0 12px;
