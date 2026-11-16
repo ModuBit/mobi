@@ -27,7 +27,7 @@
  *   页签因此是**纯分段控件**（panelless）：内容不在 tabpanel 里，aria-controls 不渲染，
  *   也不渲染空壳 TabStripPanel 去凑落点（display:none 的死元素不是 a11y 落点）。
  */
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import styled from '@emotion/styled'
 import { TabStrip, TabStripList, TabStripTab } from '@/ui/base/interactive/tabStrip'
 import { ExpandingSearch } from '@/ui/base/interactive/expanding-search/ExpandingSearch'
@@ -73,14 +73,15 @@ export function ScopeTabbedSection({
     return (
         <>
             {/* 搜索行：expanding-search 形态（过滤模式——不传 items 只借 morph 形态，受控 keyword
-                过滤列表归调用方）；lane 吃满余量、icon 贴行右端动作槽左侧，展开向左长 */}
+                过滤列表归调用方）；lane 吃满余量、icon 贴行右端动作槽左侧，展开向左长。
+                --es-h 对齐工具条 sm 档（28px）：与并排动作按钮同排不差一号 */}
             <ToolbarRow>
                 <ExpandingSearch
                     label={searchPlaceholder}
                     placeholder={searchPlaceholder}
                     value={keyword}
                     onValueChange={onKeywordChange}
-                    style={{ flex: 1, minWidth: 0 }}
+                    style={{ '--es-h': '28px', flex: 1, minWidth: 0 } as CSSProperties}
                 />
                 {actions}
             </ToolbarRow>

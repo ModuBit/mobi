@@ -23,15 +23,18 @@
 :where(.root) {
   --focus-ring: color-mix(in oklab, var(--ring) 30%, transparent);
   --text-field: var(--text-sm);
+  /* 组件高度缝（本地化）：形态圆钮/圆角/图标位全由它参数化，消费方可对齐所在工具条档位
+     （scope-tabbed 工具条 = sm 28px，与并排按钮同排不差一号，2026-11-16 实锤 34vs28） */
+  --es-h: var(--control-height-md);
 }
 @media (pointer: coarse) {
   :where(.root) { --text-field: 16px; }
 }
 
 /* The root is the lane the field may grow into. Only the shell and the panel take pointer events, so an idle lane never blocks what sits under it. */
-.root { position: relative; width: 100%; min-width: var(--control-height-md); height: var(--control-height-md); pointer-events: none; }
+.root { position: relative; width: 100%; min-width: var(--es-h); height: var(--es-h); pointer-events: none; }
 /* One shell is both the button and the field. Its width rides a spring and its radius follows the width, from a circle to the control radius. */
-.shell { position: absolute; top: 0; right: 0; height: 100%; overflow: hidden; border: 1px solid var(--border); border-radius: calc(var(--control-height-md) / 2 - (var(--control-height-md) / 2 - var(--radius-control)) * var(--es-open, 0)); background: var(--surface); color: var(--text-secondary); pointer-events: auto; transition: border-color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-standard) var(--ease-standard), transform var(--duration-spring) var(--ease-spring); }
+.shell { position: absolute; top: 0; right: 0; height: 100%; overflow: hidden; box-sizing: border-box; border: 1px solid var(--border); border-radius: calc(var(--es-h) / 2 - (var(--es-h) / 2 - var(--radius-control)) * var(--es-open, 0)); background: var(--surface); color: var(--text-secondary); pointer-events: auto; transition: border-color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-standard) var(--ease-standard), transform var(--duration-spring) var(--ease-spring); }
 .root[data-anchor="start"] .shell { right: auto; left: 0; }
 /* Centered, both edges are pinned and auto margins split the spare width, so the one width spring grows the field evenly. No second motion moves it. */
 .root[data-anchor="center"] .shell, .root[data-anchor="center"] .panel { left: 0; right: 0; margin-inline: auto; }
@@ -47,7 +50,7 @@
 .trigger { position: absolute; z-index: 1; inset: 0; margin: 0; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .trigger:focus-visible { outline: none; }
 /* The glass sits at the leading edge, so it is centered in the circle and rides that edge to its place in the open field. */
-.icon { position: absolute; top: calc(50% - 9px); left: calc(var(--control-height-md) / 2 - 10px); pointer-events: none; }
+.icon { position: absolute; top: calc(50% - 9px); left: calc(var(--es-h) / 2 - 10px); pointer-events: none; }
 /* Typed text uses the field size, 16px on phones, so focusing never zooms iOS Safari mid-morph. */
 .input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0 40px 0 38px; border: 0; background: transparent; color: var(--foreground); font: inherit; font-size: var(--text-field); letter-spacing: var(--tracking-body); text-overflow: ellipsis; outline: none; }
 .input:focus-visible { outline: none; }
