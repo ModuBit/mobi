@@ -26,7 +26,8 @@ import styled from '@emotion/styled'
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
 
-const Row = styled.div<{ $opacity: number }>`
+const Row = styled.div<{ $opacity: number; $interactive: boolean }>`
+    position: relative;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -35,6 +36,8 @@ const Row = styled.div<{ $opacity: number }>`
 
     /* 不透明度语义由调用方定：生效态 off 弱化（0.55）/ 只读行轻弱化（0.75）/ 常规（1） */
     opacity: ${p => p.$opacity};
+    /* 可点行才给小手（诚实 affordance）；hover 滑移底色由列表容器的 HoverGlideLayer 负责，行自身不画 */
+    cursor: ${p => (p.$interactive ? 'pointer' : 'default')};
 `
 
 const Main = styled.div`
@@ -105,13 +108,15 @@ export interface ManageRowProps extends HTMLAttributes<HTMLDivElement> {
     right?: ReactNode
     /** 整行不透明度（默认 1；弱化语义见 Row 注释） */
     opacity?: number
+    /** 可点行（光标 + 键盘可达语义由调用方配 role/tabIndex） */
+    interactive?: boolean
 }
 
-export function ManageRow({ name, description, badges, right, opacity = 1, ...attrs }: ManageRowProps) {
+export function ManageRow({ name, description, badges, right, opacity = 1, interactive = false, ...attrs }: ManageRowProps) {
     const { token } = useToken()
 
     return (
-        <Row $opacity={opacity} {...attrs}>
+        <Row $opacity={opacity} $interactive={interactive} {...attrs}>
             <Main>
                 <NameRow>
                     <Name $token={token}>{name}</Name>

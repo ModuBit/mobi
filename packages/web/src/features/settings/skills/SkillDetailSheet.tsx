@@ -21,17 +21,19 @@
  * 头部即时渲染行数据（不等人）；正文与扩展元数据由 useSkillDetail 按需请求
  * （sheet 关闭 → name 置 null → 请求停发）。sheet 本体即滚动区，正文不再限高内滚。
  */
-import { theme as antTheme, Spin } from 'antd'
-import { Box, RefreshCw } from 'lucide-react'
+import { theme as antTheme } from 'antd'
+import { BookOpen, RefreshCw, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { SkillFrontmatterMeta, SkillInfo } from '@mobi/shared'
 import { isSkillShadowed } from '@mobi/shared'
 import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
+import { sheetClass } from '@/ui/base/layout/sheetSurface'
 import { Markdown } from '@/ui/base/markdown/Markdown'
 import { Switch } from '@/ui/shadcn/switch/switch'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { ConfirmMorph } from '@/ui/base/interactive/confirm-morph/ConfirmMorph'
+import { Skeleton } from '@/ui/shadcn/skeleton/skeleton'
 import { useSkillDetail } from '@/core/data/hooks/queries/useSkills'
 
 const { useToken } = antTheme
@@ -104,20 +106,19 @@ const MetaKey = styled.span<{ $token: Token }>`
 const MetaValue = styled.span<{ $token: Token }>`
     color: ${p => p.$token.colorText};
     text-align: right;
-    word-break: break-all;
+    /* 按词断行（break-all 会把英文断在词中间，whenToUse 长句不可读） */
+    word-break: normal;
+    overflow-wrap: anywhere;
 `
 
-/** 操作区：更新 / 卸载（能力矩阵降级；两项皆无则不渲染） */
-const Actions = styled.div`
+/** 操作区：与正文以 hairline 分隔的操作条（表单 footer 惯例，右对齐、等高 sm 档） */
+const Actions = styled.div<{ $token: Token }>`
     display: flex;
-    gap: 8px;
-    padding-top: 4px;
-`
-
-const Loading = styled.div`
-    display: flex;
-    justify-content: center;
-    padding: 24px 0;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid ${p => p.$token.colorBorderSecondary};
 `
 
 /** 元数据行构建：undefined 字段整行不出现（「有才显示」收拢在此一处） */
@@ -165,7 +166,14 @@ export function SkillDetailSheet({ skill, scope, open, onClose, onToggle, toggli
     if (!skill) return null
 
     return (
-        <BottomSheet open={open} onClose={onClose} title={skill.name} peek={false}>
+        // 不传可见 title（居中标题与头部名字重复）；sr-only title 供读屏（回落是通用「面板」，
+        // dialog 无障碍名应为技能名）
+        <BottomSheet
+            open={open}
+            onClose={onClose}
+            peek={false}
+            title={<span className={sheetClass.srOnly}>{skill.name}</span>}
+        >
             <SkillDetailContent
                 skill={skill}
                 scope={scope}
@@ -206,7 +214,7 @@ function SkillDetailContent({ skill, scope, token, t, onToggle, toggling, onUpda
     return (
         <Body>
             <Head $token={token}>
-                <Box size={18} />
+                <BookOpen size={18} />
                 <HeadText>
                     <Name $token={token}>{current.name}</Name>
                     {current.description && <Desc $token={token}>{current.description}</Desc>}
@@ -240,15 +248,15 @@ function SkillDetailContent({ skill, scope, token, t, onToggle, toggling, onUpda
 
             {/* 正文不加小标题：sheet 里唯一的大块内容，标题是冗余（元数据区标题保留） */}
             {isLoading ? (
-                <Loading><Spin size="small" /></Loading>
+                <Skeleton lines={5} label={t('common.loading')} />
             ) : (
                 <Markdown content={detail?.body ?? ''} />
             )}
 
             {hasActions && (
-                <Actions>
+                <Actions $token={token}>
                     {onUpdate && (
-                        <Button variant="secondary" size="sm" onClick={onUpdate} disabled={updating}>
+                        <Button variant="secondary" size="sm" onClick={onUpdate} loading={updating}>
                             <RefreshCw size={13} />
                             {t('settings.skills.detail.update')}
                         </Button>
@@ -256,12 +264,14 @@ function SkillDetailContent({ skill, scope, token, t, onToggle, toggling, onUpda
                     {onDelete && (
                         <ConfirmMorph
                             label={t('settings.skills.detail.delete')}
+                            icon={<Trash2 size={13} />}
                             prompt={skill.tracked
                                 ? t('settings.skills.deleteConfirmTracked', { source: skill.installSource ?? '' })
                                 : t('settings.skills.deleteConfirmUntracked')}
                             pendingLabel={t('common.loading')}
                             onConfirm={onDelete}
                             disabled={deleting}
+                            variant="raised"
                         />
                     )}
                 </Actions>

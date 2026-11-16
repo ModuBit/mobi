@@ -177,6 +177,7 @@ const UIARC_ALIAS_VARS: ReadonlyArray<readonly [string, string]> = [
     ['--text-xs', '12px'],
     ['--text-sm', '14px'],
     ['--text-lg', '16px'],
+    ['--space-1', '4px'],
     ['--space-2', '8px'],
     ['--space-3', '12px'],
     ['--space-4', '16px'],
@@ -196,15 +197,17 @@ const UIARC_ALIAS_VARS: ReadonlyArray<readonly [string, string]> = [
     ['--ease-standard', 'var(--mobi-ease-in-out)'],
     ['--ease-enter', 'var(--mobi-ease-out)'],
     ['--ease-spring', 'var(--mobi-ease-in-out)'],
+    ['--ease-in-out', 'var(--mobi-ease-in-out)'],
     // 控件语义色（switch/checkbox/radio 族，2026-11-11 迁移）：轨道取 muted（未选）/primary（选中），
-    // 双档随 shadcn token 自动翻转；拇指固定白为双档同值的有意识选择——dark 深轨道配白拇指对比成立。
+    // 双档随 shadcn token 自动翻转。拇指分态：未选恒白（dark 深轨道配白拇指）；选中跟
+    // --primary-foreground——dark 下 primary 是浅色轨道，恒白拇指会白上白（2026-11-16 实锤）。
     // glyph（填充态字形）= 选中块（--control-on=primary）之上的字形，与 --primary-foreground 同语义
     ['--control-track', 'var(--muted)'],
     ['--control-track-hover', 'var(--accent)'],
     ['--control-on', 'var(--primary)'],
     ['--control-glyph', 'var(--primary-foreground)'],
     ['--control-thumb', 'hsl(0 0% 100%)'],
-    ['--control-thumb-on', 'hsl(0 0% 100%)'],
+    ['--control-thumb-on', 'var(--primary-foreground)'],
     ['--control-thumb-shadow', '0 1px 2px rgb(0 0 0 / 0.2)'],
 ]
 

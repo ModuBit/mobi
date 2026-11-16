@@ -74,8 +74,18 @@ export function SkillRow({ skill, onToggle, toggling = false, onOpen }: SkillRow
             description={skill.description}
             // 生效态 off 整行弱化（遮蔽行保留对比度：它的可操作性与表象不同）
             opacity={off && !shadowed ? 0.55 : 1}
+            interactive
+            data-glide-row=""
             data-skill-name={skill.name}
+            role="button"
+            tabIndex={0}
             onClick={onOpen}
+            onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onOpen()
+                }
+            }}
             badges={
                 <>
                     <ManageRowTag>{t(SOURCE_TAG_KEY[skill.source])}</ManageRowTag>

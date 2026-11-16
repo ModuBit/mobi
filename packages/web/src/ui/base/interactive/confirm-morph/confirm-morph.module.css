@@ -69,6 +69,14 @@
 .root[data-variant="ghost"] .surface::after { border-color: transparent; }
 .root[data-variant="ghost"] .secondary { color: var(--text-secondary); }
 
+/* 危险语义的静默态就着 danger 色（icon 随 currentColor）：破坏性动作在按下去之前就该读得出来。
+   hover/active 的中性淡底叠加不变（色块只着字），neutral tone 不受影响。 */
+.root[data-tone="danger"] .trigger { color: var(--danger); }
+
+/* 静默态触发钮是 button：给指针光标（secondary/confirm/prompt 已各自有），禁用回落默认 */
+.trigger { cursor: pointer; }
+.trigger:disabled { cursor: default; }
+
 .face { display: flex; flex: none; height: 100%; align-items: center; gap: 2px; padding: 0 4px; white-space: nowrap; }
 .face[data-face="idle"] { padding: 0; }
 /* A leaving face steps out of the flow, exactly where it was, and fades while the pill springs to the next one. */

@@ -15,7 +15,7 @@
  */
 
 import { useMemo, useRef, useState, useCallback, useEffect } from 'react'
-import { theme as antTheme, Skeleton } from 'antd'
+import { theme as antTheme } from 'antd'
 import { IconButton } from '@/ui/base/interactive/IconButton'
 import { DownOutlined } from '@ant-design/icons'
 import { Bubble } from '@ant-design/x'
@@ -31,6 +31,7 @@ import { BUBBLE_ROLES } from '@/ui/base/display/bubbleRoles'
 import { useAgentSidechain } from './useAgentSidechain'
 import { extractTextFromResult } from '@/domain/tool/resultText'
 import { AgentLoadingBubble } from '@/ui/shared/AgentLoadingBubble'
+import { Skeleton } from '@/ui/shadcn/skeleton/skeleton'
 import { isTeamAgentTool } from './knownTools'
 
 /** Drawer 场景下覆盖全局 CSS 对 Bubble.List 的副作用 */
@@ -67,17 +68,15 @@ const DRAWER_BUBBLE_ROLES = {
     },
 }
 
-/** Sidechain 消息加载骨架屏 */
+/** Sidechain 消息加载骨架屏：assistant 左 / user 右对齐，占位形状对齐气泡（头像+两行） */
 function SidechainSkeleton() {
     return (
-        <div style={{ padding: '16px 8px' }}>
-            <Skeleton active avatar paragraph={{ rows: 2 }} />
-            <div style={{ marginTop: 16 }}>
-                <Skeleton active avatar={{ style: { marginLeft: 'auto' } }} paragraph={{ rows: 2 }} />
+        <div style={{ padding: '16px 8px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <Skeleton avatar lines={2} />
+            <div style={{ width: '78%', marginLeft: 'auto' }}>
+                <Skeleton avatar lines={2} />
             </div>
-            <div style={{ marginTop: 16 }}>
-                <Skeleton active avatar paragraph={{ rows: 1 }} />
-            </div>
+            <Skeleton avatar lines={1} />
         </div>
     )
 }

@@ -20,8 +20,8 @@
  * （架构深化候选②），五套动作编排归 useSkillsActions（候选⑧）；
  * 数据视角由 daemon 承载（global=个人+synced+插件携带；工作区 tab=该项目 skill）。
  */
-import { useMemo, useState } from 'react'
-import { theme as antTheme, Spin, Modal, Radio } from 'antd'
+import { useMemo, useRef, useState } from 'react'
+import { theme as antTheme, Modal, Radio } from 'antd'
 import { FilePlus2, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
@@ -39,6 +39,8 @@ import { SkillRow } from '@/features/settings/skills/SkillRow'
 import { BundledSkillRow } from '@/features/settings/skills/BundledSkillRow'
 import { SkillDetailSheet } from '@/features/settings/skills/SkillDetailSheet'
 import { useSkillsActions } from '@/features/settings/skills/useSkillsActions'
+import { Skeleton } from '@/ui/shadcn/skeleton/skeleton'
+import { HoverGlideLayer } from '@/ui/base/motion/GlideLayer'
 
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
@@ -56,10 +58,14 @@ const EmptyHint = styled.div<{ $token: Token }>`
     text-align: center;
 `
 
-const CenterSpin = styled.div`
-    display: flex;
-    justify-content: center;
-    padding: 32px 0;
+/** 列表加载骨架行：内衬对齐 ManageRow（10px 16px），占位形状对齐行内容（头像+两行文本） */
+const SkeletonRow = styled.div`
+    padding: 10px 16px;
+`
+
+/** 列表容器：滑移底色层（HoverGlideLayer）的定位与指针监听范围 */
+const ListArea = styled.div`
+    position: relative;
 `
 
 /** 弹窗表单：纵向排布，antd Modal 默认内衬之外自管间距 */
@@ -91,6 +97,7 @@ export function SkillsSection() {
     const { t } = useTranslation()
     const [tab, setTab] = useState<string>(SKILL_SCOPE_GLOBAL)
     const [keyword, setKeyword] = useState('')
+    const listAreaRef = useRef<HTMLDivElement>(null)
 
     const { data: workspaces } = useWorkspaces()
     const { workspaceIds: occupiedWorkspaceIds } = useSkillOccupancy()
@@ -180,8 +187,17 @@ export function SkillsSection() {
                     </>
                 }
             >
-                {isBundled ? (bundledLoading ? (
-                    <CenterSpin><Spin size="small" /></CenterSpin>
+                <ListArea ref={listAreaRef}>
+                    {/* 滑移底色层：hover 最淡一档跨行弹簧滑移（SettingsPage 侧栏同款；可点行才标记 data-glide-row） */}
+                    <HoverGlideLayer containerRef={listAreaRef} $background={token.colorBgTextHover} $radius="var(--radius-control-sm)" />
+                    {isBundled ? (bundledLoading ? (
+                    <SettingGroupCard>
+                        {Array.from({ length: 4 }, (_, i) => (
+                            <SkeletonRow key={i}>
+                                <Skeleton avatar lines={2} label={t('common.loading')} />
+                            </SkeletonRow>
+                        ))}
+                    </SettingGroupCard>
                 ) : bundledError ? (
                     <SettingGroupCard>
                         <EmptyHint $token={token}>{t('settings.skills.bundledFailed')}</EmptyHint>
@@ -199,7 +215,13 @@ export function SkillsSection() {
                         </EmptyHint>
                     </SettingGroupCard>
                 )) : isLoading ? (
-                    <CenterSpin><Spin size="small" /></CenterSpin>
+                    <SettingGroupCard>
+                        {Array.from({ length: 4 }, (_, i) => (
+                            <SkeletonRow key={i}>
+                                <Skeleton avatar lines={2} label={t('common.loading')} />
+                            </SkeletonRow>
+                        ))}
+                    </SettingGroupCard>
                 ) : filtered.length > 0 ? (
                     <SettingGroupCard>
                         {filtered.map(skill => (
@@ -219,6 +241,7 @@ export function SkillsSection() {
                         </EmptyHint>
                     </SettingGroupCard>
                 )}
+                </ListArea>
             </ScopeTabbedSection>
             <Modal
                 title={t('settings.skills.createTitle')}

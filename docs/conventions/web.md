@@ -92,6 +92,7 @@ src/
 | checkbox | arc（uiarc） | tracked | 2026-11-11 | Radix Checkbox 底座 + motion 对勾/横杠 morph（同一 path 变形）；antd `Checkbox` 全站清零，**eslint `no-restricted-imports` 禁新增**。消费点：OptionRow multi 模式 mark（纯视觉 aria-hidden，点击穿透行 div；完成态选中色局部覆盖 `--control-on`/`--control-glyph`） |
 | radio-group | arc（uiarc） | tracked | 2026-11-11 | 已装待消费（底座预铺）：antd Radio 整组消费端待首个真实迁移场景到达时启用（OptionRow single mark 已由 radio-cards 的 RadioIndicator 承接），勿重复造轮子 |
 | radio-cards | arc（uiarc） | tracked | 2026-11-11 | 卡片式单选（ring 卡间弹簧滑移）；已消费：导出的 `RadioIndicator` 承接 OptionRow single 模式 mark（AskUserQuestion 单选行；preview/Other 保留行级结构故不整组替换）。整组 RadioCards 待首个真实场景（设置页分组单选等） |
+| skeleton | arc（uiarc） | tracked | 2026-11-15 | 脉冲占位骨架（avatar+文本行，1–6 行阶梯错拍；children 形态交叉淡入+高度弹簧暂未消费）；antd `Skeleton` 全站清零。消费点：SkillsSection 列表加载（按行 avatar+lines 对齐 ManageRow 内衬）、AgentDrawerContent sidechain 加载（user 行右对齐容器）、FileTreeView 目录首载；css 别名（`--space-1`/`--ease-in-out`）补齐进 cssVars 单源 |
 
 ### 已自管组件（脱离 registry，归 `ui/base/` 体系）
 

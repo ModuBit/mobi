@@ -47,6 +47,18 @@
                 "导出 RadioIndicator（受控圆点指示器，卡片内部同款单源；css 增 .indicator[data-checked] 自身选中分支）"
             ],
             "note": "已消费：OptionRow single 模式 mark（AskUserQuestion 单选行，纯视觉 aria-hidden；preview/Other 行为保留行级结构故不整组换 RadioCards）。整组组件待首个真实场景（设置页分组单选等）"
+        },
+        {
+            "name": "skeleton",
+            "source": "arc",
+            "upstream": "tracked",
+            "migratedIn": "2026-11-15",
+            "localMods": [
+                "Apache 版权头",
+                "motion-tokens import 接线（上游 lib/motion-tokens → @/ui/base/motion/motionTokens 单源）",
+                "上游 css 所需别名补齐进 cssVars 单源（--space-1 补 4px 档、--ease-in-out → --mobi-ease-in-out），组件 css 保持上游原样可 --overwrite"
+            ],
+            "note": "antd Skeleton 已全站清零。消费点：SkillsSection 列表加载骨架（按行 avatar+lines，内衬对齐 ManageRow）、AgentDrawerContent sidechain 加载骨架（user 行右对齐容器）、FileTreeView 目录首载骨架。children 交叉淡入+高度弹簧形态暂未消费，首个需要「占位→内容」无缝过渡的场景启用"
         }
     ]
 }

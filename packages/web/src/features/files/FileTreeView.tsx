@@ -17,8 +17,9 @@
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import styled from '@emotion/styled'
 import { motion, useReducedMotion } from 'motion/react'
-import { Tree, Empty, Skeleton, type TreeProps } from 'antd'
+import { Tree, Empty, type TreeProps } from 'antd'
 import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
+import { Skeleton } from '@/ui/shadcn/skeleton/skeleton'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { IconButton } from '@/ui/base/interactive/IconButton'
 import { spring } from '@/ui/base/motion/presets'
@@ -790,7 +791,9 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
                         </>
                     )
                 ) : rootResult?.isPending ? (
-                    <Skeleton active paragraph={{ rows: 6 }} style={{ padding: 16 }} />
+                    <div style={{ padding: 16 }}>
+                        <Skeleton lines={6} />
+                    </div>
                 ) : rootError && !rootListing ? (
                     // 无缓存可退守才用错误空态占满面板（首次加载失败）
                     <Empty
