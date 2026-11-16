@@ -16,7 +16,7 @@
 
 /**
  * skill 详情 sheet（全端统一 BottomSheet，先例 ToolDetailDrawer）：点击列表行展开——
- * 头部（图标 + 名 + 描述 + 启停开关）/ SKILL.md 正文全量滚动 / 元数据区（有才显示）/
+ * 头部卡片（icon + 名 + 启停开关同行、描述随行下，独立分块）/ SKILL.md 正文全量滚动 / 元数据区（有才显示）/
  * 操作区（更新 tracked、卸载 deletable——ConfirmMorph 就地确认，不在 sheet 上叠弹层）。
  * 头部即时渲染行数据（不等人）；正文与扩展元数据由 useSkillDetail 按需请求
  * （sheet 关闭 → name 置 null → 请求停发）。sheet 本体即滚动区，正文不再限高内滚。
@@ -46,37 +46,49 @@ const Body = styled.div`
     padding: 0 16px 16px;
 `
 
-/** 头部：图标 + 名 + 描述 + 启停开关（行数据即时渲染，不等人） */
+/**
+ * 头部卡片：icon + 名 + 启停开关同行、描述随下一行（开关与标题同行，2026-11-16 用户裁定）；
+ * 整块做成独立卡片（细描边 + 淡底），与下方 SKILL.md 正文在视觉上分块。
+ */
 const Head = styled.div<{ $token: Token }>`
     display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 14px;
+    border: 1px solid ${p => p.$token.colorBorderSecondary};
+    border-radius: var(--radius-control);
+    background: ${p => p.$token.colorFillQuaternary};
+`
+
+/** 首行：icon + 名（吃余量）+ 开启开关贴行右端 */
+const HeadRow = styled.div<{ $token: Token }>`
+    display: flex;
+    align-items: center;
     gap: 10px;
-    align-items: flex-start;
 
     > svg {
         flex-shrink: 0;
-        margin-top: 2px;
         color: ${p => p.$token.colorTextSecondary};
     }
-`
-
-const HeadText = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-    flex: 1;
 `
 
 const Name = styled.div<{ $token: Token }>`
     font-size: 16px;
     font-weight: 600;
     color: ${p => p.$token.colorText};
+    /* 长名不断行挤开关：词中断行兜底（skill 名无空格，anywhere 才生效） */
+    overflow-wrap: anywhere;
 `
 
 const Desc = styled.div<{ $token: Token }>`
     font-size: 13px;
     color: ${p => p.$token.colorTextSecondary};
     line-height: 1.5;
+`
+
+/** 头部卡片内的描述：与首行名字对齐（icon 18 + gap 10） */
+const HeadDesc = styled(Desc)<{ $token: Token }>`
+    padding-left: 28px;
 `
 
 /** 分区小标题 */
@@ -214,21 +226,21 @@ function SkillDetailContent({ skill, scope, token, t, onToggle, toggling, onUpda
     return (
         <Body>
             <Head $token={token}>
-                <BookOpen size={18} />
-                <HeadText>
+                <HeadRow $token={token}>
+                    <BookOpen size={18} />
                     <Name $token={token}>{current.name}</Name>
-                    {current.description && <Desc $token={token}>{current.description}</Desc>}
-                </HeadText>
-                {onToggle && (
-                    <div onClick={e => e.stopPropagation()} role="presentation">
-                        <Switch
-                            checked={current.effectiveState !== 'off'}
-                            disabled={toggling}
-                            onCheckedChange={onToggle}
-                            aria-label={t('settings.skills.toggleAria', { name: current.name })}
-                        />
-                    </div>
-                )}
+                    {onToggle && (
+                        <div onClick={e => e.stopPropagation()} role="presentation">
+                            <Switch
+                                checked={current.effectiveState !== 'off'}
+                                disabled={toggling}
+                                onCheckedChange={onToggle}
+                                aria-label={t('settings.skills.toggleAria', { name: current.name })}
+                            />
+                        </div>
+                    )}
+                </HeadRow>
+                {current.description && <HeadDesc $token={token}>{current.description}</HeadDesc>}
             </Head>
             {shadowed && <Desc $token={token}>{t('settings.skills.state.shadowed')}</Desc>}
 
