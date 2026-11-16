@@ -30,7 +30,7 @@
 import type { ReactNode } from 'react'
 import styled from '@emotion/styled'
 import { TabStrip, TabStripList, TabStripTab } from '@/ui/base/interactive/tabStrip'
-import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
+import { ExpandingSearch } from '@/ui/base/interactive/expanding-search/ExpandingSearch'
 
 export interface ScopeTabbedSectionProps {
     /** 搜索框受控值（caller 持状态并按 keyword 过滤列表；骨架只锁结构不管谓词） */
@@ -72,14 +72,15 @@ export function ScopeTabbedSection({
 }: ScopeTabbedSectionProps) {
     return (
         <>
-            {/* 搜索行：搜索框吃满余量，动作槽（安装/新建等）推到行右端 */}
+            {/* 搜索行：expanding-search 形态（过滤模式——不传 items 只借 morph 形态，受控 keyword
+                过滤列表归调用方）；lane 吃满余量、icon 贴行右端动作槽左侧，展开向左长 */}
             <ToolbarRow>
-                <SearchField
+                <ExpandingSearch
+                    label={searchPlaceholder}
+                    placeholder={searchPlaceholder}
                     value={keyword}
                     onValueChange={onKeywordChange}
-                    placeholder={searchPlaceholder}
-                    aria-label={searchPlaceholder}
-                    style={{ flex: 1 }}
+                    style={{ flex: 1, minWidth: 0 }}
                 />
                 {actions}
             </ToolbarRow>
