@@ -27,7 +27,7 @@ import type { SkillInventoryChangedEvent } from '../../../src/sync/skillInventor
  * - 受理侧（MessageService.sendMessage → observeReloadCommandText）：startsWith 检测，
  *   受理即发布（已知时序特性：受理刻 CC 尚未执行完 reload，该次刷新可能拿旧值，
  *   收敛由 SWR 兜底 + 等价闸保证——重复刷新幂等无副作用）
- * - 事件总线统一消费（refreshSDKMetadata）：按 workspace 圈定活跃会话刷新
+ * - 事件总线统一消费（SdkMetadataRefresher.refreshInventory）：按事件作用面圈定活跃会话
  */
 
 function makeEngine(): { engine: SyncEngine; store: Store; cleanup: () => void } {
@@ -40,7 +40,7 @@ function makeEngine(): { engine: SyncEngine; store: Store; cleanup: () => void }
 }
 
 describe('reload 命令观测 → skill-inventory-changed 事件', () => {
-    test('受理 /reload-skills → 立即发布事件（source reload-command）', () => {
+    test('受理 /reload-skills → 立即发布事件（target 圈定发起会话自身）', () => {
         const h = makeEngine()
         try {
             const session = h.engine.getOrCreateSession('reload-1', { path: '/tmp/proj', host: 'h-1' }, null, 'default')
@@ -50,9 +50,8 @@ describe('reload 命令观测 → skill-inventory-changed 事件', () => {
             h.engine.observeReloadCommandText(session.id, '/reload-skills')
             expect(events.length).toBe(1)
             expect(events[0]!.type).toBe('skill-inventory-changed')
-            expect(events[0]!.source).toBe('reload-command')
             expect(events[0]!.namespace).toBe(session.namespace)
-            expect(events[0]!.workspaceId).toBe(session.workspaceId ?? null)
+            expect(events[0]!.target).toEqual({ kind: 'session', sessionId: session.id })
         } finally {
             h.cleanup()
         }
@@ -86,29 +85,56 @@ describe('reload 命令观测 → skill-inventory-changed 事件', () => {
         }
     })
 
-    test('事件总线统一消费：订阅触发通用 refreshSDKMetadata（按 workspace 圈定活跃会话）', () => {
+    test('事件总线统一消费：按作用面圈定活跃会话（session 不外溢到同工作区）', async () => {
         const h = makeEngine()
         try {
-            const session = h.engine.getOrCreateSession('reload-5', { path: '/tmp/proj', host: 'h-1' }, null, 'default')
-            h.engine.handleSessionAlive({ sid: session.id, time: Date.now() })
+            const workspace = h.store.workspaces.createWorkspace({
+                namespace: 'default',
+                name: 'W',
+                folders: [{ path: '/tmp/a', primary: true }],
+            })
+            const wsId = workspace.id
+            const session = h.engine.getOrCreateSession('reload-5', { path: '/tmp/a', host: 'h-1' }, null, 'default', 'local', undefined, wsId)
+            const peer = h.engine.getOrCreateSession('reload-peer', { path: '/tmp/b', host: 'h-1' }, null, 'default', 'local', undefined, wsId)
             // 同 workspace 的 inactive 会话不应被刷
-            const idle = h.engine.getOrCreateSession('reload-idle', { path: '/tmp/proj', host: 'h-1' }, null, 'default')
+            const idle = h.engine.getOrCreateSession('reload-idle', { path: '/tmp/c', host: 'h-1' }, null, 'default', 'local', undefined, wsId)
 
-            const refreshed: Array<[string, boolean | undefined]> = []
-            const original = h.engine.refreshSDKMetadataBackground.bind(h.engine)
-            h.engine.refreshSDKMetadataBackground = (sessionId, options) => {
-                refreshed.push([sessionId, options?.force])
-                return original(sessionId, options)
+            const refreshed: string[] = []
+            h.engine.refreshMetadata = async (sessionId) => {
+                refreshed.push(sessionId)
+                return { success: false }
             }
 
-            // 管理路由形态的事件（global）应只刷活跃会话；reload-command 形态圈定 workspace
-            h.engine.skillInventory.emit({ type: 'skill-inventory-changed', namespace: session.namespace, workspaceId: null, source: 'manage' })
-            expect(refreshed).toEqual([[session.id, true]])
-            expect(refreshed[0]![0]).not.toBe(idle.id)
+            h.engine.handleSessionAlive({ sid: session.id, time: Date.now() })
+            h.engine.handleSessionAlive({ sid: peer.id, time: Date.now() })
+            await new Promise(r => setTimeout(r, 0))
+            refreshed.length = 0 // 清掉激活补拉
 
+            // global：全部活跃会话
+            h.engine.skillInventory.emit({ type: 'skill-inventory-changed', namespace: 'default', target: { kind: 'global' } })
+            await new Promise(r => setTimeout(r, 0))
+            expect(refreshed.sort()).toEqual([session.id, peer.id].sort())
+            expect(refreshed).not.toContain(idle.id)
+
+            // workspace：圈定该工作区
             refreshed.length = 0
-            h.engine.skillInventory.emit({ type: 'skill-inventory-changed', namespace: session.namespace, workspaceId: session.workspaceId ?? null, source: 'reload-command' })
-            expect(refreshed).toEqual([[session.id, true]])
+            h.engine.skillInventory.emit({
+                type: 'skill-inventory-changed',
+                namespace: 'default',
+                target: { kind: 'workspace', workspaceId: wsId },
+            })
+            await new Promise(r => setTimeout(r, 0))
+            expect(refreshed.sort()).toEqual([session.id, peer.id].sort())
+
+            // session：只刷发起会话（D1：会话内 reload 不得外溢）
+            refreshed.length = 0
+            h.engine.skillInventory.emit({
+                type: 'skill-inventory-changed',
+                namespace: 'default',
+                target: { kind: 'session', sessionId: session.id },
+            })
+            await new Promise(r => setTimeout(r, 0))
+            expect(refreshed).toEqual([session.id])
         } finally {
             h.cleanup()
         }

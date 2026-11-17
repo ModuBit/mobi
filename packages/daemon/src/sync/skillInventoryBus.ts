@@ -18,9 +18,9 @@
  * skill 清单变更的进程内事件总线（daemon 内部发布-订阅，无 SSE 广播）。
  *
  * 发布方：skills 管理路由（装卸/启停/安装）、reload 命令观测（会话内
- * /reload-skills、/reload-plugins 执行完毕）；消费方：SyncEngine 订阅后统一
- * 刷新受影响活跃会话的 sdkMetadata——发布方不感知消费方，后续新增订阅者
- * （bundled 缓存失效等）只挂订阅，不改任何发布点。
+ * /reload-skills、/reload-plugins 执行完毕）；消费方：SyncEngine 订阅后交给
+ * SdkMetadataRefresher 按事件作用面刷新受影响活跃会话的 sdkMetadata——发布方不感知
+ * 消费方，后续新增订阅者（bundled 缓存失效等）只挂订阅，不改任何发布点。
  *
  * 不复用 EventPublisher：它 emit 顺带 SSE 广播给 web 且带 namespace 富化语义，
  * 本总线是纯进程内信号——web 侧的清单刷新已由 sdk-metadata-refreshed SSE 覆盖。
@@ -29,14 +29,22 @@
 
 import { daemonLogger } from '../logger'
 
-/** skill 清单变更事件（workspaceId null = global 视角，影响全部活跃会话） */
+/**
+ * skill 清单变更的作用面（显式目标，发布方声明自己实际改了哪一层清单）：
+ * - global：管理页对全局目录的装卸/启停/安装——所有活跃会话的清单都可能变；
+ * - workspace：管理页对某工作区目录的操作——只圈定该工作区的活跃会话；
+ * - session：会话内 reload 命令——只重载发起进程自己的清单，不得外溢。
+ */
+export type SkillInventoryRefreshTarget =
+    | { kind: 'global' }
+    | { kind: 'workspace'; workspaceId: string }
+    | { kind: 'session'; sessionId: string }
+
+/** skill 清单变更事件（作用面由 target 显式携带，消费方不再从 workspaceId 推断） */
 export type SkillInventoryChangedEvent = {
     type: 'skill-inventory-changed'
     namespace: string
-    /** null = global */
-    workspaceId: string | null
-    /** manage = 管理页装卸/启停/安装；reload-command = 会话内 reload 命令执行后（只影响发起会话进程） */
-    source: 'manage' | 'reload-command'
+    target: SkillInventoryRefreshTarget
 }
 
 export type SkillInventoryListener = (event: SkillInventoryChangedEvent) => void

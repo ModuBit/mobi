@@ -65,16 +65,17 @@ function findSkill(skills: SkillInfo[], name: string): SkillInfo | undefined {
 
 /**
  * skill 清单变更（装卸/启停/安装）→ 进程内事件总线发布（skill-inventory-changed）。
- * 缓存刷新的编排归订阅方（SyncEngine.refreshSDKMetadata 统一消费），路由只声明
- * 「清单变了」这一事实——发布方不感知消费方。fire-and-forget：订阅侧自带去重/
- * 等价闸（无变化不多发 SSE），失败静默（web 兜底 SWR）。
+ * 缓存刷新的编排归订阅方（SdkMetadataRefresher 统一消费）：路由只声明「清单变了」
+ * 以及作用面（全局目录 = global；工作区目录 = workspace），发布方不感知消费方。
+ * fire-and-forget：订阅侧自带去重/等价闸（无变化不多发 SSE），失败静默（web 兜底 SWR）。
  */
 function notifySkillChange(c: Context, engine: SyncEngine, workspaceId: string): void {
     engine.skillInventory.emit({
         type: 'skill-inventory-changed',
         namespace: c.get('namespace'),
-        workspaceId: workspaceId === SKILL_SCOPE_GLOBAL ? null : workspaceId,
-        source: 'manage',
+        target: workspaceId === SKILL_SCOPE_GLOBAL
+            ? { kind: 'global' }
+            : { kind: 'workspace', workspaceId },
     })
 }
 

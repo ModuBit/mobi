@@ -722,21 +722,20 @@ describe('skills REST 路由（GET /api/skills）', () => {
             writeFileSync(join(wsDir, '.claude', 'skills', 'notify-proj', 'SKILL.md'), skillMd({ name: 'notify-proj' }))
         })
 
-        test('卸载 global skill → workspaceId null（影响全部活跃会话）', async () => {
+        test('卸载 global skill → target global（影响全部活跃会话）', async () => {
             events.length = 0
             const res = await app.request('/api/skills/notify-global?workspaceId=global', { method: 'DELETE', headers: authHeaders })
             expect(res.status).toBe(200)
             expect(events.length).toBe(1)
-            expect(events[0]!.source).toBe('manage')
-            expect(events[0]!.workspaceId).toBeNull()
+            expect(events[0]!.target).toEqual({ kind: 'global' })
         })
 
-        test('卸载 project skill → 该 workspaceId', async () => {
+        test('卸载 project skill → 该 workspace 的 target', async () => {
             events.length = 0
             const res = await app.request(`/api/skills/notify-proj?workspaceId=${workspaceId}`, { method: 'DELETE', headers: authHeaders })
             expect(res.status).toBe(200)
             expect(events.length).toBe(1)
-            expect(events[0]!.workspaceId).toBe(workspaceId)
+            expect(events[0]!.target).toEqual({ kind: 'workspace', workspaceId })
         })
 
         test('卸载失败（不可删除 400）→ 不发布事件', async () => {
@@ -745,7 +744,7 @@ describe('skills REST 路由（GET /api/skills）', () => {
             expect(events.length).toBe(0)
         })
 
-        test('安装 → 发布事件（global scope 透传 null）', async () => {
+        test('安装 → 发布事件（global scope → target global）', async () => {
             fakeInstallResult = { installed: ['x'], failed: [] }
             events.length = 0
             const res = await app.request('/api/skills/install', {
@@ -755,7 +754,7 @@ describe('skills REST 路由（GET /api/skills）', () => {
             })
             expect(res.status).toBe(200)
             expect(events.length).toBe(1)
-            expect(events[0]!.workspaceId).toBeNull()
+            expect(events[0]!.target).toEqual({ kind: 'global' })
         })
 
         test('启停 → 发布事件（workspace scope 透传）', async () => {
@@ -767,7 +766,7 @@ describe('skills REST 路由（GET /api/skills）', () => {
             })
             expect(res.status).toBe(200)
             expect(events.length).toBe(1)
-            expect(events[0]!.workspaceId).toBe(workspaceId)
+            expect(events[0]!.target).toEqual({ kind: 'workspace', workspaceId })
         })
     })
 

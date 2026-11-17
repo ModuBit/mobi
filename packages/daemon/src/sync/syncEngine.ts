@@ -37,6 +37,7 @@ import { buildHostMetadata } from '@mobi/node-core/hostMetadata'
 import { AgentSessionService } from './agentSessionService'
 import { MessageService, type SendMessagePayload } from './messageService'
 import { SkillInventoryBus } from './skillInventoryBus'
+import { SdkMetadataRefresher } from './sdkMetadataRefresher'
 import { WorkspaceCache } from './workspaceCache'
 import { RpcGateway, type ApprovePermissionParams } from './rpcGateway'
 import { SessionCache } from './sessionCache'
@@ -106,8 +107,10 @@ export class SyncEngine {
     readonly agentSessions: AgentSessionService
     private readonly workspaceCache: WorkspaceCache
     private readonly messageService: MessageService
-    /** skill 清单变更事件总线（发布方：skills 路由 / reload 命令观测；消费方：本引擎订阅） */
+    /** skill 清单变更事件总线（发布方：skills 路由 / reload 命令观测；消费方：本引擎订阅后交给 refresher） */
     readonly skillInventory: SkillInventoryBus
+    /** sdkMetadata 后台刷新（四道闸与作用面圈定的单点；接口见 sdkMetadataRefresher） */
+    private readonly sdkMetadataRefresher: SdkMetadataRefresher
     private readonly rpcGateway: RpcGateway
     /** 执行层（ticket-15 起）：spawn/清理类编排的执行点；ticket-20 起 socket 实现退场，
      *  LocalExecutor 是唯一形态（深化候选②票③删 ExecutorHost 接口，测试注入走
@@ -217,10 +220,18 @@ export class SyncEngine {
         })
         this.workspaceCache = new WorkspaceCache(store, this.eventPublisher)
         this.messageService = new MessageService(store, io, this.eventPublisher, (sessionId, text) => this.observeReloadCommandText(sessionId, text))
-        // skill 清单事件总线：本引擎是统一消费方（订阅 → 通用 refreshSDKMetadata）；
+        // skill 清单事件总线：本引擎是统一消费方（订阅 → 按作用面刷新 sdkMetadata）；
         // 发布方（skills 路由 / reload 命令观测）只持 bus 引用，不感知消费逻辑
         this.skillInventory = new SkillInventoryBus()
-        this.skillInventory.subscribe(event => this.refreshSDKMetadata(event.namespace, event.workspaceId, { force: true }))
+        this.sdkMetadataRefresher = new SdkMetadataRefresher({
+            // 依赖经 this 动态取值：refreshMetadata 是实例方法（测试可替换/观测）
+            getSession: (sessionId) => this.sessionCache.getSession(sessionId),
+            getSessionsByNamespace: (namespace) => this.sessionCache.getSessionsByNamespace(namespace),
+            refreshMetadata: (sessionId) => this.refreshMetadata(sessionId),
+            applyRefreshedSDKMetadata: (sessionId, metadata, expectedVersion) =>
+                this.sessionCache.applyRefreshedSDKMetadata(sessionId, metadata, expectedVersion),
+        })
+        this.skillInventory.subscribe(event => this.sdkMetadataRefresher.refreshInventory(event.namespace, event.target))
         this.rpcGateway = new RpcGateway(io, rpcRegistry)
         // socket 版实现已随 machine 通道删除（ticket-20）；缺省给无 bridge 的本地实现——
         // 非直调路径全可用，spawn 会报「bridge 未接线」（生产由 hubServer 注入带 bridge 的实例）
@@ -1123,74 +1134,21 @@ export class SyncEngine {
         this.sessionCache.updateSDKMetadata(sessionId, metadata)
     }
 
-    // 后台刷新并发去重：同一 session 同时只跑一个 refreshMetadata RPC。
-    // 注意——这只是并发闸，不负责打破 refetch↔SSE 循环；循环终止完全靠
-    // sessionCache.applyRefreshedSDKMetadata 的「内容相等则不写不发」语义。删除那个
-    // 相等检查会重新引入无限循环，不要被此 Set 的存在误导。
-    private readonly refreshingMetadata = new Set<string>()
-
-    /** 后台刷新最小间隔：web 每次 metadata GET 都会触发，30s 内复用上次结果（票 04） */
-    private static readonly BACKGROUND_REFRESH_MIN_INTERVAL_MS = 30_000
-    private readonly lastBackgroundRefreshAt = new Map<string, number>()
-
     /**
      * 后台刷新 sdkMetadata（SWR 配套）。
-     * 由 metadata 端点在命中缓存时 fire-and-forget 调用：
-     * - 同 session 并发去重（Set）
-     * - 交给 sessionCache.applyRefreshedSDKMetadata 做 CAS：仅当内容变化才写库 + 发 SSE
-     * - 会话不活跃 / RPC 失败静默（web 仍用缓存，不退化）
+     * 由 metadata 端点在命中缓存时 fire-and-forget 调用；四道闸（活跃/节流/并发/版本）
+     * 与 force 的补跑承诺收在 SdkMetadataRefresher（幂等，重复刷新无副作用）。
      */
-    async refreshSDKMetadataBackground(sessionId: string, options?: { force?: boolean }): Promise<void> {
-        if (this.refreshingMetadata.has(sessionId)) return
-        // CLI 不在线时 RPC 必失败/超时，且会占去重槽位直到超时——提前跳过省资源（web 仍用缓存）
-        const sessionBefore = this.sessionCache.getSession(sessionId)
-        if (!sessionBefore?.active) return
-        // 节流：命中缓存的 metadata GET 会反复触发本方法；30s 内只真正 RPC 一次。
-        // force（skill 装卸等离散事件触发）绕过——事件语义是「清单肯定变了」，不能被 GET 节流窗口吞掉
-        const now = Date.now()
-        const last = this.lastBackgroundRefreshAt.get(sessionId) ?? 0
-        if (!options?.force && now - last < SyncEngine.BACKGROUND_REFRESH_MIN_INTERVAL_MS) return
-        this.lastBackgroundRefreshAt.set(sessionId, now)
-        if (this.lastBackgroundRefreshAt.size > 512) {
-            const oldest = this.lastBackgroundRefreshAt.keys().next().value
-            if (oldest !== undefined) this.lastBackgroundRefreshAt.delete(oldest)
-        }
-        // 快照发起时的 metadataVersion，apply 时比对——RPC 期间若有别处写入（version 变），放弃 stale 结果
-        const versionBefore = sessionBefore.metadataVersion
-        daemonLogger.debug('[capability] background-refresh', { sessionId })
-        this.refreshingMetadata.add(sessionId)
-        try {
-            const result = await this.refreshMetadata(sessionId)
-            if (!result.success || !result.metadata) return
-            this.sessionCache.applyRefreshedSDKMetadata(sessionId, result.metadata, versionBefore)
-        } catch {
-            // RPC 失败 — 静默，web 继续用缓存
-        } finally {
-            this.refreshingMetadata.delete(sessionId)
-        }
-    }
-
-    /**
-     * 通用范围刷新：某 workspace（null = global 视角）范围内的全部活跃会话统一刷一遍
-     * sdkMetadata。`/` 面板的命令清单以会话维度的 sdkMetadata 为源，与 skillsRoot 查询
-     * 缓存是两套缓存（queryKey 不相交，skills mutation 的 skillsRoot 失效够不到它）；
-     * 不主动刷则收敛全依赖 CC 目录 watcher 推 commands_changed（daemon 侧零承诺）。
-     * 事件总线的统一消费入口（skill-inventory-changed 订阅处）：force 绕过 GET 节流，
-     * 仍受 refreshingMetadata 去重与 apply 侧 sdkMetadataChanged 等价闸约束（无变化不多发）。
-     */
-    refreshSDKMetadata(namespace: string, workspaceId: string | null, options?: { force?: boolean }): void {
-        const affected = this.getSessionsByNamespace(namespace).filter(session =>
-            session.active && (workspaceId === null || session.workspaceId === workspaceId))
-        for (const session of affected) {
-            void this.refreshSDKMetadataBackground(session.id, { force: options?.force })
-        }
+    refreshSDKMetadataBackground(sessionId: string, options?: { force?: boolean }): Promise<void> {
+        return this.sdkMetadataRefresher.request(sessionId, options)
     }
 
     // ============ reload 命令观测（skill-inventory-changed 的会话内发布源）============
 
     /**
      * 会话进程内的 CC reload 命令（/reload-skills、/reload-plugins）重载的是该会话
-     * 自己的 CC 进程清单——只影响发起会话（各自独立进程），发布范围即会话自身归属。
+     * 自己的 CC 进程清单——只影响发起会话（各自独立进程），作用面因此显式声明为
+     * session，不按工作区外溢。
      * 检测用 startsWith（trim 后）：匹配命令及其参数形态；不用 contains——聊天内容里
      * 偶然提到命令名不该触发刷新。受理即发布（不等轮次结束）：简单优先；已知时序
      * 特性是受理刻 CC 尚未执行完 reload，该次刷新可能拿到旧值，最终收敛仍由 SWR
@@ -1207,8 +1165,7 @@ export class SyncEngine {
         this.skillInventory.emit({
             type: 'skill-inventory-changed',
             namespace: session.namespace,
-            workspaceId: session.workspaceId ?? null,
-            source: 'reload-command',
+            target: { kind: 'session', sessionId },
         })
     }
 }
