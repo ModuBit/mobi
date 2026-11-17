@@ -78,8 +78,8 @@ function fakeSource() {
     return { handle, disposed: () => disposed }
 }
 
-describe('createSourceCache（可用清单 → 安装复用同一次克隆）', () => {
-    test('同源并发 acquire 共享一次解析；再次 acquire 命中缓存', async () => {
+describe('createSourceCache（租约：可用清单 → 安装复用同一次克隆）', () => {
+    test('同源并发 withSource 共享一次解析；再次调用命中缓存', async () => {
         let resolves = 0
         const { handle, disposed } = fakeSource()
         const cache = createSourceCache(async () => {
@@ -87,34 +87,35 @@ describe('createSourceCache（可用清单 → 安装复用同一次克隆）', 
             return handle
         })
 
-        const [a, b] = await Promise.all([cache.acquire('octocat/repo'), cache.acquire('octocat/repo')])
-        const c = await cache.acquire('octocat/repo')
+        const seen: SkillSource[] = []
+        const [a, b] = await Promise.all([
+            cache.withSource('octocat/repo', (h) => { seen.push(h) }),
+            cache.withSource('octocat/repo', (h) => { seen.push(h) }),
+        ])
+        await cache.withSource('octocat/repo', (h) => { seen.push(h) })
         expect(resolves).toBe(1)
-        expect(a).toBe(handle)
-        expect(b).toBe(handle)
-        expect(c).toBe(handle)
-        expect(cache.get('octocat/repo')).toBe(handle)
+        expect(seen.every(h => h === handle)).toBe(true)
+        // 租约结束不销毁克隆：留给 install 复用，TTL 兜底回收
         expect(disposed()).toBe(0)
+        expect(a).toBeUndefined()
+        expect(b).toBeUndefined()
     })
 
-    test('release 后重新 acquire 触发新解析；重复 release 不重复 dispose', async () => {
+    test('fn 抛错只归还租约：克隆留在缓存供重试', async () => {
         let resolves = 0
-        const first = fakeSource()
-        const second = fakeSource()
+        const { handle, disposed } = fakeSource()
         const cache = createSourceCache(async () => {
             resolves += 1
-            return resolves === 1 ? first.handle : second.handle
+            return handle
         })
 
-        await cache.acquire('octocat/repo')
-        await cache.release('octocat/repo')
-        await cache.release('octocat/repo')
-        expect(first.disposed()).toBe(1)
-        expect(cache.get('octocat/repo')).toBeUndefined()
-
-        const again = await cache.acquire('octocat/repo')
-        expect(resolves).toBe(2)
-        expect(again).toBe(second.handle)
+        await expect(cache.withSource('octocat/repo', async () => { throw new Error('install failed') }))
+            .rejects.toThrow('install failed')
+        // 重试命中同一克隆，不重新解析、不销毁临时目录
+        const reused = await cache.withSource('octocat/repo', h => h)
+        expect(resolves).toBe(1)
+        expect(reused).toBe(handle)
+        expect(disposed()).toBe(0)
     })
 
     test('超过上限淘汰最旧并释放其临时目录', async () => {
@@ -125,17 +126,16 @@ describe('createSourceCache（可用清单 → 安装复用同一次克隆）', 
             return s.handle
         }, { maxEntries: 2 })
 
-        await cache.acquire('a/one')
-        await cache.acquire('b/two')
-        await cache.acquire('c/three')
+        await cache.withSource('a/one', () => {})
+        await cache.withSource('b/two', () => {})
+        await cache.withSource('c/three', () => {})
 
         expect(sources.get('a/one')!.disposed()).toBe(1)
-        expect(cache.get('a/one')).toBeUndefined()
-        expect(cache.get('b/two')).toBeDefined()
-        expect(cache.get('c/three')).toBeDefined()
+        expect(sources.get('b/two')!.disposed()).toBe(0)
+        expect(sources.get('c/three')!.disposed()).toBe(0)
     })
 
-    test('不同源并发 acquire 串行解析（前一次 clone 收尾才起下一次）', async () => {
+    test('不同源并发 withSource 串行解析（前一次 clone 收尾才起下一次）', async () => {
         // 取消获取只是放弃等待，旧 clone 仍在后台收尾；此时换 source 再拉会叠加克隆，
         // 故不同源必须排队（同源仍走 inflight 去重，见上一条用例）
         const started: string[] = []
@@ -147,8 +147,8 @@ describe('createSourceCache（可用清单 → 安装复用同一次克隆）', 
             })
         })
 
-        const first = cache.acquire('a/one')
-        const second = cache.acquire('b/two')
+        const first = cache.withSource('a/one', () => {})
+        const second = cache.withSource('b/two', () => {})
         await Promise.resolve()
         expect(started).toEqual(['a/one'])
 
@@ -161,14 +161,57 @@ describe('createSourceCache（可用清单 → 安装复用同一次克隆）', 
         await second
     })
 
-    test('TTL 到期自动释放', async () => {
+    test('TTL 到期自动释放（无租约时立即回收）', async () => {
         const { handle, disposed } = fakeSource()
         const cache = createSourceCache(async () => handle, { ttlMs: 20 })
 
-        await cache.acquire('octocat/repo')
+        await cache.withSource('octocat/repo', () => {})
         await new Promise(resolve => setTimeout(resolve, 60))
         expect(disposed()).toBe(1)
-        expect(cache.get('octocat/repo')).toBeUndefined()
+    })
+
+    test('租约期间 TTL 到点不释放；最后一个租约归还后补回收', async () => {
+        const { handle, disposed } = fakeSource()
+        const cache = createSourceCache(async () => handle, { ttlMs: 20 })
+        let release!: () => void
+        const gate = new Promise<void>(resolve => { release = resolve })
+
+        const held = cache.withSource('octocat/repo', () => gate)
+        await new Promise(resolve => setTimeout(resolve, 60))
+        // 操作还在进行：临时目录不得被 TTL 清掉
+        expect(disposed()).toBe(0)
+
+        release()
+        await held
+        await new Promise(resolve => setTimeout(resolve, 0))
+        expect(disposed()).toBe(1)
+    })
+
+    test('容量淘汰遇到被租用的最旧条目：延后到租约归还再释放', async () => {
+        const sources = new Map<string, ReturnType<typeof fakeSource>>()
+        const cache = createSourceCache(async (source) => {
+            const s = fakeSource()
+            sources.set(source, s)
+            return s.handle
+        }, { maxEntries: 2 })
+        let release!: () => void
+        const gate = new Promise<void>(resolve => { release = resolve })
+
+        const held = cache.withSource('a/one', () => gate)
+        await new Promise(resolve => setTimeout(resolve, 0))
+        await cache.withSource('b/two', () => {})
+        await cache.withSource('c/three', () => {})
+
+        // 最旧的条目被租用：先打待释放标记，租约期间不销毁
+        expect(sources.get('a/one')!.disposed()).toBe(0)
+
+        release()
+        await held
+        await new Promise(resolve => setTimeout(resolve, 0))
+        expect(sources.get('a/one')!.disposed()).toBe(1)
+        // 后两个条目不受牵连
+        expect(sources.get('b/two')!.disposed()).toBe(0)
+        expect(sources.get('c/three')!.disposed()).toBe(0)
     })
 })
 

@@ -64,14 +64,17 @@ export function repoShortName(url: string): string {
 }
 
 /** resolveSource 句柄缓存：available 阶段的克隆留给 install 复用（installSkills 直接吃
- *  SkillSource，免二次 clone）；TTL 到期/超上限时释放临时目录 */
+ *  SkillSource，免二次 clone）；临时目录的释放时机由缓存自己负责（TTL/上限/租约） */
 export interface SourceCache {
-    /** 取（或首次解析）源句柄；同源并发调用共享同一次解析 */
-    acquire(source: string): Promise<SkillSource>
-    /** 命中则返回缓存句柄（install 复用），未命中 undefined */
-    get(source: string): SkillSource | undefined
-    /** 释放并移除缓存条目（dispose 临时目录） */
-    release(source: string): Promise<void>
+    /**
+     * 在源句柄上执行一次操作（租约语义）。
+     *
+     * - 同源并发共享同一次解析（clone），命中缓存则瞬时返回；
+     * - fn 运行期间条目不会被 TTL 或容量淘汰释放——临时目录不会在操作中途被清掉；
+     * - fn 结束（正常或抛错）只归还租约；条目留在缓存继续服务后续操作（拉清单 → 安装
+     *   复用同一次克隆），临时目录由 TTL + 上限兜底回收。
+     */
+    withSource<T>(source: string, fn: (handle: SkillSource) => T | Promise<T>): Promise<T>
 }
 
 /**
@@ -88,8 +91,18 @@ export function createSourceCache(
 ): SourceCache {
     const ttlMs = options.ttlMs ?? 10 * 60 * 1000
     const maxEntries = options.maxEntries ?? 3
-    const entries = new Map<string, { handle: SkillSource; timer: ReturnType<typeof setTimeout> }>()
-    const inflight = new Map<string, Promise<SkillSource>>()
+
+    interface CacheEntry {
+        handle: SkillSource
+        timer: ReturnType<typeof setTimeout>
+        /** 进行中的租约数：>0 期间不得释放（TTL/淘汰都延后到最后一个租约归还） */
+        leases: number
+        /** 已被 TTL/淘汰判死，等最后一个租约归还后真正回收 */
+        disposePending: boolean
+    }
+
+    const entries = new Map<string, CacheEntry>()
+    const inflight = new Map<string, Promise<CacheEntry>>()
     /**
      * 解析串行化：同时只跑一个 clone。取消获取只是「放弃等待」，旧 clone 仍会在后台收尾；
      * 若此时用户换 source 再拉，两个克隆叠加会抢网络/磁盘（个人单机场景串行足够）。
@@ -102,55 +115,102 @@ export function createSourceCache(
         return run
     }
 
-    const disposeEntry = async (source: string): Promise<void> => {
-        const entry = entries.get(source)
-        if (!entry) return
-        // 先同步摘除再 await：并发 release/淘汰不会重复 dispose
+    const disposeNow = async (source: string, entry: CacheEntry): Promise<void> => {
+        // 条目可能已被替换/移除：只回收自己这张票据
+        if (entries.get(source) !== entry) return
         entries.delete(source)
         clearTimeout(entry.timer)
         await entry.handle.dispose().catch(() => {})
     }
 
+    /** 请求回收：无租约立即释放；有租约只打标记，最后一个租约归还时补回收 */
+    const requestDispose = (source: string, entry: CacheEntry): void => {
+        if (entry.leases > 0) {
+            entry.disposePending = true
+            return
+        }
+        void disposeNow(source, entry)
+    }
+
+    /**
+     * 容量上限回收：只在「未判死」的条目里腾位（已判死但被租用的条目视为已让位，
+     * 避免同一次超限把所有条目一起标记）。
+     */
+    const evictOverflow = (): void => {
+        const liveCount = (): number => {
+            let count = 0
+            for (const entry of entries.values()) if (!entry.disposePending) count += 1
+            return count
+        }
+        while (liveCount() > maxEntries) {
+            let victim: [string, CacheEntry] | null = null
+            for (const pair of entries) {
+                if (!pair[1].disposePending) { victim = pair; break }
+            }
+            if (!victim) return
+            requestDispose(victim[0], victim[1])
+        }
+    }
+
+    /** 取（或首次解析）条目并立即占用一个租约；同源并发共享同一次解析 */
+    const ensureEntry = async (source: string): Promise<CacheEntry> => {
+        const hit = entries.get(source)
+        if (hit) {
+            hit.leases += 1
+            return hit
+        }
+        const pending = inflight.get(source)
+        if (pending) {
+            const entry = await pending
+            entry.leases += 1
+            return entry
+        }
+        const resolving = serializeResolve(() => resolve(source)).then((handle) => {
+            // 解析完成即持租约（本调用方）；定时器回调晚于初始化，闭包引用安全
+            const entry: CacheEntry = {
+                handle,
+                timer: setTimeout(() => { requestDispose(source, entry) }, ttlMs),
+                leases: 1,
+                disposePending: false,
+            }
+            // 不因 TTL 定时器拖住宿主进程退出
+            entry.timer.unref?.()
+            entries.set(source, entry)
+            evictOverflow()
+            return entry
+        }).finally(() => {
+            inflight.delete(source)
+        })
+        inflight.set(source, resolving)
+        return resolving
+    }
+
+    const endLease = (source: string, entry: CacheEntry): void => {
+        entry.leases -= 1
+        if (entry.leases === 0 && entry.disposePending) void disposeNow(source, entry)
+    }
+
     return {
-        async acquire(source) {
-            const hit = entries.get(source)
-            if (hit) return hit.handle
-            const pending = inflight.get(source)
-            if (pending) return pending
-            const resolving = serializeResolve(() => resolve(source)).then((handle) => {
-                while (entries.size >= maxEntries) {
-                    const oldest = entries.keys().next().value
-                    if (oldest === undefined) break
-                    void disposeEntry(oldest)
-                }
-                const timer = setTimeout(() => { void disposeEntry(source) }, ttlMs)
-                // 不因 TTL 定时器拖住宿主进程退出
-                timer.unref?.()
-                entries.set(source, { handle, timer })
-                return handle
-            }).finally(() => {
-                inflight.delete(source)
-            })
-            inflight.set(source, resolving)
-            return resolving
+        async withSource<T>(source: string, fn: (handle: SkillSource) => T | Promise<T>): Promise<T> {
+            const entry = await ensureEntry(source)
+            try {
+                return await fn(entry.handle)
+            } finally {
+                endLease(source, entry)
+            }
         },
-        get(source) {
-            return entries.get(source)?.handle
-        },
-        release: disposeEntry,
     }
 }
 
 /** 生产缓存（resolveSource 直连 skills 包） */
 export const defaultSourceCache = createSourceCache(source => resolveSource(source))
 
-/** 解析 repo 可用清单（句柄转交缓存：install 复用同一次克隆；损坏 skill 已被 API 过滤） */
+/** 解析 repo 可用清单（句柄留在缓存：install 复用同一次克隆；损坏 skill 已被 API 过滤） */
 export async function resolveRepoSkills(source: string): Promise<{ repoSource: string; skills: RepoSkillOption[] }> {
-    const handle = await defaultSourceCache.acquire(source)
-    return {
+    return defaultSourceCache.withSource(source, handle => ({
         repoSource: repoShortName(handle.source.url),
         skills: handle.skills.map(s => ({ name: s.name, description: s.description })),
-    }
+    }))
 }
 
 /** 列指定 scope 的已装清单（仅 claude-code agent——安装判定面与其他 agent 无关） */
@@ -163,26 +223,28 @@ export async function listInstalledSkillRefs(options: { global: boolean; cwd?: s
     return result.skills.map(s => ({ name: s.name, source: s.source ?? null }))
 }
 
-/** 选择性安装（skills 缺省 = repo 全装；project scope 必须带 cwd 定位）。
- *  available 阶段缓存了源句柄时直接复用（installSkills 接受 SkillSource，免二次 clone），
- *  安装成功后释放临时目录；失败保留缓存供重试 */
+/**
+ * 选择性安装（skills 缺省 = repo 全装；project scope 必须带 cwd 定位）。
+ * 统一走源缓存租约：已有克隆直接复用（免二次 clone），没有则由缓存解析一次；
+ * 临时目录的释放归缓存（TTL/上限），安装路径不再自行决定 release 时机。
+ */
 export async function installSelectedSkills(
     source: string,
     skillNames: string[] | null,
     options: { global: boolean; cwd?: string },
 ): Promise<InstallSelectedResult> {
-    const cached = defaultSourceCache.get(source)
-    const result = await installSkills(cached ?? source, {
-        agents: ['claude-code'],
-        scope: options.global ? 'global' : 'project',
-        ...(options.cwd ? { cwd: options.cwd } : {}),
-        ...(skillNames ? { skills: skillNames } : {}),
+    return defaultSourceCache.withSource(source, async (handle) => {
+        const result = await installSkills(handle, {
+            agents: ['claude-code'],
+            scope: options.global ? 'global' : 'project',
+            ...(options.cwd ? { cwd: options.cwd } : {}),
+            ...(skillNames ? { skills: skillNames } : {}),
+        })
+        return {
+            installed: result.installed.map(t => t.skill),
+            failed: result.failed.map(f => ({ skill: f.skill, error: f.message })),
+        }
     })
-    if (cached) await defaultSourceCache.release(source)
-    return {
-        installed: result.installed.map(t => t.skill),
-        failed: result.failed.map(f => ({ skill: f.skill, error: f.message })),
-    }
 }
 
 /** 生产 API 面（skills 包编程接口直连；测试经 SkillsDeps.api 注入 fake） */
