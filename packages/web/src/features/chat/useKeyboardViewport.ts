@@ -15,6 +15,12 @@
  */
 
 import { useSyncExternalStore } from 'react'
+import {
+    getKeyboardOverlayHeight,
+    isEditableElement,
+    isKeyboardOverlayMode,
+    subscribeKeyboardGeometry,
+} from '@/ui/base/layout/usableViewport'
 
 /** 键盘视为弹出的最小 inset（px）：真机键盘高度 ≥150，URL 栏伸缩的抖动远小于此 */
 const KEYBOARD_INSET_THRESHOLD = 80
@@ -35,11 +41,9 @@ const KB_ANIM_TRANSITION = `${OVERLAY_ANIM_MS}ms cubic-bezier(0.33, 1, 0.68, 1)`
  * 消费端据此决定 inset 变化怎么跟：overlay 模式下 store 只写终值，需 CSS 过渡插值；
  * resize 模式下 inset 由 visualViewport 的 resize/scroll 逐次写入，再叠过渡只会让
  * 元素始终落后键盘一截（拖尾/抖动）。
+ * 实现与浮层几何共用 ui/base/layout/usableViewport（同一事实不定义两遍）。
  */
-export function isKeyboardOverlayMode(): boolean {
-    const vk = (navigator as { virtualKeyboard?: VirtualKeyboardLike }).virtualKeyboard
-    return vk?.overlaysContent === true
-}
+export { isKeyboardOverlayMode }
 
 /** focusin 预测弹出后等待 geometrychange 确认的窗口（ms）：超时未见确认视为假弹
  *  （外接键盘/平板等不会弹软键盘的场景），预测收回 */
@@ -106,21 +110,9 @@ export const KB_INSET_CSS_VAR = '--kb-inset'
  * 页级组件只订 `inset > 0` 布尔（整个键盘周期重渲染 2 次），数值订阅只剩
  * QuoteCommentInput 这类小浮层（终值一跳 + 自身 CSS transition 跟随）。
  */
-/** VirtualKeyboard API 形状子集（lib.dom 未收录，只取消费面） */
-interface VirtualKeyboardLike {
-    /** overlay 模式开关（index.html 早期脚本设 true）；分支判定读它而非 API 存在性 */
-    overlaysContent: boolean
-    boundingRect: { height: number }
-    addEventListener(type: 'geometrychange', listener: () => void): void
-    removeEventListener(type: 'geometrychange', listener: () => void): void
-}
-/** 当前焦点是否在可编辑元素（键盘弹出的前提；INPUT/TEXTAREA/contenteditable 覆盖全部输入面） */
+/** 当前焦点是否在可编辑元素（键盘弹出的前提；判据与浮层几何共用 usableViewport） */
 function isEditableFocus(): boolean {
     return isEditableElement(document.activeElement)
-}
-function isEditableElement(el: Element | null): boolean {
-    if (!(el instanceof HTMLElement)) return false
-    return el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'
 }
 /** 元素是否视觉可见且可聚焦（scrollIntoView 保护的判据）：蜜罐（visibility:hidden）、
  *  折叠卡片（祖先 hidden）、xterm 捕获层（opacity:0）都排除，滚它们只会乱页。
@@ -200,10 +192,9 @@ function startWatchers(): () => void {
     // overlay 模式判定读真实 flag（与 index.html 早期脚本、布局变量消费同一权威值）：
     // 只判 API 存在会在「带 API 但未开 overlay」的浏览器上走 geometrychange 源、
     // 而浏览器仍在收缩视口——双源各错一半且无报错
-    const vk = (navigator as { virtualKeyboard?: VirtualKeyboardLike }).virtualKeyboard
-    if (vk?.overlaysContent === true) {
+    if (isKeyboardOverlayMode()) {
         const onGeometry = () => {
-            const height = Math.max(0, Math.round(vk.boundingRect.height))
+            const height = getKeyboardOverlayHeight()
             // 记忆高度只记非零值：收起事件（0）不得抹掉下次 focusin 预测的目标
             if (height > 0) lastKnownKeyboardHeight = height
             predictConfirmed = true
@@ -263,12 +254,12 @@ function startWatchers(): () => void {
                 commitInset(0)
             }, FOCUS_SWITCH_GRACE_MS)
         }
-        vk.addEventListener('geometrychange', onGeometry)
+        const unsubscribeGeometry = subscribeKeyboardGeometry(onGeometry)
         document.addEventListener('focusin', onFocusIn)
         document.addEventListener('focusout', onFocusOut)
         return () => {
             clearOverlayTimers()
-            vk.removeEventListener('geometrychange', onGeometry)
+            unsubscribeGeometry()
             document.removeEventListener('focusin', onFocusIn)
             document.removeEventListener('focusout', onFocusOut)
             // 末位订阅者离场：变量一并归零清除，避免残留值糊在布局上
