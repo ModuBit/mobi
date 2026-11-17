@@ -15,7 +15,8 @@
  */
 
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
-import { Alert, App, Form, Radio } from 'antd'
+import { Alert, App, Form } from 'antd'
+import { Radio } from '@/ui/base/interactive/radio/Radio'
 import { Input } from '@/ui/base/interactive/input/Input'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'

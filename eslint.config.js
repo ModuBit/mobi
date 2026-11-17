@@ -155,6 +155,11 @@ module.exports = tseslint.config(
             importNames: ['Modal'],
             message: 'antd Modal 已迁自管自适应壳（@/ui/base/interactive/adaptiveDialog/AdaptiveDialog：PC 用 uiarc Dialog、移动端用 BottomSheet），禁止新增；命令式确认改为受控渲染该壳',
           },
+          {
+            name: 'antd',
+            importNames: ['Radio'],
+            message: 'antd Radio 已全站清零：整组选项用 uiarc RadioGroup（短文本）/ RadioCards（带描述与卡片壳），单行布尔用自管 @/ui/base/interactive/radio/Radio，禁止新增',
+          },
         ],
       }],
     },

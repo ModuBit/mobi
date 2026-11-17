@@ -33,7 +33,7 @@
                 "Apache 版权头",
                 "motion-tokens import 接线（上游 lib/motion-tokens → @/ui/base/motion/motionTokens 单源）"
             ],
-            "note": "已装待消费（底座预铺）：antd Radio 整组消费端待首个真实迁移场景到达时启用（OptionRow single mark 已由 radio-cards 的 RadioIndicator 承接），勿重复造轮子"
+            "note": "已消费：WorktreeMergeModal 合并策略单选（legend 作字段标题 + 两条带描述选项）。antd Radio 已全站清零且 eslint 禁新增；单行布尔单选用自管 ui/base/interactive/radio/Radio（指示器复用 radio-cards 导出的 RadioIndicator）"
         },
         {
             "name": "radio-cards",
@@ -46,7 +46,7 @@
                 "ring/card 圆角 20px → var(--radius-panel)（档位重映射：卡片归 panel 档）",
                 "导出 RadioIndicator（受控圆点指示器，卡片内部同款单源；css 增 .indicator[data-checked] 自身选中分支）"
             ],
-            "note": "已消费：OptionRow single 模式 mark（AskUserQuestion 单选行，纯视觉 aria-hidden；preview/Other 行为保留行级结构故不整组换 RadioCards）。整组组件待首个真实场景（设置页分组单选等）"
+            "note": "已消费：OptionRow single 模式 mark（AskUserQuestion 单选行，纯视觉 aria-hidden；preview/Other 行为保留行级结构故不整组换 RadioCards）、AssignWorkspaceModal 归入工作区桌面态（layout=list：folder 图标 + 名称 + 主路径描述）；导出的 RadioIndicator 同时被自管单 Radio 复用"
         },
         {
             "name": "skeleton",

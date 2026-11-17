@@ -18,14 +18,14 @@
  * scope 选项构建（架构深化候选②）：此前在 SkillsSection 的 tabs / 新建弹窗 / 安装
  * 弹窗三处逐字重建。tabs 与弹窗 radio 的**选项集不同**（2026-11-14 起）：
  * - tabOptions：系统（bundled 只读视角）+ 个人 + **非空**项目（occupancy 过滤，空项目隐藏）
- * - promptOptions（新建/安装弹窗 radio）：个人 + **全量**项目——空项目也能被选为
+ * - promptOptions（新建/安装弹窗单选下拉）：个人 + **全量**项目——空项目也能被选为
  *   目标（不然空项目永远建不出第一个 skill），但没有系统项（bundled 不可装/建）
  * value 即 wire 协议的 workspaceId / SKILL_SCOPE_* 哨兵。
  */
 import { useMemo } from 'react'
 import { SKILL_SCOPE_BUNDLED, SKILL_SCOPE_GLOBAL } from '@mobi/shared'
 
-/** scope 选项（tabs items 与 Radio options 形状兼容） */
+/** scope 选项（tabs items 与 Combobox options 形状兼容） */
 export interface ScopeOption {
     value: string
     label: string

@@ -21,12 +21,13 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Radio } from 'antd'
+import { Alert } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { MergeBackFailureReason, MergeBackResult, WorktreeSummary } from '@mobi/shared'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
+import { RadioGroup } from '@/ui/shadcn/radio-group/radio-group'
 import { useWorktreeActions } from '@/core/data/hooks/mutations/useWorktreeActions'
 import { WorktreeStateTag } from './WorktreeStateTag'
 
@@ -57,6 +58,11 @@ const MetaRow = styled.div`
     margin-bottom: 6px;
     min-width: 0;
 
+    /* 字段名不参与压缩：窄屏（移动端 sheet 390px）长路径会把「路径」两字逐字换行 */
+    & > span:first-child {
+        flex: none;
+    }
+
     & > span:last-child {
         min-width: 0;
         overflow: hidden;
@@ -76,22 +82,6 @@ const Hint = styled.p`
     margin: 6px 0 0;
     font-size: 12px;
     line-height: 1.6;
-    color: var(--ant-color-text-tertiary);
-`
-
-const StrategyOption = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-`
-
-const StrategyTitle = styled.span`
-    font-size: 13px;
-    color: var(--ant-color-text);
-`
-
-const StrategyDesc = styled.span`
-    font-size: 11.5px;
     color: var(--ant-color-text-tertiary);
 `
 
@@ -208,21 +198,26 @@ export function WorktreeMergeModal({ open, summary, onClose }: WorktreeMergeModa
                         <span>{targetBranch ?? t('settings.worktrees.targetBranchUnknown')}</span>
                     </MetaRow>
 
-                    <FieldLabel>{t('settings.worktrees.strategy')}</FieldLabel>
-                    <Radio.Group value={strategy} onChange={(event) => setStrategy(event.target.value)}>
-                        <Radio value="no-ff">
-                            <StrategyOption>
-                                <StrategyTitle>{t('settings.worktrees.strategyNoFf')}</StrategyTitle>
-                                <StrategyDesc>{t('settings.worktrees.strategyNoFfDesc')}</StrategyDesc>
-                            </StrategyOption>
-                        </Radio>
-                        <Radio value="squash">
-                            <StrategyOption>
-                                <StrategyTitle>{t('settings.worktrees.strategySquash')}</StrategyTitle>
-                                <StrategyDesc>{t('settings.worktrees.strategySquashDesc')}</StrategyDesc>
-                            </StrategyOption>
-                        </Radio>
-                    </Radio.Group>
+                    {/* 策略单选：uiarc RadioGroup（legend 自带字段标题，组内高亮滑移） */}
+                    <div style={{ marginTop: 14 }}>
+                        <RadioGroup
+                            label={t('settings.worktrees.strategy')}
+                            value={strategy}
+                            onValueChange={(value) => setStrategy(value === 'squash' ? 'squash' : 'no-ff')}
+                            options={[
+                                {
+                                    value: 'no-ff',
+                                    label: t('settings.worktrees.strategyNoFf'),
+                                    description: t('settings.worktrees.strategyNoFfDesc')
+                                },
+                                {
+                                    value: 'squash',
+                                    label: t('settings.worktrees.strategySquash'),
+                                    description: t('settings.worktrees.strategySquashDesc')
+                                }
+                            ]}
+                        />
+                    </div>
 
                     <Hint>{t('settings.worktrees.wipHint')}</Hint>
                     <Hint>{t('settings.worktrees.conflictHint')}</Hint>

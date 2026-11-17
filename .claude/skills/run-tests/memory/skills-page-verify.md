@@ -55,7 +55,7 @@ UI 侧：`[data-skill-name="x"] [role="switch"]` 点击后断言 aria-checked + 
 - **判据（双主题各验）**：`getComputedStyle(svg path).stroke` 必须等于 `--primary-foreground`、且与 `.fill` 背景形成反差；`.copy label` 14px colorText、`.copy span[description]` 12px text-muted（标题/描述层级）
 - **坑：容器级后代选择器泄漏**——本页 `FormBody` 曾有 `span, label { color: colorText }`，钻进 Checkbox 内部把 `.visual` 的 color 覆盖成正文色 → 暗档白勾压白块全不可见（用户截图实锤），亮档勾与底同暗。修复 = 收窄到 `> span, > label`（只命中表单自己的字段标题）。**今后看到「嵌入组件的勾/图标颜色莫名等于正文色」先查外层 styled 的裸元素选择器**
 - 回归探针：两档下 `path.stroke !== fill.bg` 且色差 ≥ 明显反差；unchecked 态 border 双档可见（亮 #adadb4 / 暗 #5d5d65）
-- **antd Radio 同族问题（2026-11-17）**：antd Radio 圆点默认常量 colorWhite（skills 安装/新建弹窗已迁自管 Combobox，站点他处仍有 antd Radio：WorktreeMergeModal / AssignWorkspaceModal / WorkspaceFormModal），dark 档 primary 实心圆是浅灰 #d4d4d6 → 白点对比不足，应随主题翻转。antd.css 覆写 `html .ant-radio-wrapper.ant-radio-css-var { --ant-radio-radio-color: var(--control-glyph) }`（0,2,1 压过 antd 的 0,2,0 变量块，不依赖注入顺序）。探针：`getComputedStyle(radio,'::after').backgroundColor` 暗档应 #131316、亮档 #f0f0f4，与 `.ant-radio` 背景（--ant-radio-radio-bg-color）反向
+- **单选件已迁 uiarc（2026-11-17）**：antd Radio 全站清零（eslint 禁新增），本页新建/安装弹窗用的是自管 Combobox；antd.css 的 `--ant-radio-radio-color` 覆写已随迁移删除。单选件探针见 [radio-widget-verify.md](radio-widget-verify.md)
 
 
 ## 内置名单首采

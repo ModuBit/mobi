@@ -72,6 +72,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [Tooltip 验证与诊断](tooltip-verify.md) — tooltip 生命周期观测（dispatchEvent hook 抓互斥广播）/ CDP hover 超时两坑（折叠分组隐形行、合成 PointerEvent 退路）/ 受控封装×Radix delayed-open timer 自毁已修 + **jsdom 测不出 stale closure 必须真机**（2026-11-03）
 - [会话保留期验证](retention-verify.md) — 归档/删除/豁免全链路：spawn+messages body schema、Radix 菜单指针序列、archived 页、批量门槛 native setter、409/transcript+墓碑断言（2026-11-03）
 - [Skills 管理页验证](skills-page-verify.md) — 开关 API 断言绕开 settings.json 读权限 / CLI 非交互预检（CLAUDE_CONFIG_DIR 隔离）/ 内置首采观测点 / composer 预填查 .tiptap 非 textarea / 页内 fetch 替代 curl cookie（2026-11-12）
+- [单选件验证](radio-widget-verify.md) — RadioGroup/RadioCards/自管 Radio 探针与双档配色；无会话 worktree 素材；圆点居中几何断言（2026-11-17）
 - [加载态 skeleton 验证](loading-skeleton-verify.md) — react-query+axios 走 XHR 非.fetch；navigate_page initScript 注入 XHR 延迟抓骨架态；缓存热态绕法（2026-11-15）
 - [IME composition 复现](ime-composition-verify.md) — CDP 驱动不了系统输入法：合成 CompositionEvent+直改 DOM+composition meta 探针；fiber 挖 editor 实例；jsdom 须桩 coordsAtPos（2026-11-16）
 - [YOLO 免审放行验证](yolo-bypass-verify.md) — Write 是可靠审批探针（change_title 已不触发）；pending 权威判据=DB agent_state.requests（DOM 正则必误报）；对照组先行证「会弹」再验「不弹」（2026-11-17）

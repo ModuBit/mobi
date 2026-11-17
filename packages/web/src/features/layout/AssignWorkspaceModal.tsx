@@ -15,9 +15,10 @@
  */
 
 import { useState, useEffect } from 'react'
-import { App, Radio, Typography } from 'antd'
+import { App, Typography } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
+import { RadioCards } from '@/ui/shadcn/radio-cards/radio-cards'
 import { useTranslation } from 'react-i18next'
 import { FolderOutlined } from '@ant-design/icons'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
@@ -50,8 +51,7 @@ export function AssignWorkspaceModal({ session, open, onClose }: AssignWorkspace
         if (open) setSelected(null)
     }, [open, session?.id])
 
-    // 提交归属变更。PC 走 Modal onOk（先 Radio 选中再确认）；
-    // mobile 点行即提交（无独立确定按钮）
+    // 提交归属变更。PC 走 RadioCards 选中 + 确认；mobile 点行即提交（无独立确定按钮）
     const handlePick = async (workspaceId: string) => {
         if (!session) return
         try {
@@ -64,7 +64,7 @@ export function AssignWorkspaceModal({ session, open, onClose }: AssignWorkspace
     }
 
     // 端别自适应（PC 居中 Dialog / 移动端底部 sheet）由 AdaptiveDialog 收口：
-    // - PC：Radio 单选 + 取消/确认双钮
+    // - PC：RadioCards 单选 + 取消/确认双钮
     // - mobile：大点按行、点行即提交（无独立确定按钮）——列表型面板一眼看全，
     //   打开即到内容高；手势返回哨兵由壳内置
     const mobileRows = workspaces.length === 0 ? (
@@ -97,21 +97,19 @@ export function AssignWorkspaceModal({ session, open, onClose }: AssignWorkspace
     const desktopBody = workspaces.length === 0 ? (
         <Text type="secondary">{t('workspace.assignEmpty')}</Text>
     ) : (
-        <Radio.Group
-            value={selected ?? undefined}
-            onChange={(e) => setSelected(e.target.value)}
-            style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '8px 0' }}
-        >
-            {workspaces.map(workspace => (
-                <Radio key={workspace.id} value={workspace.id}>
-                    <FolderOutlined style={{ marginRight: 6 }} />
-                    <span>{workspace.name}</span>
-                    <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                        {workspace.folders.find(f => f.primary)?.path}
-                    </Text>
-                </Radio>
-            ))}
-        </Radio.Group>
+        <RadioCards
+            aria-label={t('workspace.assignTitle')}
+            layout="list"
+            value={selected}
+            onValueChange={setSelected}
+            options={workspaces.map(workspace => ({
+                value: workspace.id,
+                label: workspace.name,
+                description: workspace.folders.find(f => f.primary)?.path,
+                icon: <FolderOutlined style={{ fontSize: 18 }} aria-hidden="true" />
+            }))}
+            style={{ margin: '8px 0' }}
+        />
     )
 
     return (

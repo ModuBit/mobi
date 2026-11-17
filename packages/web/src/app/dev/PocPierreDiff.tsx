@@ -27,8 +27,9 @@
 
 import { useMemo, useState, type CSSProperties } from 'react'
 import { MultiFileDiff, PatchDiff } from '@pierre/diffs/react'
-import { Flex, Radio, Typography } from 'antd'
+import { Flex, Typography } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
+import { TabStrip, TabStripList, TabStripTab } from '@/ui/base/interactive/tabStrip'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { PIERRE_BRIDGE_VARS } from '@/ui/base/theme/pierreTheme'
 
@@ -133,28 +134,22 @@ export default function PocPierreDiff() {
     return (
         <Flex vertical gap={16} style={{ padding: 16, height: '100vh', overflow: 'auto', background: 'var(--ant-color-bg-layout)' }}>
             <Typography.Title level={4} style={{ margin: 0 }}>@pierre/diffs PoC（票01 硬门禁）</Typography.Title>
-            <Flex align="center" gap={12}>
-                <Radio.Group
-                    size="small"
-                    value={theme}
-                    onChange={(e) => setTheme(e.target.value)}
-                    options={[
-                        { value: 'light', label: 'Light' },
-                        { value: 'dark', label: 'Dark' },
-                        { value: 'system', label: 'System' },
-                    ]}
-                    optionType="button"
-                />
-                <Radio.Group
-                    size="small"
-                    value={layout}
-                    onChange={(e) => setLayout(e.target.value)}
-                    options={[
-                        { value: 'unified', label: 'Unified' },
-                        { value: 'split', label: 'Split' },
-                    ]}
-                    optionType="button"
-                />
+            {/* wrap：窄屏下分段控件占满一行时，说明文字换行而不是被挤成逐字竖排 */}
+            <Flex align="center" gap={12} wrap>
+                {/* 分段控件：TabStrip panelless 形态（antd Radio 已全站清零） */}
+                <TabStrip value={theme} onValueChange={(value) => setTheme(value as typeof theme)}>
+                    <TabStripList ariaLabel="Theme">
+                        <TabStripTab value="light" panelless>Light</TabStripTab>
+                        <TabStripTab value="dark" panelless>Dark</TabStripTab>
+                        <TabStripTab value="system" panelless>System</TabStripTab>
+                    </TabStripList>
+                </TabStrip>
+                <TabStrip value={layout} onValueChange={(value) => setLayout(value as 'unified' | 'split')}>
+                    <TabStripList ariaLabel="Layout">
+                        <TabStripTab value="unified" panelless>Unified</TabStripTab>
+                        <TabStripTab value="split" panelless>Split</TabStripTab>
+                    </TabStripList>
+                </TabStrip>
                 <Button variant="secondary" size="sm" onClick={() => setWrap((v) => !v)}>{wrap ? 'Wrap: on' : 'Wrap: off'}</Button>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     ① 双主题 ② 大 patch 滚动 ③ hydration 成功/失败 ④ 空态

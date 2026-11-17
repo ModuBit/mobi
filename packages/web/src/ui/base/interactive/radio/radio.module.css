@@ -1,0 +1,61 @@
+/* 单个单选控件：label 即整行热区，原生 input 视觉隐藏但保留键盘与读屏语义 */
+.radio {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    line-height: var(--leading-body);
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.radio[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+/* 原生 input 留在文档流外：只收键盘与读屏，点击落在 label 上 */
+.input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* 按压反馈只动圆（与 radio-group 的 mark 同语言：快速下压再弹回），文字行不动 */
+.mark {
+    display: grid;
+    flex: none;
+    place-items: center;
+    transition: transform 100ms var(--ease-standard);
+}
+
+.radio:active:not([data-disabled]) .mark {
+    transform: scale(0.9);
+}
+
+/* 焦点环画在 label 上：真实焦点在隐藏 input 上，全局 :focus-visible 规则照不到整行 */
+.radio:has(.input:focus-visible) {
+    border-radius: var(--radius-control);
+    outline: 2px solid var(--ant-color-text-tertiary);
+    outline-offset: 2px;
+}
+
+.label {
+    min-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mark {
+        transition: none;
+    }
+    .radio:active:not([data-disabled]) .mark {
+        transform: none;
+    }
+}
