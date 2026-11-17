@@ -23,7 +23,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ensureUsableCwd } from '../../src/utils/ensureUsableCwd'
+import { ensureUsableProcessCwd } from '../src/startupCwd'
 
 const originalCwd = process.cwd()
 
@@ -31,13 +31,13 @@ afterEach(() => {
     process.chdir(originalCwd)
 })
 
-describe('ensureUsableCwd', () => {
+describe('ensureUsableProcessCwd', () => {
     it('cwd 有效：保持不动（相对路径语义不受影响）', () => {
         const dir = mkdtempSync(join(tmpdir(), 'mobi-cwd-'))
         try {
             process.chdir(dir)
             const expected = process.cwd()
-            ensureUsableCwd()
+            ensureUsableProcessCwd()
             expect(process.cwd()).toBe(expected)
         } finally {
             process.chdir(originalCwd)
@@ -49,7 +49,7 @@ describe('ensureUsableCwd', () => {
         const dir = mkdtempSync(join(tmpdir(), 'mobi-cwd-'))
         process.chdir(dir)
         rmSync(dir, { recursive: true, force: true })
-        expect(() => ensureUsableCwd()).not.toThrow()
+        expect(() => ensureUsableProcessCwd()).not.toThrow()
         expect(process.cwd()).toBe(homedir())
     })
 })

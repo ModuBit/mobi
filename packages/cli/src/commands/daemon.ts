@@ -17,7 +17,6 @@
 import chalk from 'chalk'
 import { startPpidWatchdog } from '@/supervisor/ppidWatchdog'
 import { initializeToken } from '@/ui/tokenInit'
-import { ensureUsableCwd } from '@/utils/ensureUsableCwd'
 import { parseHostPortArgs } from './serviceArgs'
 import { serviceStart, serviceStop, serviceRestart, serviceStatus } from './serviceOps'
 import type { CommandDefinition, CommandContext } from './types'
@@ -53,7 +52,6 @@ export const daemonCommand: CommandDefinition = {
         }
 
         if (subcommand === 'start-sync') {
-            ensureUsableCwd()
             const { host, port } = parseHostPortArgs(context.commandArgs.slice(1))
             // 父进程（supervisor，或前台调试时的 shell）死亡时自杀，
             // 避免孤儿 daemon 占端口/锁/状态文件（SIGTERM 走 daemon 优雅清理）
@@ -62,8 +60,10 @@ export const daemonCommand: CommandDefinition = {
             })
             // 同进程 executor 需要 CLI token 连本进程 daemon 认证
             await initializeToken()
-            // skills 包在模块加载时快照 clone 超时（默认 300s——慢网下用户只看到「卡住」）。
-            // 获取清单/安装是交互式动作，90s 无进展即失败可重试；需要更久可显式设大
+            // skills 包在**模块加载时**快照 clone 超时（默认 300s——慢网下用户只看到「卡住」）。
+            // 获取清单/安装是交互式动作，90s 无进展即失败可重试；需要更久可显式设大。
+            // 必须在下面动态 import 之前设置（skills 模块经 daemonEntry 依赖链加载）。
+            // （cwd 兜底不在此处：归 daemon 启动编排 daemonEntry.startDaemon，两条启动路径共享）
             process.env.SKILLS_CLONE_TIMEOUT_MS ??= '90000'
             const { startDaemon } = await import('@mobi/daemon/daemonEntry')
             await startDaemon({ host, port })

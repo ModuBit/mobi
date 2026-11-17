@@ -39,6 +39,7 @@ import { daemonLogger } from './logger'
 import { startServer, type ServerHandle } from './server'
 import { startExecutor, ExecutorLockHeldError, type ExecutorHandle } from './executor/lifecycle'
 import { QuitCleanup } from './quitCleanup'
+import { ensureUsableProcessCwd } from './startupCwd'
 
 export interface StartDaemonOptions {
     host?: string
@@ -67,6 +68,9 @@ function detectPreviousCrash(exitLogger: ExitLogger): void {
 }
 
 export async function startDaemon(opts: StartDaemonOptions = {}): Promise<void> {
+    // 启动前置（两条启动路径共享）：启动目录可能已被删除（部署收尾删构建目录的实锤
+    // 场景），先兜底 cwd 再装配任何按 cwd 工作的模块。见 startupCwd 说明。
+    ensureUsableProcessCwd()
     // —— 退出日志合一（组件名 daemon）：原 hub/runner 的进程职责在此收口 ——
     // ringBuffer 注入 daemonLogger（daemon 主服务与执行器共用一个 logger，
     // 崩溃 dump 上下文同源）
