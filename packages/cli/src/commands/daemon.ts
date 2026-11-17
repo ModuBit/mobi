@@ -17,6 +17,7 @@
 import chalk from 'chalk'
 import { startPpidWatchdog } from '@/supervisor/ppidWatchdog'
 import { initializeToken } from '@/ui/tokenInit'
+import { ensureUsableCwd } from '@/utils/ensureUsableCwd'
 import { parseHostPortArgs } from './serviceArgs'
 import { serviceStart, serviceStop, serviceRestart, serviceStatus } from './serviceOps'
 import type { CommandDefinition, CommandContext } from './types'
@@ -52,6 +53,7 @@ export const daemonCommand: CommandDefinition = {
         }
 
         if (subcommand === 'start-sync') {
+            ensureUsableCwd()
             const { host, port } = parseHostPortArgs(context.commandArgs.slice(1))
             // 父进程（supervisor，或前台调试时的 shell）死亡时自杀，
             // 避免孤儿 daemon 占端口/锁/状态文件（SIGTERM 走 daemon 优雅清理）
