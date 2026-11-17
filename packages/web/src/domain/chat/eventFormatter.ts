@@ -23,6 +23,7 @@
  */
 
 import { formatMessageTime } from '@/core/utils/timeFormat'
+import { MODEL_CHANGE_EVENT_TYPE } from '@mobi/shared'
 import type { AgentEvent } from './types'
 
 /** i18n 待执行文本：key + 插值参数，t() 由调用侧（EventText）执行 */
@@ -75,7 +76,7 @@ export function formatEvent(event: { type: string; [key: string]: unknown }, cre
             const ms = Number(event.durationMs) || 0
             return { kind: 'lines', lines: [{ segments: [{ key: 'chat.durationValue', params: { value: formatDurationMs(ms) } }] }] }
         }
-        case 'model-change': {
+        case MODEL_CHANGE_EVENT_TYPE: {
             const model = String(event.model || '')
             return { kind: 'lines', lines: [{ segments: [{ key: 'chat.modelChange', params: { model } }] }] }
         }

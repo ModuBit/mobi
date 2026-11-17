@@ -39,7 +39,7 @@ import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
 import { bootstrapSession } from '../agent/sessionFactory';
 import { createModeChangeHandler, createSessionLifecycle, setControlledByUser } from '../agent/sessionLifecycle';
-import { SESSION_CONFIG_FIELDS, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, type SessionPauseTrigger, type UserContentBlock } from '@mobi/shared';
+import { SESSION_CONFIG_FIELDS, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, buildModelChangeLine, DEFAULT_MODEL, type SessionPauseTrigger, type UserContentBlock } from '@mobi/shared';
 import { PermissionModeSchema } from '@mobi/shared/schemas';
 import { buildPromptFromBlocks, type PromptPayload } from '@mobi/node-core/utils/promptBuilder';
 import { normalizeClaudeSessionModel } from './model';
@@ -672,16 +672,17 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
         // 无会话实例 / 无活查询 / applyLive 失败一律不发——宁可没有这行，不发假消息。
         // 「受理成功」≠「模型可用」：CLI 不校验模型字符串，可用性的最终证据是下一轮
         // API 调用（失败会产出 model_not_found 错误事件，走既有错误卡片）。
-        // 文案由 web 渲染端按语言拼装，行内只带模型标识
+        // 文案由 web 渲染端按语言拼装，行内只带模型标识。
+        // 行在**受理时构造**（快照当前模型），落地回调只决定发不发：applied 异步 settle，
+        // 期间用户可能再次切换（A→B 未落地就来 B→C）——回调里读 currentModel 会把
+        // 先一次的行标成 C，甚至两行同值。
+        // currentModel=null 表示「用默认模型」，wire 上以 DEFAULT_MODEL（auto）表示——
+        // codec 要求非空模型标识，null 直送会被读路径当坏行丢弃
         if (modelChanged) {
+            const line = buildModelChangeLine({ model: currentModel ?? DEFAULT_MODEL, uuid: randomUUID() });
             void applied.then((ok) => {
                 if (!ok) return;
-                apiSession.sendClaudeSessionMessage({
-                    type: 'system',
-                    subtype: 'model_change',
-                    model: currentModel,
-                    uuid: randomUUID(),
-                } as unknown as RawJSONLines);
+                apiSession.sendClaudeSessionMessage(line as unknown as RawJSONLines);
             });
         }
         return { applied: { permissionMode: currentPermissionMode, model: currentModel, effort: currentEffort, fastMode: currentFastMode } };

@@ -15,7 +15,7 @@
  */
 
 import type { AgentEvent, AgentMetrics, NormalizedAgentContent, NormalizedMessage, StructuredPatch, SystemNoticeLevel, ToolResult, ToolResultPermission, MessageMeta } from './types'
-import { asNumber, asString, classifyError, getField, isAbortedTerminalReason, isObject, parseGoalStatusAttachment, type ErrorInput, type GoalStatus, type NormalizedErrorEvent, type StopKind } from '@mobi/shared'
+import { asNumber, asString, classifyError, getField, isAbortedTerminalReason, isObject, MODEL_CHANGE_EVENT_TYPE, MODEL_CHANGE_SYSTEM_SUBTYPE, parseGoalStatusAttachment, parseModelChangeLine, type ErrorInput, type GoalStatus, type NormalizedErrorEvent, type StopKind } from '@mobi/shared'
 import { isClaudeChatVisibleMessage } from '@mobi/shared/messageClassification'
 import { calcCacheHitRate } from '@/core/lib/cacheHitRate'
 
@@ -458,11 +458,11 @@ const handleTurnDurationOutput: OutputHandler = (data, ctx) => {
     })
 }
 
-/** 处理 system:model_change 消息（mobi 合成的模型切换时间线事件） */
+/** 处理 system:model_change 消息（mobi 合成的模型切换时间线事件；形状契约见 shared/modelChangeLine） */
 const handleModelChangeOutput: OutputHandler = (data, ctx) => {
-    const model = asString(data.model)
-    if (!model) return null
-    return createEventMessage(ctx, { type: 'model-change', model })
+    const line = parseModelChangeLine(data)
+    if (!line) return null
+    return createEventMessage(ctx, { type: MODEL_CHANGE_EVENT_TYPE, model: line.model })
 }
 
 /** 处理 system:microcompact_boundary 消息 */
@@ -769,7 +769,7 @@ const outputHandlers = new Map<string, OutputHandler>([
     ['system:api_retry', handleApiRetryOutput],
     ['system:api_error', handleApiErrorOutput],
     ['system:turn_duration', handleTurnDurationOutput],
-    ['system:model_change', handleModelChangeOutput],
+    [`system:${MODEL_CHANGE_SYSTEM_SUBTYPE}`, handleModelChangeOutput],
     ['system:microcompact_boundary', handleMicrocompactBoundaryOutput],
     ['system:compact_boundary', handleCompactBoundaryOutput],
     ['system:informational', handleInformationalOutput],

@@ -29,6 +29,8 @@
  * - `task_*` 家族是 ephemeral 且可见——「实时可见、历史回放过滤」就是 ephemeral 的语义。
  */
 
+import { MODEL_CHANGE_SYSTEM_SUBTYPE } from './modelChangeLine'
+
 /** 消息分类 */
 export type MessageCategory = 'discard' | 'ephemeral' | 'persistent'
 
@@ -118,8 +120,9 @@ const VISIBLE_CLAUDE_SYSTEM_SUBTYPES = new Set([
     'task_notification',
     'task_started',
     'task_updated',
-    // mobi 合成的模型切换时间线事件（CLI 在程序化切换成功后发）：渲染成系统事件行
-    'model_change',
+    // mobi 合成的模型切换时间线事件（CLI 在程序化切换成功后发）：渲染成系统事件行。
+    // 子类型常量归 modelChangeLine（该事件族的单一契约声明），这里不重复字面量
+    MODEL_CHANGE_SYSTEM_SUBTYPE,
     // SDKInformationalMessage（CC 2.1.283+ warnings/notices）：放行到 web normalize handler。
     // 放行 ≠ 渲染——是否产出横幅由 web domain 层收窄判据
     // （level === 'warning' || prevent_continuation === true）二次决定，其余维持忽略
