@@ -27,7 +27,7 @@ import { Plus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { SKILL_SCOPE_BUNDLED, SKILL_SCOPE_GLOBAL, skillNameKey } from '@mobi/shared'
-import type { BundledSkillInfo, SkillAvailableInfo, SkillInfo, SkillRegistrySkill } from '@mobi/shared'
+import type { BundledSkillInfo, SkillInfo } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useBundledSkills, useSkillOccupancy, useSkills } from '@/core/data/hooks/queries/useSkills'
 import { Button } from '@/ui/base/interactive/button/Button'
@@ -42,16 +42,11 @@ import { SkillRow } from '@/features/settings/skills/SkillRow'
 import { BundledSkillRow } from '@/features/settings/skills/BundledSkillRow'
 import { SkillDetailSheet } from '@/features/settings/skills/SkillDetailSheet'
 import { useSkillsActions } from '@/features/settings/skills/useSkillsActions'
+import { installQuery as readInstallQuery, isDirectSkill, isSourceShape } from '@/features/settings/skills/installFlow'
+import { useInstallFlow } from '@/features/settings/skills/useInstallFlow'
 import { Skeleton } from '@/ui/shadcn/skeleton/skeleton'
 import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
 import { HoverGlideLayer } from '@/ui/base/motion/GlideLayer'
-
-/** 安装目标（搜索结果点选）：source = owner/repo，skillId = 目录 slug（skills 包的 skillFilter） */
-interface InstallTarget {
-    source: string
-    skillId?: string
-    label: string
-}
 
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
@@ -269,104 +264,17 @@ export function SkillsSection() {
      *  · 纯关键词 → 搜 skills.sh（显式触发：字段内搜索钮 / 底部主钮 / 回车）
      *  · `owner/repo` → 拉整仓清单，多选后安装
      *  · `owner/repo@skill` → 直装该 skill，不再拉整仓清单（skills 包的 skillFilter 语义）
-     *  打字过程零请求；形态由输入内容判定，不靠「输入模式」开关。 */
-    const [installOpen, setInstallOpen] = useState(false)
-    const [installInput, setInstallInput] = useState('')
-    const [installScope, setInstallScope] = useState(SKILL_SCOPE_GLOBAL)
-    /** 搜索结果点选出的目标（携带目录 slug）：chip 呈现，清空即回到输入态 */
-    const [installTarget, setInstallTarget] = useState<InstallTarget | null>(null)
-    /** 整仓清单（非 null = 选择段）；已装项（含全局已装，生效态并集）勾上 readonly */
-    const [availableSkills, setAvailableSkills] = useState<SkillAvailableInfo[] | null>(null)
-    const [selectedSkills, setSelectedSkills] = useState<string[]>([])
-    /** 生态搜索结果（null = 未搜过） */
-    const [findResults, setFindResults] = useState<SkillRegistrySkill[] | null>(null)
-    /** 清单拉取的本地等待标记：取消后立刻复位；请求仍在后台时按 seq 丢弃其结果 */
-    const [awaitingFetch, setAwaitingFetch] = useState(false)
-    const fetchSeqRef = useRef(0)
-
-    const installQuery = installInput.trim()
-    /** 形态判定与 skills 包 parseSource 同形：含 `/` 即来源（owner/repo…） */
-    const sourceShape = /^[^\s/]+\/[^\s/]+/.test(installQuery)
-    const directSkillShape = /^[^\s/]+\/[^\s/@]+@[^\s]+$/.test(installQuery)
-    const targetSource = installTarget
-        ? `${installTarget.source}${installTarget.skillId ? `@${installTarget.skillId}` : ''}`
-        : installQuery
-    const directSkill = installTarget ? Boolean(installTarget.skillId) : directSkillShape
-    const installBusy = actions.installing || awaitingFetch
-
-    const openInstall = () => {
-        setInstallScope(tab)
-        setInstallInput('')
-        setInstallTarget(null)
-        setAvailableSkills(null)
-        setSelectedSkills([])
-        setFindResults(null)
-        setAwaitingFetch(false)
-        setInstallOpen(true)
-    }
-
-    /** 生态搜索（显式触发；失败保留上次结果） */
-    const runFind = async () => {
-        if (!installQuery || sourceShape || actions.finding) return
-        const results = await actions.find(installQuery)
-        if (results) setFindResults(results)
-    }
-
-    /** 点选搜索结果：直接锁定该 skill 为目标（内部 owner/repo@skillId），不再拉整仓清单 */
-    const pickFound = (hit: SkillRegistrySkill) => {
-        setInstallTarget({ source: hit.source, skillId: hit.skillId, label: hit.name })
-        setInstallInput('')
-        setFindResults(null)
-        setAvailableSkills(null)
-        setSelectedSkills([])
-    }
-
-    /** 拉整仓清单（可取消：取消后 seq 失效，结果到达也不落到 UI） */
-    const fetchAvailableFor = async (source: string): Promise<SkillAvailableInfo[] | null> => {
-        const seq = ++fetchSeqRef.current
-        setAwaitingFetch(true)
-        try {
-            const skills = await actions.fetchAvailable(source, installScope)
-            if (seq !== fetchSeqRef.current) return null
-            return skills
-        } finally {
-            if (seq === fetchSeqRef.current) setAwaitingFetch(false)
-        }
-    }
-
-    const cancelFetch = () => {
-        fetchSeqRef.current += 1
-        setAwaitingFetch(false)
-    }
-
-    /** 主动作按形态分流：选择段提交 / 单 skill 直装 / 整仓拉清单 / 关键词搜索 */
-    const submitInstall = async () => {
-        if (installBusy) return
-        if (availableSkills !== null) {
-            if (selectedSkills.length === 0) return
-            if (await actions.install(targetSource, installScope, selectedSkills)) setInstallOpen(false)
-            return
-        }
-        if (directSkill) {
-            if (!targetSource) return
-            // skills 包按 source 里的 skillFilter 只装这一个（skills 参数缺省 = skillFilter）
-            if (await actions.install(targetSource, installScope)) setInstallOpen(false)
-            return
-        }
-        if (!sourceShape) {
-            await runFind()
-            return
-        }
-        const skills = await fetchAvailableFor(installQuery)
-        if (!skills) return
-        const only = skills.length === 1 && !skills[0].installed && !skills[0].conflict ? skills[0] : null
-        if (only) {
-            if (await actions.install(installQuery, installScope, [only.name])) setInstallOpen(false)
-            return
-        }
-        setAvailableSkills(skills)
-        setSelectedSkills(skills.filter(s => !s.installed).map(s => s.name))
-    }
+     *  打字过程零请求；形态由输入内容判定，不靠「输入模式」开关。
+     *  弹窗状态机与提交分流全归 useInstallFlow（installFlow reducer，网络/toast 注入自
+     *  useSkillsActions）。 */
+    const installFlow = useInstallFlow(actions, tab)
+    const installQuery = readInstallQuery(installFlow.state)
+    const sourceShape = isSourceShape(installQuery)
+    const directSkill = isDirectSkill(installFlow.state)
+    /** 清单选择段（null = 未拉取） */
+    const availableSkills = installFlow.state.available?.skills ?? null
+    const installBusy = installFlow.state.installing || installFlow.state.fetching
+    const openInstall = () => installFlow.open(tab)
 
     /** 详情 sheet（点击行展开；scope 跟随打开行所在视角——系统 tab 的插件行走 global，
         daemon detail 端点对 global 视角查不到的插件携带 skill 兜底解析） */
@@ -462,8 +370,8 @@ export function SkillsSection() {
                 </ListArea>
             </ScopeTabbedSection>
             <AdaptiveDialog
-                open={installOpen}
-                onOpenChange={next => { if (!next) setInstallOpen(false) }}
+                open={installFlow.state.open}
+                onOpenChange={next => { if (!next) installFlow.close() }}
                 title={t('settings.skills.installTitle')}
                 width={560}
                 footer={(
@@ -472,22 +380,22 @@ export function SkillsSection() {
                             variant="secondary"
                             onClick={() => {
                                 // 拉取中：先取消等待（请求仍可能在后台完成，结果按 seq 丢弃），不关弹窗
-                                if (awaitingFetch) {
-                                    cancelFetch()
+                                if (installFlow.state.fetching) {
+                                    installFlow.cancelFetch()
                                     return
                                 }
-                                setInstallOpen(false)
+                                installFlow.close()
                             }}
                         >
-                            {awaitingFetch ? t('settings.skills.installCancelFetch') : t('common.cancel')}
+                            {installFlow.state.fetching ? t('settings.skills.installCancelFetch') : t('common.cancel')}
                         </Button>
                         <Button
                             variant="primary"
                             loading={installBusy}
                             disabled={availableSkills !== null
-                                ? selectedSkills.length === 0
-                                : !installQuery && !installTarget}
-                            onClick={() => { void submitInstall() }}
+                                ? installFlow.state.selected.length === 0
+                                : !installQuery && !installFlow.state.target}
+                            onClick={() => { void installFlow.submit() }}
                         >
                             {availableSkills !== null
                                 ? t('settings.skills.installSubmit')
@@ -506,56 +414,45 @@ export function SkillsSection() {
                         <Hint $token={token}>{t('settings.skills.installSearchHint')}</Hint>
                         <SearchField
                             id="skills-install-query"
-                            value={installInput}
-                            onValueChange={value => {
-                                setInstallInput(value)
-                                // 重新打字 = 换目标：搜索结果点选锁定的 chip 让位（否则提交仍按旧目标装）
-                                if (value) setInstallTarget(null)
-                                setFindResults(null)
-                                setAvailableSkills(null)
-                                setSelectedSkills([])
-                            }}
+                            value={installFlow.state.input}
+                            onValueChange={installFlow.setInput}
                             placeholder={t('settings.skills.installSearchPlaceholder')}
-                            loading={actions.finding}
+                            loading={installFlow.state.finding}
                             aria-label={t('settings.skills.installSearchLabel')}
                             onKeyDown={event => {
                                 if (event.key === 'Enter') {
                                     event.preventDefault()
-                                    void submitInstall()
+                                    void installFlow.submit()
                                 }
                             }}
                             // 前导放大镜即可点：搜索触发不依赖回车（移动端友好），位置在字段内左侧
-                            onLeadingClick={() => { void submitInstall() }}
-                            leadingLabel={sourceShape || installTarget
+                            onLeadingClick={() => { void installFlow.submit() }}
+                            leadingLabel={sourceShape || installFlow.state.target
                                 ? t('settings.skills.installFetch')
                                 : t('settings.skills.installSearch')}
-                            leadingDisabled={(!installQuery && !installTarget) || installBusy}
+                            leadingDisabled={(!installQuery && !installFlow.state.target) || installBusy}
                         />
-                        {installTarget && (
+                        {installFlow.state.target && (
                             <TargetChip $token={token}>
-                                <span className="target-name">{installTarget.label}</span>
-                                <span className="target-source">{installTarget.source}</span>
+                                <span className="target-name">{installFlow.state.target.label}</span>
+                                <span className="target-source">{installFlow.state.target.source}</span>
                                 <button
                                     type="button"
                                     aria-label={t('settings.skills.installTargetClear')}
-                                    onClick={() => {
-                                        setInstallTarget(null)
-                                        setAvailableSkills(null)
-                                        setSelectedSkills([])
-                                    }}
+                                    onClick={() => installFlow.clearTarget()}
                                 >
                                     <X size={14} aria-hidden="true" />
                                 </button>
                             </TargetChip>
                         )}
-                        {findResults !== null && (
-                            findResults.length > 0 ? (
+                        {installFlow.state.findResults !== null && (
+                            installFlow.state.findResults.length > 0 ? (
                                 <FindResults $token={token}>
-                                    {findResults.map(hit => (
+                                    {installFlow.state.findResults.map(hit => (
                                         <button
                                             key={`${hit.source}:${hit.skillId}`}
                                             type="button"
-                                            onClick={() => pickFound(hit)}
+                                            onClick={() => installFlow.pickFound(hit)}
                                         >
                                             <span className="find-name">{hit.name}</span>
                                             <span className="find-meta">
@@ -570,17 +467,14 @@ export function SkillsSection() {
                         )}
                         <Combobox
                             label={t('settings.skills.installScopeLabel')}
-                            value={installScope}
-                            onValueChange={value => {
-                                setInstallScope(value)
-                                setAvailableSkills(null)
-                            }}
+                            value={installFlow.state.scope}
+                            onValueChange={installFlow.setScope}
                             options={promptOptions}
                             allowClear={false}
                         />
                         {/* 克隆仓库可能耗时数十秒：明确进度提示，避免像卡死；此时底部取消 =
                             取消等待（不关弹窗） */}
-                        {awaitingFetch && <Hint $token={token}>{t('settings.skills.installFetching')}</Hint>}
+                        {installFlow.state.fetching && <Hint $token={token}>{t('settings.skills.installFetching')}</Hint>}
                         {availableSkills !== null && (
                             availableSkills.every(s => s.installed) ? (
                                 <Hint $token={token}>{t('settings.skills.installAllInstalled')}</Hint>
@@ -589,12 +483,9 @@ export function SkillsSection() {
                                     {availableSkills.map(s => (
                                         <div key={s.name} className="skill-option">
                                             <Checkbox
-                                                checked={s.installed || selectedSkills.includes(s.name)}
+                                                checked={s.installed || installFlow.state.selected.includes(s.name)}
                                                 disabled={s.installed}
-                                                onCheckedChange={next => {
-                                                    setSelectedSkills(prev =>
-                                                        next ? [...prev, s.name] : prev.filter(n => n !== s.name))
-                                                }}
+                                                onCheckedChange={() => installFlow.toggleSkill(s.name)}
                                                 label={s.name}
                                                 description={s.description}
                                             />
