@@ -83,7 +83,7 @@ import { useForegroundTasksStore } from '@/core/data/stores/foregroundTasksStore
 import { useBackgroundTasksStore, useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
 import { useRewindStore, useRewindProgress, useRewindCompletion } from '@/core/data/stores/rewindStore'
 import { useComposerBackfillStore, useComposerBackfillRequest } from '@/core/data/stores/composerBackfillStore'
-import { reconcileLatestMessages } from '@/core/data/stores/messageWindowStore'
+import { reconcileLatestMessages, setHistoryReading } from '@/core/data/stores/messageWindowStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
 import { useTeamAgentsStore } from '@/core/data/stores/teamAgentsStore'
@@ -942,7 +942,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // 上抛 following 的 effect 每帧重跑
     const handleFollowingChange = useCallback((following: boolean) => {
         setShowScrollBottom(!following)
-    }, [])
+        // 上滚读历史期间暂停 messageWindowStore 的 turn 边界裁剪：裁剪从窗口头部丢整
+        // turn，正是用户此刻在看的内容（加载更旧历史后会被流式 ingest 立刻裁掉，视口跳动）
+        setHistoryReading(sessionId, !following)
+    }, [sessionId])
+
+    // 离开会话页时恢复裁剪（阅读标记是会话级状态，不能随页面卸载遗留）
+    useEffect(() => () => { setHistoryReading(sessionId, false) }, [sessionId])
 
     // rewind 判据数据源：会话当前 native session id + 后台任务在途数（store 订阅，spec §3.4）
     const sessionNativeSessionId = metadata?.nativeSessionId

@@ -25,6 +25,7 @@ import {
 import {
     ingestIncomingMessages,
     getMessageWindowState,
+    setHistoryReading,
     _resetForTest,
     _internal,
 } from '@/core/data/stores/messageWindowStore'
@@ -168,6 +169,35 @@ describe('#40 C-1：store 集成（ingest 触发裁剪）', () => {
         const state = getMessageWindowState(SID)
         expect(state.messages.length).toBe(messages.length + 1)
         expect(state.messages[0]).toBe(messages[0])
+    })
+
+    it('用户上滚读历史（historyReading=true）期间 ingest 不裁头——不能裁掉用户正在看的内容', () => {
+        const messages = buildTurns(Math.ceil(TRIM_THRESHOLD / 3), 2)
+        seedWindow(SID, messages, true)
+        setHistoryReading(SID, true)
+
+        ingestIncomingMessages(SID, [agentMsg('new-1', 99999)])
+
+        const state = getMessageWindowState(SID)
+        // 超阈值也不裁：加载进来的旧消息（窗口头部）保持原样
+        expect(state.messages.length).toBe(messages.length + 1)
+        expect(state.messages[0]).toBe(messages[0])
+    })
+
+    it('回到贴底（historyReading=false）立即收敛窗口并重算游标', () => {
+        const messages = buildTurns(Math.ceil(TRIM_THRESHOLD / 3), 2)
+        seedWindow(SID, messages, true)
+        setHistoryReading(SID, true)
+        ingestIncomingMessages(SID, [agentMsg('new-1', 99999)])
+        expect(getMessageWindowState(SID).messages.length).toBeGreaterThan(TRIM_THRESHOLD)
+        const versionBefore = getMessageWindowState(SID).messagesVersion
+
+        setHistoryReading(SID, false)
+
+        const state = getMessageWindowState(SID)
+        expect(state.messages.length).toBeLessThanOrEqual(TRIM_TARGET)
+        expect(isTurnStart(state.messages[0].content)).toBe(true)
+        expect(state.messagesVersion).toBeGreaterThan(versionBefore)
     })
 
     it('流式 append 日常路径：未超阈值零开销（原数组引用透传）', () => {

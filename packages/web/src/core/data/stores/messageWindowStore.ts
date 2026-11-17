@@ -76,10 +76,19 @@ export const EMPTY_STATE: MessageWindowState = {
 interface InternalState extends MessageWindowState {
     latestGeneration: number
     olderGeneration: number
+    /**
+     * 用户正在上滚阅读历史（following=false）。
+     *
+     * 阅读期间**暂停 turn 边界裁剪**：裁剪从头部丢整 turn，而用户此刻看的就是窗口头部——
+     * 历史上滚加载进来的旧消息会被每次流式 ingest 立刻裁掉（实测 12 页加载全部 200，
+     * 渲染气泡数纹丝不动），用户视角是「加载完成后内容整段消失/上移」。回到贴底后
+     * 由 setHistoryReading 立即收敛，内存钳制恢复。
+     */
+    historyReading: boolean
 }
 
 function createState(sessionId: string): InternalState {
-    return { ...EMPTY_STATE, sessionId, latestGeneration: 0, olderGeneration: 0 }
+    return { ...EMPTY_STATE, sessionId, latestGeneration: 0, olderGeneration: 0, historyReading: false }
 }
 
 const states = new Map<string, InternalState>()
@@ -241,9 +250,27 @@ function computeOldestSeq(messages: DecryptedMessage[]): number | null {
  */
 function trimAfterMerge(prev: InternalState, messages: DecryptedMessage[]): { messages: DecryptedMessage[]; oldestSeq: number | null | undefined } {
     if (!prev.hasMore) return { messages, oldestSeq: undefined }
+    // 用户正在读历史（上滚加载的旧消息就贴在窗口头部）：此刻裁头 = 裁掉用户正在看的内容
+    if (prev.historyReading) return { messages, oldestSeq: undefined }
     const trimmed = trimByTurnBoundary(messages)
     if (trimmed === messages) return { messages, oldestSeq: undefined }
     return { messages: trimmed, oldestSeq: computeOldestSeq(trimmed) }
+}
+
+/**
+ * 标记用户是否正在上滚阅读历史（following=false）。阅读期间暂停窗口裁剪（见
+ * InternalState.historyReading）；恢复贴底时立即按 turn 边界收敛一次，把阅读期间
+ * 积累的头部旧消息让出内存。
+ */
+export function setHistoryReading(sessionId: string, reading: boolean): void {
+    _internal.updateState(sessionId, prev => {
+        if (prev.historyReading === reading) return prev
+        const next: InternalState = { ...prev, historyReading: reading }
+        if (reading) return next
+        const { messages, oldestSeq } = trimAfterMerge(next, next.messages)
+        if (messages === next.messages) return next
+        return { ...next, messages, oldestSeq: oldestSeq ?? next.oldestSeq, messagesVersion: prev.messagesVersion + 1 }
+    })
 }
 
 /**
