@@ -73,6 +73,14 @@
    正常布局下 armed root 整体左移即可容纳，走不到这条降级）。**不可改上游的 auto 交还**——
    停驻像素值会让二次展开的目标基准失真（2026-11-17 E2E 实锤）。 */
 .surface { max-width: 100%; }
+
+/* 本地修改（arm 同帧测量污染，2026-11-17 用户录屏逐帧实锤）：静默态按压挤压（scale .97，
+   150ms 过渡）在 pointerup→click→state=confirming 时尚在回弹途中，Face 挂载即测宽
+   （getBoundingClientRect 含祖先 transform），量到打 ~0.98 折的假自然宽 → spring 目标
+   偏小 ~5px，落定交还 auto 时一次性跳回真宽 = 末端「震一下」。非 idle 态 transform
+   0ms 归位，让 arm 同帧测量看到真宽，handback 无缝。合成 .click() 不触发 :active，
+   此 bug 只在真鼠按压下出现（此前反复复现失败的原因）。 */
+.root:not([data-state="idle"]) .surface { transition-duration: var(--duration-standard), var(--duration-standard), 0ms; }
 .root[data-disabled][data-state="idle"] .surface { box-shadow: none; }
 .root[data-disabled][data-state="idle"] .surface::after { border-color: var(--border-subtle); }
 /* ghost：嵌在有色卡片/工具条内不另起一层白底，全透明无描边无阴影，hover 才淡底（.trigger:hover 既有规则接管） */
