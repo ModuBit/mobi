@@ -79,3 +79,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [YOLO 免审放行验证](yolo-bypass-verify.md) — Write 是可靠审批探针（change_title 已不触发）；pending 权威判据=DB agent_state.requests（DOM 正则必误报）；对照组先行证「会弹」再验「不弹」（2026-11-17）
 - [ConfirmMorph 手势探针](confirm-morph-gesture-probe.md) — 受信慢按+逐帧跳变检测；合成 click 验不了手感；已修：测量污染+窄容器越界
 - [工具行 chip 图标对齐验证](tool-chip-align-verify.md) — seed Read 帧（readfile 写 BLOB 须 CAST AS TEXT 否则 content null）/ canvas cap 中心 / DPR2·3 + 像素复核 / markdown 链接 replica
+- [PWA 预缓存分层验证](pwa-precache-verify.md) — 生产构建 preview 起法（5176 代理 2224）/ 壳 26 条与 runtime 按需增长 / 离线深层链接靠 NavigationRoute / caches.match 传 Request 对象 / **chunk 聚合不开启 strictExecutionOrder 会白屏**（2026-11-17）

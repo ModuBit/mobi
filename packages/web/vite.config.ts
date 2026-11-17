@@ -40,6 +40,20 @@ const useHttpsDev = process.env.MOBI_DEV_HTTPS === '1' || process.env.MOBI_DEV_H
 // MOBI_BUNDLE_ANALYZE=1 时生成 dist/stats.html（bundle 体积 treemap），供体积分析；日常构建不跑
 const enableBundleAnalyze = process.env.MOBI_BUNDLE_ANALYZE === '1'
 
+/**
+ * 首屏 chunk 聚合参数（rolldown codeSplitting）。
+ *
+ * rolldown 默认自动拆分会把共享小模块拆成独立 chunk：实测产物 2492 个 JS、
+ * 体积中位数 0.4KB（连 108 字节的图标都单独成文件），首屏一次要发 59 个 JS 请求。
+ * 这里只聚合入口静态依赖链（$initial）：小于 20KB 的碎片合并、单块不超过 500KB。
+ * 实测首屏请求 59 → 16、gzip 总量 431 → 422KB（不增反降），按需 chunk 不受影响。
+ *
+ * 注意：minSize 是 group 的约束，必须配 groups 才生效；也不能对动态链做同样的
+ * 强行聚合——实测会话页共享模块聚合后请求 59→48，但 gzip 969→1210KB（+25%）。
+ */
+const INITIAL_CHUNK_MIN_SIZE = 20_000
+const INITIAL_CHUNK_MAX_SIZE = 500_000
+
 /** 画板字体的静态服务前缀（dev middleware 与构建产物同路径，见 excalidrawAssetsPlugin） */
 const EXCALIDRAW_ASSETS_PREFIX = '/excalidraw-assets/'
 /** 包内 excalidraw 产物根（fonts 的父目录）：EXCALIDRAW_ASSET_PATH 前缀与磁盘的映射基准。
@@ -94,9 +108,23 @@ export default defineConfig({
             injectManifest: {
                 // 允许预缓存较大的 JS chunk（默认 2 MiB 不够）
                 maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
-                globPatterns: ['**/*.{js,css,woff2,png,svg,ico,gif}'],
-                // 画板字体（~13MB，unicode-range 分片按需加载）不进预缓存：安装下载量失控，
-                // 运行时复用浏览器 HTTP 缓存即可
+                // 预缓存只放应用壳：入口 + 首屏聚合组 + 入口 CSS + 品牌图标 + UI 字体（约 3MB）。
+                // 按需 chunk（shiki 语言包、pdfjs、excalidraw、openui、elk 等，全量清单约 34MB）
+                // 不再安装时下载，由 sw.ts 的 runtimeCaching 首次使用时落盘（方案 A，2026-11-17）。
+                // 首屏聚合组统一命名为 initial-*，因此这里能按名字精确圈定壳资源。
+                globPatterns: [
+                    'index.html',
+                    'assets/index-*.js',
+                    'assets/index-*.css',
+                    'assets/initial-*.js',
+                    'assets/initial-*.css',
+                    // 打包器运行时是入口的静态依赖，但不属于用户模块，不会被 $initial 组捕获
+                    'assets/rolldown-runtime-*.js',
+                    'brand/*.{svg,png,ico}',
+                    'fonts/**/*.woff2',
+                ],
+                // 画板字体（~13MB，unicode-range 分片按需加载）同样不进预缓存，
+                // 由 runtimeCaching 首次使用时缓存
                 globIgnores: ['excalidraw-assets/**'],
             },
             // type:'module' 让 dev SW 走 esbuild 打包 sw.ts（含 push/notificationclick handler），
@@ -130,6 +158,32 @@ export default defineConfig({
     define: {
         __MOBI_HUB_URL__: JSON.stringify(process.env.NODE_ENV === 'production' ? undefined : hubUrl),
         __MOBI_VERSION__: JSON.stringify(mobiVersion),
+    },
+    // 首屏 chunk 聚合（说明见 INITIAL_CHUNK_MIN_SIZE / MAX_SIZE 常量处）。
+    // 只配组内 minSize 不够：rolldown 的 minSize 是 group 的约束，必须配 groups 才会捕获模块。
+    build: {
+        rolldownOptions: {
+            output: {
+                // 聚合把多个模块塞进同一 chunk 后，跨 chunk 的循环依赖可能让模块在依赖
+                // 未初始化时执行：实测首屏聚合后生产构建白屏（initial chunk 内
+                // `x is not a function`）。开启严格执行顺序后按源码顺序初始化，代价是
+                // 部分模块带运行时包装、体积略增。
+                strictExecutionOrder: true,
+                codeSplitting: {
+                    minSize: INITIAL_CHUNK_MIN_SIZE,
+                    groups: [
+                        {
+                            name: 'initial',
+                            // $initial = 入口静态依赖链，只聚合首屏必须的碎片；
+                            // 动态 import 的按需 chunk（shiki/excalidraw/pdfjs 等）不受影响。
+                            tags: ['$initial'],
+                            minSize: INITIAL_CHUNK_MIN_SIZE,
+                            maxSize: INITIAL_CHUNK_MAX_SIZE,
+                        },
+                    ],
+                },
+            },
+        },
     },
     server: {
         host: true,

@@ -196,7 +196,8 @@ packages/web/src/
 │   └── pwa/                    PWA 支持
 │       ├── registerSW.ts       Service Worker 注册
 │       ├── swReady.ts          SW ready 超时保护（awaitServiceWorkerReady）
-│       └── sw.ts               自定义 Service Worker（处理 push / notificationclick）
+│       ├── swCache.ts          按需资源运行时缓存判定（纯函数，可单测）
+│       └── sw.ts               自定义 Service Worker（push / notificationclick / 缓存路由）
 │
 ├── domain/                     领域逻辑（纯数据，不依赖 React）
 │   ├── chat/                   聊天领域

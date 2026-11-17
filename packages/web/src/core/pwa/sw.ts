@@ -16,14 +16,44 @@
 
 /// <reference lib="webworker" />
 
-import { precacheAndRoute } from 'workbox-precaching'
+import { precacheAndRoute, createHandlerBoundToURL } from 'workbox-precaching'
 import { clientsClaim } from 'workbox-core'
+import { NavigationRoute, registerRoute } from 'workbox-routing'
+import { CacheFirst } from 'workbox-strategies'
+import { ExpirationPlugin } from 'workbox-expiration'
 import { planNotificationClick, type ClickClient } from './swClick'
+import { shouldRuntimeCache } from './swCache'
 
 declare let self: ServiceWorkerGlobalScope
 
 // 预缓存构建产物(injectManifest 注入 manifest)
 precacheAndRoute(self.__WB_MANIFEST || [])
+
+// SPA 导航兜底：离线时深层链接（如 /settings/notifications）没有对应的预缓存条目，
+// 统一返回预缓存的 index.html，由前端路由接管。缺这条时离线整页刷新报
+// ERR_INTERNET_DISCONNECTED（预缓存只覆盖资源，不覆盖导航 URL）。
+registerRoute(new NavigationRoute(createHandlerBoundToURL('/index.html')))
+
+// 按需资源运行时缓存(方案 A)：预缓存清单只覆盖应用壳，shiki/pdfjs/excalidraw/openui
+// 等约 30MB 的按需 chunk 首次请求时落盘，之后离线可用。壳资源虽同处 /assets/ 下，
+// 但上面的 precache 路由先注册、优先命中，不会重复进入这里。
+registerRoute(
+    ({ url, request }) =>
+        shouldRuntimeCache(
+            { url: url.href, method: request.method, destination: request.destination },
+            self.location.origin
+        ),
+    new CacheFirst({
+        cacheName: 'mobi-runtime-assets',
+        plugins: [
+            new ExpirationPlugin({
+                // 活跃功能约 100-200 个 chunk；300 条上限给切换版本留余量，过期后自动回收
+                maxEntries: 300,
+                maxAgeSeconds: 30 * 24 * 60 * 60,
+            }),
+        ],
+    })
+)
 
 // 接管所有 client(配合 SKIP_WAITING 快速激活)
 clientsClaim()
