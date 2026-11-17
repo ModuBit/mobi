@@ -44,8 +44,8 @@ export function ChatMessagesSkeleton() {
 }
 
 /**
- * 列表顶部「更早历史仍在拉取」行——已有实时内容（SSE 先到）时用，
- * 视觉语言与 BubbleListChat 的「滚到顶加载」行一致（品牌动效即"正在拉取"）。
+ * 列表顶部「更早历史仍在拉取」行——已有内容时用（SSE 先到 / 用户滚到顶拉更旧都复用它），
+ * 品牌动效 + 文案表达"正在拉取"，高度稳定（不用骨架，避免真数据替换时行高剧变）。
  */
 export function HistoryLoadingRow() {
     const { t } = useTranslation()

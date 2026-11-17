@@ -113,8 +113,11 @@ describe('BubbleListChat 首页历史加载行', () => {
                 onLoadMore={() => {}}
             />,
         )
-        // 历史行（role=status）+ 滚到顶行（纯 logo）+ 真实 item = 3 个 bubble
-        expect(container.querySelectorAll('[role="status"]').length).toBe(1)
+        // 历史行 + 滚到顶行（同款 logo+文案）+ 真实 item = 3 个 bubble、2 个加载行
+        const statuses = Array.from(container.querySelectorAll('[role="status"]'))
+        expect(statuses.length).toBe(2)
+        // 两行都带文案（不是只有 logo 的裸动效）
+        expect(statuses.every(s => (s.textContent || '').length > 0)).toBe(true)
         expect(container.querySelectorAll('.ant-bubble').length).toBe(3)
     })
 
