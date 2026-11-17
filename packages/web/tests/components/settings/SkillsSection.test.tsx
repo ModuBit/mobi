@@ -512,6 +512,14 @@ describe('SkillsSection（票 05：安装与更新）', () => {
             expect(mockInstallAsync).toHaveBeenCalledWith({ source: 'anthropics/skills', scope: 'global', skills: ['pdf'] }))
     })
 
+    it('安装弹窗：获取清单进行中 → 显示克隆仓库进度提示（避免像卡死）', async () => {
+        setup()
+        vi.mocked(useSkillAvailable).mockReturnValue({ mutateAsync: vi.fn(), isPending: true } as never)
+
+        screen.getByTestId('skills-install').click()
+        await screen.findByText('settings.skills.installFetching')
+    })
+
     it('安装弹窗：搜索无结果 → 空态提示', async () => {
         setup()
         mockFindAsync.mockResolvedValueOnce({ data: { skills: [] } })

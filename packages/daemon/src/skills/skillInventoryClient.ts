@@ -31,9 +31,11 @@
  *   跨来源同名（conflict）必须在 UI 警告
  * - API 未导出 update；CLI 的 update 本质是「读 lock 的 source → 重新 fetch +
  *   install」，故更新 = installSkills 重装（刷新 hash/commit，语义等同）
+ * - resolveSource 每次都要 git clone（慢、且「获取清单→安装」会触发两次）；
+ *   句柄经 createSourceCache 缓存，installSkills 直接吃 SkillSource 复用同一次克隆
  */
 
-import { installSkills, listSkills, removeSkills, resolveSource } from 'skills'
+import { installSkills, listSkills, removeSkills, resolveSource, type SkillSource } from 'skills'
 import type { SkillAvailableInfo, SkillRegistrySkill } from '@mobi/shared'
 
 /** repo 内可选 skill（resolveSource 清单项） */
@@ -61,16 +63,82 @@ export function repoShortName(url: string): string {
     return m ? `${m[1]}/${m[2]}` : url
 }
 
-/** 解析 repo 可用清单（临时 clone 由 dispose 清理；损坏 skill 已被 API 过滤不在此列） */
+/** resolveSource 句柄缓存：available 阶段的克隆留给 install 复用（installSkills 直接吃
+ *  SkillSource，免二次 clone）；TTL 到期/超上限时释放临时目录 */
+export interface SourceCache {
+    /** 取（或首次解析）源句柄；同源并发调用共享同一次解析 */
+    acquire(source: string): Promise<SkillSource>
+    /** 命中则返回缓存句柄（install 复用），未命中 undefined */
+    get(source: string): SkillSource | undefined
+    /** 释放并移除缓存条目（dispose 临时目录） */
+    release(source: string): Promise<void>
+}
+
+/**
+ * 源句柄缓存工厂（单测直接覆盖；生产 = defaultSourceCache）。
+ *
+ * 为什么需要：resolveSource 每次都要 git clone 整个仓库（实测 anthropics/skills
+ * 浅克隆 2–20s，网络差时更久），用户「获取清单 → 安装」会先后触发两次解析。
+ * 缓存句柄让第二跳直接复用同一次克隆，重复拉清单也瞬时命中。
+ * 临时目录是磁盘资源，靠 TTL + 上限双重兜底释放。
+ */
+export function createSourceCache(
+    resolve: (source: string) => Promise<SkillSource>,
+    options: { ttlMs?: number; maxEntries?: number } = {},
+): SourceCache {
+    const ttlMs = options.ttlMs ?? 10 * 60 * 1000
+    const maxEntries = options.maxEntries ?? 3
+    const entries = new Map<string, { handle: SkillSource; timer: ReturnType<typeof setTimeout> }>()
+    const inflight = new Map<string, Promise<SkillSource>>()
+
+    const disposeEntry = async (source: string): Promise<void> => {
+        const entry = entries.get(source)
+        if (!entry) return
+        // 先同步摘除再 await：并发 release/淘汰不会重复 dispose
+        entries.delete(source)
+        clearTimeout(entry.timer)
+        await entry.handle.dispose().catch(() => {})
+    }
+
+    return {
+        async acquire(source) {
+            const hit = entries.get(source)
+            if (hit) return hit.handle
+            const pending = inflight.get(source)
+            if (pending) return pending
+            const resolving = resolve(source).then((handle) => {
+                while (entries.size >= maxEntries) {
+                    const oldest = entries.keys().next().value
+                    if (oldest === undefined) break
+                    void disposeEntry(oldest)
+                }
+                const timer = setTimeout(() => { void disposeEntry(source) }, ttlMs)
+                // 不因 TTL 定时器拖住宿主进程退出
+                timer.unref?.()
+                entries.set(source, { handle, timer })
+                return handle
+            }).finally(() => {
+                inflight.delete(source)
+            })
+            inflight.set(source, resolving)
+            return resolving
+        },
+        get(source) {
+            return entries.get(source)?.handle
+        },
+        release: disposeEntry,
+    }
+}
+
+/** 生产缓存（resolveSource 直连 skills 包） */
+export const defaultSourceCache = createSourceCache(source => resolveSource(source))
+
+/** 解析 repo 可用清单（句柄转交缓存：install 复用同一次克隆；损坏 skill 已被 API 过滤） */
 export async function resolveRepoSkills(source: string): Promise<{ repoSource: string; skills: RepoSkillOption[] }> {
-    const handle = await resolveSource(source)
-    try {
-        return {
-            repoSource: repoShortName(handle.source.url),
-            skills: handle.skills.map(s => ({ name: s.name, description: s.description })),
-        }
-    } finally {
-        await handle.dispose()
+    const handle = await defaultSourceCache.acquire(source)
+    return {
+        repoSource: repoShortName(handle.source.url),
+        skills: handle.skills.map(s => ({ name: s.name, description: s.description })),
     }
 }
 
@@ -84,18 +152,22 @@ export async function listInstalledSkillRefs(options: { global: boolean; cwd?: s
     return result.skills.map(s => ({ name: s.name, source: s.source ?? null }))
 }
 
-/** 选择性安装（skills 缺省 = repo 全装；project scope 必须带 cwd 定位） */
+/** 选择性安装（skills 缺省 = repo 全装；project scope 必须带 cwd 定位）。
+ *  available 阶段缓存了源句柄时直接复用（installSkills 接受 SkillSource，免二次 clone），
+ *  安装成功后释放临时目录；失败保留缓存供重试 */
 export async function installSelectedSkills(
     source: string,
     skillNames: string[] | null,
     options: { global: boolean; cwd?: string },
 ): Promise<InstallSelectedResult> {
-    const result = await installSkills(source, {
+    const cached = defaultSourceCache.get(source)
+    const result = await installSkills(cached ?? source, {
         agents: ['claude-code'],
         scope: options.global ? 'global' : 'project',
         ...(options.cwd ? { cwd: options.cwd } : {}),
         ...(skillNames ? { skills: skillNames } : {}),
     })
+    if (cached) await defaultSourceCache.release(source)
     return {
         installed: result.installed.map(t => t.skill),
         failed: result.failed.map(f => ({ skill: f.skill, error: f.message })),

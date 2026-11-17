@@ -1028,6 +1028,7 @@
       "installScopeLabel": "安装到",
       "installSubmit": "安装",
       "installFetch": "获取清单",
+      "installFetching": "正在拉取仓库清单…（首次需要克隆仓库，可能要几秒到数十秒）",
       "installAllInstalled": "该来源的技能均已安装",
       "installConflict": "同名技能已来自其他来源，安装将覆盖",
       "installed": "安装完成",

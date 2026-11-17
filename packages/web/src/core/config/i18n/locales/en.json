@@ -1037,6 +1037,7 @@
       "installScopeLabel": "Install to",
       "installSubmit": "Install",
       "installFetch": "Fetch skills",
+      "installFetching": "Fetching repo skills… (the first fetch clones the repo; this can take a while)",
       "installAllInstalled": "All skills from this source are already installed",
       "installConflict": "A skill with this name exists from another source; installing will overwrite it",
       "installed": "Installed",

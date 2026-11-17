@@ -15,7 +15,8 @@
  */
 
 import { describe, test, expect, afterEach } from 'vitest'
-import { mergeAvailableWithInstalled, repoShortName, searchRegistrySkills } from '../../../src/skills/skillInventoryClient'
+import type { SkillSource } from 'skills'
+import { createSourceCache, mergeAvailableWithInstalled, repoShortName, searchRegistrySkills } from '../../../src/skills/skillInventoryClient'
 
 /**
  * 两步式安装的判定纯函数：repo 清单 × 已装清单 → 复选框数据源。
@@ -63,6 +64,85 @@ describe('mergeAvailableWithInstalled', () => {
     test('已装清单为空 → 全部可选', () => {
         const merged = mergeAvailableWithInstalled(repo.repoSource, repo.skills, [])
         expect(merged.every(s => !s.installed && !s.conflict)).toBe(true)
+    })
+})
+
+/** 可诊断的假源句柄：记录 dispose 次数 */
+function fakeSource() {
+    let disposed = 0
+    const handle = {
+        source: { input: 'octocat/repo', type: 'github', url: 'https://github.com/octocat/repo', commit: 'abc' },
+        skills: [],
+        dispose: async () => { disposed += 1 },
+    } as unknown as SkillSource
+    return { handle, disposed: () => disposed }
+}
+
+describe('createSourceCache（可用清单 → 安装复用同一次克隆）', () => {
+    test('同源并发 acquire 共享一次解析；再次 acquire 命中缓存', async () => {
+        let resolves = 0
+        const { handle, disposed } = fakeSource()
+        const cache = createSourceCache(async () => {
+            resolves += 1
+            return handle
+        })
+
+        const [a, b] = await Promise.all([cache.acquire('octocat/repo'), cache.acquire('octocat/repo')])
+        const c = await cache.acquire('octocat/repo')
+        expect(resolves).toBe(1)
+        expect(a).toBe(handle)
+        expect(b).toBe(handle)
+        expect(c).toBe(handle)
+        expect(cache.get('octocat/repo')).toBe(handle)
+        expect(disposed()).toBe(0)
+    })
+
+    test('release 后重新 acquire 触发新解析；重复 release 不重复 dispose', async () => {
+        let resolves = 0
+        const first = fakeSource()
+        const second = fakeSource()
+        const cache = createSourceCache(async () => {
+            resolves += 1
+            return resolves === 1 ? first.handle : second.handle
+        })
+
+        await cache.acquire('octocat/repo')
+        await cache.release('octocat/repo')
+        await cache.release('octocat/repo')
+        expect(first.disposed()).toBe(1)
+        expect(cache.get('octocat/repo')).toBeUndefined()
+
+        const again = await cache.acquire('octocat/repo')
+        expect(resolves).toBe(2)
+        expect(again).toBe(second.handle)
+    })
+
+    test('超过上限淘汰最旧并释放其临时目录', async () => {
+        const sources = new Map<string, ReturnType<typeof fakeSource>>()
+        const cache = createSourceCache(async (source) => {
+            const s = fakeSource()
+            sources.set(source, s)
+            return s.handle
+        }, { maxEntries: 2 })
+
+        await cache.acquire('a/one')
+        await cache.acquire('b/two')
+        await cache.acquire('c/three')
+
+        expect(sources.get('a/one')!.disposed()).toBe(1)
+        expect(cache.get('a/one')).toBeUndefined()
+        expect(cache.get('b/two')).toBeDefined()
+        expect(cache.get('c/three')).toBeDefined()
+    })
+
+    test('TTL 到期自动释放', async () => {
+        const { handle, disposed } = fakeSource()
+        const cache = createSourceCache(async () => handle, { ttlMs: 20 })
+
+        await cache.acquire('octocat/repo')
+        await new Promise(resolve => setTimeout(resolve, 60))
+        expect(disposed()).toBe(1)
+        expect(cache.get('octocat/repo')).toBeUndefined()
     })
 })
 

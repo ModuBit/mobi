@@ -465,6 +465,8 @@ export function SkillsSection() {
                         onChange={e => { setInstallScope(e.target.value as string); setAvailableSkills(null) }}
                         options={promptOptions}
                     />
+                    {/* 克隆仓库可能耗时数十秒：明确进度提示，避免像卡死 */}
+                    {actions.resolving && <Hint $token={token}>{t('settings.skills.installFetching')}</Hint>}
                     {availableSkills !== null && (
                         availableSkills.every(s => s.installed) ? (
                             <Hint $token={token}>{t('settings.skills.installAllInstalled')}</Hint>
