@@ -285,12 +285,9 @@ describe('skills REST 路由（GET /api/skills）', () => {
             expect(dups[0]!.source).toBe('personal')
         })
 
-        test('插件 skill：只读行（overrideable=false + pluginName）', async () => {
+        test('插件携带 skill 不在个人视角（已归类系统视角 bundled 端点）', async () => {
             const { skills } = await listSkills('?workspaceId=global')
-            const plug = byName(skills, 'plug-skill')!
-            expect(plug.source).toBe('plugin')
-            expect(plug.overrideable).toBe(false)
-            expect(plug.pluginName).toBe('demo-plugin')
+            expect(byName(skills, 'plug-skill')).toBeUndefined()
         })
 
         test('损坏条目隐藏（无 SKILL.md / frontmatter 坏）', async () => {
@@ -417,9 +414,9 @@ describe('skills REST 路由（GET /api/skills）', () => {
             await patchVisibility('proj-plain', { enabled: true, workspaceId: workspaceId })
         })
 
-        test('只读行（plugin）→ 400', async () => {
+        test('插件携带 skill 不在清单 → 404（启停对系统行无意义）', async () => {
             const { res } = await patchVisibility('plug-skill', { enabled: false, workspaceId: 'global' })
-            expect(res.status).toBe(400)
+            expect(res.status).toBe(404)
         })
 
         test('无效 workspaceId → 404', async () => {
@@ -503,9 +500,9 @@ describe('skills REST 路由（GET /api/skills）', () => {
             expect(skillsCliCalls.every(c => c.args[1] !== 'nope')).toBe(true)
         })
 
-        test('synced / plugin 行不可删除 → 400', async () => {
+        test('synced 行不可删除 → 400；插件携带行不在清单 → 404', async () => {
             expect((await deleteSkill('cloud-skill', '?workspaceId=global')).status).toBe(400)
-            expect((await deleteSkill('plug-skill', '?workspaceId=global')).status).toBe(400)
+            expect((await deleteSkill('plug-skill', '?workspaceId=global')).status).toBe(404)
         })
     })
 
@@ -590,14 +587,18 @@ describe('skills REST 路由（GET /api/skills）', () => {
             return { res, data: res.status === 200 ? await res.json() : null }
         }
 
-        test('首访自采返回名单；同版本二次请求纯缓存命中（不再采）', async () => {
+        test('首访自采返回名单 + 插件携带合成；同版本二次请求纯缓存命中（不再采）', async () => {
             const { res, data } = await getBundled()
             expect(res.status).toBe(200)
             expect(data.version).toBe('2.1.312')
-            expect(data.skills.map((s: { name: string }) => s.name)).toEqual(['doctor', 'verify'])
+            // CC 内置在前（probe 交集），mobi 内置插件携带在后（行带 pluginName）
+            expect(data.skills.map((s: { name: string }) => s.name)).toEqual(['doctor', 'verify', 'plug-skill'])
+            const plug = data.skills.at(-1)
+            expect(plug.pluginName).toBe('demo-plugin')
+            expect(plug.description).toBe('From plugin')
             expect(bundledProbeCount).toBe(1)
 
-            // 版本不变 → 纯缓存
+            // 版本不变 → 纯缓存（probe 不重跑；插件扫描每请求现读，新装插件即时可见）
             const { data: again } = await getBundled()
             expect(again.version).toBe('2.1.312')
             expect(bundledProbeCount).toBe(1)
@@ -708,6 +709,17 @@ describe('skills REST 路由（GET /api/skills）', () => {
             } finally {
                 rmSync(join(claudeDir, 'skills', 'meta-rich'), { recursive: true, force: true })
             }
+        })
+
+        test('插件携带 skill（global 视角清单查不到）→ 兜底解析只读详情', async () => {
+            const res = await getDetail('plug-skill')
+            expect(res.status).toBe(200)
+            const { skill, body } = await res.json() as { skill: SkillInfo; body: string }
+            expect(skill.source).toBe('plugin')
+            expect(skill.pluginName).toBe('demo-plugin')
+            expect(skill.overrideable).toBe(false)
+            expect(skill.deletable).toBe(false)
+            expect(body).toContain('instructions')
         })
 
         test('未知名 → 404；未知 workspace → 404', async () => {

@@ -127,7 +127,8 @@ afterEach(() => {
     mockVisibility.variables = null
 })
 
-/** fixture：三来源 + 遮蔽/停用/只读各一（字段省略处走 schema 缺省） */
+/** fixture：三来源 + 遮蔽/停用各一（字段省略处走 schema 缺省）。
+ *  插件携带 skill 已归类系统视角（bundled 端点），个人视角清单不含——见票 06 用例 */
 const GLOBAL_SKILLS = [
     {
         name: 'alpha', description: 'Alpha personal skill', source: 'personal',
@@ -138,11 +139,6 @@ const GLOBAL_SKILLS = [
         name: 'beta', description: 'From skills CLI', source: 'personal',
         form: 'symlink', path: '/x/beta/SKILL.md', tracked: true, installSource: 'vercel-labs/skills',
         overrideable: true, deletable: true, effectiveState: null, effectiveFromLayer: null, ownState: null,
-    },
-    {
-        name: 'plug', description: 'From plugin', source: 'plugin', pluginName: 'demo-plugin',
-        form: 'directory', path: '/x/plug/SKILL.md', tracked: false, overrideable: false, deletable: false,
-        effectiveState: null, effectiveFromLayer: null, ownState: null,
     },
     {
         name: 'shadowed-one', source: 'personal', form: 'directory', path: '/x/s/SKILL.md',
@@ -182,8 +178,8 @@ describe('SkillsSection（票 02：tabs + 列表 + 搜索）', () => {
         // 多行同来源：存在性断言用 getAllByText
         expect(screen.getAllByText('settings.skills.source.personal').length).toBeGreaterThan(0)
         expect(screen.getByText('settings.skills.trackedFrom')).toBeTruthy()
-        // 插件行来源徽标
-        expect(screen.getByText('settings.skills.source.plugin')).toBeTruthy()
+        // 插件携带行已归系统视角：个人 tab 不渲染
+        expect(screen.queryByText('settings.skills.source.plugin')).toBeNull()
     })
 
     it('tabs 含全局与每个工作区；切换工作区 tab 换数据源', async () => {
@@ -268,9 +264,9 @@ describe('SkillsSection（票 03：启停开关）', () => {
     it('overrideable 行渲染开关，点击携带当前 tab 与目标态发起 mutation', () => {
         setupGlobal()
 
-        // alpha（personal，overrideable）有开关；plug（plugin，只读）没有
+        // alpha（personal，overrideable）有开关；停用行同有（开关即恢复入口）
         expect(switchOf('alpha')).toBeTruthy()
-        expect(switchOf('plug')).toBeNull()
+        expect(switchOf('plain-off')).toBeTruthy()
 
         fireEvent.click(switchOf('alpha'))
         expect(mockMutate).toHaveBeenCalledWith(
@@ -321,18 +317,12 @@ describe('SkillsSection（票 04：删除——详情 sheet 内 ConfirmMorph 就
         render(<SkillsSection />)
     }
 
-    it('行点击开详情 sheet：deletable 行有卸载入口；只读行没有', async () => {
+    it('行点击开详情 sheet：deletable 行有卸载入口', async () => {
         setup()
 
         // alpha（personal，deletable）→ sheet 内有 ConfirmMorph
         fireEvent.click(screen.getByText('alpha'))
         await screen.findByText('settings.skills.detail.delete')
-
-        // 关闭后开 plug（plugin，deletable=false）→ 无卸载入口
-        fireEvent.keyDown(document.body, { key: 'Escape' })
-        fireEvent.click(screen.getByText('plug'))
-        await screen.findByText('SKILL BODY')
-        expect(screen.queryByText('settings.skills.detail.delete')).toBeNull()
     })
 
     it('untracked 卸载：两击确认后发起删除 + 成功 toast', async () => {
@@ -449,10 +439,11 @@ describe('SkillsSection（票 06：系统 tab 内置名单）', () => {
         render(<SkillsSection />)
     }
 
-    /** fixture：内置两行，其中 alpha 与个人 skill 同名（覆盖判定用） */
+    /** fixture：内置两行（其一与个人 skill 同名，覆盖判定用）+ 插件携带行（mobi 内置插件归类系统视角） */
     const BUNDLED = [
         { name: 'alpha', description: 'Bundled alpha (shadowed by personal)' },
         { name: 'doctor', description: 'Health-check the setup' },
+        { name: 'visualize', description: 'From mobi plugin', pluginName: 'mobi' },
     ]
 
     /** 进入系统 tab（bundled 数据只属该 tab，i18n mock 下 tab 文本 = 键名） */
@@ -466,12 +457,26 @@ describe('SkillsSection（票 06：系统 tab 内置名单）', () => {
         expect(screen.queryByText('settings.skills.source.bundled')).toBeNull()
         openBundledTab()
 
+        // 内置徽标只属 CC 内置行；插件携带行走插件徽标
         expect(screen.getAllByText('settings.skills.source.bundled').length).toBe(2)
+        expect(screen.getByText('settings.skills.source.plugin')).toBeTruthy()
 
         const bundledRow = document.querySelector('[data-bundled="true"][data-skill-name="doctor"]')!
         expect(bundledRow.querySelector('[role="switch"]')).toBeNull()
         expect(bundledRow.querySelector('[data-skill-delete="doctor"]')).toBeNull()
         expect(bundledRow.querySelector('[data-skill-update="doctor"]')).toBeNull()
+    })
+
+    it('插件携带行可点进只读详情 sheet：无开关/更新/卸载入口', async () => {
+        setup({ bundled: BUNDLED, isLoading: false, error: null })
+        openBundledTab()
+
+        fireEvent.click(screen.getByText('visualize'))
+        await screen.findByText('SKILL BODY')
+
+        expect(screen.queryByText('settings.skills.detail.delete')).toBeNull()
+        expect(screen.queryByText('settings.skills.detail.update')).toBeNull()
+        expect(document.querySelector('[role="switch"]')).toBeNull()
     })
 
     it('与个人 skill 同名的内置行显示覆盖徽标（用户胜）', () => {

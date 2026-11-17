@@ -33,7 +33,7 @@ import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { resolveClaudeConfigDir } from '@mobi/node-core/claudeSdk/claudeConfigDir'
 import { ALL_BUNDLED_PLUGIN_NAMES, bundledPluginPath } from '@mobi/node-core/runtime/bundledPlugins'
-import type { SkillInfo, SkillOverrideState, SkillSettingsLayer, SkillSource } from '@mobi/shared'
+import type { BundledSkillInfo, SkillInfo, SkillOverrideState, SkillSettingsLayer, SkillSource } from '@mobi/shared'
 import { SKILL_OVERRIDE_STATES, skillNameKey } from '@mobi/shared'
 import { scopeView, type SkillScope } from './skillScope'
 
@@ -275,7 +275,7 @@ function workspaceLayers(roots: SkillScanRoots, wsPath: string): OverrideLayers 
     ]
 }
 
-/** global 视角清单：个人 + synced + 插件携带（CC 内置归票 06 的独立端点） */
+/** global 视角清单：个人 + synced（插件携带已归类系统视角，见 listBundledPluginSkills） */
 export function listGlobalSkills(roots: SkillScanRoots): SkillInfo[] {
     const layers = globalLayers(roots)
     const userLock = readLock(roots.userLockPath)
@@ -288,22 +288,40 @@ export function listGlobalSkills(roots: SkillScanRoots): SkillInfo[] {
     const synced = scanSkillDirectory(join(skillsDir, 'synced'))
         .filter(e => !personalKeys.has(skillNameKey(e.parsed.name)))
 
-    const result: SkillInfo[] = [
+    return [
         ...personal.map(e => toSkillInfo(e, 'personal', userLock.skills[e.parsed.name], layers, 'user')),
         ...synced.map(e => toSkillInfo(e, 'synced', userLock.skills[e.parsed.name], layers, null)),
     ]
+}
 
-    // 插件携带：前缀名空间，不参与裸名冲突；skillOverrides 不作用于插件 skill
+/**
+ * 系统视角的插件携带 skill（GET /skills/bundled 的合成半边）：mobi 内置插件（roots.pluginDirs
+ * 全部来自 ALL_BUNDLED_PLUGIN_NAMES）携带的 skill 归类系统 tab（2026-11-16 用户裁定），
+ * 不再混入个人视角清单。CC probe 的 builtin 交集不含插件 skill（supportedCommands 非 builtin），
+ * 两侧天然不重。前缀名空间不参与裸名冲突、skillOverrides 不作用于插件 skill。
+ */
+export function listBundledPluginSkills(roots: SkillScanRoots): BundledSkillInfo[] {
+    const result: BundledSkillInfo[] = []
     for (const pluginDir of roots.pluginDirs) {
         const pluginName = pluginDir.split('/').pop() ?? pluginDir
         for (const entry of scanSkillDirectory(join(pluginDir, 'skills'))) {
-            result.push({
-                ...toSkillInfo(entry, 'plugin', undefined, [], null),
-                pluginName,
-            })
+            result.push({ name: entry.parsed.name, description: entry.parsed.description ?? '', pluginName })
         }
     }
     return result
+}
+
+/** 详情兜底：按名取插件携带 skill 的完整行（系统视角行可点进详情；未命中 null） */
+export function findBundledPluginSkill(roots: SkillScanRoots, name: string): SkillInfo | null {
+    for (const pluginDir of roots.pluginDirs) {
+        const pluginName = pluginDir.split('/').pop() ?? pluginDir
+        for (const entry of scanSkillDirectory(join(pluginDir, 'skills'))) {
+            if (entry.parsed.name === name) {
+                return { ...toSkillInfo(entry, 'plugin', undefined, [], null), pluginName }
+            }
+        }
+    }
+    return null
 }
 
 /** workspace 视角清单：该项目目录下的 project skill（被 personal 同名遮蔽的不返回） */

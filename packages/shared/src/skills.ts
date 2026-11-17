@@ -106,12 +106,14 @@ export const SkillListResponseSchema = z.object({
 
 export type SkillListResponse = z.infer<typeof SkillListResponseSchema>
 
-/** CC 内置 bundled skill 行（GET /api/skills/bundled；名单由 daemon 自采，零硬编码） */
+/** 系统 skill 行（GET /api/skills/bundled）：CC 内置名单由 daemon 自采，零硬编码 */
 export const BundledSkillInfoSchema = z.object({
     /** 调用名（无 / 前缀） */
     name: z.string(),
     /** description 取自 supportedCommands 快照 */
     description: z.string(),
+    /** mobi 内置插件携带 skill 的插件名（带此标记 = 插件行，可点进详情；缺省 = CC 内置行） */
+    pluginName: z.string().optional(),
 })
 
 export const BundledSkillsResponseSchema = z.object({

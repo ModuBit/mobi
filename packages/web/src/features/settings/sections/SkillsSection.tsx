@@ -26,7 +26,7 @@ import { FilePlus2, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { SKILL_SCOPE_BUNDLED, SKILL_SCOPE_GLOBAL, skillNameKey } from '@mobi/shared'
-import type { SkillInfo } from '@mobi/shared'
+import type { BundledSkillInfo, SkillInfo } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useBundledSkills, useSkillOccupancy, useSkills } from '@/core/data/hooks/queries/useSkills'
 import { filterByNameOrDescription } from '@/domain/filterList'
@@ -92,6 +92,28 @@ const Hint = styled.div<{ $token: Token }>`
     line-height: 1.6;
 `
 
+/**
+ * 系统视角的插件携带行 → 详情 sheet 兜底行：bundled 行只带名字/描述/插件名，
+ * 能力字段全按插件行只读事实补齐（开关/更新/卸载入口由字段派生，全不出现）；
+ * 详情请求响应回填后以 daemon 行数据为准。
+ */
+function bundledRowToSkillInfo(row: BundledSkillInfo): SkillInfo {
+    return {
+        name: row.name,
+        description: row.description,
+        source: 'plugin',
+        form: 'directory',
+        path: '',
+        tracked: false,
+        overrideable: false,
+        deletable: false,
+        effectiveState: null,
+        effectiveFromLayer: null,
+        ownState: null,
+        pluginName: row.pluginName,
+    }
+}
+
 export function SkillsSection() {
     const { token } = useToken()
     const { t } = useTranslation()
@@ -154,12 +176,15 @@ export function SkillsSection() {
         if (await actions.submitCreate(createScope)) setCreateOpen(false)
     }
 
-    /** 详情 sheet（点击行展开；scope 跟随打开行所在 tab） */
+    /** 详情 sheet（点击行展开；scope 跟随打开行所在视角——系统 tab 的插件行走 global，
+        daemon detail 端点对 global 视角查不到的插件携带 skill 兜底解析） */
     const [detailSkill, setDetailSkill] = useState<SkillInfo | null>(null)
+    const [detailScope, setDetailScope] = useState<string>(SKILL_SCOPE_GLOBAL)
     const [detailOpen, setDetailOpen] = useState(false)
 
-    const openDetail = (skill: SkillInfo) => {
+    const openDetail = (skill: SkillInfo, scope: string = tab) => {
         setDetailSkill(skill)
+        setDetailScope(scope)
         setDetailOpen(true)
     }
 
@@ -205,7 +230,16 @@ export function SkillsSection() {
                 ) : filteredBundled.length > 0 ? (
                     <SettingGroupCard>
                         {filteredBundled.map(b => (
-                            <BundledSkillRow key={b.name} skill={b} covered={listedNames.has(skillNameKey(b.name))} />
+                            b.pluginName ? (
+                                // 插件携带行：可点进只读详情（行数据经 bundledRowToSkillInfo 兜底，详情响应回填）
+                                <SkillRow
+                                    key={`plugin:${b.name}`}
+                                    skill={bundledRowToSkillInfo(b)}
+                                    onOpen={() => openDetail(bundledRowToSkillInfo(b), SKILL_SCOPE_GLOBAL)}
+                                />
+                            ) : (
+                                <BundledSkillRow key={b.name} skill={b} covered={listedNames.has(skillNameKey(b.name))} />
+                            )
                         ))}
                     </SettingGroupCard>
                 ) : (
@@ -294,16 +328,16 @@ export function SkillsSection() {
             {/* 详情 sheet：动作按行能力字段降级（overrideable/tracked/deletable），卸载走 ConfirmMorph 就地确认 */}
             <SkillDetailSheet
                 skill={detailSkill}
-                scope={tab}
+                scope={detailScope}
                 open={detailOpen}
                 onClose={() => setDetailOpen(false)}
-                onToggle={detailSkill?.overrideable ? (enabled: boolean) => actions.toggle(detailSkill!, enabled, tab) : undefined}
+                onToggle={detailSkill?.overrideable ? (enabled: boolean) => actions.toggle(detailSkill!, enabled, detailScope) : undefined}
                 toggling={detailSkill ? actions.isToggling(detailSkill.name) : false}
-                onUpdate={detailSkill?.tracked ? () => actions.update(detailSkill!, tab) : undefined}
+                onUpdate={detailSkill?.tracked ? () => actions.update(detailSkill!, detailScope) : undefined}
                 updating={detailSkill ? actions.isUpdating(detailSkill.name) : false}
                 onDelete={detailSkill?.deletable
                     ? async () => {
-                        const ok = await actions.deleteDirect(detailSkill!, tab)
+                        const ok = await actions.deleteDirect(detailSkill!, detailScope)
                         if (ok) setDetailOpen(false)
                         return ok
                     }

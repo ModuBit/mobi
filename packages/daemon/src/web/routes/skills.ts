@@ -17,16 +17,17 @@
 /**
  * Skills 管理路由（skill-mgmt 票 01/03/04/05）。
  *
- * - GET /api/skills?workspaceId=global|<id>：列表（global=个人+synced+插件携带；CC 内置归票 06 独立端点）
+ * - GET /api/skills?workspaceId=global|<id>：列表（global=个人+synced；插件携带已归系统视角）
  * - PATCH /api/skills/:name/visibility：启停写归属层 skillOverrides（personal→user settings、
  *   project→workspace project settings），响应带回刷新后的行（遮蔽态即时可见）
  * - DELETE /api/skills/:name?workspaceId=：双路径删除——tracked 分派 skills CLI（user 级 -g、
  *   project 级 cwd=workspace），untracked 直接删 agent 目录条目（symlink 只删链接）
  * - POST /api/skills/install：包装 skills add（symlink 形态、只装 claude-code agent）
  * - POST /api/skills/:name/update：包装 skills update（tracked 限定）
- * - GET /api/skills/detail：行数据 + SKILL.md 正文 + frontmatter 扩展元数据（点击行按需请求）
+ * - GET /api/skills/detail：行数据 + SKILL.md 正文 + frontmatter 扩展元数据（点击行按需请求；
+ *   global 视角查不到时兜底插件扫描——系统 tab 的插件携带行可点进只读详情）
  * - GET /api/skills/occupancy：有技能的 workspaceId 集合（web tabs 空项目隐藏的数据源）
- * - GET /api/skills/bundled：CC 内置名单（daemon 自采 + 版本化缓存，票 06）
+ * - GET /api/skills/bundled：系统视角名单 = CC 内置（自采 + 版本化缓存，票 06）+ mobi 内置插件携带
  *
  * 前奏单源（架构深化候选③）：scope 解析 + 404/400 翻译 + 视角取清单收成
  * scopeOrResponse / listContext / skillContext 三层入口，handler 只留端点差异；
@@ -44,7 +45,7 @@ import {
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSyncEngine } from './guards'
-import { defaultSkillScanRoots, listGlobalSkills, listWorkspaceSkills, occupiedWorkspaceIds, refreshOverrideFields, type SkillScanRoots } from '../../skills/skillScanner'
+import { defaultSkillScanRoots, findBundledPluginSkill, listBundledPluginSkills, listGlobalSkills, listWorkspaceSkills, occupiedWorkspaceIds, refreshOverrideFields, type SkillScanRoots } from '../../skills/skillScanner'
 import { defaultSkillsCliRunner, installSkill, removeTrackedSkill, removeUntrackedSkill, updateSkill } from '../../skills/skillCli'
 import { getBundledSkills } from '../../skills/bundledSkills'
 import { buildSkillCreatePrompt } from '../../skills/skillCreatePrompt'
@@ -176,13 +177,20 @@ export function createSkillsRoutes(
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        const ctx = skillContext(c, engine, c.req.query('workspaceId') ?? SKILL_SCOPE_GLOBAL, c.req.query('name') ?? '')
-        if (ctx instanceof Response) return ctx
+        const workspaceId = c.req.query('workspaceId') ?? SKILL_SCOPE_GLOBAL
+        const name = c.req.query('name') ?? ''
+        const ctx = skillContext(c, engine, workspaceId, name)
+        // 插件携带 skill 已归类系统视角（不在个人/项目清单）：global 视角查不到时兜底插件扫描，
+        // 系统行可点进详情（只读——overrideable/deletable 均 false）
+        const skill = ctx instanceof Response
+            ? (workspaceId === SKILL_SCOPE_GLOBAL ? findBundledPluginSkill(scanRoots(), name) : null)
+            : ctx.skill
+        if (!skill) return ctx instanceof Response ? ctx : c.json({ error: 'Skill not found' }, 404)
 
         // 正文 + 扩展元数据按需读（列表路径不解析这些）；symlink 行的 path 已归一可读
-        const detail = parseSkillDetail(ctx.skill.path)
+        const detail = parseSkillDetail(skill.path)
         if (!detail) return c.json({ error: 'Skill file is unreadable' }, 410)
-        return c.json({ skill: ctx.skill, body: detail.body, meta: detail.meta })
+        return c.json({ skill, body: detail.body, meta: detail.meta })
     })
 
     app.get('/skills/occupancy', (c) => {
@@ -199,7 +207,8 @@ export function createSkillsRoutes(
 
         try {
             const result = await getBundledSkills(bundledDeps())
-            return c.json({ version: result.claudeVersion, skills: result.skills })
+            // 系统视角名单 = CC 内置（自采交集）+ mobi 内置插件携带（扫描合成，行带 pluginName）
+            return c.json({ version: result.claudeVersion, skills: [...result.skills, ...listBundledPluginSkills(scanRoots())] })
         } catch (error) {
             // 采集失败明确报错（不伪装空名单）：CLI 不可达 / init 帧缺版本等
             return c.json({ error: error instanceof Error ? error.message : String(error) }, 502)
