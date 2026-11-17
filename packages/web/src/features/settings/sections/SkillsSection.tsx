@@ -77,12 +77,16 @@ const FormBody = styled.div<{ $token: Token }>`
     gap: 8px;
     padding-top: 4px;
 
-    span, label {
+    /* 只命中表单自己的字段标题（直接子级）。曾用后代选择器 span, label——会钻进
+       Checkbox 等嵌入组件的内部标记，把勾选字形（--control-glyph）和标题/描述
+       排版一起覆盖成正文色：dark 档白勾压白块不可见、两档描述都失去弱化层级
+       （2026-11-17 真机） */
+    > span, > label {
         font-size: 13px;
         color: ${p => p.$token.colorText};
     }
 
-    label {
+    > label {
         cursor: default;
     }
 `

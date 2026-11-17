@@ -1,5 +1,5 @@
 ---
-last_verified: 2026-11-14
+last_verified: 2026-11-17
 ---
 
 # Skills 管理页验证（skill-mgmt 票 08 + 详情 sheet 迭代）
@@ -36,10 +36,19 @@ UI 侧：`[data-skill-name="x"] [role="switch"]` 点击后断言 aria-checked + 
 ## 安装/更新（真实 npx skills）
 
 - **先终端预检 CLI 非交互**：`env -u MOBI_HOME CLAUDE_CONFIG_DIR=/tmp/probe npx -y skills add vercel-labs/skills --agent claude-code -g --yes`（repo 单 skill 时无交互；`--yes` 必带）。
-- UI：`[data-testid="skills-install"]` → `#skills-install-source` 填 source（React 受控须 native setter + input 事件）→ OK。npx 冷启动 30–60s，轮询 toast「安装完成」+ 弹窗关闭。
+- UI：`[data-testid="skills-install"]` → `#skills-install-source` 填 source（React 受控须 native setter + input 事件）→ 获取清单。npx 冷启动 30–60s，轮询 toast「安装完成」+ 弹窗关闭。
+- **只验选择段/复选框外观时别等真克隆**（2026-11-17）：在页面里拦 `XMLHttpRequest.prototype.open/send`，对 `/api/skills/available` 直接回 `{ skills: [{ name, skillId, source, description, installed, conflict }] }`（自定义 readyState/status/responseText + 调 onreadystatechange/onload/onloadend）；点「获取清单」1s 内出列表。装 `installed:true` 得 checked+disabled 样本，`false` 得可点样本；点一下可切 unchecked。
 - tracked 断言：API `tracked: true` + `installSource`；磁盘 `~/.agents/skills/<name>`（中央仓）+ `~/.claude/skills/<name>`（实体目录非 symlink）。
 - 更新：详情 sheet 操作区「更新」钮 → toast「已更新」→ 目录 mtime 刷新。
 - 幂等重装已 tracked skill 是安全路径（不产生重复行）。
+
+## Checkbox 外观双档断言（2026-11-17 修「勾不可见」）
+
+- 选择段用的 `ui/shadcn/checkbox`：`.box` color=--control-glyph（暗档 #131316 / 亮档 #f0f0f4），`.fill` bg=--control-on（暗档 #f6f6f8 / 亮档 #3a3a41）
+- **判据（双主题各验）**：`getComputedStyle(svg path).stroke` 必须等于 `--primary-foreground`、且与 `.fill` 背景形成反差；`.copy label` 14px colorText、`.copy span[description]` 12px text-muted（标题/描述层级）
+- **坑：容器级后代选择器泄漏**——本页 `FormBody` 曾有 `span, label { color: colorText }`，钻进 Checkbox 内部把 `.visual` 的 color 覆盖成正文色 → 暗档白勾压白块全不可见（用户截图实锤），亮档勾与底同暗。修复 = 收窄到 `> span, > label`（只命中表单自己的字段标题）。**今后看到「嵌入组件的勾/图标颜色莫名等于正文色」先查外层 styled 的裸元素选择器**
+- 回归探针：两档下 `path.stroke !== fill.bg` 且色差 ≥ 明显反差；unchecked 态 border 双档可见（亮 #adadb4 / 暗 #5d5d65）
+
 
 ## 内置名单首采
 
