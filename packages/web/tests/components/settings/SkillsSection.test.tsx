@@ -239,20 +239,24 @@ describe('SkillsSection（票 02：tabs + 列表 + 搜索）', () => {
         expect(screen.getByText('settings.skills.empty')).toBeTruthy()
     })
 
-    it('无技能的工作区不出现在 tabs，但弹窗 radio 仍可选（空项目可建第一个 skill）', async () => {
+    it('无技能的工作区不出现在 tabs，但弹窗 scope 选择器仍可选（空项目可建第一个 skill）', async () => {
         vi.mocked(useWorkspaces).mockReturnValue({ data: [{ id: 'ws-1', name: 'Demo Workspace' }] } as never)
         vi.mocked(useSkills).mockImplementation(mockSkillsByScope)
         vi.mocked(useSkillOccupancy).mockReturnValue({ workspaceIds: [] })
 
         render(<SkillsSection />)
 
-        // tabs 里没有空项目（tabs 容器内限定——弹窗 radio 的同名文本不参与）
+        // tabs 里没有空项目（tabs 容器内限定——弹窗选项的同名文本不参与）
         expect(within(screen.getByTestId('skills-tabs')).queryByText('Demo Workspace')).toBeNull()
 
-        // 新建弹窗 radio 仍有该项目（目标 scope 用全量清单）
+        // 新建弹窗 scope 选择器（自管 Combobox）仍有该项目（目标 scope 用全量清单）
         screen.getByTestId('skills-create').click()
         await screen.findByText('settings.skills.createSubmit')
-        expect(document.querySelector('input[type="radio"][value="ws-1"]')).not.toBeNull()
+        const scopeInput = document.querySelector(
+            'input[role="combobox"][aria-label="settings.skills.createScopeLabel"]',
+        )!
+        fireEvent.click(scopeInput)
+        expect(await screen.findByRole('option', { name: 'Demo Workspace' })).toBeTruthy()
     })
 })
 
@@ -392,6 +396,12 @@ describe('SkillsSection（票 05：安装与更新）', () => {
         render(<SkillsSection />)
     }
 
+    /** 打开安装弹窗并返回唯一输入框（搜索与来源合一） */
+    async function openInstall() {
+        screen.getByTestId('skills-install').click()
+        return screen.findByPlaceholderText('settings.skills.installSearchPlaceholder')
+    }
+
     it('更新入口在详情 sheet（tracked 行）：点击发起 update mutation + 成功 toast', async () => {
         setup()
         mockUpdateMutate.mockImplementationOnce((_vars, opts) => { opts?.onSuccess?.() })
@@ -409,7 +419,18 @@ describe('SkillsSection（票 05：安装与更新）', () => {
         expect(mockMessage.success).toHaveBeenCalledWith('settings.skills.updated')
     })
 
-    it('安装弹窗：单 skill 来源 → 获取清单直达安装（installAsync 携带勾选）', async () => {
+    it('打字不触发请求（搜索/拉清单都要显式触发）', async () => {
+        setup()
+        const input = await openInstall()
+
+        fireEvent.change(input, { target: { value: 'matt' } })
+        fireEvent.change(input, { target: { value: 'mattpocock/skills' } })
+
+        expect(mockFindAsync).not.toHaveBeenCalled()
+        expect(mockInstallAsync).not.toHaveBeenCalled()
+    })
+
+    it('owner/repo → 获取清单：单 skill 跳过选择直达安装', async () => {
         setup()
         mockInstallAsync.mockResolvedValueOnce({ data: { ok: true, installed: ['only-skill'], failed: [] } })
         vi.mocked(useSkillAvailable).mockReturnValue({
@@ -419,18 +440,16 @@ describe('SkillsSection（票 05：安装与更新）', () => {
             isPending: false,
         } as never)
 
-        screen.getByTestId('skills-install').click()
-        const input = await screen.findByPlaceholderText('settings.skills.installSourcePlaceholder')
+        const input = await openInstall()
         fireEvent.change(input, { target: { value: 'vercel-labs/skills' } })
 
-        // 输入段确认钮（okText=installFetch）→ 单 skill 跳过选择直达安装
         fireEvent.click(screen.getByText('settings.skills.installFetch'))
         await waitFor(() =>
             expect(mockInstallAsync).toHaveBeenCalledWith({ source: 'vercel-labs/skills', scope: 'global', skills: ['only-skill'] }))
         expect(mockMessage.success).toHaveBeenCalledWith('settings.skills.installed')
     })
 
-    it('安装弹窗：多 skill → 选择段（已装 readonly 默认排除）→ 提交携带勾选', async () => {
+    it('owner/repo → 多 skill 选择段（已装 readonly 默认排除）→ 提交携带勾选', async () => {
         setup()
         mockInstallAsync.mockResolvedValueOnce({ data: { ok: true, installed: ['a'], failed: [] } })
         vi.mocked(useSkillAvailable).mockReturnValue({
@@ -444,8 +463,7 @@ describe('SkillsSection（票 05：安装与更新）', () => {
             isPending: false,
         } as never)
 
-        screen.getByTestId('skills-install').click()
-        const input = await screen.findByPlaceholderText('settings.skills.installSourcePlaceholder')
+        const input = await openInstall()
         fireEvent.change(input, { target: { value: 'vercel-labs/skills' } })
         fireEvent.click(screen.getByText('settings.skills.installFetch'))
 
@@ -460,6 +478,22 @@ describe('SkillsSection（票 05：安装与更新）', () => {
             expect(mockInstallAsync).toHaveBeenCalledWith({ source: 'vercel-labs/skills', scope: 'global', skills: ['a', 'c'] }))
     })
 
+    it('owner/repo@skill → 直装该 skill：不拉整仓清单', async () => {
+        setup()
+        const availAsync = vi.fn()
+        vi.mocked(useSkillAvailable).mockReturnValue({ mutateAsync: availAsync, isPending: false } as never)
+        mockInstallAsync.mockResolvedValueOnce({ data: { ok: true, installed: ['setup-matt-pocock-skills'], failed: [] } })
+
+        const input = await openInstall()
+        fireEvent.change(input, { target: { value: 'mattpocock/skills@setup-matt-pocock-skills' } })
+        fireEvent.click(screen.getByText('settings.skills.installDirect'))
+
+        await waitFor(() => expect(mockInstallAsync).toHaveBeenCalledWith({
+            source: 'mattpocock/skills@setup-matt-pocock-skills', scope: 'global', skills: undefined,
+        }))
+        expect(availAsync).not.toHaveBeenCalled()
+    })
+
     it('安装失败：弹窗保持开（可改来源重试）+ 失败 toast', async () => {
         setup()
         mockInstallAsync.mockRejectedValueOnce(new Error('x'))
@@ -470,66 +504,75 @@ describe('SkillsSection（票 05：安装与更新）', () => {
             isPending: false,
         } as never)
 
-        screen.getByTestId('skills-install').click()
-        const input = await screen.findByPlaceholderText('settings.skills.installSourcePlaceholder')
+        const input = await openInstall()
         fireEvent.change(input, { target: { value: 'bad/repo' } })
         fireEvent.click(screen.getByText('settings.skills.installFetch'))
         await waitFor(() => expect(mockMessage.error).toHaveBeenCalledWith('settings.skills.installFailed'))
 
         // 弹窗未关：输入框仍在
-        expect(screen.getByPlaceholderText('settings.skills.installSourcePlaceholder')).toBeTruthy()
+        expect(screen.getByPlaceholderText('settings.skills.installSearchPlaceholder')).toBeTruthy()
     })
 
-    it('安装弹窗：生态搜索点选命中 → 带入来源直达选择段（只预勾命中项）', async () => {
+    it('生态搜索点选命中 → 锁定该 skill 直装（不再拉整仓清单）', async () => {
         setup()
         mockFindAsync.mockResolvedValueOnce({ data: { skills: [
             { name: 'pdf', source: 'anthropics/skills', skillId: 'pdf', installs: 231296 },
         ] } })
-        const availAsync = vi.fn(async () => ({
-            data: { skills: [
-                { name: 'pdf', description: 'PDF tools', installed: false, conflict: false },
-                { name: 'docx', description: 'DOCX tools', installed: false, conflict: false },
-            ] },
-        }))
+        const availAsync = vi.fn()
         vi.mocked(useSkillAvailable).mockReturnValue({ mutateAsync: availAsync, isPending: false } as never)
         mockInstallAsync.mockResolvedValueOnce({ data: { ok: true, installed: ['pdf'], failed: [] } })
 
-        screen.getByTestId('skills-install').click()
-        const findInput = await screen.findByPlaceholderText('settings.skills.findPlaceholder')
-        fireEvent.change(findInput, { target: { value: 'pdf' } })
-        fireEvent.keyDown(findInput, { key: 'Enter' })
+        const input = await openInstall()
+        fireEvent.change(input, { target: { value: 'pdf' } })
+        fireEvent.click(screen.getByText('settings.skills.installSearch'))
+        await screen.findByText('anthropics/skills · settings.skills.findInstalls')
 
-        // 命中行（名称 + 来源 · 安装数）点选 → 拉该 repo 清单
-        const hit = (await screen.findByText('anthropics/skills · settings.skills.findInstalls')).closest('button')!
-        fireEvent.click(hit)
-        await waitFor(() =>
-            expect(availAsync).toHaveBeenCalledWith({ source: 'anthropics/skills', workspaceId: 'global' }))
+        // 点选命中 → 目标 chip（名称 + 来源），零请求
+        fireEvent.click(screen.getByText('anthropics/skills · settings.skills.findInstalls').closest('button')!)
+        await screen.findByText('settings.skills.installDirect')
+        expect(screen.getByText('anthropics/skills')).toBeTruthy()
+        expect(availAsync).not.toHaveBeenCalled()
+        expect(mockFindAsync).toHaveBeenCalledTimes(1)
 
-        // 选择段只预勾命中的 pdf（同 repo 的 docx 不默认勾选）
-        await screen.findByText('docx')
-        fireEvent.click(screen.getByText('settings.skills.installSubmit'))
-        await waitFor(() =>
-            expect(mockInstallAsync).toHaveBeenCalledWith({ source: 'anthropics/skills', scope: 'global', skills: ['pdf'] }))
+        // 主钮直装：source 带 @skillId（skills 参数缺省 = 只装该 skill）
+        fireEvent.click(screen.getByText('settings.skills.installDirect'))
+        await waitFor(() => expect(mockInstallAsync).toHaveBeenCalledWith({
+            source: 'anthropics/skills@pdf', scope: 'global', skills: undefined,
+        }))
     })
 
-    it('安装弹窗：获取清单进行中 → 显示克隆仓库进度提示（避免像卡死）', async () => {
-        setup()
-        vi.mocked(useSkillAvailable).mockReturnValue({ mutateAsync: vi.fn(), isPending: true } as never)
-
-        screen.getByTestId('skills-install').click()
-        await screen.findByText('settings.skills.installFetching')
-    })
-
-    it('安装弹窗：搜索无结果 → 空态提示', async () => {
+    it('搜索无结果 → 空态提示', async () => {
         setup()
         mockFindAsync.mockResolvedValueOnce({ data: { skills: [] } })
 
-        screen.getByTestId('skills-install').click()
-        const findInput = await screen.findByPlaceholderText('settings.skills.findPlaceholder')
-        fireEvent.change(findInput, { target: { value: 'zzz-no-hit' } })
-        fireEvent.keyDown(findInput, { key: 'Enter' })
+        const input = await openInstall()
+        fireEvent.change(input, { target: { value: 'zzz-no-hit' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
 
         await screen.findByText('settings.skills.findEmpty')
+    })
+
+    it('获取清单进行中：进度提示 + 底部取消 = 放弃等待（不关弹窗，晚到结果丢弃）', async () => {
+        setup()
+        let resolveAvail!: (value: unknown) => void
+        const availAsync = vi.fn(() => new Promise(resolve => { resolveAvail = resolve }))
+        vi.mocked(useSkillAvailable).mockReturnValue({ mutateAsync: availAsync, isPending: false } as never)
+
+        const input = await openInstall()
+        fireEvent.change(input, { target: { value: 'vercel-labs/skills' } })
+        fireEvent.click(screen.getByText('settings.skills.installFetch'))
+
+        await screen.findByText('settings.skills.installFetching')
+
+        // 取消：只复位等待态，弹窗与输入都还在
+        fireEvent.click(screen.getByText('settings.skills.installCancelFetch'))
+        await waitFor(() => expect(screen.queryByText('settings.skills.installFetching')).toBeNull())
+        expect(screen.getByPlaceholderText('settings.skills.installSearchPlaceholder')).toBeTruthy()
+
+        // 晚到的清单按 seq 丢弃：不出现选择段
+        resolveAvail({ data: { skills: [{ name: 'late', description: 'Late', installed: false, conflict: false }] } })
+        await waitFor(() => expect(mockFindAsync).not.toHaveBeenCalled())
+        expect(screen.queryByText('late')).toBeNull()
     })
 })
 
@@ -644,11 +687,14 @@ describe('SkillsSection（票 07：对话式新建）', () => {
         mockCreatePrompt.mockResolvedValueOnce({ data: { targetDir: '/w/.claude/skills', prompt: 'P' } })
 
         screen.getByTestId('skills-create').click()
-        // 弹窗内的 scope radio（与 tabs 同名文本区分，按 value 定位）
-        await screen.findByText('settings.skills.createSubmit')
-        const wsRadio = document.querySelector('input[type="radio"][value="ws-1"]') as HTMLInputElement
-        fireEvent.click(wsRadio)
-        fireEvent.click(screen.getByText('settings.skills.createSubmit'))
+        // 弹窗内的 scope Combobox（与 tabs 同名文本区分，按 aria-label 定位后点选项）
+        const submit = await screen.findByText('settings.skills.createSubmit')
+        const scopeInput = document.querySelector(
+            'input[role="combobox"][aria-label="settings.skills.createScopeLabel"]',
+        )!
+        fireEvent.click(scopeInput)
+        fireEvent.click(await screen.findByRole('option', { name: 'Demo Workspace' }))
+        fireEvent.click(submit)
 
         await waitFor(() => {
             expect(mockCreatePrompt).toHaveBeenCalledWith('ws-1')

@@ -30,7 +30,16 @@
 .input::placeholder { color: var(--text-muted); }
 .input::-webkit-search-cancel-button { display: none; }
 .clearSlot { display: grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; }
+/* 尾部动作槽：恒占位（无内容时宽度 0，不引入额外 gap 跳动由 shell gap 决定） */
+.trailingSlot { display: grid; place-items: center; flex: 0 0 auto; }
+.trailingSlot:empty { display: none; }
 .shell button { display: grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text-muted); transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
+/* 前导图标按钮：与静态图标同一视觉基线；负外边距抵掉按钮自身留白，避免图标看起来比静态时内缩 */
+.leadingButton { position: relative; margin-left: calc(-1 * var(--space-1)); }
+/* 触屏命中区扩到整条控件高度（视觉仍 24px）：只纵向外扩，不侵占右侧输入区 */
+.leadingButton::after { content: ''; position: absolute; inset: calc(-1 * var(--space-2)) 0; }
+.shell button:disabled { cursor: default; }
+@media (hover: hover) and (pointer: fine) { .shell button:disabled:hover { background: transparent; color: var(--text-muted); } }
 @media (hover: hover) and (pointer: fine) { .shell button:hover { background: var(--surface-muted); color: var(--foreground); } }
 /* loading 态：前导图标旋转指示 */
 .loadingIcon { animation: loading-spin 0.9s linear infinite; color: var(--text-muted); }

@@ -60,6 +60,9 @@ export const daemonCommand: CommandDefinition = {
             })
             // 同进程 executor 需要 CLI token 连本进程 daemon 认证
             await initializeToken()
+            // skills 包在模块加载时快照 clone 超时（默认 300s——慢网下用户只看到「卡住」）。
+            // 获取清单/安装是交互式动作，90s 无进展即失败可重试；需要更久可显式设大
+            process.env.SKILLS_CLONE_TIMEOUT_MS ??= '90000'
             const { startDaemon } = await import('@mobi/daemon/daemonEntry')
             await startDaemon({ host, port })
             return

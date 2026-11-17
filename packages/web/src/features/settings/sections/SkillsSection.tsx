@@ -21,8 +21,8 @@
  * 数据视角由 daemon 承载（global=个人+synced+插件携带；工作区 tab=该项目 skill）。
  */
 import { useMemo, useRef, useState } from 'react'
-import { theme as antTheme, Radio } from 'antd'
-import { FilePlus2, Plus } from 'lucide-react'
+import { theme as antTheme } from 'antd'
+import { FilePlus2, Plus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { SKILL_SCOPE_BUNDLED, SKILL_SCOPE_GLOBAL, skillNameKey } from '@mobi/shared'
@@ -31,7 +31,8 @@ import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useBundledSkills, useSkillOccupancy, useSkills } from '@/core/data/hooks/queries/useSkills'
 import { filterByNameOrDescription } from '@/domain/filterList'
 import { Button } from '@/ui/base/interactive/button/Button'
-import { Input } from '@/ui/base/interactive/input/Input'
+import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
+import { Combobox } from '@/ui/base/interactive/combobox/Combobox'
 import { Checkbox } from '@/ui/shadcn/checkbox/checkbox'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
 import { ScopeTabbedSection } from '@/features/settings/blocks/ScopeTabbedSection'
@@ -43,6 +44,13 @@ import { useSkillsActions } from '@/features/settings/skills/useSkillsActions'
 import { Skeleton } from '@/ui/shadcn/skeleton/skeleton'
 import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
 import { HoverGlideLayer } from '@/ui/base/motion/GlideLayer'
+
+/** 安装目标（搜索结果点选）：source = owner/repo，skillId = 目录 slug（skills 包的 skillFilter） */
+interface InstallTarget {
+    source: string
+    skillId?: string
+    label: string
+}
 
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
@@ -161,6 +169,52 @@ const FindResults = styled.div<{ $token: Token }>`
     }
 `
 
+/** 已选安装目标（搜索结果点选）：名称 + 来源 + 清除，避免用户忘了自己在装什么 */
+const TargetChip = styled.div<{ $token: Token }>`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid ${p => p.$token.colorBorderSecondary};
+    border-radius: var(--radius-control-sm);
+    background: ${p => p.$token.colorFillQuaternary};
+
+    .target-name {
+        font-size: 13px;
+        font-weight: 500;
+        color: ${p => p.$token.colorText};
+    }
+
+    .target-source {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+        color: ${p => p.$token.colorTextTertiary};
+    }
+
+    button {
+        display: grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        flex: 0 0 auto;
+        border: none;
+        border-radius: var(--radius-control-sm);
+        background: transparent;
+        color: ${p => p.$token.colorTextTertiary};
+        cursor: pointer;
+
+        &:hover {
+            background: ${p => p.$token.colorBgTextHover};
+            color: ${p => p.$token.colorText};
+        }
+    }
+`
+
 /**
  * 系统视角的插件携带行 → 详情 sheet 兜底行：bundled 行只带名字/描述/插件名，
  * 能力字段全按插件行只读事实补齐（开关/更新/卸载入口由字段派生，全不出现）；
@@ -213,66 +267,107 @@ export function SkillsSection() {
     /** 个人视角名单的名字键集合（内置行同名遮蔽判定：用户胜；与 daemon 扫描层同一 nameKey 规则） */
     const listedNames = useMemo(() => new Set(personalSkills.map(s => skillNameKey(s.name))), [personalSkills])
 
-    /** 安装：弹窗内 source + scope（默认跟随当前 tab）→ 获取清单 → 复选框选择（两段复用同一 Modal）。
-     *  availableSkills null = 输入段；非 null = 选择段。已装项（含全局已装，生效态并集）勾上 readonly；
-     *  同名异源 conflict 行覆盖警告；全部已装时提交钮禁用 */
+    /** 安装弹窗：单个输入框兼做「生态搜索 / 来源填写」——
+     *  · 纯关键词 → 搜 skills.sh（显式触发：字段内搜索钮 / 底部主钮 / 回车）
+     *  · `owner/repo` → 拉整仓清单，多选后安装
+     *  · `owner/repo@skill` → 直装该 skill，不再拉整仓清单（skills 包的 skillFilter 语义）
+     *  打字过程零请求；形态由输入内容判定，不靠「输入模式」开关。 */
     const [installOpen, setInstallOpen] = useState(false)
-    const [installSource, setInstallSource] = useState('')
+    const [installInput, setInstallInput] = useState('')
     const [installScope, setInstallScope] = useState(SKILL_SCOPE_GLOBAL)
+    /** 搜索结果点选出的目标（携带目录 slug）：chip 呈现，清空即回到输入态 */
+    const [installTarget, setInstallTarget] = useState<InstallTarget | null>(null)
+    /** 整仓清单（非 null = 选择段）；已装项（含全局已装，生效态并集）勾上 readonly */
     const [availableSkills, setAvailableSkills] = useState<SkillAvailableInfo[] | null>(null)
     const [selectedSkills, setSelectedSkills] = useState<string[]>([])
-    /** 生态搜索（= CLI find）输入段：关键词命中清单（null = 未搜过） */
-    const [findQuery, setFindQuery] = useState('')
+    /** 生态搜索结果（null = 未搜过） */
     const [findResults, setFindResults] = useState<SkillRegistrySkill[] | null>(null)
+    /** 清单拉取的本地等待标记：取消后立刻复位；请求仍在后台时按 seq 丢弃其结果 */
+    const [awaitingFetch, setAwaitingFetch] = useState(false)
+    const fetchSeqRef = useRef(0)
+
+    const installQuery = installInput.trim()
+    /** 形态判定与 skills 包 parseSource 同形：含 `/` 即来源（owner/repo…） */
+    const sourceShape = /^[^\s/]+\/[^\s/]+/.test(installQuery)
+    const directSkillShape = /^[^\s/]+\/[^\s/@]+@[^\s]+$/.test(installQuery)
+    const targetSource = installTarget
+        ? `${installTarget.source}${installTarget.skillId ? `@${installTarget.skillId}` : ''}`
+        : installQuery
+    const directSkill = installTarget ? Boolean(installTarget.skillId) : directSkillShape
+    const installBusy = actions.installing || awaitingFetch
 
     const openInstall = () => {
         setInstallScope(tab)
-        setInstallSource('')
+        setInstallInput('')
+        setInstallTarget(null)
         setAvailableSkills(null)
         setSelectedSkills([])
-        setFindQuery('')
         setFindResults(null)
+        setAwaitingFetch(false)
         setInstallOpen(true)
     }
 
+    /** 生态搜索（显式触发；失败保留上次结果） */
     const runFind = async () => {
-        const query = findQuery.trim()
-        if (!query || actions.finding) return
-        const results = await actions.find(query)
+        if (!installQuery || sourceShape || actions.finding) return
+        const results = await actions.find(installQuery)
         if (results) setFindResults(results)
     }
 
-    /** 点选搜索结果：来源带入 + 直达选择段（预勾选命中的那个 skill，其余不默认勾选） */
-    const pickFound = async (hit: SkillRegistrySkill) => {
-        if (actions.resolving) return
-        setInstallSource(hit.source)
-        const skills = await actions.fetchAvailable(hit.source, installScope)
-        if (!skills) return
-        setAvailableSkills(skills)
-        // 注册表 name 即 frontmatter 名（安装选择键同源）；skillId 是目录 slug，兜底用
-        const target = skills.find(s => s.name === hit.name) ?? skills.find(s => s.name === hit.skillId)
-        setSelectedSkills(target && !target.installed ? [target.name] : [])
+    /** 点选搜索结果：直接锁定该 skill 为目标（内部 owner/repo@skillId），不再拉整仓清单 */
+    const pickFound = (hit: SkillRegistrySkill) => {
+        setInstallTarget({ source: hit.source, skillId: hit.skillId, label: hit.name })
+        setInstallInput('')
+        setFindResults(null)
+        setAvailableSkills(null)
+        setSelectedSkills([])
     }
 
-    /** Modal ok 两段复用：输入段拉清单（失败停留；单 skill 可直接装时跳过选择），
-     *  选择段提交安装。Enter 直达通道不受 confirmLoading 约束，进行中早退防并发 */
-    const submitInstall = async () => {
-        const source = installSource.trim()
-        if (!source || actions.installing || actions.resolving) return
-        if (availableSkills === null) {
+    /** 拉整仓清单（可取消：取消后 seq 失效，结果到达也不落到 UI） */
+    const fetchAvailableFor = async (source: string): Promise<SkillAvailableInfo[] | null> => {
+        const seq = ++fetchSeqRef.current
+        setAwaitingFetch(true)
+        try {
             const skills = await actions.fetchAvailable(source, installScope)
-            if (!skills) return
-            const only = skills.length === 1 && !skills[0].installed && !skills[0].conflict ? skills[0] : null
-            if (only) {
-                if (await actions.install(source, installScope, [only.name])) setInstallOpen(false)
-                return
-            }
-            setAvailableSkills(skills)
-            setSelectedSkills(skills.filter(s => !s.installed).map(s => s.name))
+            if (seq !== fetchSeqRef.current) return null
+            return skills
+        } finally {
+            if (seq === fetchSeqRef.current) setAwaitingFetch(false)
+        }
+    }
+
+    const cancelFetch = () => {
+        fetchSeqRef.current += 1
+        setAwaitingFetch(false)
+    }
+
+    /** 主动作按形态分流：选择段提交 / 单 skill 直装 / 整仓拉清单 / 关键词搜索 */
+    const submitInstall = async () => {
+        if (installBusy) return
+        if (availableSkills !== null) {
+            if (selectedSkills.length === 0) return
+            if (await actions.install(targetSource, installScope, selectedSkills)) setInstallOpen(false)
             return
         }
-        if (selectedSkills.length === 0) return
-        if (await actions.install(source, installScope, selectedSkills)) setInstallOpen(false)
+        if (directSkill) {
+            if (!targetSource) return
+            // skills 包按 source 里的 skillFilter 只装这一个（skills 参数缺省 = skillFilter）
+            if (await actions.install(targetSource, installScope)) setInstallOpen(false)
+            return
+        }
+        if (!sourceShape) {
+            await runFind()
+            return
+        }
+        const skills = await fetchAvailableFor(installQuery)
+        if (!skills) return
+        const only = skills.length === 1 && !skills[0].installed && !skills[0].conflict ? skills[0] : null
+        if (only) {
+            if (await actions.install(installQuery, installScope, [only.name])) setInstallOpen(false)
+            return
+        }
+        setAvailableSkills(skills)
+        setSelectedSkills(skills.filter(s => !s.installed).map(s => s.name))
     }
 
     /** 对话式新建（票 07）：scope 弹窗 → daemon 生成预填 prompt → 跨页草稿通道预填 + 跳新会话页 */
@@ -395,11 +490,13 @@ export function SkillsSection() {
                 title={t('settings.skills.createTitle')}
                 body={(
                     <FormBody $token={token}>
-                        <span>{t('settings.skills.createScopeLabel')}</span>
-                        <Radio.Group
+                        {/* scope 选择与安装弹窗同件（自管 Combobox）：antd Radio.Group 已清零 */}
+                        <Combobox
+                            label={t('settings.skills.createScopeLabel')}
                             value={createScope}
-                            onChange={e => setCreateScope(e.target.value as string)}
+                            onValueChange={value => setCreateScope(value)}
                             options={promptOptions}
+                            allowClear={false}
                         />
                         <Hint $token={token}>{t('settings.skills.createHint')}</Hint>
                     </FormBody>
@@ -422,45 +519,97 @@ export function SkillsSection() {
                 width={560}
                 footer={(
                     <>
-                        <Button variant="secondary" onClick={() => setInstallOpen(false)}>
-                            {t('common.cancel')}
+                        <Button
+                            variant="secondary"
+                            onClick={() => {
+                                // 拉取中：先取消等待（请求仍可能在后台完成，结果按 seq 丢弃），不关弹窗
+                                if (awaitingFetch) {
+                                    cancelFetch()
+                                    return
+                                }
+                                setInstallOpen(false)
+                            }}
+                        >
+                            {awaitingFetch ? t('settings.skills.installCancelFetch') : t('common.cancel')}
                         </Button>
                         <Button
                             variant="primary"
-                            loading={actions.installing || actions.resolving}
-                            disabled={availableSkills === null
-                                ? !installSource.trim()
-                                : selectedSkills.length === 0}
+                            loading={installBusy}
+                            disabled={availableSkills !== null
+                                ? selectedSkills.length === 0
+                                : !installQuery && !installTarget}
                             onClick={() => { void submitInstall() }}
                         >
-                            {availableSkills === null ? t('settings.skills.installFetch') : t('settings.skills.installSubmit')}
+                            {availableSkills !== null
+                                ? t('settings.skills.installSubmit')
+                                : directSkill
+                                    ? t('settings.skills.installDirect')
+                                    : sourceShape
+                                        ? t('settings.skills.installFetch')
+                                        : t('settings.skills.installSearch')}
                         </Button>
                     </>
                 )}
                 body={(
                     <FormBody $token={token}>
-                        {/* 先搜再装：关键词直搜 skills.sh 生态（= CLI find），点选命中项带入来源 */}
-                        <label htmlFor="skills-install-find">{t('settings.skills.findLabel')}</label>
-                        <Input
-                            id="skills-install-find"
-                            value={findQuery}
-                            onChange={e => setFindQuery(e.target.value)}
-                            placeholder={t('settings.skills.findPlaceholder')}
-                            onPressEnter={() => { void runFind() }}
+                        {/* 单输入兼做搜索与来源：打字零请求；动作显式触发（字段内搜索钮 / 底部主钮 /
+                            回车），移动端不依赖回车 */}
+                        <SearchField
+                            id="skills-install-query"
+                            value={installInput}
+                            onValueChange={value => {
+                                setInstallInput(value)
+                                // 重新打字 = 换目标：搜索结果点选锁定的 chip 让位（否则提交仍按旧目标装）
+                                if (value) setInstallTarget(null)
+                                setFindResults(null)
+                                setAvailableSkills(null)
+                                setSelectedSkills([])
+                            }}
+                            placeholder={t('settings.skills.installSearchPlaceholder')}
+                            loading={actions.finding}
+                            aria-label={t('settings.skills.installSearchLabel')}
+                            onKeyDown={event => {
+                                if (event.key === 'Enter') {
+                                    event.preventDefault()
+                                    void submitInstall()
+                                }
+                            }}
+                            // 前导放大镜即可点：搜索触发不依赖回车（移动端友好），位置在字段内左侧
+                            onLeadingClick={() => { void submitInstall() }}
+                            leadingLabel={sourceShape || installTarget
+                                ? t('settings.skills.installFetch')
+                                : t('settings.skills.installSearch')}
+                            leadingDisabled={(!installQuery && !installTarget) || installBusy}
                         />
-                        {actions.finding && <Hint $token={token}>{t('common.loading')}</Hint>}
-                        {!actions.finding && findResults !== null && (
+                        {installTarget && (
+                            <TargetChip $token={token}>
+                                <span className="target-name">{installTarget.label}</span>
+                                <span className="target-source">{installTarget.source}</span>
+                                <button
+                                    type="button"
+                                    aria-label={t('settings.skills.installTargetClear')}
+                                    onClick={() => {
+                                        setInstallTarget(null)
+                                        setAvailableSkills(null)
+                                        setSelectedSkills([])
+                                    }}
+                                >
+                                    <X size={14} aria-hidden="true" />
+                                </button>
+                            </TargetChip>
+                        )}
+                        {findResults !== null && (
                             findResults.length > 0 ? (
                                 <FindResults $token={token}>
                                     {findResults.map(hit => (
                                         <button
                                             key={`${hit.source}:${hit.skillId}`}
                                             type="button"
-                                            onClick={() => { void pickFound(hit) }}
+                                            onClick={() => pickFound(hit)}
                                         >
                                             <span className="find-name">{hit.name}</span>
                                             <span className="find-meta">
-                                                {hit.source} · {t('settings.skills.findInstalls', { count: hit.installs })}
+                                                {hit.source} · {t('settings.skills.findInstalls', { installs: hit.installs.toLocaleString() })}
                                             </span>
                                         </button>
                                     ))}
@@ -469,23 +618,20 @@ export function SkillsSection() {
                                 <Hint $token={token}>{t('settings.skills.findEmpty')}</Hint>
                             )
                         )}
-                        <Hint $token={token}>{t('settings.skills.findHint')}</Hint>
-                        <label htmlFor="skills-install-source">{t('settings.skills.installSourceLabel')}</label>
-                        <Input
-                            id="skills-install-source"
-                            value={installSource}
-                            onChange={e => { setInstallSource(e.target.value); setAvailableSkills(null) }}
-                            placeholder={t('settings.skills.installSourcePlaceholder')}
-                            onPressEnter={() => { void submitInstall() }}
-                        />
-                        <span>{t('settings.skills.installScopeLabel')}</span>
-                        <Radio.Group
+                        <Hint $token={token}>{t('settings.skills.installSearchHint')}</Hint>
+                        <Combobox
+                            label={t('settings.skills.installScopeLabel')}
                             value={installScope}
-                            onChange={e => { setInstallScope(e.target.value as string); setAvailableSkills(null) }}
+                            onValueChange={value => {
+                                setInstallScope(value)
+                                setAvailableSkills(null)
+                            }}
                             options={promptOptions}
+                            allowClear={false}
                         />
-                        {/* 克隆仓库可能耗时数十秒：明确进度提示，避免像卡死 */}
-                        {actions.resolving && <Hint $token={token}>{t('settings.skills.installFetching')}</Hint>}
+                        {/* 克隆仓库可能耗时数十秒：明确进度提示，避免像卡死；此时底部取消 =
+                            取消等待（不关弹窗） */}
+                        {awaitingFetch && <Hint $token={token}>{t('settings.skills.installFetching')}</Hint>}
                         {availableSkills !== null && (
                             availableSkills.every(s => s.installed) ? (
                                 <Hint $token={token}>{t('settings.skills.installAllInstalled')}</Hint>

@@ -135,6 +135,32 @@ describe('createSourceCache（可用清单 → 安装复用同一次克隆）', 
         expect(cache.get('c/three')).toBeDefined()
     })
 
+    test('不同源并发 acquire 串行解析（前一次 clone 收尾才起下一次）', async () => {
+        // 取消获取只是放弃等待，旧 clone 仍在后台收尾；此时换 source 再拉会叠加克隆，
+        // 故不同源必须排队（同源仍走 inflight 去重，见上一条用例）
+        const started: string[] = []
+        const gates = new Map<string, () => void>()
+        const cache = createSourceCache((source) => {
+            started.push(source)
+            return new Promise((resolve) => {
+                gates.set(source, () => resolve(fakeSource().handle))
+            })
+        })
+
+        const first = cache.acquire('a/one')
+        const second = cache.acquire('b/two')
+        await Promise.resolve()
+        expect(started).toEqual(['a/one'])
+
+        gates.get('a/one')!()
+        await first
+        await new Promise(resolve => setTimeout(resolve, 0))
+        expect(started).toEqual(['a/one', 'b/two'])
+
+        gates.get('b/two')!()
+        await second
+    })
+
     test('TTL 到期自动释放', async () => {
         const { handle, disposed } = fakeSource()
         const cache = createSourceCache(async () => handle, { ttlMs: 20 })

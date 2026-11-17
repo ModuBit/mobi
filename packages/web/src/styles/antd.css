@@ -652,3 +652,13 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
 .ant-select-filled {
     border-color: transparent !important;
 }
+
+/* Radio 选中圆点取「primary 实心块之上的前景色」（--control-glyph，与自管
+   Checkbox/Switch 同源）。antd 默认用常量 colorWhite（radio 样式的 radioColor）：
+   标准主题 colorPrimary 是饱和蓝，白点成立；mobi 的 primary 是中性墨族，dark 档
+   实心圆是浅灰 #d4d4d6，白点对比不足（2026-11-17 用户截图：应随主题翻转成黑点）。
+   antd 把变量声明在 .css-var-*.ant-radio-css-var（0,2,0）上，这里用 html 前缀
+   提高一级，不依赖样式注入顺序。 */
+html .ant-radio-wrapper.ant-radio-css-var {
+    --ant-radio-radio-color: var(--control-glyph);
+}

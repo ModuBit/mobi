@@ -90,6 +90,17 @@ export function createSourceCache(
     const maxEntries = options.maxEntries ?? 3
     const entries = new Map<string, { handle: SkillSource; timer: ReturnType<typeof setTimeout> }>()
     const inflight = new Map<string, Promise<SkillSource>>()
+    /**
+     * 解析串行化：同时只跑一个 clone。取消获取只是「放弃等待」，旧 clone 仍会在后台收尾；
+     * 若此时用户换 source 再拉，两个克隆叠加会抢网络/磁盘（个人单机场景串行足够）。
+     * 同源并发仍走 inflight 去重，不排队。
+     */
+    let resolveQueue: Promise<unknown> = Promise.resolve()
+    const serializeResolve = <T>(task: () => Promise<T>): Promise<T> => {
+        const run = resolveQueue.then(task, task)
+        resolveQueue = run.then(() => undefined, () => undefined)
+        return run
+    }
 
     const disposeEntry = async (source: string): Promise<void> => {
         const entry = entries.get(source)
@@ -106,7 +117,7 @@ export function createSourceCache(
             if (hit) return hit.handle
             const pending = inflight.get(source)
             if (pending) return pending
-            const resolving = resolve(source).then((handle) => {
+            const resolving = serializeResolve(() => resolve(source)).then((handle) => {
                 while (entries.size >= maxEntries) {
                     const oldest = entries.keys().next().value
                     if (oldest === undefined) break
