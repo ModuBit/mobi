@@ -23,6 +23,7 @@
  * - DELETE /api/skills/:name?workspaceId=：双路径删除——tracked 分派 skills CLI（user 级 -g、
  *   project 级 cwd=workspace），untracked 直接删 agent 目录条目（symlink 只删链接）
  * - POST /api/skills/install：包装 skills add（symlink 形态、只装 claude-code agent）
+ * - GET /api/skills/find：skills.sh 生态搜索（= CLI find，用户免知 repo 直接找 skill）
  * - POST /api/skills/:name/update：包装 skills update（tracked 限定）
  * - GET /api/skills/detail：行数据 + SKILL.md 正文 + frontmatter 扩展元数据（点击行按需请求；
  *   global 视角查不到时兜底插件扫描——系统 tab 的插件携带行可点进只读详情）
@@ -46,7 +47,8 @@ import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSyncEngine } from './guards'
 import { defaultSkillScanRoots, findBundledPluginSkill, listBundledPluginSkills, listGlobalSkills, listWorkspaceSkills, occupiedWorkspaceIds, refreshOverrideFields, type SkillScanRoots } from '../../skills/skillScanner'
-import { defaultSkillsCliRunner, installSkill, removeTrackedSkill, removeUntrackedSkill, updateSkill } from '../../skills/skillCli'
+import { removeUntrackedSkill } from '../../skills/skillRemoval'
+import { defaultSkillsApiClient, mergeAvailableWithInstalled } from '../../skills/skillInventoryClient'
 import { getBundledSkills } from '../../skills/bundledSkills'
 import { buildSkillCreatePrompt } from '../../skills/skillCreatePrompt'
 import { parseSkillDetail } from '../../skills/skillDetail'
@@ -83,7 +85,7 @@ export function createSkillsRoutes(
     const app = new Hono<WebAppEnv>()
     const roots = deps.scanRoots
     const scanRoots = (): SkillScanRoots => roots ?? defaultSkillScanRoots()
-    const skillsCliRunner = deps.cliRunner ?? defaultSkillsCliRunner
+    const api = deps.api ?? defaultSkillsApiClient
     const bundledDeps = () =>
         deps.bundled ?? { cachePath: join(configuration.dataDir, 'bundled-skills.json') }
 
@@ -162,9 +164,10 @@ export function createSkillsRoutes(
         }
 
         if (ctx.skill.tracked) {
-            // tracked：真身与 lock 条目归 CLI 语义闭环，mobi 只按 scope 分派
-            const result = await removeTrackedSkill(ctx.skill, ctx.scope, skillsCliRunner)
-            if (!result.ok) return c.json({ error: result.output || 'skills CLI failed' }, 502)
+            // tracked：agent 条目 + 共享真身 + lock 条目归 skills API 闭环（其他 agent 仍引用时保留真身）
+            const result = await api.removeInstalledSkill(ctx.skill.name,
+                ctx.scope.kind === 'global' ? { global: true } : { global: false, cwd: ctx.scope.path })
+            if (!result.ok) return c.json({ error: result.error ?? 'skills remove failed' }, 502)
             notifySkillChange(c, engine, workspaceId)
             return c.json({ ok: true })
         }
@@ -234,12 +237,61 @@ export function createSkillsRoutes(
         }
     })
 
+    /**
+     * 两步式安装第一步：repo 内可选清单 × 已装判定（复选框数据源）。
+     * 生效态判定（2026-11-17 讨论）：global 视角只看全局已装；project 视角取
+     * 全局∪项目并集——全局已装的在项目里同样生效，再装一份纯属冗余（项目覆盖
+     * 全局同名版本的高级玩法不经由 UI）。同名异源 = conflict（安装会覆盖别家
+     * 真身，源码实锤无保护），UI 须警告。
+     */
+    app.get('/skills/available', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const source = c.req.query('source')?.trim()
+        if (!source) return c.json({ error: 'Missing source' }, 400)
+        const workspaceId = c.req.query('workspaceId') ?? SKILL_SCOPE_GLOBAL
+        const scope = scopeOrResponse(c, engine, workspaceId)
+        if (scope instanceof Response) return scope
+
+        try {
+            const { repoSource, skills } = await api.resolveRepoSkills(source)
+            // 判定清单：global 视角单份；project 视角并集（两个 scope 的已装都算「已生效」）
+            const globalInstalled = await api.listInstalledSkillRefs({ global: true })
+            const installedRefs = scope.kind === 'global'
+                ? globalInstalled
+                : [...globalInstalled, ...await api.listInstalledSkillRefs({ global: false, cwd: scope.path })]
+            return c.json({ skills: mergeAvailableWithInstalled(repoSource, skills, installedRefs) })
+        } catch (error) {
+            // 拉取失败（网络/私有 repo/无 skill）明确报错，不伪装空清单
+            return c.json({ error: error instanceof Error ? error.message : String(error) }, 502)
+        }
+    })
+
+    /**
+     * 生态搜索（= skills CLI 的 find）：用户不必先知道 repo，按关键词直接搜
+     * skills.sh 注册表；命中项带 source（owner/repo）+ skillId，点选后走
+     * available → 选择段安装。搜索失败明确 502（不伪装空结果）。
+     */
+    app.get('/skills/find', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const query = c.req.query('q')?.trim()
+        if (!query) return c.json({ error: 'Missing query' }, 400)
+
+        try {
+            return c.json({ skills: await api.searchRegistrySkills(query) })
+        } catch (error) {
+            return c.json({ error: error instanceof Error ? error.message : String(error) }, 502)
+        }
+    })
+
     app.post('/skills/install', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
         const body = await c.req.json().catch(() => null)
-        // source 已 trim 校验，透传 argv 单元素（不经 shell，无注入面）
         const parsed = SkillInstallSubmissionSchema.safeParse(body)
         if (!parsed.success) return c.json({ error: 'Invalid body' }, 400)
 
@@ -247,10 +299,18 @@ export function createSkillsRoutes(
         const scope = scopeOrResponse(c, engine, parsed.data.scope)
         if (scope instanceof Response) return scope
 
-        const result = await installSkill(parsed.data.source, scope, skillsCliRunner)
-        if (!result.ok) return c.json({ error: result.output || 'skills CLI failed' }, 502)
+        // 两步式安装第二步：编程 API（结构化 installed/failed；skills 缺省 = 全装）
+        const result = await api.installSelectedSkills(
+            parsed.data.source,
+            parsed.data.skills ?? null,
+            scope.kind === 'global' ? { global: true } : { global: false, cwd: scope.path },
+        )
+        if (result.installed.length === 0) {
+            return c.json({ error: result.failed.map(f => `${f.skill}: ${f.error}`).join('; ') || 'skills install failed' }, 502)
+        }
         notifySkillChange(c, engine, parsed.data.scope)
-        return c.json({ ok: true })
+        // 部分成功也 200：installed 已生效，failed 逐项透传给 UI 提示
+        return c.json({ ok: true, installed: result.installed, failed: result.failed })
     })
 
     app.post('/skills/:name/update', async (c) => {
@@ -263,11 +323,12 @@ export function createSkillsRoutes(
 
         const ctx = skillContext(c, engine, parsed.data.workspaceId, c.req.param('name'))
         if (ctx instanceof Response) return ctx
-        // 更新走 CLI 渠道语义，只对 tracked 行有意义
+        // 更新 = 从 lock 记录的来源重装（skills API 未导出 update；CLI update 本质同此）
         if (!ctx.skill.tracked) return c.json({ error: 'Skill is not tracked' }, 400)
 
-        const result = await updateSkill(ctx.skill, ctx.scope, skillsCliRunner)
-        if (!result.ok) return c.json({ error: result.output || 'skills CLI failed' }, 502)
+        const result = await api.reinstallSkill(ctx.skill.name, ctx.skill.installSource,
+            ctx.scope.kind === 'global' ? { global: true } : { global: false, cwd: ctx.scope.path })
+        if (!result.ok) return c.json({ error: result.error ?? 'skills update failed' }, 502)
         // 更新同样变更清单（新版本描述/正文会反映到命令清单），与管理页其他写操作同源发布
         notifySkillChange(c, engine, parsed.data.workspaceId)
         return c.json({ ok: true })

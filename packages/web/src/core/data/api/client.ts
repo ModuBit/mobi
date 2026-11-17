@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, DaemonStatus, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse, ArchivedSessionsPage, ArchivedBatchResponse, ArchivedBatchItemResult } from './types'
-import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, RedactedTelemetrySettings, TelemetrySettingsSubmission, MapSettingsSubmission, MapSettingsView, PermissionAnnotations, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin, WorktreeListResponse, MergeBackResult, MergeBackRequest, DiscardResult, DeleteSessionResponse, SkillListResponse, SkillInfo, BundledSkillsResponse, SkillDetailResponse } from '@mobi/shared'
+import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, RedactedTelemetrySettings, TelemetrySettingsSubmission, MapSettingsSubmission, MapSettingsView, PermissionAnnotations, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin, WorktreeListResponse, MergeBackResult, MergeBackRequest, DiscardResult, DeleteSessionResponse, SkillListResponse, SkillInfo, BundledSkillsResponse, SkillDetailResponse, SkillAvailableResponse, SkillRegistrySearchResponse } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 import { encodeArchivedWorkspaceId } from '@mobi/shared'
 
@@ -485,9 +485,19 @@ export function createMobiApi() {
                 client.delete<{ ok: boolean }>(`/api/skills/${encodeURIComponent(name)}`, {
                     params: { workspaceId },
                 }),
-            // 安装：包装 skills add（source = repo URL / GitHub 路径；scope = 'global' | workspaceId）
-            install: (source: string, scope: string) =>
-                client.post<{ ok: boolean }>('/api/skills/install', { source, scope }),
+            // 两步式安装第一步：repo 内可选清单 × 已装判定（复选框数据源；失败 502 透传）
+            available: (source: string, workspaceId: string) =>
+                client.get<SkillAvailableResponse>('/api/skills/available', {
+                    params: { source, workspaceId },
+                }),
+            // 生态搜索（= skills CLI 的 find）：关键词直搜 skills.sh 注册表，免知 repo
+            find: (query: string) =>
+                client.get<SkillRegistrySearchResponse>('/api/skills/find', {
+                    params: { q: query },
+                }),
+            // 两步式安装第二步：skills = 勾选清单（缺省全装）；部分成功 200 带 failed 数组
+            install: (source: string, scope: string, skills?: string[]) =>
+                client.post<{ ok: boolean; installed: string[]; failed: Array<{ skill: string; error: string }> }>('/api/skills/install', { source, scope, skills }),
             // 更新（tracked 限定）：包装 skills update
             update: (name: string, workspaceId: string) =>
                 client.post<{ ok: boolean }>(`/api/skills/${encodeURIComponent(name)}/update`, { workspaceId }),

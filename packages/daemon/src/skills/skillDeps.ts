@@ -21,14 +21,26 @@
  * 等 mcp 管理页（迭代 2）真出现第二个资源族再议服务化。
  */
 import type { SkillScanRoots } from './skillScanner'
-import type { SkillsCliRunner } from './skillCli'
 import type { SkillsBundledDeps } from './bundledSkills'
+import type { InstalledSkillRef, InstallSelectedResult, RepoSkillOption, SkillActionResult } from './skillInventoryClient'
+import type { SkillRegistrySkill } from '@mobi/shared'
+
+/** skills 编程 API 面（缺省生产值 = skills 包函数；测试注入 fake 免网络 clone） */
+export interface SkillsApiClient {
+    resolveRepoSkills(source: string): Promise<{ repoSource: string; skills: RepoSkillOption[] }>
+    listInstalledSkillRefs(options: { global: boolean; cwd?: string }): Promise<InstalledSkillRef[]>
+    installSelectedSkills(source: string, skillNames: string[] | null, options: { global: boolean; cwd?: string }): Promise<InstallSelectedResult>
+    removeInstalledSkill(name: string, options: { global: boolean; cwd?: string }): Promise<SkillActionResult>
+    reinstallSkill(name: string, source: string | null | undefined, options: { global: boolean; cwd?: string }): Promise<SkillActionResult>
+    /** skills.sh 生态搜索（= CLI find 的 HTTP 端点，免知识直接找 skill） */
+    searchRegistrySkills(query: string): Promise<SkillRegistrySkill[]>
+}
 
 export type SkillsDeps = {
     /** 扫描根 fixture（缺省生产值由路由内部解析） */
     scanRoots?: SkillScanRoots
-    /** CLI 执行器（缺省生产值 spawn npx；测试必须注入，见 setupTestApp fail-fast） */
-    cliRunner?: SkillsCliRunner
     /** bundled 名单依赖（缺省生产值 = dataDir 缓存 + 真 SDK 自采） */
     bundled?: SkillsBundledDeps
+    /** 清单全链路编程 API（缺省生产值 = skills 包；测试必须注入免网络） */
+    api?: SkillsApiClient
 }

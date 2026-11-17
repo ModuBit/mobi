@@ -103,8 +103,8 @@ function useInvalidateAllSkills() {
 }
 
 /** mutation 工厂：api 调用差异注入，「失败静默 + 成功失效全族」声明一次（后续动作零复制） */
-function useSkillMutation<TVars>(
-    call: (api: ReturnType<typeof useMobiApi>, vars: TVars) => Promise<unknown>,
+function useSkillMutation<TVars, TData = unknown>(
+    call: (api: ReturnType<typeof useMobiApi>, vars: TVars) => Promise<TData>,
 ) {
     const api = useMobiApi()
     const invalidate = useInvalidateAllSkills()
@@ -115,8 +115,24 @@ function useSkillMutation<TVars>(
 }
 
 export function useSkillInstall() {
-    return useSkillMutation((api, vars: { source: string; scope: string }) =>
-        api.skills.install(vars.source, vars.scope))
+    return useSkillMutation((api, vars: { source: string; scope: string; skills?: string[] }) =>
+        api.skills.install(vars.source, vars.scope, vars.skills))
+}
+/** 两步式安装第一步：repo 清单 × 已装判定（一次性动作非缓存 query；pending 态由调用方派生） */
+export function useSkillAvailable() {
+    const api = useMobiApi()
+    return useMutation({
+        mutationFn: (vars: { source: string; workspaceId: string }) =>
+            api.skills.available(vars.source, vars.workspaceId),
+    })
+}
+
+/** 生态搜索（= CLI find）：关键词 → skills.sh 注册表命中清单（安装弹窗搜索段） */
+export function useSkillFind() {
+    const api = useMobiApi()
+    return useMutation({
+        mutationFn: (query: string) => api.skills.find(query),
+    })
 }
 
 export function useSkillUpdate() {

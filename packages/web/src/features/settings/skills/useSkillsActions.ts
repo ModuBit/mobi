@@ -22,9 +22,9 @@
 import { App } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { SKILL_SCOPE_GLOBAL, extractHttpDetail, isSkillShadowed, type SkillInfo } from '@mobi/shared'
+import { SKILL_SCOPE_GLOBAL, extractHttpDetail, isSkillShadowed, type SkillInfo, type SkillRegistrySkill } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
-import { useSkillCreatePrompt, useSkillDelete, useSkillInstall, useSkillUpdate, useSkillVisibility } from '@/core/data/hooks/queries/useSkills'
+import { useSkillCreatePrompt, useSkillAvailable, useSkillDelete, useSkillFind, useSkillInstall, useSkillUpdate, useSkillVisibility } from '@/core/data/hooks/queries/useSkills'
 import { saveDraftText } from '@/core/lib/draftText'
 
 // CLI 失败透传走 shared 单源 extractHttpDetail（errorPresentation 家族）
@@ -39,6 +39,10 @@ export function useSkillsActions() {
     const deletion = useSkillDelete()
     const updater = useSkillUpdate()
     const installer = useSkillInstall()
+    /** 两步式安装第一步的清单拉取（pending 态 = 弹窗「获取清单」按钮 loading） */
+    const available = useSkillAvailable()
+    /** 生态搜索（= CLI find）：安装弹窗输入段的关键词检索 */
+    const finder = useSkillFind()
     /** 对话式新建的预填 prompt 请求（pending 态由 mutation 派生，与兄弟动作同构） */
     const creator = useSkillCreatePrompt()
 
@@ -72,15 +76,42 @@ export function useSkillsActions() {
         )
     }
 
-    /** 安装：source + scope；成功返回 true（caller 关弹窗），失败保持弹窗开着可改后重试 */
-    const install = async (source: string, scope: string): Promise<boolean> => {
+    /** 安装：source + scope + 勾选清单（缺省全装）；成功返回 true（caller 关弹窗），失败保持弹窗开着可改后重试。
+     *  部分成功（200 带 failed）按成功关弹窗，失败项逐条 toast */
+    const install = async (source: string, scope: string, skills?: string[]): Promise<boolean> => {
         try {
-            await installer.mutateAsync({ source, scope })
+            const res = await installer.mutateAsync({ source, scope, skills })
+            const failed = res.data.failed ?? []
+            if (failed.length > 0) {
+                for (const f of failed) message.warning(`${f.skill}: ${f.error}`)
+            }
             message.success(t('settings.skills.installed'))
             return true
         } catch (error) {
             message.error(extractHttpDetail(error) || t('settings.skills.installFailed'))
             return false
+        }
+    }
+
+    /** 两步式安装第一步：拉 repo 可用清单（失败报错返回 null，弹窗停留输入段） */
+    const fetchAvailable = async (source: string, scope: string) => {
+        try {
+            const res = await available.mutateAsync({ source, workspaceId: scope })
+            return res.data.skills
+        } catch (error) {
+            message.error(extractHttpDetail(error) || t('settings.skills.installFailed'))
+            return null
+        }
+    }
+
+    /** 生态搜索：关键词 → skills.sh 命中（失败报错返回 null，弹窗保留上次结果） */
+    const find = async (query: string): Promise<SkillRegistrySkill[] | null> => {
+        try {
+            const res = await finder.mutateAsync(query)
+            return res.data.skills
+        } catch (error) {
+            message.error(extractHttpDetail(error) || t('settings.skills.findFailed'))
+            return null
         }
     }
 
@@ -122,6 +153,8 @@ export function useSkillsActions() {
         },
         update,
         install,
+        fetchAvailable,
+        find,
         submitCreate,
         /** 行级启停进行中（避免整列表闪烁） */
         isToggling: (name: string) => visibility.isPending && visibility.variables?.name === name,
@@ -129,6 +162,10 @@ export function useSkillsActions() {
         isUpdating: (name: string) => updater.isPending && updater.variables?.name === name,
         /** 安装请求进行中（提交钮 loading） */
         installing: installer.isPending,
+        /** 清单拉取进行中（两步式安装第一步按钮 loading） */
+        resolving: available.isPending,
+        /** 生态搜索进行中 */
+        finding: finder.isPending,
         /** 新建请求进行中（提交钮 loading） */
         creating: creator.isPending,
     }

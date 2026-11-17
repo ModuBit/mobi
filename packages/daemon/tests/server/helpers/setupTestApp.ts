@@ -74,13 +74,10 @@ export async function setupTestApp(
         embeddedAssetMap: null,
         // 注入临时 dist 目录（静态资源 Cache-Control 等测试用），不依赖真实 web/dist 构建
         distDirOverride: opts.distDirOverride,
-        // skills 域依赖打包（候选⑤）：扫描根 fixture + CLI/bundled fail-fast 桩——
-        // 测试必须显式注入，防 DI 断链时 default runner 在真实环境跑 npx / 真 SDK probe（2026-11-12 实踩）
+        // skills 域依赖打包（候选⑤）：扫描根 fixture + API/bundled fail-fast 桩——
+        // 测试必须显式注入，防 DI 断链时 default 实现真 clone repo / 真 SDK probe（2026-11-12 实踩）
         skills: {
             scanRoots: opts.skills?.scanRoots,
-            cliRunner: opts.skills?.cliRunner ?? (async () => {
-                throw new Error('skills CLI runner not injected for test')
-            }),
             bundled: opts.skills?.bundled ?? {
                 cachePath: '/dev/null/mobi-test-bundled-cache.json',
                 prober: async () => {
@@ -89,6 +86,14 @@ export async function setupTestApp(
                 versionProber: async () => {
                     throw new Error('bundled version prober not injected for test')
                 },
+            },
+            api: opts.skills?.api ?? {
+                resolveRepoSkills: async () => { throw new Error('skills api not injected for test') },
+                listInstalledSkillRefs: async () => { throw new Error('skills api not injected for test') },
+                installSelectedSkills: async () => { throw new Error('skills api not injected for test') },
+                removeInstalledSkill: async () => { throw new Error('skills api not injected for test') },
+                reinstallSkill: async () => { throw new Error('skills api not injected for test') },
+                searchRegistrySkills: async () => { throw new Error('skills api not injected for test') },
             },
         },
     })

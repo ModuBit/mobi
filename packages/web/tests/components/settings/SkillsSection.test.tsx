@@ -20,7 +20,7 @@ import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-li
 import type { SkillInfo } from '@mobi/shared'
 
 /** vi.mock 工厂提升先于 const 声明，被工厂引用的桩须 vi.hoisted */
-const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync, mockInstallAsync, mockUpdateMutate, mockBundled, mockNavigate, mockSaveDraftText, mockCreatePrompt } = vi.hoisted(() => {
+const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync, mockInstallAsync, mockUpdateMutate, mockBundled, mockNavigate, mockSaveDraftText, mockCreatePrompt, mockFindAsync } = vi.hoisted(() => {
     return {
         /** toast 断言靶（App.useApp 返回的 message） */
         mockMessage: { warning: vi.fn(), error: vi.fn(), success: vi.fn() },
@@ -46,6 +46,8 @@ const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync, moc
         mockNavigate: vi.fn(),
         mockSaveDraftText: vi.fn(),
         mockCreatePrompt: vi.fn(),
+        /** 生态搜索桩（安装弹窗「先搜再装」段） */
+        mockFindAsync: vi.fn(),
     }
 })
 mockVisibility.mutate = mockMutate
@@ -92,6 +94,13 @@ vi.mock('@/core/data/hooks/queries/useSkills', () => ({
     useSkillUpdate: vi.fn(() => ({ mutate: mockUpdateMutate, isPending: false, variables: null })),
     // createPrompt 桩保持 api 返回形状（res.data.prompt），useSkillsActions 透明消费
     useSkillCreatePrompt: vi.fn(() => ({ mutateAsync: mockCreatePrompt, isPending: false })),
+    // 两步式安装清单桩（res.data.skills）；安装弹窗用例可覆盖
+    useSkillAvailable: vi.fn(() => ({
+        mutateAsync: vi.fn(async () => ({ data: { skills: [] } })),
+        isPending: false,
+    })),
+    // 生态搜索桩（res.data.skills）；「先搜再装」用例覆盖
+    useSkillFind: vi.fn(() => ({ mutateAsync: mockFindAsync, isPending: false })),
     useBundledSkills: vi.fn(() => mockBundled),
     // 占用桩：默认 ws-1 有技能（tabs 显示工作区）；空项目隐藏用例再覆盖
     useSkillOccupancy: vi.fn(() => ({ workspaceIds: ['ws-1'] })),
@@ -115,7 +124,7 @@ vi.mock('@/core/data/api/client', () => ({
 }))
 
 import { SkillsSection } from '@/features/settings/sections/SkillsSection'
-import { useSkills, useSkillVisibility, useBundledSkills, useSkillOccupancy, useSkillDetail } from '@/core/data/hooks/queries/useSkills'
+import { useSkills, useSkillVisibility, useBundledSkills, useSkillOccupancy, useSkillDetail, useSkillAvailable } from '@/core/data/hooks/queries/useSkills'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 
 afterEach(() => {
@@ -400,33 +409,119 @@ describe('SkillsSection（票 05：安装与更新）', () => {
         expect(mockMessage.success).toHaveBeenCalledWith('settings.skills.updated')
     })
 
-    it('安装弹窗：输入来源提交 → installAsync(source, scope=当前 tab) + 成功 toast', async () => {
+    it('安装弹窗：单 skill 来源 → 获取清单直达安装（installAsync 携带勾选）', async () => {
         setup()
-        mockInstallAsync.mockResolvedValueOnce(undefined)
+        mockInstallAsync.mockResolvedValueOnce({ data: { ok: true, installed: ['only-skill'], failed: [] } })
+        vi.mocked(useSkillAvailable).mockReturnValue({
+            mutateAsync: vi.fn(async () => ({
+                data: { skills: [{ name: 'only-skill', description: 'Only one', installed: false, conflict: false }] },
+            })),
+            isPending: false,
+        } as never)
 
         screen.getByTestId('skills-install').click()
         const input = await screen.findByPlaceholderText('settings.skills.installSourcePlaceholder')
         fireEvent.change(input, { target: { value: 'vercel-labs/skills' } })
 
-        // Modal 确认钮（okText=installSubmit）
+        // 输入段确认钮（okText=installFetch）→ 单 skill 跳过选择直达安装
+        fireEvent.click(screen.getByText('settings.skills.installFetch'))
+        await waitFor(() =>
+            expect(mockInstallAsync).toHaveBeenCalledWith({ source: 'vercel-labs/skills', scope: 'global', skills: ['only-skill'] }))
+        expect(mockMessage.success).toHaveBeenCalledWith('settings.skills.installed')
+    })
+
+    it('安装弹窗：多 skill → 选择段（已装 readonly 默认排除）→ 提交携带勾选', async () => {
+        setup()
+        mockInstallAsync.mockResolvedValueOnce({ data: { ok: true, installed: ['a'], failed: [] } })
+        vi.mocked(useSkillAvailable).mockReturnValue({
+            mutateAsync: vi.fn(async () => ({
+                data: { skills: [
+                    { name: 'a', description: 'Opt A', installed: false, conflict: false },
+                    { name: 'b', description: 'Already installed', installed: true, conflict: false },
+                    { name: 'c', description: 'Opt C', installed: false, conflict: false },
+                ] },
+            })),
+            isPending: false,
+        } as never)
+
+        screen.getByTestId('skills-install').click()
+        const input = await screen.findByPlaceholderText('settings.skills.installSourcePlaceholder')
+        fireEvent.change(input, { target: { value: 'vercel-labs/skills' } })
+        fireEvent.click(screen.getByText('settings.skills.installFetch'))
+
+        // 选择段出现：三个名字都在（b 已装 readonly 勾上但禁用）
+        await screen.findByText('b')
+        const bOption = screen.getByText('b').closest('.skill-option')!
+        expect(bOption.querySelector('[disabled]')).toBeTruthy()
+
+        // 提交：默认勾选 = 未装项（a、c；已装 b 不在列）
         fireEvent.click(screen.getByText('settings.skills.installSubmit'))
         await waitFor(() =>
-            expect(mockInstallAsync).toHaveBeenCalledWith({ source: 'vercel-labs/skills', scope: 'global' }))
-        expect(mockMessage.success).toHaveBeenCalledWith('settings.skills.installed')
+            expect(mockInstallAsync).toHaveBeenCalledWith({ source: 'vercel-labs/skills', scope: 'global', skills: ['a', 'c'] }))
     })
 
     it('安装失败：弹窗保持开（可改来源重试）+ 失败 toast', async () => {
         setup()
         mockInstallAsync.mockRejectedValueOnce(new Error('x'))
+        vi.mocked(useSkillAvailable).mockReturnValue({
+            mutateAsync: vi.fn(async () => ({
+                data: { skills: [{ name: 'only-skill', description: 'Only one', installed: false, conflict: false }] },
+            })),
+            isPending: false,
+        } as never)
 
         screen.getByTestId('skills-install').click()
         const input = await screen.findByPlaceholderText('settings.skills.installSourcePlaceholder')
         fireEvent.change(input, { target: { value: 'bad/repo' } })
-        fireEvent.click(screen.getByText('settings.skills.installSubmit'))
-
+        fireEvent.click(screen.getByText('settings.skills.installFetch'))
         await waitFor(() => expect(mockMessage.error).toHaveBeenCalledWith('settings.skills.installFailed'))
+
         // 弹窗未关：输入框仍在
         expect(screen.getByPlaceholderText('settings.skills.installSourcePlaceholder')).toBeTruthy()
+    })
+
+    it('安装弹窗：生态搜索点选命中 → 带入来源直达选择段（只预勾命中项）', async () => {
+        setup()
+        mockFindAsync.mockResolvedValueOnce({ data: { skills: [
+            { name: 'pdf', source: 'anthropics/skills', skillId: 'pdf', installs: 231296 },
+        ] } })
+        const availAsync = vi.fn(async () => ({
+            data: { skills: [
+                { name: 'pdf', description: 'PDF tools', installed: false, conflict: false },
+                { name: 'docx', description: 'DOCX tools', installed: false, conflict: false },
+            ] },
+        }))
+        vi.mocked(useSkillAvailable).mockReturnValue({ mutateAsync: availAsync, isPending: false } as never)
+        mockInstallAsync.mockResolvedValueOnce({ data: { ok: true, installed: ['pdf'], failed: [] } })
+
+        screen.getByTestId('skills-install').click()
+        const findInput = await screen.findByPlaceholderText('settings.skills.findPlaceholder')
+        fireEvent.change(findInput, { target: { value: 'pdf' } })
+        fireEvent.keyDown(findInput, { key: 'Enter' })
+
+        // 命中行（名称 + 来源 · 安装数）点选 → 拉该 repo 清单
+        const hit = (await screen.findByText('anthropics/skills · settings.skills.findInstalls')).closest('button')!
+        fireEvent.click(hit)
+        await waitFor(() =>
+            expect(availAsync).toHaveBeenCalledWith({ source: 'anthropics/skills', workspaceId: 'global' }))
+
+        // 选择段只预勾命中的 pdf（同 repo 的 docx 不默认勾选）
+        await screen.findByText('docx')
+        fireEvent.click(screen.getByText('settings.skills.installSubmit'))
+        await waitFor(() =>
+            expect(mockInstallAsync).toHaveBeenCalledWith({ source: 'anthropics/skills', scope: 'global', skills: ['pdf'] }))
+    })
+
+    it('安装弹窗：搜索无结果 → 空态提示', async () => {
+        setup()
+        mockFindAsync.mockResolvedValueOnce({ data: { skills: [] } })
+
+        screen.getByTestId('skills-install').click()
+        const findInput = await screen.findByPlaceholderText('settings.skills.findPlaceholder')
+        fireEvent.change(findInput, { target: { value: 'zzz-no-hit' } })
+        fireEvent.keyDown(findInput, { key: 'Enter' })
+
+        await screen.findByText('settings.skills.findEmpty')
     })
 })
 

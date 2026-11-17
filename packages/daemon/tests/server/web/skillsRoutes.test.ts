@@ -32,8 +32,9 @@ import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 import type { SSEManager } from '../../../src/sse/sseManager'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
-import type { SkillInfo } from '@mobi/shared'
+import type { SkillInfo, SkillAvailableInfo } from '@mobi/shared'
 import type { SkillInventoryChangedEvent } from '../../../src/sync/skillInventoryBus'
+import type { SkillsApiClient } from '../../../src/skills/skillDeps'
 
 /** workspaces 路由校验 folders 须落在宿主 home 内（401 起硬约束） */
 const HOST_HOME = homedir()
@@ -61,24 +62,37 @@ describe('skills REST 路由（GET /api/skills）', () => {
     let wsDir: string
     let claudeDir: string
 
-    /** 票 04/05：fake skills CLI——按子命令模拟语义（remove 删条目+lock；add/update 静默成功），记录调用参数 */
-    const skillsCliCalls: { args: string[]; cwd: string }[] = []
-    let failSkillsCli: string | null = null
-    const fakeSkillsCli = async (args: string[], opts: { cwd: string }) => {
-        skillsCliCalls.push({ args, cwd: opts.cwd })
-        const name = args[1]!
-        if (failSkillsCli === name) return { ok: false, output: `npm error: skill ${name} not found in lock` }
-        if (args[0] !== 'remove') return { ok: true, output: `${args[0]} ${name} done` }
-        // agent 目录条目（user 级视角；project 级真身语义同理由 CLI 闭环，此处只模拟条目删除）
-        rmSync(join(claudeDir, 'skills', name), { recursive: true, force: true })
-        // lock 条目与真身同生共死
-        const lockPath = join(fixtureRoot, 'agents', '.skill-lock.json')
-        if (existsSync(lockPath)) {
-            const lock = JSON.parse(readFileSync(lockPath, 'utf-8')) as { skills: Record<string, unknown> }
-            delete lock.skills[name]
-            writeFileSync(lockPath, JSON.stringify(lock))
+    /** tracked 单动作 fake（remove/reinstall）：记录调用参数，成功时按真实语义改 fixture。
+     *  failRemoveSkill 控制卸载失败分支（错误文案透传） */
+    const removeCalls: { name: string; global: boolean; cwd?: string }[] = []
+    const reinstallCalls: { name: string; source: string | null | undefined; global: boolean; cwd?: string }[] = []
+    let failRemoveSkill: string | null = null
+    const fakeRemoveInstalledSkill = async (name: string, opts: { global: boolean; cwd?: string }) => {
+        removeCalls.push({ name, ...opts })
+        if (failRemoveSkill === name) return { ok: false, error: `npm error: skill ${name} not found in lock` }
+        // 语义模拟：删 agent 条目 + lock 条目（global → claudeDir + user lock；project → ws 下两处）
+        if (opts.global) {
+            rmSync(join(claudeDir, 'skills', name), { recursive: true, force: true })
+            const lockPath = join(fixtureRoot, 'agents', '.skill-lock.json')
+            if (existsSync(lockPath)) {
+                const lock = JSON.parse(readFileSync(lockPath, 'utf-8')) as { skills: Record<string, unknown> }
+                delete lock.skills[name]
+                writeFileSync(lockPath, JSON.stringify(lock))
+            }
+        } else {
+            rmSync(join(opts.cwd!, '.claude', 'skills', name), { recursive: true, force: true })
+            const lockPath = join(opts.cwd!, 'skills-lock.json')
+            if (existsSync(lockPath)) {
+                const lock = JSON.parse(readFileSync(lockPath, 'utf-8')) as { skills: Record<string, unknown> }
+                delete lock.skills[name]
+                writeFileSync(lockPath, JSON.stringify(lock))
+            }
         }
-        return { ok: true, output: `removed ${name}` }
+        return { ok: true }
+    }
+    const fakeReinstallSkill = async (name: string, source: string | null | undefined, opts: { global: boolean; cwd?: string }) => {
+        reinstallCalls.push({ name, source, ...opts })
+        return { ok: true }
     }
 
     /** 票 06：fake bundled 采集与版本探针（可控翻转 + 采集计数） */
@@ -94,6 +108,41 @@ describe('skills REST 路由（GET /api/skills）', () => {
                 { name: 'verify', description: 'Verify a change end-to-end' },
             ],
         }
+    }
+
+    /** 两步式安装 fake API（编程接口语义；repo 清单/已装清单/install 结果均可控翻转） */
+    const apiCalls: { method: string; source: string; names: string[] | null; global: boolean; cwd?: string }[] = []
+    let fakeRepo: { repoSource: string; skills: { name: string; description: string }[] } = { repoSource: 'octocat/repo', skills: [] }
+    let fakeInstalledGlobal: { name: string; source: string | null }[] = []
+    let fakeInstalledProject: { name: string; source: string | null }[] = []
+    let fakeInstallResult: { installed: string[]; failed: Array<{ skill: string; error: string }> } = { installed: [], failed: [] }
+    /** 非空时 resolveRepoSkills 抛错（拉取失败 502 分支翻转） */
+    let failRepoResolve: string | null = null
+    /** 生态搜索 fake：记录 query + 可控命中/失败 */
+    const findCalls: string[] = []
+    let fakeFindResults: { name: string; source: string; skillId: string; installs: number }[] = []
+    let failFind: string | null = null
+    const fakeSkillsApi: SkillsApiClient = {
+        resolveRepoSkills: async (source) => {
+            if (failRepoResolve) throw new Error(failRepoResolve)
+            apiCalls.push({ method: 'resolveRepoSkills', source, names: null, global: false })
+            return fakeRepo
+        },
+        listInstalledSkillRefs: async (opts) => {
+            apiCalls.push({ method: 'listInstalledSkillRefs', source: '', names: null, global: opts.global, cwd: opts.cwd })
+            return opts.global ? fakeInstalledGlobal : fakeInstalledProject
+        },
+        installSelectedSkills: async (source, names, opts) => {
+            apiCalls.push({ method: 'installSelectedSkills', source, names, global: opts.global, cwd: opts.cwd })
+            return fakeInstallResult
+        },
+        removeInstalledSkill: fakeRemoveInstalledSkill,
+        reinstallSkill: fakeReinstallSkill,
+        searchRegistrySkills: async (query) => {
+            findCalls.push(query)
+            if (failFind) throw new Error(failFind)
+            return fakeFindResults
+        },
     }
 
     beforeAll(async () => {
@@ -207,7 +256,7 @@ describe('skills REST 路由（GET /api/skills）', () => {
                     pluginDirs: [pluginDir],
                     managedSettingsPath: join(fixtureRoot, 'managed-settings.json'),
                 },
-                cliRunner: fakeSkillsCli,
+                api: fakeSkillsApi,
                 bundled: {
                     cachePath: join(fixtureRoot, 'bundled-skills.json'),
                     prober: fakeBundledProber,
@@ -466,10 +515,10 @@ describe('skills REST 路由（GET /api/skills）', () => {
             expect(existsSync(join(fixtureRoot, 'agents', 'skills', 'orphan-target', 'SKILL.md'))).toBe(true)
         })
 
-        test('CLI 失败：502 + 输出透传；条目保持原状', async () => {
-            failSkillsCli = 'beta'
+        test('API 失败：502 + 错误透传；条目保持原状', async () => {
+            failRemoveSkill = 'beta'
             const res = await deleteSkill('beta', '?workspaceId=global')
-            failSkillsCli = null
+            failRemoveSkill = null
 
             expect(res.status).toBe(502)
             const data = await res.json() as { error: string }
@@ -478,13 +527,12 @@ describe('skills REST 路由（GET /api/skills）', () => {
             expect(existsSync(join(claudeDir, 'skills', 'beta'))).toBe(true)
         })
 
-        test('tracked：分派 skills CLI（-g + claude-code agent），条目与 lock 由 CLI 语义闭环', async () => {
+        test('tracked：走 removeInstalledSkill API（global=true），条目与 lock 由 API 语义闭环', async () => {
             const res = await deleteSkill('beta', '?workspaceId=global')
             expect(res.status).toBe(200)
 
-            expect(skillsCliCalls.length).toBe(2)
-            expect(skillsCliCalls.at(-1)!.args).toEqual(['remove', 'beta', '-y', '--agent', 'claude-code', '-g'])
-            // fake CLI 已按语义删条目与 lock
+            expect(removeCalls.at(-1)).toMatchObject({ name: 'beta', global: true })
+            // fake API 已按语义删条目与 lock
             expect(existsSync(join(claudeDir, 'skills', 'beta'))).toBe(false)
             const lock = JSON.parse(readFileSync(join(fixtureRoot, 'agents', '.skill-lock.json'), 'utf-8'))
             expect(lock.skills.beta).toBeUndefined()
@@ -496,10 +544,11 @@ describe('skills REST 路由（GET /api/skills）', () => {
             expect(existsSync(join(wsDir, '.claude', 'skills', 'del-proj'))).toBe(false)
         })
 
-        test('未知名 → 404 且不触达 CLI', async () => {
+        test('未知名 → 404 且不触达 remove API', async () => {
+            const before = removeCalls.length
             const res = await deleteSkill('nope', '?workspaceId=global')
             expect(res.status).toBe(404)
-            expect(skillsCliCalls.every(c => c.args[1] !== 'nope')).toBe(true)
+            expect(removeCalls.length).toBe(before)
         })
 
         test('synced 行不可删除 → 400；插件携带行不在清单 → 404', async () => {
@@ -508,7 +557,7 @@ describe('skills REST 路由（GET /api/skills）', () => {
         })
     })
 
-    describe('POST /api/skills/install（包装 skills add）', () => {
+    describe('POST /api/skills/install（两步式安装第二步：编程 API）', () => {
         async function install(body: object): Promise<{ res: Response; data: any }> {
             const res = await app.request('/api/skills/install', {
                 method: 'POST',
@@ -518,39 +567,144 @@ describe('skills REST 路由（GET /api/skills）', () => {
             return { res, data: res.status === 200 ? await res.json() : null }
         }
 
-        test('global：args 带 -g、cwd=home，symlink 形态不传 --copy', async () => {
-            const { res } = await install({ source: 'vercel-labs/skills', scope: 'global' })
+        test('global：installSelectedSkills(global=true)，勾选清单透传', async () => {
+            fakeInstallResult = { installed: ['a', 'b'], failed: [] }
+            const { res, data } = await install({ source: 'vercel-labs/skills', scope: 'global', skills: ['a', 'b'] })
             expect(res.status).toBe(200)
+            expect(data.ok).toBe(true)
+            expect(data.installed).toEqual(['a', 'b'])
 
-            const call = skillsCliCalls.at(-1)!
-            expect(call.args).toEqual(['add', 'vercel-labs/skills', '--agent', 'claude-code', '-g'])
-            expect(call.args).not.toContain('--copy')
-            expect(call.cwd).toBe(homedir())
+            const call = apiCalls.filter(c => c.method === 'installSelectedSkills').at(-1)!
+            expect(call.source).toBe('vercel-labs/skills')
+            expect(call.names).toEqual(['a', 'b'])
+            expect(call.global).toBe(true)
         })
 
-        test('workspace：无 -g、cwd=workspace（CLI 自动定位 project scope）', async () => {
+        test('workspace：global=false + cwd=workspace；不传 skills = 全装（null 透传）', async () => {
+            fakeInstallResult = { installed: ['a'], failed: [] }
             const { res } = await install({ source: 'octocat/repo', scope: workspaceId })
             expect(res.status).toBe(200)
 
-            const call = skillsCliCalls.at(-1)!
-            expect(call.args).toEqual(['add', 'octocat/repo', '--agent', 'claude-code'])
+            const call = apiCalls.filter(c => c.method === 'installSelectedSkills').at(-1)!
+            expect(call.names).toBeNull()
+            expect(call.global).toBe(false)
             expect(call.cwd).toBe(wsDir)
         })
 
-        test('CLI 失败 → 502 + 输出透传', async () => {
-            failSkillsCli = 'octocat/repo'
-            const { res } = await install({ source: 'octocat/repo', scope: 'global' })
-            failSkillsCli = null
+        test('部分成功 → 200 + failed 逐项透传；全部失败 → 502', async () => {
+            fakeInstallResult = { installed: ['a'], failed: [{ skill: 'b', error: 'dir not writable' }] }
+            const ok = await install({ source: 'octocat/repo', scope: 'global', skills: ['a', 'b'] })
+            expect(ok.res.status).toBe(200)
+            expect((ok.data as { failed: unknown[] }).failed).toHaveLength(1)
 
-            expect(res.status).toBe(502)
-            const data = await res.json() as { error: string }
-            expect(data.error).toContain('not found in lock')
+            fakeInstallResult = { installed: [], failed: [{ skill: 'b', error: 'dir not writable' }] }
+            const bad = await install({ source: 'octocat/repo', scope: 'global' })
+            expect(bad.res.status).toBe(502)
+            const err = await bad.res.json() as { error: string }
+            expect(err.error).toContain('b: dir not writable')
         })
 
         test('非法 body（缺 source / 空）→ 400', async () => {
             expect((await install({ scope: 'global' })).res.status).toBe(400)
             expect((await install({ source: '  ', scope: 'global' })).res.status).toBe(400)
             expect((await install({ source: 'x', scope: 'nope' })).res.status).toBe(404)
+        })
+    })
+
+    describe('GET /api/skills/available（两步式安装第一步：repo 清单 × 已装判定）', () => {
+        async function available(source: string, workspaceId?: string): Promise<{ res: Response; skills: SkillAvailableInfo[] }> {
+            const qs = workspaceId ? `&workspaceId=${workspaceId}` : ''
+            const res = await app.request(`/api/skills/available?source=${encodeURIComponent(source)}${qs}`, { headers: authHeaders })
+            const body = res.status === 200 ? await res.json() as { skills: SkillAvailableInfo[] } : { skills: [] }
+            return { res, skills: body.skills }
+        }
+
+        test('global 视角：本 repo 已装 → installed；异源同名 → conflict；未装 → 均否', async () => {
+            fakeRepo = {
+                repoSource: 'octocat/repo',
+                skills: [
+                    { name: 'a', description: 'installed from this repo' },
+                    { name: 'b', description: 'same name from elsewhere' },
+                    { name: 'c', description: 'not installed' },
+                ],
+            }
+            fakeInstalledGlobal = [
+                { name: 'a', source: 'octocat/repo' },
+                { name: 'b', source: 'other/repo' },
+            ]
+            fakeInstalledProject = []
+
+            apiCalls.length = 0
+            const { res, skills } = await available('octocat/repo')
+            expect(res.status).toBe(200)
+            expect(skills.find(s => s.name === 'a')).toMatchObject({ installed: true, conflict: false })
+            expect(skills.find(s => s.name === 'b')).toMatchObject({ installed: false, conflict: true })
+            expect(skills.find(s => s.name === 'c')).toMatchObject({ installed: false, conflict: false })
+        })
+
+        test('project 视角：全局已装也算生效（并集判定，a 场景）', async () => {
+            fakeRepo = { repoSource: 'octocat/repo', skills: [{ name: 'a', description: 'global-installed' }, { name: 'b', description: 'proj-installed' }] }
+            fakeInstalledGlobal = [{ name: 'a', source: 'octocat/repo' }]
+            fakeInstalledProject = [{ name: 'b', source: 'octocat/repo' }]
+
+            apiCalls.length = 0
+            const { skills } = await available('octocat/repo', workspaceId)
+            expect(skills.find(s => s.name === 'a')).toMatchObject({ installed: true })
+            expect(skills.find(s => s.name === 'b')).toMatchObject({ installed: true })
+            // 判定清单确实取了并集（两次 listInstalled）
+            expect(apiCalls.filter(c => c.method === 'listInstalledSkillRefs')).toHaveLength(2)
+        })
+
+        test('global 视角不看项目清单（b 场景：项目装的不挡全局安装）', async () => {
+            fakeRepo = { repoSource: 'octocat/repo', skills: [{ name: 'b', description: 'proj-only' }] }
+            fakeInstalledGlobal = []
+            fakeInstalledProject = [{ name: 'b', source: 'octocat/repo' }]
+
+            apiCalls.length = 0
+            const { skills } = await available('octocat/repo')
+            expect(skills[0]).toMatchObject({ installed: false, conflict: false })
+            expect(apiCalls.filter(c => c.method === 'listInstalledSkillRefs')).toHaveLength(1)
+        })
+
+        test('拉取失败（网络/私有 repo）→ 502 明确报错；缺 source → 400', async () => {
+            failRepoResolve = 'clone failed'
+            const { res } = await available('octocat/repo')
+            failRepoResolve = null
+            expect(res.status).toBe(502)
+            const err = await res.json() as { error: string }
+            expect(err.error).toBe('clone failed')
+            expect((await available('', 'global')).res.status).toBe(400)
+        })
+    })
+
+    describe('GET /api/skills/find（生态搜索：免知 repo 直接找 skill）', () => {
+        test('关键词透传 API，命中清单原样返回（source/skillId/installs）', async () => {
+            fakeFindResults = [
+                { name: 'pdf', source: 'anthropics/skills', skillId: 'pdf', installs: 231296 },
+                { name: 'pdf-ocr', source: 'claude-office-skills/skills', skillId: 'pdf-ocr-extraction', installs: 5963 },
+            ]
+            findCalls.length = 0
+            const res = await app.request('/api/skills/find?q=pdf', { headers: authHeaders })
+            expect(res.status).toBe(200)
+            const body = await res.json() as { skills: typeof fakeFindResults }
+            expect(body.skills).toEqual(fakeFindResults)
+            expect(findCalls).toEqual(['pdf'])
+        })
+
+        test('缺 q / 纯空白 → 400 且不触达 API', async () => {
+            findCalls.length = 0
+            expect((await app.request('/api/skills/find', { headers: authHeaders })).status).toBe(400)
+            expect((await app.request('/api/skills/find?q=%20%20', { headers: authHeaders })).status).toBe(400)
+            expect(findCalls).toHaveLength(0)
+        })
+
+        test('搜索失败 → 502 明确报错（不伪装空清单）', async () => {
+            failFind = 'skills registry search failed: HTTP 503'
+            const res = await app.request('/api/skills/find?q=pdf', { headers: authHeaders })
+            failFind = null
+            expect(res.status).toBe(502)
+            const err = await res.json() as { error: string }
+            expect(err.error).toContain('HTTP 503')
         })
     })
 
@@ -592,6 +746,7 @@ describe('skills REST 路由（GET /api/skills）', () => {
         })
 
         test('安装 → 发布事件（global scope 透传 null）', async () => {
+            fakeInstallResult = { installed: ['x'], failed: [] }
             events.length = 0
             const res = await app.request('/api/skills/install', {
                 method: 'POST',
@@ -625,18 +780,16 @@ describe('skills REST 路由（GET /api/skills）', () => {
             })
         }
 
-        test('tracked global：args 带 -g + -y', async () => {
+        test('tracked global：reinstallSkill 携带 lock 来源，global=true', async () => {
             const res = await update('gamma', 'global')
             expect(res.status).toBe(200)
-            expect(skillsCliCalls.at(-1)!.args).toEqual(['update', 'gamma', '-y', '--agent', 'claude-code', '-g'])
+            expect(reinstallCalls.at(-1)).toMatchObject({ name: 'gamma', source: 'octocat/gamma-skills', global: true })
         })
 
-        test('tracked workspace：args 带 -p、cwd=workspace', async () => {
+        test('tracked workspace：cwd=workspace、global=false', async () => {
             const res = await update('proj-tracked', workspaceId)
             expect(res.status).toBe(200)
-            const call = skillsCliCalls.at(-1)!
-            expect(call.args).toEqual(['update', 'proj-tracked', '-y', '--agent', 'claude-code', '-p'])
-            expect(call.cwd).toBe(wsDir)
+            expect(reinstallCalls.at(-1)).toMatchObject({ name: 'proj-tracked', source: 'octocat/repo', global: false, cwd: wsDir })
         })
 
         test('untracked → 400；未知名 → 404', async () => {

@@ -178,11 +178,52 @@ export const SkillVisibilitySubmissionSchema = z.object({
     workspaceId: z.string(),
 })
 
-/** POST /api/skills/install（source 非空白；trim 后透传 argv 单元素） */
+/** POST /api/skills/install（source 非空白；skills 缺省 = 全装，向后兼容） */
 export const SkillInstallSubmissionSchema = z.object({
     source: z.string().trim().min(1),
     scope: z.string(),
+    /** 可选安装清单（两步式安装第二步）：缺省 = repo 内全部 skill */
+    skills: z.array(z.string().trim().min(1)).optional(),
 })
+
+/** GET /api/skills/available 行：repo 内可选 skill + 已装/冲突标记（安装对话框复选框数据源） */
+export const SkillAvailableInfoSchema = z.object({
+    name: z.string(),
+    description: z.string(),
+    /** 当前 scope 生效态已装（global 视角 = 全局已装；project 视角 = 全局∪项目已装）——已装 readonly */
+    installed: z.boolean(),
+    /** 同名但来自其他来源（含本地 untracked）：安装会整目录覆盖已装真身，UI 须警告 */
+    conflict: z.boolean(),
+})
+
+export type SkillAvailableInfo = z.infer<typeof SkillAvailableInfoSchema>
+
+/** GET /api/skills/available 响应 */
+export const SkillAvailableResponseSchema = z.object({
+    skills: z.array(SkillAvailableInfoSchema),
+})
+
+export type SkillAvailableResponse = z.infer<typeof SkillAvailableResponseSchema>
+
+/** GET /api/skills/find 行：skills.sh 生态搜索命中（安装对话框「先搜再装」数据源） */
+export const SkillRegistrySkillSchema = z.object({
+    name: z.string(),
+    /** 安装源（owner/repo），可直接作为 available/install 端点的 source */
+    source: z.string(),
+    /** repo 内 skill 标识（选择段预勾选靶） */
+    skillId: z.string(),
+    /** skills.sh 生态累计安装数（结果排序参考） */
+    installs: z.number(),
+})
+
+export type SkillRegistrySkill = z.infer<typeof SkillRegistrySkillSchema>
+
+/** GET /api/skills/find 响应 */
+export const SkillRegistrySearchResponseSchema = z.object({
+    skills: z.array(SkillRegistrySkillSchema),
+})
+
+export type SkillRegistrySearchResponse = z.infer<typeof SkillRegistrySearchResponseSchema>
 
 /** POST /api/skills/:name/update */
 export const SkillUpdateSubmissionSchema = z.object({
