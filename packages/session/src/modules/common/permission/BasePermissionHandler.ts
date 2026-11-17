@@ -25,58 +25,6 @@ type RpcHandlerManagerLike = {
     ): void;
 };
 
-export type AutoApprovalDecision = 'approved' | 'approved_for_session';
-
-export type AutoApprovalRuleSet = {
-    alwaysToolNameHints?: string[];
-    alwaysToolIdHints?: string[];
-    writeToolNameHints?: string[];
-};
-
-const AUTO_APPROVE_TOOL_NAME_HINTS = [
-    'change_title',
-    'mobi__change_title',
-    'think',
-    'save_memory'
-];
-const AUTO_APPROVE_TOOL_ID_HINTS = ['change_title', 'save_memory'];
-const AUTO_APPROVE_WRITE_TOOL_HINTS = ['write', 'edit', 'create', 'delete', 'patch', 'fs-edit'];
-
-/**
- * 解析工具自动审批决策（独立函数，便于外部复用）
- */
-export function resolveToolAutoApprovalDecision(
-    mode: PermissionMode | undefined,
-    toolName: string,
-    toolCallId: string,
-    ruleOverrides?: AutoApprovalRuleSet
-): AutoApprovalDecision | null {
-    const rules = {
-        alwaysToolNameHints: ruleOverrides?.alwaysToolNameHints ?? AUTO_APPROVE_TOOL_NAME_HINTS,
-        alwaysToolIdHints: ruleOverrides?.alwaysToolIdHints ?? AUTO_APPROVE_TOOL_ID_HINTS,
-        writeToolNameHints: ruleOverrides?.writeToolNameHints ?? AUTO_APPROVE_WRITE_TOOL_HINTS
-    };
-
-    const lowerTool = toolName.toLowerCase();
-    const lowerId = toolCallId.toLowerCase();
-    const decisionForMode: AutoApprovalDecision = mode === 'bypassPermissions' ? 'approved_for_session' : 'approved';
-
-    if (rules.alwaysToolNameHints.some((name) => lowerTool.includes(name))) {
-        return decisionForMode;
-    }
-
-    if (rules.alwaysToolIdHints.some((name) => lowerId.includes(name))) {
-        return decisionForMode;
-    }
-
-    // Mobi 当前仅支持 Claude 的权限模式
-    if (mode === 'bypassPermissions') {
-        return 'approved_for_session';
-    }
-
-    return null;
-}
-
 export type PermissionHandlerClient = {
     rpcHandlerManager: RpcHandlerManagerLike;
     updateAgentState: (handler: (state: AgentState) => AgentState) => void;
@@ -105,6 +53,21 @@ export type CancelPendingRequestOptions = {
     rejectMessage: string;
 };
 
+/**
+ * YOLO（bypassPermissions）模式下权限审批是否免审放行。
+ *
+ * SDK 声称 bypass 全放行、不回调 canUseTool，但实测对部分工具（如 MCP 工具）仍会
+ * 回调弹窗——与 YOLO 档「免审」语义矛盾。本函数收口「权限模式驱动的放行」判定单源。
+ *
+ * 命名避开 ask/auto 语族：dontAsk = 不问直接拒、auto = SDK 模型分类器审批，
+ * 三者字面相近语义迥异，故取 bypass（= 不问直接放）。
+ *
+ * 策略模型（辅助判断是否放行）的演进点：替换本函数内部判定即可，调用方不动。
+ */
+export function shouldBypassApproval(mode: PermissionMode | undefined): boolean {
+    return mode === 'bypassPermissions';
+}
+
 export abstract class BasePermissionHandler<TResponse extends { id: string }, TResult> {
     protected readonly pendingRequests = new Map<string, PendingPermissionRequest<TResult>>();
     /** 休眠 gate 事实：待处理审批数（dormancy spec） */
@@ -129,15 +92,6 @@ export abstract class BasePermissionHandler<TResponse extends { id: string }, TR
     }
 
     protected onResponseReceived(_response: TResponse): void {
-    }
-
-    protected resolveAutoApprovalDecision(
-        mode: PermissionMode | undefined,
-        toolName: string,
-        toolCallId: string,
-        ruleOverrides?: AutoApprovalRuleSet
-    ): AutoApprovalDecision | null {
-        return resolveToolAutoApprovalDecision(mode, toolName, toolCallId, ruleOverrides);
     }
 
     protected addPendingRequest(

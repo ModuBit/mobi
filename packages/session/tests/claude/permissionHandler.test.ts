@@ -56,29 +56,47 @@ function registeredRequestIds(updateAgentState: ReturnType<typeof vi.fn>): strin
     return ids
 }
 
-describe('PermissionHandler — 模式模拟死代码已移除', () => {
+describe('PermissionHandler — YOLO（bypassPermissions）审批自动放行', () => {
     let abortSignal: AbortSignal
 
     beforeEach(() => {
         abortSignal = new AbortController().signal
     })
 
-    it('bypassPermissions 模式下 handleToolCall 不提前放行，进入正常审批 pending', () => {
-        // SDK 文档：bypassPermissions 下 canUseTool 不会被 SDK 调用。
-        // 即便被直接调用（防御），也不应自行 allow —— 决策权归 SDK。
+    it('bypassPermissions 模式下普通工具自动放行，不进审批 pending', async () => {
+        // db24be62 曾按「bypass 下 canUseTool 不会被 SDK 调用」的文档假设删掉放行分支；
+        // 实测 SDK 对部分工具（如 MCP 工具）在 bypass 下仍回调 canUseTool 弹窗，
+        // 与 YOLO 档「免审」语义矛盾——放行判定收口 shouldBypassApproval（策略模型演进点）
         const { session, updateAgentState } = createMockDeps()
         const handler = new PermissionHandler(session as never)
         handler.handleModeChange('bypassPermissions')
 
-        handler.handleToolCall(
+        const result = await handler.handleToolCall(
             'Bash',
             { command: 'ls -la' },
             { signal: abortSignal, toolUseID: 't-bypass-1' } as never
         )
 
-        // 进入 pending 会通过 addPendingRequest → updateAgentState 注册 request
+        expect(result).toEqual({ behavior: 'allow', updatedInput: { command: 'ls -la' } })
         const ids = registeredRequestIds(updateAgentState)
-        expect(ids).toContain('t-bypass-1')
+        expect(ids).not.toContain('t-bypass-1')
+    })
+
+    it('bypassPermissions 模式下问询类工具照常弹窗（YOLO 免审不免答）', () => {
+        // AskUserQuestion / RequestUserInput 是 agent 向用户征答，不是权限请求——
+        // 放行等于替用户答题，任何模式都不自动放行
+        const { session, updateAgentState } = createMockDeps()
+        const handler = new PermissionHandler(session as never)
+        handler.handleModeChange('bypassPermissions')
+
+        handler.handleToolCall(
+            'AskUserQuestion',
+            { questions: [] },
+            { signal: abortSignal, toolUseID: 't-bypass-q-1' } as never
+        )
+
+        const ids = registeredRequestIds(updateAgentState)
+        expect(ids).toContain('t-bypass-q-1')
     })
 
     it('acceptEdits 模式下编辑工具不提前放行，进入正常审批 pending', () => {
@@ -437,8 +455,9 @@ describe('PermissionHandler — 权限模式单一真相源 = session（方案 A
         const handler = new PermissionHandler(session as never)
         const debugSpy = vi.spyOn(logger, 'debug')
         try {
-            // 模拟 RPC set-session-config → syncSessionModes 直接写 session，不经过 handler
-            session.setPermissionMode('bypassPermissions')
+            // 模拟 RPC set-session-config → syncSessionModes 直接写 session，不经过 handler。
+            // 场景用 acceptEdits（bypassPermissions 已被免审放行分支消化，防御日志不再覆盖）
+            session.setPermissionMode('acceptEdits')
 
             handler.handleToolCall(
                 'Bash',
@@ -446,12 +465,12 @@ describe('PermissionHandler — 权限模式单一真相源 = session（方案 A
                 { signal: abortSignal, toolUseID: 't-a1' } as never
             )
 
-            // 防御日志（:299）打印的是 session 当前值 'bypassPermissions'
+            // 防御日志打印的是 session 当前值 'acceptEdits'
             const warnLog = debugSpy.mock.calls.find(([msg]) =>
                 String(msg).includes('canUseTool invoked in')
             )
             expect(warnLog).toBeDefined()
-            expect(String(warnLog![0])).toContain('bypassPermissions')
+            expect(String(warnLog![0])).toContain('acceptEdits')
         } finally {
             debugSpy.mockRestore()
         }

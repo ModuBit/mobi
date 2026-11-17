@@ -31,6 +31,7 @@ import { PermissionMode } from "../types";
 import { isObject, ELICITATION_TOOL_NAME } from "@mobi/shared";
 import {
     BasePermissionHandler,
+    shouldBypassApproval,
     type PendingPermissionRequest,
     type PermissionCompletion
 } from "../../modules/common/permission/BasePermissionHandler";
@@ -494,11 +495,18 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
-        // 防御性诊断：acceptEdits/bypassPermissions 模式下 canUseTool 理论上不被 SDK 调用
-        // （SDK 自行放行编辑/全部工具）。若被调用，说明 SDK 行为与文档不符，记 warn 便于排查
         // 模式从 session 读（唯一真相源）：web 切换写入 session，此处立即感知
         const currentPermissionMode = this.session.getPermissionMode();
-        if (currentPermissionMode === 'acceptEdits' || currentPermissionMode === 'bypassPermissions') {
+        // YOLO（bypassPermissions）免审放行：SDK 对部分工具（如 MCP 工具）在 bypass 下
+        // 仍回调 canUseTool，弹窗与档位语义矛盾。问询类工具不在此列——那是向用户征答，
+        // 放行等于替用户答题（YOLO 免审不免答）
+        if (!isQuestionTool && shouldBypassApproval(currentPermissionMode)) {
+            logger.debug(`[permission] bypass-allow for ${toolName} (bypassPermissions)`);
+            return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
+        }
+        // 防御性诊断：acceptEdits 模式下 canUseTool 理论上不被 SDK 调用
+        // （SDK 自行放行编辑工具）。若被调用，说明 SDK 行为与文档不符，记 warn 便于排查
+        if (currentPermissionMode === 'acceptEdits') {
             logger.debug(`[permission][WARN] canUseTool invoked in ${currentPermissionMode} mode for ${toolName}; SDK should have auto-handled`);
         }
 

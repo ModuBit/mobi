@@ -34,6 +34,20 @@ _Avoid_: 分叉点（口语）、fork 点
 remote 模式中 Query 重启的单一状态所有者。rewind 与 output style 切换只向它提交重启意图；它统一管理异步准备占位、待执行单槽、消息队列清理与退出哨兵配对，launcher 负责消费和完成请求。
 _Avoid_: 让 handler 或 launcher 直接读写 pending / in-flight 标志，或者自行清队列并注入哨兵。
 
+### 权限审批
+
+**权限审批（Permission Approval）**:
+工具执行前向用户征求许可的请求——SDK 经 canUseTool 回调到会话宿主，宿主落 pending 卡片等用户裁决。裁决语义按权限模式分流：`shouldBypassApproval` 收口「模式驱动的免审放行」判定（策略模型的演进点：替换其内部判定，调用方不动）。
+_Avoid_: 自动审批/AutoApproval（auto 是 SDK 模型分类器审批档的专名，不可挪用）、把 MCP elicitation 混入（那是征询不是审批）
+
+**问询（Question Tool）**:
+agent 向用户征答的表单工具（AskUserQuestion / RequestUserInput）——不是权限请求，放行等于替用户答题，任何模式（含 YOLO）都不自动放行。与权限审批共用 canUseTool 入口但语义分道，由问询判定先行分流。
+_Avoid_: 当作特殊工具的审批处理、YOLO 代答
+
+**YOLO 档（bypassPermissions 的用户语言）**:
+工具执行免审：凡走到权限审批的工具一律放行（静默）。SDK 声称 bypass 下不回调 canUseTool，实测对部分工具（如 MCP 工具）仍回调——免审放行正是兜住这个缺口。边界：免审不免答（问询照弹）。
+_Avoid_: 用「不问」概括（dontAsk 也是不问但语义是直接拒；bypass 是不问直接放——命名与表述都取 bypass 语族）
+
 ### 轮次变更
 
 **轮次变更（Turn Diff）**：
