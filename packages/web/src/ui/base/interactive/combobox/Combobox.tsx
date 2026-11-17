@@ -26,7 +26,8 @@
 //   显示补全请求进行中。默认关闭，既有选择语义不受影响
 // ⑩弹层 portal 到 body + fixed 定位：不跟触发器同属一个裁切子树，dialog/sheet 的
 //   overflow 不再裁掉列表（局部收窄/翻转只能猜可用空间）；层号走 overlayLayer，
-//   保证压在 dialog/sheet 之上。列表仍按视口可用空间收窄（内部滚动）
+//   保证压在 dialog/sheet 之上。列表仍按视口可用空间收窄（内部滚动）；
+//   移动端虚拟键盘（visualViewport / VirtualKeyboard API）计入可视底边（见 keyboardGeometry）
 "use client";
 
 import { createPortal } from "react-dom";
@@ -51,6 +52,7 @@ import { ClearButton } from "@/ui/base/motion/ClearButton";
 import { normalizeNeedle, optionMatches } from "@/ui/base/interactive/optionSearch";
 import { scrollOptionIntoView } from "@/ui/base/interactive/scrollOptionIntoView";
 import { useOpenOverlayLayer } from "@/ui/base/layout/overlayLayer";
+import { getKeyboardTop, subscribeKeyboardGeometry } from "@/ui/base/layout/keyboardGeometry";
 import styles from "./combobox.module.css";
 
 export interface ComboboxOption {
@@ -230,9 +232,12 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
       const rect = shell.getBoundingClientRect();
       const viewportHeight = window.innerHeight;
       // 可用空间以 **visualViewport** 为准：移动端虚拟键盘弹出时视觉视口被压矮、
-      // layout 视口不变，只看 innerHeight 会误判「下方放得下」→ 列表被键盘盖住
+      // layout 视口不变，只看 innerHeight 会误判「下方放得下」→ 列表被键盘盖住。
+      // Android overlay 模式下视口根本不缩（index.html 置 overlaysContent），
+      // 键盘几何只能从 VirtualKeyboard API 读，取两者较小的可视底边
       const visual = window.visualViewport;
-      const visibleBottom = visual ? visual.offsetTop + visual.height : viewportHeight;
+      const visualBottom = visual ? visual.offsetTop + visual.height : viewportHeight;
+      const visibleBottom = Math.min(visualBottom, getKeyboardTop());
       const visibleTop = visual ? visual.offsetTop : 0;
       // 上下可用空间都已扣掉与触发器之间的间距
       const below = visibleBottom - rect.bottom - GAP;
@@ -256,15 +261,18 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     // capture：页面内任意滚动容器（dialog body / sheet body / 列表）滚动都要让弹层跟随
     window.addEventListener("scroll", measure, { capture: true, passive: true });
     window.addEventListener("resize", measure);
-    // 虚拟键盘开合只改视觉视口：另行跟踪（iOS/Android 都是 resize + scroll 组合）
+    // 虚拟键盘开合只改视觉视口：另行跟踪（iOS/Android resize 模型都是 resize + scroll 组合）；
+    // overlay 模式视口不缩，只有 geometrychange（Android Chromium）
     window.visualViewport?.addEventListener("resize", measure);
     window.visualViewport?.addEventListener("scroll", measure);
+    const unsubscribeKeyboard = subscribeKeyboardGeometry(measure);
     return () => {
       observer.disconnect();
       window.removeEventListener("scroll", measure, { capture: true });
       window.removeEventListener("resize", measure);
       window.visualViewport?.removeEventListener("resize", measure);
       window.visualViewport?.removeEventListener("scroll", measure);
+      unsubscribeKeyboard();
     };
   }, [open, popoverNode, listMaxHeight]);
   // 关合后复位收窄：下次打开按新的可用空间重新测（弹窗尺寸/滚动位置可能已变）
