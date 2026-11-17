@@ -14,9 +14,12 @@
  * limitations under the License.
  *
  * uiarc dialog 上游 css 原样快照（2026-11-17，registry item dialog.json）。
- * 本地修改只有一条（本块之外的规则逐字等于上游）：
+ * 本地修改（本块之外的规则逐字等于上游）：
  *  - z-index 50/51 → var(--mobi-z-overlay)/+1：本仓 antd 弹层从 1000 起，
  *    生态默认 50 会在空间重叠处被 antd 层盖住
+ *  - .header 纵向内衬 --space-6(24px) → --space-4(16px)：上游按「大标题 + 说明」
+ *    双行留白，mobi 的弹窗多为单行标题，48px 上下留白把头部撑成半屏（2026-11-17）。
+ *    横向保持 24px 与 body 对齐
  */
 .overlay { position: fixed; inset: 0; z-index: var(--mobi-z-overlay, 50); background: oklch(10% 0 0 / .46); -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px); }
 /* Centered with auto margins (like a native modal dialog) so transform stays free for the entrance spring. */
@@ -29,7 +32,7 @@
 .content:focus { outline: none; }
 /* While the layers leave, clicks pass through, so the trigger can reopen the dialog mid-exit. Radix sets pointer-events inline on the overlay. */
 .overlay[data-state="closed"], .content[data-state="closed"] { pointer-events: none !important; }
-.header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-5); padding: var(--space-6); border-bottom: 1px solid var(--border); }
+.header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-5); padding: var(--space-4) var(--space-6); border-bottom: 1px solid var(--border); }
 .title { margin: 0; font-family: var(--font-body); font-size: var(--text-lg); font-weight: 500; letter-spacing: var(--tracking-body); line-height: var(--leading-body); }
 .description { margin: var(--space-2) 0 0; color: var(--text-secondary); font-size: var(--text-sm); line-height: var(--leading-body); }
 .title, .description { position: relative; overflow-wrap: anywhere; }

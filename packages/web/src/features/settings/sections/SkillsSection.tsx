@@ -554,6 +554,7 @@ export function SkillsSection() {
                     <FormBody $token={token}>
                         {/* 单输入兼做搜索与来源：打字零请求；动作显式触发（字段内搜索钮 / 底部主钮 /
                             回车），移动端不依赖回车 */}
+                        <Hint $token={token}>{t('settings.skills.installSearchHint')}</Hint>
                         <SearchField
                             id="skills-install-query"
                             value={installInput}
@@ -618,7 +619,6 @@ export function SkillsSection() {
                                 <Hint $token={token}>{t('settings.skills.findEmpty')}</Hint>
                             )
                         )}
-                        <Hint $token={token}>{t('settings.skills.installSearchHint')}</Hint>
                         <Combobox
                             label={t('settings.skills.installScopeLabel')}
                             value={installScope}
