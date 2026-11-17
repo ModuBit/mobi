@@ -85,6 +85,54 @@ describe('BubbleListChat window', () => {
     })
 })
 
+describe('BubbleListChat 首页历史加载行', () => {
+    it('historyLoading=true：列表顶部渲染历史加载行，已有内容照常渲染', () => {
+        const items = [item('k0'), item('k1')]
+        const { container } = render(
+            <BubbleListChat
+                items={items}
+                hasNextPage={false}
+                isFetchingNextPage={false}
+                historyLoading
+                onLoadMore={() => {}}
+            />,
+        )
+        // 加载行 = role=status 的品牌动效 + 文案（文案随语言变化，按角色断言）
+        expect(container.querySelector('[role="status"]')).not.toBeNull()
+        expect(container.querySelectorAll('[data-bubble-key]').length).toBe(2)
+    })
+
+    it('isFetchingNextPage 时首页历史行与「滚到顶加载」行并存，互不吞并', () => {
+        const items = [item('k0')]
+        const { container } = render(
+            <BubbleListChat
+                items={items}
+                hasNextPage
+                isFetchingNextPage
+                historyLoading
+                onLoadMore={() => {}}
+            />,
+        )
+        // 历史行（role=status）+ 滚到顶行（纯 logo）+ 真实 item = 3 个 bubble
+        expect(container.querySelectorAll('[role="status"]').length).toBe(1)
+        expect(container.querySelectorAll('.ant-bubble').length).toBe(3)
+    })
+
+    it('historyLoading 翻回 false 后加载行消失（不残留）', () => {
+        const items = [item('k0')]
+        const renderProps = {
+            items,
+            hasNextPage: false,
+            isFetchingNextPage: false,
+            onLoadMore: () => {},
+        }
+        const { container, rerender } = render(<BubbleListChat {...renderProps} historyLoading />)
+        expect(container.querySelector('[role="status"]')).not.toBeNull()
+        rerender(<BubbleListChat {...renderProps} historyLoading={false} />)
+        expect(container.querySelector('[role="status"]')).toBeNull()
+    })
+})
+
 // ──────────────────────────────────────────────────────────────
 // fill 级联语义：fill 是几何概念——内容未撑满视口时才补拉（注释「初始加载内容未溢出时连续拉页」）。
 // jsdom 元素无布局，scrollHeight/clientHeight 恒 0，用原型 getter 覆写模拟几何。

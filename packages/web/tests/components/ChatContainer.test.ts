@@ -266,11 +266,12 @@ vi.mock('react-i18next', () => ({
 }))
 
 // 消息数据源（稳定引用，避免 effect 循环）
-const chatState = vi.hoisted(() => ({ messages: [] as Array<Record<string, unknown>> }))
+const chatState = vi.hoisted(() => ({ messages: [] as Array<Record<string, unknown>>, hasFetchedLatest: true }))
 vi.mock('@/core/data/hooks/queries/useMessages', () => ({
     useMessages: () => ({
         data: chatState.messages,
         isLoading: false,
+        hasFetchedLatest: chatState.hasFetchedLatest,
         fetchNextPage: () => Promise.resolve(),
         hasNextPage: false,
         isFetchingNextPage: false,
@@ -336,6 +337,11 @@ vi.mock('@/pages/session/ChatComposer', () => ({
     ChatComposer: () => null,
 }))
 
+// ChatWelcome 的像素头像用 canvas 2d（jsdom getContext 返回 null），替身掉
+vi.mock('@/ui/pixel-avatar/PixelAvatar', () => ({
+    PixelAvatar: () => null,
+}))
+
 // 气泡列表替身：只渲染 footer（被测标注所在），content 链（tiptap 等）不进 DOM
 vi.mock('@/features/chat/BubbleListChat', () => ({
     BubbleListChat: (props: { items: Array<{ key: string; footer?: React.ReactNode }> }) =>
@@ -367,10 +373,28 @@ function userMsg(id: string, text: string, lifecycle: string | null): DecryptedM
 
 beforeEach(() => {
     chatState.messages = []
+    chatState.hasFetchedLatest = true
 })
 
 afterEach(() => {
     cleanup()
+})
+
+describe('首页历史加载占位', () => {
+    it('历史未到位且列表为空：渲染消息骨架（不早返回全屏 loader）', () => {
+        chatState.messages = []
+        chatState.hasFetchedLatest = false
+        render(createElement(ChatContainer, { sessionId: 'test-session' }))
+        expect(screen.getByRole('status', { name: 'chat.loadingHistory' })).toBeInTheDocument()
+    })
+
+    it('历史已到位且空会话：渲染欢迎页而非骨架', () => {
+        chatState.messages = []
+        chatState.hasFetchedLatest = true
+        render(createElement(ChatContainer, { sessionId: 'test-session' }))
+        expect(screen.queryByRole('status', { name: 'chat.loadingHistory' })).not.toBeInTheDocument()
+        expect(screen.getByText(/^chat\.welcome\.(morning|afternoon|evening)$/)).toBeInTheDocument()
+    })
 })
 
 describe('终态用户气泡标注', () => {

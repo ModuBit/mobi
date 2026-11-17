@@ -19,6 +19,7 @@ import { Bubble } from '@ant-design/x'
 import { MobiLogo } from '@/ui/base/brand/MobiLogo'
 import { BUBBLE_ROLES } from '@/ui/base/display/bubbleRoles'
 import type { BubbleItemBase } from './buildBubbleItems'
+import { HistoryLoadingRow } from './ChatMessagesSkeleton'
 import { useStickToBottom } from './useStickToBottom'
 import { VISIBLE_WINDOW, EXPAND_WINDOW } from '@/core/data/stores/messageWindowStore'
 
@@ -42,6 +43,8 @@ interface BubbleListChatProps {
     hasNextPage: boolean
     /** 正在加载更旧的历史页（顶部渲染 MobiLogo loading，fill 级联期间不显示） */
     isFetchingNextPage: boolean
+    /** 首页历史仍在拉取（SSE 先到的内容已可看）：顶部渲染历史加载行 */
+    historyLoading?: boolean
     /** 加载更旧历史（对接 fetchNextPage） */
     onLoadMore: () => void
     /** 跟随状态变化：false 表示用户在看历史，驱动「滚到底」按钮显隐 */
@@ -93,7 +96,7 @@ function isViewportUnfilled(scrollBox: HTMLElement): boolean {
  * 独立管理视口，与手动 restore 时序冲突），改由 useStickToBottom + 本组件自管。
  */
 export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatProps>(function BubbleListChat(
-    { items, hasNextPage, isFetchingNextPage, onLoadMore, onFollowingChange },
+    { items, hasNextPage, isFetchingNextPage, historyLoading = false, onLoadMore, onFollowingChange },
     ref,
 ) {
     // 外层容器 ref：用 querySelector 找 Bubble.List 内部 scrollBox，不依赖 BubbleListRef.scrollBoxNativeElement
@@ -350,11 +353,20 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
             const n = Math.min(windowSizeRef.current, EXPAND_WINDOW)
             windowed = items.slice(-n)
         }
-        // 顶部 loading：fill 级联期间不显示（高度来回跳动致抖动），仅用户主动滚到顶加载时显示。
-        // MobiLogo 小跳（loop）替代骨架屏——品牌动效即"正在拉取"，且比骨架屏高度小、prepend 跳动小
-        if (!isFetchingNextPage || isFillingRef.current) return windowed
-        return [
-            {
+        // 顶部加载行（顺序：首页历史拉取中 → 用户滚到顶拉更旧）：
+        // - historyLoading：首页历史未到位但已有实时内容（SSE 先到）——历史行表达「上面还有内容在路上」；
+        // - __loading-more__：用户主动滚到顶加载；fill 级联期间不显示（高度来回跳动致抖动）。
+        //   MobiLogo 小跳（loop）替代骨架屏——品牌动效即"正在拉取"，且比骨架屏高度小、prepend 跳动小。
+        const topRows: ChatBubbleItem[] = []
+        if (historyLoading) {
+            topRows.push({
+                key: '__history-loading__',
+                role: 'system' as const,
+                content: <HistoryLoadingRow />,
+            })
+        }
+        if (isFetchingNextPage && !isFillingRef.current) {
+            topRows.push({
                 key: '__loading-more__',
                 role: 'system' as const,
                 content: (
@@ -362,13 +374,13 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
                         <MobiLogo size={40} />
                     </div>
                 ),
-            },
-            ...windowed,
-        ]
-    }, [items, following, isFetchingNextPage, windowTick])
+            })
+        }
+        return topRows.length > 0 ? [...topRows, ...windowed] : windowed
+    }, [items, following, isFetchingNextPage, windowTick, historyLoading])
 
-    // 跳过 loading，取第一个真实 item 的 key（供 offsetTop querySelector 测量）
-    const firstRealItem = renderItems.find(it => it.key !== '__loading-more__')
+    // 跳过顶部加载行，取第一个真实 item 的 key（供 offsetTop querySelector 测量）
+    const firstRealItem = renderItems.find(it => it.key !== '__loading-more__' && it.key !== '__history-loading__')
     firstRenderItemKeyRef.current = firstRealItem?.key
 
     return (

@@ -561,6 +561,7 @@
       "evening": "Good evening",
       "subtitle": "How can I help you today?"
     },
+    "loadingHistory": "Loading message history…",
     "todo": {
       "allCompleted": "All completed",
       "completed": "completed",

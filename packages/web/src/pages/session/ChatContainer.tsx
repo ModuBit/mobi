@@ -58,6 +58,7 @@ import { CLAUDE_MODEL_FALLBACK } from '@mobi/shared'
 import { canForkMessage, collectForkTargetBlockIds, extractForkRejectCode, forkRejectReasonKey } from '@/domain/chat/fork'
 import { agentBlockMessageKey, decryptedMessageBlockKeyPrefix } from '@/domain/chat/blockId'
 import { ChatWelcome } from '@/features/chat/ChatWelcome'
+import { ChatMessagesSkeleton } from '@/features/chat/ChatMessagesSkeleton'
 import { UserMessageFooter } from '@/features/chat/UserMessageFooter'
 import { AgentTurnActions } from '@/features/chat/AgentTurnActions'
 import { CrossSessionTag } from '@/features/chat/blocks/CrossSessionTag'
@@ -90,7 +91,6 @@ import { collapsibleUserMessageStyles } from '@/features/chat/CollapsibleUserMes
 import { spring } from '@/ui/base/motion/presets'
 import { SKETCH_DOCK_HEIGHT_RATIO, SKETCH_DOCK_GAP, SKETCH_DOCK_SIDE_INSET, SKETCH_Z_COMPOSER } from '@/domain/sketch/sketchLayout'
 
-import { MobiLogo } from '@/ui/base/brand/MobiLogo'
 // BUBBLE_ROLES 由 BubbleListChat 内部使用（from '@/ui/base/display/bubbleRoles'），此处仅保留 re-export
 // 供历史 import './ChatContainer' 的调用方兼容
 export { BUBBLE_ROLES } from '@/ui/base/display/bubbleRoles'
@@ -264,7 +264,7 @@ interface ChatContainerProps {
 export function ChatContainer({ sessionId, extraComposerButtons, extraComposerItems }: ChatContainerProps) {
     const {
         data: messages = [],
-        isLoading: messagesLoading,
+        hasFetchedLatest,
         lastActivityAt: streamActivityAt,
         fetchNextPage,
         hasNextPage,
@@ -1608,16 +1608,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     const agentFlavor = session?.metadata?.flavor ?? null
 
-    if (messagesLoading) {
-        return (
-            // MobiLogo 小跳 + 文字：svg aria-hidden，语义由文字承载（屏幕阅读器可读）
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                <MobiLogo size={56} />
-                <span style={{ fontSize: 13, color: 'var(--ant-color-text-tertiary)' }}>{t('common.loading')}</span>
-            </div>
-        )
-    }
-
     return (
         // 全屏浮层挂载层：全宽（不受 CHAT_MAX_WIDTH 限宽），画板全屏时撑满整个内容区
         // （红框区域）；内层聊天列保持 1200 居中不受影响
@@ -1640,12 +1630,17 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 onMouseUp={isMobile ? undefined : handleSelectionMouseUp}
             >
                 {/* 空会话但有尾行（运行指示 / 缓存过期 / 气泡让位）时也要挂列表：
-                    这些行属于聊天流，只挂 ChatWelcome 会让它们在首条消息落库前整段不可见 */}
+                    这些行属于聊天流，只挂 ChatWelcome 会让它们在首条消息落库前整段不可见。
+                    首页历史仍在拉取时用骨架占位——不能早返回全屏 loader：SSE 可能已经在
+                    输出，全屏层会盖住流式内容并卸载 composer */}
                 {chatBlocks.length === 0 && bubbleItems.length === 0 ? (
-                    <ChatWelcome sessionId={sessionId} />
+                    hasFetchedLatest
+                        ? <ChatWelcome sessionId={sessionId} />
+                        : <ChatMessagesSkeleton />
                 ) : (
                     <BubbleListChat
                         ref={chatListRef}
+                        historyLoading={!hasFetchedLatest}
                         items={bubbleItems}
                         hasNextPage={hasNextPage}
                         isFetchingNextPage={isFetchingNextPage}

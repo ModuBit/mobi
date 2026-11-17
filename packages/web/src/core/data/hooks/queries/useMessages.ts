@@ -52,10 +52,9 @@ export function useMessages<T = DecryptedMessage[]>(
     useEffect(() => {
         if (!api || !sessionId) return
         // 防多消费方重复触发 fetchLatest：ChatContainer + ComposerInfoPanel 都用 useMessages，
-        // 若各自 effect 都触发 fetchLatest，空会话下 ChatContainer `if (messagesLoading) return <Spin>`
-        // 早返回会让 ComposerInfoPanel 反复 mount/unmount → 每次 mount 触发 effect → fetchLatest →
-        // isLoading 翻 true → 早返回 → unmount → fetchLatest 完成 → 渲染 → mount → ... 死循环。
-        // hasFetchedLatest 标记"首页已拉过"，多消费方共享，clearMessageWindow 重置。
+        // 每个 hook 实例都会跑本 effect。hasFetchedLatest（store 级共享标记）挡住已完成的
+        // 首拉，isLoading 挡住在途首拉，clearMessageWindow 时重置。失败同样置
+        // hasFetchedLatest=true（见 store），避免空会话下反复重试成请求风暴。
         const state = getMessageWindowState(sessionId)
         if (state.hasFetchedLatest || state.isLoading) return
         void fetchLatestMessages(api, sessionId)
@@ -70,6 +69,12 @@ export function useMessages<T = DecryptedMessage[]>(
         lastActivityAt: state.lastActivityAt,
         hasNextPage: state.hasMore,
         isLoading: state.isLoading,
+        /**
+         * 首页历史是否已拉取完成（含失败）——false 表示历史仍在路上，会话列表区
+         * 应显示加载占位。不能用 isLoading 代替：SSE 快照先于首拉入库时
+         * isLoading 恒 false（isLoading 语义 = 「首拉且 store 为空」），加载态会凭空消失。
+         */
+        hasFetchedLatest: state.hasFetchedLatest,
         isFetchingNextPage: state.isLoadingMore,
         fetchNextPage: useCallback(() => api && sessionId ? fetchOlderMessages(api, sessionId) : Promise.resolve(), [api, sessionId]),
     }

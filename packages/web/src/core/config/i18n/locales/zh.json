@@ -552,6 +552,7 @@
       "evening": "晚上好",
       "subtitle": "有什么我可以帮你的？"
     },
+    "loadingHistory": "正在加载历史消息…",
     "todo": {
       "allCompleted": "全部完成",
       "completed": "已完成",

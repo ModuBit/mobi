@@ -179,21 +179,24 @@ describe('fetchLatest / generation', () => {
         expect(ids).not.toContain('a')
     })
 
-    it('首次加载（store 空）fetchLatest 翻 isLoading=true —— 供 ChatContainer 显示 Spin', async () => {
+    it('首次加载（store 空）fetchLatest 翻 isLoading=true，hasFetchedLatest 完成才翻 true', async () => {
         let resolveList: (v: { messages: DecryptedMessage[]; page: { hasMore: boolean; nextBeforeSeq: number | null } }) => void = () => {}
         const api = makeApi([{ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } }])
         api.messages.list = async () =>
             new Promise(resolve => { resolveList = (v) => resolve({ data: v }) as never }) as never
 
         const p = fetchLatestMessages(api, 's1')
-        // 进行中：store 为空 → isLoading 应翻 true（首次加载语义）
+        // 进行中：store 为空 → isLoading 应翻 true（首次加载语义）；
+        // hasFetchedLatest 仍为 false —— 页面据它渲染历史加载占位（含 SSE 先到的场景）
         expect(getMessageWindowState('s1').isLoading).toBe(true)
+        expect(getMessageWindowState('s1').hasFetchedLatest).toBe(false)
         resolveList({ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } })
         await p
         expect(getMessageWindowState('s1').isLoading).toBe(false)
+        expect(getMessageWindowState('s1').hasFetchedLatest).toBe(true)
     })
 
-    it('重连补拉（store 已有数据）不翻 isLoading —— 防 ChatContainer 早返回循环', async () => {
+    it('重连补拉（store 已有数据）不翻 isLoading 也不清 hasFetchedLatest', async () => {
         // 首次拉首页，store 有数据
         const api = makeApi([
             { messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } },
@@ -209,11 +212,10 @@ describe('fetchLatest / generation', () => {
             new Promise(resolve => { resolveList = (v) => resolve({ data: v }) as never }) as never
 
         const p = fetchLatestMessages(api, 's1')
-        // 进行中：store 已有数据 → isLoading 不应翻 true（重连补拉静默 merge）
-        // 否则 ChatContainer `if (messagesLoading) return <Spin>` 早返回翻转 →
-        // ComposerInfoPanel 反复 mount/unmount → 每次 mount 触发 useMessages useEffect →
-        // 又调 fetchLatest → isLoading=true → 早返回 → 死循环
+        // 进行中：store 已有数据 → isLoading 不应翻 true（重连补拉静默 merge）；
+        // hasFetchedLatest 保持 true —— 历史已在手，加载占位不得凭空重现
         expect(getMessageWindowState('s1').isLoading).toBe(false)
+        expect(getMessageWindowState('s1').hasFetchedLatest).toBe(true)
         resolveList({ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } })
         await p
         expect(getMessageWindowState('s1').isLoading).toBe(false)

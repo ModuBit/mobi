@@ -333,9 +333,8 @@ export async function fetchLatestMessages(api: MobiApi, sessionId: string): Prom
         latestInFlight.delete(sessionId)
     }
     // isLoading 语义 = 「首次加载且 store 无数据」。
-    // 重连补拉（store 已有数据）静默 merge，不翻 isLoading —— 否则 ChatContainer 的
-    // `if (messagesLoading) return <Spin>` 早返回会翻转，致 ComposerInfoPanel 反复 mount/unmount，
-    // 其 useMessages 每次 mount 都触发 useEffect → fetchLatest → isLoading=true → 早返回 → 循环。
+    // 重连补拉（store 已有数据）静默 merge，不翻 isLoading —— 它是「空列表首拉」信号，
+    // 页面以 hasFetchedLatest 驱动历史加载占位；补拉翻 isLoading 会让占位态凭空重现。
     const isEmpty = prev.messages.length === 0
     const gen = beginAsyncGeneration(sessionId, 'latest', { isLoading: isEmpty })
     latestInFlight.set(sessionId, gen)
