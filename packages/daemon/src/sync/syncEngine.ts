@@ -36,6 +36,7 @@ import { getExecutorState } from './executorRuntime'
 import { buildHostMetadata } from '@mobi/node-core/hostMetadata'
 import { AgentSessionService } from './agentSessionService'
 import { MessageService, type SendMessagePayload } from './messageService'
+import { SkillInventoryBus } from './skillInventoryBus'
 import { WorkspaceCache } from './workspaceCache'
 import { RpcGateway, type ApprovePermissionParams } from './rpcGateway'
 import { SessionCache } from './sessionCache'
@@ -105,6 +106,8 @@ export class SyncEngine {
     readonly agentSessions: AgentSessionService
     private readonly workspaceCache: WorkspaceCache
     private readonly messageService: MessageService
+    /** skill 清单变更事件总线（发布方：skills 路由 / reload 命令观测；消费方：本引擎订阅） */
+    readonly skillInventory: SkillInventoryBus
     private readonly rpcGateway: RpcGateway
     /** 执行层（ticket-15 起）：spawn/清理类编排的执行点；ticket-20 起 socket 实现退场，
      *  LocalExecutor 是唯一形态（深化候选②票③删 ExecutorHost 接口，测试注入走
@@ -213,7 +216,11 @@ export class SyncEngine {
             canReceiveNow: (sessionId) => this.receiveReadiness.get(sessionId),
         })
         this.workspaceCache = new WorkspaceCache(store, this.eventPublisher)
-        this.messageService = new MessageService(store, io, this.eventPublisher)
+        this.messageService = new MessageService(store, io, this.eventPublisher, (sessionId, text) => this.observeReloadCommandText(sessionId, text))
+        // skill 清单事件总线：本引擎是统一消费方（订阅 → 通用 refreshSDKMetadata）；
+        // 发布方（skills 路由 / reload 命令观测）只持 bus 引用，不感知消费逻辑
+        this.skillInventory = new SkillInventoryBus()
+        this.skillInventory.subscribe(event => this.refreshSDKMetadata(event.namespace, event.workspaceId, { force: true }))
         this.rpcGateway = new RpcGateway(io, rpcRegistry)
         // socket 版实现已随 machine 通道删除（ticket-20）；缺省给无 bridge 的本地实现——
         // 非直调路径全可用，spawn 会报「bridge 未接线」（生产由 hubServer 注入带 bridge 的实例）
@@ -1164,19 +1171,45 @@ export class SyncEngine {
     }
 
     /**
-     * skill 装卸（install/uninstall）后刷新受影响活跃会话的 sdkMetadata。
-     * `/` 面板的命令清单以会话维度的 sdkMetadata 为源，与 skill 管理列表是两套缓存
-     * （queryKey 不相交，卸载 mutation 的 skillsRoot 失效够不到它）；不主动刷则收敛
-     * 全依赖 CC 目录 watcher 推 commands_changed（daemon 侧零承诺）。global 变更影响
-     * 全部活跃会话，project 变更只影响归属该 workspace 的会话；force 绕过 GET 节流，
+     * 通用范围刷新：某 workspace（null = global 视角）范围内的全部活跃会话统一刷一遍
+     * sdkMetadata。`/` 面板的命令清单以会话维度的 sdkMetadata 为源，与 skillsRoot 查询
+     * 缓存是两套缓存（queryKey 不相交，skills mutation 的 skillsRoot 失效够不到它）；
+     * 不主动刷则收敛全依赖 CC 目录 watcher 推 commands_changed（daemon 侧零承诺）。
+     * 事件总线的统一消费入口（skill-inventory-changed 订阅处）：force 绕过 GET 节流，
      * 仍受 refreshingMetadata 去重与 apply 侧 sdkMetadataChanged 等价闸约束（无变化不多发）。
      */
-    refreshSDKMetadataAfterSkillChange(namespace: string, workspaceId: string | null): void {
+    refreshSDKMetadata(namespace: string, workspaceId: string | null, options?: { force?: boolean }): void {
         const affected = this.getSessionsByNamespace(namespace).filter(session =>
             session.active && (workspaceId === null || session.workspaceId === workspaceId))
         for (const session of affected) {
-            void this.refreshSDKMetadataBackground(session.id, { force: true })
+            void this.refreshSDKMetadataBackground(session.id, { force: options?.force })
         }
+    }
+
+    // ============ reload 命令观测（skill-inventory-changed 的会话内发布源）============
+
+    /**
+     * 会话进程内的 CC reload 命令（/reload-skills、/reload-plugins）重载的是该会话
+     * 自己的 CC 进程清单——只影响发起会话（各自独立进程），发布范围即会话自身归属。
+     * 检测用 startsWith（trim 后）：匹配命令及其参数形态；不用 contains——聊天内容里
+     * 偶然提到命令名不该触发刷新。受理即发布（不等轮次结束）：简单优先；已知时序
+     * 特性是受理刻 CC 尚未执行完 reload，该次刷新可能拿到旧值，最终收敛仍由 SWR
+     * 兜底与等价闸保证（重复刷新幂等无副作用）。
+     */
+    private static readonly RELOAD_COMMANDS = ['/reload-skills', '/reload-plugins'] as const
+
+    /** 用户消息受理时观测 reload 命令文本（MessageService.sendMessage 受理点回调） */
+    observeReloadCommandText(sessionId: string, text: string): void {
+        const trimmed = text.trim()
+        if (!SyncEngine.RELOAD_COMMANDS.some(cmd => trimmed.startsWith(cmd))) return
+        const session = this.getSession(sessionId)
+        if (!session) return
+        this.skillInventory.emit({
+            type: 'skill-inventory-changed',
+            namespace: session.namespace,
+            workspaceId: session.workspaceId ?? null,
+            source: 'reload-command',
+        })
     }
 }
 

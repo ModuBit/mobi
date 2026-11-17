@@ -62,16 +62,18 @@ function findSkill(skills: SkillInfo[], name: string): SkillInfo | undefined {
 }
 
 /**
- * skill 清单变更（装卸/启停）后触发受影响活跃会话的 sdkMetadata 后台刷新。
- * `/` 面板命令清单与会话 sdkMetadata 同源，与 skillsRoot 查询缓存键不相交——不主动刷
- * 则收敛全依赖 CC watcher 推 commands_changed（daemon 侧零承诺）。fire-and-forget：
- * engine 侧自带去重/等价闸（无变化不多发 SSE），失败静默（web 兜底 SWR）。
+ * skill 清单变更（装卸/启停/安装）→ 进程内事件总线发布（skill-inventory-changed）。
+ * 缓存刷新的编排归订阅方（SyncEngine.refreshSDKMetadata 统一消费），路由只声明
+ * 「清单变了」这一事实——发布方不感知消费方。fire-and-forget：订阅侧自带去重/
+ * 等价闸（无变化不多发 SSE），失败静默（web 兜底 SWR）。
  */
 function notifySkillChange(c: Context, engine: SyncEngine, workspaceId: string): void {
-    void engine.refreshSDKMetadataAfterSkillChange(
-        c.get('namespace'),
-        workspaceId === SKILL_SCOPE_GLOBAL ? null : workspaceId,
-    )
+    engine.skillInventory.emit({
+        type: 'skill-inventory-changed',
+        namespace: c.get('namespace'),
+        workspaceId: workspaceId === SKILL_SCOPE_GLOBAL ? null : workspaceId,
+        source: 'manage',
+    })
 }
 
 export function createSkillsRoutes(
@@ -266,6 +268,8 @@ export function createSkillsRoutes(
 
         const result = await updateSkill(ctx.skill, ctx.scope, skillsCliRunner)
         if (!result.ok) return c.json({ error: result.output || 'skills CLI failed' }, 502)
+        // 更新同样变更清单（新版本描述/正文会反映到命令清单），与管理页其他写操作同源发布
+        notifySkillChange(c, engine, parsed.data.workspaceId)
         return c.json({ ok: true })
     })
 

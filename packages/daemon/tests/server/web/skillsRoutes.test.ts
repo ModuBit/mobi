@@ -33,6 +33,7 @@ import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 import type { SSEManager } from '../../../src/sse/sseManager'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
 import type { SkillInfo } from '@mobi/shared'
+import type { SkillInventoryChangedEvent } from '../../../src/sync/skillInventoryBus'
 
 /** workspaces 路由校验 folders 须落在宿主 home 内（401 起硬约束） */
 const HOST_HOME = homedir()
@@ -553,15 +554,13 @@ describe('skills REST 路由（GET /api/skills）', () => {
         })
     })
 
-    describe('skill 清单变更 → 受影响活跃会话 sdkMetadata 刷新（notifySkillChange）', () => {
+    describe('skill 清单变更 → skill-inventory-changed 事件发布（notifySkillChange）', () => {
         /** `/` 面板命令清单以会话 sdkMetadata 为源，与 skillsRoot 查询缓存键不相交：
-         *  装卸/启停必须主动触发引擎刷新，收敛不依赖 CC watcher 推 commands_changed */
-        const refreshCalls: Array<[string, string | null]> = []
+         *  装卸/启停必须发布清单变更事件，消费编排（引擎刷新）归订阅方，此处只断言发布 */
+        const events: SkillInventoryChangedEvent[] = []
 
         beforeAll(() => {
-            engine.refreshSDKMetadataAfterSkillChange = (namespace: string, wsId: string | null) => {
-                refreshCalls.push([namespace, wsId])
-            }
+            engine.skillInventory.subscribe(event => events.push(event))
             // 自备删除素材（前面 DELETE describe 已消费掉公共素材）
             mkdirSync(join(claudeDir, 'skills', 'notify-global'), { recursive: true })
             writeFileSync(join(claudeDir, 'skills', 'notify-global', 'SKILL.md'), skillMd({ name: 'notify-global' }))
@@ -569,51 +568,51 @@ describe('skills REST 路由（GET /api/skills）', () => {
             writeFileSync(join(wsDir, '.claude', 'skills', 'notify-proj', 'SKILL.md'), skillMd({ name: 'notify-proj' }))
         })
 
-        test('卸载 global skill → null（影响全部活跃会话）', async () => {
-            refreshCalls.length = 0
+        test('卸载 global skill → workspaceId null（影响全部活跃会话）', async () => {
+            events.length = 0
             const res = await app.request('/api/skills/notify-global?workspaceId=global', { method: 'DELETE', headers: authHeaders })
             expect(res.status).toBe(200)
-            expect(refreshCalls.length).toBe(1)
-            expect(typeof refreshCalls[0]![0]).toBe('string')
-            expect(refreshCalls[0]![1]).toBeNull()
+            expect(events.length).toBe(1)
+            expect(events[0]!.source).toBe('manage')
+            expect(events[0]!.workspaceId).toBeNull()
         })
 
         test('卸载 project skill → 该 workspaceId', async () => {
-            refreshCalls.length = 0
+            events.length = 0
             const res = await app.request(`/api/skills/notify-proj?workspaceId=${workspaceId}`, { method: 'DELETE', headers: authHeaders })
             expect(res.status).toBe(200)
-            expect(refreshCalls.length).toBe(1)
-            expect(refreshCalls[0]![1]).toBe(workspaceId)
+            expect(events.length).toBe(1)
+            expect(events[0]!.workspaceId).toBe(workspaceId)
         })
 
-        test('卸载失败（不可删除 400）→ 不触发刷新', async () => {
-            refreshCalls.length = 0
+        test('卸载失败（不可删除 400）→ 不发布事件', async () => {
+            events.length = 0
             expect((await app.request('/api/skills/cloud-skill?workspaceId=global', { method: 'DELETE', headers: authHeaders })).status).toBe(400)
-            expect(refreshCalls.length).toBe(0)
+            expect(events.length).toBe(0)
         })
 
-        test('安装 → 触发刷新（global scope 透传 null）', async () => {
-            refreshCalls.length = 0
+        test('安装 → 发布事件（global scope 透传 null）', async () => {
+            events.length = 0
             const res = await app.request('/api/skills/install', {
                 method: 'POST',
                 headers: { ...authHeaders, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ source: 'octocat/repo', scope: 'global' }),
             })
             expect(res.status).toBe(200)
-            expect(refreshCalls.length).toBe(1)
-            expect(refreshCalls[0]![1]).toBeNull()
+            expect(events.length).toBe(1)
+            expect(events[0]!.workspaceId).toBeNull()
         })
 
-        test('启停 → 触发刷新（workspace scope 透传）', async () => {
-            refreshCalls.length = 0
+        test('启停 → 发布事件（workspace scope 透传）', async () => {
+            events.length = 0
             const res = await app.request(`/api/skills/proj-plain/visibility`, {
                 method: 'PATCH',
                 headers: { ...authHeaders, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ workspaceId, enabled: false }),
             })
             expect(res.status).toBe(200)
-            expect(refreshCalls.length).toBe(1)
-            expect(refreshCalls[0]![1]).toBe(workspaceId)
+            expect(events.length).toBe(1)
+            expect(events[0]!.workspaceId).toBe(workspaceId)
         })
     })
 

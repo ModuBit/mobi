@@ -81,7 +81,9 @@ export class MessageService {
     constructor(
         private readonly store: Store,
         private readonly io: Server,
-        private readonly publisher: EventPublisher
+        private readonly publisher: EventPublisher,
+        /** 用户消息受理回调（reload 命令观测：SyncEngine 注入，文本原文含命令时登记 pending） */
+        private readonly onUserMessageText?: (sessionId: string, text: string) => void
     ) {
     }
 
@@ -156,6 +158,13 @@ export class MessageService {
         const blocks = normalizeUserContent(payload.content)
         if (!blocks || blocks.length === 0) {
             throw new Error('Invalid message content')
+        }
+
+        // reload 命令观测（fire-and-forget 语义，观测失败不阻塞受理）：text 块拼接为原文
+        const observedText = this.onUserMessageText
+        if (observedText) {
+            const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n')
+            if (text) observedText(sessionId, text)
         }
 
         const content = {
