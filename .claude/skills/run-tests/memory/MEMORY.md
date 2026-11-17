@@ -74,7 +74,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [Skills 管理页验证](skills-page-verify.md) — 开关 API 断言绕开 settings.json 读权限 / CLI 非交互预检（CLAUDE_CONFIG_DIR 隔离）/ 内置首采观测点 / composer 预填查 .tiptap 非 textarea / 页内 fetch 替代 curl cookie（2026-11-12）
 - [单选件验证](radio-widget-verify.md) — RadioGroup/RadioCards/自管 Radio 探针与双档配色；无会话 worktree 素材；圆点居中几何断言（2026-11-17）
 - [加载态 skeleton 验证](loading-skeleton-verify.md) — react-query+axios 走 XHR 非.fetch；navigate_page initScript 注入 XHR 延迟抓骨架态（URL 写错静默不生效）；**会话历史两分支：空列表骨架 / SSE 先到顶部历史行**；缓存热态绕法（2026-11-17）
-- [prepend 滚动锚点](prepend-scroll-anchor.md) — 「加载完成后内容跳」四层根因：Chrome anchoring 与手算 delta 重复施加 / 视口外锚点不可信 / 快照平移二次计入 / **iOS 探测 true 但不 anchoring 致零补偿**；修=多锚点快照（视口内→下方兜底）+ 加载前重拍 + 滚动停 80ms 重拍 + RO；验收必须双条件（overflow-anchor:none 模拟 iOS + 桌面原生），零容差（2026-11-17）
+- [prepend 滚动锚点](prepend-scroll-anchor.md) — 「加载完成后内容跳」五层根因：Chrome anchoring 与手算 delta 重复施加 / 视口外锚点不可信 / 快照平移二次计入 / **iOS 探测 true 但不 anchoring 致零补偿** / **读历史期间 turn 裁剪吞掉刚加载内容（修=setHistoryReading 暂停裁剪）**；修=多锚点快照（视口内→下方兜底）+ 加载前重拍 + 滚动停 80ms 重拍 + RO；验收必须双条件（overflow-anchor:none 模拟 iOS + 桌面原生），零容差；截图「加载中」需手动把加载行回拨进视口（2026-11-17）
 - [IME composition 复现](ime-composition-verify.md) — CDP 驱动不了系统输入法：合成 CompositionEvent+直改 DOM+composition meta 探针；fiber 挖 editor 实例；jsdom 须桩 coordsAtPos（2026-11-16）
 - [YOLO 免审放行验证](yolo-bypass-verify.md) — Write 是可靠审批探针（change_title 已不触发）；pending 权威判据=DB agent_state.requests（DOM 正则必误报）；对照组先行证「会弹」再验「不弹」（2026-11-17）
 - [ConfirmMorph 手势探针](confirm-morph-gesture-probe.md) — 受信慢按+逐帧跳变检测；合成 click 验不了手感；已修：测量污染+窄容器越界

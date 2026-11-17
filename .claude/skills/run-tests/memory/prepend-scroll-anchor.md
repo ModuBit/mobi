@@ -43,6 +43,27 @@ BubbleListChat 加载更旧历史（fetch 分页 / window prepend / fill 补页 
    **修法 = 坑 5 下方的「视口下方锚点」兜底**：浏览器没补偿时锚点被推到视口下方，位移仍
    等于上方插入量；Chrome 已补偿时锚点留在视口内，走首选路径，不叠加。
 
+## 第五层根因（2026-11-17 桌面「有时候 OK 有时候跳」）
+
+**messageWindowStore 的 turn 边界裁剪在用户读历史期间裁掉了刚加载的内容**：
+`following=false` 上滚读历史时，新加载的旧消息贴在窗口头部；只要期间有流式 ingest
+（`hasMore=true`），`trimAfterMerge` 就按 turn 边界从头部裁到 ≤1000 行——用户正在看
+的内容整段消失。是否触发取决于加载期间有没有 SSE → 「有时候 OK，有时候往上跳/往下跳」。
+
+修法：`setHistoryReading(sessionId, !following)` 暂停裁剪，回贴底（following=true 或
+距底 ≤40px）立即收敛窗口并重算 oldestSeq，离开会话页复位。
+实测：活会话连续 12 次触顶加载，渲染气泡数 `49→61→…→210` 持续增长（修复前 12 页
+全部 200 但气泡数恒 186，即每次 ingest 都裁掉刚加载的历史）。
+
+## 截图验收的坑
+
+加载行（`__loading-more__`）在内容顶部，插入后锚点补偿会把它推出视口：
+`scrollTop` 0→44、行 top=-21，**50ms 内就看不见了**（真实用户触发阈值 st<200，
+行本来就在视口上方）。要截「加载中」必须手动回拨：触发后趁 loading 期间
+`box.scrollTop += rowTop - 8` 把行拉回视口顶部，再以视口内第一个稳定元素 key
+拍 before/after 的 `rect.top - boxRect.top`，零容差对比（本轮 120→120，diff 0）。
+不要拿 tool 行/合并组 key 当锚点——window 变化时 key 会重组消失。
+
 ## 验收 recipe
 
 **必须两种条件都测**（只测桌面 Chrome 会漏掉 iOS 的真实行为——Chrome 有原生 anchoring，
