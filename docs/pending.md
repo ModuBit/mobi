@@ -1449,26 +1449,3 @@ Desktop 对照结论（REA Round 14/18，桌面 4.4212.0 静态实锤，笔记�
   `<system-reminder>` 前置注入；resume 时从 transcript 扫 `<system-reminder>` 块
   回填队列（即时状态类排除回放）；配套撤销机制（状态回滚时撤掉挂起提醒）
 - 收编机会：落地时把跨会话信封 / quote 的注入时机顺手收编统一
-
----
-
-## 132. 切回 Auto 模型的 live 切换疑似被 CC 拒绝（2026-11-17，D5 验收中发现待定因）
-
-**现象**（e2e 真机，同一会话内三次切换对照）：切到真实目录模型（`ccs-claude-zhipu--glm-5.3[1M]`、
-`...-flash[1M]`）均产出 `system/model_change` 时间线行；切回 **Auto** 两次（请求体都是
-`{"model":"auto"}`，PATCH 均 200）都**没有**该行。该行只在 CLI 侧 `applyLive` 落地
-（`syncSessionModes()` 解析 true）时才合成——无行说明 `setModel('auto')` 失败（或被跳过），
-UI 的模型选择却已乐观显示 Auto。
-
-**待定因**：`DEFAULT_MODEL='auto'` 是 mobi web 的哨兵值，不是 CC 的模型 id。CC 0.3.312 二进制
-里 `set_model` 的拒绝原因枚举含 `catalog_unknown (not shaped like a model id)`、
-`not_found (the API serves no such model)`，未见 `auto` 作为模型别名的证据。若属实：
-**切回 Auto 对活查询是静默 no-op**（会话记录与真实运行模型脱节，直到重启），且不会落时间线行。
-同一 rate-limit 会话里真实模型切换成功，可排除「retry 中 RPC 失败」这一解释。
-
-**确认与修复方向**（复验需不受 rate-limit 干扰的会话）：CC 的「恢复默认模型」应走哪个
-控制面（`set_model` 的 default 别名 / `apply_flag_settings` / 其他），在 session 层
-`LIVE_CONFIG_APPLIERS.model.applyLive` 把 mobi 哨兵映射成语义对应的调用；修复后补
-「切回 Auto 落行」回归测试。涉及默认语义定夺，不在 D5（codec 收口票）内顺手改。
-
-> 本缺陷与 D5 无关（写行门禁 `applied===true` 未变，D5 只改了行的构造点与常量单源）。

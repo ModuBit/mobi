@@ -253,8 +253,8 @@ export class AgentSessionService {
      * （`notice`），会话照常建起；目录不可用就原样放行——兜底四项与代理模型名都在
      * 清单之外，硬拦会误伤。
      *
-     * `auto` 恒为合法值：它是 CLI 的默认模型别名，探针清单不保证列它（web 侧同样
-     * 强制合成这一项，见 modelSelectOptions）。
+     * `auto` 恒为合法值：它是 mobi 的宿主默认哨兵（不是目录里的模型值），web 侧同样
+     * 强制合成这一项（见 modelSelectOptions）；会话层进入 SDK 前翻译成 CC 的 default 别名。
      */
     private async resolveModel(requested: string | undefined): Promise<{ model?: string; notice?: string }> {
         if (requested === undefined) {
@@ -548,8 +548,9 @@ function translateSpawnFailure(failure: RpcFailureKind, message: string): string
 /**
  * 请求的模型名是否在目录里。
  *
- * `auto` 恒真：它是 CLI 的默认模型别名，探针清单不保证列它（web 侧同样强制合成，
- * 见 modelSelectOptions.buildModelSelectOptions）。其余走 shared 的
+ * `auto` 恒真：它是 mobi 的宿主默认哨兵（不是目录里的模型值；会话层翻译成 CC 的
+ * default 别名），web 侧同样强制合成（见 modelSelectOptions.buildModelSelectOptions）。
+ * 其余走 shared 的
  * {@link findCatalogModel}：`value` 与 `resolvedModel` 都认——那是同一个模型的全名，
  * 调用方从哪里抄来的都可能。
  */

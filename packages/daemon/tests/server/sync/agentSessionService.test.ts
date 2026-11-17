@@ -492,7 +492,7 @@ describe('AgentSessionService — 模型目录（list_models 与建会话软校�
         expect(spawnCalls[0].options.model).toBe('claude-opus-4-8')
     })
 
-    test('auto 恒为合法值（探针清单未必列默认别名）', async () => {
+    test('auto 恒为合法值（mobi 宿主默认哨兵；会话层进入 SDK 前翻译成 CC 的 default 别名）', async () => {
         const { service, spawnCalls } = makeService([], { catalog: { ok: true, models: MODELS } })
 
         const result = await service.createSession('ns', { directory: '/d', model: 'auto' })

@@ -39,10 +39,10 @@ import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
 import { bootstrapSession } from '../agent/sessionFactory';
 import { createModeChangeHandler, createSessionLifecycle, setControlledByUser } from '../agent/sessionLifecycle';
-import { SESSION_CONFIG_FIELDS, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, buildModelChangeLine, DEFAULT_MODEL, type SessionPauseTrigger, type UserContentBlock } from '@mobi/shared';
+import { SESSION_CONFIG_FIELDS, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, buildModelChangeLine, type SessionPauseTrigger, type UserContentBlock } from '@mobi/shared';
 import { PermissionModeSchema } from '@mobi/shared/schemas';
 import { buildPromptFromBlocks, type PromptPayload } from '@mobi/node-core/utils/promptBuilder';
-import { normalizeClaudeSessionModel } from './model';
+import { CLAUDE_DEFAULT_MODEL_ALIAS, normalizeClaudeSessionModel } from './model';
 import { getInvokedCwd } from '@mobi/node-core/utils/invokedCwd';
 import { initializeSandbox } from '../modules/sandbox/sandboxManager';
 import { normalizeContinueArg } from './utils/normalizeContinueArg';
@@ -612,15 +612,19 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
     };
 
     const resolveModel = (value: unknown): SessionModel => {
+        // 显式 null = 「用宿主默认模型」。live set_model 只接受模型 id / 别名，
+        // null 直送会得到 "model must be a string"，与 mobi 哨兵 'auto' 同译成 CC 的 default 别名
         if (value === null) {
-            return null;
+            return CLAUDE_DEFAULT_MODEL_ALIAS;
         }
 
         if (typeof value !== 'string') {
             throw new Error('Invalid model');
         }
 
-        return normalizeClaudeSessionModel(value);
+        // 翻译点单一在 model.ts：'auto' → 'default'，空串 → null；空值也归到 default ——
+        // 「设置模型」这个动作必须落到一个 CC 能吃下的具体值，null 只属于「启动时未指定」
+        return normalizeClaudeSessionModel(value) ?? CLAUDE_DEFAULT_MODEL_ALIAS;
     };
 
     apiSession.rpcHandlerManager.registerHandler('set-session-config', async (payload: unknown) => {
@@ -676,10 +680,10 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
         // 行在**受理时构造**（快照当前模型），落地回调只决定发不发：applied 异步 settle，
         // 期间用户可能再次切换（A→B 未落地就来 B→C）——回调里读 currentModel 会把
         // 先一次的行标成 C，甚至两行同值。
-        // currentModel=null 表示「用默认模型」，wire 上以 DEFAULT_MODEL（auto）表示——
-        // codec 要求非空模型标识，null 直送会被读路径当坏行丢弃
+        // 行内模型值 = CC 侧落地值（currentModel 经 resolveModel 翻译后恒非 null）：
+        // mobi 的 Auto 哨兵在这里已是 CC 的 default 别名，读路径据非空模型校验放行
         if (modelChanged) {
-            const line = buildModelChangeLine({ model: currentModel ?? DEFAULT_MODEL, uuid: randomUUID() });
+            const line = buildModelChangeLine({ model: currentModel ?? CLAUDE_DEFAULT_MODEL_ALIAS, uuid: randomUUID() });
             void applied.then((ok) => {
                 if (!ok) return;
                 apiSession.sendClaudeSessionMessage(line as unknown as RawJSONLines);

@@ -27,7 +27,11 @@ const CLAUDE_MODEL_PRESETS = ['sonnet', 'sonnet[1m]', 'opus', 'opus[1m]'] as con
 export type ClaudeModelPreset = typeof CLAUDE_MODEL_PRESETS[number]
 
 /**
- * 默认模型值（CLI 的默认模型别名）。
+ * 默认模型值（mobi 的「宿主默认」UI 哨兵，**不是** CC 模型 id）。
+ *
+ * CC 侧「默认模型」的模型别名是 `default`（模型目录默认项 value，见 session 包
+ * `CLAUDE_DEFAULT_MODEL_ALIAS`）；本哨兵在会话层进入 SDK 之前被翻译成它——
+ * 直送 `set_model` 会因模型 id 形状校验失败而静默不落地。
  *
  * 单源：偏好空值兜底、面板「重置」目标、创建页初始值、daemon 的「auto 恒合法」判据
  * 都引用它——各处各写一个 `'auto'` 字面量时，改默认模型就会分叉成
@@ -235,8 +239,9 @@ export interface CatalogModelCapability extends ModelConfigCapability {
 /**
  * 在宿主模型目录里找目标模型；**查不到返回 null（能力未知）**。
  *
- * `auto` 恒返回 null：它是 CLI 的默认模型别名，探针清单不保证列它——把它当成
- * 「一个没有能力的模型」会让收敛逻辑顺手改掉用户的档位与快速模式。
+ * `auto` 恒返回 null：它是 mobi 的宿主默认**哨兵**（不是目录里的模型值；CC 的默认项
+ * value 是 `default`，目录可能列也可能不列）——把它当成「一个没有能力的模型」会让
+ * 收敛逻辑顺手改掉用户的档位与快速模式。
  */
 export function findCatalogModel<T extends CatalogModelCapability>(
     models: readonly T[] | null | undefined,
