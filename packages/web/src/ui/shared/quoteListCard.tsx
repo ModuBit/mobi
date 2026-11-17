@@ -71,6 +71,15 @@ export const QuoteItemIndex = styled.span`
     font-variant-numeric: tabular-nums;
 `
 
+/** 条目正文列（excerpt + 评论 + 评论编辑框）：占满剩余宽度 */
+export const QuoteItemBody = styled.div`
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+`
+
 export const QuoteItemText = styled.span`
     font-size: 12px;
     line-height: 18px;
@@ -86,4 +95,16 @@ export const QuoteItemComment = styled.span`
     color: var(--ant-color-text-tertiary);
     word-break: break-word;
     white-space: pre-wrap;
+`
+
+/** 条目动作（编辑评论 / 删除 / 清空全部）：列表卡与胶囊共用的弱化图标钮 */
+export const QuoteItemAction = styled.span`
+    flex-shrink: 0;
+    font-size: 10px;
+    color: var(--ant-color-text-quaternary);
+    cursor: pointer;
+    transition: color 0.15s;
+    &:hover {
+        color: var(--ant-color-text-secondary);
+    }
 `

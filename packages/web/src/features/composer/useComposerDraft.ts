@@ -15,14 +15,16 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { getDraft, saveDraft } from '@/core/lib/composerDrafts'
+import { extractQuotesFromEditorStateJSON, getDraft, saveDraft } from '@/core/lib/composerDrafts'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
 import { bucketCompletedAttachments, fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
-import { QUOTE_MAX_COUNT, type PendingQuoteRef } from '@/domain/chat/composerSegments'
+import { QUOTE_MAX_COUNT, type ComposerQuoteRef, type PendingQuoteRef } from '@/domain/chat/composerSegments'
 
 interface UseComposerDraftState {
     text: string
     attachments: FileAttachment[]
+    /** 当前引用条目（保存进 quotes 桶；ComposerQuoteRef 结构兼容 PendingQuoteRef 直存） */
+    quotes: ComposerQuoteRef[]
     /** 结构化草稿读出（卸载保存时调）：返回 TipTap EditorState JSON，空/未就绪返回 null 则只存 text 单路 */
     getEditorState?: () => string | null
 }
@@ -45,7 +47,7 @@ interface UseComposerDraftSetters {
  * - 结构化双路：draft.editorState 存在时先 setText（文本兜底）再 applyEditorState
  *   （成功即覆盖前者结果，无需探测成败——顺序保证终态正确；解析失败由实现方 no-op）
  * - 卸载 / sessionId 切走：把当前分段经 bucketCompletedAttachments 投影后存入旧 sessionId 草稿；
- *   同时经 getEditorState 读出结构化快照（含未来 chip 节点），一并持久化
+ *   同时经 getEditorState 读出结构化快照（正文富文本），一并持久化
  * - 刷新/关闭页面：React 清理不执行，保存还挂在 pagehide（及 visibilitychange-hidden）上
  * - draftReady 守卫：恢复完成前不保存，避免初始空态覆盖真实草稿
  *
@@ -61,6 +63,8 @@ export function useComposerDraft(
     textRef.current = state.text
     const attachmentsRef = useRef(state.attachments)
     attachmentsRef.current = state.attachments
+    const quotesRef = useRef(state.quotes)
+    quotesRef.current = state.quotes
     const getEditorStateRef = useRef(state.getEditorState)
     getEditorStateRef.current = state.getEditorState
 
@@ -87,12 +91,18 @@ export function useComposerDraft(
                 if (refs.length > 0) {
                     setAttachments(refs.map(fileRefToPlaceholderAttachment))
                 }
-                if (draft.quotes.length > 0) {
-                    // 结构化快照（含引用 chip 节点）存在时由它整体恢复，跳过 quotes 桶
-                    // （保存侧同源，两路都跑会让 chip 双份）；旧格式草稿（无 editorState）
-                    // 才走桶恢复，消费方实现为「逐条插入编辑器」
-                    if (!draft.editorState) setQuotes(draft.quotes.slice(0, QUOTE_MAX_COUNT))
+                // 引用恢复：quotes 桶为主；引用 chip 时代（已退役）的旧草稿把引用存在
+                // editorState 快照里而桶为空——从快照摘出合并（按同键判重），引用不丢
+                const carried = draft.editorState ? extractQuotesFromEditorStateJSON(draft.editorState.json) : []
+                const merged: PendingQuoteRef[] = []
+                const seen = new Set<string>()
+                for (const q of [...draft.quotes, ...carried]) {
+                    const key = `${q.messageId}\u0000${q.excerpt}`
+                    if (seen.has(key)) continue
+                    seen.add(key)
+                    merged.push(q)
                 }
+                if (merged.length > 0) setQuotes(merged.slice(0, QUOTE_MAX_COUNT))
             }
             draftReadyRef.current = true
         })
@@ -106,8 +116,7 @@ export function useComposerDraft(
             saveDraft(currentSessionId, {
                 text: textRef.current,
                 ...bucketCompletedAttachments(attachmentsRef.current),
-                // 引用桶只服务旧格式草稿读取；新草稿的引用 chip 在 editorState 快照里
-                quotes: [],
+                quotes: quotesRef.current,
                 ...(editorStateJson ? { editorState: { v: 1 as const, json: editorStateJson } } : {}),
             })
         }

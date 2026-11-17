@@ -293,6 +293,52 @@ function quoteKey(q: PendingQuoteRef): string {
 }
 
 /**
+ * 旧格式草稿 JSON → 引用条目（纯 JSON 遍历，不需要 editor 实例）。
+ *
+ * 引用 chip 曾以 tiptap 节点形态活在编辑器文档里（composer 富输入票 05，已退役回
+ * QuoteChipBar）。期间保存的草稿把引用存在 editorState 快照中而 quotes 桶为空——
+ * 恢复时把旧快照里的 chip 摘出来转回 quotes 桶，避免引用随快照失效而丢失。
+ */
+export function extractQuotesFromEditorStateJSON(json: string): PendingQuoteRef[] {
+    let parsed: unknown
+    try {
+        parsed = JSON.parse(json) as unknown
+    } catch {
+        return []
+    }
+    const out: PendingQuoteRef[] = []
+    const seen = new Set<string>()
+    const walk = (node: unknown) => {
+        if (!node || typeof node !== 'object') return
+        const obj = node as { type?: unknown; attrs?: Record<string, unknown>; content?: unknown }
+        if (obj.type === 'chatInputQuote' && obj.attrs) {
+            const attrs = obj.attrs as unknown as { messageId?: unknown; excerpt?: unknown; role?: unknown; comment?: unknown; startOffset?: unknown; endOffset?: unknown }
+            if (
+                typeof attrs.messageId === 'string'
+                && typeof attrs.excerpt === 'string'
+                && (attrs.role === 'user' || attrs.role === 'agent')
+            ) {
+                const key = `${attrs.messageId}\u0000${attrs.excerpt}`
+                if (!seen.has(key)) {
+                    seen.add(key)
+                    out.push({
+                        messageId: attrs.messageId,
+                        role: attrs.role,
+                        excerpt: attrs.excerpt,
+                        ...(attrs.comment != null && attrs.comment !== '' ? { comment: String(attrs.comment) } : {}),
+                        ...(typeof attrs.startOffset === 'number' ? { startOffset: attrs.startOffset } : {}),
+                        ...(typeof attrs.endOffset === 'number' ? { endOffset: attrs.endOffset } : {}),
+                    })
+                }
+            }
+        }
+        if (Array.isArray(obj.content)) obj.content.forEach(walk)
+    }
+    walk(parsed)
+    return out.slice(0, QUOTE_MAX_COUNT)
+}
+
+/**
  * 仅更新草稿文本，保留该 session 既有的文件/图片/引用分段。
  * 供跨页草稿落入既有 session 时使用，避免用空分段覆盖既有内容。
  *

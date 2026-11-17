@@ -15,8 +15,8 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { saveDraft, getDraft, clearDraft, mergeDraftText, __resetDraftCacheForTesting } from '@/core/lib/composerDrafts'
-import type { ComposerSegments } from '@/domain/chat/composerSegments'
+import { saveDraft, getDraft, clearDraft, mergeDraftText, extractQuotesFromEditorStateJSON, __resetDraftCacheForTesting } from '@/core/lib/composerDrafts'
+import { QUOTE_MAX_COUNT, type ComposerSegments } from '@/domain/chat/composerSegments'
 import type { BlockFileRef } from '@/domain/chat/composerSegments'
 
 /** 空分段工厂（text 可传） */
@@ -204,4 +204,56 @@ describe('composerDrafts', () => {
     // persist 写入失败（quota）时 cache 不被 evict 提交的降级行为，
     // 因 jsdom 无法 mock 原生 Storage.prototype.setItem 而未覆盖单测；
     // 实现上 persist 仅在 setItem 成功后才赋值 cache，失败时 cache 保持旧值。
+})
+
+describe('extractQuotesFromEditorStateJSON（旧草稿 chip 迁移）', () => {
+    /** 构造一条 chip 节点承载 attrs（doc 结构对齐 TipTap JSONContent） */
+    function chip(attrs: Record<string, unknown>) {
+        return { type: 'chatInputQuote', attrs }
+    }
+
+    it('递归摘出所有 chip 条目，保留评论与片段偏移', () => {
+        const json = JSON.stringify({
+            type: 'doc',
+            content: [{
+                type: 'paragraph',
+                content: [
+                    chip({ messageId: 'm1', role: 'agent', excerpt: '片段一', comment: '为什么？', startOffset: 3, endOffset: 9 }),
+                    chip({ messageId: 'm2', role: 'user', excerpt: '片段二' }),
+                ],
+            }],
+        })
+        expect(extractQuotesFromEditorStateJSON(json)).toEqual([
+            { messageId: 'm1', role: 'agent', excerpt: '片段一', comment: '为什么？', startOffset: 3, endOffset: 9 },
+            { messageId: 'm2', role: 'user', excerpt: '片段二' },
+        ])
+    })
+
+    it('同消息同片段判重；非法 JSON / 缺 attrs / 非法 role 均跳过', () => {
+        const json = JSON.stringify({
+            type: 'doc',
+            content: [
+                chip({ messageId: 'm1', role: 'user', excerpt: '重复' }),
+                chip({ messageId: 'm1', role: 'user', excerpt: '重复' }),
+                chip({ messageId: 'm3', excerpt: '缺 role' }),
+                chip({ messageId: 'm4', role: 'nonsense', excerpt: '非法 role' }),
+                { type: 'paragraph', content: [] },
+            ],
+        })
+        expect(extractQuotesFromEditorStateJSON(json)).toEqual([
+            { messageId: 'm1', role: 'user', excerpt: '重复' },
+        ])
+        expect(extractQuotesFromEditorStateJSON('{not json')).toEqual([])
+        expect(extractQuotesFromEditorStateJSON('null')).toEqual([])
+    })
+
+    it('超过 QUOTE_MAX_COUNT 截断', () => {
+        const json = JSON.stringify({
+            type: 'doc',
+            content: Array.from({ length: QUOTE_MAX_COUNT + 2 }, (_, i) => (
+                chip({ messageId: `m${i}`, role: 'user', excerpt: `片段${i}` })
+            )),
+        })
+        expect(extractQuotesFromEditorStateJSON(json)).toHaveLength(QUOTE_MAX_COUNT)
+    })
 })

@@ -1,9 +1,9 @@
 ---
 name: quote-verify
-description: 引用特性 E2E 验证——划选 popover / 评论浮层 / chip 列表卡 / 气泡引用组 / 点击定位 / 出向标注 / 降级矩阵的 recipe 与合成事件坑
+description: 引用特性 E2E 验证——划选 popover / 评论浮层 / composer QuoteChipBar / 气泡引用组 / 点击定位 / 出向标注 / 降级矩阵的 recipe 与合成事件坑
 metadata:
   type: recipe
-  last_verified: 2026-11-11
+  last_verified: 2026-11-17
 ---
 
 # 引用特性验证
@@ -11,9 +11,13 @@ metadata:
 ## 链路 recipe（PC，全部可 CDP 自主完成）
 
 1. **划选**：`evaluate_script` 内 Range 选区（`data-quote-block` 锚内找 Text 节点起止）+ 对 `.chat-scroll-container` dispatch `mouseup({bubbles:true})` → `[data-quote-layer="popover"]` 出现「添加到对话」。注意 popover 挂载是异步的——**同一次 evaluate 里造选区后立刻查 DOM 会查空**，分开两次调用（或 Promise+setTimeout）再断言
-2. **添加到对话**：popover 内找文本 `添加到对话` 的叶子 span，mousedown/mouseup/click 三连 → `[data-quote-layer="comment"]` 出现，textarea 自动聚焦 → `type_text + Enter` 保存；空评论直接点「保 存」按钮
-   - **2026-11-11 修正**：合成三连对 popover 按钮**不生效**（React 未收到），改用 MCP `click` 传 snapshot uid；评论层里**保存按钮只在评论非空时渲染**（`[data-testid="quote-comment-save"]`，为空时只有 `quote-comment-close`）；评论用 native setter + input 事件填 `[data-testid="quote-comment-input"]` 后，`document.querySelector('[data-testid="quote-comment-save"]').click()` 可保存并写入编辑器内联引用节点
-3. **chip**（2026-11-11 起为输入流内联引用节点）：`[data-testid="chat-input-quote-chip"]`，结构 = 主体触发器 `[role="button"][tabindex="0"]`（aria-label=excerpt，评论存在时尾部 `✎`）+ 删除钮 `[data-testid="chat-input-quote-remove"]`（role=button/tabindex=0），**两者并列、不嵌套**。click 或对触发器 Enter → `[role="dialog"]` 浮层（excerpt + 预填评论 textarea + 计数 + ✓ 保存 + 「定位到原消息」）；focus 删除钮 + Enter 直接删 chip；Escape 关浮层。移动端（emulate 390x844x3,mobile,touch）浮层 rect 落在视口内（≈12..380）且在 composer 上方。旧列表卡 `quote-chip`/`quote-list` 已不再出现于 composer
+2. **添加到对话**：popover 内找文本 `添加到对话` 的叶子 span → 评论浮层 `[data-quote-layer="comment"]` 出现。
+   - **2026-11-11 修正**：合成三连对 popover 按钮**不生效**（React 未收到）。
+   - **2026-11-17 复测**：MCP `click` 传 snapshot uid 也点不开（popover 直接消失，chip 未出现）；可靠解法是 `evaluate_script` 里对叶子节点依次 dispatch `pointerdown/mousedown/pointerup/mouseup/click`（PointerEvent + MouseEvent 各带 bubbles/clientX/clientY），一次成功
+   - 评论层里**保存按钮只在评论非空时渲染**（`[data-testid="quote-comment-save"]`，为空时只有 `quote-comment-close`）；评论用 native setter + input 事件填 `[data-testid="quote-comment-input"]` 后点 save
+3. **composer chip（2026-11-17 起回到 QuoteChipBar 列表卡形态；票 05 的内联 chip 已回退）**：输入卡 header 行 `[data-testid="quote-chip"]`（文案 `N 条引用`）+ 一键清空 `[data-testid="quote-clear-all"]`（×）。点胶囊 → `[data-testid="quote-list"]` 展开：编号条目 `quote-item-N`、excerpt 全文、评论行 `quote-comment-N`、编辑 `quote-edit-comment-N`、删除 `quote-remove-N`；点 excerpt 定位源消息（带 offsets 走 `CSS.highlights`，无 offsets 兜底 `.quote-locate-flash`，2400ms 窗口）。**列表卡面板宽度由 QuoteChipBar 传 `panelStyle.width = min(452px, 100vw-48px)`**——不传时 mobile 档（`@media width:100%`）会缩成内容宽（390 视口实测 235px，显小）。旧 `quote-list-popover` CSS 锁已随 antd Popover 退役删除
+   - 去重：同 messageId+excerpt 重复「添加到对话」不增条（chip 恒 1）；发送后引用清空（composer chip 消失）
+   - 草稿：quotes 桶持久化（不再依赖 editorState），reload 后 chip/评论原样恢复
 4. **发送后**：气泡内引用**收起为 chip**（2026-09-23 起，图片/附件/引用统一挪到 bubble header）：`[data-testid="user-quote-chip"]` → click 开 `[data-testid="user-quote-list"]` → 点 `user-quote-item-N` 定位源消息；落库断言 `sqlite3 ~/.mobi-e2e/mobi.db`：user 消息 `$.role='user'`，`content[0].type='quote'` 含 messageId/role/excerpt/comment
 5. **模型收到引用的硬证据**：下一条 assistant 消息的 `thinking` 会复述引用与评论内容（XML prompt 被 SDK 正常解析；落库的是结构化 blocks，XML 原文不落库）
 6. **点击定位**：引用条目 `.click()` → 源消息 `[data-quote-message-id]` 锚 → 带 offsets 时走片段高亮（`CSS.highlights` 注册 `quote-fragment-flash`，**2400ms 后摘除，断言与截图都要在窗口内**；2026-09-28 前为 1200ms 整段闪烁）；无 offsets / 解析失败兜底整段 `.quote-locate-flash`；源消息在视口顶时 scrollTop 保持 0 是正常的
@@ -36,7 +40,7 @@ metadata:
 
 - **`resize_page` 有窗口最小宽限制（390 请求 → innerWidth 500）**，测移动端溢出必须用 `emulate` 的 viewport（`390x844x3,mobile,touch`）；innerWidth 会读到 414 左右属正常
 - **emulate 切视口会整页重渲染丢 composer 引用状态**——先切视口再走划选→添加流程
-- 列表卡宽度断言：`document.querySelector('[data-testid="quote-list"]')` 的 `getComputedStyle().width` 应等于 `min(420, 100vw-32)`（390 视口 ≈358px），popper（`.ant-popover`）`right ≤ innerWidth`
+- 列表卡宽度断言（2026-11-17 实测）：Popover 面板 = `min(452, 100vw-48)`（390 视口 =342px），`quote-list` 内容宽 = 面板 − 26px 内衬（=316px），右缘 `right ≤ innerWidth`
 - 产物验证注意：emotion 是**运行时注入**，样式在 JS chunk（SessionDetailPage-*.js）不在 CSS 文件——grep 产物 CSS 验证样式会假阴性
 
 ## 坑

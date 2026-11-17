@@ -29,7 +29,7 @@ afterEach(() => {
 // pagehide 监听器跨用例累积（save 计数被幽灵监听抬高）
 afterEach(cleanup)
 
-import type { ComposerSegments } from '@/domain/chat/composerSegments'
+import type { ComposerQuoteRef, ComposerSegments } from '@/domain/chat/composerSegments'
 
 const draftStore = vi.hoisted(() => ({
     get: vi.fn<(id: string) => ComposerSegments | null>(() => null),
@@ -37,11 +37,16 @@ const draftStore = vi.hoisted(() => ({
     clear: vi.fn(),
 }))
 
-vi.mock('@/core/lib/composerDrafts', () => ({
-    getDraft: (id: string) => draftStore.get(id),
-    saveDraft: (id: string, segments: unknown) => draftStore.save(id, segments),
-    clearDraft: draftStore.clear,
-}))
+vi.mock('@/core/lib/composerDrafts', async (importOriginal) => {
+    // extractQuotesFromEditorStateJSON 是纯函数：走真实实现（旧草稿迁移路径要有真解析）
+    const actual = await importOriginal<typeof import('@/core/lib/composerDrafts')>()
+    return {
+        ...actual,
+        getDraft: (id: string) => draftStore.get(id),
+        saveDraft: (id: string, segments: unknown) => draftStore.save(id, segments),
+        clearDraft: draftStore.clear,
+    }
+})
 
 import { useComposerDraft } from '@/features/composer/useComposerDraft'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
@@ -71,9 +76,11 @@ function setup(
     initialText = '',
     initialAttachments: FileAttachment[] = [],
     initialSid: string | undefined = 's1',
+    initialQuotes: ComposerQuoteRef[] = [],
 ): SetupResult {
     let text = initialText
     let attachments = initialAttachments
+    const quotes = initialQuotes
     const setText = vi.fn((v: string) => { text = v })
     const setAttachments = vi.fn((v: FileAttachment[]) => { attachments = v })
     const setQuotes = vi.fn()
@@ -83,6 +90,7 @@ function setup(
             {
                 get text() { return text },
                 get attachments() { return attachments },
+                quotes,
             },
             { setText, setAttachments, setQuotes },
         ),
@@ -101,6 +109,7 @@ function setupStructured(opts: {
     let text = ''
     const setText = vi.fn((v: string) => { text = v })
     const applyEditorState = vi.fn()
+    const setQuotes = vi.fn()
     const getEditorState = vi.fn(() => opts.editorStateJson ?? null)
     const utils = renderHook(
         ({ sid }) => useComposerDraft(
@@ -111,12 +120,12 @@ function setupStructured(opts: {
                 quotes: [],
                 getEditorState,
             },
-            { setText, setAttachments: vi.fn(), setQuotes: vi.fn(), applyEditorState },
+            { setText, setAttachments: vi.fn(), setQuotes, applyEditorState },
         ),
         { initialProps: { sid: opts.initialSid ?? 's1' } },
     )
     const rerender = utils.rerender as (props: { sid: string | undefined }) => void
-    return { ...utils, rerender, setText, applyEditorState, getEditorState }
+    return { ...utils, rerender, setText, setQuotes, applyEditorState, getEditorState }
 }
 
 describe('useComposerDraft', () => {
@@ -142,7 +151,7 @@ describe('useComposerDraft', () => {
         expect(setQuotes).toHaveBeenCalledWith([{ messageId: 'm1', role: 'agent', excerpt: '引用正文' }])
     })
 
-    it('卸载时按分段保存：附件经 bucketCompletedAttachments 投影；引用桶恒空（chip 在 editorState 里）', async () => {
+    it('卸载时按分段保存：附件经 bucketCompletedAttachments 投影；引用桶随 state 持久化', async () => {
         const imageAttach: FileAttachment = {
             id: 'g1',
             file: new File([], 'p.png'),
@@ -163,6 +172,15 @@ describe('useComposerDraft', () => {
             images: [{ id: 'g1', filename: 'p.png', path: '/u/p.png', mimeType: 'image/png', size: 99 }],
             quotes: [],
         })
+    })
+
+    it('卸载时引用桶随 state 保存（引用-only 草稿不丢）', async () => {
+        const q: ComposerQuoteRef = { uid: 'u1', messageId: 'm1', role: 'agent', excerpt: '引用正文', comment: '为什么？' }
+        const { unmount } = setup('', [], 's1', [q])
+        await act(async () => { await flushRaf() })
+        act(() => unmount())
+        const [, saved] = draftStore.save.mock.calls[0] as [string, ComposerSegments]
+        expect(saved.quotes).toEqual([q])
     })
 
     it('pagehide 无需卸载即保存（刷新/关闭页面的真实路径）', async () => {
@@ -260,5 +278,29 @@ describe('useComposerDraft', () => {
         act(() => withoutState.unmount())
         const [, saved2] = draftStore.save.mock.calls[0] as [string, ComposerSegments & { editorState?: unknown }]
         expect(saved2).not.toHaveProperty('editorState')
+    })
+
+    it('旧格式草稿：引用藏在 editorState 的 chip 节点里 → 恢复时摘出转回 quotes 桶（按同键判重）', async () => {
+        draftStore.get.mockReturnValue({
+            ...seg('正文', { quotes: [{ messageId: 'm1', role: 'agent', excerpt: '旧片段' }] }),
+            editorState: {
+                v: 1 as const,
+                json: JSON.stringify({
+                    type: 'doc',
+                    content: [
+                        // 与桶内同键：合并后只留一条
+                        { type: 'chatInputQuote', attrs: { messageId: 'm1', role: 'agent', excerpt: '旧片段' } },
+                        // 仅在快照里的新条目：必须被摘出来
+                        { type: 'chatInputQuote', attrs: { messageId: 'm2', role: 'user', excerpt: '快照片段', comment: '为什么？' } },
+                    ],
+                }),
+            },
+        } as ComposerSegments)
+        const { setQuotes } = setupStructured()
+        await act(async () => { await flushRaf() })
+        expect(setQuotes).toHaveBeenCalledWith([
+            { messageId: 'm1', role: 'agent', excerpt: '旧片段' },
+            { messageId: 'm2', role: 'user', excerpt: '快照片段', comment: '为什么？' },
+        ])
     })
 })

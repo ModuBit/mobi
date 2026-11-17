@@ -44,7 +44,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [tool 字段渲染适配点](tool-field-render-adapters.md) — 新增 block.tool 字段须适配 ToolInfo/adaptedBlock/chatBlockToToolCardBlock 三处 + structuredPatch diff 行号验证 recipe
 - [缓存过期 + goal 状态行验证](cache-status-verify.md) — socket 注入（**宿主端口 12224**，2224 报 Invalid namespace）/ 缓存→列表尾行、goal→独占整行 / 空会话看不到尾行 / result 清空时序坑
 - [agent 侧 MCP 工具验证](agent-tool-verify.md) — 探针 prompt 不点名 / tool_use+tool_result DB 断言 / deferred 工具名 init 里可见（描述不参与检索）/ Auto 模式自动放行致预授权断言失效
-- [引用特性验证](quote-verify.md) — 划选 popover / 评论浮层 / **composer 内联引用 chip（触发器+删除钮并列、键盘可达）** / 气泡引用组 / 点击定位全链路 recipe / Range 选区后 popover 异步挂载 / **AppTooltip 须合成 PointerEvent（CDP hover 测不出 pointerenter）** / **Chrome 155 移除 Highlight.ranges（Set-like 遍历）** / thinking 复述=模型收到引用的硬证据 / 协议统一后出向标注+降级矩阵 seed 坑（user 行 localId 须 null）
+- [引用特性验证](quote-verify.md) — 划选 popover / 评论浮层 / **composer QuoteChipBar 列表卡（2026-11-17 内联 chip 回退；面板宽度 panelStyle 锁 min(452,100vw-48)）** / 气泡引用组 / 点击定位全链路 recipe / Range 选区后 popover 异步挂载 / **「添加到对话」按钮须在 evaluate 里发 pointerdown→click 全序列（MCP click 无效）** / **AppTooltip 须合成 PointerEvent（CDP hover 测不出 pointerenter）** / **Chrome 155 移除 Highlight.ranges（Set-like 遍历）** / thinking 复述=模型收到引用的硬证据 / 协议统一后出向标注+降级矩阵 seed 坑（user 行 localId 须 null）
 - [composer 草稿验证](composer-draft-verify.md) — 空白不落盘 / 跨页合并携 chip / **发送失败注入靠 patch XMLHttpRequest（axios 不走 fetch）** / 恢复不抢焦点 / editorState 与 text 双路恢复
 - [产物声明验证](inline-artifact-verify.md) — :mobi-artifact 全链路（inline 图片/iframe/悬空降级/窄屏）断言 testid 集 / rm 文件造悬空比 DB 造消息简单 / 挂载验证看内层 claude 的 --plugin-dir / **孤儿进程误判挂载失效的坑**
 - [viz 档验证](viz-verify.md) — mode="viz" fragment 组装全链路：探针 prompt / iframe contentDocument 断言集（token 派生/tabs/carousel/tooltip）/ 双档翻转 / 422 契约 / **模型漏 aria-controls 坑（运行时已兜底）**

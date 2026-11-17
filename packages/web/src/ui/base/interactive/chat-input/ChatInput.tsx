@@ -28,20 +28,13 @@ import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TextSelection } from '@tiptap/pm/state'
 import type { Node as PMNode } from '@tiptap/pm/model'
-import { getTextBetween, getTextSerializersFromSchema, type AnyExtension, type JSONContent } from '@tiptap/core'
+import { getTextBetween, getTextSerializersFromSchema, type JSONContent } from '@tiptap/core'
 import { isComposingEvent } from '@/core/lib/inputEnterKeys'
-import type { ComposerQuoteRef, PendingQuoteRef } from '@/domain/chat/composerSegments'
 import { normalizeEditorText } from './chatInputText'
 import { resolveNewlineAction } from './newlinePolicy'
 import { looksLikeMarkdownBlock } from './markdownPaste'
 import { LinkWithInputRule } from '@/ui/base/markdown/LinkWithInputRule'
 import { lowlight } from '@/ui/base/markdown/lowlight'
-import {
-    addQuoteToEditor,
-    collectQuotesFromDoc,
-    insertQuotesAtEnd,
-    updateQuoteCommentInEditor,
-} from '@/ui/shared/chat-input-quote/chatInputQuoteDoc'
 import './chat-input.css'
 
 /** 行高常量：对齐现 Sender 输入区视觉（14px 字号 / 22px 行高），min/max 行数 → 像素换算 */
@@ -83,17 +76,6 @@ const UnderlineWithMarkdown = Underline.extend({
     },
 })
 
-
-/** doc 中装配节点的实例数（extraNodeCount 派生源；未装节点恒 0） */
-function countExtraNodes(doc: PMNode, names: Set<string>): number {
-    if (names.size === 0) return 0
-    let count = 0
-    doc.descendants((node) => {
-        if (names.has(node.type.name)) count++
-        return true
-    })
-    return count
-}
 
 /**
  * 纯段落文档：顶层全是 paragraph，且不含 marks / 非文本节点。
@@ -189,7 +171,6 @@ export interface ChatInputUpdateContext {
     text: string
     programmatic: boolean
     cursorOffset: number
-    extraNodeCount: number
     editorStateJSON: string
 }
 
@@ -215,8 +196,6 @@ export interface ChatInputProps {
     onUpdate?: (ctx: ChatInputUpdateContext) => void
     /** 编辑器实例就绪（immediatelyRender:false 异步挂载完成）后回调一次 */
     onReady?: () => void
-    /** 内嵌自定义节点（装配注入，如引用 chip 节点）；默认不装——ui 层不感知业务节点类型 */
-    extraNodes?: AnyExtension[]
     /** 粘贴事件（消费方分流文件粘贴）；返回 true 阻止默认 */
     onPaste?: (e: ClipboardEvent) => boolean | void
     className?: string
@@ -242,25 +221,17 @@ export interface ChatInputHandle {
     /** 在当前光标处插入纯文本，光标落插入内容之后 */
     insertAtCursor(text: string): void
     /**
-     * 程序化替换纯文本区间 [from, to)（offset 与 cursorOffset 同语义），**保留 extra 节点**。
-     * 供面板选中插回/归一写回使用：整档 setText 会销毁文档里的引用 chip。
+     * 程序化替换纯文本区间 [from, to)（offset 与 cursorOffset 同语义）。
+     * 供面板选中插回/归一写回使用：只换差异段，正文其余部分（富文本结构）不动。
      */
     replaceTextRange(from: number, to: number, text: string): void
     /** 把光标移到纯文本 offset 处（与 onUpdate ctx.cursorOffset 同语义；越界/空文档置尾） */
     setCursorOffset(offset: number): void
     /** 编辑器是否已就绪（程序化写入前的判据；未就绪时其余方法均为 no-op） */
     isReady(): boolean
-    /** wire 正文（Markdown 序列化；引用 chip 由节点级 renderMarkdown 排除；发送用） */
+    /** wire 正文（Markdown 序列化；纯段落文档退化为纯文本；发送用） */
     getWireText(): string
-    /** 按文档顺序收集引用条目（编辑器未就绪返回空数组） */
-    getQuotes(): ComposerQuoteRef[]
-    /** 插入一条引用（同消息同文本去重、达上限拒绝）；返回落位条目，未就绪/上限返回 null */
-    addQuote(quote: PendingQuoteRef): ComposerQuoteRef | null
-    /** 按 uid 更新/清空某条引用的评论；返回是否命中 */
-    updateQuoteComment(uid: string, comment: string | undefined): boolean
-    /** 在文档末尾回填一组引用（回填数据无 uid，内部补） */
-    insertQuotesAtEnd(quotes: PendingQuoteRef[]): void
-    /** 编辑器实例逃生舱（**仅测试与节点级断言使用，业务层禁止调用**——业务操作走上面的 Handle 方法）；未就绪返回 null */
+    /** 编辑器实例逃生舱（**仅测试与节点级断言使用，业务层禁止调用**）；未就绪返回 null */
     getEditor(): Editor | null
     clear(): void
 }
@@ -285,7 +256,6 @@ export function ChatInput({
     onUpdate,
     onPaste,
     onReady,
-    extraNodes,
     className,
     style,
     'aria-label': ariaLabel,
@@ -300,12 +270,6 @@ export function ChatInput({
 
     // editor 实例 ref：editorProps 回调在 options 求值时创建，闭包捕获不到后续就绪的 editor——经 ref 读取
     const editorRef = useRef<Editor | null>(null)
-
-    // 装配注入的业务节点名集合：随 extraNodes 变化（页面级稳定），每键重建无意义
-    const extraNodeNames = useMemo(
-        () => new Set((extraNodes ?? []).map((n) => n.name)),
-        [extraNodes],
-    )
 
     /**
      * 键位层（顺序固定）：IME 守卫 → 消费方接管 → Enter 判定
@@ -456,19 +420,13 @@ export function ChatInput({
             Placeholder.configure({
                 placeholder: () => propsRef.current.placeholder ?? '',
             }),
-            // 装配注入的业务节点（引用 chip 等）：ui 层零业务，节点实现由消费方提供
-            ...(extraNodes ?? []),
         ],
         editorProps,
         onUpdate: ({ editor, transaction }: { editor: Editor; transaction: { getMeta: (key: string) => unknown } }) => {
-            // offset/降级文本同源：getTextBetween 吃 schema 的 toText 序列化器
-            // （节点 renderText 落 schema.toText）——chip 的「excerpt」在 getText 与
-            // cursorOffset 两侧一致，面板检测的 cursorPos 不错位
             propsRef.current.onUpdate?.({
                 text: normalizeEditorText(editor.getText({ blockSeparator: '\n' })),
                 programmatic: transaction.getMeta(PROGRAMMATIC_META) === true,
                 cursorOffset: textLengthBefore(editor.state.doc, editor.state.selection.from, serializersFor(editor.schema)),
-                extraNodeCount: countExtraNodes(editor.state.doc, extraNodeNames),
                 editorStateJSON: JSON.stringify(editor.getJSON()),
             })
         },
@@ -476,7 +434,7 @@ export function ChatInput({
         // 早于组件下一次渲染对 editorRef 的赋值——否则 onReady 里的 handle 调用全是 no-op
         onCreate: ({ editor }: { editor: Editor }) => { editorRef.current = editor; onReadyRef.current?.() },
         // disabled 入 deps：editable 初值随禁用态快照（运行时切换仍由下方 effect 负责）
-    }), [extraNodes, extraNodeNames, editorProps, disabled])
+    }), [editorProps, disabled])
 
     const editor = useEditor(editorOptions)
     // 每渲染同步（挂载后 editor 由 null → 实例触发重渲染，ref 随之就位）
@@ -603,22 +561,13 @@ export function ChatInput({
             const ed = editorRef.current
             if (!ed) return ''
             // 只有格式没有文字（空列表项 / 空引用块）：Markdown 序列化会残留 "-" ">" 等
-            // 块标记，不能当作可发送正文——正文存在性以纯文本为准（引用 chip 无 textContent，
-            // 由 quotes 分段承载）
+            // 块标记，不能当作可发送正文——正文存在性以纯文本为准
             if (ed.state.doc.textContent.trim() === '') return ''
             const plain = normalizeEditorText(ed.getText({ blockSeparator: '\n' }))
             // 纯文本文档 / 命令语义消息：原样走纯文本。Markdown 序列化的反斜杠转义与
             // HTML 实体编码会改写 bash 命令、斜杠命令与 @路径 的字面语义
             if (isPlainParagraphDoc(ed.state.doc) || looksLikeCommand(plain)) return plain
             return normalizeMarkdownWire(ed.getMarkdown())
-        },
-        getQuotes: () => (editorRef.current ? collectQuotesFromDoc(editorRef.current.state.doc) : []),
-        addQuote: (quote) => (editorRef.current ? addQuoteToEditor(editorRef.current, quote) : null),
-        updateQuoteComment: (uid, comment) => (
-            editorRef.current ? updateQuoteCommentInEditor(editorRef.current, uid, comment) : false
-        ),
-        insertQuotesAtEnd: (quotes) => {
-            if (editorRef.current) insertQuotesAtEnd(editorRef.current, quotes)
         },
         getEditor: () => editorRef.current,
         clear: () => setText(''),
