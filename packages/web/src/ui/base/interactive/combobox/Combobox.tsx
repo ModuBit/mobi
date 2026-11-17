@@ -24,10 +24,12 @@
 // ⑨freeText：自由输入模式——输入框文本本身就是值（不再回落到选中 label），选项作为
 //   建议由调用方按当前输入提供（如工作区路径的目录补全），不做内部过滤；配合 loading
 //   显示补全请求进行中。默认关闭，既有选择语义不受影响
-// ⑩列表高度按可用空间收窄：向上弹且上方不足以放下整表时（弹窗内底部的选择器典型），
-//   列表改成内部滚动而不是被裁切祖先（dialog 的 overflow:auto）切掉顶部选项
+// ⑩弹层 portal 到 body + fixed 定位：不跟触发器同属一个裁切子树，dialog/sheet 的
+//   overflow 不再裁掉列表（局部收窄/翻转只能猜可用空间）；层号走 overlayLayer，
+//   保证压在 dialog/sheet 之上。列表仍按视口可用空间收窄（内部滚动）
 "use client";
 
+import { createPortal } from "react-dom";
 import { animate, AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Check, ChevronDown, LoaderCircle, Search } from "lucide-react";
 import {
@@ -48,6 +50,7 @@ import { GlidingHighlight } from "@/ui/base/motion/GlidingHighlight";
 import { ClearButton } from "@/ui/base/motion/ClearButton";
 import { normalizeNeedle, optionMatches } from "@/ui/base/interactive/optionSearch";
 import { scrollOptionIntoView } from "@/ui/base/interactive/scrollOptionIntoView";
+import { useOpenOverlayLayer } from "@/ui/base/layout/overlayLayer";
 import styles from "./combobox.module.css";
 
 export interface ComboboxOption {
@@ -90,27 +93,6 @@ export interface ComboboxProps
   style?: CSSProperties;
 }
 
-/** 最近的纵向裁切祖先（无则 null = 只受视口约束）。 */
-function nearestClipAncestor(element: HTMLElement): HTMLElement | null {
-  for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
-    if (getComputedStyle(ancestor).overflowY !== "visible") return ancestor;
-  }
-  return null;
-}
-
-/** 元素实际可见范围：视口 ∩ 最近的纵向裁切祖先（弹层翻转只看纵向）。 */
-function visibleBounds(element: HTMLElement): { top: number; bottom: number } {
-  let top = 0;
-  let bottom = window.innerHeight;
-  const clip = nearestClipAncestor(element);
-  if (clip) {
-    const rect = clip.getBoundingClientRect();
-    top = Math.max(top, rect.top);
-    bottom = Math.min(bottom, rect.bottom);
-  }
-  return { top, bottom };
-}
-
 export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Combobox(
   {
     label,
@@ -147,6 +129,8 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
   const listboxId = `${controlId}-listbox`;
   const hintId = description ? `${controlId}-description` : undefined;
   const rootRef = useRef<HTMLDivElement>(null);
+  /** 输入壳（label 之外的控件本体）：弹层以它为锚，向上弹时不会把 label 也算进间隙 */
+  const shellRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const optionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const reduceMotion = useReducedMotion();
@@ -154,6 +138,8 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
   // 半受控开合：open prop 在 props 上（!== undefined）即受控（Select 同款判定）
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = openProp !== undefined ? openProp : uncontrolledOpen;
+  /** 浮层层号：portal 到 body 后必须显式压过 dialog(基准+1)/BottomSheet(基准+1) */
+  const overlayLayer = useOpenOverlayLayer(open);
   const updateOpen = (next: boolean) => {
     if (openProp === undefined) setUncontrolledOpen(next);
     onOpenChange?.(next);
@@ -208,9 +194,12 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
   // （受控形态切换/回调更换后外点关闭依旧走新回调，不重挂监听）
   const updateOpenRef = useRef(updateOpen);
   updateOpenRef.current = updateOpen;
+  const popoverNodeRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      // 弹层已 portal 到 body：不在 root 子树里，但点它仍然算「组件内」
+      if (rootRef.current && !rootRef.current.contains(target) && !popoverNodeRef.current?.contains(target)) {
         updateOpenRef.current(false);
         setQuery("");
       }
@@ -219,59 +208,57 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, []);
 
-  // 弹层翻转：下方放不下且上方更宽裕时向上弹。
-  // 弹层节点以状态承接（回调 ref）：挂载即测量，不靠轮询猜挂载时机；
-  // ResizeObserver 追踪异步建议到达后的高度变化（首测偏小会误判向下弹而被裁）。
-  // 布局效应中完成测量与翻转，避免先向下绘制一帧再跳上去；
-  // 可用空间按「视口 ∩ 最近裁切祖先」取——BottomSheet / 滚动容器会裁掉越界部分，
-  // 只看 window.innerHeight 会在 sheet 里误判为放得下。
+  // 弹层定位：portal 到 body（逃出 dialog/sheet 的 overflow 裁切），fixed 坐标跟着输入壳走。
+  // 空间不足时只收窄列表（内部滚动）并向上/向下翻转，方向判定用未收窄的自然高度，
+  // 避免收窄后反复横跳；scroll（捕获阶段，含嵌套滚动容器）/ resize / 尺寸变化都重测。
   const [dropUp, setDropUp] = useState(false);
-  /** 列表可用高度（px）：放得下为 null（走 CSS 上限）；放不下时按弹层方向的可视空间收窄 */
+  const [position, setPosition] = useState<{ left: number; width: number; top?: number; bottom?: number } | null>(null);
+  /** 列表可用高度（px）：放得下为 null（走 CSS 上限）；放不下时按可视空间收窄 */
   const [listMaxHeight, setListMaxHeight] = useState<number | null>(null);
   /** 未收窄时的自然高度：收窄后 scrollHeight 只剩可视部分，翻转判定须用自然高度避免来回跳 */
   const naturalHeightRef = useRef(0);
   const [popoverNode, setPopoverNode] = useState<HTMLDivElement | null>(null);
+  popoverNodeRef.current = popoverNode;
   useLayoutEffect(() => {
     if (!open || !popoverNode) return;
+    const GAP = 8;
+    // 弹层自身内衬 5px×2 + 描边 1px×2
+    const CHROME = 12;
     const measure = () => {
-      const root = rootRef.current;
-      if (!root) return;
-      const rect = root.getBoundingClientRect();
-      const bounds = visibleBounds(root);
-      const below = bounds.bottom - rect.bottom;
-      const above = rect.top - bounds.top;
+      const shell = shellRef.current;
+      if (!shell) return;
+      const rect = shell.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      // 上下可用空间都已扣掉与触发器之间的间距
+      const below = viewportHeight - rect.bottom - GAP;
+      const above = rect.top - GAP;
       if (listMaxHeight === null) naturalHeightRef.current = popoverNode.scrollHeight;
-      const needed = Math.max(popoverNode.scrollHeight, naturalHeightRef.current) + 20;
+      const needed = Math.max(popoverNode.scrollHeight, naturalHeightRef.current) + GAP;
       const up = below < needed && above > below;
       setDropUp(up);
       const available = up ? above : below;
-      // 扣除弹层与触发器之间的 8px 间距 + 弹层自身内衬/描边 12px，否则向上弹时顶部仍被裁。
-      // 下界取一条选项高（48px）：BottomSheet 里触发器贴近底缘时可用空间可能不足「140px 舒服档」，
-      // 按下界硬撑会被 sheet 头部裁掉（2026-11-17 实测 sheet 内只剩 ~98px）
-      setListMaxHeight(available >= needed ? null : Math.max(48, available - 20));
+      // 下界取一条选项高（48px）：BottomSheet 里触发器贴近底缘时可用空间可能只剩一百来像素
+      setListMaxHeight(available >= needed ? null : Math.max(48, available - CHROME));
+      setPosition(up
+        // 向上弹用 bottom 锚定：列表收窄/AutoHeight 动画改变高度时始终贴着输入壳
+        ? { left: rect.left, width: rect.width, bottom: viewportHeight - rect.top + GAP }
+        : { left: rect.left, width: rect.width, top: rect.bottom + GAP });
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(popoverNode);
-    // 滚动 / 缩放会改变可用空间（sheet 内输入框、页面滚动）：变化时重测才能及时翻转
-    const root = rootRef.current;
-    const scroller = root ? nearestClipAncestor(root) : null;
-    scroller?.addEventListener("scroll", measure, { passive: true });
-    // 裁切祖先（dialog 内容）的入场动画走 transform，ResizeObserver/滚动都收不到：
-    // 动画期间的坐标偏移会把可用空间算多（弹窗顶被裁 8px），结束补测一次
-    scroller?.addEventListener("animationend", measure);
-    window.addEventListener("scroll", measure, { passive: true });
+    if (shellRef.current) observer.observe(shellRef.current);
+    // capture：页面内任意滚动容器（dialog body / sheet body / 列表）滚动都要让弹层跟随
+    window.addEventListener("scroll", measure, { capture: true, passive: true });
     window.addEventListener("resize", measure);
     return () => {
       observer.disconnect();
-      scroller?.removeEventListener("scroll", measure);
-      scroller?.removeEventListener("animationend", measure);
-      window.removeEventListener("scroll", measure);
+      window.removeEventListener("scroll", measure, { capture: true });
       window.removeEventListener("resize", measure);
     };
   }, [open, popoverNode, listMaxHeight]);
   // 关合后复位收窄：下次打开按新的可用空间重新测（弹窗尺寸/滚动位置可能已变）
-  useEffect(() => { if (!open) setListMaxHeight(null); }, [open]);
+  useEffect(() => { if (!open) { setListMaxHeight(null); setPosition(null); } }, [open]);
 
   const choose = (option: ComboboxOption) => {
     if (option.disabled) return;
@@ -342,7 +329,7 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
   return (
     <div ref={rootRef} className={[styles.field, className].filter(Boolean).join(" ")} style={style}>
       {label && <label htmlFor={controlId}>{label}</label>}
-      <div className={[styles.control, variant === "borderless" ? styles.borderless : "", open ? styles.open : "", disabled ? styles.disabled : ""].filter(Boolean).join(" ")}>
+      <div ref={shellRef} className={[styles.control, variant === "borderless" ? styles.borderless : "", open ? styles.open : "", disabled ? styles.disabled : ""].filter(Boolean).join(" ")}>
         <span className={styles.searchIcon} aria-hidden="true">
           {icon ?? <Search size={16} strokeWidth={1.75} />}
         </span>
@@ -409,11 +396,20 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
           : <ChevronDown className={styles.chevron} size={16} strokeWidth={1.75} aria-hidden="true" />}
       </div>
       {description && <span id={hintId} className={styles.hint}>{description}</span>}
+      {typeof document !== "undefined" && createPortal(
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
             ref={setPopoverNode}
             className={[styles.popover, dropUp ? styles.dropUp : ""].filter(Boolean).join(" ")}
+            style={{
+              left: position?.left ?? 0,
+              width: position?.width ?? 0,
+              top: position?.top,
+              bottom: position?.bottom,
+              zIndex: overlayLayer === undefined ? undefined : overlayLayer + 1,
+              visibility: position ? undefined : "hidden",
+            }}
             initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: dropUp ? 6 : -6, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1, transition: reduceMotion ? { duration: motionTokens.duration.instant } : { ...motionTokens.spring.snappy, opacity: { duration: motionTokens.duration.fast, ease: [...motionTokens.ease.enter] } } }}
             exit={{ opacity: 0, ...(reduceMotion ? {} : { y: dropUp ? 4 : -4, scale: 0.98 }), transition: { duration: motionTokens.duration.instant, ease: [...motionTokens.ease.standard] } }}
@@ -450,7 +446,9 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
             </AutoHeight>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body,
+      )}
     </div>
   );
 });
