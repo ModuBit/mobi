@@ -208,4 +208,86 @@ describe('BubbleListChat fill 级联', () => {
             restore()
         }
     })
+
+    it('fill 拉满视口后停止补拉，且不把正在看的内容钉到底', () => {
+        // 可变几何：先不足视口（触发 fill），再改为已溢出（停 fill）
+        const state = { scrollHeight: 50, clientHeight: 143 }
+        const proto = Element.prototype as HTMLElement
+        const shDesc = Object.getOwnPropertyDescriptor(proto, 'scrollHeight')
+        const chDesc = Object.getOwnPropertyDescriptor(proto, 'clientHeight')
+        Object.defineProperty(proto, 'scrollHeight', { configurable: true, get: () => state.scrollHeight })
+        Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => state.clientHeight })
+        // 模拟 Chrome（有原生 scroll anchoring）：不让 reconcile 走无 anchoring 的高度差兜底
+        const origSupports = CSS.supports
+        CSS.supports = () => true
+        try {
+            const onLoadMore = vi.fn()
+            const items = Array.from({ length: 100 }, (_, i) => item(`k${i}`))
+            const utils = render(
+                <BubbleListChat
+                    items={items}
+                    hasNextPage
+                    isFetchingNextPage={false}
+                    onLoadMore={onLoadMore}
+                />,
+            )
+            expect(onLoadMore).toHaveBeenCalled() // fill 启动
+            const box = utils.container.querySelector('.ant-bubble-list-scroll-box') as HTMLElement
+            expect(box).not.toBeNull()
+            // 内容溢出 + 用户上滚到某处：停 fill 时不得改写 scrollTop
+            // （旧实现会 scrollTop = scrollHeight 钉底，把正在看的内容瞬移走）
+            state.scrollHeight = 5000
+            box.scrollTop = 123
+            utils.rerender(
+                <BubbleListChat
+                    items={items.slice(0, 40)}
+                    hasNextPage
+                    isFetchingNextPage={false}
+                    onLoadMore={onLoadMore}
+                />,
+            )
+            expect(box.scrollTop).toBe(123)
+        } finally {
+            CSS.supports = origSupports
+            if (shDesc) Object.defineProperty(proto, 'scrollHeight', shDesc)
+            if (chDesc) Object.defineProperty(proto, 'clientHeight', chDesc)
+        }
+    })
+})
+
+describe('BubbleListChat prepend 锚点补偿', () => {
+    it('前插更旧内容后按锚点位移补偿 scrollTop，用户视线不动', () => {
+        const restoreLayout = mockLayout({ scrollHeight: 1000, clientHeight: 500 })
+        const origRect = Element.prototype.getBoundingClientRect
+        const origSupports = CSS.supports
+        CSS.supports = () => true
+        // 假布局：每项 100px 高，按 key 查表——模拟「前插后原项整体下移」
+        const tops = new Map<string, number>()
+        Element.prototype.getBoundingClientRect = function (this: HTMLElement) {
+            const key = this.dataset?.bubbleKey
+            const top = key ? (tops.get(key) ?? 0) : 0
+            return { top, bottom: top + 100, left: 0, right: 600, width: 600, height: 100, x: 0, y: top, toJSON: () => ({}) } as DOMRect
+        }
+        try {
+            const items = Array.from({ length: 20 }, (_, i) => item(`k${i}`))
+            items.forEach((it, i) => tops.set(it.key, i * 100))
+            const props = { hasNextPage: false, isFetchingNextPage: false, onLoadMore: () => {} }
+            const utils = render(<BubbleListChat items={items} {...props} />)
+            const box = utils.container.querySelector('.ant-bubble-list-scroll-box') as HTMLElement
+            expect(box).not.toBeNull()
+            // 用户滚到顶部（jsdom 不派发原生 scroll，快照内锚点保持视口内有效）
+            box.scrollTop = 0
+            // 前插 3 条更旧内容：原 k0 下移 300px
+            const older = Array.from({ length: 3 }, (_, i) => item(`older${i}`))
+            older.forEach((it, i) => tops.set(it.key, i * 100))
+            items.forEach((it, i) => tops.set(it.key, (i + 3) * 100))
+            utils.rerender(<BubbleListChat items={[...older, ...items]} {...props} />)
+            // 锚点（k0）从 0 移到 300：scrollTop 补 300，用户看到的 k0 位置不变
+            expect(box.scrollTop).toBe(300)
+        } finally {
+            Element.prototype.getBoundingClientRect = origRect
+            CSS.supports = origSupports
+            restoreLayout()
+        }
+    })
 })

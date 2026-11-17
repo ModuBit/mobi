@@ -55,22 +55,34 @@ const HISTORY_PREFETCH_DISTANCE = 200
 /** prepend 历史后 scrollTop 补偿期间，屏蔽 scroll 事件的时间窗（覆盖 RO + rAF 双帧延迟） */
 const RESTORE_SCROLL_GUARD_MS = 100
 
-/** prepend 补偿的锚点样本：key + 捕获时的 rect.top（绝对视口坐标） */
+/** prepend 补偿的锚点样本：key + 捕获时的 rect.top（视口坐标） */
 interface AnchorSample {
     key: string
     top: number
 }
 
-/** prepend 补偿的待办记录（见 pendingRestoreRef） */
-interface PendingRestore {
-    scrollHeight: number
-    itemsLength: number
-    /**
-     * 视口锚点候选：顶部第一个可见项（用户正在看的就是它）+ 末尾渲染项。
-     * 两者分处列表两端——贴末尾模式只 prepend（都存活）；滑动模式 prepend 同时裁掉
-     * 末尾，但顶部可见项存活；实测两个候选能覆盖所有裁切方向。
-     */
+/** 快照最多记几个视口内锚点（覆盖视口内可见项，个别灭失时退让下一个） */
+const MAX_ANCHORS = 8
+
+/**
+ * 视口锚点快照：每次 items 变化后的 layout effect 里重拍，下一次内容变化时按同一批
+ * key 的 rect.top 残差补偿 scrollTop。
+ *
+ * 为什么锚点取「视口内全部可见项」而不只第一个：prepend / 窗口裁切 / React 复用都可能
+ * 让个别 bubble 从 DOM 消失，单个锚点灭掉就只能退回末尾渲染项——而末尾项常在视口外，
+ * 它的位移不等于视口位移（浏览器原生 anchoring 只保证视口内节点不动），拿它补偿会把
+ * 视口推偏（2026-11-17 实测一次 1639px 的错误补偿，表现为「加载完成后内容被上移」）。
+ *
+ * 补偿以「锚点的视口位置不动」为准，而不是 scrollHeight delta——delta 会把加载期间
+ * 无关的高度变化（相邻 bubble 延迟排版、图片/代码高亮加载、折叠测量）也算进补偿量，
+ * 并且会和浏览器原生 scroll anchoring 的自动补偿重复叠加。
+ */
+interface AnchorSnapshot {
     anchors: AnchorSample[]
+    /** 末尾渲染项：仅作无原生 anchoring（Safari）时的兜底，视口外位移不可靠 */
+    tail: AnchorSample | null
+    scrollTop: number
+    scrollHeight: number
 }
 
 /** 按 data-bubble-key 找已渲染的真实项（顶部加载行没有该属性，天然跳过） */
@@ -79,45 +91,37 @@ function findBubbleEl(scrollBox: HTMLElement, key: string): HTMLElement | undefi
         .find(el => el.dataset.bubbleKey === key)
 }
 
-/**
- * 捕获 prepend 补偿锚点：顶部第一个可见项 + 末尾渲染项。
- *
- * 补偿以「锚点的视口位置不动」为准，而不是 scrollHeight delta——delta 会把加载期间
- * 无关的高度变化（相邻 bubble 延迟排版、图片/代码高亮加载、折叠测量）也算进补偿量，
- * 并且会和浏览器原生 scroll anchoring 的自动补偿重复叠加，表现为「加载完成后跳一段」。
- */
-function captureAnchors(scrollBox: HTMLElement): AnchorSample[] {
+/** 捕获视口锚点快照：视口内可见项（按视口顺序，最多 MAX_ANCHORS 个）+ 末尾渲染项 */
+function captureAnchors(scrollBox: HTMLElement): AnchorSnapshot {
+    const snapshot: AnchorSnapshot = {
+        anchors: [],
+        tail: null,
+        scrollTop: scrollBox.scrollTop,
+        scrollHeight: scrollBox.scrollHeight,
+    }
     const els = Array.from(scrollBox.querySelectorAll<HTMLElement>('[data-bubble-key]'))
-    if (els.length === 0) return []
-    const samples: AnchorSample[] = []
+    if (els.length === 0) return snapshot
     const boxTop = scrollBox.getBoundingClientRect().top
-    const visible = els.find(el => el.getBoundingClientRect().bottom > boxTop + 1)
-    if (visible?.dataset.bubbleKey) {
-        samples.push({ key: visible.dataset.bubbleKey, top: visible.getBoundingClientRect().top })
+    const boxBottom = boxTop + scrollBox.clientHeight
+    for (const el of els) {
+        const key = el.dataset.bubbleKey
+        if (!key) continue
+        const rect = el.getBoundingClientRect()
+        if (rect.bottom > boxTop + 1 && rect.top < boxBottom - 1) {
+            snapshot.anchors.push({ key, top: rect.top })
+            if (snapshot.anchors.length >= MAX_ANCHORS) break
+        }
     }
-    const tail = els[els.length - 1]
-    if (tail?.dataset.bubbleKey && tail !== visible) {
-        samples.push({ key: tail.dataset.bubbleKey, top: tail.getBoundingClientRect().top })
+    const tailEl = els[els.length - 1]
+    if (tailEl?.dataset.bubbleKey && !snapshot.anchors.some(a => a.key === tailEl.dataset.bubbleKey)) {
+        snapshot.tail = { key: tailEl.dataset.bubbleKey, top: tailEl.getBoundingClientRect().top }
     }
-    return samples
+    return snapshot
 }
 
 /** 浏览器是否实现原生 scroll anchoring（Chrome / Firefox true，Safari false） */
 function supportsScrollAnchoring(): boolean {
     return typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('overflow-anchor', 'auto')
-}
-
-/** 构造 pendingRestore 记录（三个触发点共用） */
-function makePendingRestore(
-    scrollBox: HTMLElement | null,
-    scrollHeight: number,
-    itemsLength: number,
-): PendingRestore {
-    return {
-        scrollHeight,
-        itemsLength,
-        anchors: scrollBox ? captureAnchors(scrollBox) : [],
-    }
 }
 
 /**
@@ -150,12 +154,14 @@ function isViewportUnfilled(scrollBox: HTMLElement): boolean {
  * smooth 门闩 / pointerDown 守卫）。Bubble.List 的 scroller 是 scrollBoxNativeElement，
  * 内容层是 `.ant-bubble-list-scroll-content`，useStickToBottom 据此观测 + pin。
  *
- * ## prepend 历史维持 scrollTop
+ * ## prepend 历史维持视口
  *
- * Bubble.List 无 virtuoso 的 firstItemIndex 机制——手动 pin：prepend 前记录视口锚点
- * （顶部可见项 + 末尾渲染项的 rect.top），items 变化后 useLayoutEffect 在 DOM 提交后
- * 按锚点位移补偿 scrollTop。锚点法对无关高度变化与浏览器 scroll anchoring 的自动补偿
- * 都免疫（详见 useLayoutEffect 处注释）。全量在 DOM、real heights 同步可读，手动 pin 可行。
+ * Bubble.List 无 virtuoso 的 firstItemIndex 机制——手动 pin：每次内容变化后拍下「视口内
+ * 可见项」的 rect.top 快照，下一次变化时按同一批锚点的视口位移残差补偿 scrollTop
+ *（items 变化走 layout effect，内容层高度变化走 ResizeObserver）。锚点法对无关高度变化与
+ * 浏览器 scroll anchoring 的自动补偿都免疫（详见 reconcileAnchors 注释）。全量在 DOM、
+ * real heights 同步可读，手动 pin 可行。fill 补页完成后也不再钉底（钉底会把正在看的
+ * 内容瞬移到最新处）；初始历史到位同理——历史在上方 prepend，保持用户视线。
  *
  * `autoScroll={false}`：禁用 antdx 内置 autoScroll（它用 column-reverse + enforceScrollLock
  * 独立管理视口，与手动 restore 时序冲突），改由 useStickToBottom + 本组件自管。
@@ -168,8 +174,8 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
     //（后者在 antx 内部 effect 后才赋值，晚于本组件 useLayoutEffect，会读 null）
     const scrollContainerRef = useRef<HTMLDivElement | null>(null)
     const scrollBoxRef = useRef<HTMLDivElement | null>(null)
-    // prepend 历史时记录的 scroll 几何 + 视口锚点，供 restore useLayoutEffect 维持视口
-    const pendingRestoreRef = useRef<PendingRestore | null>(null)
+    // 视口锚点快照：每次 items 变化的 layout effect 里重拍，下次内容变化时量残差补偿
+    const anchorSnapshotRef = useRef<AnchorSnapshot | null>(null)
     // restore 补偿期间屏蔽 scroll listener（避免重复触发 prefetch / 误判 fill）
     const isRestoringScrollRef = useRef(false)
     // fill 级联：初始加载内容未溢出时连续拉页，期间不显示 loading（避免高度来回跳动）
@@ -234,10 +240,29 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
         if (isRestoringScrollRef.current) return
         const scrollBox = scrollBoxRef.current
         if (!scrollBox) return
-        const { scrollTop, scrollHeight } = scrollBox
+        const { scrollTop } = scrollBox
+
+        // 用户滚动 → O(1) 平移快照锚点：内容未变时锚点的视口 top 随 scrollTop 精确平移，
+        // 这样「加载前用户滚过一段」不会混进下一次的残差里。
+        // 只在 scrollHeight 未变（内容没动）时平移：内容变化引发的 st 调整（浏览器原生
+        // anchoring / 钉底）同时改变了锚点位置，此时平移会把已施加的补偿二次计入残差
+        //（实测表现为补偿一倍：56px 增高被补成 112px 位移）。
+        const snapshot = anchorSnapshotRef.current
+        if (snapshot && scrollBox.scrollHeight === snapshot.scrollHeight) {
+            const drift = scrollTop - snapshot.scrollTop
+            if (drift !== 0) {
+                for (const anchor of snapshot.anchors) anchor.top -= drift
+                if (snapshot.tail) snapshot.tail.top -= drift
+                snapshot.scrollTop = scrollTop
+            }
+        }
 
         // 滚到顶 prefetch：window 滑动 + 滑动模式置位 + store 顶 fetchNextPage
         if (scrollTop < HISTORY_PREFETCH_DISTANCE && !isFetchingNextPageRef.current) {
+            // 即将触发加载：以此刻的视口重拍锚点快照——补偿基准必须是「用户此刻看到的内容」。
+            // 依赖滚动平移的旧快照会在滚动后只剩视口外锚点，而视口外节点的位移不等于视口
+            // 位移（窗口裁切/懒加载/重排都会干扰），拿它补偿会把视口推偏（实测 1520px）。
+            anchorSnapshotRef.current = captureAnchors(scrollBox)
             const inSlidingMode = windowStartRef.current !== null
             const inTailMode = !inSlidingMode
             // store 中是否还有比当前 window 更旧的 item
@@ -247,14 +272,12 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
 
             if (inTailMode && windowSizeRef.current >= EXPAND_WINDOW && windowHasOlderInStore) {
                 // 贴末尾 N=800 + store 还有更旧 → 转滑动模式（DOM 不变，后续上滚走滑动 prepend）
-                pendingRestoreRef.current = makePendingRestore(scrollBox, scrollHeight, itemsLengthRef.current)
                 windowStartRef.current = itemsLengthRef.current - EXPAND_WINDOW
                 setWindowTick(v => v + 1)
                 return
             }
             if (windowHasOlderInStore) {
                 // store 已有更旧：window prepend（不 fetch，仅扩窗口）
-                pendingRestoreRef.current = makePendingRestore(scrollBox, scrollHeight, itemsLengthRef.current)
                 if (inSlidingMode) {
                     // 滑动模式：start 前移 50（prepend + append 裁）
                     windowStartRef.current = Math.max(0, windowStartRef.current! - 50)
@@ -267,7 +290,6 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
             }
             // store 全量也到顶：fetchNextPage（拉新页扩展 store）
             if (hasNextPageRef.current) {
-                pendingRestoreRef.current = makePendingRestore(scrollBox, scrollHeight, itemsLengthRef.current)
                 onLoadMoreRef.current()
             }
             return
@@ -291,58 +313,96 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
         return () => scrollBox.removeEventListener('scroll', handleScroll)
     }, [handleScroll])
 
-    // prepend 历史维持 scrollTop：items 变化后 DOM 已提交（layout effect 在 commit 之后），
-    // 按「锚点的视口位移」补偿，让用户正在看的内容保持不动。
+    // prepend 历史维持 scrollTop：按「锚点的视口位移残差」补偿 scrollTop，让用户正在看的
+    // 内容保持不动。
     //
-    // 为什么不用 scrollHeight delta：delta 会把加载期间无关的高度变化（相邻 bubble 延迟
-    // 排版、图片/代码高亮加载）一起算进补偿量，而且浏览器原生 scroll anchoring（Chrome/
-    // Firefox）已经自动补偿过一次——再按 delta 从捕获时的 scrollTop 重算就是重复施加，
-    // 表现为「加载完成后内容突然跳一段」（2026-11-17 实测完成瞬间漂移 ~219px）。
-    // 锚点法取位移残差并追加到**当前** scrollTop：浏览器已补偿时残差为 0，天然不叠加。
-    useLayoutEffect(() => {
-        const pending = pendingRestoreRef.current
-        if (!pending) return
+    // 残差 = 同一锚点当前的 rect.top − 快照里的 rect.top：正数表示上方插入了内容
+    //（prepend 历史），负数表示上方内容减少（加载行移除）。补偿追加到**当前** scrollTop：
+    // 浏览器原生 scroll anchoring（Chrome/Firefox）在 layout 阶段已自动补偿时残差为 0，
+    // 天然不叠加（2026-11-17 实测：按 scrollHeight delta 从捕获时的 scrollTop 重算，会
+    // 把浏览器已施加的补偿再施加一遍，完成瞬间跳 ~219px）。
+    //
+    // @param armPrefetch 是否设结算窗口：窗口内屏蔽 scroll listener（防补偿自身的 scroll
+    //   事件重复触发 prefetch / 误判 fill），窗口结束时若仍在顶部附近自动续拉下一页
+    //   （修复「restore 后无 scroll 事件、用户须再滚一下」）。items 变化的结算必开；
+    //   RO 高度微调不开——流式高频会把窗口一直顺延，让 scroll listener 长期失聪。
+    const reconcileAnchors = useCallback((armPrefetch: boolean) => {
         const scrollBox = scrollBoxRef.current
         if (!scrollBox) return
+        const snapshot = anchorSnapshotRef.current
+        const boxTop = scrollBox.getBoundingClientRect().top
 
-        // 锚点位移（内容下移为正）：优先视口顶部可见项，被裁掉时退回末尾渲染项
+        // 锚点位移：按视口内锚点顺序找第一个存活的（个别 bubble 被裁/重组时退让下一个）。
+        // 只认「此刻仍在视口内」的锚点——快照后用户滚动过、锚点已移出视口时，它的位移
+        // 夹带了重排/懒加载等不可信因素，不能用来推视口。
         let shift: number | null = null
-        for (const anchor of pending.anchors) {
+        const boxBottom = boxTop + scrollBox.clientHeight
+        for (const anchor of snapshot?.anchors ?? []) {
             const el = findBubbleEl(scrollBox, anchor.key)
-            if (el) {
-                shift = el.getBoundingClientRect().top - anchor.top
-                break
-            }
+            if (!el) continue
+            const rect = el.getBoundingClientRect()
+            if (rect.bottom < boxTop + 1 || rect.top > boxBottom - 1) continue
+            shift = rect.top - anchor.top
+            break
         }
         if (shift == null && !supportsScrollAnchoring()) {
-            // 锚点全被窗口裁掉（极端场景）：无原生 scroll anchoring 的浏览器退回高度差兜底
-            shift = scrollBox.scrollHeight - pending.scrollHeight
+            // 视口内锚点全灭（整窗重排）且浏览器无原生 anchoring：末尾项 / 高度差兜底。
+            // 支持 anchoring 的浏览器不做这份兜底——末尾项在视口外，它的位移不等于视口位移
+            const tailEl = snapshot?.tail ? findBubbleEl(scrollBox, snapshot.tail.key) : undefined
+            if (tailEl && snapshot?.tail) {
+                shift = tailEl.getBoundingClientRect().top - snapshot.tail.top
+            } else if (snapshot) {
+                shift = scrollBox.scrollHeight - snapshot.scrollHeight
+            }
         }
 
         if (shift) {
-            isRestoringScrollRef.current = true
             scrollBox.scrollTop += shift
-            pending.scrollHeight = scrollBox.scrollHeight
         }
-        // 加载完成（items 增长 / fetch 结束 / window prepend）→ 清 pending，延时解除 restore guard。
-        // 延时内若仍在顶部附近 → 自动续拉下一页（修复「restore 后无 scroll 事件、用户须再滚一下」）
-        if (items.length > pending.itemsLength || !isFetchingNextPageRef.current) {
+
+        // 重拍快照：本次内容变化已结算，后续再变化以当前视口状态为基准
+        anchorSnapshotRef.current = captureAnchors(scrollBox)
+
+        if (armPrefetch) {
             const restoredScrollTop = scrollBox.scrollTop
-            pendingRestoreRef.current = null
             isRestoringScrollRef.current = true
             if (scrollRestoreTimerRef.current) clearTimeout(scrollRestoreTimerRef.current)
             scrollRestoreTimerRef.current = setTimeout(() => {
                 scrollRestoreTimerRef.current = null
                 isRestoringScrollRef.current = false
-                // restore 后若仍在顶部附近，继续触发（window prepend 或 fetchNextPage）
                 if (restoredScrollTop < HISTORY_PREFETCH_DISTANCE) {
                     handleScroll()
                 }
             }, RESTORE_SCROLL_GUARD_MS)
         }
-    }, [items.length, isFetchingNextPage, windowTick, handleScroll])
+    }, [handleScroll])
 
-    // fill 级联：内容溢出后停 fill + 钉底；未溢出且仍有历史则继续拉。
+    // items 变化（加载完成 / window prepend / 加载行增删 / 首拉历史到位）→ 结算式补偿
+    useLayoutEffect(() => {
+        reconcileAnchors(true)
+    }, [items.length, isFetchingNextPage, windowTick, historyLoading, reconcileAnchors])
+
+    // 内容层高度变化（流式增量、tool 卡 / 图片 / 高亮延迟撑高）不改 items 长度但同样
+    // 会推挤视口：RO 观测内容层，rAF 合并后走同一套锚点残差补偿（不设结算窗口）
+    useEffect(() => {
+        const content = scrollBoxRef.current?.querySelector('.ant-bubble-list-scroll-content')
+        if (!content) return
+        let raf = 0
+        const ro = new ResizeObserver(() => {
+            if (raf) return
+            raf = requestAnimationFrame(() => {
+                raf = 0
+                reconcileAnchors(false)
+            })
+        })
+        ro.observe(content)
+        return () => {
+            ro.disconnect()
+            if (raf) cancelAnimationFrame(raf)
+        }
+    }, [reconcileAnchors, items.length > 0])
+
+    // fill 级联：未溢出视口且仍有历史则连续拉页；溢出后停 fill（不钉底，见内注释）。
     useEffect(() => {
         const scrollBox = scrollBoxRef.current
         if (!scrollBox) return
@@ -361,9 +421,10 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
         if (scrollHeight <= clientHeight) {
             onLoadMoreRef.current()
         } else {
-            // 停 fill；仅仍在贴底时钉底（防竞态：fill 进行中用户上滚后不应被瞬移回底）
+            // 停 fill。溢出后不主动钉底：fill 拉的是更旧内容（prepend 在上方），
+            // 锚点补偿已保证用户视线不动；钉底会把正在看的内容瞬移到最新处
+            //（2026-11-17 用户反馈「加载完成后内容被上移」的根因之一）
             isFillingRef.current = false
-            if (followingRef.current) scrollBox.scrollTop = scrollBox.scrollHeight
         }
     }, [items.length, isFetchingNextPage])
 
