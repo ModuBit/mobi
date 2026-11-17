@@ -1009,9 +1009,7 @@
     "skills": {
       "tabGlobal": "Personal",
       "tabsAria": "Skill scopes",
-      "searchPlaceholder": "Search skills",
       "empty": "No skills yet",
-      "emptyFiltered": "No matching skills",
       "source": {
         "personal": "Personal",
         "synced": "claude.ai",
@@ -1061,13 +1059,6 @@
       },
       "coveredByLocal": "Shadowed by a same-name skill",
       "bundledFailed": "Failed to load built-in skills, retry later",
-      "createAction": "New",
-      "createTitle": "New skill",
-      "createScopeLabel": "Save to",
-      "createSubmit": "Create in chat",
-      "createHint": "A new session opens with a pre-filled guide. Finish SKILL.md with Claude there, then come back to see it listed.",
-      "createNoWorkspace": "Create a workspace first (sessions belong to one)",
-      "createFailed": "Failed to start, please retry",
       "tabBundled": "System",
       "emptyBundled": "No built-in skills",
       "detail": {

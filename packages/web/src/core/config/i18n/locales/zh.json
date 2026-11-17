@@ -1000,9 +1000,7 @@
     "skills": {
       "tabGlobal": "个人",
       "tabsAria": "技能作用域",
-      "searchPlaceholder": "搜索技能",
       "empty": "没有技能",
-      "emptyFiltered": "没有匹配的技能",
       "source": {
         "personal": "个人",
         "synced": "claude.ai",
@@ -1052,13 +1050,6 @@
       },
       "coveredByLocal": "被同名技能覆盖",
       "bundledFailed": "内置名单获取失败，请稍后重试",
-      "createAction": "新建",
-      "createTitle": "新建技能",
-      "createScopeLabel": "保存到",
-      "createSubmit": "去会话创建",
-      "createHint": "将打开一个新会话并预填创建引导，你与 Claude 对话完成 SKILL.md 的编写后，回到本页即可看到新技能。",
-      "createNoWorkspace": "请先创建一个工作区（会话需要归属工作区）",
-      "createFailed": "创建失败，请重试",
       "tabBundled": "系统",
       "emptyBundled": "没有内置技能",
       "detail": {

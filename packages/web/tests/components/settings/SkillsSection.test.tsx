@@ -205,21 +205,6 @@ describe('SkillsSection（票 02：tabs + 列表 + 搜索）', () => {
         expect(screen.queryByText('alpha')).toBeNull()
     })
 
-    it('搜索过滤当前 tab：匹配名字保留、无匹配出空态文案', () => {
-        vi.mocked(useWorkspaces).mockReturnValue({ data: [] } as never)
-        vi.mocked(useSkills).mockImplementation(mockSkillsByScope)
-
-        render(<SkillsSection />)
-
-        const input = screen.getByPlaceholderText('settings.skills.searchPlaceholder')
-        fireEvent.change(input, { target: { value: 'alpha' } })
-        expect(screen.getByText('alpha')).toBeTruthy()
-        expect(screen.queryByText('beta')).toBeNull()
-
-        fireEvent.change(input, { target: { value: 'zzz-no-match' } })
-        expect(screen.getByText('settings.skills.emptyFiltered')).toBeTruthy()
-    })
-
     it('生效态：own off 显示停用徽标；own on 被 local 压制显示遮蔽徽标', () => {
         vi.mocked(useWorkspaces).mockReturnValue({ data: [] } as never)
         vi.mocked(useSkills).mockImplementation(mockSkillsByScope)
@@ -239,7 +224,7 @@ describe('SkillsSection（票 02：tabs + 列表 + 搜索）', () => {
         expect(screen.getByText('settings.skills.empty')).toBeTruthy()
     })
 
-    it('无技能的工作区不出现在 tabs，但弹窗 scope 选择器仍可选（空项目可建第一个 skill）', async () => {
+    it('无技能的工作区不出现在 tabs，但安装弹窗 scope 选择器仍可选（空项目可装第一个 skill）', async () => {
         vi.mocked(useWorkspaces).mockReturnValue({ data: [{ id: 'ws-1', name: 'Demo Workspace' }] } as never)
         vi.mocked(useSkills).mockImplementation(mockSkillsByScope)
         vi.mocked(useSkillOccupancy).mockReturnValue({ workspaceIds: [] })
@@ -249,13 +234,9 @@ describe('SkillsSection（票 02：tabs + 列表 + 搜索）', () => {
         // tabs 里没有空项目（tabs 容器内限定——弹窗选项的同名文本不参与）
         expect(within(screen.getByTestId('skills-tabs')).queryByText('Demo Workspace')).toBeNull()
 
-        // 新建弹窗 scope 选择器（自管 Combobox）仍有该项目（目标 scope 用全量清单）
-        screen.getByTestId('skills-create').click()
-        await screen.findByText('settings.skills.createSubmit')
-        const scopeInput = document.querySelector(
-            'input[role="combobox"][aria-label="settings.skills.createScopeLabel"]',
-        )!
-        fireEvent.click(scopeInput)
+        // 安装弹窗 scope 选择器（自管 Combobox）仍有该项目（目标 scope 用全量清单）
+        screen.getByTestId('skills-install').click()
+        fireEvent.click(await screen.findByRole('combobox', { name: 'settings.skills.installScopeLabel' }))
         expect(await screen.findByRole('option', { name: 'Demo Workspace' })).toBeTruthy()
     })
 })
@@ -657,79 +638,3 @@ describe('SkillsSection（票 06：系统 tab 内置名单）', () => {
     })
 })
 
-describe('SkillsSection（票 07：对话式新建）', () => {
-    function setup(ws: { id: string; name: string }[] = [{ id: 'ws-1', name: 'Demo Workspace' }]) {
-        vi.mocked(useWorkspaces).mockReturnValue({ data: ws } as never)
-        vi.mocked(useSkills).mockImplementation(mockSkillsByScope)
-        vi.mocked(useSkillVisibility).mockReturnValue(mockVisibility as never)
-        render(<SkillsSection />)
-    }
-
-    it('新建弹窗：确认后 createPrompt → 草稿预填 + 跳新会话页（带宿主工作区）', async () => {
-        setup()
-        mockCreatePrompt.mockResolvedValueOnce({ data: { targetDir: '/x/skills', prompt: 'CREATE PROMPT' } })
-
-        screen.getByTestId('skills-create').click()
-        fireEvent.click(await screen.findByText('settings.skills.createSubmit'))
-
-        await waitFor(() => {
-            expect(mockCreatePrompt).toHaveBeenCalledWith('global')
-            expect(mockSaveDraftText).toHaveBeenCalledWith('CREATE PROMPT')
-            expect(mockNavigate).toHaveBeenCalledWith({
-                to: '/sessions/new',
-                search: { workspaceId: 'ws-1' },
-            })
-        })
-    })
-
-    it('scope 切到工作区：createPrompt 用该 ws、宿主同为该 ws', async () => {
-        setup()
-        mockCreatePrompt.mockResolvedValueOnce({ data: { targetDir: '/w/.claude/skills', prompt: 'P' } })
-
-        screen.getByTestId('skills-create').click()
-        // 弹窗内的 scope Combobox（与 tabs 同名文本区分，按 aria-label 定位后点选项）
-        const submit = await screen.findByText('settings.skills.createSubmit')
-        const scopeInput = document.querySelector(
-            'input[role="combobox"][aria-label="settings.skills.createScopeLabel"]',
-        )!
-        fireEvent.click(scopeInput)
-        fireEvent.click(await screen.findByRole('option', { name: 'Demo Workspace' }))
-        fireEvent.click(submit)
-
-        await waitFor(() => {
-            expect(mockCreatePrompt).toHaveBeenCalledWith('ws-1')
-            expect(mockNavigate).toHaveBeenCalledWith({
-                to: '/sessions/new',
-                search: { workspaceId: 'ws-1' },
-            })
-        })
-    })
-
-    it('global 且无工作区：提示不跳转', async () => {
-        setup([])
-        mockMessage.warning.mockClear()
-
-        screen.getByTestId('skills-create').click()
-        fireEvent.click(await screen.findByText('settings.skills.createSubmit'))
-
-        await waitFor(() => expect(mockMessage.warning).toHaveBeenCalledWith('settings.skills.createNoWorkspace'))
-        expect(mockNavigate).not.toHaveBeenCalled()
-    })
-
-    it('工作区清单加载中（undefined ≠ 空数组）：不误弹「无工作区」（code-review 修复）', async () => {
-        // 修复前：pending 期提交 → data undefined 被当「无工作区」→ 误弹 warning
-        vi.mocked(useWorkspaces).mockReturnValue({ data: undefined, isLoading: true } as never)
-        vi.mocked(useSkills).mockImplementation(mockSkillsByScope)
-        vi.mocked(useSkillVisibility).mockReturnValue(mockVisibility as never)
-        render(<SkillsSection />)
-        mockMessage.warning.mockClear()
-
-        screen.getByTestId('skills-create').click()
-        fireEvent.click(await screen.findByText('settings.skills.createSubmit'))
-
-        // 静默拒绝：不发请求、不弹误导提示、不跳转
-        expect(mockCreatePrompt).not.toHaveBeenCalled()
-        expect(mockMessage.warning).not.toHaveBeenCalledWith('settings.skills.createNoWorkspace')
-        expect(mockNavigate).not.toHaveBeenCalled()
-    })
-})

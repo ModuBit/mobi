@@ -15,10 +15,13 @@
  */
 
 /**
- * scope-tabbed 管理页骨架（架构深化候选②）：「搜索行（搜索框 + 右上动作槽）+ scope tabs +
+ * scope-tabbed 管理页骨架（架构深化候选②）：「（可选）搜索/动作行 + scope tabs +
  * 内容区」的不变结构。skill / mcp / plugin 三张管理页共用（spec 决策 15 的兑现）；
  * 数据（workspaces/列表）与过滤谓词归调用方，骨架零数据依赖、零 mock 可测。
  * 弹窗不进骨架（各域表单字段差异大，scope radio 那一角由 useScopeOptions 根治）。
+ *
+ * 搜索框与动作槽都可缺省：动作上提到页题行（settingsHeaderSlot）的页面两者全不给，
+ * 页签条直接跟在标题下；搜索三件套（值/回调/占位）同给才渲染搜索框。
  *
  * 页签条用自管 TabStrip 族（2026-11-13 起替代 antd Tabs，antd Tabs 全站清零且 eslint 禁新增）：
  * - 动作槽不在 tablist 行内（原 extra 槽方案随「搜索+动作同行」改版退役）——页签条是
@@ -33,10 +36,11 @@ import { TabStrip, TabStripList, TabStripTab } from '@/ui/base/interactive/tabSt
 import { ExpandingSearch } from '@/ui/base/interactive/expanding-search/ExpandingSearch'
 
 export interface ScopeTabbedSectionProps {
-    /** 搜索框受控值（caller 持状态并按 keyword 过滤列表；骨架只锁结构不管谓词） */
-    keyword: string
-    onKeywordChange: (keyword: string) => void
-    searchPlaceholder: string
+    /** 搜索框受控值（caller 持状态并按 keyword 过滤列表；骨架只锁结构不管谓词）。
+     *  与 onKeywordChange/searchPlaceholder 三者同给才渲染搜索框——不需要过滤的页面省略 */
+    keyword?: string
+    onKeywordChange?: (keyword: string) => void
+    searchPlaceholder?: string
     /** tabs（含「全局 + workspaces」；由 useScopeOptions 构建） */
     options: { value: string; label: string }[]
     activeScope: string
@@ -70,21 +74,28 @@ export function ScopeTabbedSection({
     children,
     tabsTestId,
 }: ScopeTabbedSectionProps) {
+    // 三件套（值/回调/占位）同给才渲染搜索框：省略 = 本页不做关键词过滤
+    const searchSlot = keyword !== undefined && onKeywordChange !== undefined && searchPlaceholder !== undefined
+        ? (
+            <ExpandingSearch
+                label={searchPlaceholder}
+                placeholder={searchPlaceholder}
+                value={keyword}
+                onValueChange={onKeywordChange}
+                style={{ '--es-h': '28px', flex: 1, minWidth: 0 } as CSSProperties}
+            />
+        )
+        : null
     return (
         <>
-            {/* 搜索行：expanding-search 形态（过滤模式——不传 items 只借 morph 形态，受控 keyword
-                过滤列表归调用方）；lane 吃满余量、icon 贴行右端动作槽左侧，展开向左长。
-                --es-h 对齐工具条 sm 档（28px）：与并排动作按钮同排不差一号 */}
-            <ToolbarRow>
-                <ExpandingSearch
-                    label={searchPlaceholder}
-                    placeholder={searchPlaceholder}
-                    value={keyword}
-                    onValueChange={onKeywordChange}
-                    style={{ '--es-h': '28px', flex: 1, minWidth: 0 } as CSSProperties}
-                />
-                {actions}
-            </ToolbarRow>
+            {/* 工具条行：搜索框吃满余量 + 动作槽贴行右端。搜索与动作都缺省时整行不渲染
+                （动作已上提到页题行的页面，页签条直接跟标题） */}
+            {(searchSlot || actions) && (
+                <ToolbarRow>
+                    {searchSlot}
+                    {actions}
+                </ToolbarRow>
+            )}
             {/* data-testid 落在包裹层（TabStrip 不收 testid）：E2E 以此为锚点找页签条 */}
             <div data-testid={tabsTestId}>
                 <TabStrip value={activeScope} onValueChange={onScopeChange}>

@@ -4,7 +4,9 @@ last_verified: 2026-11-17
 
 # Skills 管理页验证（skill-mgmt 票 08 + 详情 sheet 迭代）
 
-设置页 /settings/skills 全链路：列表/开关/详情 sheet/删除/安装/更新/内置名单/新建预填。
+设置页 /settings/skills 全链路：列表/开关/详情 sheet/删除/安装/更新/内置名单。
+
+**2026-11-17 改版**：顶部工具条的搜索框与「新建」按钮已移除（列表不再过滤、对话式新建入口下线）；「安装」按钮移到页题行右侧（与「技能」标题同一行，`[data-testid="skills-install"]` 不变）。
 
 ## 素材准备（expendable）
 
@@ -55,7 +57,7 @@ UI 侧：`[data-skill-name="x"] [role="switch"]` 点击后断言 aria-checked + 
 - **判据（双主题各验）**：`getComputedStyle(svg path).stroke` 必须等于 `--primary-foreground`、且与 `.fill` 背景形成反差；`.copy label` 14px colorText、`.copy span[description]` 12px text-muted（标题/描述层级）
 - **坑：容器级后代选择器泄漏**——本页 `FormBody` 曾有 `span, label { color: colorText }`，钻进 Checkbox 内部把 `.visual` 的 color 覆盖成正文色 → 暗档白勾压白块全不可见（用户截图实锤），亮档勾与底同暗。修复 = 收窄到 `> span, > label`（只命中表单自己的字段标题）。**今后看到「嵌入组件的勾/图标颜色莫名等于正文色」先查外层 styled 的裸元素选择器**
 - 回归探针：两档下 `path.stroke !== fill.bg` 且色差 ≥ 明显反差；unchecked 态 border 双档可见（亮 #adadb4 / 暗 #5d5d65）
-- **单选件已迁 uiarc（2026-11-17）**：antd Radio 全站清零（eslint 禁新增），本页新建/安装弹窗用的是自管 Combobox；antd.css 的 `--ant-radio-radio-color` 覆写已随迁移删除。单选件探针见 [radio-widget-verify.md](radio-widget-verify.md)
+- **单选件已迁 uiarc（2026-11-17）**：antd Radio 全站清零（eslint 禁新增），本页安装弹窗用的是自管 Combobox；antd.css 的 `--ant-radio-radio-color` 覆写已随迁移删除。单选件探针见 [radio-widget-verify.md](radio-widget-verify.md)
 
 
 ## 内置名单首采
@@ -65,13 +67,6 @@ UI 侧：`[data-skill-name="x"] [role="switch"]` 点击后断言 aria-checked + 
 - `ls ~/.claude/skills/ | grep mobi` 空（mobi-probe 用完即删）
 - `pgrep -fl mobi-probe` 空
 - 用户同名覆盖：内置行「被同名技能覆盖」徽标（如 code-review）
-
-## 新建预填（票 07 链路）
-
-- 无工作区分支：提交 → warning toast「请先创建一个工作区」+ 不跳转。
-- 建工作区 API：`POST /api/workspaces { name, folders: [{ path, primary: true }] }`（**primary 必带**否则 Invalid body；path 须在 homeDir 内）。
-- 主路径：弹窗选 ws radio（按 value=workspaceId 定位）→ 提交 → 跳 `/sessions/new?workspaceId=...`。
-- **composer 不是 textarea**：查 `.tiptap.ProseMirror` 的 textContent（预填 prompt 445+ 字符）。
 
 ## 主题/移动端
 

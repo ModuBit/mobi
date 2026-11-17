@@ -27,6 +27,7 @@ import { useMediaQuery } from '@/core/data/hooks/useMediaQuery'
 import { SETTINGS_WIDE_QUERY, activeSection, searchSettingsSectionGroups, type SettingsSection } from '@/features/settings/sections/registry'
 import { writeLastSettingsSection } from '@/features/settings/sections/lastSettingsSection'
 import { WebToolsStatusBadge } from '@/features/settings/sections/WebToolsStatusBadge'
+import { SettingsHeaderSlotHostSlot, SettingsHeaderSlotProvider } from '@/features/settings/blocks/settingsHeaderSlot'
 import { resolveSettingsLeaveTarget } from '@/features/layout/settingsReturnOrigin'
 import { GlideLayer, HoverGlideLayer } from '@/ui/base/motion/GlideLayer'
 import { useGlideHighlight } from '@/ui/base/motion/useGlideHighlight'
@@ -176,11 +177,20 @@ const SectionMainInner = styled.div<{ $fill: boolean }>`
 
 /** 分区页题（Codex 形态）：内容区顶部大字号分区名，与组卡小标题（组标签层）区分层级 */
 const SectionTitle = styled.h1<{ $token: Token }>`
-    margin: 0 0 16px;
+    margin: 0;
     font-size: 20px;
     font-weight: 600;
     line-height: 1.3;
     color: ${p => p.$token.colorText};
+`
+
+/** 页题行：标题与分区动作（经 settingsHeaderSlot 落点注入）同一行，动作竖向居中 */
+const SectionTitleRow = styled.div`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 0 0 16px;
 `
 
 /**
@@ -384,10 +394,15 @@ export function SettingsPage() {
             <Sidebar $token={token} active={active} goBack={goBack} />
             <SectionMain $fill={fill}>
                 <SectionMainInner $fill={fill}>
-                    <SectionTitle $token={token}>{t(active?.titleKey ?? 'settings.title')}</SectionTitle>
-                    <Suspense fallback={<SectionFallback />}>
-                        <Outlet />
-                    </Suspense>
+                    <SettingsHeaderSlotProvider>
+                        <SectionTitleRow>
+                            <SectionTitle $token={token}>{t(active?.titleKey ?? 'settings.title')}</SectionTitle>
+                            <SettingsHeaderSlotHostSlot />
+                        </SectionTitleRow>
+                        <Suspense fallback={<SectionFallback />}>
+                            <Outlet />
+                        </Suspense>
+                    </SettingsHeaderSlotProvider>
                 </SectionMainInner>
             </SectionMain>
         </SettingsTakeover>

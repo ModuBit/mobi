@@ -15,25 +15,20 @@
  */
 
 /**
- * skills 管理动作编排（架构深化候选⑧）：启停 / 删除确认 / 更新 / 安装 / 对话式新建
- * 五套「mutation + toast + 确认弹窗」流程收进一个 hook——此前内联在 SkillsSection，
+ * skills 管理动作编排（架构深化候选⑧）：启停 / 删除确认 / 更新 / 安装 四套
+ * 「mutation + toast + 确认弹窗」流程收进一个 hook——此前内联在 SkillsSection，
  * 测试只能 mock 整个模块世界；收口后 section 只剩布局与呈现，mock 边界收窄到本 hook。
  */
 import { App } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from '@tanstack/react-router'
-import { SKILL_SCOPE_GLOBAL, extractHttpDetail, isSkillShadowed, type SkillInfo, type SkillRegistrySkill } from '@mobi/shared'
-import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
-import { useSkillCreatePrompt, useSkillAvailable, useSkillDelete, useSkillFind, useSkillInstall, useSkillUpdate, useSkillVisibility } from '@/core/data/hooks/queries/useSkills'
-import { saveDraftText } from '@/core/lib/draftText'
+import { extractHttpDetail, isSkillShadowed, type SkillInfo, type SkillRegistrySkill } from '@mobi/shared'
+import { useSkillAvailable, useSkillDelete, useSkillFind, useSkillInstall, useSkillUpdate, useSkillVisibility } from '@/core/data/hooks/queries/useSkills'
 
 // CLI 失败透传走 shared 单源 extractHttpDetail（errorPresentation 家族）
 
 export function useSkillsActions() {
     const { t } = useTranslation()
     const { message } = App.useApp()
-    const navigate = useNavigate()
-    const { data: workspaces, isLoading: workspacesLoading } = useWorkspaces()
 
     const visibility = useSkillVisibility()
     const deletion = useSkillDelete()
@@ -43,8 +38,6 @@ export function useSkillsActions() {
     const available = useSkillAvailable()
     /** 生态搜索（= CLI find）：安装弹窗输入段的关键词检索 */
     const finder = useSkillFind()
-    /** 对话式新建的预填 prompt 请求（pending 态由 mutation 派生，与兄弟动作同构） */
-    const creator = useSkillCreatePrompt()
 
     /** 启停：失败报错；成功后归属层已开但生效仍关 → 更高层压制提示（isSkillShadowed 单源） */
     const toggle = (skill: SkillInfo, enabled: boolean, scope: string) => {
@@ -115,29 +108,6 @@ export function useSkillsActions() {
         }
     }
 
-    /** 对话式新建（票 07）：daemon 生成预填 prompt → 跨页草稿通道 + 跳新会话页；
-     * 成功返回 true（caller 关弹窗）。会话宿主工作区：scope 是工作区即宿主，
-     * global 任选一个（skill 写绝对路径与宿主无关）；无工作区无法建会话（必带 workspaceId）。 */
-    const submitCreate = async (scope: string): Promise<boolean> => {
-        // 工作区清单还在加载（undefined ≠ 空数组）：静默拒绝，不误弹「无工作区」
-        if (workspacesLoading) return false
-        const hostWorkspaceId = scope !== SKILL_SCOPE_GLOBAL ? scope : (workspaces ?? [])[0]?.id
-        if (!hostWorkspaceId) {
-            message.warning(t('settings.skills.createNoWorkspace'))
-            return false
-        }
-        try {
-            const res = await creator.mutateAsync(scope)
-            // 一次性信箱：新会话页 shell ready 后消费预填
-            saveDraftText(res.data.prompt)
-            navigate({ to: '/sessions/new', search: { workspaceId: hostWorkspaceId } })
-            return true
-        } catch {
-            message.error(t('settings.skills.createFailed'))
-            return false
-        }
-    }
-
     return {
         toggle,
         /** 详情 sheet 卸载：确认已由 ConfirmMorph 就地承担，直接执行（成功 toast，失败透传） */
@@ -155,7 +125,6 @@ export function useSkillsActions() {
         install,
         fetchAvailable,
         find,
-        submitCreate,
         /** 行级启停进行中（避免整列表闪烁） */
         isToggling: (name: string) => visibility.isPending && visibility.variables?.name === name,
         /** 行级更新进行中 */
@@ -166,7 +135,5 @@ export function useSkillsActions() {
         resolving: available.isPending,
         /** 生态搜索进行中 */
         finding: finder.isPending,
-        /** 新建请求进行中（提交钮 loading） */
-        creating: creator.isPending,
     }
 }

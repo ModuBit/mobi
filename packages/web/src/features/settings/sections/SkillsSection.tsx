@@ -16,25 +16,26 @@
 
 /**
  * 设置页 Skills 分区（skill-mgmt 票 02–07）：scope-tabbed 骨架上的域特有呈现——
- * 列表/内置分组/安装弹窗/新建弹窗。结构（搜索+tabs+动作槽）归 ScopeTabbedSection
- * （架构深化候选②），五套动作编排归 useSkillsActions（候选⑧）；
+ * 列表/内置分组/安装弹窗。结构（tabs+内容区）归 ScopeTabbedSection
+ * （架构深化候选②），页级动作（安装）经 settingsHeaderSlot 挂到页题行，
+ * 四套动作编排归 useSkillsActions（候选⑧）；
  * 数据视角由 daemon 承载（global=个人+synced+插件携带；工作区 tab=该项目 skill）。
  */
 import { useMemo, useRef, useState } from 'react'
 import { theme as antTheme } from 'antd'
-import { FilePlus2, Plus, X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { SKILL_SCOPE_BUNDLED, SKILL_SCOPE_GLOBAL, skillNameKey } from '@mobi/shared'
 import type { BundledSkillInfo, SkillAvailableInfo, SkillInfo, SkillRegistrySkill } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useBundledSkills, useSkillOccupancy, useSkills } from '@/core/data/hooks/queries/useSkills'
-import { filterByNameOrDescription } from '@/domain/filterList'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
 import { Combobox } from '@/ui/base/interactive/combobox/Combobox'
 import { Checkbox } from '@/ui/shadcn/checkbox/checkbox'
 import { SettingGroupCard } from '@/features/settings/blocks/SettingGroupCard'
+import { SettingsHeaderActions } from '@/features/settings/blocks/settingsHeaderSlot'
 import { ScopeTabbedSection } from '@/features/settings/blocks/ScopeTabbedSection'
 import { useScopeOptions } from '@/features/settings/blocks/useScopeOptions'
 import { SkillRow } from '@/features/settings/skills/SkillRow'
@@ -241,7 +242,6 @@ export function SkillsSection() {
     const { token } = useToken()
     const { t } = useTranslation()
     const [tab, setTab] = useState<string>(SKILL_SCOPE_GLOBAL)
-    const [keyword, setKeyword] = useState('')
     const listAreaRef = useRef<HTMLDivElement>(null)
 
     const { data: workspaces } = useWorkspaces()
@@ -262,8 +262,6 @@ export function SkillsSection() {
         personalLabel: t('settings.skills.tabGlobal'),
     })
 
-    const filtered = useMemo(() => filterByNameOrDescription(skills, keyword), [skills, keyword])
-    const filteredBundled = useMemo(() => filterByNameOrDescription(bundled, keyword), [bundled, keyword])
     /** 个人视角名单的名字键集合（内置行同名遮蔽判定：用户胜；与 daemon 扫描层同一 nameKey 规则） */
     const listedNames = useMemo(() => new Set(personalSkills.map(s => skillNameKey(s.name))), [personalSkills])
 
@@ -370,19 +368,6 @@ export function SkillsSection() {
         setSelectedSkills(skills.filter(s => !s.installed).map(s => s.name))
     }
 
-    /** 对话式新建（票 07）：scope 弹窗 → daemon 生成预填 prompt → 跨页草稿通道预填 + 跳新会话页 */
-    const [createOpen, setCreateOpen] = useState(false)
-    const [createScope, setCreateScope] = useState(SKILL_SCOPE_GLOBAL)
-
-    const openCreate = () => {
-        setCreateScope(tab)
-        setCreateOpen(true)
-    }
-
-    const submitCreate = async () => {
-        if (await actions.submitCreate(createScope)) setCreateOpen(false)
-    }
-
     /** 详情 sheet（点击行展开；scope 跟随打开行所在视角——系统 tab 的插件行走 global，
         daemon detail 端点对 global 视角查不到的插件携带 skill 兜底解析） */
     const [detailSkill, setDetailSkill] = useState<SkillInfo | null>(null)
@@ -397,27 +382,19 @@ export function SkillsSection() {
 
     return (
         <Wrap $token={token}>
+            {/* 页级动作进标题行（PC 落点由 SettingsPage 提供；移动端就地右对齐渲染） */}
+            <SettingsHeaderActions>
+                <Button variant="ghost" size="sm" onClick={openInstall} data-testid="skills-install">
+                    <Plus size={13} />
+                    {t('settings.skills.installAction')}
+                </Button>
+            </SettingsHeaderActions>
             <ScopeTabbedSection
-                keyword={keyword}
-                onKeywordChange={setKeyword}
-                searchPlaceholder={t('settings.skills.searchPlaceholder')}
                 options={tabOptions}
                 activeScope={tab}
                 onScopeChange={setTab}
                 tabsTestId="skills-tabs"
                 tabsAriaLabel={t('settings.skills.tabsAria')}
-                actions={
-                    <>
-                        <Button variant="ghost" size="sm" onClick={openCreate} data-testid="skills-create">
-                            <FilePlus2 size={13} />
-                            {t('settings.skills.createAction')}
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={openInstall} data-testid="skills-install">
-                            <Plus size={13} />
-                            {t('settings.skills.installAction')}
-                        </Button>
-                    </>
-                }
             >
                 <ListArea ref={listAreaRef}>
                     {/* 滑移底色层：hover 最淡一档跨行弹簧滑移（SettingsPage 侧栏同款；可点行才标记 data-glide-row） */}
@@ -434,9 +411,9 @@ export function SkillsSection() {
                     <SettingGroupCard>
                         <EmptyHint $token={token}>{t('settings.skills.bundledFailed')}</EmptyHint>
                     </SettingGroupCard>
-                ) : filteredBundled.length > 0 ? (
+                ) : bundled.length > 0 ? (
                     <SettingGroupCard>
-                        {filteredBundled.map(b => (
+                        {bundled.map(b => (
                             b.pluginName ? (
                                 // 插件携带行：可点进只读详情（行数据经 bundledRowToSkillInfo 兜底，详情响应回填）
                                 <SkillRow
@@ -452,7 +429,7 @@ export function SkillsSection() {
                 ) : (
                     <SettingGroupCard>
                         <EmptyHint $token={token}>
-                            {t(keyword.trim() ? 'settings.skills.emptyFiltered' : 'settings.skills.emptyBundled')}
+                            {t('settings.skills.emptyBundled')}
                         </EmptyHint>
                     </SettingGroupCard>
                 )) : isLoading ? (
@@ -463,9 +440,9 @@ export function SkillsSection() {
                             </SkeletonRow>
                         ))}
                     </SettingGroupCard>
-                ) : filtered.length > 0 ? (
+                ) : skills.length > 0 ? (
                     <SettingGroupCard>
-                        {filtered.map(skill => (
+                        {skills.map(skill => (
                             <SkillRow
                                 key={`${skill.source}:${skill.name}`}
                                 skill={skill}
@@ -478,40 +455,12 @@ export function SkillsSection() {
                 ) : (
                     <SettingGroupCard>
                         <EmptyHint $token={token}>
-                            {t(keyword.trim() ? 'settings.skills.emptyFiltered' : 'settings.skills.empty')}
+                            {t('settings.skills.empty')}
                         </EmptyHint>
                     </SettingGroupCard>
                 )}
                 </ListArea>
             </ScopeTabbedSection>
-            <AdaptiveDialog
-                open={createOpen}
-                onOpenChange={next => { if (!next) setCreateOpen(false) }}
-                title={t('settings.skills.createTitle')}
-                body={(
-                    <FormBody $token={token}>
-                        {/* scope 选择与安装弹窗同件（自管 Combobox）：antd Radio.Group 已清零 */}
-                        <Combobox
-                            label={t('settings.skills.createScopeLabel')}
-                            value={createScope}
-                            onValueChange={value => setCreateScope(value)}
-                            options={promptOptions}
-                            allowClear={false}
-                        />
-                        <Hint $token={token}>{t('settings.skills.createHint')}</Hint>
-                    </FormBody>
-                )}
-                footer={(
-                    <>
-                        <Button variant="secondary" onClick={() => setCreateOpen(false)}>
-                            {t('common.cancel')}
-                        </Button>
-                        <Button variant="primary" loading={actions.creating} onClick={() => { void submitCreate() }}>
-                            {t('settings.skills.createSubmit')}
-                        </Button>
-                    </>
-                )}
-            />
             <AdaptiveDialog
                 open={installOpen}
                 onOpenChange={next => { if (!next) setInstallOpen(false) }}
