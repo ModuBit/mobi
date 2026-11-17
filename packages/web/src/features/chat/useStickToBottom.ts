@@ -55,10 +55,6 @@ export const REFOLLOW_DEBOUNCE_MS = 150
  */
 export const CHASE_ABORT_RETRY_MS = 300
 
-/** 内容总高所在层的选择器。antdx Bubble.List 的 scroller（scrollBoxNativeElement）直接子元素是
- *  `.ant-bubble-list-scroll-content`（内容层），高度随消息/bubble 高度变化——RO 观测它驱动贴底跟随。 */
-const ITEM_LIST_SELECTOR = '.ant-bubble-list-scroll-content'
-
 /**
  * 判断键盘事件的命中的目标是否为「可编辑元素」。
  *
@@ -85,12 +81,11 @@ export interface StickToBottomController {
      */
     stopFollow: () => void
     /**
-     * 内容高度变化回调，接 Virtuoso 的 `totalListHeightChanged`。
-     * Virtuoso 测量系统在内部布局 settle 后才触发，此时读 scrollHeight 是最终值——
-     * 补 RO 观测 DOM 层的时序差（RO 回调触发时 scrollHeight 可能尚未反映最终布局，
-     * 钉到差几十 px 的位置）。
+     * 内容层增高信号（由上层 chatViewport 的单一 RO 驱动）：跟随中则平滑追赶到底。
+     * 停止跟随 / smooth 门闩 / 指针按住 / 禁用时自守卫无动作。RO 观测不从本 hook 发出——
+     * 「跟随追赶 vs 阅读锚点补偿」必须在同一个观测点互斥分派，避免两个 RO 各自争抢 scrollTop。
      */
-    onContentHeightChange: () => void
+    chaseIfFollowing: () => void
 }
 
 /**
@@ -103,7 +98,7 @@ export interface StickToBottomController {
  * 整段流式期间 followOutput 一次都不触发（实测长回复偏离底部 1900px+）。
  *
  * 更糟的是它与本 hook 并存时会**互相拉扯**：新消息追加时 followOutput 启动内部 smooth 动画，
- * 而本 hook 的 ResizeObserver 同帧直接改 scrollTop，两个滚动源逐帧抢夺同一个 scrollTop
+ * 而本 hook 的平滑追赶同帧直接改 scrollTop，两个滚动源逐帧抢夺同一个 scrollTop
  * → 视觉上卡顿、跳动。故调用方必须关闭 followOutput，由本 hook 独占滚动权。
  *
  * ## 跟随意图（following）如何演化
@@ -403,17 +398,8 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
         }
     }, [enabled, isNearBottom, releaseSmoothGateAndPin, setFollow])
 
-    // 内容增高 → 跟随中则平滑追赶（修换行/增高的瞬跳；直钉仅保留给 smooth 门闩解除等终态修正）
-    useEffect(() => {
-        const scroller = scrollerElRef.current
-        if (!enabled || !scroller) return
-        const content = scroller.querySelector(ITEM_LIST_SELECTOR)
-        if (!content) return
-
-        const observer = new ResizeObserver(chaseIfFollowing)
-        observer.observe(content)
-        return () => observer.disconnect()
-    }, [enabled, chaseIfFollowing])
+    // 内容增高信号由上层 chatViewport 的 RO 转发（见 chaseIfFollowing 的接口注释）；
+    // 本 hook 不建立观测——单一观测点才能让跟随追赶与阅读补偿互斥。
 
     // 卸载时清掉兜底定时器与追赶 rAF，避免在已销毁组件上跑回调
     useEffect(() => () => {
@@ -437,5 +423,5 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
         setFollow(false)
     }, [setFollow, stopChase])
 
-    return { handleScrollerRef, following, stickToBottom, stopFollow, onContentHeightChange: pinIfFollowing }
+    return { handleScrollerRef, following, stickToBottom, stopFollow, chaseIfFollowing }
 }

@@ -939,12 +939,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     )
 
     // 传给 BubbleListChat 的稳定回调：内联箭头每次渲染换引用，会让其内部
-    // 上抛 following 的 effect 每帧重跑
-    const handleFollowingChange = useCallback((following: boolean) => {
-        setShowScrollBottom(!following)
+    // 上抛阅读状态的 effect 每帧重跑
+    const handleReadingChange = useCallback((reading: boolean) => {
+        setShowScrollBottom(reading)
         // 上滚读历史期间暂停 messageWindowStore 的 turn 边界裁剪：裁剪从窗口头部丢整
         // turn，正是用户此刻在看的内容（加载更旧历史后会被流式 ingest 立刻裁掉，视口跳动）
-        setHistoryReading(sessionId, !following)
+        setHistoryReading(sessionId, reading)
     }, [sessionId])
 
     // 离开会话页时恢复裁剪（阅读标记是会话级状态，不能随页面卸载遗留）
@@ -1655,7 +1655,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                             // 此处再短路避免无意义的下一页查找 promise + 通知
                             if (hasNextPage && !isFetchingNextPage) void fetchNextPage()
                         }}
-                        onFollowingChange={handleFollowingChange}
+                        onReadingChange={handleReadingChange}
                     />
                 )}
                 <AnimatePresence>

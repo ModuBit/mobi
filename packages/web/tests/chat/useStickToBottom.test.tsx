@@ -30,24 +30,6 @@ import {
 let rafMap: Map<number, FrameRequestCallback>
 let rafSeq: number
 
-/**
- * ResizeObserver 替身：记录被观测元素，暴露 trigger() 手动触发回调。
- * jsdom 无内置实现，且真实 observer 依赖布局（jsdom 恒 0 高度）。
- */
-class FakeResizeObserver {
-    static instances: FakeResizeObserver[] = []
-    observed: Element[] = []
-    disconnected = false
-    constructor(private cb: ResizeObserverCallback) {
-        FakeResizeObserver.instances.push(this)
-    }
-    observe(el: Element) { this.observed.push(el) }
-    unobserve() { /* 本用例不涉及 */ }
-    disconnect() { this.disconnected = true }
-    /** 模拟内容高度变化 */
-    trigger() { this.cb([], this as unknown as ResizeObserver) }
-}
-
 /** jsdom 的元素几何恒为 0，用可写属性伪造滚动容器尺寸 */
 function makeScroller(opts: { scrollHeight: number; clientHeight: number; scrollTop: number }) {
     const el = document.createElement('div')
@@ -118,11 +100,7 @@ function pointerUp() {
     window.dispatchEvent(new Event('pointerup'))
 }
 
-const origRO = globalThis.ResizeObserver
-
 beforeEach(() => {
-    FakeResizeObserver.instances = []
-    globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver
     rafMap = new Map()
     rafSeq = 1
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
@@ -137,7 +115,6 @@ beforeEach(() => {
 
 afterEach(() => {
     cleanup()
-    globalThis.ResizeObserver = origRO
     document.body.innerHTML = ''
     vi.useRealTimers()
     vi.unstubAllGlobals()
@@ -157,11 +134,11 @@ function stepFrames(n = 1) {
 describe('useStickToBottom — 流式贴底跟随', () => {
     it('内容增高时平滑追赶到底部：首帧部分推进（非瞬跳），多帧后精确贴底（修换行跳动）', () => {
         const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
-        renderHook(true, el)
+        const { ref } = renderHook(true, el)
 
         // 流式追加：item 数不变，只是内容变高
         setScrollHeight(3000)
-        act(() => { FakeResizeObserver.instances[0].trigger() })
+        act(() => { ref.current?.chaseIfFollowing() })
 
         // 首帧只追掉剩余距离的一部分（旧实现瞬跳 3000）
         stepFrames(1)
@@ -184,25 +161,9 @@ describe('useStickToBottom — 流式贴底跟随', () => {
 
         // 跟随仍在 → 后续增高仍追到底
         setScrollHeight(3000)
-        act(() => { FakeResizeObserver.instances[0].trigger() })
+        act(() => { ref.current?.chaseIfFollowing() })
         stepFrames(40)
         expect(el.scrollTop).toBe(2500)
-    })
-
-    it('onContentHeightChange（Virtuoso totalListHeightChanged）把跟随中的漂移钉回（修 turn 结束差几十像素）', () => {
-        const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
-        const { ref } = renderHook(true, el)
-        expect(ref.current?.following).toBe(true)
-
-        // 模拟 RO 时序差 / Virtuoso 视觉稳定调整留下的漂移：scrollTop 偏离底部
-        act(() => { el.scrollTop = 400 })
-        expect(ref.current?.following).toBe(true) // 无手势，仍跟随
-        // onScroll 不负责钉底（避免与 Virtuoso 初始定位打架）；漂移由 totalListHeightChanged 信号钉回
-        expect(el.scrollTop).toBe(400)
-
-        // Virtuoso 测量 settle 后触发 totalListHeightChanged → onContentHeightChange 钉回精确底部
-        act(() => { ref.current?.onContentHeightChange() })
-        expect(el.scrollTop).toBe(500)
     })
 
     it('wheel 向上 → 停止跟随，且后续增高不钉底（不被强行拉回）', () => {
@@ -213,7 +174,7 @@ describe('useStickToBottom — 流式贴底跟随', () => {
         expect(ref.current?.following).toBe(false)
 
         setScrollHeight(3000)
-        act(() => { FakeResizeObserver.instances[0].trigger() })
+        act(() => { ref.current?.chaseIfFollowing() })
         // 已停止跟随，observer 不钉底
         expect(el.scrollTop).not.toBe(3000)
     })
@@ -250,7 +211,7 @@ describe('useStickToBottom — 流式贴底跟随', () => {
         expect(ref.current?.following).toBe(true)
 
         setScrollHeight(3000)
-        act(() => { FakeResizeObserver.instances[0].trigger() })
+        act(() => { ref.current?.chaseIfFollowing() })
         stepFrames(40)
         expect(el.scrollTop).toBe(2500)
     })
@@ -335,7 +296,7 @@ describe('useStickToBottom — 滚动条拖拽 / 指针按住拖动', () => {
 
         // 流式追加：observer 因 following=false 不钉底，用户拖到的位置不被覆盖
         setScrollHeight(3000)
-        act(() => { FakeResizeObserver.instances[0].trigger() })
+        act(() => { ref.current?.chaseIfFollowing() })
         expect(el.scrollTop).toBe(0)
         pointerUp()
     })
@@ -395,20 +356,20 @@ describe('useStickToBottom — 键盘停止跟随绑 window', () => {
 })
 
 describe('useStickToBottom — smooth 门闩', () => {
-    it('smooth 滚动期间不被 ResizeObserver 抢断（回归：最后突然跳一下）', () => {
+    it('smooth 滚动期间不被内容增高追赶抢断（回归：最后突然跳一下）', () => {
         const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 0 })
         const { ref } = renderHook(true, el)
 
         act(() => { ref.current?.stickToBottom('smooth') })
         // 动画途中内容被逐个测量致总高增长
         setScrollHeight(3000)
-        act(() => { FakeResizeObserver.instances[0].trigger() })
+        act(() => { ref.current?.chaseIfFollowing() })
         // 门闩生效：observer 不应把 scrollTop 改成新的 3000
         expect(el.scrollTop).not.toBe(3000)
 
         // scrollend 解除门闩后恢复钉底（精确底 = scrollHeight - clientHeight）
         act(() => { el.dispatchEvent(new Event('scrollend')) })
-        act(() => { FakeResizeObserver.instances[0].trigger() })
+        act(() => { ref.current?.chaseIfFollowing() })
         expect(el.scrollTop).toBe(2500)
     })
 
@@ -436,7 +397,7 @@ describe('useStickToBottom — smooth 门闩', () => {
         act(() => { vi.advanceTimersByTime(SMOOTH_SCROLL_FALLBACK_MS + 1) })
 
         setScrollHeight(3000)
-        act(() => { FakeResizeObserver.instances[0].trigger() })
+        act(() => { ref.current?.chaseIfFollowing() })
         stepFrames(40)
         expect(el.scrollTop).toBe(2500)
     })
@@ -449,18 +410,18 @@ describe('useStickToBottom — smooth 门闩', () => {
         expect(el.scrollTop).toBe(500)
 
         setScrollHeight(2000)
-        act(() => { FakeResizeObserver.instances[0].trigger() })
+        act(() => { ref.current?.chaseIfFollowing() })
         stepFrames(40)
         expect(el.scrollTop).toBe(1500)
     })
 })
 
 describe('useStickToBottom — 平滑追赶（修换行/增高瞬跳）', () => {
-    it('追赶中 enabled 翻 false → 下一帧停追（RO 已断开，rAF 循环不得残留）', () => {
+    it('追赶中 enabled 翻 false → 下一帧停追（信号源已停，rAF 循环不得残留）', () => {
         const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
-        const { rerender, Probe } = renderHook(true, el)
+        const { ref, rerender, Probe } = renderHook(true, el)
         setScrollHeight(3000)
-        act(() => { FakeResizeObserver.instances[0].trigger() })
+        act(() => { ref.current?.chaseIfFollowing() })
         stepFrames(2)
         const mid = el.scrollTop
         expect(mid).toBeGreaterThan(500)
@@ -473,9 +434,9 @@ describe('useStickToBottom — 平滑追赶（修换行/增高瞬跳）', () => 
     it('追赶被外部干预中止 → 短延时后自动补追（修 turn 末尾残差：旧实现每次 RO 都精确钉底）', () => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
         const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
-        renderHook(true, el)
+        const { ref } = renderHook(true, el)
         setScrollHeight(3000)
-        act(() => { FakeResizeObserver.instances[0].trigger() })
+        act(() => { ref.current?.chaseIfFollowing() })
         stepFrames(2)
         act(() => { el.scrollTop = 800 }) // 外部干预（如浏览器 clamp / 程序补偿）
         stepFrames(5)
@@ -489,9 +450,9 @@ describe('useStickToBottom — 平滑追赶（修换行/增高瞬跳）', () => 
 
     it('追赶途中触发 scrollend（追赶自身滚动的 settle）不打断追赶（回归：scrollend 无条件补钉致追赶退化为单帧瞬跳）', () => {
         const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
-        renderHook(true, el)
+        const { ref } = renderHook(true, el)
         setScrollHeight(3000)
-        act(() => { FakeResizeObserver.instances[0].trigger() })
+        act(() => { ref.current?.chaseIfFollowing() })
         stepFrames(1)
         const mid1 = el.scrollTop
         expect(mid1).toBeGreaterThan(500)
@@ -508,9 +469,9 @@ describe('useStickToBottom — 平滑追赶（修换行/增高瞬跳）', () => 
 
     it('追赶途中外部程序改 scrollTop（prepend 恢复/浏览器 clamp）→ 中止追赶让位', () => {
         const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
-        renderHook(true, el)
+        const { ref } = renderHook(true, el)
         setScrollHeight(3000)
-        act(() => { FakeResizeObserver.instances[0].trigger() })
+        act(() => { ref.current?.chaseIfFollowing() })
         stepFrames(2) // 追赶进行中
         const mid = el.scrollTop
         expect(mid).toBeGreaterThan(500)
@@ -526,7 +487,7 @@ describe('useStickToBottom — 平滑追赶（修换行/增高瞬跳）', () => 
         const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
         const { ref } = renderHook(true, el)
         setScrollHeight(3000)
-        act(() => { FakeResizeObserver.instances[0].trigger() })
+        act(() => { ref.current?.chaseIfFollowing() })
         stepFrames(1)
         const mid = el.scrollTop
         expect(mid).toBeGreaterThan(500)
@@ -539,13 +500,13 @@ describe('useStickToBottom — 平滑追赶（修换行/增高瞬跳）', () => 
 
     it('追赶期间内容持续增高：无任何一帧瞬跳到底，停止增高后精确收敛', () => {
         const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
-        renderHook(true, el)
+        const { ref } = renderHook(true, el)
         let height = 1000
         // 模拟流式：连续 30 帧每帧 +30px（每帧 RO）
         for (let i = 0; i < 30; i++) {
             height += 30
             setScrollHeight(height)
-            act(() => { FakeResizeObserver.instances[0].trigger() })
+            act(() => { ref.current?.chaseIfFollowing() })
             stepFrames(1)
             const bottom = height - 500
             // 永远不瞬跳到（或越过）精确底部：追赶始终渐进
@@ -556,32 +517,31 @@ describe('useStickToBottom — 平滑追赶（修换行/增高瞬跳）', () => 
         expect(el.scrollTop).toBe(height - 500)
     })
 
-    it('追赶收敛后（已贴底）再触发 RO：无距离可追，无操作', () => {
+    it('追赶收敛后（已贴底）再收到内容增高信号：无距离可追，无操作', () => {
         const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
-        renderHook(true, el)
-        act(() => { FakeResizeObserver.instances[0].trigger() })
+        const { ref } = renderHook(true, el)
+        act(() => { ref.current?.chaseIfFollowing() })
         stepFrames(5)
         expect(el.scrollTop).toBe(500) // dist=0，chase snap 后保持
     })
 })
 
 describe('useStickToBottom — 生命周期', () => {
-    it('enabled=false 时不建立观测（item-list 尚未挂载）', () => {
+    it('enabled=false 时内容增高信号不动作（禁用即不接管滚动权）', () => {
         const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
-        renderHook(false, el)
-        expect(FakeResizeObserver.instances).toHaveLength(0)
+        const { ref } = renderHook(false, el)
+        act(() => { ref.current?.chaseIfFollowing() })
+        stepFrames(5)
+        expect(el.scrollTop).toBe(500)
     })
 
-    it('卸载时断开观测并移除监听', () => {
-        const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+    it('卸载后 scroll 事件不再触发状态更新（监听已移除）', () => {
+        const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
         const { unmount } = renderHook(true, el)
-        const observer = FakeResizeObserver.instances[0]
 
         unmount()
-        expect(observer.disconnected).toBe(true)
 
         // 卸载后 scroll 事件不应再触发 setState（React 会警告；此处断言不抛）
-        setScrollHeight(3000)
         expect(() => { el.scrollTop = 0 }).not.toThrow()
     })
 })
