@@ -74,7 +74,7 @@ export function useInstallFlow(effects: InstallFlowEffects, initialScope: string
 
     const cancelFetch = () => {
         fetchSeqRef.current += 1
-        dispatch({ type: 'fetchCancel' })
+        dispatch({ type: 'fetchEnded' })
     }
 
     /** 生态搜索（显式触发；失败保留上次结果） */
@@ -97,7 +97,7 @@ export function useInstallFlow(effects: InstallFlowEffects, initialScope: string
         const skills = await effects.fetchAvailable(source, scopeRef.current)
         if (seq !== fetchSeqRef.current) return null
         if (!skills) {
-            dispatch({ type: 'fetchFail' })
+            dispatch({ type: 'fetchEnded' })
             return null
         }
         return skills

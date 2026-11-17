@@ -35,7 +35,7 @@ import { resolveClaudeConfigDir } from '@mobi/node-core/claudeSdk/claudeConfigDi
 import { ALL_BUNDLED_PLUGIN_NAMES, bundledPluginPath } from '@mobi/node-core/runtime/bundledPlugins'
 import type { BundledSkillInfo, SkillInfo, SkillOverrideState, SkillSettingsLayer, SkillSource } from '@mobi/shared'
 import { SKILL_OVERRIDE_STATES, skillNameKey } from '@mobi/shared'
-import { scopeView, type SkillScope } from './skillScope'
+import { resolveScope, scopeView, type SkillScope } from './skillScope'
 
 /** 扫描根（生产缺省值见 defaultSkillScanRoots；测试注入 fixture） */
 export interface SkillScanRoots {
@@ -123,6 +123,35 @@ interface ParsedSkillMd {
     modelInvocationDisabled?: boolean
 }
 
+/**
+ * SKILL.md frontmatter 切分（列表扫描与详情解析共用——同一文件格式只解析一处）。
+ *
+ * - `none`：不以 `---` 开头，整篇是正文
+ * - `unclosed`：开了围栏没有闭合行
+ * - `ok`：front 为 YAML 对象，body 为闭合行之后的正文（剥起始换行）
+ * - `invalid`：YAML 非对象 / 解析抛错
+ *
+ * 两类「损坏」由调用方各自定策略：列表隐藏（scanner），详情对 unclosed 容忍
+ * （正文=全文）、对 invalid 报损坏（410）。
+ */
+export type SkillFrontmatterSplit =
+    | { kind: 'none' | 'unclosed'; body: string }
+    | { kind: 'ok'; front: Record<string, unknown>; body: string }
+    | { kind: 'invalid' }
+
+export function splitSkillFrontmatter(content: string): SkillFrontmatterSplit {
+    if (!content.startsWith('---')) return { kind: 'none', body: content }
+    const end = content.indexOf('\n---', 3)
+    if (end === -1) return { kind: 'unclosed', body: content }
+    try {
+        const parsed = parseYaml(content.slice(3, end)) as unknown
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { kind: 'invalid' }
+        return { kind: 'ok', front: parsed as Record<string, unknown>, body: content.slice(end + 4).replace(/^\r?\n/, '') }
+    } catch {
+        return { kind: 'invalid' }
+    }
+}
+
 /** frontmatter 解析：无 frontmatter / YAML 坏 / 非法名 → null（损坏，调用方隐藏） */
 function parseSkillMd(path: string): ParsedSkillMd | null {
     let content: string
@@ -131,18 +160,9 @@ function parseSkillMd(path: string): ParsedSkillMd | null {
     } catch {
         return null
     }
-    let front: Record<string, unknown> = {}
-    if (content.startsWith('---')) {
-        const end = content.indexOf('\n---', 3)
-        if (end === -1) return null
-        try {
-            const parsed = parseYaml(content.slice(3, end)) as unknown
-            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
-            front = parsed as Record<string, unknown>
-        } catch {
-            return null
-        }
-    }
+    const split = splitSkillFrontmatter(content)
+    if (split.kind === 'unclosed' || split.kind === 'invalid') return null
+    const front: Record<string, unknown> = split.kind === 'ok' ? split.front : {}
     const name = typeof front.name === 'string' && front.name.trim() ? front.name.trim() : ''
     // CC 保留名与非法字符（零宽/尖括号/控制字符）不加载；字符码判断而非正则
     //（no-control-regex / no-irregular-whitespace 双 lint 零容忍）
@@ -294,6 +314,33 @@ export function listGlobalSkills(roots: SkillScanRoots): SkillInfo[] {
     ]
 }
 
+/** personal 层已装 skill 的名字键集合（project 层同名条目被其遮蔽） */
+function personalSkillKeys(roots: SkillScanRoots): Set<string> {
+    return new Set(
+        scanSkillDirectory(scopeView(roots, { kind: 'global' }).skillRoot).map(e => skillNameKey(e.parsed.name)),
+    )
+}
+
+/** 某 workspace 目录下未被 personal 同名遮蔽的 project 条目（列表与占用判定同一口径） */
+function projectSkillEntries(
+    roots: SkillScanRoots,
+    wsPath: string,
+    personalKeys: ReadonlySet<string>,
+): ScannedEntry[] {
+    return scanSkillDirectory(scopeView(roots, { kind: 'workspace', path: wsPath }).skillRoot)
+        .filter(e => !personalKeys.has(skillNameKey(e.parsed.name)))
+}
+
+/** 内置插件携带的 skill 遍历（插件名由目录名派生；list / find 共用一条 walk） */
+function* forEachBundledPluginSkill(roots: SkillScanRoots): Generator<{ entry: ScannedEntry; pluginName: string }> {
+    for (const pluginDir of roots.pluginDirs) {
+        const pluginName = pluginDir.split('/').pop() ?? pluginDir
+        for (const entry of scanSkillDirectory(join(pluginDir, 'skills'))) {
+            yield { entry, pluginName }
+        }
+    }
+}
+
 /**
  * 系统视角的插件携带 skill（GET /skills/bundled 的合成半边）：mobi 内置插件（roots.pluginDirs
  * 全部来自 ALL_BUNDLED_PLUGIN_NAMES）携带的 skill 归类系统 tab（2026-11-16 用户裁定），
@@ -302,23 +349,23 @@ export function listGlobalSkills(roots: SkillScanRoots): SkillInfo[] {
  */
 export function listBundledPluginSkills(roots: SkillScanRoots): BundledSkillInfo[] {
     const result: BundledSkillInfo[] = []
-    for (const pluginDir of roots.pluginDirs) {
-        const pluginName = pluginDir.split('/').pop() ?? pluginDir
-        for (const entry of scanSkillDirectory(join(pluginDir, 'skills'))) {
-            result.push({ name: entry.parsed.name, description: entry.parsed.description ?? '', pluginName })
-        }
+    for (const { entry, pluginName } of forEachBundledPluginSkill(roots)) {
+        result.push({
+            name: entry.parsed.name,
+            description: entry.parsed.description ?? '',
+            pluginName,
+            // 完整管理行随列表下发（同一 toSkillInfo）：web 直接用，不再自造 SkillInfo 兜底
+            skill: { ...toSkillInfo(entry, 'plugin', undefined, [], null), pluginName },
+        })
     }
     return result
 }
 
 /** 详情兜底：按名取插件携带 skill 的完整行（系统视角行可点进详情；未命中 null） */
 export function findBundledPluginSkill(roots: SkillScanRoots, name: string): SkillInfo | null {
-    for (const pluginDir of roots.pluginDirs) {
-        const pluginName = pluginDir.split('/').pop() ?? pluginDir
-        for (const entry of scanSkillDirectory(join(pluginDir, 'skills'))) {
-            if (entry.parsed.name === name) {
-                return { ...toSkillInfo(entry, 'plugin', undefined, [], null), pluginName }
-            }
+    for (const { entry, pluginName } of forEachBundledPluginSkill(roots)) {
+        if (entry.parsed.name === name) {
+            return { ...toSkillInfo(entry, 'plugin', undefined, [], null), pluginName }
         }
     }
     return null
@@ -328,33 +375,29 @@ export function findBundledPluginSkill(roots: SkillScanRoots, name: string): Ski
 export function listWorkspaceSkills(roots: SkillScanRoots, wsPath: string): SkillInfo[] {
     const layers = workspaceLayers(roots, wsPath)
     const lock = readLock(join(wsPath, 'skills-lock.json'))
-    const personalKeys = new Set(
-        scanSkillDirectory(scopeView(roots, { kind: 'global' }).skillRoot).map(e => skillNameKey(e.parsed.name)),
-    )
 
-    return scanSkillDirectory(scopeView(roots, { kind: 'workspace', path: wsPath }).skillRoot)
-        .filter(e => !personalKeys.has(skillNameKey(e.parsed.name)))
+    return projectSkillEntries(roots, wsPath, personalSkillKeys(roots))
         .map(e => toSkillInfo(e, 'project', lock.skills[e.parsed.name], layers, 'project'))
 }
 
 /**
  * 项目占用判定（web tabs 空项目隐藏的数据源）：与 listWorkspaceSkills 同一口径
  * （同名遮蔽后为空 = 未占用），personal 扫描只做一次（N 个 workspace 不重复全扫）。
+ * 主目录选择走 resolveScope（与单 workspace 列表同一规则），workspaceId 只用于查表。
+ *
  * 传 `{ id, folders }` 形状（SyncEngine Workspace 的结构子集），返回有技能的 workspaceId。
  */
 export function occupiedWorkspaceIds(
     roots: SkillScanRoots,
     workspaces: ReadonlyArray<{ id: string; folders: ReadonlyArray<{ path: string; primary: boolean }> }>,
 ): string[] {
-    const personalKeys = new Set(
-        scanSkillDirectory(scopeView(roots, { kind: 'global' }).skillRoot).map(e => skillNameKey(e.parsed.name)),
-    )
+    const personalKeys = personalSkillKeys(roots)
+    const byId = new Map(workspaces.map(ws => [ws.id, ws]))
     return workspaces
         .filter(ws => {
-            const primary = ws.folders.find(f => f.primary) ?? ws.folders[0]
-            if (!primary) return false
-            const dir = scopeView(roots, { kind: 'workspace', path: primary.path }).skillRoot
-            return scanSkillDirectory(dir).some(e => !personalKeys.has(skillNameKey(e.parsed.name)))
+            const scope = resolveScope(id => byId.get(id), ws.id)
+            if (scope.kind !== 'workspace') return false
+            return projectSkillEntries(roots, scope.path, personalKeys).length > 0
         })
         .map(ws => ws.id)
 }

@@ -38,7 +38,6 @@ import { Hono, type Context } from 'hono'
 import { join } from 'node:path'
 import {
     SKILL_SCOPE_GLOBAL,
-    SkillCreatePromptSubmissionSchema,
     SkillInstallSubmissionSchema,
     SkillUpdateSubmissionSchema,
     SkillVisibilitySubmissionSchema,
@@ -50,9 +49,8 @@ import { defaultSkillScanRoots, findBundledPluginSkill, listBundledPluginSkills,
 import { removeUntrackedSkill } from '../../skills/skillRemoval'
 import { defaultSkillsApiClient, mergeAvailableWithInstalled } from '../../skills/skillInventoryClient'
 import { getBundledSkills } from '../../skills/bundledSkills'
-import { buildSkillCreatePrompt } from '../../skills/skillCreatePrompt'
 import { parseSkillDetail } from '../../skills/skillDetail'
-import { resolveScope, scopeView, type SkillScope } from '../../skills/skillScope'
+import { resolveScope, scopeApiOptions, scopeView, type SkillScope } from '../../skills/skillScope'
 import type { SkillsDeps } from '../../skills/skillDeps'
 import { writeSkillOverride } from '../../skills/skillSettingsWriter'
 import { configuration } from '../../configuration'
@@ -167,7 +165,7 @@ export function createSkillsRoutes(
         if (ctx.skill.tracked) {
             // tracked：agent 条目 + 共享真身 + lock 条目归 skills API 闭环（其他 agent 仍引用时保留真身）
             const result = await api.removeInstalledSkill(ctx.skill.name,
-                ctx.scope.kind === 'global' ? { global: true } : { global: false, cwd: ctx.scope.path })
+                scopeApiOptions(ctx.scope))
             if (!result.ok) return c.json({ error: result.error ?? 'skills remove failed' }, 502)
             notifySkillChange(c, engine, workspaceId)
             return c.json({ ok: true })
@@ -178,22 +176,6 @@ export function createSkillsRoutes(
         if (!result.ok) return c.json({ error: result.error }, 500)
         notifySkillChange(c, engine, workspaceId)
         return c.json({ ok: true })
-    })
-
-    app.post('/skills/create-prompt', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) return engine
-
-        const body = await c.req.json().catch(() => null)
-        const parsed = SkillCreatePromptSubmissionSchema.safeParse(body)
-        if (!parsed.success) return c.json({ error: 'Invalid body' }, 400)
-
-        // 形态与取清单端点不同（只要 scope），保留直调
-        const scope = scopeOrResponse(c, engine, parsed.data.scope)
-        if (scope instanceof Response) return scope
-
-        const targetDir = scopeView(scanRoots(), scope).skillRoot
-        return c.json({ targetDir, prompt: buildSkillCreatePrompt(targetDir) })
     })
 
     app.get('/skills/detail', (c) => {
@@ -256,14 +238,17 @@ export function createSkillsRoutes(
         if (scope instanceof Response) return scope
 
         try {
-            const { repoSource, skills } = await api.resolveRepoSkills(source)
+            // 三份输入彼此独立：repo 克隆（冷启动 2–20s）与两次本地已装扫描并行，
+            // 不让秒级克隆把毫秒级读串在身后
+            const [repo, globalInstalled, workspaceInstalled] = await Promise.all([
+                api.resolveRepoSkills(source),
+                api.listInstalledSkillRefs({ global: true }),
+                scope.kind === 'global' ? Promise.resolve([]) : api.listInstalledSkillRefs({ global: false, cwd: scope.path }),
+            ])
             // 判定清单：global 视角单份；project 视角并集。两层的条目各带 scope（近层覆盖），
             // 判定不吃拼接顺序——改为显式传视角给 mergeAvailableWithInstalled
-            const globalInstalled = await api.listInstalledSkillRefs({ global: true })
-            const installedRefs = scope.kind === 'global'
-                ? globalInstalled
-                : [...globalInstalled, ...await api.listInstalledSkillRefs({ global: false, cwd: scope.path })]
-            return c.json({ skills: mergeAvailableWithInstalled(repoSource, skills, installedRefs, scope.kind) })
+            const installedRefs = [...globalInstalled, ...workspaceInstalled]
+            return c.json({ skills: mergeAvailableWithInstalled(repo.repoSource, repo.skills, installedRefs, scope.kind) })
         } catch (error) {
             // 拉取失败（网络/私有 repo/无 skill）明确报错，不伪装空清单
             return c.json({ error: error instanceof Error ? error.message : String(error) }, 502)
@@ -305,7 +290,7 @@ export function createSkillsRoutes(
         const result = await api.installSelectedSkills(
             parsed.data.source,
             parsed.data.skills ?? null,
-            scope.kind === 'global' ? { global: true } : { global: false, cwd: scope.path },
+            scopeApiOptions(scope),
         )
         if (result.installed.length === 0) {
             return c.json({ error: result.failed.map(f => `${f.skill}: ${f.error}`).join('; ') || 'skills install failed' }, 502)
@@ -329,7 +314,7 @@ export function createSkillsRoutes(
         if (!ctx.skill.tracked) return c.json({ error: 'Skill is not tracked' }, 400)
 
         const result = await api.reinstallSkill(ctx.skill.name, ctx.skill.installSource,
-            ctx.scope.kind === 'global' ? { global: true } : { global: false, cwd: ctx.scope.path })
+            scopeApiOptions(ctx.scope))
         if (!result.ok) return c.json({ error: result.error ?? 'skills update failed' }, 502)
         // 更新同样变更清单（新版本描述/正文会反映到命令清单），与管理页其他写操作同源发布
         notifySkillChange(c, engine, parsed.data.workspaceId)

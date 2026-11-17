@@ -35,6 +35,7 @@ import { animate, AnimatePresence, motion, useReducedMotion } from "motion/react
 import { Check, ChevronDown, LoaderCircle, Search } from "lucide-react";
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useId,
   useImperativeHandle,
@@ -219,6 +220,13 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
   const [position, setPosition] = useState<{ left: number; width: number; top?: number; bottom?: number } | null>(null);
   /** 列表可用高度（px）：放得下为 null（走 CSS 上限）；放不下时按可视空间收窄 */
   const [listMaxHeight, setListMaxHeight] = useState<number | null>(null);
+  /** listMaxHeight 的同步镜像：measure 在 effect 闭包里读它决定是否刷新自然高度，
+   *  但不能进依赖——每次收窄态翻转都重建订阅/重启跟随循环会把测量打到每个键入上 */
+  const listMaxHeightRef = useRef<number | null>(null);
+  const applyListMaxHeight = useCallback((next: number | null) => {
+    listMaxHeightRef.current = next;
+    setListMaxHeight(next);
+  }, []);
   /** 未收窄时的自然高度：收窄后 scrollHeight 只剩可视部分，翻转判定须用自然高度避免来回跳 */
   const naturalHeightRef = useRef(0);
   const [popoverNode, setPopoverNode] = useState<HTMLDivElement | null>(null);
@@ -232,7 +240,7 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
       const shell = shellRef.current;
       if (!shell) return;
       const rect = shell.getBoundingClientRect();
-      if (listMaxHeight === null) naturalHeightRef.current = popoverNode.scrollHeight;
+      if (listMaxHeightRef.current === null) naturalHeightRef.current = popoverNode.scrollHeight;
       const placement = place({
         anchor: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width },
         contentHeight: Math.max(popoverNode.scrollHeight, naturalHeightRef.current),
@@ -247,8 +255,17 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
         minListHeight: 48,
       });
       setDropUp(placement.direction === "up");
-      setListMaxHeight(placement.maxHeight);
-      setPosition(placement.style);
+      applyListMaxHeight(placement.maxHeight);
+      // 位置对象每次都是新引用：内容不变时返回 prev，避免每个 scroll/rAF 帧都整壳重渲染
+      setPosition(prev => (
+        prev
+        && prev.left === placement.style.left
+        && prev.width === placement.style.width
+        && prev.top === placement.style.top
+        && prev.bottom === placement.style.bottom
+          ? prev
+          : placement.style
+      ));
     };
     measure();
     // 入场跟随：dialog/sheet 的入场是 motion 的 JS 动画（改 transform），不触发任何
@@ -282,9 +299,9 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
       window.removeEventListener("scroll", measure, { capture: true });
       unsubscribeViewport();
     };
-  }, [open, popoverNode, listMaxHeight]);
+  }, [open, popoverNode, applyListMaxHeight]);
   // 关合后复位收窄：下次打开按新的可用空间重新测（弹窗尺寸/滚动位置可能已变）
-  useEffect(() => { if (!open) { setListMaxHeight(null); setPosition(null); } }, [open]);
+  useEffect(() => { if (!open) { applyListMaxHeight(null); setPosition(null); } }, [open, applyListMaxHeight]);
 
   const choose = (option: ComboboxOption) => {
     if (option.disabled) return;

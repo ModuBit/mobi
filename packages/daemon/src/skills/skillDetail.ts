@@ -22,8 +22,8 @@
  * symlink 行的 path 已由 scanner 归一为可读路径（读侧无需再解析链接）。
  */
 import { readFileSync } from 'node:fs'
-import { parse as parseYaml } from 'yaml'
 import type { SkillFrontmatterMeta } from '@mobi/shared'
+import { splitSkillFrontmatter } from './skillScanner'
 
 /** 详情解析结果：正文 + 扩展元数据（没有的字段 undefined，展示层按缺省隐藏） */
 export interface ParsedSkillDetail {
@@ -66,23 +66,12 @@ export function parseSkillDetail(path: string): ParsedSkillDetail | null {
         return null
     }
 
-    let front: Record<string, unknown> = {}
-    let body = content
-    if (content.startsWith('---')) {
-        const end = content.indexOf('\n---', 3)
-        if (end !== -1) {
-            try {
-                const parsed = parseYaml(content.slice(3, end)) as unknown
-                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                    front = parsed as Record<string, unknown>
-                    // 正文 = 闭 --- 之后的全文（剥掉起始换行；尾部保留原样交给渲染层）
-                    body = content.slice(end + 4).replace(/^\r?\n/, '')
-                }
-            } catch {
-                return null
-            }
-        }
-    }
+    const split = splitSkillFrontmatter(content)
+    // 与列表扫描的差异只有一处策略：未闭合围栏在详情里按「裸 markdown」处理（正文=全文），
+    // YAML 坏才是真正的损坏（410）——格式切分本身归 scanner 单源
+    if (split.kind === 'invalid') return null
+    const front: Record<string, unknown> = split.kind === 'ok' ? split.front : {}
+    const body = split.body
 
     const meta: SkillFrontmatterMeta = {
         whenToUse: asString(front.when_to_use),

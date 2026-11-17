@@ -24,7 +24,7 @@
  * 关闭语义：PC 走 Radix（遮罩/Escape/关闭钮 → onOpenChange(false)），移动端走 BottomSheet
  * 既有「先通知后动画、可否决」约束——父组件不翻转 open 即否决关闭。
  */
-import type { CSSProperties, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { Dialog, DialogContent } from '@/ui/shadcn/dialog/dialog'
 import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
@@ -36,32 +36,14 @@ export interface AdaptiveDialogProps {
     onOpenChange: (open: boolean) => void
     /** 标题（两档同源；移动端走 sheet 头部居中栏） */
     title: string
-    /** 辅助说明行（可选） */
-    description?: string
     body?: ReactNode
     /** 底部操作区（并列按钮；PC 右对齐，移动端等宽撑满） */
     footer?: ReactNode
     /** PC 面板宽度（像素或任意 CSS 长度），默认沿用 uiarc 440px；移动端忽略 */
     width?: number | string
-    /** 移动端内容区附加样式（内衬默认已由本壳处理） */
-    bodyStyle?: CSSProperties
-    /** 移动端是否给右上关闭钮（默认 false：靠下拉/遮罩/手势返回关闭） */
-    mobileShowClose?: boolean
-    className?: string
 }
 
-export function AdaptiveDialog({
-    open,
-    onOpenChange,
-    title,
-    description,
-    body,
-    footer,
-    width,
-    bodyStyle,
-    mobileShowClose = false,
-    className,
-}: AdaptiveDialogProps) {
+export function AdaptiveDialog({ open, onOpenChange, title, body, footer, width }: AdaptiveDialogProps) {
     const isMobile = useIsMobile()
 
     if (isMobile) {
@@ -71,10 +53,8 @@ export function AdaptiveDialog({
                 onClose={() => onOpenChange(false)}
                 title={title}
                 peek={false}
-                showClose={mobileShowClose}
             >
-                <div className={styles.mobileBody} style={bodyStyle}>
-                    {description ? <p className={styles.mobileDescription}>{description}</p> : null}
+                <div className={styles.mobileBody}>
                     {body}
                     {footer ? <div className={styles.footer}>{footer}</div> : null}
                 </div>
@@ -86,8 +66,6 @@ export function AdaptiveDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent
                 title={title}
-                description={description}
-                className={className}
                 // 宽度按调用方给的面板宽走，但不得超出视口（窄窗下内联宽度会盖掉
                 // uiarc css 自带的 min(100vw - 32px, 440px) 上限）
                 style={width === undefined

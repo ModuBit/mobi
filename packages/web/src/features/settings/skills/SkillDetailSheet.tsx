@@ -168,14 +168,22 @@ export interface SkillDetailSheetProps {
     updating?: boolean
     /** 卸载（deletable 行传入；ConfirmMorph 就地确认后调用，返回 true 关 sheet） */
     onDelete?: () => Promise<boolean>
-    deleting?: boolean
 }
 
-export function SkillDetailSheet({ skill, scope, open, onClose, onToggle, toggling, onUpdate, updating, onDelete, deleting }: SkillDetailSheetProps) {
+export function SkillDetailSheet({ skill, scope, open, onClose, onToggle, toggling, onUpdate, updating, onDelete }: SkillDetailSheetProps) {
     const { token } = useToken()
     const { t } = useTranslation()
+    // scope 恒有值、name 关闭时置 null（请求停发）——hook 无条件调用
+    const { detail, isLoading } = useSkillDetail(skill?.name ?? null, scope)
 
     if (!skill) return null
+
+    // 以 detail 请求返回的行数据为准（与列表同源、键挂 skillsRoot——sheet 内启停后
+    // mutation 失效重拉，头部开关/遮蔽态即时刷新；请求未回来前用行数据兜底渲染）
+    const current = detail?.skill ?? skill
+    const shadowed = isSkillShadowed(current)
+    const rows = metaRows(detail?.meta ?? {}, t)
+    const hasActions = Boolean(onUpdate) || Boolean(onDelete)
 
     return (
         // 不传可见 title（居中标题与头部名字重复）；sr-only title 供读屏（回落是通用「面板」，
@@ -186,110 +194,72 @@ export function SkillDetailSheet({ skill, scope, open, onClose, onToggle, toggli
             peek={false}
             title={<span className={sheetClass.srOnly}>{skill.name}</span>}
         >
-            <SkillDetailContent
-                skill={skill}
-                scope={scope}
-                token={token}
-                t={t}
-                onToggle={onToggle}
-                toggling={toggling}
-                onUpdate={onUpdate}
-                updating={updating}
-                onDelete={onDelete}
-                deleting={deleting}
-            />
-        </BottomSheet>
-    )
-}
+            <Body>
+                <Head $token={token}>
+                    <HeadRow $token={token}>
+                        <BookOpen size={18} />
+                        <Name $token={token}>{current.name}</Name>
+                        {onToggle && (
+                            <div onClick={e => e.stopPropagation()} role="presentation">
+                                <Switch
+                                    checked={current.effectiveState !== 'off'}
+                                    disabled={toggling}
+                                    onCheckedChange={onToggle}
+                                    aria-label={t('settings.skills.toggleAria', { name: current.name })}
+                                />
+                            </div>
+                        )}
+                    </HeadRow>
+                    {current.description && <HeadDesc $token={token}>{current.description}</HeadDesc>}
+                </Head>
+                {shadowed && <Desc $token={token}>{t('settings.skills.state.shadowed')}</Desc>}
 
-/** 内容装配（hooks 归此层：BottomSheet 是否挂载不影响 hook 调用律） */
-function SkillDetailContent({ skill, scope, token, t, onToggle, toggling, onUpdate, updating, onDelete, deleting }: {
-    skill: SkillInfo
-    scope: string
-    token: Token
-    t: (k: string, opts?: Record<string, unknown>) => string
-    onToggle?: (enabled: boolean) => void
-    toggling?: boolean
-    onUpdate?: () => void
-    updating?: boolean
-    onDelete?: () => Promise<boolean>
-    deleting?: boolean
-}) {
-    const { detail, isLoading } = useSkillDetail(skill.name, scope)
-    // 以 detail 请求返回的行数据为准（与列表同源、键挂 skillsRoot——sheet 内启停后
-    // mutation 失效重拉，头部开关/遮蔽态即时刷新；请求未回来前用行数据兜底渲染）
-    const current = detail?.skill ?? skill
-    const shadowed = isSkillShadowed(current)
-    const rows = metaRows(detail?.meta ?? {}, t)
-    const hasActions = Boolean(onUpdate) || Boolean(onDelete)
-
-    return (
-        <Body>
-            <Head $token={token}>
-                <HeadRow $token={token}>
-                    <BookOpen size={18} />
-                    <Name $token={token}>{current.name}</Name>
-                    {onToggle && (
-                        <div onClick={e => e.stopPropagation()} role="presentation">
-                            <Switch
-                                checked={current.effectiveState !== 'off'}
-                                disabled={toggling}
-                                onCheckedChange={onToggle}
-                                aria-label={t('settings.skills.toggleAria', { name: current.name })}
-                            />
+                {rows.length > 0 && (
+                    <>
+                        <SectionTitle $token={token}>{t('settings.skills.detail.meta')}</SectionTitle>
+                        <div>
+                            {rows.map(r => (
+                                <MetaRow key={r.key} $token={token}>
+                                    <MetaKey $token={token}>{r.key}</MetaKey>
+                                    <MetaValue $token={token}>{r.value}</MetaValue>
+                                </MetaRow>
+                            ))}
                         </div>
-                    )}
-                </HeadRow>
-                {current.description && <HeadDesc $token={token}>{current.description}</HeadDesc>}
-            </Head>
-            {shadowed && <Desc $token={token}>{t('settings.skills.state.shadowed')}</Desc>}
+                    </>
+                )}
 
-            {rows.length > 0 && (
-                <>
-                    <SectionTitle $token={token}>{t('settings.skills.detail.meta')}</SectionTitle>
-                    <div>
-                        {rows.map(r => (
-                            <MetaRow key={r.key} $token={token}>
-                                <MetaKey $token={token}>{r.key}</MetaKey>
-                                <MetaValue $token={token}>{r.value}</MetaValue>
-                            </MetaRow>
-                        ))}
-                    </div>
-                </>
-            )}
+                {/* 正文不加小标题：sheet 里唯一的大块内容，标题是冗余（元数据区标题保留） */}
+                {isLoading ? (
+                    <Skeleton lines={5} label={t('common.loading')} />
+                ) : (
+                    <Markdown content={detail?.body ?? ''} />
+                )}
 
-            {/* 正文不加小标题：sheet 里唯一的大块内容，标题是冗余（元数据区标题保留） */}
-            {isLoading ? (
-                <Skeleton lines={5} label={t('common.loading')} />
-            ) : (
-                <Markdown content={detail?.body ?? ''} />
-            )}
-
-            {hasActions && (
-                <Actions $token={token}>
-                    {onUpdate && (
-                        <Button variant="secondary" size="sm" onClick={onUpdate} loading={updating}>
-                            <RefreshCw size={13} />
-                            {t('settings.skills.detail.update')}
-                        </Button>
-                    )}
-                    {onDelete && (
-                        <ConfirmMorph
-                            label={t('settings.skills.detail.delete')}
-                            icon={<Trash2 size={13} />}
-                            prompt={skill.tracked
-                                ? t('settings.skills.deleteConfirmTracked', { source: skill.installSource ?? '' })
-                                : t('settings.skills.deleteConfirmUntracked')}
-                            // 内层确认钮与外层 label 同词（卸载）：外「卸载」内「删除」读起来像两个动作
-                            confirmLabel={t('settings.skills.detail.delete')}
-                            pendingLabel={t('common.loading')}
-                            onConfirm={onDelete}
-                            disabled={deleting}
-                            variant="raised"
-                        />
-                    )}
-                </Actions>
-            )}
-        </Body>
+                {hasActions && (
+                    <Actions $token={token}>
+                        {onUpdate && (
+                            <Button variant="secondary" size="sm" onClick={onUpdate} loading={updating}>
+                                <RefreshCw size={13} />
+                                {t('settings.skills.detail.update')}
+                            </Button>
+                        )}
+                        {onDelete && (
+                            <ConfirmMorph
+                                label={t('settings.skills.detail.delete')}
+                                icon={<Trash2 size={13} />}
+                                prompt={skill.tracked
+                                    ? t('settings.skills.deleteConfirmTracked', { source: skill.installSource ?? '' })
+                                    : t('settings.skills.deleteConfirmUntracked')}
+                                // 内层确认钮与外层 label 同词（卸载）：外「卸载」内「删除」读起来像两个动作
+                                confirmLabel={t('settings.skills.detail.delete')}
+                                pendingLabel={t('common.loading')}
+                                onConfirm={onDelete}
+                                variant="raised"
+                            />
+                        )}
+                    </Actions>
+                )}
+            </Body>
+        </BottomSheet>
     )
 }

@@ -146,34 +146,26 @@ export function useSkillDelete() {
 }
 
 /**
- * 对话式新建的预填 prompt 请求（票 07）：纯读端点，不动列表数据，
- * 不失效缓存；pending 态由调用方从 isPending 派生。
- */
-export function useSkillCreatePrompt() {
-    const api = useMobiApi()
-    return useMutation({
-        mutationFn: (scope: string) => api.skills.createPrompt(scope),
-    })
-}
-
-/**
  * skill 启停（skill-mgmt 票 03）：写归属层 skillOverrides 后 invalidate 换新列表。
  * 本地扫描 ms 级，invalidate 同步刷新不可感知，不做显式乐观更新；
  * 成功后带回刷新行（遮蔽态由响应承载，调用方据此弹压制提示）。
  */
 export function useSkillVisibility() {
     const api = useMobiApi()
-    const invalidateAll = useInvalidateAllSkills()
+    const queryClient = useQueryClient()
 
     return useMutation({
         mutationFn: async (vars: { name: string; enabled: boolean; workspaceId: string }) => {
             const res = await api.skills.setVisibility(vars.name, vars.enabled, vars.workspaceId)
             return res.data.skill
         },
-        onSuccess: () => {
-            // 全族失效（与安装/删除对齐）：生效状态跨视角计算（global off 遮蔽 workspace on），
-            // 且详情 sheet（skillsDetail 键）头部开关也读同一份数据——只失效列表键会让 sheet 持旧值
-            invalidateAll()
-        },
+        onSuccess: () =>
+            // 失效列表/详情族（生效状态跨视角计算，global off 遮蔽 workspace on；详情 sheet 也读同一份数据）。
+            // 跳过 occupancy：启停只改 override 层，磁盘上的 project skill 集合不变——
+            // 全族失效会让 /skills/occupancy 重扫 personal + 每个 workspace 的 skill 目录
+            queryClient.invalidateQueries({
+                queryKey: queryKeys.skillsRoot,
+                predicate: query => query.queryKey[1] !== 'occupancy',
+            }),
     })
 }

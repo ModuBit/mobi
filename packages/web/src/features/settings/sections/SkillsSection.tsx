@@ -27,7 +27,7 @@ import { Plus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { SKILL_SCOPE_BUNDLED, SKILL_SCOPE_GLOBAL, skillNameKey } from '@mobi/shared'
-import type { BundledSkillInfo, SkillInfo } from '@mobi/shared'
+import type { SkillInfo } from '@mobi/shared'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useBundledSkills, useSkillOccupancy, useSkills } from '@/core/data/hooks/queries/useSkills'
 import { Button } from '@/ui/base/interactive/button/Button'
@@ -211,28 +211,6 @@ const TargetChip = styled.div<{ $token: Token }>`
     }
 `
 
-/**
- * 系统视角的插件携带行 → 详情 sheet 兜底行：bundled 行只带名字/描述/插件名，
- * 能力字段全按插件行只读事实补齐（开关/更新/卸载入口由字段派生，全不出现）；
- * 详情请求响应回填后以 daemon 行数据为准。
- */
-function bundledRowToSkillInfo(row: BundledSkillInfo): SkillInfo {
-    return {
-        name: row.name,
-        description: row.description,
-        source: 'plugin',
-        form: 'directory',
-        path: '',
-        tracked: false,
-        overrideable: false,
-        deletable: false,
-        effectiveState: null,
-        effectiveFromLayer: null,
-        ownState: null,
-        pluginName: row.pluginName,
-    }
-}
-
 export function SkillsSection() {
     const { token } = useToken()
     const { t } = useTranslation()
@@ -244,8 +222,9 @@ export function SkillsSection() {
     // bundled 是纯前端视角（数据走 useBundledSkills），不发列表请求
     const isBundled = tab === SKILL_SCOPE_BUNDLED
     const { skills, isLoading } = useSkills(tab, { enabled: !isBundled })
-    // bundled 行的同名遮蔽判定基准恒为个人视角名单（bundled tab 下 useSkills 停发）
-    const { skills: personalSkills } = useSkills(SKILL_SCOPE_GLOBAL)
+    // bundled 行的同名遮蔽判定基准恒为个人视角名单（bundled tab 下主列表停发，由这次查询兜底；
+    // 其余视角主列表已覆盖同 key，无需重复发）
+    const { skills: personalSkills } = useSkills(SKILL_SCOPE_GLOBAL, { enabled: isBundled })
     // 内置名单只属系统 tab；搜索词也参与内置行过滤
     const { bundled, isLoading: bundledLoading, error: bundledError } = useBundledSkills(isBundled)
     const actions = useSkillsActions()
@@ -288,6 +267,22 @@ export function SkillsSection() {
         setDetailOpen(true)
     }
 
+    /** 列表壳：加载骨架 / 空态提示（bundled 与视角列表两支共用，文案随分支传入） */
+    const loadingCard = (
+        <SettingGroupCard>
+            {Array.from({ length: 4 }, (_, i) => (
+                <SkeletonRow key={i}>
+                    <Skeleton avatar lines={2} label={t('common.loading')} />
+                </SkeletonRow>
+            ))}
+        </SettingGroupCard>
+    )
+    const emptyCard = (message: string) => (
+        <SettingGroupCard>
+            <EmptyHint $token={token}>{message}</EmptyHint>
+        </SettingGroupCard>
+    )
+
     return (
         <Wrap $token={token}>
             {/* 页级动作进标题行（PC 落点由 SettingsPage 提供；移动端就地右对齐渲染） */}
@@ -307,66 +302,36 @@ export function SkillsSection() {
                 <ListArea ref={listAreaRef}>
                     {/* 滑移底色层：hover 最淡一档跨行弹簧滑移（SettingsPage 侧栏同款；可点行才标记 data-glide-row） */}
                     <HoverGlideLayer containerRef={listAreaRef} $background={token.colorBgTextHover} $radius="var(--radius-control-sm)" />
-                    {isBundled ? (bundledLoading ? (
-                    <SettingGroupCard>
-                        {Array.from({ length: 4 }, (_, i) => (
-                            <SkeletonRow key={i}>
-                                <Skeleton avatar lines={2} label={t('common.loading')} />
-                            </SkeletonRow>
-                        ))}
-                    </SettingGroupCard>
-                ) : bundledError ? (
-                    <SettingGroupCard>
-                        <EmptyHint $token={token}>{t('settings.skills.bundledFailed')}</EmptyHint>
-                    </SettingGroupCard>
-                ) : bundled.length > 0 ? (
-                    <SettingGroupCard>
-                        {bundled.map(b => (
-                            b.pluginName ? (
-                                // 插件携带行：可点进只读详情（行数据经 bundledRowToSkillInfo 兜底，详情响应回填）
-                                <SkillRow
-                                    key={`plugin:${b.name}`}
-                                    skill={bundledRowToSkillInfo(b)}
-                                    onOpen={() => openDetail(bundledRowToSkillInfo(b), SKILL_SCOPE_GLOBAL)}
-                                />
-                            ) : (
-                                <BundledSkillRow key={b.name} skill={b} covered={listedNames.has(skillNameKey(b.name))} />
-                            )
-                        ))}
-                    </SettingGroupCard>
-                ) : (
-                    <SettingGroupCard>
-                        <EmptyHint $token={token}>
-                            {t('settings.skills.emptyBundled')}
-                        </EmptyHint>
-                    </SettingGroupCard>
-                )) : isLoading ? (
-                    <SettingGroupCard>
-                        {Array.from({ length: 4 }, (_, i) => (
-                            <SkeletonRow key={i}>
-                                <Skeleton avatar lines={2} label={t('common.loading')} />
-                            </SkeletonRow>
-                        ))}
-                    </SettingGroupCard>
-                ) : skills.length > 0 ? (
-                    <SettingGroupCard>
-                        {skills.map(skill => (
-                            <SkillRow
-                                key={`${skill.source}:${skill.name}`}
-                                skill={skill}
-                                onToggle={skill.overrideable ? (enabled: boolean) => actions.toggle(skill, enabled, tab) : undefined}
-                                toggling={actions.isToggling(skill.name)}
-                                onOpen={() => openDetail(skill)}
-                            />
-                        ))}
-                    </SettingGroupCard>
-                ) : (
-                    <SettingGroupCard>
-                        <EmptyHint $token={token}>
-                            {t('settings.skills.empty')}
-                        </EmptyHint>
-                    </SettingGroupCard>
-                )}
+                    {isBundled ? (
+                        bundledLoading ? loadingCard
+                            : bundledError ? emptyCard(t('settings.skills.bundledFailed'))
+                                : bundled.length > 0 ? (
+                                    <SettingGroupCard>
+                                        {bundled.map(b => {
+                                            // 插件携带行：完整管理行由 daemon 扫描层合成（skill 字段），
+                                            // 详情 sheet 直接用它作兜底；缺失时退化为只读内置行
+                                            const info = b.skill
+                                            if (!info) {
+                                                return <BundledSkillRow key={b.name} skill={b} covered={listedNames.has(skillNameKey(b.name))} />
+                                            }
+                                            return <SkillRow key={`plugin:${b.name}`} skill={info} onOpen={() => openDetail(info, SKILL_SCOPE_GLOBAL)} />
+                                        })}
+                                    </SettingGroupCard>
+                                ) : emptyCard(t('settings.skills.emptyBundled'))
+                    ) : isLoading ? loadingCard
+                        : skills.length > 0 ? (
+                            <SettingGroupCard>
+                                {skills.map(skill => (
+                                    <SkillRow
+                                        key={`${skill.source}:${skill.name}`}
+                                        skill={skill}
+                                        onToggle={skill.overrideable ? (enabled: boolean) => actions.toggle(skill, enabled, tab) : undefined}
+                                        toggling={actions.isToggling(skill.name)}
+                                        onOpen={() => openDetail(skill)}
+                                    />
+                                ))}
+                            </SettingGroupCard>
+                        ) : emptyCard(t('settings.skills.empty'))}
                 </ListArea>
             </ScopeTabbedSection>
             <AdaptiveDialog
@@ -517,7 +482,6 @@ export function SkillsSection() {
                         return ok
                     }
                     : undefined}
-                deleting={false}
             />
         </Wrap>
     )

@@ -67,8 +67,7 @@ export type InstallFlowEvent =
     | { type: 'findFail' }
     | { type: 'fetchStart' }
     | { type: 'fetchDone'; source: string; skills: SkillAvailableInfo[] }
-    | { type: 'fetchFail' }
-    | { type: 'fetchCancel' }
+    | { type: 'fetchEnded' }
     | { type: 'toggleSkill'; name: string }
     | { type: 'installStart' }
     | { type: 'installDone' }
@@ -131,9 +130,8 @@ export function installFlowReducer(state: InstallFlowState, event: InstallFlowEv
                 // 已装项默认勾上但 readonly；默认勾选集只含可安装项
                 selected: event.skills.filter(s => !s.installed).map(s => s.name),
             }
-        case 'fetchFail':
-            return { ...state, fetching: false }
-        case 'fetchCancel':
+        // 失败与取消同态：都是「拉取结束、没有清单」（失败 toast 由效果层发）
+        case 'fetchEnded':
             return { ...state, fetching: false }
         case 'toggleSkill':
             return {
@@ -178,14 +176,4 @@ export function resolveTargetSource(state: InstallFlowState): string {
 export function isDirectSkill(state: InstallFlowState): boolean {
     if (state.target) return Boolean(state.target.skillId)
     return isDirectSkillShape(installQuery(state))
-}
-
-export type InstallFlowPhase = 'input' | 'finding' | 'fetching' | 'selecting' | 'installing'
-
-export function installPhase(state: InstallFlowState): InstallFlowPhase {
-    if (state.installing) return 'installing'
-    if (state.available) return 'selecting'
-    if (state.fetching) return 'fetching'
-    if (state.finding) return 'finding'
-    return 'input'
 }

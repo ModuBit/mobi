@@ -70,14 +70,25 @@ interface AnchorSnapshot {
     scrollHeight: number
 }
 
-/** 按 data-bubble-key 找已渲染的真实项（顶部加载行没有该属性，天然跳过） */
-function findBubbleEl(scrollBox: HTMLElement, key: string): HTMLElement | undefined {
-    return Array.from(scrollBox.querySelectorAll<HTMLElement>('[data-bubble-key]'))
-        .find(el => el.dataset.bubbleKey === key)
+/** 按 data-bubble-key 找已渲染的真实项（顶部加载行没有该属性，天然跳过）。
+ *  reconcile 一次要查多个锚点：先建一次索引，避免每个锚点全量 query + find */
+function indexBubbleEls(scrollBox: HTMLElement): Map<string, HTMLElement> {
+    const byKey = new Map<string, HTMLElement>()
+    for (const el of scrollBox.querySelectorAll<HTMLElement>('[data-bubble-key]')) {
+        const key = el.dataset.bubbleKey
+        // 重复 key 保留首个（与逐个 find 的语义一致）
+        if (key && !byKey.has(key)) byKey.set(key, el)
+    }
+    return byKey
 }
 
-/** 捕获视口锚点快照：视口内可见项（按视口顺序，最多 MAX_ANCHORS 个）+ 末尾渲染项 */
-function captureAnchors(scrollBox: HTMLElement): AnchorSnapshot {
+/**
+ * 捕获视口锚点快照：视口内可见项（按视口顺序，最多 MAX_ANCHORS 个）+ 末尾渲染项。
+ *
+ * `fromEnd` = 贴底跟随时从末尾倒扫：可见项都在列表尾部，正扫要读完全部离屏 bubble 的
+ * rect 才凑够；流式期间本函数每帧都跑，倒扫把帧成本压到可见项数量级。
+ */
+function captureAnchors(scrollBox: HTMLElement, fromEnd = false): AnchorSnapshot {
     const snapshot: AnchorSnapshot = {
         anchors: [],
         tail: null,
@@ -88,7 +99,8 @@ function captureAnchors(scrollBox: HTMLElement): AnchorSnapshot {
     if (els.length === 0) return snapshot
     const boxTop = scrollBox.getBoundingClientRect().top
     const boxBottom = boxTop + scrollBox.clientHeight
-    for (const el of els) {
+    for (let i = 0; i < els.length; i += 1) {
+        const el = els[fromEnd ? els.length - 1 - i : i]
         const key = el.dataset.bubbleKey
         if (!key) continue
         const rect = el.getBoundingClientRect()
@@ -97,6 +109,8 @@ function captureAnchors(scrollBox: HTMLElement): AnchorSnapshot {
             if (snapshot.anchors.length >= MAX_ANCHORS) break
         }
     }
+    // 倒扫得到的是「最靠下的 N 个可见项」，翻回视口顺序（补偿的退让顺序依赖它）
+    if (fromEnd) snapshot.anchors.reverse()
     const tailEl = els[els.length - 1]
     if (tailEl?.dataset.bubbleKey && !snapshot.anchors.some(a => a.key === tailEl.dataset.bubbleKey)) {
         snapshot.tail = { key: tailEl.dataset.bubbleKey, top: tailEl.getBoundingClientRect().top }
@@ -197,8 +211,9 @@ export function useChatViewport(enabled: boolean, options: ChatViewportOptions =
         // 夹带了重排/懒加载等不可信因素，不能用来推视口。
         let shift: number | null = null
         const boxBottom = boxTop + scrollBox.clientHeight
+        const bubbleEls = indexBubbleEls(scrollBox)
         for (const anchor of snapshot?.anchors ?? []) {
-            const el = findBubbleEl(scrollBox, anchor.key)
+            const el = bubbleEls.get(anchor.key)
             if (!el) continue
             const rect = el.getBoundingClientRect()
             if (rect.bottom < boxTop + 1 || rect.top > boxBottom - 1) continue
@@ -210,7 +225,7 @@ export function useChatViewport(enabled: boolean, options: ChatViewportOptions =
             // 的锚点——它们只受顶部 prepend 影响，位移仍等于上方插入量；只接受正位移
             //（内容增加方向）。视口上方的锚点混有钉底/裁切位移，不参与。
             for (const anchor of snapshot.anchors) {
-                const el = findBubbleEl(scrollBox, anchor.key)
+                const el = bubbleEls.get(anchor.key)
                 if (!el) continue
                 const rect = el.getBoundingClientRect()
                 if (rect.top <= boxBottom - 1) continue
@@ -222,7 +237,7 @@ export function useChatViewport(enabled: boolean, options: ChatViewportOptions =
         if (shift == null && !supportsScrollAnchoring()) {
             // 视口内锚点全灭（整窗重排）且浏览器无原生 anchoring：末尾项 / 高度差兜底。
             // 支持 anchoring 的浏览器不做这份兜底——末尾项在视口外，它的位移不等于视口位移
-            const tailEl = snapshot?.tail ? findBubbleEl(scrollBox, snapshot.tail.key) : undefined
+            const tailEl = snapshot?.tail ? bubbleEls.get(snapshot.tail.key) : undefined
             if (tailEl && snapshot?.tail) {
                 shift = tailEl.getBoundingClientRect().top - snapshot.tail.top
             } else if (snapshot) {
@@ -283,7 +298,8 @@ export function useChatViewport(enabled: boolean, options: ChatViewportOptions =
             anchorSnapshotTimerRef.current = setTimeout(() => {
                 anchorSnapshotTimerRef.current = null
                 if (isRestoringScrollRef.current) return
-                anchorSnapshotRef.current = captureAnchors(scroller)
+                // 仍在贴底跟随（用户只是轻推了一下）时可见项在尾部，按倒扫取
+                anchorSnapshotRef.current = captureAnchors(scroller, followingRef.current)
             }, ANCHOR_SNAPSHOT_DEBOUNCE_MS)
         }
         scroller.addEventListener('scroll', onScroll, { passive: true })
@@ -314,7 +330,8 @@ export function useChatViewport(enabled: boolean, options: ChatViewportOptions =
                 if (followingRef.current) {
                     chaseIfFollowing()
                     // 刷新基线：补偿计算不用，但用户随即上滚时要有一份与当前内容一致的快照
-                    anchorSnapshotRef.current = captureAnchors(scroller)
+                    //（贴底时可见项在尾部，倒扫免读全部离屏 rect——RO 每帧都会走到这里）
+                    anchorSnapshotRef.current = captureAnchors(scroller, true)
                 } else {
                     reconcileAnchors(false)
                 }

@@ -28,68 +28,47 @@
  * 也不需要卡片壳（radio-cards 的描边卡片与滑移 ring 会把一行表单撑成一块面板）。
  *
  * 契约：
- * - 受控优先：传 `checked` 即受控；否则用 `defaultChecked` 起步的内部态
+ * - 完全受控：选中态由调用方经 `checked` 持有（单行布尔场景没有内部控制态的需求）
  * - `onChange(next: boolean)`：点选 / 键盘切换后回调新值
  * - `disabled` 同时压住原生 input 与自绘指示器（指示器走 RadioIndicator 的 disabled 分支）
  */
-import { useState, type ChangeEvent, type ReactNode } from 'react'
+import type { ChangeEvent, ReactNode } from 'react'
 import { RadioIndicator } from '@/ui/shadcn/radio-cards/radio-cards'
 import styles from './radio.module.css'
 
 export interface RadioProps {
-    /** 受控选中态；不传则用 defaultChecked 起步的内部态 */
-    checked?: boolean
-    defaultChecked?: boolean
+    /** 选中态（受控） */
+    checked: boolean
     /** 选中态变化回调（参数为变化后的值） */
     onChange?: (checked: boolean) => void
     disabled?: boolean
-    /** 原生 radio 的 name/value：需要浏览器成组互斥时再传，单行布尔场景可省略 */
-    name?: string
-    value?: string
     /** 悬停提示（与 antd Radio 同名 prop，便于内联迁移） */
     title?: string
     className?: string
     children: ReactNode
 }
 
-export function Radio({
-    checked,
-    defaultChecked = false,
-    onChange,
-    disabled = false,
-    name,
-    value,
-    title,
-    className,
-    children,
-}: RadioProps) {
-    const controlled = checked !== undefined
-    const [internal, setInternal] = useState(defaultChecked)
-    const on = controlled ? checked : internal
-
+export function Radio({ checked, onChange, disabled = false, title, className, children }: RadioProps) {
     const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-        if (!controlled) setInternal(event.target.checked)
         onChange?.(event.target.checked)
     }
 
     return (
         <label
             className={[styles.radio, className].filter(Boolean).join(' ')}
-            data-checked={on || undefined}
+            data-checked={checked || undefined}
             data-disabled={disabled || undefined}
             title={title}
         >
             <input
                 type="radio"
                 className={styles.input}
-                checked={on}
+                checked={checked}
                 disabled={disabled}
-                name={name}
-                value={value}
                 onChange={handleChange}
             />
             <span className={styles.mark} aria-hidden="true">
-                <RadioIndicator checked={on} disabled={disabled} />
+                <RadioIndicator checked={checked} disabled={disabled} />
             </span>
             <span className={styles.label}>{children}</span>
         </label>

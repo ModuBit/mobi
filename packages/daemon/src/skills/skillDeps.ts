@@ -22,19 +22,7 @@
  */
 import type { SkillScanRoots } from './skillScanner'
 import type { SkillsBundledDeps } from './bundledSkills'
-import type { InstalledSkillRef, InstallSelectedResult, RepoSkillOption, SkillActionResult } from './skillInventoryClient'
-import type { SkillRegistrySkill } from '@mobi/shared'
-
-/** skills 编程 API 面（缺省生产值 = skills 包函数；测试注入 fake 免网络 clone） */
-export interface SkillsApiClient {
-    resolveRepoSkills(source: string): Promise<{ repoSource: string; skills: RepoSkillOption[] }>
-    listInstalledSkillRefs(options: { global: boolean; cwd?: string }): Promise<InstalledSkillRef[]>
-    installSelectedSkills(source: string, skillNames: string[] | null, options: { global: boolean; cwd?: string }): Promise<InstallSelectedResult>
-    removeInstalledSkill(name: string, options: { global: boolean; cwd?: string }): Promise<SkillActionResult>
-    reinstallSkill(name: string, source: string | null | undefined, options: { global: boolean; cwd?: string }): Promise<SkillActionResult>
-    /** skills.sh 生态搜索（= CLI find 的 HTTP 端点，免知识直接找 skill） */
-    searchRegistrySkills(query: string): Promise<SkillRegistrySkill[]>
-}
+import type { SkillsApiClient } from './skillInventoryClient'
 
 export type SkillsDeps = {
     /** 扫描根 fixture（缺省生产值由路由内部解析） */

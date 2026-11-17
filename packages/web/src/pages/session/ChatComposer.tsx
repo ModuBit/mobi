@@ -48,7 +48,7 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { useMobiApi } from '@/core/data/api/client'
 import { consumeDraftText } from '@/core/lib/draftText'
 import { locateQuotedMessage } from '@/core/lib/quoteLocate'
-import { extractQuotesFromEditorStateJSON, mergeDraftText, getDraft } from '@/core/lib/composerDrafts'
+import { quoteKey, extractQuotesFromEditorStateJSON, mergeDraftText, getDraft } from '@/core/lib/composerDrafts'
 import { useComposerDraft } from '@/features/composer/useComposerDraft'
 import { useComposerScaffold } from '@/features/composer/useComposerScaffold'
 import type { CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
@@ -295,10 +295,15 @@ export function ChatComposer(props: ChatComposerProps) {
     // 待发送引用：React state 持有（QuoteChipBar 展示在输入卡上方的 header 内容行）。
     // 约束：持有条数恒 ≤ QUOTE_MAX_COUNT（3）——上限为引用入口时的前置契约：
     // 置入超出时拒绝；serialize 侧 slice(0, QUOTE_MAX_COUNT) 为底线
-    const [quotes, setQuotes] = useState<ComposerQuoteRef[]>([])
-    // 事件内同步判定（去重/上限/返回值）走 ref：setState updater 到 render 才执行，返回值取不到
-    const quotesRef = useRef(quotes)
-    quotesRef.current = quotes
+    const [quotes, setQuotesState] = useState<ComposerQuoteRef[]>([])
+    // 事件内同步判定（去重/上限/返回值）走 ref：setState updater 到 render 才执行，返回值取不到。
+    // 引用桶的唯一写入口 = commitQuotes（ref 与 state 同步推进）——所有变更路径共用它，
+    // 不再有「部分 handler 记得先改 ref」的分裂协议
+    const quotesRef = useRef<ComposerQuoteRef[]>([])
+    const commitQuotes = useCallback((next: ComposerQuoteRef[]) => {
+        quotesRef.current = next
+        setQuotesState(next)
+    }, [])
     // 编辑器 JSON 快照镜像（每次 onUpdate 刷新）：草稿保存发生在组件卸载清理阶段，
     // 此时 shellRef 已被 React 置 null，不能再回调句柄取快照
     const editorStateJsonRef = useRef<string | null>(null)
@@ -337,8 +342,8 @@ export function ChatComposer(props: ChatComposerProps) {
         if (shell?.isReady()) shell.setMarkdown(v)
         else pendingMarkdownRef.current = v
     }, [])
-    // 草稿/回填读出的引用桶无 uid（持久化不存条目身份）→ 统一补 uid 后落 state
-    const setQuotesWithUids = useCallback((qs: PendingQuoteRef[]) => setQuotes(withQuoteUids(qs)), [])
+    // 草稿/回填读出的引用桶无 uid（持久化不存条目身份）→ 统一补 uid 后落桶
+    const setQuotesWithUids = useCallback((qs: PendingQuoteRef[]) => commitQuotes(withQuoteUids(qs)), [commitQuotes])
 
     // 设置草稿并聚焦：suggestion 采纳共用此实现
     const setDraft = useCallback((draftText: string) => {
@@ -438,22 +443,21 @@ export function ChatComposer(props: ChatComposerProps) {
     // 气泡重编辑入口：完成后产物同样落回 composer 附件（历史不可变）。
     // getQuoteCount/addQuote/updateQuoteComment/clearQuotes：消息列表选区引用动作的手柄通道
     //（引用是即时动作，「添加到对话」即落条目，后续评论只是补充，无需信箱防重放）。
-    // 同步判定走 quotesRef：事件内 setState updater 到 render 才执行，返回值取不到
+    // 同步判定读 quotesRef（单一写入口 commitQuotes 保证它恒为最新）
     const addQuote = useCallback((quote: PendingQuoteRef): ComposerQuoteRef | null => {
         // 同一片段（同消息同文本）去重：返回已有条目（评论浮层续编辑）。
         // 同消息的**不同**片段允许多条并存（QUOTE_MAX_COUNT 的本意）；
         // uid 条目级身份在置入时生成（chip key/删除/评论编辑都以 uid 寻址）
-        const existing = quotesRef.current.find(q => q.messageId === quote.messageId && q.excerpt === quote.excerpt)
+        const existing = quotesRef.current.find(q => quoteKey(q) === quoteKey(quote))
         if (existing) return existing
         if (quotesRef.current.length >= QUOTE_MAX_COUNT) return null
         const entry = withQuoteUid(quote)
-        quotesRef.current = [...quotesRef.current, entry]
-        setQuotes(quotesRef.current)
+        commitQuotes([...quotesRef.current, entry])
         return entry
-    }, [])
+    }, [commitQuotes])
     // 评论补充入口（「添加到对话」即落条目，评论浮层保存/清空都走这里；undefined = 清空）
     const updateQuoteComment = useCallback((uid: string, comment: string | undefined) => {
-        setQuotes(prev => prev.map(q => {
+        commitQuotes(quotesRef.current.map(q => {
             if (q.uid !== uid) return q
             if (comment !== undefined) return { ...q, comment }
             // 清评论 = 剔除 comment 字段本身（wire 契约：无评论不落键）；rest 解构避免
@@ -461,16 +465,15 @@ export function ChatComposer(props: ChatComposerProps) {
             const { comment: _dropped, ...base } = q
             return base
         }))
-    }, [])
-    // 一键清空全部引用（QuoteChipBar 胶囊旁 ×）：ref 同步推进，与 addQuote 的同步判定约定一致
+    }, [commitQuotes])
+    // 一键清空全部引用（QuoteChipBar 胶囊旁 ×）
     const clearQuotes = useCallback(() => {
-        quotesRef.current = []
-        setQuotes([])
-    }, [])
+        commitQuotes([])
+    }, [commitQuotes])
     // 删除单条引用（条目级 uid 寻址；同消息可挂多个不同片段，messageId 不唯一）
     const removeQuote = useCallback((uid: string) => {
-        setQuotes(prev => prev.filter(q => q.uid !== uid))
-    }, [])
+        commitQuotes(quotesRef.current.filter(q => q.uid !== uid))
+    }, [commitQuotes])
     useImperativeHandle(ref, () => ({
         openSketch: handleOpenSketch,
         openBubbleSketch: sketchSession.openFromBubble,

@@ -114,6 +114,8 @@ export const BundledSkillInfoSchema = z.object({
     description: z.string(),
     /** mobi 内置插件携带 skill 的插件名（带此标记 = 插件行，可点进详情；缺省 = CC 内置行） */
     pluginName: z.string().optional(),
+    /** 插件行的完整管理行（daemon 扫描层同一 toSkillInfo 合成）——web 不再自造 SkillInfo */
+    skill: SkillInfoSchema.optional(),
 })
 
 export const BundledSkillsResponseSchema = z.object({
@@ -228,9 +230,4 @@ export type SkillRegistrySearchResponse = z.infer<typeof SkillRegistrySearchResp
 /** POST /api/skills/:name/update */
 export const SkillUpdateSubmissionSchema = z.object({
     workspaceId: z.string(),
-})
-
-/** POST /api/skills/create-prompt */
-export const SkillCreatePromptSubmissionSchema = z.object({
-    scope: z.string(),
 })

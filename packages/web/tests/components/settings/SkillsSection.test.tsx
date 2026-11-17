@@ -20,7 +20,7 @@ import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-li
 import type { SkillInfo } from '@mobi/shared'
 
 /** vi.mock 工厂提升先于 const 声明，被工厂引用的桩须 vi.hoisted */
-const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync, mockInstallAsync, mockUpdateMutate, mockBundled, mockNavigate, mockSaveDraftText, mockCreatePrompt, mockFindAsync } = vi.hoisted(() => {
+const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync, mockInstallAsync, mockUpdateMutate, mockBundled, mockNavigate, mockSaveDraftText, mockFindAsync } = vi.hoisted(() => {
     return {
         /** toast 断言靶（App.useApp 返回的 message） */
         mockMessage: { warning: vi.fn(), error: vi.fn(), success: vi.fn() },
@@ -45,7 +45,6 @@ const { mockMessage, mockMutate, mockVisibility, mockModal, mockDeleteAsync, moc
         /** 票 07：新建流程桩 */
         mockNavigate: vi.fn(),
         mockSaveDraftText: vi.fn(),
-        mockCreatePrompt: vi.fn(),
         /** 生态搜索桩（安装弹窗「先搜再装」段） */
         mockFindAsync: vi.fn(),
     }
@@ -92,8 +91,6 @@ vi.mock('@/core/data/hooks/queries/useSkills', () => ({
     useSkillDelete: vi.fn(() => ({ mutateAsync: mockDeleteAsync })),
     useSkillInstall: vi.fn(() => ({ mutateAsync: mockInstallAsync, isPending: false })),
     useSkillUpdate: vi.fn(() => ({ mutate: mockUpdateMutate, isPending: false, variables: null })),
-    // createPrompt 桩保持 api 返回形状（res.data.prompt），useSkillsActions 透明消费
-    useSkillCreatePrompt: vi.fn(() => ({ mutateAsync: mockCreatePrompt, isPending: false })),
     // 两步式安装清单桩（res.data.skills）；安装弹窗用例可覆盖
     useSkillAvailable: vi.fn(() => ({
         mutateAsync: vi.fn(async () => ({ data: { skills: [] } })),
@@ -120,7 +117,7 @@ vi.mock('@/core/lib/draftText', () => ({
     consumeDraftText: vi.fn(() => null),
 }))
 vi.mock('@/core/data/api/client', () => ({
-    useMobiApi: () => ({ skills: { createPrompt: mockCreatePrompt } }),
+    useMobiApi: () => ({ skills: {} }),
 }))
 
 import { SkillsSection } from '@/features/settings/sections/SkillsSection'
@@ -570,7 +567,26 @@ describe('SkillsSection（票 06：系统 tab 内置名单）', () => {
     const BUNDLED = [
         { name: 'alpha', description: 'Bundled alpha (shadowed by personal)' },
         { name: 'doctor', description: 'Health-check the setup' },
-        { name: 'visualize', description: 'From mobi plugin', pluginName: 'mobi' },
+        {
+            name: 'visualize',
+            description: 'From mobi plugin',
+            pluginName: 'mobi',
+            // daemon 随列表下发的完整管理行（web 不再自造 SkillInfo 兜底）
+            skill: {
+                name: 'visualize',
+                description: 'From mobi plugin',
+                source: 'plugin',
+                form: 'directory',
+                path: '',
+                tracked: false,
+                pluginName: 'mobi',
+                overrideable: false,
+                deletable: false,
+                effectiveState: null,
+                effectiveFromLayer: null,
+                ownState: null,
+            },
+        },
     ]
 
     /** 进入系统 tab（bundled 数据只属该 tab，i18n mock 下 tab 文本 = 键名） */

@@ -19,7 +19,6 @@ import type { SkillAvailableInfo, SkillRegistrySkill } from '@mobi/shared'
 import {
     createInstallFlowState,
     installFlowReducer,
-    installPhase,
     isDirectSkill,
     isDirectSkillShape,
     isSourceShape,
@@ -120,14 +119,14 @@ describe('installFlow — 搜索 / 清单 / 安装', () => {
         const state = selectingState()
         expect(state.available?.skills.map(s => s.name)).toEqual(['a', 'b', 'installed'])
         expect(state.selected).toEqual(['a', 'b'])
-        expect(installPhase(state)).toBe('selecting')
     })
 
-    it('fetchCancel / fetchFail：只落 fetching，不产生清单', () => {
+    it('fetchEnded（失败 / 取消同态）：只落 fetching，不产生清单', () => {
         const fetching = installFlowReducer(createInstallFlowState('global'), { type: 'fetchStart' })
-        expect(installPhase(fetching)).toBe('fetching')
-        expect(installFlowReducer(fetching, { type: 'fetchCancel' }).available).toBeNull()
-        expect(installFlowReducer(fetching, { type: 'fetchFail' }).fetching).toBe(false)
+        expect(fetching.fetching).toBe(true)
+        const ended = installFlowReducer(fetching, { type: 'fetchEnded' })
+        expect(ended.fetching).toBe(false)
+        expect(ended.available).toBeNull()
     })
 
     it('toggleSkill：加入 / 移除', () => {
@@ -139,7 +138,7 @@ describe('installFlow — 搜索 / 清单 / 安装', () => {
 
     it('installDone 关闭弹窗；installFail 保持打开可重试', () => {
         const installing = installFlowReducer(selectingState(), { type: 'installStart' })
-        expect(installPhase(installing)).toBe('installing')
+        expect(installing.installing).toBe(true)
         expect(installFlowReducer(installing, { type: 'installDone' }).open).toBe(false)
         const failed = installFlowReducer(installing, { type: 'installFail' })
         expect(failed.open).toBe(true)
@@ -169,12 +168,5 @@ describe('installFlow — 形态选择器', () => {
         const inputOnly: InstallFlowState = { ...base, input: 'owner/repo@skill' }
         expect(resolveTargetSource(inputOnly)).toBe('owner/repo@skill')
         expect(isDirectSkill(inputOnly)).toBe(true)
-    })
-
-    it('阶段派生优先级：installing > selecting > fetching > finding > input', () => {
-        expect(installPhase(createInstallFlowState('global'))).toBe('input')
-        expect(installPhase({ ...createInstallFlowState('global'), finding: true })).toBe('finding')
-        expect(installPhase({ ...selectingState(), fetching: true })).toBe('selecting')
-        expect(installPhase({ ...selectingState(), installing: true })).toBe('installing')
     })
 })

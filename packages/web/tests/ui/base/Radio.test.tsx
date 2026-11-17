@@ -16,7 +16,7 @@
 
 /**
  * 单 Radio 契约：原生 input 承载语义（role/aria-checked/disabled），label 整行可点；
- * 受控只上报、uncontrolled 自持状态；点选回调给变化后的布尔值。
+ * 完全受控（checked 由外部持有，只上报 onChange）。
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -42,15 +42,6 @@ describe('Radio', () => {
         expect(input).toBeChecked()
     })
 
-    it('uncontrolled：defaultChecked 起步，点选后自持选中态', () => {
-        const onChange = vi.fn()
-        render(<Radio defaultChecked={false} onChange={onChange}>主目录</Radio>)
-        const input = screen.getByRole('radio', { name: '主目录' })
-        fireEvent.click(input)
-        expect(onChange).toHaveBeenCalledWith(true)
-        expect(input).toBeChecked()
-    })
-
     it('disabled：原生 input 禁用，点击不上报', () => {
         const onChange = vi.fn()
         render(<Radio checked={false} disabled onChange={onChange}>主目录</Radio>)
@@ -58,18 +49,6 @@ describe('Radio', () => {
         expect(input).toBeDisabled()
         fireEvent.click(screen.getByText('主目录'))
         expect(onChange).not.toHaveBeenCalled()
-    })
-
-    it('name/value 透传到原生 input（需要浏览器成组互斥时）', () => {
-        render(
-            <div>
-                <Radio name="primary" value="a" defaultChecked>A</Radio>
-                <Radio name="primary" value="b">B</Radio>
-            </div>
-        )
-        const [a, b] = screen.getAllByRole('radio') as HTMLInputElement[]
-        expect(a!.name).toBe('primary')
-        expect(b!.value).toBe('b')
     })
 
     it('点击已选中项不触发 change（原生 radio 语义，与 antd 一致）', () => {

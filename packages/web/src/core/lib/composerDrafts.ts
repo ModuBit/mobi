@@ -288,8 +288,24 @@ export function saveDraft(sessionId: string, segments: ComposerSegments & Pick<P
 }
 
 /** 引用去重键：同消息同片段即同一条（与 addQuoteToEditor 的判重口径一致） */
-function quoteKey(q: PendingQuoteRef): string {
+export function quoteKey(q: PendingQuoteRef): string {
     return `${q.messageId}\u0000${q.excerpt}`
+}
+
+/**
+ * 按判重口径去重合并（保留首个；不切上限——上限语义归调用方）。
+ * 草稿恢复 / 草稿文本合并 / 添加引用三处共用同一身份规则，避免各自手写键。
+ */
+export function dedupeQuotes(quotes: readonly PendingQuoteRef[]): PendingQuoteRef[] {
+    const seen = new Set<string>()
+    const out: PendingQuoteRef[] = []
+    for (const quote of quotes) {
+        const key = quoteKey(quote)
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push(quote)
+    }
+    return out
 }
 
 /**
@@ -318,17 +334,18 @@ export function extractQuotesFromEditorStateJSON(json: string): PendingQuoteRef[
                 && typeof attrs.excerpt === 'string'
                 && (attrs.role === 'user' || attrs.role === 'agent')
             ) {
-                const key = `${attrs.messageId}\u0000${attrs.excerpt}`
+                const candidate: PendingQuoteRef = {
+                    messageId: attrs.messageId,
+                    role: attrs.role,
+                    excerpt: attrs.excerpt,
+                    ...(attrs.comment != null && attrs.comment !== '' ? { comment: String(attrs.comment) } : {}),
+                    ...(typeof attrs.startOffset === 'number' ? { startOffset: attrs.startOffset } : {}),
+                    ...(typeof attrs.endOffset === 'number' ? { endOffset: attrs.endOffset } : {}),
+                }
+                const key = quoteKey(candidate)
                 if (!seen.has(key)) {
                     seen.add(key)
-                    out.push({
-                        messageId: attrs.messageId,
-                        role: attrs.role,
-                        excerpt: attrs.excerpt,
-                        ...(attrs.comment != null && attrs.comment !== '' ? { comment: String(attrs.comment) } : {}),
-                        ...(typeof attrs.startOffset === 'number' ? { startOffset: attrs.startOffset } : {}),
-                        ...(typeof attrs.endOffset === 'number' ? { endOffset: attrs.endOffset } : {}),
-                    })
+                    out.push(candidate)
                 }
             }
         }
@@ -356,14 +373,7 @@ export function mergeDraftText(
     const keptFiles = existing?.files ?? []
     const keptImages = existing?.images ?? []
     // 旧格式草稿的 quotes 桶 + 调用方从 editorState 摘出的 chip，按判重口径合并
-    const seen = new Set<string>()
-    const quotes: PendingQuoteRef[] = []
-    for (const quote of [...(existing?.quotes ?? []), ...carriedQuotes]) {
-        const key = quoteKey(quote)
-        if (seen.has(key)) continue
-        seen.add(key)
-        quotes.push(quote)
-    }
+    const quotes = dedupeQuotes([...(existing?.quotes ?? []), ...carriedQuotes])
     const next: DraftsMap = { ...hydrate() }
     if (text.trim().length === 0 && keptFiles.length === 0 && keptImages.length === 0 && quotes.length === 0) {
         delete next[sessionId]

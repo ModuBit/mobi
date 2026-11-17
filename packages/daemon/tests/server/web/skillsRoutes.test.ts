@@ -34,7 +34,7 @@ import type { SSEManager } from '../../../src/sse/sseManager'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
 import type { SkillInfo, SkillAvailableInfo } from '@mobi/shared'
 import type { SkillInventoryChangedEvent } from '../../../src/sync/skillInventoryBus'
-import type { SkillsApiClient } from '../../../src/skills/skillDeps'
+import type { SkillsApiClient } from '../../../src/skills/skillInventoryClient'
 
 /** workspaces 路由校验 folders 须落在宿主 home 内（401 起硬约束） */
 const HOST_HOME = homedir()
@@ -824,6 +824,14 @@ describe('skills REST 路由（GET /api/skills）', () => {
             const plug = data.skills.at(-1)
             expect(plug.pluginName).toBe('demo-plugin')
             expect(plug.description).toBe('From plugin')
+            // 插件行随列表带完整管理行（web 直接消费，不再自造 SkillInfo）
+            expect(plug.skill).toMatchObject({
+                name: 'plug-skill',
+                source: 'plugin',
+                pluginName: 'demo-plugin',
+                overrideable: false,
+                deletable: false,
+            })
             expect(bundledProbeCount).toBe(1)
 
             // 版本不变 → 纯缓存（probe 不重跑；插件扫描每请求现读，新装插件即时可见）
@@ -836,39 +844,6 @@ describe('skills REST 路由（GET /api/skills）', () => {
             bundledVersion = '2.2.0'
             const { data } = await getBundled()
             expect(data.version).toBe('2.2.0')
-        })
-    })
-
-    describe('POST /api/skills/create-prompt（对话式新建）', () => {
-        async function createPrompt(body: object): Promise<{ res: Response; data: any }> {
-            const res = await app.request('/api/skills/create-prompt', {
-                method: 'POST',
-                headers: { ...authHeaders, 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            })
-            return { res, data: res.status === 200 ? await res.json() : null }
-        }
-
-        test('global scope：目标目录 = claude 配置 skills 根，prompt 含路径与结构引导', async () => {
-            const { res, data } = await createPrompt({ scope: 'global' })
-            expect(res.status).toBe(200)
-            expect(data.targetDir).toBe(join(claudeDir, 'skills'))
-            expect(data.prompt).toContain(join(claudeDir, 'skills'))
-            expect(data.prompt).toContain('SKILL.md')
-            expect(data.prompt).toContain('name:')
-            expect(data.prompt).toContain('description:')
-        })
-
-        test('workspace scope：目标目录 = workspace .claude/skills', async () => {
-            const { res, data } = await createPrompt({ scope: workspaceId })
-            expect(res.status).toBe(200)
-            expect(data.targetDir).toBe(join(wsDir, '.claude', 'skills'))
-            expect(data.prompt).toContain(join(wsDir, '.claude', 'skills'))
-        })
-
-        test('未知 scope → 404；非法 body → 400', async () => {
-            expect((await createPrompt({ scope: 'nope' })).res.status).toBe(404)
-            expect((await createPrompt({})).res.status).toBe(400)
         })
     })
 

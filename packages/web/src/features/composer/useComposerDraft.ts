@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { extractQuotesFromEditorStateJSON, getDraft, saveDraft } from '@/core/lib/composerDrafts'
+import { dedupeQuotes, extractQuotesFromEditorStateJSON, getDraft, saveDraft } from '@/core/lib/composerDrafts'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
 import { bucketCompletedAttachments, fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
 import { QUOTE_MAX_COUNT, type ComposerQuoteRef, type PendingQuoteRef } from '@/domain/chat/composerSegments'
@@ -94,14 +94,7 @@ export function useComposerDraft(
                 // 引用恢复：quotes 桶为主；引用 chip 时代（已退役）的旧草稿把引用存在
                 // editorState 快照里而桶为空——从快照摘出合并（按同键判重），引用不丢
                 const carried = draft.editorState ? extractQuotesFromEditorStateJSON(draft.editorState.json) : []
-                const merged: PendingQuoteRef[] = []
-                const seen = new Set<string>()
-                for (const q of [...draft.quotes, ...carried]) {
-                    const key = `${q.messageId}\u0000${q.excerpt}`
-                    if (seen.has(key)) continue
-                    seen.add(key)
-                    merged.push(q)
-                }
+                const merged = dedupeQuotes([...draft.quotes, ...carried])
                 if (merged.length > 0) setQuotes(merged.slice(0, QUOTE_MAX_COUNT))
             }
             draftReadyRef.current = true

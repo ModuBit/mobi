@@ -129,11 +129,5 @@ export function useSkillsActions() {
         isToggling: (name: string) => visibility.isPending && visibility.variables?.name === name,
         /** 行级更新进行中 */
         isUpdating: (name: string) => updater.isPending && updater.variables?.name === name,
-        /** 安装请求进行中（提交钮 loading） */
-        installing: installer.isPending,
-        /** 清单拉取进行中（两步式安装第一步按钮 loading） */
-        resolving: available.isPending,
-        /** 生态搜索进行中 */
-        finding: finder.isPending,
     }
 }

@@ -218,13 +218,23 @@ export async function resolveRepoSkills(source: string): Promise<{ repoSource: s
     }))
 }
 
+/**
+ * API options → `skills` 包调用选项（list/install/remove/reinstall 四函数共用）。
+ * 形状由 skills 包定（global 布尔 + project 时的 cwd）；漏传 cwd 会把操作落进错误 scope。
+ */
+function toSkillsCallOptions(options: { global: boolean; cwd?: string }): { scope: 'global' | 'project'; cwd?: string } {
+    return {
+        scope: options.global ? 'global' : 'project',
+        ...(options.cwd ? { cwd: options.cwd } : {}),
+    }
+}
+
 /** 列指定 scope 的已装清单（仅 claude-code agent——安装判定面与其他 agent 无关）。
  *  返回的引用按查询作用域盖章（scope），两层同名条目各自独立存在、无损保留 */
 export async function listInstalledSkillRefs(options: { global: boolean; cwd?: string }): Promise<InstalledSkillRef[]> {
     const result = await listSkills({
-        scope: options.global ? 'global' : 'project',
         agents: ['claude-code'],
-        ...(options.cwd ? { cwd: options.cwd } : {}),
+        ...toSkillsCallOptions(options),
     })
     const scope: SkillInstallScope = options.global ? 'global' : 'workspace'
     return result.skills.map(s => ({ name: s.name, source: s.source ?? null, scope }))
@@ -243,8 +253,7 @@ export async function installSelectedSkills(
     return defaultSourceCache.withSource(source, async (handle) => {
         const result = await installSkills(handle, {
             agents: ['claude-code'],
-            scope: options.global ? 'global' : 'project',
-            ...(options.cwd ? { cwd: options.cwd } : {}),
+            ...toSkillsCallOptions(options),
             ...(skillNames ? { skills: skillNames } : {}),
         })
         return {
@@ -263,6 +272,9 @@ export const defaultSkillsApiClient = {
     reinstallSkill,
     searchRegistrySkills,
 }
+
+/** 可注入的 API 面类型：由生产实现推导，手写接口会与实现漂移 */
+export type SkillsApiClient = typeof defaultSkillsApiClient
 
 /** skills.sh 生态搜索端点基址（与 CLI find 同源；env 可覆盖镜像/测试） */
 const REGISTRY_API_BASE = process.env.SKILLS_API_URL || 'https://skills.sh'
@@ -303,8 +315,7 @@ export async function removeInstalledSkill(
 ): Promise<SkillActionResult> {
     const result = await removeSkills([name], {
         agents: ['claude-code'],
-        scope: options.global ? 'global' : 'project',
-        ...(options.cwd ? { cwd: options.cwd } : {}),
+        ...toSkillsCallOptions(options),
     })
     if (result.removed.includes(name)) return { ok: true }
     const failure = result.failed.find(f => f.skill === name)
@@ -327,8 +338,7 @@ export async function reinstallSkill(
     if (!source) return { ok: false, error: `Skill has no recorded source: ${name}` }
     const result = await installSkills(source, {
         agents: ['claude-code'],
-        scope: options.global ? 'global' : 'project',
-        ...(options.cwd ? { cwd: options.cwd } : {}),
+        ...toSkillsCallOptions(options),
         skills: [name],
     })
     if (result.installed.some(t => t.skill === name)) return { ok: true }

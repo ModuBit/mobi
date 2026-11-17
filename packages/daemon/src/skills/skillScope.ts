@@ -18,7 +18,7 @@
  * scope 解析与路径派生（架构深化候选①⑦）：「一个 scope 的 skill 目录在哪、
  * 归属 settings 写到哪、CLI 进程跑在哪」的单一声明源。
  *
- * 此前这条知识散在 routes / skillCli / skillCreatePrompt / skillScanner 四处手拼
+ * 此前这条知识散在 routes / skillCli / skillScanner 多处手拼
  * （模板字符串与 join() 混用，已现漂移）；本模块收拢后消费方只经 interface 取路径。
  * skills 专有命名——迭代 2（mcp）目录规则若同构，泛化只需搬文件改词。
  */
@@ -61,6 +61,16 @@ export function resolveScope(
 /** CLI 进程 cwd：user 级 = home（配 -g 由 CLI 自动定位 user scope）；project 级 = workspace 根 */
 export function cliCwd(scope: SkillScope): string {
     return scope.kind === 'global' ? homedir() : scope.path
+}
+
+/**
+ * scope → skills 编程 API 的 options（列出已装/安装/更新/删除共用）。
+ *
+ * 这组 options 的形状由 `skills` 包定（global 布尔 + project 时的 cwd），
+ * 手写三元会在每个消费点重复同一条知识——漏掉 cwd 会把操作落进错误 scope。
+ */
+export function scopeApiOptions(scope: SkillScope): { global: boolean; cwd?: string } {
+    return scope.kind === 'global' ? { global: true } : { global: false, cwd: scope.path }
 }
 
 /** 视角派生路径族（扫描/新建目标/untracked 删除校验/归属 settings/CLI cwd 共用） */

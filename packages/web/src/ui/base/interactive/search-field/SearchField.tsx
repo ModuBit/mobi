@@ -25,15 +25,12 @@
 // ⑦loading prop——搜索进行中前导图标换旋转指示（旧 antd Input.Search 的 prefix loading 语义保全）
 // ⑧style 上提组件根（.field 是 display:grid 无宽度语义，消费方的 flex/width 挂内层 input
 //   在 flex 行里失效缩到固有宽）——布局用 style、文字用 inputStyle 分轨
-// ⑨trailing：壳内尾部动作槽（清除钮之后）——搜索触发这类「字段内联动作」不再在外部拼按钮；
-//   槽恒渲染（内容按需），字段宽度不随动作出现/消失跳动
-// ⑩onLeadingClick / leadingLabel / leadingDisabled：前导图标变可点按钮（默认仍是静态装饰）。
-//   搜索触发可以放左（图标即按钮）或右（trailing 槽），由调用方选位置；loading 时图标让位给
-//   旋转指示并不可点
+// ⑨onLeadingClick / leadingLabel / leadingDisabled：前导图标变可点按钮（默认仍是静态装饰）。
+//   搜索触发放左侧（图标即按钮），loading 时图标让位给旋转指示并不可点
 "use client";
 
 import { forwardRef, useCallback, useId, useRef } from "react";
-import type { CSSProperties, InputHTMLAttributes, ReactNode } from "react";
+import type { CSSProperties, InputHTMLAttributes } from "react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import { Search, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -48,8 +45,6 @@ export interface SearchFieldProps extends Omit<InputHTMLAttributes<HTMLInputElem
   loading?: boolean;
   /** 内层 input 的文字样式（fontSize/fontFamily 等）；布局尺寸走 style（落组件根） */
   inputStyle?: CSSProperties;
-  /** 壳内尾部动作（清除钮之后、固定槽位）：搜索触发等字段内联操作 */
-  trailing?: ReactNode;
   /** 提供时前导图标渲染为可点按钮（搜索触发放左侧的形态） */
   onLeadingClick?: () => void;
   /** 前导按钮的可访问名（缺省回退到 placeholder） */
@@ -58,7 +53,7 @@ export interface SearchFieldProps extends Omit<InputHTMLAttributes<HTMLInputElem
   leadingDisabled?: boolean;
 }
 
-export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(function SearchField({ label, value, onValueChange, loading, id, className, style, inputStyle, trailing, onLeadingClick, leadingLabel, leadingDisabled, ...props }, ref) {
+export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(function SearchField({ label, value, onValueChange, loading, id, className, style, inputStyle, onLeadingClick, leadingLabel, leadingDisabled, ...props }, ref) {
   const { t } = useTranslation();
   const generated = useId(); const controlId = id ?? generated; const reduced = useReducedMotion(); const inputRef = useRef<HTMLInputElement | null>(null);
   // useCallback 稳定回调 ref 身份：受控组件每次键入都重渲染，内联箭头会让 React 每个 commit 都解绑/重绑
@@ -78,7 +73,6 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
       {/* The clear button has a reserved slot, so the field never changes width when it appears or leaves. */}
       {/* 清除钮走 ClearButton 单源（combobox/multi-select 同一编排），外观归 .shell button 规则 */}
       <span className={styles.clearSlot}><AnimatePresence initial={false}>{value ? <ClearButton key="clear" reduce={reduced} onClick={clear} ariaLabel={clearLabel} iconSize={16} /> : null}</AnimatePresence></span>
-      <span className={styles.trailingSlot}>{trailing}</span>
     </div>
   </div>;
 });
