@@ -219,17 +219,20 @@ const SettingsContent = styled.div<{ $token: Token; $fill: boolean }>`
 /** mobile 设置头部（ChatGPT 移动端形态）：返回箭头 + 居中标题三栏；避让 PWA 刘海 */
 const MobileHeader = styled.header<{ $token: Token }>`
     display: grid;
-    grid-template-columns: 48px 1fr 48px;
+    /* 两侧等宽 1fr：中列标题恒居中，右侧动作（安装）宽度不影响标题位置 */
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
     height: 48px;
     flex-shrink: 0;
+    padding: 0 2px;
     padding-top: max(0px, env(safe-area-inset-top));
 `
 
-const MobileHeaderSide = styled.div`
+/** 头部两侧槽：左列靠左（返回），右列靠右（页级动作） */
+const MobileHeaderSide = styled.div<{ $align?: 'end' }>`
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: ${p => (p.$align === 'end' ? 'flex-end' : 'flex-start')};
 `
 
 const MobileBackButton = styled.button<{ $token: Token }>`
@@ -369,20 +372,24 @@ export function SettingsPage() {
         const fill = active?.layout === 'fill'
         return (
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-                <MobileHeader $token={token}>
-                    <MobileHeaderSide>
-                        <MobileBackButton $token={token} aria-label={t('common.back')} onClick={handleMobileBack}>
-                            <ChevronLeft size={20} />
-                        </MobileBackButton>
-                    </MobileHeaderSide>
-                    <MobileHeaderTitle $token={token}>{t(titleKey)}</MobileHeaderTitle>
-                    <MobileHeaderSide />
-                </MobileHeader>
-                <SettingsContent $token={token} $fill={fill}>
-                    <Suspense fallback={<SectionFallback />}>
-                        <Outlet />
-                    </Suspense>
-                </SettingsContent>
+                <SettingsHeaderSlotProvider>
+                    <MobileHeader $token={token}>
+                        <MobileHeaderSide>
+                            <MobileBackButton $token={token} aria-label={t('common.back')} onClick={handleMobileBack}>
+                                <ChevronLeft size={20} />
+                            </MobileBackButton>
+                        </MobileHeaderSide>
+                        <MobileHeaderTitle $token={token}>{t(titleKey)}</MobileHeaderTitle>
+                        <MobileHeaderSide $align="end">
+                            <SettingsHeaderSlotHostSlot />
+                        </MobileHeaderSide>
+                    </MobileHeader>
+                    <SettingsContent $token={token} $fill={fill}>
+                        <Suspense fallback={<SectionFallback />}>
+                            <Outlet />
+                        </Suspense>
+                    </SettingsContent>
+                </SettingsHeaderSlotProvider>
             </div>
         )
     }
