@@ -180,6 +180,30 @@ describe('useChatViewport — 内容增高的互斥分派', () => {
         expect(el.scrollTop).toBe(300)
     })
 
+    it('阅读中：内容变化与用户滚动同帧时，用户滚动量不被当成插入量补偿（不推回用户）', () => {
+        const { el, content, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+        addBubbles(content, ['k0', 'k1'])
+        const tops = new Map([['k0', 400], ['k1', 500]])
+        mockTops(tops)
+        const { ref } = renderViewport(el)
+        ref.current?.captureViewportNow()
+
+        // 用户上滚阅读历史
+        act(() => { el.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true })) })
+        expect(ref.current?.reading).toBe(true)
+
+        // 同一帧：上方前插 300（原生 anchoring 把 scrollTop 补 +300）+ 用户又上滚 50
+        // → 净 scrollTop +250、锚点只随用户滚动下移 50
+        tops.set('k0', 450); tops.set('k1', 550)
+        setScrollHeight(1300)
+        act(() => { el.scrollTop = 750 })
+
+        // 内容变化的 RO 信号随后到达：残差必须为 0（用户滚动的 50 不是插入量）
+        act(() => { FakeResizeObserver.instances[0].trigger() })
+        stepFrames(1)
+        expect(el.scrollTop).toBe(750)
+    })
+
     it('跟随中即使锚点位移也不补偿（钉底由追赶独占，两路互斥）', () => {
         const { el, content, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
         addBubbles(content, ['k0', 'k1'])

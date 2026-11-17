@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { act, renderHook } from '@testing-library/react'
 import type { SkillAvailableInfo, SkillRegistrySkill } from '@mobi/shared'
 import {
     createInstallFlowState,
@@ -25,6 +26,7 @@ import {
     resolveTargetSource,
     type InstallFlowState,
 } from '@/features/settings/skills/installFlow'
+import { useInstallFlow, type InstallFlowEffects } from '@/features/settings/skills/useInstallFlow'
 
 function availableSkill(name: string, installed = false): SkillAvailableInfo {
     return { name, description: name, installed, conflict: false } as SkillAvailableInfo
@@ -168,5 +170,58 @@ describe('installFlow — 形态选择器', () => {
         const inputOnly: InstallFlowState = { ...base, input: 'owner/repo@skill' }
         expect(resolveTargetSource(inputOnly)).toBe('owner/repo@skill')
         expect(isDirectSkill(inputOnly)).toBe(true)
+    })
+})
+
+/** hook 层接线：effects 注入（搜索 / 拉清单 / 安装）后的代次与阶段收尾 */
+describe('useInstallFlow — 在途请求失效与阶段收尾', () => {
+    function setup(effects: Partial<InstallFlowEffects>) {
+        const full: InstallFlowEffects = {
+            find: vi.fn(async () => null),
+            fetchAvailable: vi.fn(async () => null),
+            install: vi.fn(async () => true),
+            ...effects,
+        }
+        const hook = renderHook(() => useInstallFlow(full, 'global'))
+        act(() => hook.result.current.open('global'))
+        return { ...hook, effects: full }
+    }
+
+    it('拉取在途时改输入：晚到清单被丢弃，fetching 归位（不残留到新目标上）', async () => {
+        let resolveFetch!: (v: SkillAvailableInfo[] | null) => void
+        const { result } = setup({
+            fetchAvailable: vi.fn(() => new Promise<SkillAvailableInfo[] | null>((resolve) => { resolveFetch = resolve })),
+        })
+
+        act(() => result.current.setInput('owner/repo'))
+        let pending!: Promise<void>
+        act(() => { pending = result.current.submit() })
+        expect(result.current.state.fetching).toBe(true)
+
+        // 用户在拉取期间改了来源：清单不再对应当前目标
+        act(() => result.current.setInput('other/repo'))
+        expect(result.current.state.fetching).toBe(false)
+
+        await act(async () => {
+            resolveFetch([availableSkill('a'), availableSkill('b')])
+            await pending
+        })
+        expect(result.current.state.available).toBeNull()
+        expect(result.current.state.fetching).toBe(false)
+    })
+
+    it('单 skill 直装路径：拉取结束先收尾 fetching，安装失败后主按钮不锁死', async () => {
+        const install = vi.fn(async () => false)
+        const { result } = setup({
+            fetchAvailable: vi.fn(async () => [availableSkill('only')]),
+            install,
+        })
+
+        act(() => result.current.setInput('owner/repo'))
+        await act(async () => { await result.current.submit() })
+
+        expect(install).toHaveBeenCalledWith('owner/repo', 'global', ['only'])
+        expect(result.current.state.fetching).toBe(false)
+        expect(result.current.state.installing).toBe(false)
     })
 })

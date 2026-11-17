@@ -252,6 +252,15 @@ describe('SkillsSection（票 03：启停开关）', () => {
         return row.querySelector('[role="switch"]')!
     }
 
+    it('开关上的 Enter/Space 不被行级键盘接管（不误开详情）', () => {
+        setupGlobal()
+        const sw = switchOf('alpha')
+        fireEvent.keyDown(sw, { key: 'Enter' })
+        fireEvent.keyDown(sw, { key: ' ' })
+        // 行点击 → 详情 sheet（detail 桩正文）；键盘操作开关不该触发它
+        expect(screen.queryByText('SKILL BODY')).toBeNull()
+    })
+
     it('overrideable 行渲染开关，点击携带当前 tab 与目标态发起 mutation', () => {
         setupGlobal()
 
@@ -608,6 +617,17 @@ describe('SkillsSection（票 06：系统 tab 内置名单）', () => {
         expect(bundledRow.querySelector('[role="switch"]')).toBeNull()
         expect(bundledRow.querySelector('[data-skill-delete="doctor"]')).toBeNull()
         expect(bundledRow.querySelector('[data-skill-update="doctor"]')).toBeNull()
+    })
+
+    it('系统 tab 打开安装弹窗：安装目标回落到个人层（bundled 不是可选 scope）', async () => {
+        setup({ bundled: BUNDLED, isLoading: false, error: null })
+        openBundledTab()
+        screen.getByTestId('skills-install').click()
+
+        const dialog = await screen.findByRole('dialog')
+        // scope 选择器（自管 Combobox 的触发器 = 带当前选项 label 的只读输入框）
+        const scopeTrigger = within(dialog).getByRole('combobox') as HTMLInputElement
+        expect(scopeTrigger.value).toBe('settings.skills.tabGlobal')
     })
 
     it('插件携带行可点进只读详情 sheet：无开关/更新/卸载入口', async () => {

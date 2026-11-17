@@ -253,7 +253,9 @@ export function SkillsSection() {
     /** 清单选择段（null = 未拉取） */
     const availableSkills = installFlow.state.available?.skills ?? null
     const installBusy = installFlow.state.installing || installFlow.state.fetching
-    const openInstall = () => installFlow.open(tab)
+    // 安装弹窗的初始目标：bundled 是只读视角，不可作为安装 scope（daemon 也不认）——
+    // 从系统 tab 打开时回落到个人层，而不是把 bundled 哨兵带进弹窗选项（不在 options 里）
+    const openInstall = () => installFlow.open(tab === SKILL_SCOPE_BUNDLED ? SKILL_SCOPE_GLOBAL : tab)
 
     /** 详情 sheet（点击行展开；scope 跟随打开行所在视角——系统 tab 的插件行走 global，
         daemon detail 端点对 global 视角查不到的插件携带 skill 兜底解析） */

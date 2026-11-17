@@ -452,6 +452,9 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
               bottom: position?.bottom,
               zIndex: overlayLayer === undefined ? undefined : overlayLayer + 1,
               visibility: position ? undefined : "hidden",
+              // 弹层 portal 到 body：在 Radix Dialog 里 body 被置 pointer-events:none，
+              // 门户内容不继承 DialogContent 的 auto——不显式提回，选项点不动
+              pointerEvents: "auto",
             }}
             initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: dropUp ? 6 : -6, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1, transition: reduceMotion ? { duration: motionTokens.duration.instant } : { ...motionTokens.spring.snappy, opacity: { duration: motionTokens.duration.fast, ease: [...motionTokens.ease.enter] } } }}

@@ -41,3 +41,17 @@ export function normalizeClaudeSessionModel(model: string | undefined): SessionM
     const trimmed = model.trim()
     return trimmed === DEFAULT_MODEL ? CLAUDE_DEFAULT_MODEL_ALIAS : trimmed
 }
+
+/**
+ * mobi 空间归一（入站）：显式 null（「设置成宿主默认」）与空白串都落 DEFAULT_MODEL
+ * 哨兵，其余去首尾空白。只做空间内归一，**不**做 CC 别名翻译——会话态（Session /
+ * keep-alive runtime / applied ack / model_change 行）与 web 选项共用这一个空间，
+ * 出站翻译见 {@link normalizeClaudeSessionModel}。
+ */
+export function toMobiSessionModel(value: string | null): SessionModel {
+    if (value === null) {
+        return DEFAULT_MODEL
+    }
+    const trimmed = value.trim()
+    return trimmed || DEFAULT_MODEL
+}

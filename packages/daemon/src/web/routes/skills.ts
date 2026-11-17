@@ -164,8 +164,12 @@ export function createSkillsRoutes(
 
         if (ctx.skill.tracked) {
             // tracked：agent 条目 + 共享真身 + lock 条目归 skills API 闭环（其他 agent 仍引用时保留真身）
-            const result = await api.removeInstalledSkill(ctx.skill.name,
-                scopeApiOptions(ctx.scope))
+            let result
+            try {
+                result = await api.removeInstalledSkill(ctx.skill.name, scopeApiOptions(ctx.scope))
+            } catch (error) {
+                return c.json({ error: error instanceof Error ? error.message : String(error) }, 502)
+            }
             if (!result.ok) return c.json({ error: result.error ?? 'skills remove failed' }, 502)
             notifySkillChange(c, engine, workspaceId)
             return c.json({ ok: true })
@@ -286,12 +290,19 @@ export function createSkillsRoutes(
         const scope = scopeOrResponse(c, engine, parsed.data.scope)
         if (scope instanceof Response) return scope
 
-        // 两步式安装第二步：编程 API（结构化 installed/failed；skills 缺省 = 全装）
-        const result = await api.installSelectedSkills(
-            parsed.data.source,
-            parsed.data.skills ?? null,
-            scopeApiOptions(scope),
-        )
+        // 两步式安装第二步：编程 API（结构化 installed/failed；skills 缺省 = 全装）。
+        // CLI 进程异常等未结构化错误同样回 502 + 原始信息（与 available/find 同形态），
+        // 不让框架兜底的裸 500 吞掉诊断消息
+        let result
+        try {
+            result = await api.installSelectedSkills(
+                parsed.data.source,
+                parsed.data.skills ?? null,
+                scopeApiOptions(scope),
+            )
+        } catch (error) {
+            return c.json({ error: error instanceof Error ? error.message : String(error) }, 502)
+        }
         if (result.installed.length === 0) {
             return c.json({ error: result.failed.map(f => `${f.skill}: ${f.error}`).join('; ') || 'skills install failed' }, 502)
         }
@@ -313,8 +324,13 @@ export function createSkillsRoutes(
         // 更新 = 从 lock 记录的来源重装（skills API 未导出 update；CLI update 本质同此）
         if (!ctx.skill.tracked) return c.json({ error: 'Skill is not tracked' }, 400)
 
-        const result = await api.reinstallSkill(ctx.skill.name, ctx.skill.installSource,
-            scopeApiOptions(ctx.scope))
+        let result
+        try {
+            result = await api.reinstallSkill(ctx.skill.name, ctx.skill.installSource,
+                scopeApiOptions(ctx.scope))
+        } catch (error) {
+            return c.json({ error: error instanceof Error ? error.message : String(error) }, 502)
+        }
         if (!result.ok) return c.json({ error: result.error ?? 'skills update failed' }, 502)
         // 更新同样变更清单（新版本描述/正文会反映到命令清单），与管理页其他写操作同源发布
         notifySkillChange(c, engine, parsed.data.workspaceId)

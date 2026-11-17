@@ -118,6 +118,29 @@ function captureAnchors(scrollBox: HTMLElement, fromEnd = false): AnchorSnapshot
     return snapshot
 }
 
+/**
+ * 以当前 DOM 实测位置重设快照基线（就地改写）。
+ *
+ * 用于「内容高度变化」与「用户滚动」落在同一帧的 scroll 事件：此时 scrollTop 增量是
+ * 两个来源的和（浏览器原生 anchoring 自动施加的补偿 + 用户滚动），从 delta 无法拆分，
+ * 而实测 rect.top 是合成结果本身——把锚点基线更新到视口当前所见，后续 reconcile 的
+ * 残差就只包含「这之后的新内容位移」，用户滚动永远不会被当成内容位移再补偿一次
+ * （错把 U 当插入量，会每帧把用户推回原处）。
+ */
+function rebaselineAnchors(scrollBox: HTMLElement, snapshot: AnchorSnapshot): void {
+    const bubbleEls = indexBubbleEls(scrollBox)
+    for (const anchor of snapshot.anchors) {
+        const el = bubbleEls.get(anchor.key)
+        if (el) anchor.top = el.getBoundingClientRect().top
+    }
+    if (snapshot.tail) {
+        const el = bubbleEls.get(snapshot.tail.key)
+        if (el) snapshot.tail.top = el.getBoundingClientRect().top
+    }
+    snapshot.scrollTop = scrollBox.scrollTop
+    snapshot.scrollHeight = scrollBox.scrollHeight
+}
+
 /** 浏览器是否实现原生 scroll anchoring（Chrome / Firefox true，Safari false） */
 function supportsScrollAnchoring(): boolean {
     return typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('overflow-anchor', 'auto')
@@ -273,9 +296,12 @@ export function useChatViewport(enabled: boolean, options: ChatViewportOptions =
     //
     // 用户滚动 → O(1) 平移快照锚点：内容未变时锚点的视口 top 随 scrollTop 精确平移，
     // 这样「加载前用户滚过一段」不会混进下一次的残差里。
-    // 只在 scrollHeight 未变（内容没动）时平移：内容变化引发的 st 调整（浏览器原生
-    // anchoring / 钉底）同时改变了锚点位置，此时平移会把已施加的补偿二次计入残差
-    //（实测表现为补偿一倍：56px 增高被补成 112px 位移）。
+    // 只在 scrollHeight 未变（内容没动）时按 delta 平移：内容变化引发的 st 调整（浏览器
+    // 原生 anchoring / 钉底）同时改变了锚点位置，此时按 delta 平移会把已施加的补偿二次
+    // 计入残差（实测表现为补偿一倍：56px 增高被补成 112px 位移）。
+    // scrollHeight 变了（内容与滚动同帧发生）则实测重设基线：delta 混有 anchoring 补偿
+    // 与用户滚动，拆不开——不重设的话下一次 reconcile 会把用户滚动量当内容位移补回去，
+    // 流式期间表现为「用户往上滚，每帧被推回」（见 {@link rebaselineAnchors}）。
     useEffect(() => {
         const scroller = scrollerElRef.current
         if (!enabled || !scroller) return
@@ -289,6 +315,8 @@ export function useChatViewport(enabled: boolean, options: ChatViewportOptions =
                     if (snapshot.tail) snapshot.tail.top -= drift
                     snapshot.scrollTop = scroller.scrollTop
                 }
+            } else if (snapshot) {
+                rebaselineAnchors(scroller, snapshot)
             }
 
             // 滚动停止后以当前视口重拍快照：连续滚动可能跨过大段内容（快照锚点滑出视口），

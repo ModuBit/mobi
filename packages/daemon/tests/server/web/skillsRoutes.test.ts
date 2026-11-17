@@ -118,6 +118,8 @@ describe('skills REST 路由（GET /api/skills）', () => {
     let fakeInstallResult: { installed: string[]; failed: Array<{ skill: string; error: string }> } = { installed: [], failed: [] }
     /** 非空时 resolveRepoSkills 抛错（拉取失败 502 分支翻转） */
     let failRepoResolve: string | null = null
+    /** 非空时 installSelectedSkills 抛错（未结构化错误 → 502 分支翻转） */
+    let failInstall: string | null = null
     /** 生态搜索 fake：记录 query + 可控命中/失败 */
     const findCalls: string[] = []
     let fakeFindResults: { name: string; source: string; skillId: string; installs: number }[] = []
@@ -136,6 +138,7 @@ describe('skills REST 路由（GET /api/skills）', () => {
         },
         installSelectedSkills: async (source, names, opts) => {
             apiCalls.push({ method: 'installSelectedSkills', source, names, global: opts.global, cwd: opts.cwd })
+            if (failInstall) throw new Error(failInstall)
             return fakeInstallResult
         },
         removeInstalledSkill: fakeRemoveInstalledSkill,
@@ -604,6 +607,18 @@ describe('skills REST 路由（GET /api/skills）', () => {
             expect(bad.res.status).toBe(502)
             const err = await bad.res.json() as { error: string }
             expect(err.error).toContain('b: dir not writable')
+        })
+
+        test('API 抛错（CLI 进程异常等）→ 502 + 原始信息，不落成裸 500', async () => {
+            failInstall = 'skills CLI crashed'
+            try {
+                const res = await install({ source: 'octocat/repo', scope: 'global', skills: ['a'] })
+                expect(res.res.status).toBe(502)
+                const err = await res.res.json() as { error: string }
+                expect(err.error).toContain('skills CLI crashed')
+            } finally {
+                failInstall = null
+            }
         })
 
         test('非法 body（缺 source / 空）→ 400', async () => {

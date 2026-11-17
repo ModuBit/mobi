@@ -19,7 +19,23 @@
 // live 切换静默不落地且不落时间线行——哨兵必须在进入 SDK 之前翻译成 CC 的 default 别名。
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_MODEL } from '@mobi/shared'
-import { CLAUDE_DEFAULT_MODEL_ALIAS, normalizeClaudeSessionModel } from '@/claude/model'
+import { CLAUDE_DEFAULT_MODEL_ALIAS, normalizeClaudeSessionModel, toMobiSessionModel } from '@/claude/model'
+
+describe('toMobiSessionModel（入站归一，会话态留在 mobi 空间）', () => {
+    it('显式 null（设置成宿主默认）/ 空串 / 纯空白 → auto 哨兵', () => {
+        expect(toMobiSessionModel(null)).toBe(DEFAULT_MODEL)
+        expect(toMobiSessionModel('')).toBe(DEFAULT_MODEL)
+        expect(toMobiSessionModel('   ')).toBe(DEFAULT_MODEL)
+    })
+
+    it('auto 哨兵保持 auto（不在这里翻成 CC 别名——applied ack / model_change / web 选项同一空间）', () => {
+        expect(toMobiSessionModel(' auto ')).toBe(DEFAULT_MODEL)
+    })
+
+    it('真实模型 id 去空白后原样返回', () => {
+        expect(toMobiSessionModel(' ccs-claude-zhipu--glm-5.3[1M] ')).toBe('ccs-claude-zhipu--glm-5.3[1M]')
+    })
+})
 
 describe('normalizeClaudeSessionModel', () => {
     it('mobi 哨兵 auto → CC 的 default 别名（首尾空白一并归一）', () => {

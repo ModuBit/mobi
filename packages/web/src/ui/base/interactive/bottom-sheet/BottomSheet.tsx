@@ -356,9 +356,13 @@ function Sheet({
     // 嵌套 sheet 靠引用计数，最后一个卸载才恢复
     useEffect(() => lockBodyScroll(), [])
     // 初始焦点落在 sheet 本体（而不是第一个按钮）：读屏先读面板名，滚动位置也不跳。
-    // modal={false} 下 Radix 不再自动聚焦（FocusScope 只在 modal 档跑），这里显式补上
+    // modal={false} 下 Radix 不再自动聚焦（FocusScope 只在 modal 档跑），这里显式补上。
+    // 内容里的 autoFocus 已先落位（表单输入框）时让给它——抢过来会收起移动端键盘
     useEffect(() => {
-        sheetRef.current?.focus({ preventScroll: true })
+        const sheet = sheetRef.current
+        if (!sheet) return
+        if (sheet.contains(document.activeElement)) return
+        sheet.focus({ preventScroll: true })
     }, [])
 
     const sheetRef = useRef<HTMLDivElement>(null)

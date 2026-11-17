@@ -49,6 +49,16 @@ describe('composerDrafts', () => {
         expect(getDraft('s1')!.quotes[0]).not.toHaveProperty('comment')
     })
 
+    it('引用选区偏移随草稿往返：startOffset/endOffset 刷新后不丢（按段落定位依赖它）', () => {
+        const draft = seg('t', {
+            quotes: [{ messageId: 'm1', role: 'agent', excerpt: '片段', comment: '问', startOffset: 12, endOffset: 18 }],
+        })
+        saveDraft('s1', draft)
+        expect(getDraft('s1')!.quotes[0]).toEqual({
+            messageId: 'm1', role: 'agent', excerpt: '片段', comment: '问', startOffset: 12, endOffset: 18,
+        })
+    })
+
     it('previewUrl 不落盘（blob URL 跨会话失效）；恢复侧仅保留可持久化字段', () => {
         const draft = seg('t', { files: [{ ...fileRef('f1', 'r.pdf', '/u/r.pdf'), previewUrl: 'blob:x' }] })
         saveDraft('s1', draft)

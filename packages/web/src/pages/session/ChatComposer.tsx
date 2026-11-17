@@ -582,6 +582,8 @@ export function ChatComposer(props: ChatComposerProps) {
             if (action === 'clear') {
                 e.preventDefault()
                 shellRef.current?.clear()
+                // 引用桶与正文同属一条草稿：只清正文会让旧引用混进下一条消息
+                clearQuotes()
                 mention.close()
                 slash.reset()
                 return true
@@ -605,7 +607,7 @@ export function ChatComposer(props: ChatComposerProps) {
             return true
         }
         return false
-    }, [running, onAbort, abortPending, mention, slash, bridge])
+    }, [running, onAbort, abortPending, mention, slash, bridge, clearQuotes])
 
     const handleSubmit = useCallback(() => {
         // 正文用 getWireText（Markdown 序列化；纯段落文档退化为纯文本）；

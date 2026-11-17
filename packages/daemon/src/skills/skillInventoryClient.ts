@@ -64,7 +64,8 @@ export interface InstallSelectedResult {
 
 /** 从 github url 提取 owner/repo 短名（与 listSkills 的 source 同形；非 github url 原样返回） */
 export function repoShortName(url: string): string {
-    const m = url.match(/github\.com[/:]([^/]+)\/([^/.]+)/)
+    // repo 名可含点（next.js、foo.bar）：只到路径分隔/结尾为止，再剥 `.git` 后缀
+    const m = url.match(/github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?(?:[/?#]|$)/)
     return m ? `${m[1]}/${m[2]}` : url
 }
 

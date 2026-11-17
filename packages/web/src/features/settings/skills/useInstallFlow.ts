@@ -63,8 +63,6 @@ export function useInstallFlow(effects: InstallFlowEffects, initialScope: string
 
     const open = (scope: string) => dispatch({ type: 'open', scope })
     const close = () => dispatch({ type: 'close' })
-    const setInput = (value: string) => dispatch({ type: 'input', value })
-    const setScope = (value: string) => dispatch({ type: 'scope', value })
     const pickFound = (hit: SkillRegistrySkill) => dispatch({
         type: 'pickTarget',
         target: { source: hit.source, skillId: hit.skillId, label: hit.name } satisfies InstallTarget,
@@ -75,6 +73,16 @@ export function useInstallFlow(effects: InstallFlowEffects, initialScope: string
     const cancelFetch = () => {
         fetchSeqRef.current += 1
         dispatch({ type: 'fetchEnded' })
+    }
+
+    // 输入 / 安装目标变化 = 在途拉取的对象已不对应：作废（seq 拦晚到结果，fetching 归位）
+    const setInput = (value: string) => {
+        cancelFetch()
+        dispatch({ type: 'input', value })
+    }
+    const setScope = (value: string) => {
+        cancelFetch()
+        dispatch({ type: 'scope', value })
     }
 
     /** 生态搜索（显式触发；失败保留上次结果） */
@@ -135,7 +143,10 @@ export function useInstallFlow(effects: InstallFlowEffects, initialScope: string
         // 只有一个可装项且无冲突：跳过选择段直达安装
         const only = skills.length === 1 && !skills[0].installed && !skills[0].conflict ? skills[0] : null
         if (only) {
-            await runInstall(query, state.scope, [only.name])
+            // 直装路径不走选择段：先把 fetching 收尾，否则安装失败后主按钮永久锁在 loading
+            dispatch({ type: 'fetchEnded' })
+            // scope 取发起拉取瞬间的值（scopeRef 在 await 期间可能被改）——与清单同一作用域
+            await runInstall(query, scopeRef.current, [only.name])
             return
         }
         dispatch({ type: 'fetchDone', source: query, skills })

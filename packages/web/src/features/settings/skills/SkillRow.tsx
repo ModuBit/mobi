@@ -81,6 +81,9 @@ export function SkillRow({ skill, onToggle, toggling = false, onOpen }: SkillRow
             tabIndex={0}
             onClick={onOpen}
             onKeyDown={e => {
+                // 只接管「行自身」获焦时的 Enter/Space：焦点在右槽开关等交互后代上时，
+                // 键盘事件属于它们（行级再拦会把开关的键盘操作吞掉）
+                if (e.target !== e.currentTarget) return
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
                     onOpen()

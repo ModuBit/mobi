@@ -81,7 +81,7 @@ export function useSkills(workspaceId: string, options?: { enabled?: boolean }):
  * 与列表同口径（同名遮蔽后为空 = 未占用）；装/删/建改变占用态——键在 skillsRoot
  * 前缀内，被 mutation 成功后的全族失效连带重拉。
  */
-export function useSkillOccupancy(): { workspaceIds: string[] } {
+export function useSkillOccupancy(): { workspaceIds: string[] | undefined } {
     const api = useMobiApi()
     const query = useQuery({
         queryKey: queryKeys.skillsOccupancy,
@@ -90,7 +90,9 @@ export function useSkillOccupancy(): { workspaceIds: string[] } {
             return res.data.workspaceIds
         },
     })
-    return { workspaceIds: query.data ?? [] }
+    // 未到位（pending / error）保持 undefined：消费方据此「不过滤」，空数组会被当成
+    // 「没有任何项目占用」而把所有项目 tab 藏光
+    return { workspaceIds: query.data }
 }
 
 /**

@@ -244,6 +244,13 @@ describe('BottomSheet', () => {
         expect(onClose).not.toHaveBeenCalled()
     })
 
+    it('内容自带 autoFocus 时不被面板初始聚焦抢走（移动端表单键盘不收起）', async () => {
+        render(<Host><input autoFocus aria-label="demo-input" /></Host>)
+        const input = await screen.findByLabelText('demo-input')
+        // 面板自己的初始聚焦 effect 晚于 child autoFocus：焦点在其内部时必须让位
+        await waitFor(() => expect(document.activeElement).toBe(input))
+    })
+
     it('open=false 时不推哨兵（不干扰路由层 history）', () => {
         const before = window.history.state
         render(<BottomSheet open={false} onClose={vi.fn()} title="测试" />)

@@ -96,6 +96,9 @@ function coerceQuote(value: unknown): PendingQuoteRef | null {
         role: o.role,
         excerpt: o.excerpt,
         ...(typeof o.comment === 'string' ? { comment: o.comment } : {}),
+        // 选区偏移随草稿原样往返（与 toPersisted / 旧 chip 迁移同口径）：丢了刷新后无法按段落定位
+        ...(typeof o.startOffset === 'number' ? { startOffset: o.startOffset } : {}),
+        ...(typeof o.endOffset === 'number' ? { endOffset: o.endOffset } : {}),
     }
 }
 

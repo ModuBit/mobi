@@ -116,6 +116,10 @@ export default defineConfig({
                     'index.html',
                     'assets/index-*.js',
                     'assets/index-*.css',
+                    // 入口的真实 chunk：index-*.js 只是 40 字节的引入壳，实际代码/样式
+                    // 落在 web-*.js / web-*.css（rolldown 按入口名命名），漏掉即离线白屏
+                    'assets/web-*.js',
+                    'assets/web-*.css',
                     'assets/initial-*.js',
                     'assets/initial-*.css',
                     // 打包器运行时是入口的静态依赖，但不属于用户模块，不会被 $initial 组捕获

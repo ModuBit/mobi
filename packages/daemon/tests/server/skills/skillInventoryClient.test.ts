@@ -29,6 +29,15 @@ describe('repoShortName', () => {
         expect(repoShortName('git@github.com:octocat/repo.git')).toBe('octocat/repo')
     })
 
+    test('repo 名含点不截断（next.js 之类），.git 后缀仍剥离', () => {
+        expect(repoShortName('https://github.com/vercel/next.js')).toBe('vercel/next.js')
+        expect(repoShortName('https://github.com/vercel/next.js.git')).toBe('vercel/next.js')
+        expect(repoShortName('git@github.com:foo/bar.baz.git')).toBe('foo/bar.baz')
+        // 路径后缀（tree / 结尾斜杠）不混入 repo 名
+        expect(repoShortName('https://github.com/foo/bar.git/tree/main')).toBe('foo/bar')
+        expect(repoShortName('https://github.com/foo/bar/')).toBe('foo/bar')
+    })
+
     test('非 github url 原样返回（判定退化为完整 url 字符串等价）', () => {
         expect(repoShortName('https://gitlab.com/a/b')).toBe('https://gitlab.com/a/b')
     })

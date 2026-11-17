@@ -39,10 +39,10 @@ import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
 import { bootstrapSession } from '../agent/sessionFactory';
 import { createModeChangeHandler, createSessionLifecycle, setControlledByUser } from '../agent/sessionLifecycle';
-import { SESSION_CONFIG_FIELDS, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, buildModelChangeLine, type SessionPauseTrigger, type UserContentBlock } from '@mobi/shared';
+import { SESSION_CONFIG_FIELDS, DEFAULT_MODEL, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, buildModelChangeLine, type SessionPauseTrigger, type UserContentBlock } from '@mobi/shared';
 import { PermissionModeSchema } from '@mobi/shared/schemas';
 import { buildPromptFromBlocks, type PromptPayload } from '@mobi/node-core/utils/promptBuilder';
-import { CLAUDE_DEFAULT_MODEL_ALIAS, normalizeClaudeSessionModel } from './model';
+import { normalizeClaudeSessionModel, toMobiSessionModel } from './model';
 import { getInvokedCwd } from '@mobi/node-core/utils/invokedCwd';
 import { initializeSandbox } from '../modules/sandbox/sandboxManager';
 import { normalizeContinueArg } from './utils/normalizeContinueArg';
@@ -118,7 +118,9 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     }
 
     const initialState: AgentState = {};
-    const initialModel = normalizeClaudeSessionModel(options.model);
+    // 会话态模型留在 mobi 空间（'auto' 哨兵与 web 选项同空间）：Session/keep-alive
+    // runtime/applied ack/model_change 行都按 mobi 值读写，进 SDK 前才翻译成 CC 别名
+    const initialModel = options.model?.trim() || null;
     const startingMode = options.startingMode ?? (startedBy === 'daemon' ? 'remote' : 'local');
     // -c 规范化为显式 --resume（bootstrapSession 的 tag 复用与 claudeLocal 透传都依赖
     // 显式 --resume 形态；详见 normalizeContinueArg 的 docstring）
@@ -465,7 +467,8 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
         model: {
             get: (s) => s.getModel(),
             set: (s, v) => s.setModel(v as SessionModel),
-            applyLive: (c, v) => c.setModel(v as SessionModel ?? undefined),
+            // 记账留 mobi 空间，下发 SDK 时才把 'auto' 翻成 CC 的 default 别名
+            applyLive: (c, v) => c.setModel(toClaudeModel(v as SessionModel)),
         },
         effort: {
             get: (s) => s.getEffort(),
@@ -612,20 +615,18 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
     };
 
     const resolveModel = (value: unknown): SessionModel => {
-        // 显式 null = 「用宿主默认模型」。live set_model 只接受模型 id / 别名，
-        // null 直送会得到 "model must be a string"，与 mobi 哨兵 'auto' 同译成 CC 的 default 别名
-        if (value === null) {
-            return CLAUDE_DEFAULT_MODEL_ALIAS;
-        }
-
-        if (typeof value !== 'string') {
+        // 非法形状直接拒绝；合法形状归一到 mobi 空间（null / 空白 → auto 哨兵）。
+        // 「设置模型」这个动作必须落到一个具体值：null 只属于「启动时未指定」，
+        // CC 别名翻译在出站（toClaudeModel）才做
+        if (value !== null && typeof value !== 'string') {
             throw new Error('Invalid model');
         }
-
-        // 翻译点单一在 model.ts：'auto' → 'default'，空串 → null；空值也归到 default ——
-        // 「设置模型」这个动作必须落到一个 CC 能吃下的具体值，null 只属于「启动时未指定」
-        return normalizeClaudeSessionModel(value) ?? CLAUDE_DEFAULT_MODEL_ALIAS;
+        return toMobiSessionModel(value);
     };
+
+    /** mobi 模型空间 → SDK 出站值：Auto 哨兵在此翻译成 CC 的 default 别名（唯一出站点） */
+    const toClaudeModel = (model: SessionModel): string | undefined =>
+        normalizeClaudeSessionModel(model ?? undefined) ?? undefined;
 
     apiSession.rpcHandlerManager.registerHandler('set-session-config', async (payload: unknown) => {
         if (!payload || typeof payload !== 'object') {
@@ -680,10 +681,10 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
         // 行在**受理时构造**（快照当前模型），落地回调只决定发不发：applied 异步 settle，
         // 期间用户可能再次切换（A→B 未落地就来 B→C）——回调里读 currentModel 会把
         // 先一次的行标成 C，甚至两行同值。
-        // 行内模型值 = CC 侧落地值（currentModel 经 resolveModel 翻译后恒非 null）：
-        // mobi 的 Auto 哨兵在这里已是 CC 的 default 别名，读路径据非空模型校验放行
+        // 行内模型值 = mobi 空间的用户选项值（currentModel 经 resolveModel 归一后恒非 null）：
+        // Auto 记 'auto'（与 web 模型选择同一空间），CC 别名只在出站翻译
         if (modelChanged) {
-            const line = buildModelChangeLine({ model: currentModel ?? CLAUDE_DEFAULT_MODEL_ALIAS, uuid: randomUUID() });
+            const line = buildModelChangeLine({ model: currentModel ?? DEFAULT_MODEL, uuid: randomUUID() });
             void applied.then((ok) => {
                 if (!ok) return;
                 apiSession.sendClaudeSessionMessage(line as unknown as RawJSONLines);
@@ -796,7 +797,8 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
                 // query 重启（modeHash 变化）时 fallbackConfig 会用旧 currentPermissionMode，session 与
                 // Query 权限模式脱节——plan 卡到下一轮 set-session-config。session 未就绪时回退启动值。
                 permissionMode: currentSessionRef.current?.getPermissionMode() ?? currentPermissionMode,
-                model: currentModel ?? undefined,
+                // SDK 出站翻译：mobi 的 auto 哨兵 → CC 的 default 别名
+                model: toClaudeModel(currentModel),
                 effort: currentEffort,
                 fallbackModel: sessionMetaOverrides.fallbackModel,
                 customSystemPrompt: sessionMetaOverrides.customSystemPrompt,

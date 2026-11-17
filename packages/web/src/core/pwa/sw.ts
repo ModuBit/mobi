@@ -32,7 +32,11 @@ precacheAndRoute(self.__WB_MANIFEST || [])
 // SPA 导航兜底：离线时深层链接（如 /settings/notifications）没有对应的预缓存条目，
 // 统一返回预缓存的 index.html，由前端路由接管。缺这条时离线整页刷新报
 // ERR_INTERNET_DISCONNECTED（预缓存只覆盖资源，不覆盖导航 URL）。
-registerRoute(new NavigationRoute(createHandlerBoundToURL('/index.html')))
+// denylist /api/*：后端同源路径（artifacts 直链、文件下载等）不能被导航兜底截回
+// SPA 壳——它们在浏览器里就是一次同源导航，拦截后拿到的会是 index.html 而非资源本身
+registerRoute(
+    new NavigationRoute(createHandlerBoundToURL('/index.html'), { denylist: [/^\/api\//] })
+)
 
 // 按需资源运行时缓存(方案 A)：预缓存清单只覆盖应用壳，shiki/pdfjs/excalidraw/openui
 // 等约 30MB 的按需 chunk 首次请求时落盘，之后离线可用。壳资源虽同处 /assets/ 下，
