@@ -1,9 +1,9 @@
 ---
 name: scroll-follow-verify
-description: 验证消息列表贴底跟随 / 「滚到底」按钮 —— 探针脚本、DOM 锚点、平滑追赶指标、scrollend 干扰坑、手势掉队语义
+description: 验证消息列表贴底跟随 / 「回到底部」按钮 —— 探针脚本、DOM 锚点、平滑追赶指标、scrollend 干扰坑、手势掉队语义
 metadata:
   type: recipe
-  last_verified: 2026-08-26
+  last_verified: 2026-11-17
 ---
 
 # 贴底跟随 / 滚到底按钮 验证
@@ -41,14 +41,16 @@ RO 增高路径是 rAF 缓动追赶（`CHASE_EASE=0.25`，每帧追掉剩余距�
 
 ⚠️ **不要靠遍历父链找 `scrollHeight > clientHeight` 来定位 scroller** —— 会话短时内容不超视口，全链都不可滚，返回 null。直接用 testid。
 
-「滚到底」按钮：`button.ant-btn-circle` 且 `getComputedStyle(b).position === 'absolute'`（区别于 composer 里的圆形按钮）。
+「回到底部」按钮：`button[aria-label="回到底部"]`（2026-11-17 复核：uiarc Button 化后 aria-label 稳定，旧的 `button.ant-btn-circle` + position 判据已失效）。显隐即 reading 状态（`reading=true` 时出现）。
 
 ## 探针（requestAnimationFrame 采样，evaluate_script 注入）
 
 ```js
-const sc = document.querySelector('[data-testid="virtuoso-scroller"]');
-const isBtnVisible = () => Array.from(document.querySelectorAll('button.ant-btn-circle'))
-  .some(b => b.getBoundingClientRect().width > 0 && getComputedStyle(b).position === 'absolute');
+// 现行 Bubble.List：滚动容器 .ant-bubble-list-scroll-box（virtuoso 已废弃）。
+// 会话刚建/消息列表尚未挂载时选择器会落空——用轮询 boot 等到容器出现再起采样。
+const sc = document.querySelector('.ant-bubble-list-scroll-box');
+const isBtnVisible = () => !!document.querySelector('button[aria-label="回到底部"]')
+  ?.getBoundingClientRect().width;
 let lastBtn = null, toggles = 0, maxDist = 0, over80 = 0, n = 0;
 window.__stop = false;
 const tick = () => {
@@ -95,7 +97,7 @@ tick();
 
 1. **流式/折叠钉底** —— 发消息后读 `__stat`，`finalDist` 应为 0
 2. **上滚不被拉回** —— 派发**真实 WheelEvent**（见下坑），隔一会儿按钮出现、`following` 掉队
-3. **点按钮恢复** —— `take_snapshot` 找 `button "down"` 点击，`dist` 应归 0 且按钮消失
+3. **点按钮恢复** —— 点 `button[aria-label="回到底部"]`，`dist` 应归 0 且按钮消失
 
 ## 坑
 
