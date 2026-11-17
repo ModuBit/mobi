@@ -352,7 +352,10 @@ h1, h2, h3, h4 {
    把首尾 `/` 当边界中性符翻到错误一侧（纯展示 chip 不切分，维持右省略）。 */
 .tool-chip-path {
     display: inline-flex;
-    align-items: baseline;
+    /* center 而非 baseline：文件类型徽章是无文字基线的 14px inline-flex 盒，
+       baseline 对齐把它的合成基线（底边）对到文字 baseline，视觉上比 cap 中心高 0.6px；
+       文本子项都是同高 20px 行盒，center 与 baseline 对文字落点无差异（2026-11-17） */
+    align-items: center;
     min-width: 0;
 }
 
@@ -398,7 +401,14 @@ html[data-theme='dark'] .file-type-badge {
 }
 
 /* Material 文件图标形态（fileTypeIcons.generated.ts 内联 SVG）：多彩自带配色，
-   明暗主题通用。尺寸 12px 于 14px 盒内（上下留 1px 呼吸），block 防 baseline 缝隙 */
+   明暗主题通用。尺寸 12px 于 14px 盒内（上下左右各留 1px 呼吸），block 防 baseline 缝隙。
+   SVG 必须在盒内居中：inline-flex 默认贴左上，图标整体会比文字 cap 中心高 1px
+   （工具行 chip 图标与文件名错位，2026-11-17） */
+.file-type-icon {
+    align-items: center;
+    justify-content: center;
+}
+
 .file-type-icon svg {
     width: 12px;
     height: 12px;
