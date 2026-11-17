@@ -54,6 +54,8 @@ interface BubbleListChatProps {
 const HISTORY_PREFETCH_DISTANCE = 200
 /** prepend 历史后 scrollTop 补偿期间，屏蔽 scroll 事件的时间窗（覆盖 RO + rAF 双帧延迟） */
 const RESTORE_SCROLL_GUARD_MS = 100
+/** 滚动停止后重拍锚点快照的防抖时长 */
+const ANCHOR_SNAPSHOT_DEBOUNCE_MS = 80
 
 /** prepend 补偿的锚点样本：key + 捕获时的 rect.top（视口坐标） */
 interface AnchorSample {
@@ -181,6 +183,8 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
     // fill 级联：初始加载内容未溢出时连续拉页，期间不显示 loading（避免高度来回跳动）
     const isFillingRef = useRef(false)
     const scrollRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    // 滚动停止后重拍锚点快照的防抖定时器
+    const anchorSnapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     // 把最新 props 同步到 ref，让 scroll listener / effect 闭包读到最新值而不重建
     const itemsLengthRef = useRef(items.length)
@@ -256,6 +260,16 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
                 snapshot.scrollTop = scrollTop
             }
         }
+
+        // 滚动停止后以当前视口重拍快照：连续滚动可能跨过大段内容（快照锚点滑出视口），
+        // 之后若有内容变化（首拉历史到位 / 流式增量）就拿不到视口内锚点、无法补偿——
+        // 首拉期间用户随手滚动正是这条路径（2026-11-17 用户实测的「加载完成后内容消失」）。
+        if (anchorSnapshotTimerRef.current) clearTimeout(anchorSnapshotTimerRef.current)
+        anchorSnapshotTimerRef.current = setTimeout(() => {
+            anchorSnapshotTimerRef.current = null
+            if (isRestoringScrollRef.current) return
+            anchorSnapshotRef.current = captureAnchors(scrollBox)
+        }, ANCHOR_SNAPSHOT_DEBOUNCE_MS)
 
         // 滚到顶 prefetch：window 滑动 + 滑动模式置位 + store 顶 fetchNextPage
         if (scrollTop < HISTORY_PREFETCH_DISTANCE && !isFetchingNextPageRef.current) {
@@ -345,6 +359,20 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
             shift = rect.top - anchor.top
             break
         }
+        if (shift == null && snapshot) {
+            // 视口内锚点全灭（用户在加载期间一直滚动、快照还未来得及重拍）：退回「视口下方」
+            // 的锚点——它们只受顶部 prepend 影响，位移仍等于上方插入量；只接受正位移
+            //（内容增加方向）。视口上方的锚点混有钉底/裁切位移，不参与。
+            for (const anchor of snapshot.anchors) {
+                const el = findBubbleEl(scrollBox, anchor.key)
+                if (!el) continue
+                const rect = el.getBoundingClientRect()
+                if (rect.top <= boxBottom - 1) continue
+                const delta = rect.top - anchor.top
+                if (delta > 0) shift = delta
+                break
+            }
+        }
         if (shift == null && !supportsScrollAnchoring()) {
             // 视口内锚点全灭（整窗重排）且浏览器无原生 anchoring：末尾项 / 高度差兜底。
             // 支持 anchoring 的浏览器不做这份兜底——末尾项在视口外，它的位移不等于视口位移
@@ -431,6 +459,7 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
     // 卸载清孤儿定时器
     useEffect(() => () => {
         if (scrollRestoreTimerRef.current) clearTimeout(scrollRestoreTimerRef.current)
+        if (anchorSnapshotTimerRef.current) clearTimeout(anchorSnapshotTimerRef.current)
     }, [])
 
     useImperativeHandle(ref, (): BubbleListChatHandle => ({

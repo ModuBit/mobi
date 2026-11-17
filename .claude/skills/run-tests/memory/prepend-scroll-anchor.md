@@ -5,48 +5,74 @@ last_verified: 2026-11-17
 # 顶部 prepend 历史「加载完成后内容跳」验证与修复
 
 BubbleListChat 加载更旧历史（fetch 分页 / window prepend / fill 补页 / 初次历史到位）后
-视口内容跳动。用户症状两种说法：「内容被上移」（大跳）/「aaaa 被顶走」。
+视口内容跳动。用户症状：「内容被上移」/「加载前的内容找不到了」。
 
-## 现行机制（多处修补后的稳定形态）
+## 现行机制
 
 - **视口内锚点快照**（`AnchorSnapshot`）：capture 视口内可见项（最多 8 个，按视口顺序）+ 末尾项。
-  每次 items 变化的 layout effect 末尾重拍；**每次触发加载前重拍**（handleScroll 的 prefetch
-  分支开头）——补偿基准永远是「用户此刻看到的内容」。
-- **补偿**：`shift = 现 rect.top − 快照 rect.top`，`scrollTop += shift`（追加到当前值，Chrome
-  原生 anchoring 已补偿时残差 0，天然不叠加）。只认**此刻仍在视口内**的锚点。
+  每次 items 变化的 layout effect 末尾重拍；**每次触发加载前重拍**；**滚动停止 80ms 后重拍**
+  （连续滚动跨过大段内容时旧快照锚点全滑出视口）。
+- **补偿**：`shift = 现 rect.top − 快照 rect.top`，`scrollTop += shift`（追加到当前值，浏览器
+  原生 anchoring 已补偿时残差 0，天然不叠加）。
+- **锚点选取三级兜底**：
+  1. 此刻仍在视口内的锚点（首选，残差 0 即无操作）；
+  2. **视口下方**的锚点——只受顶部 prepend 影响，位移等于上方插入量，只接受正位移。
+     **这是 iOS/WebKit 上唯一生效的路径**（见坑 6）；
+  3. 无原生 anchoring 的浏览器（`CSS.supports('overflow-anchor','auto')` = false）才用
+     末尾项 / scrollHeight 高度差兜底。
 - **RO 路径**：观测 `.ant-bubble-list-scroll-content` 高度变化（流式增量/图片/高亮撑高），
   rAF 合并后走同一 reconcile（`armPrefetch=false`，不设 scroll guard）。
-- **fill 不钉底**：内容补满视口后不再 `scrollTop = scrollHeight`（那会把正在看的内容瞬移走）。
+- **fill 不钉底**：内容补满视口后不再 `scrollTop = scrollHeight`。
 
-## 实踩的坑（每条都是 2026-11-17 实测）
+## 实踩的坑
 
-1. **scrollHeight delta 重算 = 双重补偿**：Chrome/Firefox 原生 scroll anchoring 在 layout
-   阶段已调 scrollTop；再从捕获时的 scrollTop 按 delta 重算覆盖 → 完成瞬间跳 ~219px。
+1. **scrollHeight delta 重算 = 双重补偿**（桌面 Chrome 有原生 anchoring）：从捕获时的
+   scrollTop 按 delta 重算覆盖 → 完成瞬间跳 ~219px。
 2. **末尾渲染项不能当锚点**（视口外）：Chrome anchoring 只保证视口内节点；视口外项的位移
-   混入窗口裁切/懒加载 → 一次 1639px 错误补偿。无 anchoring 浏览器（Safari）才允许兜底。
+   混入窗口裁切/懒加载 → 一次 1639px 错误补偿。
 3. **scroll 事件里的快照平移要加 scrollHeight 判据**：内容变化引发的 st 调整（anchoring /
-   钉底）与锚点位移是同一笔账，平移会把已施加补偿二次计入 → 补偿一倍（56px 补成 112px）。
-   仅 `scrollHeight === snapshot.scrollHeight`（纯用户滚动）时平移。
+   钉底）与锚点位移是同一笔账，平移会把已施加补偿二次计入（56px 补成 112px）。仅
+   `scrollHeight === snapshot.scrollHeight`（纯用户滚动）时平移。
 4. **guard 只在 armPrefetch 路径设置**：RO 路径若也设 `isRestoringScrollRef = true` 且无
    timer 复位 → scroll listener 永久失聪（滚动到顶不再加载）。
-5. 触发点重拍快照是必须的：快照拍在底部（st=底）后用户滚到顶，平移出的锚点全在视口外，
-   用户视角已无有效基准。
+5. 触发点重拍快照是必须的：快照拍在底部（st=底）后用户滚到顶，平移出的锚点全在视口外。
+6. **能力探测会骗人（2026-11-17 用户 iPhone 实测的最大坑）**：iOS WebKit 上
+   `CSS.supports('overflow-anchor','auto')` 可能为 true，但浏览器实际不做 scroll anchoring。
+   此时「只认视口内锚点 + 能力支持则跳过兜底」= **零补偿**，prepend 后 5000+px 内容整体漂移
+   （用户截图症状：加载前 17:45 的内容，加载后视口在 17:35，原内容找不到）。
+   **修法 = 坑 5 下方的「视口下方锚点」兜底**：浏览器没补偿时锚点被推到视口下方，位移仍
+   等于上方插入量；Chrome 已补偿时锚点留在视口内，走首选路径，不叠加。
 
-## 验收 recipe（用户视角判据）
+## 验收 recipe
 
-在 dev 5174（vite 源码）+ 真库大会话（real-session-seed）：
+**必须两种条件都测**（只测桌面 Chrome 会漏掉 iOS 的真实行为——Chrome 有原生 anchoring，
+走的根本不是同一条代码分支）：
+
+1. **iOS 等价条件**：`emulate` 视口 `390x844x3,mobile,touch` + 在 scroll box 上
+   `style.overflowAnchor = 'none'`（关掉真实 anchoring；**不要**改 `CSS.supports`，
+   要的就是「探测 true 但实际不 anchoring」的组合）。
+2. **桌面正常条件**：同上但不设 overflow-anchor，验证不双重补偿。
+
+步骤：
 
 ```
-visibleMap() = 视口内所有 [data-bubble-key] 的 key → (rect.top - boxTop)
-每轮：wheel 合成上滚 + scrollTop=0 → 等 120ms 拍 before → 等加载完成拍 after
-断言 common key 的 maxDiff === 0（不是 ≤2px，零容差）
+initScript：延迟 /api/sessions/*/messages*beforeSeq* 的 XHR ~2.5s（axios 走 XHR）
+box.dispatchEvent(new WheelEvent('wheel', {deltaY:-120, bubbles:true}))  // following=false
+box.scrollTop = 0                                                          // 触发加载
+等 500ms → scrollTop=0 拍 beforeMap（可见项 key → rect.top - boxTop）
+等 ~3s  → 拍 afterMap，断言 common key 的 maxDiff === 0（零容差）
 ```
 
-- 三轮上滚（21→60→100→118）maxDiff 全 0；初始 reload（不滚动）maxDiff 0。
-- **不要用视口外的单一跟踪锚点判据**：它的位移只反映「它上方内容总高变化」，不代表用户
-  视角（曾因此误判 219px 未修好）。
-- 视口拉高造「内容不足一屏 fill」在此布局下不生效（clientHeight 恒 493），fill 停钉底
-  行为改由单测覆盖（mockLayout 可变几何 + 断言 scrollTop 不被改写）。
+2026-11-17 实测基线（dev 5174 源码 / prod 2222 部署版，同一会话数据）：
+
+| 条件 | 部署版（只有视口内锚点） | 修复版（+视口下方兜底） |
+|---|---|---|
+| iOS 等价（overflow-anchor:none，supports=true） | maxDiff **5088 / 6273px** | maxDiff **0 / 1 / 0px**（3 轮） |
+| 桌面 Chrome（原生 anchoring） | — | maxDiff **0px** |
+
+**注意**：会话正在流式输出时 scrollHeight 会持续增长（底部），不影响视口内容对比，但
+「加载是否发生」要用 `document.body.innerText.includes('正在加载历史消息')` + 可见项 map
+变化断言，不能只看 scrollHeight 变了就算加载。
 
 ## 单测
 
@@ -59,3 +85,4 @@ visibleMap() = 视口内所有 [data-bubble-key] 的 key → (rect.top - boxTop)
 ## 相关
 
 - 顶部加载行统一 `HistoryLoadingRow`（logo+文案，见 `loading-skeleton-verify.md`）。
+- 用户实测设备：iPhone（1170×2532 截图），走 WebKit。
