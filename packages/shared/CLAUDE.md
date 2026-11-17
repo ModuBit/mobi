@@ -14,6 +14,7 @@
 | `src/types.ts` | 纯 TypeScript 类型重导出 |
 | `src/messages.ts` | 消息辅助函数（unwrapRole / unwrapOutput / lifecycle） |
 | `src/messageClassification.ts` | 消息投影单一来源：写路径分类 classifyMessage + 读路径可见性 isClaudeChatVisibleMessage |
+| `src/modelChangeLine.ts` | 模型切换事件族契约单源：wire subtype / web 事件判别串常量 + zod 载荷 schema + build/parse 单一入口（session 合成、写库分类、web 读路径共用） |
 | `src/mobiXml.ts` | 指令族 XML 命名空间协议单源：`<mobi:name/>` 族通用原语（标签正形/扫描/去重/流式尾巴截断）+ artifact 成员语义（path/mode 校验、去重键） |
 | `src/mobiXmlFamily.ts` | XML 指令族成员注册表：族标签清单/开前缀/tokenizer 正形 + 命中→成员去重键路由（键前缀按成员隔离）——新增族成员在此注册 |
 | `src/quoteProtocol.ts` | quote 协议单源：进出同形引用协议（标签族常量、index 合法性与去重键、进向 XML 组装、批注↔回复配对 uuid 优先+线性兜底、XML 转义原语；出向扫描/去重/截断走 mobiXml 族通用原语） |
