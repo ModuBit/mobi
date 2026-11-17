@@ -68,8 +68,9 @@ vi.mock('@/ui/base/theme/useThemeLocaleToggle', () => ({
 }))
 
 const restart = vi.fn()
-vi.mock('@/core/pwa/useForceUpdate', () => ({
-    useForceUpdate: () => restart,
+vi.mock('@/features/layout/useForceUpdate', () => ({
+    // 新形态：hook 返回 { restart, confirmNode }（确认框改为受控渲染的自适应对话框）
+    useForceUpdate: () => ({ restart, confirmNode: null }),
 }))
 
 // usePwaMode 门控刷新/重启行:用可变对象便于单测切换 PWA/非 PWA
@@ -140,7 +141,7 @@ describe('MobileMenuDrawer 刷新按钮', () => {
         expect(reloadSpy).toHaveBeenCalledTimes(1)
     })
 
-    it('重启:走 restart(Modal 异步路径),不直接 reload', () => {
+    it('重启:走 restart(确认框异步路径),不直接 reload', () => {
         render(<MobileMenuDrawer />)
         const drawer = document.querySelector('[data-testid="drawer"]')!
         const checkSpan = Array.from(drawer.querySelectorAll('span'))
@@ -152,7 +153,7 @@ describe('MobileMenuDrawer 刷新按钮', () => {
         })
 
         expect(restart).toHaveBeenCalledTimes(1)
-        // 重启不直接 reload(由 Modal 确认后的 forceUpdateAndReload 异步触发)
+        // 重启不直接 reload(由确认后的 forceUpdateAndReload 异步触发)
         expect(reloadSpy).not.toHaveBeenCalled()
     })
 

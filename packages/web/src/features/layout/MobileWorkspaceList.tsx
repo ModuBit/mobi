@@ -15,7 +15,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react'
-import { App as AntdApp, Modal, theme as antTheme } from 'antd'
+import { App as AntdApp, theme as antTheme } from 'antd'
 import { Input } from '@/ui/base/interactive/input/Input'
 import { Button } from '@/ui/base/interactive/button/Button'
 import {
@@ -34,7 +34,6 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
-import { useOpenOverlayLayer } from '@/ui/base/layout/overlayLayer'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinned'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
@@ -44,7 +43,6 @@ import { resumeSession } from '@/core/data/sessionResume'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { evictSession } from '@/core/lib/sessionEviction'
-import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
 import { pushHistoryGuard } from '@/core/lib/drawerHistoryGuard'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 import {
@@ -57,6 +55,7 @@ import { MobilePinnedGroup } from './MobilePinnedGroup'
 import { useMenuNavigate } from './useMenuNavigate'
 import { WorkspaceFormModal } from '@/ui/shared/WorkspaceFormModal'
 import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
+import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
 import { AssignWorkspaceModal } from '@/features/layout/AssignWorkspaceModal'
 import { notifyRetainedWorktree, notifyTranscriptRetained } from './retainedWorktreeNotice'
 import { SessionListFooter } from './SessionListFooter'
@@ -84,17 +83,17 @@ export function MobileWorkspaceList() {
     // 会话操作菜单（BottomSheet）状态
     const [actionSessionId, setActionSessionId] = useState<string | null>(null)
     const [actionLoading, setActionLoading] = useState<string | null>(null)
-    /** 菜单内的视图：删除确认就地展开，**不在 sheet 之上叠 antd Modal**。Radix Dialog 打开期间
+    /** 菜单内的视图：删除确认就地展开，**不在 sheet 之上再叠一层浮层**。Radix Dialog 打开期间
      *  会把 body 置 `pointer-events: none`，antd 弹层得靠自己把内容提回 `auto` 才点得到——能用，
      *  但两层 modal 的焦点陷阱互相抢，fragile；菜单里的其它入口（重命名 / 归入工作区）也是
      *  「先关 sheet 再开弹层」的同一套做法 */
     const [actionView, setActionView] = useState<'menu' | 'confirmDelete'>('menu')
 
-    // 重命名 Modal 状态
+    // 重命名弹窗状态
     const [renameSessionId, setRenameSessionId] = useState<string | null>(null)
     const [renameValue, setRenameValue] = useState('')
 
-    // 新建工作区表单状态（WorkspaceFormModal 端别自适应，移动端渲染为底部 Drawer）
+    // 新建工作区表单状态（WorkspaceFormModal 端别自适应，移动端渲染为底部 sheet）
     const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false)
 
     // 置顶 / 取消置顶（ActionSheet 入口，所有分组通用）
@@ -169,7 +168,7 @@ export function MobileWorkspaceList() {
         if (actionSessionId == null) setActionView('menu')
     }, [actionSessionId])
 
-    // 删除确认视图自带一层手势返回：返回 = 取消确认、退回菜单（同原先命令式 Modal 那层哨兵）。
+    // 删除确认视图自带一层手势返回：返回 = 取消确认、退回菜单（同原先命令式确认框那层哨兵）。
     // 进出确认视图时挂/摘哨兵——退回菜单后返回事件自然交回菜单自己的哨兵。
     useEffect(() => {
         if (actionView !== 'confirmDelete') return undefined
@@ -203,15 +202,6 @@ export function MobileWorkspaceList() {
         setRenameSessionId(null)
         setRenameValue('')
     }, [])
-
-    // 重命名 Modal 是 antd 原生浮层，必须接 history 哨兵——否则手势返回会穿透过去消费下层
-    // 菜单的哨兵。操作菜单本身已是 BottomSheet，哨兵由组件内置，不再手工接线。
-    useHistoryGuard(renameSessionId != null, handleRenameCancel)
-
-    // 弹层层号：重命名 Modal 弹在 MobileMenu / 操作菜单之上，必须领比它们大的号，否则默认
-    // z 1000 被菜单的 1080 压住——真机「长按 session 弹出的二级退到后面去了」。
-    // 操作菜单（BottomSheet）自带层号分配，不在此领。
-    const renameModalZ = useOpenOverlayLayer(!!renameSessionId)
 
     // 手动休眠（dormancy spec §D.11）：动作流收口在 sessionDormancy（gate 阻塞时展示
     // 逐项原因，无强制退出路径），这里只管 pending 态。
@@ -373,7 +363,7 @@ export function MobileWorkspaceList() {
                 BottomSheet 二级弹层：弹在 MobileMenu（同为 BottomSheet）之上，层号由组件的
                 共享分配器给（后开者在上），调用方不再手工配 zIndex。
                 动作菜单关掉 peek（同菜单语义）：被裁掉的行对菜单是残缺，不是「还有更多」。
-                删除确认就地展开在同一个 sheet 里，**不叠 antd Modal**——Radix Dialog 打开期间
+                删除确认就地展开在同一个 sheet 里，**不叠第二层浮层**——Radix Dialog 打开期间
                 把 body 置 pointer-events:none，叠上来的 antd 弹层要自己提回 auto 才点得到，
                 再加两层 focus trap 互相抢，不稳。
                 title 显示当前操作的 session 名称（fork 行标题已落库，displayName 自然区分） */}
@@ -534,26 +524,37 @@ export function MobileWorkspaceList() {
                 ) : null}
             </BottomSheet>
 
-            {/* 重命名 Modal */}
-            <Modal
-                zIndex={renameModalZ}
-                title={t('session.actions.rename')}
+            {/* 重命名（端别自适应：PC 居中 Dialog / 移动端底部 sheet；开合与返回手势由壳收口） */}
+            <AdaptiveDialog
                 open={!!renameSessionId}
-                onOk={handleRenameConfirm}
-                onCancel={handleRenameCancel}
-                confirmLoading={renameActions.isPending}
-                okText={t('common.confirm')}
-                cancelText={t('common.cancel')}
-                destroyOnHidden
-            >
-                <Input
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onPressEnter={handleRenameConfirm}
-                    placeholder={t('session.actions.rename')}
-                    autoFocus
-                />
-            </Modal>
+                onOpenChange={(next) => { if (!next) handleRenameCancel() }}
+                title={t('session.actions.rename')}
+                width={420}
+                body={(
+                    <Input
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onPressEnter={handleRenameConfirm}
+                        placeholder={t('session.actions.rename')}
+                        autoFocus
+                    />
+                )}
+                footer={(
+                    <>
+                        <Button variant="secondary" onClick={handleRenameCancel}>
+                            {t('common.cancel')}
+                        </Button>
+                        <Button
+                            variant="primary"
+                            loading={renameActions.isPending}
+                            disabled={!renameValue.trim()}
+                            onClick={handleRenameConfirm}
+                        >
+                            {t('common.confirm')}
+                        </Button>
+                    </>
+                )}
+            />
 
             {/* 归入/换工作区选择器（端别自适应，见 AssignWorkspaceModal） */}
             <AssignWorkspaceModal

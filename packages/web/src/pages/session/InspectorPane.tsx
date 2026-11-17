@@ -18,6 +18,7 @@ import { Suspense, lazy, useCallback, useEffect, useState, type CSSProperties, t
 import { Layout, App, Spin } from 'antd'
 import { AppTooltip } from '@/ui/base/interactive/AppTooltip'
 import { Button } from '@/ui/base/interactive/button/Button'
+import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
 import { IconButton } from '@/ui/base/interactive/IconButton'
 import { TabStrip, TabStripList, TabStripPanel, TabStripTab } from '@/ui/base/interactive/tabStrip'
 import { useTranslation } from 'react-i18next'
@@ -105,7 +106,7 @@ function ReviewTab({ sessionId, tabId }: { sessionId: string; tabId: string }) {
 
 export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) {
     const { t } = useTranslation()
-    const { modal, message } = App.useApp()
+    const { message } = App.useApp()
     const isMobile = useIsMobile()
     const expanded = useWorkspaceStore((s) => s.getSession(sessionId).expanded)
     const tabs = useWorkspaceStore((s) => s.getSession(sessionId).tabs)
@@ -116,44 +117,41 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
     const openFileTreeTab = useWorkspaceStore((s) => s.openFileTreeTab)
     const openFileInTab = useWorkspaceStore((s) => s.openFileInTab)
     const closeTab = useWorkspaceStore((s) => s.closeTab)
-    // 关 tab：editable 文件有未保存编辑时弹确认（保存/不保存/取消），其余直接关
+    // 关 tab：editable 文件有未保存编辑时弹确认（保存/不保存/取消），其余直接关。
+    // 确认框是自管自适应壳（PC 居中 Dialog / 移动端底部 sheet），三态动作平铺在 footer
+    const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null)
+    const [closingSaving, setClosingSaving] = useState(false)
     const handleCloseTab = useCallback((tabId: string) => {
         const api = getEditorApi(tabId)
-        const doClose = () => closeTab(sessionId, tabId)
         if (!api?.isDirty()) {
-            doClose()
+            closeTab(sessionId, tabId)
             return
         }
-        const instance = modal.confirm({
-            title: t('files.unsavedTitle', '有未保存的修改'),
-            content: t('files.unsavedBody', '关闭前是否保存？'),
-            maskClosable: false,
-            footer: () => (
-                <>
-                    <Button variant="danger" onClick={() => { instance?.destroy(); doClose() }}>
-                        {t('files.discardClose', '不保存关闭')}
-                    </Button>
-                    <Button variant="secondary" onClick={() => instance?.destroy()}>
-                        {t('files.cancel', '取消')}
-                    </Button>
-                    <Button variant="primary" onClick={async () => {
-                        // 保存失败（冲突 / 业务错误）→ 不关 tab：避免静默丢弃用户编辑。
-                        // 关掉确认框（让用户回到编辑器看 conflict/error 反馈），tab 保留，message 提示。
-                        const { ok } = await api.saveNow()
-                        if (!ok) {
-                            instance?.destroy()
-                            message.error(t('files.saveFailed', '保存失败，请处理后重试'))
-                            return
-                        }
-                        instance?.destroy()
-                        doClose()
-                    }}>
-                        {t('files.saveAndClose', '保存并关闭')}
-                    </Button>
-                </>
-            ),
-        })
-    }, [closeTab, sessionId, t, modal, message])
+        setPendingCloseTabId(tabId)
+    }, [closeTab, sessionId])
+    const handleSaveAndClose = useCallback(async () => {
+        const tabId = pendingCloseTabId
+        const api = tabId ? getEditorApi(tabId) : undefined
+        if (!tabId || !api) {
+            setPendingCloseTabId(null)
+            return
+        }
+        setClosingSaving(true)
+        try {
+            const { ok } = await api.saveNow()
+            if (!ok) {
+                // 保存失败（冲突 / 业务错误）→ 不关 tab：避免静默丢弃用户编辑。
+                // 关掉确认框（让用户回到编辑器看 conflict/error 反馈），tab 保留，message 提示。
+                setPendingCloseTabId(null)
+                message.error(t('files.saveFailed', '保存失败，请处理后重试'))
+                return
+            }
+            setPendingCloseTabId(null)
+            closeTab(sessionId, tabId)
+        } finally {
+            setClosingSaving(false)
+        }
+    }, [pendingCloseTabId, closeTab, sessionId, message, t])
     /** 关 tab 的唯一入口：终端先清缓存实例（dispose 发 terminal:close 杀 PTY + 断 socket），
      *  再走通用的关闭流程。切换 tab 不走此处，PTY 保留（keepalive）。 */
     const closeTabWithCleanup = useCallback((tab: InspectorTabEntry) => {
@@ -348,6 +346,34 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
             {/* 终端 tab 休眠/离线时不叠 ActivateCover：TerminalView 自带重连遮罩
                 （create 被拒 → session_waking 提示 + 自动重试 + 手动「重连」按钮，
                 重发 create 即触发 daemon 唤醒），再盖一层恢复引导是重复门控 */}
+            <AdaptiveDialog
+                open={pendingCloseTabId !== null}
+                onOpenChange={(next) => { if (!next && !closingSaving) setPendingCloseTabId(null) }}
+                title={t('files.unsavedTitle', '有未保存的修改')}
+                width={420}
+                body={<p style={{ margin: 0 }}>{t('files.unsavedBody', '关闭前是否保存？')}</p>}
+                footer={(
+                    <>
+                        <Button
+                            variant="danger"
+                            disabled={closingSaving}
+                            onClick={() => {
+                                const tabId = pendingCloseTabId
+                                setPendingCloseTabId(null)
+                                if (tabId) closeTab(sessionId, tabId)
+                            }}
+                        >
+                            {t('files.discardClose', '不保存关闭')}
+                        </Button>
+                        <Button variant="secondary" disabled={closingSaving} onClick={() => setPendingCloseTabId(null)}>
+                            {t('files.cancel', '取消')}
+                        </Button>
+                        <Button variant="primary" loading={closingSaving} onClick={() => { void handleSaveAndClose() }}>
+                            {t('files.saveAndClose', '保存并关闭')}
+                        </Button>
+                    </>
+                )}
+            />
         </Layout>
     )
 }

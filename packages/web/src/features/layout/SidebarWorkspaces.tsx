@@ -31,6 +31,8 @@ import { resumeSession } from '@/core/data/sessionResume'
 import { dormantSessionWithFeedback } from '@/core/data/sessionDormancy'
 import { useSessionArchive, reportArchiveFailure } from '@/core/data/hooks/mutations/useSessionArchive'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
+import { Button } from '@/ui/base/interactive/button/Button'
+import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
 import { WorkspaceFormModal } from '@/ui/shared/WorkspaceFormModal'
 import { AssignWorkspaceModal } from '@/features/layout/AssignWorkspaceModal'
 import type { Session, Workspace } from '@/core/data/api/types'
@@ -57,7 +59,7 @@ export function SidebarWorkspaces() {
     const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
-    const { message: messageApi, modal } = App.useApp()
+    const { message: messageApi } = App.useApp()
     const queryClient = useQueryClient()
     const api = useMobiApi()
     const params = useParams({ strict: false })
@@ -134,7 +136,7 @@ export function SidebarWorkspaces() {
     }, [api, queryClient, t, navigate, messageApi])
 
     // 删除会话（动作流收口在 useSessionDelete，与归档页共用）
-    const handleDelete = useSessionDelete()
+    const { confirmDelete: handleDelete, confirmNode: deleteConfirmNode } = useSessionDelete()
 
     // ===== 工作区管理 =====
 
@@ -152,25 +154,53 @@ export function SidebarWorkspaces() {
     }, [])
 
     // 删除工作区：名下会话解绑进「最近」（total 未就绪时用不含数字的退化文案，不编造 0）
+    // 确认框走自管自适应壳；删除中锁住关闭
+    const [deletingWorkspace, setDeletingWorkspace] = useState<{ workspace: Workspace; total: number | undefined } | null>(null)
     const handleDeleteWorkspace = useCallback((workspace: Workspace, total: number | undefined) => {
-        modal.confirm({
-            title: t('workspace.deleteConfirmTitle', { name: workspace.name }),
-            content: total === undefined
-                ? t('workspace.deleteConfirmContentFallback')
-                : t('workspace.deleteConfirmContent', { count: total }),
-            okText: t('common.confirm'),
-            okButtonProps: { danger: true },
-            cancelText: t('common.cancel'),
-            onOk: async () => {
-                try {
-                    await deleteWorkspaceMutation.mutateAsync(workspace.id)
-                    messageApi.success(t('common.success'))
-                } catch {
-                    messageApi.error(t('common.error'))
-                }
-            },
-        })
-    }, [t, deleteWorkspaceMutation, messageApi])
+        setDeletingWorkspace({ workspace, total })
+    }, [])
+    const handleDeleteWorkspaceConfirm = useCallback(async () => {
+        if (!deletingWorkspace) return
+        try {
+            await deleteWorkspaceMutation.mutateAsync(deletingWorkspace.workspace.id)
+            messageApi.success(t('common.success'))
+        } catch {
+            messageApi.error(t('common.error'))
+        } finally {
+            setDeletingWorkspace(null)
+        }
+    }, [deletingWorkspace, deleteWorkspaceMutation, messageApi, t])
+    const deleteWorkspaceNode = (
+        <AdaptiveDialog
+            open={deletingWorkspace !== null}
+            onOpenChange={(next) => {
+                if (!next && !deleteWorkspaceMutation.isPending) setDeletingWorkspace(null)
+            }}
+            title={t('workspace.deleteConfirmTitle', { name: deletingWorkspace?.workspace.name ?? '' })}
+            width={440}
+            body={(
+                <p style={{ margin: 0 }}>
+                    {deletingWorkspace?.total === undefined
+                        ? t('workspace.deleteConfirmContentFallback')
+                        : t('workspace.deleteConfirmContent', { count: deletingWorkspace.total })}
+                </p>
+            )}
+            footer={(
+                <>
+                    <Button variant="secondary" disabled={deleteWorkspaceMutation.isPending} onClick={() => setDeletingWorkspace(null)}>
+                        {t('common.cancel')}
+                    </Button>
+                    <Button
+                        variant="danger"
+                        loading={deleteWorkspaceMutation.isPending}
+                        onClick={() => { void handleDeleteWorkspaceConfirm() }}
+                    >
+                        {t('common.confirm')}
+                    </Button>
+                </>
+            )}
+        />
+    )
 
     // 移至最近（解除归属）
     const handleMoveToRecent = useCallback(async (session: Session) => {
@@ -294,6 +324,8 @@ export function SidebarWorkspaces() {
                 open={!!assignSession}
                 onClose={() => setAssignSession(null)}
             />
+            {deleteConfirmNode}
+            {deleteWorkspaceNode}
         </Container>
     )
 }

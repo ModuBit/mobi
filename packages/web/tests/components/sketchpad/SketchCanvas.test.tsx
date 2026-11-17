@@ -25,7 +25,6 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { App as AntApp } from 'antd'
 import { sceneFingerprint, type SketchCanvasHandle } from '@/features/sketchpad/SketchCanvas'
-import { Z_OVERLAY } from '@/core/config/theme/cssVars'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 
 /** fake imperative API：可变的场景内容（供「先捕获、后修改」的时序模拟）；
@@ -136,12 +135,13 @@ describe('SketchCanvas 取消确认的变更检测', () => {
         // 确认框弹出，onCancel 尚未执行（须用户确认才关）
         expect(onCancel).not.toHaveBeenCalled()
         await waitFor(() => {
-            expect(document.querySelector('.ant-modal-confirm')).toBeTruthy()
+            expect(document.querySelector('[role="dialog"]')).toBeTruthy()
         })
     })
 
-    /** 层号写死会在移动端画板领号（overlayLayer，1080 起）之后被自己的载体压住——点不到 */
-    it('确认框层号取自浮层分配器（不写死）', async () => {
+    /** 确认框走自适应壳（PC uiarc Dialog / 移动端 BottomSheet）：层序由壳内机制负责，
+     *  不再在调用点写死 z-index（写死会在移动端画板领号之后被自己的载体压住——点不到） */
+    it('确认框由自适应壳渲染（不写死 z-index）', async () => {
         fakeApiHost = makeFakeApi()
         const { requestCancel } = renderCanvas(vi.fn())
         await act(async () => {
@@ -153,11 +153,12 @@ describe('SketchCanvas 取消确认的变更检测', () => {
         await act(async () => {
             requestCancel()
         })
-        await waitFor(() => { expect(document.querySelector('.ant-modal-wrap')).toBeTruthy() })
-        const z = Math.max(
-            ...['.ant-modal-wrap', '.ant-modal-mask'].map((sel) => Number((document.querySelector(sel) as HTMLElement)?.style.zIndex || 0)),
-        )
-        expect(z).toBeGreaterThanOrEqual(Z_OVERLAY)
+        const dialog = await waitFor(() => {
+            const el = document.querySelector('[role="dialog"]') as HTMLElement | null
+            expect(el).toBeTruthy()
+            return el as HTMLElement
+        })
+        expect(dialog.style.zIndex).toBe('')
     })
 
     /** 宿主（画板载体）的 ESC 监听靠它让路，否则 ESC 关掉确认框后会被重新弹出 */
@@ -175,7 +176,9 @@ describe('SketchCanvas 取消确认的变更检测', () => {
         })
         expect(canvasHandle()!.isConfirmOpen()).toBe(true)
         // 取消（不放弃修改）：关掉确认框，画布继续开着
-        const cancelBtn = document.querySelector('.ant-modal-confirm-btns button') as HTMLElement
+        const dialog = document.querySelector('[role="dialog"]') as HTMLElement
+        // 移动端档位（本用例环境）走 BottomSheet：footer 首钮 = 取消
+        const cancelBtn = dialog.querySelectorAll('button')[0] as HTMLElement
         await act(async () => {
             fireEvent.click(cancelBtn)
         })
@@ -200,11 +203,11 @@ describe('SketchCanvas 取消确认的变更检测', () => {
         await act(async () => {
             requestCancel()
         })
-        await waitFor(() => { expect(document.querySelectorAll('.ant-modal-confirm')).toHaveLength(1) })
+        await waitFor(() => { expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1) })
         await act(async () => {
             requestCancel()
         })
-        expect(document.querySelectorAll('.ant-modal-confirm')).toHaveLength(1)
+        expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1)
         expect(onCancel).not.toHaveBeenCalled()
     })
 })

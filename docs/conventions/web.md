@@ -93,6 +93,7 @@ src/
 | radio-group | arc（uiarc） | tracked | 2026-11-11 | 已装待消费（底座预铺）：antd Radio 整组消费端待首个真实迁移场景到达时启用（OptionRow single mark 已由 radio-cards 的 RadioIndicator 承接），勿重复造轮子 |
 | radio-cards | arc（uiarc） | tracked | 2026-11-11 | 卡片式单选（ring 卡间弹簧滑移）；已消费：导出的 `RadioIndicator` 承接 OptionRow single 模式 mark（AskUserQuestion 单选行；preview/Other 保留行级结构故不整组替换）。整组 RadioCards 待首个真实场景（设置页分组单选等） |
 | skeleton | arc（uiarc） | tracked | 2026-11-15 | 脉冲占位骨架（avatar+文本行，1–6 行阶梯错拍；children 形态交叉淡入+高度弹簧暂未消费）；antd `Skeleton` 全站清零。消费点：SkillsSection 列表加载（按行 avatar+lines 对齐 ManageRow 内衬）、AgentDrawerContent sidechain 加载（user 行右对齐容器）、FileTreeView 目录首载；css 别名（`--space-1`/`--ease-in-out`）补齐进 cssVars 单源 |
+| dialog | arc（uiarc） | tracked | 2026-11-17 | 居中模态（标题/说明文字切换动效 + 内置关闭钮）；antd `Modal` 的桌面档替代，**antd `Modal` 已全站清零且 eslint `no-restricted-imports` 禁新增**。端别自适应统一入口 `ui/base/interactive/adaptiveDialog` 的 `AdaptiveDialog`（PC = 本组件，移动端 = BottomSheet；body/footer 两档同源，调用方不写端别分支）。命令式确认（原 `App.useApp().modal.confirm`）改为「hook 返回 `confirmNode` + 调用方渲染」的受控形态（先例 `features/layout/useForceUpdate`、`useSessionDelete`）；删除中/提交中锁关闭走 `onOpenChange` 不翻转 open（移动端即「否决即回位」） |
 
 ### 已自管组件（脱离 registry，归 `ui/base/` 体系）
 

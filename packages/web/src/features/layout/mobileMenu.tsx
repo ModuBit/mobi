@@ -30,7 +30,7 @@ import { useMenuNavigate } from './useMenuNavigate'
 import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
 import { Menu, Sun, Moon, Languages, RefreshCw, RotateCw } from 'lucide-react'
 import { InstallButton } from '@/ui/shared/InstallButton'
-import { useForceUpdate } from '@/core/pwa/useForceUpdate'
+import { useForceUpdate } from './useForceUpdate'
 import { usePwaMode } from '@/ui/shared/usePwaMode'
 import styled from '@emotion/styled'
 
@@ -98,7 +98,7 @@ export function MobileMenuDrawer() {
     const api = useMobiApi()
     const isMobile = useIsMobile()
     const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
-    const restart = useForceUpdate()
+    const { restart, confirmNode } = useForceUpdate()
     // 刷新/重启 仅 PWA(standalone)有意义:浏览器有自带刷新按钮,PWA 无浏览器 chrome
     const isPwa = usePwaMode()
     // 菜单内导航统一走 hook：先关抽屉，抽屉离场（DOM 卸载）后再提交路由渲染
@@ -151,6 +151,7 @@ export function MobileMenuDrawer() {
     const bottomItems = mobileNavItems.filter(item => item.key !== 'new-session')
 
     return (
+        <>
         <BottomSheet
             title={t('nav.menu')}
             open={mobileMenuOpen}
@@ -230,7 +231,7 @@ export function MobileMenuDrawer() {
                                 // Android Chrome PWA standalone：同步 window.location.reload() 紧随
                                 // setMobileMenuOpen 这个 setState 会被吞掉——drawer 关了但页面不重载。
                                 // 延到下一 task,让 React 先 flush 完 drawer 关闭态再触发导航。
-                                // 对齐「重启」的异步 reload 路径(其 reload 在 Modal 确认 + await 后才触发)。
+                                // 对齐「重启」的异步 reload 路径(其 reload 在确认对话框 + await 后才触发)。
                                 setTimeout(() => window.location.reload(), 0)
                             }}
                         >
@@ -265,6 +266,8 @@ export function MobileMenuDrawer() {
                     <span>{t(logoutNavItem.labelKey)}</span>
                 </MobileMenuItem>
             </MenuContent>
-        </BottomSheet>
+            </BottomSheet>
+            {confirmNode}
+        </>
     )
 }

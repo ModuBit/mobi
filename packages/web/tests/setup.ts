@@ -60,19 +60,21 @@ if (typeof window !== 'undefined' && !window.localStorage) {
     })
 }
 
-// jsdom 不实现 window.matchMedia，为使用 useMediaQuery 的组件提供 mock
+// jsdom 不实现 window.matchMedia，为使用 useMediaQuery 的组件提供 mock。
+// 用普通函数而非 vi.fn：用例级 vi.resetAllMocks() 会把 vi.fn 的实现清零，
+// 导致 matchMedia 返回 undefined（桌面档组件一渲染就崩，2026-11-17 实踩）。
 Object.defineProperty(window, 'matchMedia', {
     writable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
+    value: (query: string) => ({
         matches: false,
         media: query,
         onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-    })),
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+    }),
 })
 
 // jsdom 不实现 window.Notification（浏览器原生通知 API）。

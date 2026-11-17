@@ -59,6 +59,19 @@
                 "上游 css 所需别名补齐进 cssVars 单源（--space-1 补 4px 档、--ease-in-out → --mobi-ease-in-out），组件 css 保持上游原样可 --overwrite"
             ],
             "note": "antd Skeleton 已全站清零。消费点：SkillsSection 列表加载骨架（按行 avatar+lines，内衬对齐 ManageRow）、AgentDrawerContent sidechain 加载骨架（user 行右对齐容器）、FileTreeView 目录首载骨架。children 交叉淡入+高度弹簧形态暂未消费，首个需要「占位→内容」无缝过渡的场景启用"
+        },
+        {
+            "name": "dialog",
+            "source": "arc",
+            "upstream": "tracked",
+            "migratedIn": "2026-11-17",
+            "localMods": [
+                "Apache 版权头",
+                "motion-tokens import 接线（上游 lib/motion-tokens → @/ui/base/motion/motionTokens 单源）",
+                "css z-index 50/51 → var(--mobi-z-overlay)/+1（本仓 antd 弹层从 1000 起，生态默认会被埋）",
+                "cssVars 补 --space-6(24px)/--space-8(32px) 两档"
+            ],
+            "note": "antd Modal 的桌面档替代实现（居中模态 + 标题/说明文字切换动效 + 内置关闭钮）。端别自适应入口是 ui/base/interactive/adaptiveDialog 的 AdaptiveDialog：PC 用本组件，移动端切 BottomSheet。antd Modal 已全站清零且 eslint 禁新增；命令式确认收为「hook 返回 confirmNode + 调用方渲染」。消费点见 docs/conventions/web.md 投影表"
         }
     ]
 }

@@ -27,7 +27,7 @@
  */
 
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
-import { Modal, theme as antTheme } from 'antd'
+import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { PatchDiff } from '@pierre/diffs/react'
 import { formatDiffStats } from './lineNumberUtils'
@@ -36,6 +36,7 @@ import type { StructuredPatch } from '@/domain/chat/types'
 import { FilePathText } from '@/ui/base/display/FilePathText'
 import { AutoHeightHost } from '@/ui/base/layout/AutoHeightHost'
 import { ToolViewPanel } from './ToolViewPanel'
+import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
 import { INLINE_DIFF_MAX_HEIGHT, useToolDiffMaxHeight } from './toolViewScope'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { PIERRE_BRIDGE_VARS } from '@/ui/base/theme/pierreTheme'
@@ -264,20 +265,22 @@ function DiffPreviewView({ modalBody, statsLabel, filePath }: {
                 </ToolViewPanel>
             </button>
 
-            <Modal
+            <AdaptiveDialog
                 open={modalOpen}
-                onCancel={() => setModalOpen(false)}
-                footer={null}
+                onOpenChange={(next) => { if (!next) setModalOpen(false) }}
                 title={filePath ?? t('diff.title')}
                 width={800}
-            >
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: token.colorTextSecondary, marginBottom: 12 }}>
-                    {statsLabel}
-                </div>
-                <div style={{ maxHeight: '75dvh', overflow: 'auto' }}>
-                    {modalBody}
-                </div>
-            </Modal>
+                body={(
+                    <>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: token.colorTextSecondary, marginBottom: 12 }}>
+                            {statsLabel}
+                        </div>
+                        {/* 不自限高：PC 对话框内容区 / 移动端 sheet 内容区各自就是滚动区，
+                            这里再限高会成双滚动（含横向滚动仲裁交给滚动容器） */}
+                        {modalBody}
+                    </>
+                )}
+            />
         </>
     )
 }

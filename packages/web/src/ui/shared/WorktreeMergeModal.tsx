@@ -21,11 +21,12 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Modal, Radio } from 'antd'
+import { Alert, Radio } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { MergeBackFailureReason, MergeBackResult, WorktreeSummary } from '@mobi/shared'
 import { Button } from '@/ui/base/interactive/button/Button'
+import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
 import { useWorktreeActions } from '@/core/data/hooks/mutations/useWorktreeActions'
 import { WorktreeStateTag } from './WorktreeStateTag'
 
@@ -154,32 +155,35 @@ export function WorktreeMergeModal({ open, summary, onClose }: WorktreeMergeModa
     const targetBranch = target?.repoBranch
 
     return (
-        <Modal
+        <AdaptiveDialog
             open={open}
-            onCancel={onClose}
+            onOpenChange={(next) => { if (!next) onClose() }}
             title={t('settings.worktrees.mergeTitle', { name: target?.name ?? '' })}
+            width={520}
             footer={outcome.kind === 'success'
-                ? [
-                    <Button key="close" onClick={onClose}>
+                ? (
+                    <Button onClick={onClose}>
                         {t('common.close')}
                     </Button>
-                ]
-                : [
-                    <Button key="cancel" onClick={onClose} disabled={merging}>
-                        {t('common.cancel')}
-                    </Button>,
-                    <Button
-                        key="merge"
-                        variant="primary"
-                        loading={merging}
-                        disabled={!target || running}
-                        onClick={() => { void submit() }}
-                    >
-                        {t('settings.worktrees.mergeConfirm')}
-                    </Button>
-                ]}
-        >
-            {target && (
+                )
+                : (
+                    <>
+                        <Button variant="secondary" onClick={onClose} disabled={merging}>
+                            {t('common.cancel')}
+                        </Button>
+                        <Button
+                            variant="primary"
+                            loading={merging}
+                            disabled={!target || running}
+                            onClick={() => { void submit() }}
+                        >
+                            {t('settings.worktrees.mergeConfirm')}
+                        </Button>
+                    </>
+                )}
+            body={(
+                <>
+                    {target && (
                 <>
                     <MetaRow>
                         <span>{t('settings.worktrees.columns.branch')}</span>
@@ -279,6 +283,8 @@ export function WorktreeMergeModal({ open, summary, onClose }: WorktreeMergeModa
                     )}
                 />
             )}
-        </Modal>
+                </>
+            )}
+            />
     )
 }

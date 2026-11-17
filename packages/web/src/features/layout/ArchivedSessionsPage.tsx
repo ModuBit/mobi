@@ -16,7 +16,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { App, Listy, Modal, Spin, theme as antTheme } from 'antd'
+import { App, Listy, Spin, theme as antTheme } from 'antd'
 import { Input } from '@/ui/base/interactive/input/Input'
 import { SearchField } from '@/ui/base/interactive/search-field/SearchField'
 import { Archive as ArchiveIcon, ArchiveRestore, Clock, Folder, MoreHorizontal, Trash2 } from 'lucide-react'
@@ -34,6 +34,7 @@ import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { evictSession } from '@/core/lib/sessionEviction'
 import { useSessionDelete } from './useSessionDelete'
+import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
 import { summarizeBatch, batchConfirmExpected, BATCH_DELETE_CONFIRM_TOKEN } from './archivedBatch'
 import type { BatchItemResult } from './archivedBatch'
 import { groupAndAnnotate } from './archivedGrouping'
@@ -391,11 +392,11 @@ export function ArchivedSessionsPage() {
     const queryClient = useQueryClient()
     const { data: workspaces = [] } = useWorkspaces()
     const { unarchive } = useSessionArchive()
-    const confirmDelete = useSessionDelete()
+    const { confirmDelete, confirmNode } = useSessionDelete()
 
     // ── 过滤（搜索占位待接入，先只有项目维度；过滤下推 daemon，切换即从第一页重拉）──
     const [workspaceFilter, setWorkspaceFilter] = useState<string>(WORKSPACE_ALL)
-    // ── 批量删除确认（自管 Modal：antd modal.confirm 的受控 Input 联动 fragile）──
+    // ── 批量删除确认（自管对话框：命令式 confirm 的受控 Input 联动 fragile）──
     const [pendingDelete, setPendingDelete] = useState<PendingBatchDelete | null>(null)
     const [batchRunning, setBatchRunning] = useState(false)
 
@@ -808,13 +809,14 @@ export function ArchivedSessionsPage() {
                 onConfirm={(scope) => { void runBatchDelete(scope) }}
                 onCancel={() => { if (!batchRunning) setPendingDelete(null) }}
             />
+            {confirmNode}
         </PageShell>
     )
 }
 
 /**
  * 批量删除确认 Modal（票 08）：展示范围真实条数 + 输入项目名 / DELETE 才可提交。
- * 自管 Modal 而非 modal.confirm——确认输入要联动 okButton disabled，受控更直接；
+ * 自管对话框而非命令式 confirm——确认输入要联动提交禁用，受控更直接；
  * 确认输入 state 自持于此（destroyOnHidden 卸载即清空），不挂在页面根组件上。
  */
 function BatchDeleteConfirmModal({ pendingDelete, batchRunning, onConfirm, onCancel }: {
@@ -829,40 +831,60 @@ function BatchDeleteConfirmModal({ pendingDelete, batchRunning, onConfirm, onCan
     const confirmExpected = pendingDelete ? batchConfirmExpected(pendingDelete.scope) : ''
     const confirmReady = pendingDelete !== null && confirmInput.trim() === confirmExpected
 
+    const handleCancel = () => {
+        if (batchRunning) return
+        onCancel()
+        setConfirmInput('')
+    }
+
     return (
-        <Modal
-            title={t('archived.batch.deleteConfirmTitle')}
+        <AdaptiveDialog
             open={pendingDelete !== null}
-            onCancel={() => { if (!batchRunning) { onCancel(); setConfirmInput('') } }}
-            okText={t('archived.batch.deleteConfirmOk')}
-            okButtonProps={{ danger: true, disabled: !confirmReady, loading: batchRunning }}
-            cancelText={t('common.cancel')}
-            onOk={() => {
-                if (!pendingDelete) return
-                onConfirm(pendingDelete.scope)
-                // destroyOnHidden 只卸载 Modal 内容，本组件自身不卸载——确认值必须显式清空，
-                // 否则下一次打开弹窗时门槛已被上次输入预先满足
-                setConfirmInput('')
-            }}
-            destroyOnHidden
-        >
-            <p style={{ marginBottom: 12 }}>
-                {pendingDelete && (pendingDelete.scope.kind === 'group'
-                    ? t('archived.batch.deleteConfirmGroupDesc', { name: pendingDelete.scope.groupName, count: pendingDelete.scope.count })
-                    : t('archived.batch.deleteConfirmPageDesc', { count: pendingDelete.scope.count }))}
-            </p>
-            <p style={{ marginBottom: 8, color: token.colorTextSecondary, fontSize: 12 }}>
-                {pendingDelete?.scope.kind === 'group' && pendingDelete.scope.groupName.trim().length > 0
-                    ? t('archived.batch.typeGroupName', { name: pendingDelete.scope.groupName.trim() })
-                    : t('archived.batch.typeDelete', { token: BATCH_DELETE_CONFIRM_TOKEN })}
-            </p>
-            <Input
-                value={confirmInput}
-                onChange={e => setConfirmInput(e.target.value)}
-                placeholder={confirmExpected}
-                disabled={batchRunning}
-                autoFocus
-            />
-        </Modal>
+            onOpenChange={(next) => { if (!next) handleCancel() }}
+            title={t('archived.batch.deleteConfirmTitle')}
+            width={440}
+            body={(
+                <>
+                    <p style={{ marginBottom: 12 }}>
+                        {pendingDelete && (pendingDelete.scope.kind === 'group'
+                            ? t('archived.batch.deleteConfirmGroupDesc', { name: pendingDelete.scope.groupName, count: pendingDelete.scope.count })
+                            : t('archived.batch.deleteConfirmPageDesc', { count: pendingDelete.scope.count }))}
+                    </p>
+                    <p style={{ marginBottom: 8, color: token.colorTextSecondary, fontSize: 12 }}>
+                        {pendingDelete?.scope.kind === 'group' && pendingDelete.scope.groupName.trim().length > 0
+                            ? t('archived.batch.typeGroupName', { name: pendingDelete.scope.groupName.trim() })
+                            : t('archived.batch.typeDelete', { token: BATCH_DELETE_CONFIRM_TOKEN })}
+                    </p>
+                    <Input
+                        value={confirmInput}
+                        onChange={e => setConfirmInput(e.target.value)}
+                        placeholder={confirmExpected}
+                        disabled={batchRunning}
+                        autoFocus
+                    />
+                </>
+            )}
+            footer={(
+                <>
+                    <Button variant="secondary" disabled={batchRunning} onClick={handleCancel}>
+                        {t('common.cancel')}
+                    </Button>
+                    <Button
+                        variant="danger"
+                        disabled={!confirmReady}
+                        loading={batchRunning}
+                        onClick={() => {
+                            if (!pendingDelete) return
+                            onConfirm(pendingDelete.scope)
+                            // 确认值必须显式清空——本组件自身不卸载，否则下一次打开时
+                            // 门槛已被上次输入预先满足
+                            setConfirmInput('')
+                        }}
+                    >
+                        {t('archived.batch.deleteConfirmOk')}
+                    </Button>
+                </>
+            )}
+        />
     )
 }

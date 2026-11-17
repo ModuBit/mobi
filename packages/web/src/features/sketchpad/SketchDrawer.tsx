@@ -272,7 +272,7 @@ export function SketchDrawer({
     // 变成「弹出放弃确认」。取消确认框开着时同样让路（否则 ESC 关掉确认框后又被重新弹出）
     //
     // **必须截住这一记 ESC（stopPropagation）**：取消确认框是**同步**弹出来的（本处理器跑在
-    // document 冒泡相，`requestCancel` 里 modal.confirm 立刻渲染），而 rc 系弹层的全局 ESC
+    // document 冒泡相，`requestCancel` 里确认框立刻渲染），而 rc 系弹层的全局 ESC
     // 监听挂在 **window** 上（`@rc-component/portal/useEscKeyDown`，window 是冒泡路径的最后一站）。
     // 于是确认框挂载时装上监听，紧接着就被**同一记** ESC 关掉——弹出与关闭在同一帧里先后发生，
     // 真机表现是「按 ESC 什么都没发生」（实测：modal root 出现后 60ms 开始退场）。rc-dialog

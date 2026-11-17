@@ -19,7 +19,7 @@ import type { MobiApi } from '@/core/data/api/client'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { isObject, safeStringify } from '@mobi/shared'
-import { Card, Typography, Modal, theme as antTheme } from 'antd'
+import { Card, Typography, theme as antTheme } from 'antd'
 import type { GlobalToken } from 'antd/es/theme/interface'
 import {
     CheckCircleOutlined,
@@ -28,6 +28,7 @@ import {
     LockOutlined,
     RightOutlined
 } from '@ant-design/icons'
+import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
 import { PermissionFooter } from './PermissionFooter'
 import { AskUserQuestionFooter } from './AskUserQuestionFooter'
 import { RequestUserInputFooter } from './RequestUserInputFooter'
@@ -546,14 +547,12 @@ function ToolCardInner(props: ToolCardProps) {
                 </div>
             ) : null}
 
-            <Modal
+            <AdaptiveDialog
                 open={modalOpen}
-                onCancel={() => setModalOpen(false)}
-                footer={null}
+                onOpenChange={(next) => { if (!next) setModalOpen(false) }}
                 title={toolTitle}
                 width={640}
-            >
-                {(() => {
+                body={(() => {
                     const isQuestionToolWithAnswers = isQuestionTool
                         && permission?.answers
                         && Object.keys(permission.answers).length > 0
@@ -562,7 +561,7 @@ function ToolCardInner(props: ToolCardProps) {
                     if (isAgentToolCard) {
                         const agentPrompt = getAgentPrompt(props.block.tool.input)
                         return (
-                            <div style={{ marginTop: 12, display: 'flex', maxHeight: '75dvh', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
+                            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
                                 {agentPrompt ? (
                                     <div>
                                         <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>Prompt</div>
@@ -578,7 +577,7 @@ function ToolCardInner(props: ToolCardProps) {
                     }
 
                     return (
-                        <div style={{ marginTop: 12, display: 'flex', maxHeight: '75dvh', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
+                        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
                             <div>
                                 <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>
                                     {isQuestionToolWithAnswers ? t('chat.tool.questionsAnswers') : t('chat.tool.input')}
@@ -598,7 +597,7 @@ function ToolCardInner(props: ToolCardProps) {
                         </div>
                     )
                 })()}
-            </Modal>
+            />
         </Card>
     )
 }

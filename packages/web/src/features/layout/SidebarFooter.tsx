@@ -35,7 +35,7 @@ import { useMobiApi } from '@/core/data/api/client'
 import { useThemeLocaleToggle } from '@/ui/base/theme/useThemeLocaleToggle'
 import { usePwaInstall } from './usePwaInstall'
 import { usePwaMode } from '@/ui/shared/usePwaMode'
-import { useForceUpdate } from '@/core/pwa/useForceUpdate'
+import { useForceUpdate } from './useForceUpdate'
 
 const { useToken } = antTheme
 
@@ -82,7 +82,7 @@ export function SidebarFooter() {
     const api = useMobiApi()
     const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
     const { canInstall, handleInstall } = usePwaInstall()
-    const restart = useForceUpdate()
+    const { restart, confirmNode } = useForceUpdate()
     const isPwa = usePwaMode()
 
     // 登出：先清服务端 cookie，再清内存 state（cookie 链路下两步缺一不可）
@@ -168,6 +168,7 @@ export function SidebarFooter() {
                 side="top"
                 align="start"
             />
+            {confirmNode}
         </FooterContainer>
     )
 }

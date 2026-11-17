@@ -182,6 +182,9 @@ const UIARC_ALIAS_VARS: ReadonlyArray<readonly [string, string]> = [
     ['--space-3', '12px'],
     ['--space-4', '16px'],
     ['--space-5', '20px'],
+    // dialog（2026-11-17 迁移）需要 24/32 两档：对齐上游 spacing 尺度
+    ['--space-6', '24px'],
+    ['--space-8', '32px'],
     ['--leading-body', 'normal'],
     ['--tracking-body', 'normal'],
     // 控件高三档贴本站现状：sm 沿 copy-button 既有 28px、md 沿 select/multi-select 验收过的 36px

@@ -93,17 +93,17 @@ describe('OutputStyleSwitch', () => {
 
         await selectOption(/Explanatory/)
 
-        // 确认框：标题 + 带选中项 label 的说明（/clear 语义）
+        // 确认框（自适应壳；本测试环境 matchMedia 不匹配 → 移动端 BottomSheet）：
+        // 标题 + 带选中项 label 的说明（/clear 语义）
         await waitFor(() => {
-            const title = document.querySelector('.ant-modal-title')
+            const title = document.querySelector('[role="dialog"] h2')
             expect(title?.textContent).toBe('composer.outputStyleSwitchTitle')
         })
-        expect(document.querySelector('.ant-modal-body')?.textContent)
-            .toContain('composer.outputStyleSwitchConfirm:Explanatory')
+        const dialog = document.querySelector('[role="dialog"]') as HTMLElement
+        expect(dialog.textContent).toContain('composer.outputStyleSwitchConfirm:Explanatory')
 
-        const modals = document.querySelectorAll('.ant-modal')
-        const btn = modals[modals.length - 1].querySelector('.ant-modal-confirm-btns .ant-btn-primary')
-        fireEvent.click(btn!)
+        const buttons = dialog.querySelectorAll('button')
+        fireEvent.click(buttons[buttons.length - 1])
         expect(mutateSpy).toHaveBeenCalledWith({ sessionId: 's1', style: 'Explanatory' })
     })
 
@@ -123,13 +123,12 @@ describe('OutputStyleSwitch', () => {
         renderSwitch()
         await selectOption(/Explanatory/)
         await waitFor(() => {
-            expect(document.querySelector('.ant-modal-title')?.textContent).toBe('composer.outputStyleSwitchTitle')
+            expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe('composer.outputStyleSwitchTitle')
         })
 
-        const modals = document.querySelectorAll('.ant-modal')
-        const btn = modals[modals.length - 1]
-            .querySelector('.ant-modal-confirm-btns .ant-btn:not(.ant-btn-primary)')
-        fireEvent.click(btn!)
+        // 首钮 = 取消（移动端 sheet footer 序：取消 → 确认）
+        const dialog = document.querySelector('[role="dialog"]') as HTMLElement
+        fireEvent.click(dialog.querySelectorAll('button')[0])
         await waitFor(() => {
             expect(mutateSpy).not.toHaveBeenCalled()
         })
@@ -158,7 +157,7 @@ describe('OutputStyleSwitch', () => {
         // 自定义项可被选中并走确认流程（原名直出，无 i18n label）
         fireEvent.click(screen.getByRole('option', { name: /my-style/ }))
         await waitFor(() => {
-            expect(document.querySelector('.ant-modal-body')?.textContent)
+            expect(document.querySelector('[role="dialog"]')?.textContent)
                 .toContain('composer.outputStyleSwitchConfirm:my-style')
         })
     })

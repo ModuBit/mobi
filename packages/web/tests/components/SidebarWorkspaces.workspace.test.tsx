@@ -233,15 +233,13 @@ describe('SidebarWorkspaces 工作区实体化', () => {
         const deleteItem = await screen.findByText('workspace.delete')
         fireEvent.click(deleteItem)
 
-        // 二次确认文案（t identity 返回 key）+ 确认。
-        // antd ConfirmDialog 同一弹窗内会渲染 a11y 用 .ant-modal-title 与可见的 .ant-modal-confirm-title
-        // 两份标题文本，故直接用可见标题选择器断言
+        // 二次确认文案（t identity 返回 key）+ 确认。确认框是自管 uiarc Dialog（role=dialog）
         const confirmDialog = await waitFor(() => {
-            const el = document.querySelector('.ant-modal-confirm') as HTMLElement | null
+            const el = document.querySelector('[role="dialog"]') as HTMLElement | null
             expect(el).toBeTruthy()
             return el as HTMLElement
         })
-        expect(confirmDialog.querySelector('.ant-modal-confirm-title')?.textContent).toBe('workspace.deleteConfirmTitle')
+        expect(within(confirmDialog).getByText('workspace.deleteConfirmTitle')).toBeInTheDocument()
         fireEvent.click(within(confirmDialog).getByRole('button', { name: 'common.confirm' }))
 
         await waitFor(() => expect(workspacesRemove).toHaveBeenCalledWith('p1'))
@@ -278,7 +276,7 @@ describe('SidebarWorkspaces 工作区实体化', () => {
         // 弹窗打开：全量工作区可选（单机无机器过滤；查询限定在弹窗内，排除侧边栏同名分组；
         // Modal.confirm 静态弹窗跨测试残留，须从 assignTitle 反查所属弹窗）
         await waitFor(() => expect(screen.getByText('workspace.assignTitle')).toBeInTheDocument())
-        const modal = screen.getByText('workspace.assignTitle').closest('.ant-modal') as HTMLElement
+        const modal = screen.getByText('workspace.assignTitle').closest('[role="dialog"]') as HTMLElement
         expect(modal).toBeTruthy()
         expect(within(modal).getByText('Demo')).toBeInTheDocument()
 
@@ -310,9 +308,9 @@ describe('SidebarWorkspaces 工作区实体化', () => {
         fireEvent.pointerDown(rowMore, { button: 0 })
         fireEvent.click(await screen.findByText('session.actions.delete'))
 
-        // 二次确认
+        // 二次确认（自管 uiarc Dialog）
         const confirmDialog = await waitFor(() => {
-            const el = document.querySelector('.ant-modal-confirm') as HTMLElement | null
+            const el = document.querySelector('[role="dialog"]') as HTMLElement | null
             expect(el).toBeTruthy()
             return el as HTMLElement
         })
@@ -339,7 +337,7 @@ describe('SidebarWorkspaces 工作区实体化', () => {
         fireEvent.pointerDown(rowMore, { button: 0 })
         fireEvent.click(await screen.findByText('session.actions.delete'))
         const confirmDialog = await waitFor(() => {
-            const el = document.querySelector('.ant-modal-confirm') as HTMLElement | null
+            const el = document.querySelector('[role="dialog"]') as HTMLElement | null
             expect(el).toBeTruthy()
             return el as HTMLElement
         })

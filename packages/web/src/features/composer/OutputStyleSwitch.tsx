@@ -22,11 +22,12 @@
  * runtimeState.outputStyle keep-alive 回流刷新，≤2s）。
  */
 
-import { useMemo } from 'react'
-import { App } from 'antd'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { isBuiltinOutputStyle } from '@mobi/shared'
 import { useSwitchOutputStyle } from '@/core/data/hooks/mutations/useSwitchOutputStyle'
+import { Button } from '@/ui/base/interactive/button/Button'
+import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
 import { buildOutputStyleSelectOptions, OutputStyleSelect } from './outputStyleOption'
 
 export interface OutputStyleSwitchProps {
@@ -52,7 +53,6 @@ export function OutputStyleSwitch({
     disabled = false,
 }: OutputStyleSwitchProps) {
     const { t } = useTranslation()
-    const { modal } = App.useApp()
     const outputStyleMutation = useSwitchOutputStyle()
     // 基础内置五项 + 追加 init 上报的非内置名（内置名已在基础列表，天然去重）
     const outputStyleOptions = useMemo(
@@ -68,27 +68,55 @@ export function OutputStyleSwitch({
     const currentOutputStyle = outputStyle ?? 'default'
     const switchDisabled = running || clearInProgress || disabled || outputStyleMutation.isPending
 
+    // 确认框走自管自适应壳（PC 居中 Dialog / 移动端底部 sheet），确认才真正切换
+    const [pendingStyle, setPendingStyle] = useState<{ value: string; label: string } | null>(null)
     const handleOutputStyleChange = (style: unknown) => {
         const value = String(style)
         const label = outputStyleOptions.find((o) => o.value === value)?.label ?? value
-        modal.confirm({
-            title: t('composer.outputStyleSwitchTitle'),
-            content: t('composer.outputStyleSwitchConfirm', { label }),
-            onOk: () => outputStyleMutation.mutate({ sessionId, style: value }),
-        })
+        setPendingStyle({ value, label })
     }
 
     // title 直传壳层（CompactHoverSelect 的 wrapper span）：这里不再包 inline 级 span——
     // inline 盒按基线参与行盒排版，descender 空隙会把行撑高、pill 相对同行控件偏移
     return (
-        <OutputStyleSelect
-            value={currentOutputStyle}
-            options={outputStyleOptions}
-            disabled={switchDisabled}
-            loading={outputStyleMutation.isPending}
-            onChange={handleOutputStyleChange}
-            iconOnly
-            title={running ? t('composer.outputStyleRunningDisabled') : t('composer.outputStyle')}
-        />
+        <>
+            <OutputStyleSelect
+                value={currentOutputStyle}
+                options={outputStyleOptions}
+                disabled={switchDisabled}
+                loading={outputStyleMutation.isPending}
+                onChange={handleOutputStyleChange}
+                iconOnly
+                title={running ? t('composer.outputStyleRunningDisabled') : t('composer.outputStyle')}
+            />
+            <AdaptiveDialog
+                open={pendingStyle !== null}
+                onOpenChange={(next) => { if (!next) setPendingStyle(null) }}
+                title={t('composer.outputStyleSwitchTitle')}
+                width={400}
+                body={(
+                    <p style={{ margin: 0 }}>
+                        {t('composer.outputStyleSwitchConfirm', { label: pendingStyle?.label ?? '' })}
+                    </p>
+                )}
+                footer={(
+                    <>
+                        <Button variant="secondary" onClick={() => setPendingStyle(null)}>
+                            {t('common.cancel')}
+                        </Button>
+                        <Button
+                            variant="primary"
+                            onClick={() => {
+                                const next = pendingStyle
+                                setPendingStyle(null)
+                                if (next) outputStyleMutation.mutate({ sessionId, style: next.value })
+                            }}
+                        >
+                            {t('common.confirm')}
+                        </Button>
+                    </>
+                )}
+            />
+        </>
     )
 }

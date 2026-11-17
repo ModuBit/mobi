@@ -150,6 +150,11 @@ module.exports = tseslint.config(
             importNames: ['Tabs'],
             message: 'antd Tabs 已迁自管件（@/ui/base/interactive/tabStrip 的 TabStrip 族，scope-tabbed 骨架 ScopeTabbedSection 已迁移），禁止新增',
           },
+          {
+            name: 'antd',
+            importNames: ['Modal'],
+            message: 'antd Modal 已迁自管自适应壳（@/ui/base/interactive/adaptiveDialog/AdaptiveDialog：PC 用 uiarc Dialog、移动端用 BottomSheet），禁止新增；命令式确认改为受控渲染该壳',
+          },
         ],
       }],
     },

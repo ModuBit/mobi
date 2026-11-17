@@ -27,7 +27,6 @@
 
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import styled from '@emotion/styled'
-import { App } from 'antd'
 import { useTranslation } from 'react-i18next'
 // 0.18 起 CSS 不再随 JS 注入，必须显式引入（漏掉则工具条图标无样式巨型裸奔）
 // 本组件（连带 excalidraw 重依赖）由入口处 React.lazy 拆进画板异步 chunk，不进主 bundle
@@ -37,7 +36,8 @@ import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import { exportSketch, loadSketch } from '@/domain/sketch/sketchFile'
 import { prepareSceneUpdate } from '@/domain/sketch/sceneAssembly'
 import { SKETCH_CANVAS_SETTLE_MS } from '@/domain/sketch/sketchLayout'
-import { nextOverlayLayer } from '@/ui/base/layout/overlayLayer'
+import { Button } from '@/ui/base/interactive/button/Button'
+import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
 import { attachPressureRewrite, createPressureFixer } from './pressureFix'
 import { useIsDark } from '@/core/data/hooks/useIsDark'
 
@@ -183,9 +183,6 @@ const Root = styled.div`
 export function SketchCanvas({ initialSketch = null, simulatePressure = true, onCancel, ref }: SketchCanvasProps) {
     const { t } = useTranslation()
     const isDark = useIsDark()
-    // modal 实例经 AntApp 上下文获取：静态 Modal.confirm 渲染在独立 root，
-    // 不消费 ConfigProvider 主题（dark 下白底蓝按钮，与暖调设计系统脱节）
-    const { modal } = App.useApp()
     const [editor, setEditorState] = useState<ExcalidrawImperativeAPI | null>(null)
     // 取消确认框在屏上：宿主（画板载体）据此让开自己的 ESC 通道（见 SketchCanvasHandle）
     const [confirming, setConfirming] = useState(false)
@@ -209,26 +206,10 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
             return
         }
         // 放弃修改是危险操作：确认按钮走 danger 语义（土地砖红，非 primary 灰）。
-        // zIndex 从浮层层号分配器现领（`useOpenOverlayLayer` 那套）——写死值在移动端
-        // 画板领号（overlayLayer，1080 起）之后会被自己的载体压在下面，点不到
+        // 确认框是自管自适应壳（声明式渲染在下面），层号由壳内的 BottomSheet 分配器现领，
+        // 移动端画板领号（overlayLayer，1080 起）之后仍压在载体之上
         setConfirming(true)
-        modal.confirm({
-            zIndex: nextOverlayLayer(),
-            title: t('sketch.discardConfirm'),
-            okText: t('common.confirm'),
-            cancelText: t('common.cancel'),
-            okButtonProps: { danger: true },
-            onOk: () => {
-                setConfirming(false)
-                onCancel()
-            },
-            onCancel: () => setConfirming(false),
-            // 兜底：无论确认框因哪条路走掉（确认 / 取消 / ESC / 遮罩 / 外部销毁），
-            // 都要让「在屏」标记落到真实状态——漏掉一次会让 isConfirmOpen 永远为真，
-            // 取消通道从此被判据挡住（取消是幂等的，反过来就再也弹不出来）
-            afterClose: () => setConfirming(false),
-        })
-    }, [editor, confirming, modal, onCancel, t])
+    }, [editor, confirming, onCancel])
 
     // 载体 header 的取消/完成出口与画布内语义共用同一实现（React 19 ref-as-prop 手柄）
     useImperativeHandle(ref, () => ({
@@ -326,6 +307,30 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
 
     return (
         <Root>
+            {confirming && (
+                <AdaptiveDialog
+                    open
+                    onOpenChange={(next) => { if (!next) setConfirming(false) }}
+                    title={t('sketch.discardConfirm')}
+                    width={380}
+                    footer={(
+                        <>
+                            <Button variant="secondary" onClick={() => setConfirming(false)}>
+                                {t('common.cancel')}
+                            </Button>
+                            <Button
+                                variant="danger"
+                                onClick={() => {
+                                    setConfirming(false)
+                                    onCancel()
+                                }}
+                            >
+                                {t('common.confirm')}
+                            </Button>
+                        </>
+                    )}
+                />
+            )}
             <Excalidraw
                 excalidrawAPI={setEditorState}
                 onChange={handleChange}

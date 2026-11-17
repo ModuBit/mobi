@@ -21,7 +21,7 @@
  * 数据视角由 daemon 承载（global=个人+synced+插件携带；工作区 tab=该项目 skill）。
  */
 import { useMemo, useRef, useState } from 'react'
-import { theme as antTheme, Modal, Radio } from 'antd'
+import { theme as antTheme, Radio } from 'antd'
 import { FilePlus2, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
@@ -41,6 +41,7 @@ import { BundledSkillRow } from '@/features/settings/skills/BundledSkillRow'
 import { SkillDetailSheet } from '@/features/settings/skills/SkillDetailSheet'
 import { useSkillsActions } from '@/features/settings/skills/useSkillsActions'
 import { Skeleton } from '@/ui/shadcn/skeleton/skeleton'
+import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
 import { HoverGlideLayer } from '@/ui/base/motion/GlideLayer'
 
 const { useToken } = antTheme
@@ -384,116 +385,131 @@ export function SkillsSection() {
                 )}
                 </ListArea>
             </ScopeTabbedSection>
-            <Modal
-                title={t('settings.skills.createTitle')}
+            <AdaptiveDialog
                 open={createOpen}
-                onCancel={() => setCreateOpen(false)}
-                onOk={() => { void submitCreate() }}
-                okText={t('settings.skills.createSubmit')}
-                cancelText={t('common.cancel')}
-                confirmLoading={actions.creating}
-                destroyOnHidden
-            >
-                <FormBody $token={token}>
-                    <span>{t('settings.skills.createScopeLabel')}</span>
-                    <Radio.Group
-                        value={createScope}
-                        onChange={e => setCreateScope(e.target.value as string)}
-                        options={promptOptions}
-                    />
-                    <Hint $token={token}>{t('settings.skills.createHint')}</Hint>
-                </FormBody>
-            </Modal>
-            <Modal
-                title={t('settings.skills.installTitle')}
+                onOpenChange={next => { if (!next) setCreateOpen(false) }}
+                title={t('settings.skills.createTitle')}
+                body={(
+                    <FormBody $token={token}>
+                        <span>{t('settings.skills.createScopeLabel')}</span>
+                        <Radio.Group
+                            value={createScope}
+                            onChange={e => setCreateScope(e.target.value as string)}
+                            options={promptOptions}
+                        />
+                        <Hint $token={token}>{t('settings.skills.createHint')}</Hint>
+                    </FormBody>
+                )}
+                footer={(
+                    <>
+                        <Button variant="secondary" onClick={() => setCreateOpen(false)}>
+                            {t('common.cancel')}
+                        </Button>
+                        <Button variant="primary" loading={actions.creating} onClick={() => { void submitCreate() }}>
+                            {t('settings.skills.createSubmit')}
+                        </Button>
+                    </>
+                )}
+            />
+            <AdaptiveDialog
                 open={installOpen}
-                onCancel={() => setInstallOpen(false)}
-                onOk={() => { void submitInstall() }}
-                okText={availableSkills === null ? t('settings.skills.installFetch') : t('settings.skills.installSubmit')}
-                cancelText={t('common.cancel')}
-                okButtonProps={{
-                    disabled: availableSkills === null
-                        ? !installSource.trim()
-                        : selectedSkills.length === 0,
-                }}
-                confirmLoading={actions.installing || actions.resolving}
-                destroyOnHidden
-            >
-                <FormBody $token={token}>
-                    {/* 先搜再装：关键词直搜 skills.sh 生态（= CLI find），点选命中项带入来源 */}
-                    <label htmlFor="skills-install-find">{t('settings.skills.findLabel')}</label>
-                    <Input
-                        id="skills-install-find"
-                        value={findQuery}
-                        onChange={e => setFindQuery(e.target.value)}
-                        placeholder={t('settings.skills.findPlaceholder')}
-                        onPressEnter={() => { void runFind() }}
-                    />
-                    {actions.finding && <Hint $token={token}>{t('common.loading')}</Hint>}
-                    {!actions.finding && findResults !== null && (
-                        findResults.length > 0 ? (
-                            <FindResults $token={token}>
-                                {findResults.map(hit => (
-                                    <button
-                                        key={`${hit.source}:${hit.skillId}`}
-                                        type="button"
-                                        onClick={() => { void pickFound(hit) }}
-                                    >
-                                        <span className="find-name">{hit.name}</span>
-                                        <span className="find-meta">
-                                            {hit.source} · {t('settings.skills.findInstalls', { count: hit.installs })}
-                                        </span>
-                                    </button>
-                                ))}
-                            </FindResults>
-                        ) : (
-                            <Hint $token={token}>{t('settings.skills.findEmpty')}</Hint>
-                        )
-                    )}
-                    <Hint $token={token}>{t('settings.skills.findHint')}</Hint>
-                    <label htmlFor="skills-install-source">{t('settings.skills.installSourceLabel')}</label>
-                    <Input
-                        id="skills-install-source"
-                        value={installSource}
-                        onChange={e => { setInstallSource(e.target.value); setAvailableSkills(null) }}
-                        placeholder={t('settings.skills.installSourcePlaceholder')}
-                        onPressEnter={() => { void submitInstall() }}
-                    />
-                    <span>{t('settings.skills.installScopeLabel')}</span>
-                    <Radio.Group
-                        value={installScope}
-                        onChange={e => { setInstallScope(e.target.value as string); setAvailableSkills(null) }}
-                        options={promptOptions}
-                    />
-                    {/* 克隆仓库可能耗时数十秒：明确进度提示，避免像卡死 */}
-                    {actions.resolving && <Hint $token={token}>{t('settings.skills.installFetching')}</Hint>}
-                    {availableSkills !== null && (
-                        availableSkills.every(s => s.installed) ? (
-                            <Hint $token={token}>{t('settings.skills.installAllInstalled')}</Hint>
-                        ) : (
-                            <SkillOptions $token={token}>
-                                {availableSkills.map(s => (
-                                    <div key={s.name} className="skill-option">
-                                        <Checkbox
-                                            checked={s.installed || selectedSkills.includes(s.name)}
-                                            disabled={s.installed}
-                                            onCheckedChange={next => {
-                                                setSelectedSkills(prev =>
-                                                    next ? [...prev, s.name] : prev.filter(n => n !== s.name))
-                                            }}
-                                            label={s.name}
-                                            description={s.description}
-                                        />
-                                        {s.conflict && (
-                                            <span className="skill-conflict">{t('settings.skills.installConflict')}</span>
-                                        )}
-                                    </div>
-                                ))}
-                            </SkillOptions>
-                        )
-                    )}
-                </FormBody>
-            </Modal>
+                onOpenChange={next => { if (!next) setInstallOpen(false) }}
+                title={t('settings.skills.installTitle')}
+                width={560}
+                footer={(
+                    <>
+                        <Button variant="secondary" onClick={() => setInstallOpen(false)}>
+                            {t('common.cancel')}
+                        </Button>
+                        <Button
+                            variant="primary"
+                            loading={actions.installing || actions.resolving}
+                            disabled={availableSkills === null
+                                ? !installSource.trim()
+                                : selectedSkills.length === 0}
+                            onClick={() => { void submitInstall() }}
+                        >
+                            {availableSkills === null ? t('settings.skills.installFetch') : t('settings.skills.installSubmit')}
+                        </Button>
+                    </>
+                )}
+                body={(
+                    <FormBody $token={token}>
+                        {/* 先搜再装：关键词直搜 skills.sh 生态（= CLI find），点选命中项带入来源 */}
+                        <label htmlFor="skills-install-find">{t('settings.skills.findLabel')}</label>
+                        <Input
+                            id="skills-install-find"
+                            value={findQuery}
+                            onChange={e => setFindQuery(e.target.value)}
+                            placeholder={t('settings.skills.findPlaceholder')}
+                            onPressEnter={() => { void runFind() }}
+                        />
+                        {actions.finding && <Hint $token={token}>{t('common.loading')}</Hint>}
+                        {!actions.finding && findResults !== null && (
+                            findResults.length > 0 ? (
+                                <FindResults $token={token}>
+                                    {findResults.map(hit => (
+                                        <button
+                                            key={`${hit.source}:${hit.skillId}`}
+                                            type="button"
+                                            onClick={() => { void pickFound(hit) }}
+                                        >
+                                            <span className="find-name">{hit.name}</span>
+                                            <span className="find-meta">
+                                                {hit.source} · {t('settings.skills.findInstalls', { count: hit.installs })}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </FindResults>
+                            ) : (
+                                <Hint $token={token}>{t('settings.skills.findEmpty')}</Hint>
+                            )
+                        )}
+                        <Hint $token={token}>{t('settings.skills.findHint')}</Hint>
+                        <label htmlFor="skills-install-source">{t('settings.skills.installSourceLabel')}</label>
+                        <Input
+                            id="skills-install-source"
+                            value={installSource}
+                            onChange={e => { setInstallSource(e.target.value); setAvailableSkills(null) }}
+                            placeholder={t('settings.skills.installSourcePlaceholder')}
+                            onPressEnter={() => { void submitInstall() }}
+                        />
+                        <span>{t('settings.skills.installScopeLabel')}</span>
+                        <Radio.Group
+                            value={installScope}
+                            onChange={e => { setInstallScope(e.target.value as string); setAvailableSkills(null) }}
+                            options={promptOptions}
+                        />
+                        {/* 克隆仓库可能耗时数十秒：明确进度提示，避免像卡死 */}
+                        {actions.resolving && <Hint $token={token}>{t('settings.skills.installFetching')}</Hint>}
+                        {availableSkills !== null && (
+                            availableSkills.every(s => s.installed) ? (
+                                <Hint $token={token}>{t('settings.skills.installAllInstalled')}</Hint>
+                            ) : (
+                                <SkillOptions $token={token}>
+                                    {availableSkills.map(s => (
+                                        <div key={s.name} className="skill-option">
+                                            <Checkbox
+                                                checked={s.installed || selectedSkills.includes(s.name)}
+                                                disabled={s.installed}
+                                                onCheckedChange={next => {
+                                                    setSelectedSkills(prev =>
+                                                        next ? [...prev, s.name] : prev.filter(n => n !== s.name))
+                                                }}
+                                                label={s.name}
+                                                description={s.description}
+                                            />
+                                            {s.conflict && (
+                                                <span className="skill-conflict">{t('settings.skills.installConflict')}</span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </SkillOptions>
+                            )
+                        )}
+                    </FormBody>
+                )}
+            />
             {/* 详情 sheet：动作按行能力字段降级（overrideable/tracked/deletable），卸载走 ConfirmMorph 就地确认 */}
             <SkillDetailSheet
                 skill={detailSkill}

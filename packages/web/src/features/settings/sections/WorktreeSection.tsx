@@ -29,6 +29,7 @@ import { FolderTree, GitBranch, RefreshCw } from 'lucide-react'
 import styled from '@emotion/styled'
 import type { WorktreeSummary } from '@mobi/shared'
 import { Button } from '@/ui/base/interactive/button/Button'
+import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
 import { WorktreeMergeModal } from '@/ui/shared/WorktreeMergeModal'
 import { WorktreeStateTag } from '@/ui/shared/WorktreeStateTag'
 import { useWorktrees } from '@/core/data/hooks/queries/useWorktrees'
@@ -101,34 +102,31 @@ export function WorktreeSection() {
     const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
-    const { modal, message: messageApi } = App.useApp()
+    const { message: messageApi } = App.useApp()
     const { data: worktrees, isLoading, isError, refetch, isFetching } = useWorktrees()
     const { discard, discarding } = useWorktreeActions()
     const [mergeTarget, setMergeTarget] = useState<WorktreeSummary | null>(null)
+    const [discardTarget, setDiscardTarget] = useState<WorktreeSummary | null>(null)
 
     const items = worktrees ?? []
 
-    const requestDiscard = (item: WorktreeSummary) => {
-        modal.confirm({
-            title: t('settings.worktrees.discardConfirmTitle', { name: item.name }),
-            content: t('settings.worktrees.discardConfirmContent', { count: item.dirtyFileCount }),
-            okText: t('settings.worktrees.discard'),
-            okButtonProps: { danger: true },
-            cancelText: t('common.cancel'),
-            onOk: async () => {
-                try {
-                    const result = await discard(item.worktreePath)
-                    if (result.ok) {
-                        messageApi.success(t('settings.worktrees.discarded'))
-                        return
-                    }
-                    messageApi.error(t('settings.worktrees.discardFailed'))
-                } catch {
-                    // 传输层失败（daemon 不可达等）：给出失败反馈，不让确认框挂着未处理的 rejection
-                    messageApi.error(t('settings.worktrees.discardFailed'))
-                }
+    // 丢弃 worktree 的确认框走自管自适应壳（PC 居中 Dialog / 移动端底部 sheet）
+    const requestDiscard = (item: WorktreeSummary) => setDiscardTarget(item)
+    const handleDiscardConfirm = async () => {
+        if (!discardTarget) return
+        try {
+            const result = await discard(discardTarget.worktreePath)
+            if (result.ok) {
+                messageApi.success(t('settings.worktrees.discarded'))
+            } else {
+                messageApi.error(t('settings.worktrees.discardFailed'))
             }
-        })
+        } catch {
+            // 传输层失败（daemon 不可达等）：给出失败反馈，不让确认流程挂着未处理的 rejection
+            messageApi.error(t('settings.worktrees.discardFailed'))
+        } finally {
+            setDiscardTarget(null)
+        }
     }
 
     return (
@@ -239,6 +237,28 @@ export function WorktreeSection() {
                 open={mergeTarget !== null}
                 summary={mergeTarget}
                 onClose={() => setMergeTarget(null)}
+            />
+
+            <AdaptiveDialog
+                open={discardTarget !== null}
+                onOpenChange={(next) => { if (!next && !discarding) setDiscardTarget(null) }}
+                title={t('settings.worktrees.discardConfirmTitle', { name: discardTarget?.name ?? '' })}
+                width={440}
+                body={(
+                    <p style={{ margin: 0 }}>
+                        {t('settings.worktrees.discardConfirmContent', { count: discardTarget?.dirtyFileCount ?? 0 })}
+                    </p>
+                )}
+                footer={(
+                    <>
+                        <Button variant="secondary" disabled={discarding} onClick={() => setDiscardTarget(null)}>
+                            {t('common.cancel')}
+                        </Button>
+                        <Button variant="danger" loading={discarding} onClick={() => { void handleDiscardConfirm() }}>
+                            {t('settings.worktrees.discard')}
+                        </Button>
+                    </>
+                )}
             />
         </Wrap>
     )

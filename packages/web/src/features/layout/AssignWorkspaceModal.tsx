@@ -15,11 +15,11 @@
  */
 
 import { useState, useEffect } from 'react'
-import { App, Modal, Radio, Typography } from 'antd'
+import { App, Radio, Typography } from 'antd'
 import { Button } from '@/ui/base/interactive/button/Button'
+import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
 import { useTranslation } from 'react-i18next'
 import { FolderOutlined } from '@ant-design/icons'
-import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useAssignSessionWorkspace } from '@/core/data/hooks/mutations/useWorkspaceMutations'
@@ -63,85 +63,79 @@ export function AssignWorkspaceModal({ session, open, onClose }: AssignWorkspace
         }
     }
 
-    // mobile：底部 sheet 大点按行，点行即提交。
-    // 手势返回哨兵由 BottomSheet 内置（组件不变量），无需额外接线。
-    // 列表型面板关掉 peek（peek={false}）：打开即到内容高，被裁掉的行不是「还有更多」
-    if (isMobile) {
-        return (
-            <BottomSheet open={open} onClose={onClose} title={t('workspace.assignTitle')} peek={false}>
-                {workspaces.length === 0 ? (
-                    <Text type="secondary" style={{ padding: '16px 20px', display: 'block' }}>
-                        {t('workspace.assignEmpty')}
+    // 端别自适应（PC 居中 Dialog / 移动端底部 sheet）由 AdaptiveDialog 收口：
+    // - PC：Radio 单选 + 取消/确认双钮
+    // - mobile：大点按行、点行即提交（无独立确定按钮）——列表型面板一眼看全，
+    //   打开即到内容高；手势返回哨兵由壳内置
+    const mobileRows = workspaces.length === 0 ? (
+        <Text type="secondary">{t('workspace.assignEmpty')}</Text>
+    ) : (
+        <div style={{ margin: '4px 0' }}>
+            {workspaces.map(workspace => (
+                <Button
+                    key={workspace.id}
+                    variant="ghost"
+                    disabled={assignMutation.isPending}
+                    block
+                    style={{ height: 48, justifyContent: 'flex-start', paddingInline: 0 }}
+                    onClick={() => handlePick(workspace.id)}
+                >
+                    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                        <span>
+                            <FolderOutlined style={{ marginRight: 6 }} />
+                            {workspace.name}
+                        </span>
+                        <Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
+                            {workspace.folders.find(f => f.primary)?.path}
+                        </Text>
+                    </span>
+                </Button>
+            ))}
+        </div>
+    )
+
+    const desktopBody = workspaces.length === 0 ? (
+        <Text type="secondary">{t('workspace.assignEmpty')}</Text>
+    ) : (
+        <Radio.Group
+            value={selected ?? undefined}
+            onChange={(e) => setSelected(e.target.value)}
+            style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '8px 0' }}
+        >
+            {workspaces.map(workspace => (
+                <Radio key={workspace.id} value={workspace.id}>
+                    <FolderOutlined style={{ marginRight: 6 }} />
+                    <span>{workspace.name}</span>
+                    <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                        {workspace.folders.find(f => f.primary)?.path}
                     </Text>
-                ) : (
-                    <div style={{ padding: '8px 0' }}>
-                        {workspaces.map(workspace => (
-                            <Button
-                                key={workspace.id}
-                                variant="ghost"
-                                disabled={assignMutation.isPending}
-                                block
-                                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
-                                onClick={() => handlePick(workspace.id)}
-                            >
-                                <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
-                                    <span>
-                                        <FolderOutlined style={{ marginRight: 6 }} />
-                                        {workspace.name}
-                                    </span>
-                                    <Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
-                                        {workspace.folders.find(f => f.primary)?.path}
-                                    </Text>
-                                </span>
-                            </Button>
-                        ))}
-                    </div>
-                )}
-            </BottomSheet>
-        )
-    }
+                </Radio>
+            ))}
+        </Radio.Group>
+    )
 
     return (
-        <Modal
-            title={t('workspace.assignTitle')}
+        <AdaptiveDialog
             open={open}
-            onCancel={onClose}
-            // okButtonProps/confirmLoading/okText/cancelText 自定义化：footer 双钮（WorkspaceFormModal 先例）
-            footer={[
-                <Button key="cancel" variant="secondary" onClick={onClose}>
-                    {t('common.cancel')}
-                </Button>,
-                <Button
-                    key="ok"
-                    variant="primary"
-                    disabled={!selected}
-                    loading={assignMutation.isPending}
-                    onClick={() => selected && handlePick(selected)}
-                >
-                    {t('common.confirm')}
-                </Button>,
-            ]}
-            destroyOnHidden
-        >
-            {workspaces.length === 0 ? (
-                <Text type="secondary">{t('workspace.assignEmpty')}</Text>
-            ) : (
-                <Radio.Group
-                    value={selected ?? undefined}
-                    onChange={(e) => setSelected(e.target.value)}
-                    style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '8px 0' }}
-                >
-                    {workspaces.map(workspace => (
-                        <Radio key={workspace.id} value={workspace.id}>
-                            <FolderOutlined style={{ marginRight: 6 }} />
-                            <span>{workspace.name}</span>
-                            <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                                {workspace.folders.find(f => f.primary)?.path}
-                            </Text>
-                        </Radio>
-                    ))}
-                </Radio.Group>
+            onOpenChange={(next) => { if (!next) onClose() }}
+            title={t('workspace.assignTitle')}
+            width={520}
+            body={isMobile ? mobileRows : desktopBody}
+            footer={isMobile ? undefined : (
+                <>
+                    <Button variant="secondary" onClick={onClose}>
+                        {t('common.cancel')}
+                    </Button>
+                    <Button
+                        variant="primary"
+                        disabled={!selected}
+                        loading={assignMutation.isPending}
+                        onClick={() => selected && handlePick(selected)}
+                    >
+                        {t('common.confirm')}
+                    </Button>
+                </>
             )}
-        </Modal>
+        />
     )
 }

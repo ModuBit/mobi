@@ -15,14 +15,14 @@
  */
 
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
-import { Alert, App, Form, Modal, Radio } from 'antd'
+import { Alert, App, Form, Radio } from 'antd'
 import { Input } from '@/ui/base/interactive/input/Input'
 import { Button } from '@/ui/base/interactive/button/Button'
+import { AdaptiveDialog } from '@/ui/base/interactive/adaptiveDialog/AdaptiveDialog'
 import { Combobox } from '@/ui/base/interactive/combobox/Combobox'
 import { useTranslation } from 'react-i18next'
 import { FolderOutlined, HomeOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
 import { Folder } from 'lucide-react'
-import { BottomSheet } from '@/ui/base/interactive/bottom-sheet/BottomSheet'
 import { validateWorkspaceFolders, type WorkspaceFolder, type WorkspaceFoldersError } from '@mobi/shared'
 import { useDaemonStatus } from '@/core/data/hooks/queries/useDaemonStatus'
 import { useCreateWorkspace, useUpdateWorkspace } from '@/core/data/hooks/mutations/useWorkspaceMutations'
@@ -143,7 +143,6 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
     const { t } = useTranslation()
     const { message: messageApi } = App.useApp()
     const isEdit = !!workspace
-    const isMobile = useIsMobile()
 
     const { status: daemonStatus } = useDaemonStatus()
     const hostHomeDir = daemonStatus?.host?.homeDir
@@ -299,54 +298,25 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
     const title = isEdit ? t('workspace.edit') : t('workspace.create')
     const okText = isEdit ? t('common.save') : t('workspace.create')
 
-    // 移动端：底部 sheet（统一行为：header 下拉手势关闭 + 手势返回按层级关闭——
-    // 哨兵栈保证多层覆盖物后入先出；height:auto / maxHeight:85dvh 由 BottomSheet 内置），
-    // 操作按钮随表单流入 body 底部（无 footer 栏），safe-area 下沉到按钮容器。
-    // 提交中不许关：onClose 传 noop = 否决，sheet 沉降回原位（取代原 maskClosable={false}）
-    if (isMobile) {
-        return (
-            <BottomSheet
-                title={title}
-                open={open}
-                onClose={() => { if (!isPending) onClose() }}
-                // 表单要一眼看全字段与提交按钮：关掉 peek
-                peek={false}
-            >
-                {/* 内容内衬归调用方（BottomSheet 不给 padding）：表单两侧贴边会显得残缺 */}
-                <div style={{ padding: '12px 16px 0' }}>
-                    {formBody}
-                    <div style={{
-                        display: 'flex', gap: 8, marginTop: 16,
-                        paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
-                    }}>
-                        <Button variant="secondary" style={{ flex: 1 }} disabled={isPending} onClick={onClose}>
-                            {t('common.cancel')}
-                        </Button>
-                        <Button variant="primary" style={{ flex: 1 }} disabled={!isValid} loading={isPending} onClick={handleOk}>
-                            {okText}
-                        </Button>
-                    </div>
-                </div>
-            </BottomSheet>
-        )
-    }
-
+    // 端别自适应（PC 居中 Dialog / 移动端底部 sheet）：开合/关闭否决/安全区由壳收口。
+    // 提交中不许关：不翻转 open = 否决，移动端 sheet 沉降回原位（取代原 maskClosable={false}）
     return (
-        <Modal
-            title={title}
+        <AdaptiveDialog
             open={open}
-            onCancel={onClose}
-            footer={[
-                <Button key="cancel" variant="secondary" disabled={isPending} onClick={onClose}>
-                    {t('common.cancel')}
-                </Button>,
-                <Button key="ok" variant="primary" disabled={!isValid} loading={isPending} onClick={handleOk}>
-                    {okText}
-                </Button>,
-            ]}
-            destroyOnHidden
-        >
-            {formBody}
-        </Modal>
+            onOpenChange={(next) => { if (!next && !isPending) onClose() }}
+            title={title}
+            width={520}
+            body={formBody}
+            footer={(
+                <>
+                    <Button variant="secondary" disabled={isPending} onClick={onClose}>
+                        {t('common.cancel')}
+                    </Button>
+                    <Button variant="primary" disabled={!isValid} loading={isPending} onClick={handleOk}>
+                        {okText}
+                    </Button>
+                </>
+            )}
+        />
     )
 }

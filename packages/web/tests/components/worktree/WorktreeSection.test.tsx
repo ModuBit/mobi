@@ -122,11 +122,11 @@ describe('WorktreeSection（设置页 worktree 管理）', () => {
         const row = screen.getByTestId('worktree-row-feat-a')
         within(row).getByText('settings.worktrees.discard').click()
 
-        // antd confirm 弹层：确认按钮文案为 discard（行内同名按钮在弹层之外）
+        // 自管确认框（uiarc Dialog）：footer 双钮，按 DOM 序最后一个 = 主操作
         expect(await screen.findAllByText('settings.worktrees.discardConfirmTitle')).not.toHaveLength(0)
-        const confirmButton = document.querySelector<HTMLButtonElement>('.ant-modal-confirm-btns .ant-btn-primary')
-        expect(confirmButton).not.toBeNull()
-        confirmButton!.click()
+        const confirmButtons = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+        expect(confirmButtons.length).toBeGreaterThan(0)
+        confirmButtons[confirmButtons.length - 1].click()
 
         await waitFor(() => expect(state.discard).toHaveBeenCalledWith('/repo-worktrees/feat-a'))
         // 成功反馈走 messageApi.success（文案 key 直通）
@@ -140,7 +140,8 @@ describe('WorktreeSection（设置页 worktree 管理）', () => {
         const row = screen.getByTestId('worktree-row-feat-a')
         within(row).getByText('settings.worktrees.discard').click()
         await screen.findAllByText('settings.worktrees.discardConfirmTitle')
-        document.querySelector<HTMLButtonElement>('.ant-modal-confirm-btns .ant-btn-primary')!.click()
+        const confirmButtons = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+        confirmButtons[confirmButtons.length - 1].click()
 
         expect(await screen.findByText('settings.worktrees.discardFailed')).toBeInTheDocument()
         expect(screen.queryByText('settings.worktrees.discarded')).not.toBeInTheDocument()
