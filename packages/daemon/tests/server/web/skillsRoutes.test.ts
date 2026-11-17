@@ -54,6 +54,7 @@ describe('skills REST 路由（GET /api/skills）', () => {
     let cleanupApp: () => void
     let authHeaders: Record<string, string>
     let workspaceId: string
+    let engine: SyncEngine
 
     let fixtureRoot: string
     let wsDir: string
@@ -194,7 +195,7 @@ describe('skills REST 路由（GET /api/skills）', () => {
         const io = { of() { return { sockets: new Map() } } } as unknown as Server
         const registry = { getSocketIdForMethod() { return null } } as unknown as RpcRegistry
         const sseManager = { broadcast: () => {} } as unknown as SSEManager
-        const engine = new SyncEngine(store, io, registry, sseManager)
+        engine = new SyncEngine(store, io, registry, sseManager)
 
         const setup = await setupTestApp(engine, {
             store,
@@ -549,6 +550,70 @@ describe('skills REST 路由（GET /api/skills）', () => {
             expect((await install({ scope: 'global' })).res.status).toBe(400)
             expect((await install({ source: '  ', scope: 'global' })).res.status).toBe(400)
             expect((await install({ source: 'x', scope: 'nope' })).res.status).toBe(404)
+        })
+    })
+
+    describe('skill 清单变更 → 受影响活跃会话 sdkMetadata 刷新（notifySkillChange）', () => {
+        /** `/` 面板命令清单以会话 sdkMetadata 为源，与 skillsRoot 查询缓存键不相交：
+         *  装卸/启停必须主动触发引擎刷新，收敛不依赖 CC watcher 推 commands_changed */
+        const refreshCalls: Array<[string, string | null]> = []
+
+        beforeAll(() => {
+            engine.refreshSDKMetadataAfterSkillChange = (namespace: string, wsId: string | null) => {
+                refreshCalls.push([namespace, wsId])
+            }
+            // 自备删除素材（前面 DELETE describe 已消费掉公共素材）
+            mkdirSync(join(claudeDir, 'skills', 'notify-global'), { recursive: true })
+            writeFileSync(join(claudeDir, 'skills', 'notify-global', 'SKILL.md'), skillMd({ name: 'notify-global' }))
+            mkdirSync(join(wsDir, '.claude', 'skills', 'notify-proj'), { recursive: true })
+            writeFileSync(join(wsDir, '.claude', 'skills', 'notify-proj', 'SKILL.md'), skillMd({ name: 'notify-proj' }))
+        })
+
+        test('卸载 global skill → null（影响全部活跃会话）', async () => {
+            refreshCalls.length = 0
+            const res = await app.request('/api/skills/notify-global?workspaceId=global', { method: 'DELETE', headers: authHeaders })
+            expect(res.status).toBe(200)
+            expect(refreshCalls.length).toBe(1)
+            expect(typeof refreshCalls[0]![0]).toBe('string')
+            expect(refreshCalls[0]![1]).toBeNull()
+        })
+
+        test('卸载 project skill → 该 workspaceId', async () => {
+            refreshCalls.length = 0
+            const res = await app.request(`/api/skills/notify-proj?workspaceId=${workspaceId}`, { method: 'DELETE', headers: authHeaders })
+            expect(res.status).toBe(200)
+            expect(refreshCalls.length).toBe(1)
+            expect(refreshCalls[0]![1]).toBe(workspaceId)
+        })
+
+        test('卸载失败（不可删除 400）→ 不触发刷新', async () => {
+            refreshCalls.length = 0
+            expect((await app.request('/api/skills/cloud-skill?workspaceId=global', { method: 'DELETE', headers: authHeaders })).status).toBe(400)
+            expect(refreshCalls.length).toBe(0)
+        })
+
+        test('安装 → 触发刷新（global scope 透传 null）', async () => {
+            refreshCalls.length = 0
+            const res = await app.request('/api/skills/install', {
+                method: 'POST',
+                headers: { ...authHeaders, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source: 'octocat/repo', scope: 'global' }),
+            })
+            expect(res.status).toBe(200)
+            expect(refreshCalls.length).toBe(1)
+            expect(refreshCalls[0]![1]).toBeNull()
+        })
+
+        test('启停 → 触发刷新（workspace scope 透传）', async () => {
+            refreshCalls.length = 0
+            const res = await app.request(`/api/skills/proj-plain/visibility`, {
+                method: 'PATCH',
+                headers: { ...authHeaders, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspaceId, enabled: false }),
+            })
+            expect(res.status).toBe(200)
+            expect(refreshCalls.length).toBe(1)
+            expect(refreshCalls[0]![1]).toBe(workspaceId)
         })
     })
 

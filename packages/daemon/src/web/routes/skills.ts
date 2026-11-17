@@ -61,6 +61,19 @@ function findSkill(skills: SkillInfo[], name: string): SkillInfo | undefined {
     return skills.find(s => s.name === name)
 }
 
+/**
+ * skill 清单变更（装卸/启停）后触发受影响活跃会话的 sdkMetadata 后台刷新。
+ * `/` 面板命令清单与会话 sdkMetadata 同源，与 skillsRoot 查询缓存键不相交——不主动刷
+ * 则收敛全依赖 CC watcher 推 commands_changed（daemon 侧零承诺）。fire-and-forget：
+ * engine 侧自带去重/等价闸（无变化不多发 SSE），失败静默（web 兜底 SWR）。
+ */
+function notifySkillChange(c: Context, engine: SyncEngine, workspaceId: string): void {
+    void engine.refreshSDKMetadataAfterSkillChange(
+        c.get('namespace'),
+        workspaceId === SKILL_SCOPE_GLOBAL ? null : workspaceId,
+    )
+}
+
 export function createSkillsRoutes(
     getSyncEngine: () => SyncEngine | null,
     deps: SkillsDeps = {},
@@ -129,6 +142,7 @@ export function createSkillsRoutes(
         }
 
         // 回读刷新生效三态（只重读 override 层，不重扫目录——refreshOverrideFields）
+        notifySkillChange(c, engine, parsed.data.workspaceId)
         return c.json({ skill: refreshOverrideFields(ctx.skill, scanRoots(), ctx.scope) })
     })
 
@@ -136,7 +150,8 @@ export function createSkillsRoutes(
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        const ctx = skillContext(c, engine, c.req.query('workspaceId') ?? SKILL_SCOPE_GLOBAL, c.req.param('name'))
+        const workspaceId = c.req.query('workspaceId') ?? SKILL_SCOPE_GLOBAL
+        const ctx = skillContext(c, engine, workspaceId, c.req.param('name'))
         if (ctx instanceof Response) return ctx
 
         // 能力矩阵单源：deletable=false（synced 下次同步拉回、插件携带归迭代 3）不提供删除
@@ -148,12 +163,14 @@ export function createSkillsRoutes(
             // tracked：真身与 lock 条目归 CLI 语义闭环，mobi 只按 scope 分派
             const result = await removeTrackedSkill(ctx.skill, ctx.scope, skillsCliRunner)
             if (!result.ok) return c.json({ error: result.output || 'skills CLI failed' }, 502)
+            notifySkillChange(c, engine, workspaceId)
             return c.json({ ok: true })
         }
 
         // untracked：mobi 自管文件，删除前二次校验目标位置
         const result = removeUntrackedSkill(ctx.skill, scanRoots(), ctx.scope)
         if (!result.ok) return c.json({ error: result.error }, 500)
+        notifySkillChange(c, engine, workspaceId)
         return c.json({ ok: true })
     })
 
@@ -230,6 +247,7 @@ export function createSkillsRoutes(
 
         const result = await installSkill(parsed.data.source, scope, skillsCliRunner)
         if (!result.ok) return c.json({ error: result.output || 'skills CLI failed' }, 502)
+        notifySkillChange(c, engine, parsed.data.scope)
         return c.json({ ok: true })
     })
 

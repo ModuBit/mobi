@@ -1133,15 +1133,16 @@ export class SyncEngine {
      * - 交给 sessionCache.applyRefreshedSDKMetadata 做 CAS：仅当内容变化才写库 + 发 SSE
      * - 会话不活跃 / RPC 失败静默（web 仍用缓存，不退化）
      */
-    async refreshSDKMetadataBackground(sessionId: string): Promise<void> {
+    async refreshSDKMetadataBackground(sessionId: string, options?: { force?: boolean }): Promise<void> {
         if (this.refreshingMetadata.has(sessionId)) return
         // CLI 不在线时 RPC 必失败/超时，且会占去重槽位直到超时——提前跳过省资源（web 仍用缓存）
         const sessionBefore = this.sessionCache.getSession(sessionId)
         if (!sessionBefore?.active) return
-        // 节流：命中缓存的 metadata GET 会反复触发本方法；30s 内只真正 RPC 一次
+        // 节流：命中缓存的 metadata GET 会反复触发本方法；30s 内只真正 RPC 一次。
+        // force（skill 装卸等离散事件触发）绕过——事件语义是「清单肯定变了」，不能被 GET 节流窗口吞掉
         const now = Date.now()
         const last = this.lastBackgroundRefreshAt.get(sessionId) ?? 0
-        if (now - last < SyncEngine.BACKGROUND_REFRESH_MIN_INTERVAL_MS) return
+        if (!options?.force && now - last < SyncEngine.BACKGROUND_REFRESH_MIN_INTERVAL_MS) return
         this.lastBackgroundRefreshAt.set(sessionId, now)
         if (this.lastBackgroundRefreshAt.size > 512) {
             const oldest = this.lastBackgroundRefreshAt.keys().next().value
@@ -1159,6 +1160,22 @@ export class SyncEngine {
             // RPC 失败 — 静默，web 继续用缓存
         } finally {
             this.refreshingMetadata.delete(sessionId)
+        }
+    }
+
+    /**
+     * skill 装卸（install/uninstall）后刷新受影响活跃会话的 sdkMetadata。
+     * `/` 面板的命令清单以会话维度的 sdkMetadata 为源，与 skill 管理列表是两套缓存
+     * （queryKey 不相交，卸载 mutation 的 skillsRoot 失效够不到它）；不主动刷则收敛
+     * 全依赖 CC 目录 watcher 推 commands_changed（daemon 侧零承诺）。global 变更影响
+     * 全部活跃会话，project 变更只影响归属该 workspace 的会话；force 绕过 GET 节流，
+     * 仍受 refreshingMetadata 去重与 apply 侧 sdkMetadataChanged 等价闸约束（无变化不多发）。
+     */
+    refreshSDKMetadataAfterSkillChange(namespace: string, workspaceId: string | null): void {
+        const affected = this.getSessionsByNamespace(namespace).filter(session =>
+            session.active && (workspaceId === null || session.workspaceId === workspaceId))
+        for (const session of affected) {
+            void this.refreshSDKMetadataBackground(session.id, { force: true })
         }
     }
 }
