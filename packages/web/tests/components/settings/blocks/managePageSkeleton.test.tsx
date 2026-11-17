@@ -101,12 +101,9 @@ describe('useScopeOptions', () => {
 })
 
 describe('ScopeTabbedSection', () => {
-    it('锁住搜索 + tabs + 动作槽 + 内容区结构', () => {
+    it('锁住 tabs + 内容区结构', () => {
         render(
             <ScopeTabbedSection
-                keyword="res"
-                onKeywordChange={() => {}}
-                searchPlaceholder="搜索技能"
                 options={[
                     { value: SKILL_SCOPE_GLOBAL, label: '全局' },
                     { value: 'ws-1', label: 'Demo' },
@@ -114,16 +111,13 @@ describe('ScopeTabbedSection', () => {
                 activeScope={SKILL_SCOPE_GLOBAL}
                 onScopeChange={() => {}}
                 tabsTestId="skills-tabs"
-                actions={<button type="button">安装</button>}
             >
                 <div>内容区</div>
             </ScopeTabbedSection>,
         )
-        expect((screen.getByPlaceholderText('搜索技能') as HTMLInputElement).value).toBe('res')
         expect(screen.getByTestId('skills-tabs')).toBeTruthy()
         expect(screen.getByRole('tab', { name: '全局', selected: true })).toBeTruthy()
         expect(screen.getByRole('tab', { name: 'Demo', selected: false })).toBeTruthy()
-        expect(screen.getByRole('button', { name: '安装' })).toBeTruthy()
         expect(screen.getByText('内容区')).toBeTruthy()
     })
 
@@ -131,9 +125,6 @@ describe('ScopeTabbedSection', () => {
         const onScopeChange = vi.fn()
         render(
             <ScopeTabbedSection
-                keyword=""
-                onKeywordChange={() => {}}
-                searchPlaceholder="搜索"
                 options={[
                     { value: SKILL_SCOPE_GLOBAL, label: '全局' },
                     { value: 'ws-1', label: 'Demo' },
