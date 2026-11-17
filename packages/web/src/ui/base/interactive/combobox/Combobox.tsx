@@ -24,6 +24,8 @@
 // ⑨freeText：自由输入模式——输入框文本本身就是值（不再回落到选中 label），选项作为
 //   建议由调用方按当前输入提供（如工作区路径的目录补全），不做内部过滤；配合 loading
 //   显示补全请求进行中。默认关闭，既有选择语义不受影响
+// ⑩列表高度按可用空间收窄：向上弹且上方不足以放下整表时（弹窗内底部的选择器典型），
+//   列表改成内部滚动而不是被裁切祖先（dialog 的 overflow:auto）切掉顶部选项
 "use client";
 
 import { animate, AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -224,6 +226,10 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
   // 可用空间按「视口 ∩ 最近裁切祖先」取——BottomSheet / 滚动容器会裁掉越界部分，
   // 只看 window.innerHeight 会在 sheet 里误判为放得下。
   const [dropUp, setDropUp] = useState(false);
+  /** 列表可用高度（px）：放得下为 null（走 CSS 上限）；放不下时按弹层方向的可视空间收窄 */
+  const [listMaxHeight, setListMaxHeight] = useState<number | null>(null);
+  /** 未收窄时的自然高度：收窄后 scrollHeight 只剩可视部分，翻转判定须用自然高度避免来回跳 */
+  const naturalHeightRef = useRef(0);
   const [popoverNode, setPopoverNode] = useState<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     if (!open || !popoverNode) return;
@@ -234,7 +240,15 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
       const bounds = visibleBounds(root);
       const below = bounds.bottom - rect.bottom;
       const above = rect.top - bounds.top;
-      setDropUp(below < popoverNode.scrollHeight + 12 && above > below);
+      if (listMaxHeight === null) naturalHeightRef.current = popoverNode.scrollHeight;
+      const needed = Math.max(popoverNode.scrollHeight, naturalHeightRef.current) + 20;
+      const up = below < needed && above > below;
+      setDropUp(up);
+      const available = up ? above : below;
+      // 扣除弹层与触发器之间的 8px 间距 + 弹层自身内衬/描边 12px，否则向上弹时顶部仍被裁。
+      // 下界取一条选项高（48px）：BottomSheet 里触发器贴近底缘时可用空间可能不足「140px 舒服档」，
+      // 按下界硬撑会被 sheet 头部裁掉（2026-11-17 实测 sheet 内只剩 ~98px）
+      setListMaxHeight(available >= needed ? null : Math.max(48, available - 20));
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -243,15 +257,21 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     const root = rootRef.current;
     const scroller = root ? nearestClipAncestor(root) : null;
     scroller?.addEventListener("scroll", measure, { passive: true });
+    // 裁切祖先（dialog 内容）的入场动画走 transform，ResizeObserver/滚动都收不到：
+    // 动画期间的坐标偏移会把可用空间算多（弹窗顶被裁 8px），结束补测一次
+    scroller?.addEventListener("animationend", measure);
     window.addEventListener("scroll", measure, { passive: true });
     window.addEventListener("resize", measure);
     return () => {
       observer.disconnect();
       scroller?.removeEventListener("scroll", measure);
+      scroller?.removeEventListener("animationend", measure);
       window.removeEventListener("scroll", measure);
       window.removeEventListener("resize", measure);
     };
-  }, [open, popoverNode]);
+  }, [open, popoverNode, listMaxHeight]);
+  // 关合后复位收窄：下次打开按新的可用空间重新测（弹窗尺寸/滚动位置可能已变）
+  useEffect(() => { if (!open) setListMaxHeight(null); }, [open]);
 
   const choose = (option: ComboboxOption) => {
     if (option.disabled) return;
@@ -400,7 +420,7 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
             role="presentation"
           >
             <AutoHeight>
-            <div id={listboxId} className={styles.listbox} role="listbox" aria-label={label}>
+            <div id={listboxId} className={styles.listbox} style={listMaxHeight === null ? undefined : { maxHeight: listMaxHeight }} role="listbox" aria-label={label}>
               <GlidingHighlight className={styles.highlight} target={activeTarget} />
               {filteredOptions.length ? filteredOptions.map((option, index) => (
                 <div
