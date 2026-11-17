@@ -62,6 +62,17 @@
   transition: background-color var(--duration-standard) var(--ease-standard), box-shadow var(--duration-standard) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
 }
 .surface::after { content: ""; position: absolute; inset: 0; border: 1px solid var(--border); border-radius: inherit; pointer-events: none; transition: border-color var(--duration-standard) var(--ease-standard); }
+
+/* 本地修改（窄容器防越界，2026-11-17 用户真机实锤 armed pill 右缘溢出容器边界）：
+   surface 宽由 spring 固定像素驱动，root 的 max-width:100% 钳不住它——钳制传导到 surface
+   自身。**只钳 surface，不钳 face**：face 恒自然宽是上游 RO 测量的前提（RO 报 face 真自然
+   宽作 spring 目标；face 一旦 max-width:100% 被钳，RO 报被钳宽 → 目标被当前宽污染，spring
+   渐近爬行卡死、确认钮被裁半——2026-11-17 E2E 实锤 sheet footer 卡 93px、卸载钮只剩半截）。
+   裁切职责链：真放不下时 surface 被 max-width 钳在容器内，face 溢出部分由 surface 既有
+   overflow:clip 裁切（右缘不出界，代价是按钮可能残缺——sheet footer 是 flex-end 单子元素，
+   正常布局下 armed root 整体左移即可容纳，走不到这条降级）。**不可改上游的 auto 交还**——
+   停驻像素值会让二次展开的目标基准失真（2026-11-17 E2E 实锤）。 */
+.surface { max-width: 100%; }
 .root[data-disabled][data-state="idle"] .surface { box-shadow: none; }
 .root[data-disabled][data-state="idle"] .surface::after { border-color: var(--border-subtle); }
 /* ghost：嵌在有色卡片/工具条内不另起一层白底，全透明无描边无阴影，hover 才淡底（.trigger:hover 既有规则接管） */
