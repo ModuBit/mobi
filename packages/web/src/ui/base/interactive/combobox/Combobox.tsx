@@ -255,6 +255,24 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
         : { left: rect.left, width: rect.width, top: rect.bottom + GAP });
     };
     measure();
+    // 入场跟随：dialog/sheet 的入场是 motion 的 JS 动画（改 transform），不触发任何
+    // resize/scroll——首测会按动画中间位置落位且再无人纠正。弹层打开后逐帧比对
+    // 触发器位置（一次 getBoundingClientRect，开销可忽略），变了立即重测；
+    // 连续 2s 无位移即停（sheet 常先停 peek 格再展开，静止判据按位移而非绝对时长）
+    let lastTop = shellRef.current?.getBoundingClientRect().top ?? 0;
+    let lastMoveAt = performance.now();
+    let rafId = requestAnimationFrame(function follow() {
+      const shell = shellRef.current;
+      if (shell) {
+        const top = shell.getBoundingClientRect().top;
+        if (top !== lastTop) {
+          lastTop = top;
+          lastMoveAt = performance.now();
+          measure();
+        }
+      }
+      if (performance.now() - lastMoveAt < 2000) rafId = requestAnimationFrame(follow);
+    });
     const observer = new ResizeObserver(measure);
     observer.observe(popoverNode);
     if (shellRef.current) observer.observe(shellRef.current);
@@ -267,6 +285,7 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     window.visualViewport?.addEventListener("scroll", measure);
     const unsubscribeKeyboard = subscribeKeyboardGeometry(measure);
     return () => {
+      cancelAnimationFrame(rafId);
       observer.disconnect();
       window.removeEventListener("scroll", measure, { capture: true });
       window.removeEventListener("resize", measure);
