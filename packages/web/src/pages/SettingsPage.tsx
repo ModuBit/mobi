@@ -27,7 +27,7 @@ import { useMediaQuery } from '@/core/data/hooks/useMediaQuery'
 import { SETTINGS_WIDE_QUERY, activeSection, searchSettingsSectionGroups, type SettingsSection } from '@/features/settings/sections/registry'
 import { writeLastSettingsSection } from '@/features/settings/sections/lastSettingsSection'
 import { WebToolsStatusBadge } from '@/features/settings/sections/WebToolsStatusBadge'
-import { SettingsHeaderSlotHostSlot, SettingsHeaderSlotProvider } from '@/features/settings/blocks/settingsHeaderSlot'
+import { useSettingsHeaderSlot } from '@/features/settings/blocks/settingsHeaderSlot'
 import { resolveSettingsLeaveTarget } from '@/features/layout/settingsReturnOrigin'
 import { GlideLayer, HoverGlideLayer } from '@/ui/base/motion/GlideLayer'
 import { useGlideHighlight } from '@/ui/base/motion/useGlideHighlight'
@@ -349,6 +349,8 @@ export function SettingsPage() {
     // 返回 = 离开设置：恒落来源记录（打开设置前的页面），不在设置内逐级回走历史——
     // A→B→C 切过之后 history.back 会依次弹回 B、A，而侧栏常驻下用户意图就是「回去」
     const goBack = () => { void navigate({ to: resolveSettingsLeaveTarget().to }) }
+    // 页题行动落点：单对 hook/host（PC 与移动端共用同一个实例，挂到各自标题行）
+    const headerSlot = useSettingsHeaderSlot()
 
     // 记住上次分区：激活分区变化即写（深链以 URL 为准并覆盖记录）
     useEffect(() => {
@@ -372,7 +374,7 @@ export function SettingsPage() {
         const fill = active?.layout === 'fill'
         return (
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-                <SettingsHeaderSlotProvider>
+                {headerSlot.wrap(<>
                     <MobileHeader $token={token}>
                         <MobileHeaderSide>
                             <MobileBackButton $token={token} aria-label={t('common.back')} onClick={handleMobileBack}>
@@ -381,7 +383,7 @@ export function SettingsPage() {
                         </MobileHeaderSide>
                         <MobileHeaderTitle $token={token}>{t(titleKey)}</MobileHeaderTitle>
                         <MobileHeaderSide $align="end">
-                            <SettingsHeaderSlotHostSlot />
+                            {headerSlot.host}
                         </MobileHeaderSide>
                     </MobileHeader>
                     <SettingsContent $token={token} $fill={fill}>
@@ -389,7 +391,7 @@ export function SettingsPage() {
                             <Outlet />
                         </Suspense>
                     </SettingsContent>
-                </SettingsHeaderSlotProvider>
+                </>)}
             </div>
         )
     }
@@ -401,15 +403,15 @@ export function SettingsPage() {
             <Sidebar $token={token} active={active} goBack={goBack} />
             <SectionMain $fill={fill}>
                 <SectionMainInner $fill={fill}>
-                    <SettingsHeaderSlotProvider>
+                    {headerSlot.wrap(<>
                         <SectionTitleRow>
                             <SectionTitle $token={token}>{t(active?.titleKey ?? 'settings.title')}</SectionTitle>
-                            <SettingsHeaderSlotHostSlot />
+                            {headerSlot.host}
                         </SectionTitleRow>
                         <Suspense fallback={<SectionFallback />}>
                             <Outlet />
                         </Suspense>
-                    </SettingsHeaderSlotProvider>
+                    </>)}
                 </SectionMainInner>
             </SectionMain>
         </SettingsTakeover>

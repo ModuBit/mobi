@@ -15,16 +15,20 @@
  */
 
 /**
- * 设置页题行动的落点：页面壳在分区标题同一行右侧预留一个 span，分区组件
- * （懒加载的 Outlet 子树）把页级动作（如技能的「安装」）portal 进去。
+ * 设置页题行动的落点：分区组件把页级动作（如技能的「安装」）portal 进标题行右端。
  *
  * 为什么用 portal 而不是把动作的 state 提到页面壳：动作依赖分区内部状态
  * （安装弹窗开关、当前 scope 等），提到壳上等于把域逻辑塞进页面；而按钮又必须
  * 出现在标题行——portal 让「位置」归壳、「内容与状态」归分区。槽位 flex 居中，
  * 按钮基线与标题文字自然对齐。
  *
+ * 接口是「单对」（架构审查 W6，三件套收敛）：
+ * - 壳侧只调 {@link useSettingsHeaderSlot}，拿到 `wrap`（包住标题行 + 分区内容）
+ *   与 `host`（挂进标题行的落点），Provider 与落点不可能再配错顺序；
+ * - 分区侧只用 {@link SettingsHeaderActions}。
+ * 壳侧两处布局（PC 页题行 / 移动端头部右栏）各自调用一次，互不共享状态。
+ *
  * 无宿主时（分区组件单独渲染 / 单测）就地渲染为右对齐行，不依赖页面壳也能出动作。
- * 宿主两处：PC 页题行右侧、移动端头部右栏（两侧 1fr 等宽，按钮宽度不影响标题居中）。
  */
 
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
@@ -51,22 +55,24 @@ const FallbackRow = styled.div`
     margin-bottom: 12px;
 `
 
-/** 页面壳侧：在标题行内包住 title 与落点所在的子树 */
-export function SettingsHeaderSlotProvider({ children }: { children: ReactNode }) {
-    const [node, setNode] = useState<HTMLElement | null>(null)
-    const value = useMemo<HeaderSlotValue>(() => ({ node, setNode }), [node])
-    return <HeaderSlotContext.Provider value={value}>{children}</HeaderSlotContext.Provider>
+export interface SettingsHeaderSlot {
+    /** 包住「标题行 + 分区内容」的包装器（真实渲染 Context.Provider） */
+    wrap: (children: ReactNode) => ReactNode
+    /** 标题行右端的落点 element（挂进标题行 JSX） */
+    host: ReactNode
 }
 
-/** 页面壳侧：标题行右端的落点本体 */
-export function SettingsHeaderSlotHostSlot() {
-    const ctx = useContext(HeaderSlotContext)
-    // setNode 取自 useState（引用恒定）；ref 只依赖它，避免每次渲染 detach/attach 抖动
-    const setNode = ctx?.setNode
-    const ref = useCallback((element: HTMLElement | null) => {
-        setNode?.(element)
-    }, [setNode])
-    return <HeaderSlotHost ref={ref} />
+/** 页面壳侧（唯一入口）：返回包装器与标题行落点，成对使用，不会漏配 */
+export function useSettingsHeaderSlot(): SettingsHeaderSlot {
+    const [node, setNode] = useState<HTMLElement | null>(null)
+    const value = useMemo<HeaderSlotValue>(() => ({ node, setNode }), [node])
+    // setNode 是 useState setter（引用恒定）；host 元素因此每次渲染重建也不抖动 ref
+    const host = useMemo(() => <HeaderSlotHost ref={setNode} />, [setNode])
+    const wrap = useCallback(
+        (children: ReactNode) => <HeaderSlotContext.Provider value={value}>{children}</HeaderSlotContext.Provider>,
+        [value],
+    )
+    return useMemo(() => ({ wrap, host }), [wrap, host])
 }
 
 /** 分区侧：动作内容（存在宿主则 portal 进标题行，否则就地右对齐渲染） */
