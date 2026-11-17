@@ -130,7 +130,9 @@ describe('skills REST 路由（GET /api/skills）', () => {
         },
         listInstalledSkillRefs: async (opts) => {
             apiCalls.push({ method: 'listInstalledSkillRefs', source: '', names: null, global: opts.global, cwd: opts.cwd })
-            return opts.global ? fakeInstalledGlobal : fakeInstalledProject
+            // 与生产实现同口径：条目按查询作用域盖章（两层同名各自存在）
+            const refs = opts.global ? fakeInstalledGlobal : fakeInstalledProject
+            return refs.map(ref => ({ ...ref, scope: opts.global ? 'global' as const : 'workspace' as const }))
         },
         installSelectedSkills: async (source, names, opts) => {
             apiCalls.push({ method: 'installSelectedSkills', source, names, global: opts.global, cwd: opts.cwd })
@@ -653,6 +655,16 @@ describe('skills REST 路由（GET /api/skills）', () => {
             expect(skills.find(s => s.name === 'b')).toMatchObject({ installed: true })
             // 判定清单确实取了并集（两次 listInstalled）
             expect(apiCalls.filter(c => c.method === 'listInstalledSkillRefs')).toHaveLength(2)
+        })
+
+        test('project 视角：项目层同名条目覆盖全局异源条目 → installed（不再误报 conflict）', async () => {
+            fakeRepo = { repoSource: 'octocat/repo', skills: [{ name: 'a', description: 'proj overrides global' }] }
+            fakeInstalledGlobal = [{ name: 'a', source: 'other/repo' }]
+            fakeInstalledProject = [{ name: 'a', source: 'octocat/repo' }]
+
+            apiCalls.length = 0
+            const { skills } = await available('octocat/repo', workspaceId)
+            expect(skills[0]).toMatchObject({ installed: true, conflict: false })
         })
 
         test('global 视角不看项目清单（b 场景：项目装的不挡全局安装）', async () => {

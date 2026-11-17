@@ -44,11 +44,16 @@ export interface RepoSkillOption {
     description: string
 }
 
-/** 已装 skill 的判定引用（listSkills 项的最小集） */
+/** 已装清单所属的层：workspace（项目）覆盖 global（同名时近层生效） */
+export type SkillInstallScope = 'global' | 'workspace'
+
+/** 已装 skill 的判定引用（listSkills 项的最小集 + 所属层） */
 export interface InstalledSkillRef {
     name: string
     /** owner/repo 短名（global/project tracked 均有）；null = untracked（本地自管） */
     source: string | null
+    /** 条目来自哪一层清单（listInstalledSkillRefs 按查询作用域盖章，判定不靠列表顺序） */
+    scope: SkillInstallScope
 }
 
 /** installSkills 的结构化结果（按 mobi 需要收窄） */
@@ -213,14 +218,16 @@ export async function resolveRepoSkills(source: string): Promise<{ repoSource: s
     }))
 }
 
-/** 列指定 scope 的已装清单（仅 claude-code agent——安装判定面与其他 agent 无关） */
+/** 列指定 scope 的已装清单（仅 claude-code agent——安装判定面与其他 agent 无关）。
+ *  返回的引用按查询作用域盖章（scope），两层同名条目各自独立存在、无损保留 */
 export async function listInstalledSkillRefs(options: { global: boolean; cwd?: string }): Promise<InstalledSkillRef[]> {
     const result = await listSkills({
         scope: options.global ? 'global' : 'project',
         agents: ['claude-code'],
         ...(options.cwd ? { cwd: options.cwd } : {}),
     })
-    return result.skills.map(s => ({ name: s.name, source: s.source ?? null }))
+    const scope: SkillInstallScope = options.global ? 'global' : 'workspace'
+    return result.skills.map(s => ({ name: s.name, source: s.source ?? null, scope }))
 }
 
 /**
@@ -330,23 +337,42 @@ export async function reinstallSkill(
 }
 
 /**
+ * 生效安装判定（纯函数，scope 感知）：同名条目按「近层覆盖」解析。
+ * - global 视角只看 global 层；
+ * - workspace 视角 project 层优先，无 project 条目时回落 global（全局已装在项目里同样生效）。
+ * 两层同名条目在 InstalledSkillRef 中各自带 scope、无损共存——判定与调用方的列表拼接顺序无关。
+ */
+export function resolveEffectiveInstall(
+    view: SkillInstallScope,
+    name: string,
+    installedRefs: InstalledSkillRef[],
+): InstalledSkillRef | null {
+    if (view === 'workspace') {
+        const projectRef = installedRefs.find(ref => ref.scope === 'workspace' && ref.name === name)
+        if (projectRef) return projectRef
+    }
+    return installedRefs.find(ref => ref.scope === 'global' && ref.name === name) ?? null
+}
+
+/**
  * repo 清单 × 已装清单 → 复选框数据源（纯函数，测试直接覆盖）。
  *
- * - installed（readonly）：判定键 (source, name)。global 视角只看全局已装；
- *   project 视角调用方传入全局∪项目的并集——全局已装的在项目里同样生效，
- *   再装一份纯属冗余（项目覆盖全局同名版本的高级玩法不经由 UI）
- * - conflict（警告）：同名但 source 不同（含 untracked 的 null）——安装会覆盖
- *   别家真身，UI 必须提示；installed 与 conflict 互斥（已装优先展示 readonly）
+ * - installed（readonly）：生效条目的 source 与本 repo 一致；
+ * - conflict（警告）：生效条目同名但 source 不同（含 untracked 的 null）——安装会
+ *   覆盖别家真身，UI 必须提示；installed 与 conflict 互斥（已装优先展示 readonly）
+ * - 「生效条目」由 {@link resolveEffectiveInstall} 按视角解析（近层覆盖），
+ *   不再依赖调用方「global 清单拼在 project 前面」这一顺序约定
  */
 export function mergeAvailableWithInstalled(
     repoSource: string,
     repoSkills: RepoSkillOption[],
     installedRefs: InstalledSkillRef[],
+    view: SkillInstallScope,
 ): SkillAvailableInfo[] {
     return repoSkills.map(skill => {
-        const hit = installedRefs.find(ref => ref.name === skill.name)
-        const installed = Boolean(hit && hit.source === repoSource)
-        const conflict = Boolean(hit && hit.source !== repoSource)
+        const effective = resolveEffectiveInstall(view, skill.name, installedRefs)
+        const installed = effective?.source === repoSource
+        const conflict = Boolean(effective && effective.source !== repoSource)
         return { name: skill.name, description: skill.description, installed, conflict }
     })
 }

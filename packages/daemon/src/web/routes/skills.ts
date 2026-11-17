@@ -257,12 +257,13 @@ export function createSkillsRoutes(
 
         try {
             const { repoSource, skills } = await api.resolveRepoSkills(source)
-            // 判定清单：global 视角单份；project 视角并集（两个 scope 的已装都算「已生效」）
+            // 判定清单：global 视角单份；project 视角并集。两层的条目各带 scope（近层覆盖），
+            // 判定不吃拼接顺序——改为显式传视角给 mergeAvailableWithInstalled
             const globalInstalled = await api.listInstalledSkillRefs({ global: true })
             const installedRefs = scope.kind === 'global'
                 ? globalInstalled
                 : [...globalInstalled, ...await api.listInstalledSkillRefs({ global: false, cwd: scope.path })]
-            return c.json({ skills: mergeAvailableWithInstalled(repoSource, skills, installedRefs) })
+            return c.json({ skills: mergeAvailableWithInstalled(repoSource, skills, installedRefs, scope.kind) })
         } catch (error) {
             // 拉取失败（网络/私有 repo/无 skill）明确报错，不伪装空清单
             return c.json({ error: error instanceof Error ? error.message : String(error) }, 502)

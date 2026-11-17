@@ -34,7 +34,7 @@ describe('repoShortName', () => {
     })
 })
 
-describe('mergeAvailableWithInstalled', () => {
+describe('mergeAvailableWithInstalled（scope 感知的生效安装判定）', () => {
     const repo = {
         repoSource: 'octocat/repo',
         skills: [
@@ -44,11 +44,11 @@ describe('mergeAvailableWithInstalled', () => {
         ],
     }
 
-    test('本 repo 已装 → installed；异源同名 → conflict；未装 → 均否（互斥）', () => {
+    test('global 视角：本 repo 已装 → installed；异源同名 → conflict；未装 → 均否（互斥）', () => {
         const merged = mergeAvailableWithInstalled(repo.repoSource, repo.skills, [
-            { name: 'a', source: 'octocat/repo' },
-            { name: 'b', source: 'other/repo' },
-        ])
+            { name: 'a', source: 'octocat/repo', scope: 'global' },
+            { name: 'b', source: 'other/repo', scope: 'global' },
+        ], 'global')
         expect(merged).toEqual([
             { name: 'a', description: 'this repo installed', installed: true, conflict: false },
             { name: 'b', description: 'conflict same name', installed: false, conflict: true },
@@ -57,13 +57,48 @@ describe('mergeAvailableWithInstalled', () => {
     })
 
     test('同名 untracked（source null）→ conflict（安装会覆盖本地自管同名 skill）', () => {
-        const merged = mergeAvailableWithInstalled(repo.repoSource, repo.skills, [{ name: 'a', source: null }])
+        const merged = mergeAvailableWithInstalled(repo.repoSource, repo.skills, [
+            { name: 'a', source: null, scope: 'global' },
+        ], 'global')
         expect(merged[0]).toMatchObject({ installed: false, conflict: true })
     })
 
     test('已装清单为空 → 全部可选', () => {
-        const merged = mergeAvailableWithInstalled(repo.repoSource, repo.skills, [])
+        const merged = mergeAvailableWithInstalled(repo.repoSource, repo.skills, [], 'workspace')
         expect(merged.every(s => !s.installed && !s.conflict)).toBe(true)
+    })
+
+    test('workspace 视角：全局已装在项目里同样生效（回落 global 层）', () => {
+        const merged = mergeAvailableWithInstalled(repo.repoSource, repo.skills, [
+            { name: 'a', source: 'octocat/repo', scope: 'global' },
+        ], 'workspace')
+        expect(merged[0]).toMatchObject({ installed: true, conflict: false })
+    })
+
+    test('workspace 视角：项目层同名条目覆盖全局异源条目 → installed 而非 conflict', () => {
+        const merged = mergeAvailableWithInstalled(repo.repoSource, repo.skills, [
+            { name: 'a', source: 'other/repo', scope: 'global' },
+            { name: 'a', source: 'octocat/repo', scope: 'workspace' },
+        ], 'workspace')
+        expect(merged[0]).toMatchObject({ installed: true, conflict: false })
+    })
+
+    test('global 视角忽略项目层条目：全局未装 + 项目已装 → 均否', () => {
+        const merged = mergeAvailableWithInstalled(repo.repoSource, repo.skills, [
+            { name: 'a', source: 'octocat/repo', scope: 'workspace' },
+        ], 'global')
+        expect(merged[0]).toMatchObject({ installed: false, conflict: false })
+    })
+
+    test('判定与列表拼接顺序无关（workspace 层条目在前同样生效）', () => {
+        const refs = [
+            { name: 'a', source: 'octocat/repo', scope: 'workspace' },
+            { name: 'a', source: 'other/repo', scope: 'global' },
+        ] as const
+        const forward = mergeAvailableWithInstalled(repo.repoSource, repo.skills, [...refs], 'workspace')
+        const reversed = mergeAvailableWithInstalled(repo.repoSource, repo.skills, [...refs].reverse(), 'workspace')
+        expect(forward[0]).toMatchObject({ installed: true, conflict: false })
+        expect(reversed[0]).toMatchObject({ installed: true, conflict: false })
     })
 })
 
