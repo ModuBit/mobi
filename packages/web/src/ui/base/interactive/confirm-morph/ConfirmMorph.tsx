@@ -32,13 +32,14 @@
 // 其余与上游一致；受控 state 语义保持。
 "use client";
 
-import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, MouseEventHandler as ReactMouseEventHandler, PointerEvent as ReactPointerEvent, ReactNode, Ref } from "react";
 import { AnimatePresence, animate, motion, useIsPresent, useMotionValue, useMotionValueEvent, useReducedMotion, useTransform } from "motion/react";
 import type { AnimationPlaybackControls, MotionValue, Transition, Variants } from "motion/react";
 import { CircleAlert, LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { motionTokens } from "@/ui/base/motion/motionTokens";
+import { createFaceWidthOracle } from "./faceWidth";
 import styles from "./confirm-morph.module.css";
 
 /** Where the control is in its life: resting, asking, working, finished, or failed. */
@@ -302,21 +303,18 @@ export function ConfirmMorph({
   const expire = useRef(() => {});
   useLayoutEffect(() => { expire.current = () => { if (live.current.state === "confirming") cancel(); else toIdle(); }; });
 
-  /* The shape: one pill whose width springs to whichever face is current. At rest it is auto, so it renders right before hydration. */
+  /* The shape: one pill whose width springs to whichever face is current. At rest it is auto, so it renders right before hydration.
+   * 测量契约（抖动阈值 / 起飞起点 / 弹簧方向 / 旧飞行作废 / 落地回 auto）归 faceWidth 的 oracle，
+   * 这里只接线：在场脸报告自然宽 → oracle 决定宽度怎么走。 */
   const width = useMotionValue<number | "auto">("auto");
-  const target = useRef(0);
-  const flight = useRef(0);
+  const oracle = useMemo(() => createFaceWidthOracle({
+    width,
+    animate: (value, to, transition) => animate(value, to, transition),
+    grow: GROW,
+    shrink: SHRINK,
+  }), [width]);
   // Only the present face reports (a leaving face stops observing), so every report is the current face's width.
-  const onFaceSize = useCallback((_id: FaceKey, w: number) => {
-    if (Math.abs(w - target.current) < .25) return;
-    const from = target.current;
-    target.current = w;
-    if (!from || reduced) { flight.current++; width.jump("auto"); return; }
-    const now = width.get();
-    if (now === "auto") width.jump(from);
-    const token = ++flight.current;
-    animate(width, w, w > (typeof now === "number" ? now : from) ? GROW : SHRINK).then(() => { if (token === flight.current) width.jump("auto"); });
-  }, [reduced, width]);
+  const onFaceSize = useCallback((_id: FaceKey, w: number) => oracle.report(w, reduced), [oracle, reduced]);
 
   /* The timeout runs as an invisible clock. A pointer resting on the control holds it, and so does a hidden tab. */
   const drain = useMotionValue(1);
