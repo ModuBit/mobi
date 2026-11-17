@@ -229,9 +229,14 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
       if (!shell) return;
       const rect = shell.getBoundingClientRect();
       const viewportHeight = window.innerHeight;
+      // 可用空间以 **visualViewport** 为准：移动端虚拟键盘弹出时视觉视口被压矮、
+      // layout 视口不变，只看 innerHeight 会误判「下方放得下」→ 列表被键盘盖住
+      const visual = window.visualViewport;
+      const visibleBottom = visual ? visual.offsetTop + visual.height : viewportHeight;
+      const visibleTop = visual ? visual.offsetTop : 0;
       // 上下可用空间都已扣掉与触发器之间的间距
-      const below = viewportHeight - rect.bottom - GAP;
-      const above = rect.top - GAP;
+      const below = visibleBottom - rect.bottom - GAP;
+      const above = rect.top - visibleTop - GAP;
       if (listMaxHeight === null) naturalHeightRef.current = popoverNode.scrollHeight;
       const needed = Math.max(popoverNode.scrollHeight, naturalHeightRef.current) + GAP;
       const up = below < needed && above > below;
@@ -251,10 +256,15 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Com
     // capture：页面内任意滚动容器（dialog body / sheet body / 列表）滚动都要让弹层跟随
     window.addEventListener("scroll", measure, { capture: true, passive: true });
     window.addEventListener("resize", measure);
+    // 虚拟键盘开合只改视觉视口：另行跟踪（iOS/Android 都是 resize + scroll 组合）
+    window.visualViewport?.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("scroll", measure);
     return () => {
       observer.disconnect();
       window.removeEventListener("scroll", measure, { capture: true });
       window.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("scroll", measure);
     };
   }, [open, popoverNode, listMaxHeight]);
   // 关合后复位收窄：下次打开按新的可用空间重新测（弹窗尺寸/滚动位置可能已变）
