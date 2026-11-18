@@ -15,16 +15,18 @@
  */
 
 /**
- * WarmOnOpenCoordinator（迭代三票 3.3，warm-on-open）：点开休眠（pause）态会话
- * 停留 ≥2s → 防抖触发冷 resume，用户发首条消息时会话已就绪（无感续聊的前半段）。
+ * WarmOnOpenCoordinator（迭代三票 3.3，warm-on-open）：点开可接续态（pause / 未写
+ * 终态）会话停留 ≥2s → 防抖触发冷 resume，用户发首条消息时会话已就绪（无感续聊的前半段）。
  *
  * 信号源复用既有 SSE 订阅/可见性通道（/events?sessionId&visibility 与 POST
- * /visibility），不新建通道。判定面：pause 态识别来自票 1.1 落库的 endReason；
+ * /visibility），不新建通道。判定面：可接续态识别来自票 1.1 落库的 endReason
+ * （判据单源 isResumableEndReason）；
  * 预算语义由 spawn 管线单一所有者裁决（intent=prewarm → acquireSlot('warm')），
  * yield 由调用方翻译成 'yielded'——本模块不预占名额、不排队不重试（warm 是
  * 预热不是承诺）；冷 resume 复用休眠唤醒既有管线（syncEngine.reviveSession）。
  */
 
+import { isResumableEndReason } from '@mobi/shared'
 import { daemonLogger } from '../logger'
 import type { Session } from '@mobi/shared/types'
 import type { SyncEventListener } from './eventPublisher'
@@ -36,7 +38,7 @@ export const WARM_ON_OPEN_DEBOUNCE_MS = 2_000
 export type WarmSessionView = Pick<Session, 'active' | 'endReason'>
 
 export interface WarmOnOpenOptions {
-    /** 会话状态查询（pause 态识别：!active && endReason === 'pause'） */
+    /** 会话状态查询（可接续态识别：!active && isResumableEndReason(endReason)） */
     getSession: (sessionId: string) => WarmSessionView | undefined
     /**
      * 冷 resume（复用休眠唤醒管线）。返回三态中的两态：
@@ -106,8 +108,10 @@ export class WarmOnOpenCoordinator {
         if (existing) return // 防抖中/warming 中：去重
 
         const session = this.getSession(sessionId)
-        // 只热身「休眠可唤醒」态：active 不需要，非 pause 终态（stop/archive/delete）不可 resume
-        if (!session || session.active || session.endReason !== 'pause') return
+        // 只热身「可接续」态：active 不需要；终态判据单源 isResumableEndReason——
+        // null（心跳过期/强杀未写 endReason 的行）按可接续处理，与 fork 清单 / Web 同一口径
+        // （此前手写 !== 'pause' 会把这类行漏在不预热侧，新增 endReason 枚举值还会三端口径漂移）
+        if (!session || session.active || !isResumableEndReason(session.endReason ?? null)) return
 
         const cancel = this.schedule(() => { void this.fire(sessionId) }, WARM_ON_OPEN_DEBOUNCE_MS)
         this.states.set(sessionId, { phase: 'debouncing', cancel })

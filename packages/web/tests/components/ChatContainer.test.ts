@@ -124,7 +124,7 @@ describe('formatMessageTime', () => {
 
 // ========== lastMessageActivityAt（#34 静默告警的活动时间源）==========
 
-import { lastMessageActivityAt, lastUserMessageAt, resolveRunStartedAt } from '@/pages/session/ChatContainer'
+import { lastMessageActivityAt, lastUserMessageAt, resolveRunStartedAt, deriveErrorSessionState } from '@/pages/session/ChatContainer'
 
 describe('lastMessageActivityAt', () => {
     it('落库消息（有 positionAt）取最后一条的 positionAt', () => {
@@ -234,6 +234,34 @@ describe('resolveRunStartedAt', () => {
     })
 })
 
+// ========== 错误卡片会话接续态（endReason 判据单源 isResumableEndReason）==========
+
+describe('deriveErrorSessionState', () => {
+    it('active 优先于 endReason', () => {
+        expect(deriveErrorSessionState({ active: true, endReason: 'pause' })).toBe('active')
+        expect(deriveErrorSessionState({ active: true, endReason: null })).toBe('active')
+    })
+
+    it('pause → dormant（休眠可唤醒）', () => {
+        expect(deriveErrorSessionState({ active: false, endReason: 'pause' })).toBe('dormant')
+    })
+
+    it('null endReason（心跳过期/强杀未写终态）→ dormant，不误报「已结束」', () => {
+        expect(deriveErrorSessionState({ active: false, endReason: null })).toBe('dormant')
+        expect(deriveErrorSessionState({ active: false })).toBe('dormant')
+    })
+
+    it('stop/crash 等终态 → ended', () => {
+        expect(deriveErrorSessionState({ active: false, endReason: 'stop' })).toBe('ended')
+        expect(deriveErrorSessionState({ active: false, endReason: 'crash' })).toBe('ended')
+        expect(deriveErrorSessionState({ active: false, endReason: 'archive' })).toBe('ended')
+    })
+
+    it('无会话数据 → ended', () => {
+        expect(deriveErrorSessionState(undefined)).toBe('ended')
+    })
+})
+
 // ========== 终态用户气泡标注（P3 粗粒度可见，spec .scratch/user-message-lifecycle）==========
 
 // Bun jsdom 环境下 navigator.language 未定义，uiStore 初始化需要（AppTooltip.test 先例）
@@ -298,13 +326,11 @@ vi.mock('@/core/data/hooks/mutations/useSessionActions', () => ({
     useSessionActions: () => ({
         abortSession: vi.fn(),
         resumeSession: vi.fn(),
-        switchSession: vi.fn(),
         setPermissionMode: vi.fn(),
         setModelMode: vi.fn(),
         setEffort: vi.fn(),
         isAbortPending: false,
         isResumePending: false,
-        isSwitchPending: false,
     }),
 }))
 

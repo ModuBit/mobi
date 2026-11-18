@@ -23,7 +23,13 @@
 
 import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
-import { isResumableEndReason, type ForkableSession } from '@mobi/shared'
+import {
+    FORKABLE_STATUSES,
+    isResumableEndReason,
+    resolveSessionTitle,
+    type ForkableSession,
+    type ForkableStatus
+} from '@mobi/shared'
 
 /** 只读查询的显式失败：调用方据此给出可操作提示，而不是静默空列表 */
 export class SessionListingError extends Error {
@@ -44,6 +50,9 @@ type SessionRow = {
     summary_text: unknown
     path: unknown
     native_session_id: unknown
+    /** metadata.forkedFrom / forkFrom（fork 标记，判断标题优先级反转）；对象/缺失等形状不关心，只看在场 */
+    forked_from: unknown
+    fork_from: unknown
     end_reason: unknown
     status: string
     updated_at: number
@@ -51,10 +60,6 @@ type SessionRow = {
 
 /** 只读查询必须用到的列；缺任意一列说明库 schema 落后于当前 CLI */
 const REQUIRED_COLUMNS = ['id', 'namespace', 'metadata', 'status', 'updated_at', 'end_state'] as const
-
-/** 可 fork 的保留状态（archived 等状态在 SQL 层排除） */
-const FORKABLE_STATUSES = ['online', 'dormant'] as const
-type ForkableStatus = (typeof FORKABLE_STATUSES)[number]
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error)
@@ -99,19 +104,30 @@ function nonEmptyString(value: unknown): string | null {
     return typeof value === 'string' && value.length > 0 ? value : null
 }
 
-/** 行 → 可 fork 会话；不满足条件的行静默跳过（无 native id / 已终结） */
+/**
+ * 行 → 可列示 / 可 fork 会话。
+ * 状态过滤已由 SQL IN（FORKABLE_STATUSES 单源占位符）完成，此处不再重过滤；
+ * end_reason 为 null（老数据未回填 / 进程仍在）视为可接续（isResumableEndReason）。
+ * native id 未就绪（SDK 尚未回报）的行保留（nativeSessionId 置 null）：静默丢行会让
+ * sessions list 看不到该会话、拿不到 mobi id 去 stop；fork 侧自行排除这类行。
+ */
 function toForkableSession(row: SessionRow): ForkableSession | null {
-    if (!FORKABLE_STATUSES.includes(row.status as ForkableStatus)) return null
-    // end_reason 为 null（老数据未回填）视为可接续；其余只有 pause 可唤醒
     if (!isResumableEndReason(nonEmptyString(row.end_reason))) return null
 
     const nativeSessionId = nonEmptyString(row.native_session_id)
     const path = nonEmptyString(row.path)
-    if (!nativeSessionId || !path) return null
+    if (!path) return null
 
     return {
         id: row.id,
-        title: nonEmptyString(row.name) ?? nonEmptyString(row.summary_text),
+        // 标题取值链单源 resolveSessionTitle：非 fork 行 summary.text 优先（与 Web 展示
+        // 一致——否则照 Web 标题 fork 会 not-found），fork 行反转 name 优先
+        title: resolveSessionTitle({
+            name: nonEmptyString(row.name),
+            summaryText: nonEmptyString(row.summary_text),
+            path,
+            isFork: row.forked_from !== null || row.fork_from !== null
+        }),
         path,
         nativeSessionId,
         updatedAt: row.updated_at,
@@ -119,9 +135,13 @@ function toForkableSession(row: SessionRow): ForkableSession | null {
     }
 }
 
-/** 从已打开的数据库读取可 fork 会话（测试与复用入口） */
+/** 从已打开的数据库读取可列示会话（测试与复用入口） */
 export function listForkableSessionsFromDb(db: Database, namespace: string): ForkableSession[] {
     assertSessionsSchema(db)
+
+    // 状态集单源：占位符按 FORKABLE_STATUSES 动态生成，与 shared 类型 Extract 同一份定义，
+    // 调整状态集只改 shared 一处（此前 SQL 字面量与常量独立拼写，改一漏二静默失配）
+    const statusPlaceholders = FORKABLE_STATUSES.map(() => '?').join(', ')
 
     let rows: SessionRow[]
     try {
@@ -132,13 +152,15 @@ export function listForkableSessionsFromDb(db: Database, namespace: string): For
                         CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.summary.text') END AS summary_text,
                         CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.path') END AS path,
                         CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.nativeSessionId') END AS native_session_id,
+                        CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.forkedFrom') END AS forked_from,
+                        CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.forkFrom') END AS fork_from,
                         CASE WHEN json_valid(end_state) THEN json_extract(end_state, '$.reason') END AS end_reason,
                         status, updated_at
                  FROM sessions
-                 WHERE namespace = ? AND status IN ('online', 'dormant')
+                 WHERE namespace = ? AND status IN (${statusPlaceholders})
                  ORDER BY updated_at DESC`
             )
-            .all(namespace) as SessionRow[]
+            .all(namespace, ...FORKABLE_STATUSES) as SessionRow[]
     } catch (error) {
         throw new SessionListingError(`读取 sessions 失败：${errorMessage(error)}`)
     }

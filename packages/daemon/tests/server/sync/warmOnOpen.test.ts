@@ -114,7 +114,7 @@ describe('WarmOnOpenCoordinator', () => {
         expect(h.warmCalls).toEqual([])
     })
 
-    test('非 pause 态（active / stop 终态）不触发', () => {
+    test('非可接续态（active / stop 终态）不触发', () => {
         const h = makeCoordinator({ sessions: {
             a: { active: true, endReason: null },
             b: { active: false, endReason: 'stop' },
@@ -123,6 +123,14 @@ describe('WarmOnOpenCoordinator', () => {
         h.coordinator.onSessionViewed('b', true)
         h.scheduler.advance(WARM_ON_OPEN_DEBOUNCE_MS * 2)
         expect(h.warmCalls).toEqual([])
+    })
+
+    test('null endReason（心跳过期/强杀未写终态）视为可接续 → 触发 warm', () => {
+        // 判据单源 isResumableEndReason：null 按可接续处理（此前手写 !== 'pause' 会漏掉这类行不预热）
+        const h = makeCoordinator({ sessions: { s1: { active: false, endReason: null } } })
+        h.coordinator.onSessionViewed('s1', true)
+        h.scheduler.advance(WARM_ON_OPEN_DEBOUNCE_MS)
+        expect(h.warmCalls).toEqual(['s1'])
     })
 
     test('去重：防抖中重复 visible 只计一次；warming 中再来不重复触发', () => {

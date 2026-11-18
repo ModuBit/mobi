@@ -23,8 +23,8 @@ import { IconButton } from '@/ui/base/interactive/IconButton'
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import type { ErrorAction, ErrorContext, NormalizedErrorEvent, StopKind, UiMessageOrigin } from '@mobi/shared'
-import { deriveContextFullState, readCrossSessionOrigin, readTurnOrigin, type ContextFullEvent } from '@mobi/shared'
+import type { ErrorAction, ErrorContext, NormalizedErrorEvent, Session, StopKind, UiMessageOrigin } from '@mobi/shared'
+import { deriveContextFullState, isResumableEndReason, readCrossSessionOrigin, readTurnOrigin, type ContextFullEvent } from '@mobi/shared'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useSDKMetadata } from '@/core/data/hooks/queries/useSDKMetadata'
@@ -156,6 +156,22 @@ export function resolveRunStartedAt(
     if (fromRuntime == null) return fromMessages
     if (fromMessages == null) return fromRuntime
     return Math.max(fromRuntime, fromMessages)
+}
+
+/**
+ * 错误卡片上下文的会话接续态投影：active 优先；终态判据单源 isResumableEndReason——
+ * null endReason（心跳过期/强杀未写终态的行）按可接续（dormant）处理，与 fork 清单 /
+ * daemon warm-on-open 同一口径。此前内联 `=== 'pause'` 会把这类行显示成「已结束」，
+ * 且新增 endReason 枚举值时三端口径必漂移。
+ */
+export function deriveErrorSessionState(
+    session?: Pick<Session, 'active' | 'endReason'> | null
+): 'active' | 'dormant' | 'ended' {
+    // 会话行未加载 ≠ 行的 endReason 缺省：前者没有可接续性可判断，维持「已结束」旧口径；
+    // 行内的 null endReason（心跳过期/强杀未写终态）才按可接续处理
+    if (!session) return 'ended'
+    if (session.active) return 'active'
+    return isResumableEndReason(session.endReason ?? null) ? 'dormant' : 'ended'
 }
 
 /** 气泡 hover 时显示 footer 中的操作按钮（用户消息复制/rewind、agent 回复复制/fork、
@@ -1001,9 +1017,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // ──────────────────────────────────────────────────────────────
     const errorModelList = errorSdkMetadata?.models?.length ? errorSdkMetadata.models : CLAUDE_MODEL_FALLBACK
     const errorFallbackModel = errorModelList.find((m) => m.value !== (session?.runtimeState?.model ?? null))?.value ?? null
-    const errorSessionState: 'active' | 'dormant' | 'ended' = session?.active
-        ? 'active'
-        : session?.endReason === 'pause' ? 'dormant' : 'ended'
+    const errorSessionState = deriveErrorSessionState(session)
 
     /**
      * 上下文满状态机的输入序列：只收「上下文满错误 + 压缩生命周期」事件块，

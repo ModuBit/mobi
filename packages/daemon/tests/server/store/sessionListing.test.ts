@@ -97,14 +97,59 @@ describe('listForkableSessionsFromDb', () => {
         ])
     })
 
-    it('排除归档、缺 native id、缺 path 的行', () => {
+    it('排除归档与缺 path 的行；native id 未就绪的行保留（nativeSessionId 为 null）', () => {
         const db = createDb()
         insert(db, { id: 'ok', metadata: { path: '/ok', nativeSessionId: 'native-ok' } })
         insert(db, { id: 'archived', status: 'archived', metadata: { path: '/x', nativeSessionId: 'n1' } })
         insert(db, { id: 'no-native', metadata: { path: '/x' } })
         insert(db, { id: 'no-path', metadata: { nativeSessionId: 'n2' } })
 
-        expect(listForkableSessionsFromDb(db, 'default').map(s => s.id)).toEqual(['ok'])
+        // native id 未就绪（SDK 尚未回报）的行不再静默丢弃：sessions list 要能看到它、拿到 id 去 stop
+        expect(listForkableSessionsFromDb(db, 'default').map(s => [s.id, s.nativeSessionId])).toEqual([
+            ['ok', 'native-ok'],
+            ['no-native', null]
+        ])
+    })
+
+    it('标题取值与 Web 展示一致：非 fork 行 summary.text 优先于 name', () => {
+        const db = createDb()
+        // 场景：先重命名（写 name 清 summary）后 summary 事件回填——Web 显示 summary.text，
+        // 用户照 Web 标题 `mobi fork "<标题>"`，投影若 name 优先则三段匹配落空
+        insert(db, {
+            id: 'renamed',
+            metadata: { path: '/w', nativeSessionId: 'n', name: '旧命名', summary: { text: 'Web 显示的动态摘要' } }
+        })
+
+        expect(listForkableSessionsFromDb(db, 'default')[0]?.title).toBe('Web 显示的动态摘要')
+    })
+
+    it('fork 行（forkedFrom / forkFrom 在场）标题 name 优先，无 name 降级 path 基名', () => {
+        const db = createDb()
+        insert(db, {
+            id: 'fork-activated',
+            metadata: {
+                path: '/w/fork-a', nativeSessionId: 'n1',
+                name: '父会话 · 分叉', summary: { text: 'fork 自身摘要' },
+                forkedFrom: { sessionId: 'parent-1' }
+            }
+        })
+        insert(db, {
+            id: 'fork-pending',
+            metadata: {
+                path: '/w/fork-b', nativeSessionId: 'n2',
+                name: '待激活 · 分叉', summary: { text: '继承的摘要' },
+                forkFrom: { parentSessionId: 'parent-1', parentNativeId: 'pn', anchorNativeId: 'an' }
+            }
+        })
+        insert(db, {
+            id: 'fork-unnamed',
+            metadata: { path: '/w/fork-c', nativeSessionId: 'n3', forkedFrom: { sessionId: 'parent-1' } }
+        })
+
+        const titles = new Map(listForkableSessionsFromDb(db, 'default').map(s => [s.id, s.title]))
+        expect(titles.get('fork-activated')).toBe('父会话 · 分叉')
+        expect(titles.get('fork-pending')).toBe('待激活 · 分叉')
+        expect(titles.get('fork-unnamed')).toBe('fork-c')
     })
 
     it('排除已终结会话，保留可唤醒的 pause', () => {
