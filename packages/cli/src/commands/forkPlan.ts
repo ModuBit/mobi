@@ -51,6 +51,16 @@ function withTitle(session: ForkableSession): string | null {
 }
 
 /**
+ * 候选集 → 决策：单一命中 = resolved，多命中 = ambiguous，空集 = 交给下一优先级。
+ * 三段匹配（id 前缀 / 标题精确 / 标题包含）共用同一分类，避免逐段抄同一 if 形状。
+ */
+function classify(matches: ForkableSession[]): ForkPlan | null {
+    if (matches.length === 1) return { kind: 'resolved', session: matches[0] }
+    if (matches.length > 1) return { kind: 'ambiguous', matches }
+    return null
+}
+
+/**
  * 选择要 fork 的会话（匹配优先级从确定到宽松）：
  * 1. mobi session id 完整匹配
  * 2. mobi session id 前缀（≥4 位）
@@ -71,20 +81,22 @@ export function planFork(sessions: readonly ForkableSession[], query?: string): 
     if (exactId) return { kind: 'resolved', session: exactId }
 
     const lowered = trimmed.toLowerCase()
-    const prefixMatches =
-        trimmed.length >= MIN_ID_PREFIX_LENGTH
-            ? ordered.filter(session => session.id.toLowerCase().startsWith(lowered))
-            : []
-    if (prefixMatches.length === 1) return { kind: 'resolved', session: prefixMatches[0] }
-    if (prefixMatches.length > 1) return { kind: 'ambiguous', matches: prefixMatches }
+    if (trimmed.length >= MIN_ID_PREFIX_LENGTH) {
+        const prefixPlan = classify(
+            ordered.filter(session => session.id.toLowerCase().startsWith(lowered))
+        )
+        if (prefixPlan) return prefixPlan
+    }
 
-    const exactTitle = ordered.filter(session => withTitle(session)?.toLowerCase() === lowered)
-    if (exactTitle.length === 1) return { kind: 'resolved', session: exactTitle[0] }
-    if (exactTitle.length > 1) return { kind: 'ambiguous', matches: exactTitle }
+    const exactTitlePlan = classify(
+        ordered.filter(session => withTitle(session)?.toLowerCase() === lowered)
+    )
+    if (exactTitlePlan) return exactTitlePlan
 
-    const fuzzy = ordered.filter(session => withTitle(session)?.toLowerCase().includes(lowered))
-    if (fuzzy.length === 1) return { kind: 'resolved', session: fuzzy[0] }
-    if (fuzzy.length > 1) return { kind: 'ambiguous', matches: fuzzy }
+    const fuzzyPlan = classify(
+        ordered.filter(session => withTitle(session)?.toLowerCase().includes(lowered))
+    )
+    if (fuzzyPlan) return fuzzyPlan
 
     return { kind: 'not-found', query: trimmed, nativeIdLike: UUID_LIKE.test(trimmed) }
 }

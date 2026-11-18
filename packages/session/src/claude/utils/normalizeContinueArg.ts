@@ -29,8 +29,8 @@ function hasFlag(args: string[], flags: string[]): boolean {
  *
  * 背景（pending #6）：`-c` 无显式 session id，mobi 端识别不了，导致同一 Claude
  * 会话每次 `-c` 都新建一条 daemon session。而 mobi 主导选择 resume 目标后，下游
- * 全走现成的 `--resume` 路径（sessionFactory 的 tag 复用、claudeLocal 透传、
- * scanner 预加载、claudeRemote 的 resolveResumeSessionId），零额外改动。
+ * 全走现成的 `--resume` 路径（sessionFactory 的 tag 复用、scanner 预加载、
+ * claudeRemote 的 resolveResumeSessionId），零额外改动。
  *
  * 语义对齐：`-c` = 「恢复本目录最近会话」。最近会话用 SDK 官方 `listSessions`
  * 枚举（按 lastModified 降序，含 git worktrees 归并），mobi 选定后**显式指定**

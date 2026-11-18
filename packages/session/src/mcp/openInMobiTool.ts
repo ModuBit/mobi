@@ -19,8 +19,8 @@
  *
  * 统一的"在 mobi 打开"工具：target 判别联合（file / terminal，后续增量扩展），
  * 经 CLI↔daemon socket 发 ui-command → daemon 按 Web 在线状态广播或静默，
- * 回执 { delivered } 是本工具的核心语义。仅挂 remote 壳（mobiAppsServer，
- * D1：local HTTP 壳不挂载——local 模式无 daemon/Web 链路）。
+ * 回执 { delivered } 是本工具的核心语义。挂 mobiAppsServer 壳（D1：依赖
+ * daemon/Web 链路）。
  *
  * 回执三分支（勿混淆）：
  * - delivered: true → 已在用户 Web 端打开（已广播语义，非"用户已看到"）

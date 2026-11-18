@@ -19,12 +19,11 @@
  *
  * 核心逻辑单点承载：发 summary 到 daemon（更新 mobi 侧标题 + Web 显示）→
  * best-effort 回写 agent 侧标题（失败不阻塞 mobi 侧已完成的改名）。
- * transport 适配器只做壳：local 模式经 HTTP MCP Server 的 registerTool 挂载，
- * remote 模式经 SDK createSdkMcpServer 进程内挂载（ADR 0001）。
+ * 挂载壳：SDK createSdkMcpServer 进程内挂载（ADR 0001）。
  *
  * {@link createChangeTitleTool} 保持纯依赖注入（便于单测与未来 agent flavor 复用）；
  * {@link createChangeTitleToolForSession} 是会话场景的组装入口，绑定具体依赖
- * （ApiSessionClient + syncAgentRename），两个 transport 壳都从它取工具实例。
+ * （ApiSessionClient + syncAgentRename）。
  */
 
 import { randomUUID } from 'node:crypto'
@@ -54,8 +53,7 @@ export function createChangeTitleTool(deps: ChangeTitleToolDeps) {
     const changeTitleInputSchema = CHANGE_TITLE_TOOL_SHAPE.inputSchema
 
     async function execute(rawArgs: unknown): Promise<ChangeTitleToolResult> {
-        // transport 入参统一在此校验：HTTP registerTool（AnySchema 下回调入参 unknown）与
-        // SDK 进程内回调共用同一解析路径
+        // transport 入参统一在此校验：SDK 进程内回调入参 unknown，解析路径唯一
         const parsed = changeTitleInputSchema.safeParse(rawArgs);
         if (!parsed.success) {
             return {

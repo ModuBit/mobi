@@ -157,14 +157,3 @@ export function createSessionLifecycle(options: SessionLifecycleOptions): Sessio
         registerProcessHandlers
     }
 }
-
-/**
- * 标记「会话是否由用户终端驱动」。local 模式退场后恒为 false（tui-fork 票 05）；
- * 字段保留供 Web 识别历史 local 会话，不再产生新值。
- */
-export function markControlledByUser(apiSession: ApiSessionClient): void {
-    apiSession.updateAgentState((currentState) => ({
-        ...currentState,
-        controlledByUser: false
-    }))
-}

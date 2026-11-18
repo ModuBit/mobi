@@ -28,7 +28,7 @@
  * 成功文案反过来：daemon 只报事实（`readiness`），措辞由本工具按三种就绪状态给（见
  * successDetail）——「建好了但输入通道还没接上」既不是失败也不是普通成功，得说出来。
  *
- * 仅挂 remote 壳（mobiAppsServer）：B 类链路依赖 daemon，local 模式无此通道。
+ * 挂 mobiAppsServer 壳：B 类链路依赖 daemon。
  */
 
 import { z } from 'zod'

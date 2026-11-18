@@ -16,22 +16,22 @@
 
 import { InputRule, Node, PasteRule, type Extensions, type JSONContent } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
+import type { EditorState } from '@tiptap/pm/state'
 import { ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react'
 import { TextSelection } from '@tiptap/pm/state'
-import { COMMAND_NAME_CHARS_SRC } from '@/domain/command/slashCommandHelper'
-import { SlashCommandTag } from '@/ui/base/display/SlashCommandTag'
+import {
+    COMMAND_NAME_CHARS_SRC,
+    slashCommandText,
+    type SlashCommandAttrs,
+} from '@/domain/command/slashCommandHelper'
+import { SlashCommandTag } from '@/ui/shared/SlashCommandTag'
 
 /**
  * slash 命令原子节点（composer 专用）。
  *
  * 语义：命令名 + 两侧分隔空白是一个不可拆的整体——退格整块删除、光标进不到命令名中间。
- * 分隔空白（前导/尾随）存在节点 attrs 里而不是留在正文：Claude Code 只认
- * 「行首/空格 + 命令名 + 空格/行尾」三类边界，空白如果留在节点外，用户删掉它就会把
- * `/cmd` 和相邻文本粘成 `/cmdfoo`（命令名被改写、CC 也识别不到）。把空白收进原子，
- * 结构上就不可能出现粘连。
- *
- * wire 不变：renderText/renderMarkdown 精确还原「空白 + /命令名 + 空白」，
- * editor.getText() / getMarkdown() 与用户敲的字面量一致。
+ * attrs 与字面量还原的领域定义在 domain/command/slashCommandHelper（wire / 文本偏移桥
+ * / 剪贴板共用 slashCommandText）。
  *
  * 触发只发生在「token 收尾」的两个时刻：输入空格（InputRule）与面板选中（插入 API），
  * 命令名还在输入过程中保持纯文本（不提前着色）。
@@ -39,19 +39,7 @@ import { SlashCommandTag } from '@/ui/base/display/SlashCommandTag'
  * 代码块 / 行内 code 内不转换——那里本来就要展示原始代码。
  */
 
-export interface SlashCommandAttrs {
-    /** 不含 / 前缀的命令名 */
-    command: string
-    /** 节点前是否有分隔空白（行首为 false） */
-    leadingSpace: boolean
-    /** 节点后是否有分隔空白（行尾为 false） */
-    trailingSpace: boolean
-}
-
-/** 节点对应的字面量文本（wire / getText / 剪贴板共用这一个还原函数） */
-export function slashCommandText(attrs: Pick<SlashCommandAttrs, 'command' | 'leadingSpace' | 'trailingSpace'>): string {
-    return `${attrs.leadingSpace ? ' ' : ''}/${attrs.command}${attrs.trailingSpace ? ' ' : ''}`
-}
+export type { SlashCommandAttrs }
 
 /** 构造可交给 replaceTextRangeWithAtom 的节点 JSON（features 侧用） */
 export function slashCommandNodeJSON(attrs: SlashCommandAttrs): JSONContent {
@@ -76,6 +64,21 @@ function isInsideCode(state: { doc: PMNode }, from: number, to: number): boolean
     if (state.doc.resolve(from).parent.type.name === 'codeBlock') return true
     const probe = Math.min(to - 1, state.doc.content.size)
     return state.doc.resolve(probe).marks().some(m => m.type.name === 'code')
+}
+
+/**
+ * 由匹配结果建原子节点（InputRule 与 PasteRule 共用同一 attrs 构造）。
+ * match[2] 含 / 前缀；attrs.command 只存命令名（renderText 负责补回 /）。
+ */
+function createSlashCommandNode(
+    state: EditorState,
+    match: RegExpMatchArray,
+    attrs: { leadingSpace: boolean; trailingSpace: boolean },
+): PMNode {
+    return state.schema.nodes.slashCommand.create({
+        command: match[2].slice(1),
+        ...attrs,
+    } satisfies SlashCommandAttrs)
 }
 
 export const SlashCommandNode = Node.create({
@@ -141,12 +144,10 @@ export const SlashCommandNode = Node.create({
                     // 避免吸收后把 `\t` 改写成 ` ` 改掉字面量
                     const absorbLeading = match[1] === ' '
                     const replaceFrom = absorbLeading ? range.from : range.from + match[1].length
-                    const node = state.schema.nodes.slashCommand.create({
-                        // match[2] 含 / 前缀；attrs.command 只存命令名（renderText 负责补回 /）
-                        command: match[2].slice(1),
+                    const node = createSlashCommandNode(state, match, {
                         leadingSpace: absorbLeading,
                         trailingSpace: true,
-                    } satisfies SlashCommandAttrs)
+                    })
                     const tr = state.tr.replaceWith(replaceFrom, range.to, node)
                     tr.setSelection(TextSelection.create(tr.doc, replaceFrom + node.nodeSize))
                 },
@@ -165,12 +166,10 @@ export const SlashCommandNode = Node.create({
                     // range 比实际文本偏移一位（tiptap 内部 +1 只在 textblock 成立）。用文档
                     // 实际文本比对：不是这段匹配的原文就跳过，避免重复插入原子
                     if (state.doc.textBetween(range.from, range.to) !== match[0]) return
-                    const node = state.schema.nodes.slashCommand.create({
-                        // match[2] 含 / 前缀；attrs.command 只存命令名（renderText 负责补回 /）
-                        command: match[2].slice(1),
+                    const node = createSlashCommandNode(state, match, {
                         leadingSpace: match[1] !== '',
                         trailingSpace: false,
-                    } satisfies SlashCommandAttrs)
+                    })
                     state.tr.replaceWith(range.from, range.to, node)
                 },
             }),

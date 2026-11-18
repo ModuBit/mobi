@@ -19,9 +19,6 @@
  * 经 session-end 事件上报 daemon，落库 sessions.end_state 单列（JSON：reason/trigger/at）——
  * daemon 与 Web 据此区分「休眠可唤醒」与「已终结」。
  *
- * 语义边界：SessionEndReason 回答「会话为什么结束」，与 LocalLaunchExitReason
- * （为什么没起来，启动失败语境）不同名不同义，勿混用。
- *
  * pause 与其余 reason 的进程层动作完全相同（都是退出），差别只在契约：
  * pause = 可复活（daemon 保留唤醒标记，warm-on-open 供数）。
  */
@@ -37,6 +34,17 @@ import { z } from 'zod'
  */
 export const SessionEndReasonSchema = z.enum(['stop', 'pause', 'archive', 'delete', 'crash'])
 export type SessionEndReason = z.infer<typeof SessionEndReasonSchema>
+
+/**
+ * 该终结原因是否允许会话被唤醒 / 接续。
+ *
+ * 域契约只有一条：pause = 可复活，其余 reason 都不可。null 表示 end_state 缺省
+ * （老数据未回填 / 进程仍在），按可接续处理。判据必须从这里派生——列举
+ * 「不可复活」的黑名单会在新增 reason 时默认放行。
+ */
+export function isResumableEndReason(reason: string | null): boolean {
+    return reason === null || reason === 'pause'
+}
 
 /** pause 的触发来源（结构化落库，供遥测与 warm-on-open 判定） */
 export const SessionPauseTriggerSchema = z.enum([

@@ -21,13 +21,19 @@
  * fork 与 sessions 的只读会话查询共用，避免两处各写一份回落规则。
  */
 
+import { configuration } from '@mobi/node-core/configuration'
 import { readSettings } from '@mobi/node-core/persistence'
 import { parseAccessToken } from '@mobi/daemon/utils/accessToken'
 
+/**
+ * 有效 token 与 initializeToken 同一优先级：env（configuration.cliApiToken 初值）
+ * 优先于 settings.cli.json；否则 env 覆盖 token 时这里会查错 namespace。
+ */
 export async function resolveCliNamespace(): Promise<string> {
     try {
         const settings = await readSettings()
-        return parseAccessToken(settings.cliApiToken ?? '')?.namespace ?? 'default'
+        const token = configuration.cliApiToken || settings.cliApiToken || ''
+        return parseAccessToken(token)?.namespace ?? 'default'
     } catch {
         return 'default'
     }

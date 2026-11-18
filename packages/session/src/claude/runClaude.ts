@@ -27,11 +27,11 @@ import { parseSpecialCommand } from '../parsers/specialCommands';
 import { getEnvironmentInfo } from '@mobi/node-core/environmentInfo';
 import { registerAgentCapabilities, syncAgentRename } from '../agent/agentCapabilities';
 import { claudeCapabilities, claudeLocator, CLAUDE_FLAVOR } from './agentCapabilities';
-import { buildSessionMcpServers, MOBI_PREAUTHORIZED_TOOLS, REMOTE_INLINE_HOOK_SETTINGS } from '../mcp/sessionTransports';
+import { buildSessionMcpServers, MOBI_PREAUTHORIZED_TOOLS, INLINE_HOOK_SETTINGS } from '../mcp/sessionTransports';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
 import { bootstrapSession } from '../agent/sessionFactory';
-import { createSessionLifecycle, markControlledByUser } from '../agent/sessionLifecycle';
+import { createSessionLifecycle } from '../agent/sessionLifecycle';
 import { SESSION_CONFIG_FIELDS, DEFAULT_MODEL, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, buildModelChangeLine, type SessionPauseTrigger, type UserContentBlock } from '@mobi/shared';
 import { PermissionModeSchema } from '@mobi/shared/schemas';
 import { buildPromptFromBlocks, type PromptPayload } from '@mobi/node-core/utils/promptBuilder';
@@ -47,7 +47,6 @@ import { registerGoalTapSubscriber } from './bridge/goalTapSubscriber';
 import { registerWakeupTapSubscriber } from './bridge/wakeupTapSubscriber';
 import { registerForkedSkillTapSubscriber } from './bridge/forkedSkillTapSubscriber';
 import { resolveTranscriptPath } from '@mobi/node-core/claudeSdk/transcriptPath';
-import type { Settings } from '@anthropic-ai/claude-agent-sdk';
 
 export interface StartOptions {
     model?: string
@@ -138,8 +137,6 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     // SDK 进程内回调、settings 内联对象，零端口零临时文件。
     // 用于在信号退出时清理子进程（防止 Claude Code / SDK Query 残留）
     const processCleanupRef = { current: null as (() => void) | null };
-
-    const hookSettings: Settings = REMOTE_INLINE_HOOK_SETTINGS;
 
     // Print log file path
     const logPath = logger.logFilePath;
@@ -280,9 +277,6 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         handleTimeout('Disconnect timeout', 'disconnect_timeout');
     });
     apiSession.on('idle-timeout', () => handleTimeout('Idle timeout', 'idle_timeout'));
-
-    // Set initial agent state
-    markControlledByUser(apiSession);
 
     // Import MessageQueue and create message queue
     // model/permissionMode 不纳入 hash，通过 SDK Query 动态切换
@@ -683,8 +677,7 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
             apiSession,
             claudeEnvVars: options.claudeEnvVars,
             claudeArgs: options.claudeArgs,
-            startedBy,
-            hookSettings,
+            hookSettings: INLINE_HOOK_SETTINGS,
             processCleanupRef,
             queryControlRef,
             forkActivation,

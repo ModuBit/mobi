@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
+import type { CSSProperties, ReactNode } from 'react'
 import { Button } from '@/ui/base/interactive/button/Button'
 import { PlayCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 interface ActivateCoverProps {
-    /** 点击「恢复/激活」回调 */
-    onActivate: () => void
+    /** 点击「恢复/激活」回调（提供 children 时不再渲染按钮） */
+    onActivate?: () => void
     /** 恢复请求进行中 */
     loading?: boolean
     /** 按钮文案的 i18n key，默认 composer.activate */
@@ -32,6 +33,10 @@ interface ActivateCoverProps {
     /** 透传 className（磨砂遮罩：默认用 .activate-cover-mask，
      *  实色 Sender 与彩色 tab 内容均适用，见 styles/modes.css） */
     className?: string
+    /** 自定义内容：提供时替换默认的激活按钮（如存量会话的只读说明） */
+    children?: ReactNode
+    /** 覆盖层内联样式覆盖（如底边内收避开输入区） */
+    style?: CSSProperties
 }
 
 /**
@@ -46,6 +51,8 @@ export function ActivateCover({
     zIndex = 10,
     borderRadius = 0,
     className,
+    children,
+    style,
 }: ActivateCoverProps) {
     const { t } = useTranslation()
     return (
@@ -59,11 +66,14 @@ export function ActivateCover({
                 justifyContent: 'center',
                 borderRadius,
                 zIndex,
+                ...style,
             }}
         >
-            <Button variant="primary" loading={loading} onClick={onActivate}>
-                <PlayCircle size={18} /> {t(labelKey)}
-            </Button>
+            {children ?? (
+                <Button variant="primary" loading={loading} onClick={onActivate}>
+                    <PlayCircle size={18} /> {t(labelKey)}
+                </Button>
+            )}
         </div>
     )
 }

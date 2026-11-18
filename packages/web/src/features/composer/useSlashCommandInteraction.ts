@@ -15,7 +15,12 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import { detectSlashAtCursor, type SlashCommandSuggestionItem } from '@/domain/command/slashCommandHelper'
+import {
+    detectSlashAtCursor,
+    slashCommandText,
+    type SlashCommandInsert,
+    type SlashCommandSuggestionItem,
+} from '@/domain/command/slashCommandHelper'
 import { useSlashCommandSuggestion } from './useSlashCommandSuggestion'
 import { recordCommandUsage } from '@/core/lib/commandUsage'
 import type { Command } from '@/core/data/api/types'
@@ -29,12 +34,7 @@ export interface SlashSelectionResult {
      * to 吸收命令词之后的同行空格/制表符（节点自带尾随空格，不吸收会叠加成双空格）。
      * 两者都由节点 attrs 原样还原，文本字面量不变。
      */
-    slashCommand?: {
-        command: string
-        from: number
-        to: number
-        leadingSpace: boolean
-    }
+    slashCommand?: SlashCommandInsert
 }
 
 interface UseSlashCommandInteractionParams {
@@ -110,19 +110,24 @@ export function useSlashCommandInteraction({
     const selectItem = useCallback((item: SlashCommandSuggestionItem, text: string): SlashSelectionResult | null => {
         if (!isOpen) return null
 
-        // 按 / 触发位置切分：before = / 之前的文本，after = 命令词之后到末尾的文本
+        // 按 / 触发位置切分：from = 原子替换起点，rawAfter = 命令词之后到末尾的文本
         const slashIndex = slashIndexRef.current
-        const before = text.slice(0, slashIndex)
         // 只吸收普通空格作为节点前导分隔（制表符/换行不吸收：节点的 renderText 只会
         // 还原普通空格，吸收它们会改写字面量；行首本身即是 CC 认可的边界）
         const leadingSpace = slashIndex > 0 && text[slashIndex - 1] === ' '
-        // 去掉参数文本的前导空白，由下方统一插入一个分隔空格，避免与原分隔空白叠加成双空格
+        // 原子替换的起点：命中前导空格时把该空格一并收进节点
+        const from = leadingSpace ? slashIndex - 1 : slashIndex
+        // 原子替换的终点：吸收命令词之后的同行空格/制表符（节点自带尾随空格，
+        // 不吸收会叠加成双空格；换行等更宽的空白留给正文，字面量不变）
         const rawAfter = text.slice(slashIndex + 1 + filter.length)
-        const after = rawAfter.replace(/^\s+/, '')
-        const newText = `${before}${item.value} ${after}`
-        // 原子替换要吸收的分隔空白（只含同行空格/制表符——节点只还原普通空格，
-        // 换行等更宽的空白留给正文，字面量不变）
         const absorbedGap = (rawAfter.match(/^[ \t]*/) ?? [''])[0]
+        const to = slashIndex + 1 + filter.length + absorbedGap.length
+        // 插入后的参数文本：去掉参数的前导空白，由节点自带的尾随空格作为唯一分隔
+        const after = rawAfter.replace(/^\s+/, '')
+        const command = item.value.startsWith('/') ? item.value.slice(1) : item.value
+        // 单一口径：原子 attrs → 字面量。fallback 文本与光标都由同一函数派生，
+        // 不会再出现「原子路径 / 文本路径」两套空白规则
+        const literal = slashCommandText({ command, leadingSpace, trailingSpace: true })
 
         setActiveCommand(
             (item.argumentHint || item.description)
@@ -137,17 +142,12 @@ export function useSlashCommandInteraction({
         }
 
         return {
-            text: newText,
+            text: text.slice(0, from) + literal + after,
             // 光标停在「命令 + 分隔空格」之后，即参数起始（无参数时为文本末尾，便于继续输入）
-            cursorPos: before.length + item.value.length + 1,
+            cursorPos: from + literal.length,
             // 原子节点：把 /命令 收成不可拆节点；前导空白一并收进节点，
             // 由节点的 renderText 还原（CC 的边界识别依赖这个分隔空白）
-            slashCommand: {
-                command: item.value.startsWith('/') ? item.value.slice(1) : item.value,
-                from: leadingSpace ? slashIndex - 1 : slashIndex,
-                to: slashIndex + 1 + filter.length + absorbedGap.length,
-                leadingSpace,
-            },
+            slashCommand: { command, from, to, leadingSpace },
         }
     }, [isOpen, filter, workingDir])
 

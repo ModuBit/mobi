@@ -36,8 +36,8 @@ type RpcHandlerManagerLike = {
  * 主循环、清理与 abort RPC 的装配。
  */
 export abstract class RemoteLauncherBase {
-    /** 非空即表示启动器应结束主循环（进程崩溃等终态由子类置位） */
-    protected exitReason: 'exit' | null = null;
+    /** 置位表示启动器应结束主循环（进程崩溃等终态由子类置位） */
+    protected exited = false;
 
     protected abstract runMainLoop(): Promise<void>;
 

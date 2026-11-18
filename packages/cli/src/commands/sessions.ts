@@ -73,10 +73,11 @@ export const sessionsCommand: CommandDefinition = {
             } catch (error) {
                 if (error instanceof SessionListingError) {
                     console.error(chalk.red(error.message))
-                    process.exitCode = 1
                 } else {
-                    console.log('No daemon running')
+                    // 读取/编程错误不能伪装成「daemon 没启动」：如实透出并置失败码
+                    console.error(chalk.red('读取会话失败：'), error instanceof Error ? error.message : String(error))
                 }
+                process.exitCode = 1
             }
             return
         }

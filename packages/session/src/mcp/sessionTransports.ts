@@ -64,6 +64,6 @@ export const MOBI_PREAUTHORIZED_TOOLS: readonly string[] = [
  * （跨会话 peer 消息直达）。env 走 SDK Options.env、SessionStart hook 走 SDK
  * 进程内回调，均不进 settings。
  */
-export const REMOTE_INLINE_HOOK_SETTINGS: Settings = Object.freeze({
+export const INLINE_HOOK_SETTINGS: Settings = Object.freeze({
     crossSessionInbound: 'accept',
 }) as Settings

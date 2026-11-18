@@ -31,8 +31,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
     claudeArgs?: string[];
     readonly mcpServers: Record<string, McpServerConfig>;
     readonly allowedTools?: string[];
-    readonly hookSettings: string | Settings;
-    readonly startedBy: 'daemon' | 'terminal';
+    readonly hookSettings: Settings;
     /** 工作区冻结的额外工作目录（创建时来自工作区 folders，resume 时回放 metadata） */
     readonly additionalDirectories: string[];
     /** Query 重启状态机：隐藏 pending、异步占位、队列清理和退出哨兵配对。 */
@@ -55,8 +54,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         mcpServers: Record<string, McpServerConfig>;
         messageQueue: MessageQueue<EnhancedMode>;
         allowedTools?: string[];
-        startedBy: 'daemon' | 'terminal';
-        hookSettings: string | Settings;
+        hookSettings: Settings;
         permissionMode?: PermissionMode;
         model?: SessionModel;
         effort?: EffortLevel;
@@ -93,7 +91,6 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         this.mcpServers = opts.mcpServers;
         this.allowedTools = opts.allowedTools;
         this.hookSettings = opts.hookSettings;
-        this.startedBy = opts.startedBy;
         this.additionalDirectories = opts.additionalDirectories ?? [];
         this.forkActivation = opts.forkActivation ?? null;
     }

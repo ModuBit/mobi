@@ -851,10 +851,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 // 甄别后上报 daemon（runtimeState.lastWakeup 供状态消费）+ 发 session event
                 // 落库（消息流系统行，刷新不丢）。人工与跨会话消息不带 source，未知取值
                 // （CC 未来扩展）safeParse 失败静默忽略——daemon 不认识的不报。
-                // 与 local 模式的 mods transcript tap（runClaude → registerWakeupTapSubscriber）
-                // 是两种宿主形态各一条通路：remote 走 SDK 进程内 hook（此处，无 mods 观测面），
-                // local 走落盘行扫描（此文件不挂 bridge listener）。若未来 remote 也接 mods tap，
-                // 两条通路会对同一唤醒双报，需按行 uuid 去重——改动前先核对。
+                // 唤醒观测有两条来源：这里收 SDK 进程内 hook 的内建唤醒事件，
+                // runClaude 的 mods bridge（registerWakeupTapSubscriber）收 transcript
+                // 行推来的信号。若两条通路对同一唤醒都上报，需按行 uuid 去重——改动前先核对。
                 const wakeup = WakeupSourceSchema.safeParse(input.source)
                 if (wakeup.success) {
                     session.client.reportWakeup(wakeup.data)
@@ -870,7 +869,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
         try {
             let previousSessionId: string | null = null;
-            while (!this.exitReason) {
+            while (!this.exited) {
                 logger.debug('[remote]: launch');
 
                 // rewind：rewind RPC 受理后经哨兵退出了上一轮 query，restart 请求已置位。
@@ -1160,7 +1159,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
                     session.consumeOneTimeFlags();
 
-                    if (!this.exitReason && controller.signal.aborted) {
+                    if (!this.exited && controller.signal.aborted) {
                         session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                     }
                 } catch (e) {
@@ -1191,10 +1190,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         ? `${e.name}: ${e.message}\n${e.stack?.substring(0, 500)}`
                         : `Non-Error thrown: type=${typeof e}, value=${JSON.stringify(e)}, keys=${typeof e === 'object' && e !== null ? Object.keys(e).join(',') : 'N/A'}`;
                     logger.error(`[remote]: launch error: ${errorDetail}`);
-                    if (!this.exitReason) {
+                    if (!this.exited) {
                         session.client.sendSessionEvent({ type: 'message', message: `Process exited unexpectedly: ${e instanceof Error ? e.message : String(e)}` });
                         // claude 进程崩溃，退出 session 避免僵尸进程
-                        this.exitReason = 'exit';
+                        this.exited = true;
                     }
                 } finally {
                     logger.debug('[remote]: launch finally');

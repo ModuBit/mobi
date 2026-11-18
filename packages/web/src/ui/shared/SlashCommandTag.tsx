@@ -19,7 +19,7 @@ import { Box } from 'lucide-react'
 /**
  * slash 命令徽章 —— 消息渲染（Markdown 的 `slash-command` 自定义标签）与
  * composer 的 slashCommand 原子节点共用此组件，视觉只存在一份：
- * 消息侧与输入框里看到的徽章天然同步。
+ * 消息侧与输入框里看到的徽章天然同步。业务呈现件（命令语义）故落 ui/shared。
  *
  * 样式单源在 styles/markdown.css 的 `.slash-command-badge`（全局类，不挂 .x-markdown
  * 作用域——composer 不在 markdown 容器里）。

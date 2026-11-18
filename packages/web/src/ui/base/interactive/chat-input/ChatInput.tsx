@@ -26,7 +26,7 @@ import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
-import { TextSelection } from '@tiptap/pm/state'
+import { TextSelection, type Transaction } from '@tiptap/pm/state'
 import type { Node as PMNode, Slice } from '@tiptap/pm/model'
 import { getTextBetween, getTextSerializersFromSchema, type Extensions, type JSONContent } from '@tiptap/core'
 import { isComposingEvent } from '@/core/lib/inputEnterKeys'
@@ -167,6 +167,30 @@ function positionAtOffset(
         return true
     })
     return target
+}
+
+/**
+ * 程序化文本区间 → 文档位置（两端越界各自回落文档末尾）。
+ * replaceTextRange / replaceTextRangeWithAtom 共用同一映射口径。
+ */
+function resolveTextRange(
+    doc: PMNode,
+    from: number,
+    to: number,
+    serializers: ReturnType<typeof getTextSerializersFromSchema>,
+): { fromPos: number; toPos: number } {
+    const fallback = TextSelection.atEnd(doc).from
+    return {
+        fromPos: positionAtOffset(doc, Math.max(0, from), serializers) ?? fallback,
+        toPos: positionAtOffset(doc, Math.max(0, to), serializers) ?? fallback,
+    }
+}
+
+/** 程序化写入事务：不触发面板检测、不污染 undo 栈 */
+function markProgrammatic(tr: Transaction): Transaction {
+    tr.setMeta(PROGRAMMATIC_META, true)
+    tr.setMeta('addToHistory', false)
+    return tr
 }
 
 /** 编辑器更新上下文（ChatInput.onUpdate 载荷；消费方桥接层按需收窄） */
@@ -570,15 +594,9 @@ export function ChatInput({
             const ed = editorRef.current
             if (!ed) return
             const doc = ed.state.doc
-            const serializers = serializersFor(ed.schema)
-            const fallback = TextSelection.atEnd(doc).from
-            const fromPos = positionAtOffset(doc, Math.max(0, from), serializers) ?? fallback
-            const toPos = positionAtOffset(doc, Math.max(0, to), serializers) ?? fallback
+            const { fromPos, toPos } = resolveTextRange(doc, from, to, serializersFor(ed.schema))
             if (toPos < fromPos) return
-            const tr = ed.state.tr
-            // 程序化通道：面板/归一不得因这次写回再次触发（onUpdate 会带 programmatic 标记）
-            tr.setMeta(PROGRAMMATIC_META, true)
-            tr.setMeta('addToHistory', false)
+            const tr = markProgrammatic(ed.state.tr)
             if (toPos > fromPos) tr.delete(fromPos, toPos)
             const insertAt = Math.min(fromPos, tr.doc.content.size - 1)
             if (text) tr.insertText(text, insertAt)
@@ -595,15 +613,9 @@ export function ChatInput({
                 return false
             }
             const doc = ed.state.doc
-            const serializers = serializersFor(ed.schema)
-            const fallback = TextSelection.atEnd(doc).from
-            const fromPos = positionAtOffset(doc, Math.max(0, from), serializers) ?? fallback
-            const toPos = positionAtOffset(doc, Math.max(0, to), serializers) ?? fallback
+            const { fromPos, toPos } = resolveTextRange(doc, from, to, serializersFor(ed.schema))
             if (toPos < fromPos) return false
-            const tr = ed.state.tr
-            // 与 replaceTextRange 同一程序化通道语义：不再触发面板检测、不污染 undo 栈
-            tr.setMeta(PROGRAMMATIC_META, true)
-            tr.setMeta('addToHistory', false)
+            const tr = markProgrammatic(ed.state.tr)
             tr.replaceRangeWith(fromPos, toPos, atom)
             tr.setSelection(TextSelection.create(tr.doc, Math.min(fromPos + atom.nodeSize, tr.doc.content.size - 1)))
             ed.view.dispatch(tr)
@@ -614,11 +626,9 @@ export function ChatInput({
             const ed = editorRef.current
             if (!ed) return ''
             // 只有格式没有文字（空列表项 / 空引用块）：Markdown 序列化会残留 "-" ">" 等
-            // 块标记，不能当作可发送正文——正文存在性以纯文本为准
-            const plain = normalizeEditorText(ed.getText({ blockSeparator: '\n' }))
-            // 只有格式没有文字（空列表项 / 空引用块）：Markdown 序列化会残留 "-" ">" 等
             // 块标记，不能当作可发送正文——正文存在性以纯文本为准（原子节点经 toText
             // 计入 plain，doc.textContent 会把 slash 命令当成空文档）
+            const plain = normalizeEditorText(ed.getText({ blockSeparator: '\n' }))
             if (plain.trim() === '') return ''
             // 纯文本文档 / 命令语义消息：原样走纯文本。Markdown 序列化的反斜杠转义与
             // HTML 实体编码会改写 bash 命令、斜杠命令与 @路径 的字面语义

@@ -55,7 +55,7 @@ export class CapabilityProbeError extends Error {
     }
 }
 
-// —— 并发闸：所有探针入口共用（含本地会话启动的 extractSDKMetadataAsync） ——
+// —— 并发闸：所有探针入口共用 ——
 let activeProbes = 0
 const probeWaiters: Array<() => void> = []
 
@@ -148,8 +148,9 @@ async function runProbe(cwd: string | undefined, withPlugins: boolean): Promise<
             options.cwd = configuration.mobiHomeDir
         }
 
-        // 内置插件与真实会话同源挂载（local 模式的 `/` 面板命令以此探针为唯一来源，
-        // 不带 plugins 会让插件 skill 从命令面板消失——2026-09-26 visualize 实测缺失）
+        // 内置插件与真实会话同源挂载（命令面板 / capabilityCatalog 的插件 skill
+        // 来源以此探针为准，不带 plugins 会让插件 skill 从命令面板消失——2026-09-26
+        // visualize 实测缺失）
         if (withPlugins) {
             options.plugins = buildBundledPluginOptions()
         }
@@ -223,24 +224,4 @@ export async function extractSDKMetadata(cwd?: string): Promise<SDKMetadata> {
     } finally {
         release()
     }
-}
-
-/**
- * 异步提取 SDK 元数据，完成后回调通知
- *
- * 仅本地会话启动时使用（没有活 Query）。失败静默。
- *
- * @param onComplete 元数据就绪后的回调
- * @param cwd 可选的工作目录，传入后可获取项目级别的 .claude/commands 和 skills
- */
-export function extractSDKMetadataAsync(onComplete: (metadata: SDKMetadata) => void, cwd?: string): void {
-    extractSDKMetadata(cwd)
-        .then(metadata => {
-            if (metadata.agents || metadata.commands) {
-                onComplete(metadata)
-            }
-        })
-        .catch(error => {
-            logger.debug('[capability] async probe failed:', error)
-        })
 }

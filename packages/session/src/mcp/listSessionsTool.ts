@@ -26,7 +26,7 @@
  * - ok:false / emitWithAck reject → isError（业务拒绝与连接故障都归此，
  *   但内容上要能分辨——reject 的文案不提 reason，见下方分支）
  *
- * 仅挂 remote 壳（mobiAppsServer）：B 类链路依赖 daemon，local 模式无此通道。
+ * 挂 mobiAppsServer 壳：B 类链路依赖 daemon。
  */
 
 import { z } from 'zod'

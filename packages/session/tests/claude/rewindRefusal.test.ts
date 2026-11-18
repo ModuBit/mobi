@@ -169,7 +169,7 @@ describe('claudeRemote rewind refusal recovery（路径 A：startup 抛错）', 
     it('startup 抛 SDK 包装的 refusal → 同样走 recovery（不向上抛杀会话）', async () => {
         // 真实事故（2026-09-21）：截断 refusal 经 SDK readMessages 包装为
         // "Claude Code returned an error result: Resume rejected by ..."，前缀判别
-        // 失配 → launcher 按崩溃处理 exitReason='exit'，会话退出
+        // 失配 → launcher 按崩溃处理并置位 exited，会话退出
         const wrappedMsg = `Claude Code returned an error result: ${REWIND_REFUSAL_PREFIX} range does not start with the declared turn prompt`
         mockedStartup.mockRejectedValue(new Error(wrappedMsg))
 

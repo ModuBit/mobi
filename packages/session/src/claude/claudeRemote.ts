@@ -978,7 +978,7 @@ export interface RemoteRoundParams {
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
     allowedTools: string[]
-    hookSettings: string | Settings
+    hookSettings: Settings
     /** 工作区冻结的额外工作目录（创建时来自工作区 folders，resume 时回放 metadata） */
     additionalDirectories?: string[]
     /**
@@ -1329,8 +1329,7 @@ export async function claudeRemote(
             askUserQuestion: { previewFormat: 'markdown' }
         },
         // 入站跨会话消息观测（spec 2026-08-28 ②）：SDK 进程内 hook 回调，
-        // 事件直达 wrapper——无需 shell 命令/端口/token（与 settings 文件的
-        // SessionStart hook-forwarder 并存不冲突）。只观测不干预，恒放行。
+        // 事件直达 wrapper——无需 shell 命令/端口/token。只观测不干预，恒放行。
         hooks: {
             UserPromptSubmit: [{
                 hooks: [async (input) => {

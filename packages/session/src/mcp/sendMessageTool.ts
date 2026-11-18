@@ -27,7 +27,7 @@
  * 部分成功就是部分成功。顶层 isError 只在**一个目标都没成**时置位——
  * 那时「发消息」这件事确实没发生。
  *
- * 仅挂 remote 壳（mobiAppsServer）：B 类链路依赖 daemon，local 模式无此通道。
+ * 挂 mobiAppsServer 壳：B 类链路依赖 daemon。
  */
 
 import { z } from 'zod'

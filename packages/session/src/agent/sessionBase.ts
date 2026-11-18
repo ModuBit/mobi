@@ -46,8 +46,8 @@ export class AgentSessionBase<Mode> {
     readonly queue: MessageQueue<Mode>;
 
     sessionId: string | null;
-    /** 会话驱动模式。local 已退场（tui-fork 票 05），保留字段只为兼容既有 keepAlive 协议 */
-    readonly mode: 'local' | 'remote' = 'remote';
+    /** 会话驱动模式：local 已退场（tui-fork 票 05），只剩进程内驱动一条路径 */
+    readonly mode = 'remote';
     running: boolean = false;
 
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];

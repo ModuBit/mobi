@@ -24,7 +24,6 @@ function makeSession() {
         keepAlive: vi.fn(),
         reportRunStarted,
         startIdleTimer: vi.fn(),
-        stopIdleTimer: vi.fn(),
         updateMetadata: vi.fn(),
     }
     const session = new AgentSessionBase({

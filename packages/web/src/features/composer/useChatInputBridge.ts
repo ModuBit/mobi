@@ -17,7 +17,8 @@
 import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import type { ChatInputHandle, ChatInputUpdateContext } from '@/ui/base/interactive/chat-input'
 import { normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash } from '@/domain/command/composerInputNormalization'
-import { slashCommandNodeJSON, type SlashCommandAttrs } from './slashCommandNode'
+import type { SlashCommandInsert } from '@/domain/command/slashCommandHelper'
+import { slashCommandNodeJSON } from './slashCommandNode'
 
 /** 桥接所需的编辑器更新子集（完整载荷见 ui 层 ChatInputUpdateContext） */
 export type TextInputCtx = Pick<ChatInputUpdateContext, 'text' | 'programmatic' | 'cursorOffset'>
@@ -30,12 +31,7 @@ export interface PanelSelectionResult {
      * 原子节点插入参数（slash 命令）：提供时优先走 replaceTextRangeWithAtom，
      * 编辑器缺该节点时不支持则回落到 text 文本替换
      */
-    slashCommand?: {
-        command: string
-        from: number
-        to: number
-        leadingSpace: boolean
-    }
+    slashCommand?: SlashCommandInsert
 }
 
 /**
@@ -157,7 +153,7 @@ export function useChatInputBridge({ shellRef, slash, mention, onUpdate }: UseCh
             const inserted = shellRef.current?.replaceTextRangeWithAtom(
                 from,
                 to,
-                slashCommandNodeJSON({ command, leadingSpace, trailingSpace: true } satisfies SlashCommandAttrs),
+                slashCommandNodeJSON({ command, leadingSpace, trailingSpace: true }),
             )
             if (inserted) return
         }

@@ -23,7 +23,8 @@
 import { describe, expect, it } from 'vitest'
 import { buildClaudeSpawnArgs } from '@/executor/spawnArgs'
 
-describe('buildClaudeSpawnArgs --workspace', () => {    it('带 workspaceId → args 含 [--workspace, id]', () => {
+describe('buildClaudeSpawnArgs --workspace', () => {
+    it('带 workspaceId → args 含 [--workspace, id]', () => {
         const args = buildClaudeSpawnArgs({
             directory: '/a/mobi',
             workspaceId: 'p1'

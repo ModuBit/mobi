@@ -37,7 +37,6 @@ interface LoopOptions {
     fastMode?: boolean
     /** CC output style（Web spawn 透传；经 applyStartupOutputStyle（applyFlagSettings）注入） */
     outputStyle?: string
-    startedBy?: 'daemon' | 'terminal'
     /** 工作区冻结的额外工作目录（创建时来自工作区 folders，resume 时回放 metadata） */
     additionalDirectories?: string[]
     mcpServers: Record<string, McpServerConfig>
@@ -48,7 +47,7 @@ interface LoopOptions {
     messageQueue: MessageQueue<EnhancedMode>
     allowedTools?: string[]
     onSessionReady?: (session: Session) => void
-    hookSettings: string | Settings
+    hookSettings: Settings
     processCleanupRef?: { current: (() => void) | null }
     queryControlRef?: QueryControlRef
     getSessionConfig?: () => EnhancedMode
@@ -77,7 +76,6 @@ export async function loop(opts: LoopOptions) {
         logPath: logger.logFilePath,
         messageQueue: opts.messageQueue,
         allowedTools: opts.allowedTools,
-        startedBy: opts.startedBy ?? 'terminal',
         hookSettings: opts.hookSettings,
         permissionMode: opts.permissionMode ?? 'default',
         model: opts.model,

@@ -17,9 +17,8 @@
 /**
  * sessionId 绑定守卫（transport 无关的核心）。
  *
- * Claude 侧 SessionStart hook（local 模式经 HTTP Hook Server、remote 模式经
- * SDK 进程内回调，见 ADR 0001）与 systemInit 双源触发 onSessionFound，
- * 此处收口「仅在 id 变更时绑定一次」的幂等语义，供两个 transport 复用。
+ * Claude 侧 SessionStart hook（SDK 进程内回调，见 ADR 0001）与 systemInit
+ * 双源触发 onSessionFound，此处收口「仅在 id 变更时绑定一次」的幂等语义。
  */
 
 import { logger } from '@mobi/node-core/logger'

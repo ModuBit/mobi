@@ -61,11 +61,14 @@ function printSessions(sessions: readonly ForkableSession[]): void {
     console.log('')
 }
 
+/** 在线会话的 fork 风险提示（交互确认与一次性警告共用同一文案） */
+const ONLINE_FORK_WARNING = '该会话进程仍在线；若正在执行 turn，最近一轮可能尚未写入 transcript'
+
 /**
  * 交互选择：默认最近活跃（回车）；输入序号选中；输入非数字则按关键字过滤候选。
  * 选中进程在线的会话时要求二次确认（当前轮可能尚未写入 transcript）。
  */
-async function promptForSession(initial: readonly ForkableSession[]): Promise<ForkableSession | null> {
+async function promptForSession(initial: readonly ForkableSession[]): Promise<ForkableSession> {
     let candidates = [...initial]
     const rl = readline.createInterface({ input, output })
 
@@ -100,9 +103,7 @@ async function promptForSession(initial: readonly ForkableSession[]): Promise<Fo
 
             if (chosen.status === 'online') {
                 const confirmed = await rl.question(
-                    chalk.yellow(
-                        '该会话进程仍在线；若正在执行 turn，最近一轮可能尚未写入 transcript。继续 fork？(y/N): '
-                    )
+                    chalk.yellow(`${ONLINE_FORK_WARNING}。继续 fork？(y/N): `)
                 )
                 if (!isYes(confirmed)) continue
             }
@@ -112,6 +113,23 @@ async function promptForSession(initial: readonly ForkableSession[]): Promise<Fo
     } finally {
         rl.close()
     }
+}
+
+/**
+ * 非交互环境给出可操作提示并返回 null；否则进入交互选择器。
+ */
+async function pickSession(
+    candidates: readonly ForkableSession[],
+    nonTtyMessage: string,
+    nonTtyHint?: string
+): Promise<ForkableSession | null> {
+    if (!process.stdin.isTTY) {
+        console.error(chalk.red(nonTtyMessage))
+        if (nonTtyHint) console.error(chalk.gray(`  ${nonTtyHint}`))
+        process.exitCode = 1
+        return null
+    }
+    return promptForSession(candidates)
 }
 
 /** 在会话工作目录启动 Claude；stdio 继承，用户看到原生 TUI */
@@ -176,38 +194,24 @@ export const forkCommand: CommandDefinition = {
             let session: ForkableSession
 
             if (!query) {
-                if (!process.stdin.isTTY) {
-                    console.error(chalk.red('非交互环境无法选择会话'))
-                    console.error(chalk.gray('  请用 mobi fork <id|title> 指定目标'))
-                    process.exitCode = 1
-                    return
-                }
-                const chosen = await promptForSession(sessions)
-                if (!chosen) {
-                    process.exitCode = 1
-                    return
-                }
+                const chosen = await pickSession(
+                    sessions,
+                    '非交互环境无法选择会话',
+                    '请用 mobi fork <id|title> 指定目标'
+                )
+                if (!chosen) return
                 session = chosen
             } else if (plan.kind === 'resolved') {
                 session = plan.session
                 if (session.status === 'online') {
-                    console.warn(
-                        chalk.yellow(
-                            '⚠ 该会话进程仍在线；若正在执行 turn，最近一轮可能尚未写入 transcript'
-                        )
-                    )
+                    console.warn(chalk.yellow(`⚠ ${ONLINE_FORK_WARNING}`))
                 }
             } else {
-                if (!process.stdin.isTTY) {
-                    console.error(chalk.red('匹配到多个会话，请用更精确的 id 或标题指定'))
-                    process.exitCode = 1
-                    return
-                }
-                const chosen = await promptForSession(plan.matches)
-                if (!chosen) {
-                    process.exitCode = 1
-                    return
-                }
+                const chosen = await pickSession(
+                    plan.matches,
+                    '匹配到多个会话，请用更精确的 id 或标题指定'
+                )
+                if (!chosen) return
                 session = chosen
             }
 

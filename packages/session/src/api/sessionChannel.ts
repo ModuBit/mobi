@@ -459,12 +459,11 @@ export class SessionChannel {
         const subtype = body.type === 'system' ? body.subtype : undefined
         const category = classifyMessage(body.type, subtype)
 
-        // discard 统一在此拦截：remote 循环入口（claudeRemoteLauncher）虽已过滤，
-        // 但 local 模式 scanner（转录 JSONL 含 command_lifecycle 等控制帧）等旁路
-        // 直接调用本方法——发送端唯一咽喉点，保证 discard 消息不进 daemon 不落库
+        // discard 统一在此拦截：本方法是发送端唯一咽喉点（含各旁路直接调用），
+        // 保证 discard 消息不进 daemon 不落库
         if (category === 'discard') return
 
-        // 恢复后缓存过期提示的生命周期终点：首个 result 帧（两模式共用咽喉点）即清，
+        // 恢复后缓存过期提示的生命周期终点：首个 result 帧即清，
         // 提示只在「恢复后首轮前」有意义。RawJSONLines 无 'result' discriminant
         // （见 sdkToLogConverter case 'result'），走开放形状断言（同 claudeRemoteLauncher 先例）
         if ((body as { type?: string }).type === 'result') {

@@ -46,6 +46,38 @@ export const COMMAND_NAME_CHARS_SRC = 'a-zA-Z0-9_:-'
 const COMMAND_NAME_CHARS = new RegExp(`^[${COMMAND_NAME_CHARS_SRC}]*$`)
 
 /**
+ * slash 命令原子节点的 attrs（composer 编辑器与落库字面量共用的领域形状）。
+ * 分隔空白存在 attrs 里而不是留在正文：删掉节点外的空白会把 /cmd 与相邻文本
+ * 粘成 /cmdfoo（命令名被改写、CC 也识别不到），收进原子后结构上不可能粘连。
+ */
+export interface SlashCommandAttrs {
+    /** 不含 / 前缀的命令名 */
+    command: string
+    /** 节点前是否有分隔空白（行首为 false） */
+    leadingSpace: boolean
+    /** 节点后是否有分隔空白（行尾为 false） */
+    trailingSpace: boolean
+}
+
+/** 节点对应的字面量文本：wire / getText / 剪贴板共用的唯一还原函数 */
+export function slashCommandText(
+    attrs: Pick<SlashCommandAttrs, 'command' | 'leadingSpace' | 'trailingSpace'>,
+): string {
+    return `${attrs.leadingSpace ? ' ' : ''}/${attrs.command}${attrs.trailingSpace ? ' ' : ''}`
+}
+
+/**
+ * 面板选中时把 `/cmd` 收成原子节点的插入参数（纯文本 offset 区间）。
+ * from 命中前导空白时含该空白；to 吸收命令词之后的同行空格/制表符。
+ */
+export interface SlashCommandInsert {
+    command: string
+    from: number
+    to: number
+    leadingSpace: boolean
+}
+
+/**
  * 检测光标位置是否处于斜杠命令模式
  * 规则与 @mention 对齐：从光标向前找最近的 /，要求其前为行首或空白（独立词），
  * 且 / 到光标之间内容仅含命令名合法字符（光标仍在命令词内）。

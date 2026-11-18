@@ -568,17 +568,10 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
-     * 启动空闲计时器（Remote 模式）
+     * 启动空闲计时器
      */
     startIdleTimer(): void {
         this.idleTimer?.start()
-    }
-
-    /**
-     * 停止空闲计时器（切换到 Local 模式）
-     */
-    stopIdleTimer(): void {
-        this.idleTimer?.stop()
     }
 
     /**

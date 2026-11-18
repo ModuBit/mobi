@@ -23,9 +23,7 @@
 
 import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
-import type { ForkableSession } from '@mobi/shared'
-
-export type { ForkableSession } from '@mobi/shared'
+import { isResumableEndReason, type ForkableSession } from '@mobi/shared'
 
 /** 只读查询的显式失败：调用方据此给出可操作提示，而不是静默空列表 */
 export class SessionListingError extends Error {
@@ -35,30 +33,28 @@ export class SessionListingError extends Error {
     }
 }
 
+/**
+ * 查询投影：SQL 只取标量（不物化整段 metadata JSON——其中 sdkMetadata 等字段
+ * 从不被列表使用，按行 parse 会把大块无关数据读进 JS）。
+ * json_valid 守卫让脏行按 NULL 处理（与写路径 safeJsonParse 的防御策略一致）。
+ */
 type SessionRow = {
     id: string
-    metadata: string | null
+    name: unknown
+    summary_text: unknown
+    path: unknown
+    native_session_id: unknown
+    end_reason: unknown
     status: string
     updated_at: number
-    end_state: string | null
-}
-
-type SessionMetadata = {
-    name?: unknown
-    path?: unknown
-    nativeSessionId?: unknown
-    summary?: { text?: unknown } | null
-}
-
-type SessionEndState = {
-    reason?: unknown
 }
 
 /** 只读查询必须用到的列；缺任意一列说明库 schema 落后于当前 CLI */
-const REQUIRED_COLUMNS = ['id', 'metadata', 'status', 'updated_at', 'end_state'] as const
+const REQUIRED_COLUMNS = ['id', 'namespace', 'metadata', 'status', 'updated_at', 'end_state'] as const
 
-/** pause 之外的终结原因都不可唤醒；列表里这类会话没有继续接续的意义 */
-const NON_RESUMABLE_END_REASONS = new Set(['stop', 'archive', 'delete', 'crash'])
+/** 可 fork 的保留状态（archived 等状态在 SQL 层排除） */
+const FORKABLE_STATUSES = ['online', 'dormant'] as const
+type ForkableStatus = (typeof FORKABLE_STATUSES)[number]
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error)
@@ -98,51 +94,28 @@ function assertSessionsSchema(db: Database): void {
     }
 }
 
-function parseJson(value: string | null): unknown {
-    if (!value) return null
-    try {
-        return JSON.parse(value)
-    } catch {
-        return null
-    }
+/** 非空字符串（json_extract 结果可能是数字/对象等脏值） */
+function nonEmptyString(value: unknown): string | null {
+    return typeof value === 'string' && value.length > 0 ? value : null
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null
-}
-
-/** 行 → 可 fork 会话；不满足条件的行静默跳过（归档/无 native id/已终结） */
+/** 行 → 可 fork 会话；不满足条件的行静默跳过（无 native id / 已终结） */
 function toForkableSession(row: SessionRow): ForkableSession | null {
-    if (row.status !== 'online' && row.status !== 'dormant') return null
+    if (!FORKABLE_STATUSES.includes(row.status as ForkableStatus)) return null
+    // end_reason 为 null（老数据未回填）视为可接续；其余只有 pause 可唤醒
+    if (!isResumableEndReason(nonEmptyString(row.end_reason))) return null
 
-    const endState = parseJson(row.end_state)
-    if (isRecord(endState)) {
-        const reason = (endState as SessionEndState).reason
-        if (typeof reason === 'string' && NON_RESUMABLE_END_REASONS.has(reason)) return null
-    }
-
-    const metadata = parseJson(row.metadata)
-    if (!isRecord(metadata)) return null
-    const typed = metadata as SessionMetadata
-
-    const nativeSessionId = typeof typed.nativeSessionId === 'string' ? typed.nativeSessionId : null
-    const path = typeof typed.path === 'string' ? typed.path : null
+    const nativeSessionId = nonEmptyString(row.native_session_id)
+    const path = nonEmptyString(row.path)
     if (!nativeSessionId || !path) return null
-
-    const title =
-        typeof typed.name === 'string' && typed.name.length > 0
-            ? typed.name
-            : isRecord(typed.summary) && typeof typed.summary.text === 'string' && typed.summary.text.length > 0
-              ? typed.summary.text
-              : null
 
     return {
         id: row.id,
-        title,
+        title: nonEmptyString(row.name) ?? nonEmptyString(row.summary_text),
         path,
         nativeSessionId,
         updatedAt: row.updated_at,
-        status: row.status === 'online' ? 'online' : 'dormant'
+        status: row.status as ForkableStatus
     }
 }
 
@@ -154,9 +127,15 @@ export function listForkableSessionsFromDb(db: Database, namespace: string): For
     try {
         rows = db
             .query(
-                `SELECT id, metadata, status, updated_at, end_state
+                `SELECT id,
+                        CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.name') END AS name,
+                        CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.summary.text') END AS summary_text,
+                        CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.path') END AS path,
+                        CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.nativeSessionId') END AS native_session_id,
+                        CASE WHEN json_valid(end_state) THEN json_extract(end_state, '$.reason') END AS end_reason,
+                        status, updated_at
                  FROM sessions
-                 WHERE namespace = ?
+                 WHERE namespace = ? AND status IN ('online', 'dormant')
                  ORDER BY updated_at DESC`
             )
             .all(namespace) as SessionRow[]

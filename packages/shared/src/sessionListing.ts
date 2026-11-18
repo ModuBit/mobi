@@ -20,6 +20,8 @@
  * 生产者是 daemon 的只读会话查询（SQLite），消费者是 CLI 的 fork 命令；
  * 跨包共享，故形状定义在此。
  */
+import type { SessionStatus } from './schemas'
+
 export type ForkableSession = {
     /** mobi 会话行 id（用户可见短 id 的来源） */
     id: string
@@ -32,5 +34,5 @@ export type ForkableSession = {
     /** 最近活跃时刻（列表排序键） */
     updatedAt: number
     /** 保留状态：online 表示进程仍在线（可能正在执行 turn） */
-    status: 'online' | 'dormant'
+    status: Extract<SessionStatus, 'online' | 'dormant'>
 }
