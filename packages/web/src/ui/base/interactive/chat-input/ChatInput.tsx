@@ -302,7 +302,11 @@ export interface ChatInputHandle {
      * 程序化替换纯文本区间 [from, to)（offset 与 cursorOffset 同语义）。
      * 供面板选中插回/归一写回使用：只换差异段，正文其余部分（富文本结构）不动。
      */
-    replaceTextRange(from: number, to: number, text: string, meta?: { key: string; value: unknown }): void
+    replaceTextRange(
+        from: number, to: number, text: string,
+        /** 扩展可在同一事务上附带元数据；收到的起点是实际插入位置（文档坐标）。 */
+        metadata?: (insertAt: number) => { key: string; value: unknown },
+    ): void
     /**
      * 程序化把纯文本区间 [from, to) 替换为内联原子节点（消费方注入的业务节点，
      * 如 slash 命令）；光标落节点之后。节点创建失败/越界返回 false（调用方可回退 replaceTextRange）。
@@ -647,10 +651,13 @@ export function ChatInput({
             const { fromPos, toPos } = resolveTextRange(doc, from, to, serializersFor(ed.schema))
             if (toPos < fromPos) return
             const tr = markProgrammatic(ed.state.tr)
-            if (meta) tr.setMeta(meta.key, meta.value)
             if (toPos > fromPos) tr.delete(fromPos, toPos)
             const insertAt = Math.min(fromPos, tr.doc.content.size - 1)
             if (text) tr.insertText(text, insertAt)
+            if (meta) {
+                const { key, value } = meta(insertAt)
+                tr.setMeta(key, value)
+            }
             tr.setSelection(TextSelection.create(tr.doc, Math.min(insertAt + text.length, tr.doc.content.size - 1)))
             ed.view.dispatch(tr)
         },

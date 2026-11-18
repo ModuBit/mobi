@@ -15,18 +15,10 @@
  */
 
 import type { TokenizerAndRendererExtension } from 'marked'
-import { buildActionUri } from '@mobi/shared'
+import { buildActionUri, escapeXmlText } from '@mobi/shared'
 import { resolveFileType } from '@/core/lib/fileTypeMeta'
-import { findMentionStart, matchMentionPrefix } from '@/domain/command/mentionParser'
+import { classifyMention, findMentionStart, matchMentionPrefix } from '@/domain/command/mentionParser'
 
-/** HTML entity 转义，防止 XSS */
-function escapeHtml(text: string): string {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-}
 
 /**
  * 将用户消息中的 @<path> mention 渲染为文件引用，形态与 assistant 消息里的
@@ -66,8 +58,12 @@ function mention(): TokenizerAndRendererExtension {
         tokenizer(src: string) {
             const match = matchMentionPrefix(src)
             if (!match) return undefined
-            const { raw, lead, path, plain } = match
-            if (plain) return { type: 'text', raw, text: raw }
+            const { lead, path } = match
+            const kind = classifyMention(lead, path)
+            if (kind === 'punctuation') return undefined
+            const raw = `${lead}@${path}`
+            // 消费整个非引用候选，避免 marked 从邮箱里的 @ 再次尝试匹配。
+            if (kind === 'plain') return { type: 'text', raw, text: raw }
             return { type: 'mention', raw, lead, path }
         },
         renderer(token) {
@@ -77,13 +73,13 @@ function mention(): TokenizerAndRendererExtension {
             // 目录（resolveFileType 判定单源，无 `.` basename / 尾 `/`）：纯展示不可点，
             // glyph 走 <mention-directory> 标签由 Markdown 组件层渲染（见上注）
             if (resolveFileType(path)?.kind === 'directory') {
-                return `${escapeHtml(lead)}<mention-directory data-label="${escapeHtml(label)}"></mention-directory>`
+                return `${escapeXmlText(lead)}<mention-directory data-label="${escapeXmlText(label)}"></mention-directory>`
             }
             // 点击 = mobi://file/open（ADR 0003）：渲染时构造 URI 走统一执行链（消息即快照，
             // 落库不动）。裸 <a> 由 ExternalLink 拦截为 ActionLink——类型徽章/链接样式/点击
             // 分发全部复用 assistant 文件链接的渲染链；name 缺省由执行器基名兜底
             const uri = buildActionUri('file/open', { path })
-            return `${escapeHtml(lead)}<a href="${escapeHtml(uri)}">${escapeHtml(label)}</a>`
+            return `${escapeXmlText(lead)}<a href="${escapeXmlText(uri)}">${escapeXmlText(label)}</a>`
         },
     }
 }

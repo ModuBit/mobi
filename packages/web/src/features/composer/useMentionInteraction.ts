@@ -15,15 +15,17 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import { detectMentionAtCursor, buildMentionPath, mentionPathPrefix, type FileMentionChoice } from '@/domain/command/mentionParser'
+import { detectMentionAtCursor, buildMentionPath, mentionPathPrefix } from '@/domain/command/mentionParser'
+import type { FileMentionTarget } from './fileMentionDecoration'
 import type { CapabilityTarget, SearchFilesFn, ListDirectoryFn } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useFileListing } from './useFileListing'
 import type { FileListingInput, FileSuggestionItem } from './useSessionFileListing'
 
 export interface MentionSelectionResult {
-    text: string
-    cursorPos: number | null
-    mention: FileMentionChoice
+    from: number
+    to: number
+    insertText: string
+    mention: FileMentionTarget
 }
 
 interface UseMentionInteractionParams {
@@ -96,9 +98,10 @@ export function useMentionInteraction({
             setMentionInput(null)
         }
         return {
-            text: text.slice(0, from) + literal + text.slice(to),
-            cursorPos: from + literal.length,
-            mention: { from, to, path, kind: item.isDirectory ? 'directory' : 'file' },
+            from,
+            to,
+            insertText: literal,
+            mention: { path, kind: item.isDirectory ? 'directory' : 'file' },
         }
     }, [isOpen, mentionInput])
 

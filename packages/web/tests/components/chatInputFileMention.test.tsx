@@ -67,6 +67,15 @@ describe('Sender 的 @ 文件引用', () => {
         expect(container.querySelector('code .mention-file')).toBeNull()
     })
 
+    it('前文编辑改变文档坐标时，后面段落里的引用仍装饰原来的路径', async () => {
+        const { input, container } = await setup()
+        input.setText('开头\n看 @src/file.ts')
+        expect(container.querySelector('.mention-file')?.textContent).toBe('@src/file.ts')
+        input.replaceTextRange(0, 2, '改了长度的前文')
+        expect(container.querySelector('.mention-file')?.textContent).toBe('@src/file.ts')
+        expect(input.getWireText()).toBe('改了长度的前文\n看 @src/file.ts')
+    })
+
     it('目录选中后继续下钻；选中的无扩展名文件使用真实类型，编辑后重新识别', async () => {
         const { input, editor, container } = await setup()
         const shellRef = { current: input }

@@ -41,18 +41,19 @@ export function findMentionStart(text: string): number {
     return text.search(MENTION_START)
 }
 
-/**
- * 渲染层共用的判定。undefined 把 Markdown 标点交还给外层解析；plain 则必须
- * 消费整个候选，防止邮箱被分开后再从 @ 处识别成独立词。
- */
 export function matchMentionPrefix(text: string) {
     const match = MENTION_PREFIX.exec(text)
     if (!match) return undefined
-    const [raw, lead = '', path] = match
+    const [, lead = '', path] = match
+    return { lead, path }
+}
+
+/** 独立词可接受带点的裸文件名；贴着文字时要求强路径，避免误认邮箱。 */
+export function classifyMention(lead: string, path: string): 'mention' | 'plain' | 'punctuation' {
     const standalone = lead === '' || /[ \t\n]/.test(lead)
-    if (!standalone && /[^\p{L}\p{N}\s]/u.test(lead)) return undefined
+    if (!standalone && /[^\p{L}\p{N}\s]/u.test(lead)) return 'punctuation'
     const strongPath = path.includes('/') || path.startsWith('~')
-    return { raw, lead, path, plain: !(strongPath || (standalone && path.includes('.'))) }
+    return strongPath || (standalone && path.includes('.')) ? 'mention' : 'plain'
 }
 
 /** 已由编辑器划分出正文的文本段：只找范围，不重做 Markdown 分词。 */
@@ -62,19 +63,13 @@ export function scanMentions(text: string) {
         const lead = [...text.slice(Math.max(0, at - 2), at)].at(-1) ?? ''
         const match = matchMentionPrefix(lead + text.slice(at))
         if (!match) continue
+        const kind = classifyMention(match.lead, match.path)
+        if (kind === 'punctuation') continue
         const to = at + 1 + match.path.length
-        if (!match.plain) mentions.push({ from: at, to, path: match.path })
+        if (kind === 'mention') mentions.push({ from: at, to, path: match.path })
         at = to - 1
     }
     return mentions
-}
-
-/** 候选项有真实类型；只在编辑器内为这次文本替换提供呈现提示。 */
-export interface FileMentionChoice {
-    from: number
-    to: number
-    path: string
-    kind: 'file' | 'directory'
 }
 
 /**

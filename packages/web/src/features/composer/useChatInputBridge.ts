@@ -17,25 +17,16 @@
 import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import type { ChatInputHandle, ChatInputUpdateContext } from '@/ui/base/interactive/chat-input'
 import { normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash } from '@/domain/command/composerInputNormalization'
-import type { SlashCommandInsert } from '@/domain/command/slashCommandHelper'
+import type { SlashSelectionResult } from './useSlashCommandInteraction'
 import { slashCommandNodeJSON } from './slashCommandNode'
-import type { FileMentionChoice } from '@/domain/command/mentionParser'
-import { FILE_MENTION_CHOICE_META } from './fileMentionDecoration'
+import type { MentionSelectionResult } from './useMentionInteraction'
+import { fileMentionMetadata } from './fileMentionDecoration'
 
 /** 桥接所需的编辑器更新子集（完整载荷见 ui 层 ChatInputUpdateContext） */
 export type TextInputCtx = Pick<ChatInputUpdateContext, 'text' | 'programmatic' | 'cursorOffset'>
 
 /** 面板选中结果（mention/slash 的 selectItem/selectCurrent 契约；cursorPos null = 光标置尾） */
-export interface PanelSelectionResult {
-    text: string
-    cursorPos: number | null
-    /**
-     * 原子节点插入参数（slash 命令）：提供时优先走 replaceTextRangeWithAtom，
-     * 编辑器缺该节点时不支持则回落到 text 文本替换
-     */
-    slashCommand?: SlashCommandInsert
-    mention?: FileMentionChoice
-}
+export type PanelSelectionResult = MentionSelectionResult | SlashSelectionResult
 
 /**
  * 两次镜像文本的最小差异（公共前缀/后缀之外的一段）。
@@ -149,6 +140,11 @@ export function useChatInputBridge({ shellRef, slash, mention, onUpdate }: UseCh
 
     const applySelection = useCallback((result: PanelSelectionResult | null) => {
         if (!result) return
+        if ('mention' in result) {
+            const { from, to, insertText, mention } = result
+            shellRef.current?.replaceTextRange(from, to, insertText, insertAt => fileMentionMetadata(mention, insertAt))
+            return
+        }
         // slash 命令：整体插入原子节点（退格整删、命令名不可改）。编辑器未注入该
         // 节点（replaceTextRangeWithAtom 返回 false）时回落到纯文本替换
         if (result.slashCommand) {
@@ -159,14 +155,6 @@ export function useChatInputBridge({ shellRef, slash, mention, onUpdate }: UseCh
                 slashCommandNodeJSON({ command, leadingSpace, trailingSpace: true }),
             )
             if (inserted) return
-        }
-        if (result.mention) {
-            const { from, to, path, kind } = result.mention
-            shellRef.current?.replaceTextRange(from, to, result.text.slice(from, result.cursorPos ?? undefined), {
-                key: FILE_MENTION_CHOICE_META,
-                value: { path, kind },
-            })
-            return
         }
         applyText(result.text)
         // cursorPos null（契约：无精确落点）落到文本末尾

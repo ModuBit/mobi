@@ -197,8 +197,9 @@ describe('mentionPlugin', () => {
     })
 
     it('带点的目录以尾斜杠为准，不渲染为文件链接', () => {
-        expect(render('看 @docs.v2/ end')).toContain('<mention-directory data-label="@docs.v2/">')
-        expect(render('看 @docs.v2/ end')).not.toContain('mobi://file/open')
+        const html = render('看 @docs.v2/ end')
+        expect(html).toContain('<mention-directory data-label="@docs.v2/">')
+        expect(html).not.toContain('mobi://file/open')
     })
 
     it('多级路径文件 mention 仍可点击（目录判定只看 basename）', () => {
