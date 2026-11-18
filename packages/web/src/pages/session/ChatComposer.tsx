@@ -381,8 +381,13 @@ export function ChatComposer(props: ChatComposerProps) {
     // 失活覆盖谓词：会话失活/被归档（允许发送时除外）。单一命名，Sender 遮罩与
     // 控件禁用（controlsDisabled）共引——失活判据加条件只改这里
     const inactiveCover = !active && !allowSendWhenInactive
-    // 控件禁用：失活时禁用输入与拖拽，并需重置拖拽计数避免覆盖层残留
-    const controlsDisabled = disabled || inactiveCover
+    // 本地只读谓词：存量 local 会话（历史模式，已不再产生新会话）盖只读遮罩
+    const showLocalModeCover = active && mode === 'local'
+    // 控件禁用单一闸：失活/禁用/本地只读共用一道闸——拖拽、粘贴、发送与参数条按钮全部
+    // 同闸。此前拖拽/发送只挂失活、参数条按钮另挂本地只读（chromeDisabled），两道闸不一致：
+    // 遮罩盖住输入区但 drop 冒泡到 wrapper 仍真实上传（附件卡可增删、发不出去、卸载留孤儿
+    // 文件），canSend 也与「发送钮已卸载」自相矛盾——统一后 chromeDisabled 冗余，收敛删除
+    const controlsDisabled = disabled || inactiveCover || showLocalModeCover
 
     // 瞬态窗编辑哨兵：输入区不再被瞬态闸 DOM-disable（焦点修复），rewind/压缩/
     // 清空进行中用户仍可键入——这段主动输入优先于完成回填（整体跳过 applySegments，
@@ -636,10 +641,6 @@ export function ChatComposer(props: ChatComposerProps) {
         if (hasFinePointer) shellRef.current?.focus()
     }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments, quotes, t, resetAttachments, clearQuotes, sessionId, hasFinePointer])
 
-    const showLocalModeCover = active && mode === 'local'
-    // 参数条按钮闸：控件禁用 + 本地模式遮罩（按钮不持有焦点，挂 DOM disabled 无失焦风险，
-    // 与 senderDisabled doc 的「textarea 闸」语义不同级）
-    const chromeDisabled = controlsDisabled || showLocalModeCover
     const isBashMode = text.startsWith('! ')
 
     // 下一轮建议(SDK prompt_suggestion, 瞬时): 有值则渲染 chip, 无则省略
@@ -772,7 +773,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px var(--composer-rail, 20px) 12px' }}>
                     {/* 附件面板：文件/拍照（移动端）/画板聚合入口（Codex 风格富面板）——左端固定锚 */}
                     <AttachPanel
-                        disabled={chromeDisabled || hasPendingPermission}
+                        disabled={controlsDisabled || hasPendingPermission}
                         onAttach={handleAttach}
                         onSketch={() => handleOpenSketch()}
                     />
@@ -788,7 +789,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                     iconOnly
                                     value={permissionMode ?? 'default'}
                                     onChange={v => onPermissionModeChange?.(v as PermissionMode)}
-                                    disabled={chromeDisabled}
+                                    disabled={controlsDisabled}
                                     options={permissionModeIconOptions}
                                 />
                             ),
@@ -807,7 +808,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                     onModelChange={v => onModelChange(v)}
                                     onEffortChange={onEffortChange ? e => onEffortChange(e) : undefined}
                                     onFastModeChange={onFastModeChange}
-                                    disabled={chromeDisabled}
+                                    disabled={controlsDisabled}
                                 />
                             ),
                         }] : []),
@@ -821,7 +822,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                     availableStyles={availableOutputStyles}
                                     running={running}
                                     clearInProgress={clearInProgress}
-                                    disabled={chromeDisabled}
+                                    disabled={controlsDisabled}
                                 />
                             ),
                         },

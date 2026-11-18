@@ -97,7 +97,7 @@ export function useAttachmentHandling(
         }
     }, [sessionId])
 
-    // 控件禁用（会话失活/归档）时重置拖拽计数，防止 handler 卸载后计数残留导致覆盖层永久失效
+    // 控件禁用（会话失活/归档/local 只读）时重置拖拽计数，防止 handler 卸载后计数残留导致覆盖层永久失效
     useEffect(() => {
         if (controlsDisabled) {
             dragCounterRef.current = 0

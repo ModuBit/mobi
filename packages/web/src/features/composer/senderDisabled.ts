@@ -30,7 +30,8 @@
  * 提交门控走 canSend，不动这里。
  *
  * 本函数只管 **textarea 闸**。参数条按钮（AttachPanel/ToolStrip 各控件）不持有焦点、
- * 无失焦风险，允许挂瞬态布尔（ChatComposer 的 chromeDisabled 层）——两级语义勿混。
+ * 无失焦风险，允许挂瞬态布尔（ChatComposer 统一后的 controlsDisabled 单一闸，已含
+ * 失活/禁用/local 只读）——两级语义勿混。
  */
 export interface SenderDisabledInput {
     /** 覆盖层：会话失活（未激活且不允许发送）——in-place 遮罩盖住输入区 */

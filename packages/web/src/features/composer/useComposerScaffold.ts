@@ -53,7 +53,7 @@ export interface UseComposerScaffoldParams {
     onTextChange: (text: string) => void
     /** 用户主动键入标记（会话页瞬态窗哨兵；新会话页无） */
     onUserEdit?: () => void
-    /** 附件上传禁用（会话页失活/禁用时） */
+    /** 附件上传禁用（会话页失活/禁用/local 只读时）：拖拽覆盖层重置 + 粘贴附件短路 */
     attachmentsDisabled?: boolean
     /** 附件归属会话（新会话页传 undefined：上传走 working 目录上下文） */
     attachmentSessionId: string | undefined
@@ -104,9 +104,14 @@ export function useComposerScaffold(params: UseComposerScaffoldParams) {
     // 其余放行编辑器默认插入
     const { handlePaste } = attachments
     const handlePasteNative = useCallback((e: ClipboardEvent): boolean => {
+        // 附件通道关闭时整体短路（与拖拽/附件面板同一道闸，即 ChatComposer 的
+        // controlsDisabled）：local 只读态输入区被遮罩盖住，粘贴不该绕过闸把文件送进
+        // processFiles 上传。防御性兜底——编辑器 editable=false 时 ProseMirror 本不路由
+        // paste（editHandlers 仅 editable 绑定），但闸门不能依赖这一实现细节
+        if (attachmentsDisabled) return false
         handlePaste(e as unknown as React.ClipboardEvent)
         return e.defaultPrevented
-    }, [handlePaste])
+    }, [handlePaste, attachmentsDisabled])
 
     // 归一命中后的光标恢复已收进 useChatInputBridge（桥内部事务）
 
