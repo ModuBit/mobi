@@ -16,21 +16,10 @@
 
 import type { StopKind } from '@mobi/shared';
 import { normalizeStopKind } from '../../../claude/utils/stopAction';
-import { MessageBuffer } from '../../../ui/messageBuffer';
-import { attachRemoteDisplay, type RemoteDisplayHandle } from '../../../ui/remoteDisplay';
-import { restoreTerminalState } from '../../../ui/terminalState';
-
-export type RemoteLauncherExitReason = 'switch' | 'exit';
-
-export type RemoteLauncherTerminalHandlers = {
-    onExit: () => void | Promise<void>;
-    onSwitchToLocal: () => void | Promise<void>;
-};
 
 export type RemoteLauncherAbortHandlers = {
     /** 停止请求（批次 A 三档：turn 只中断当前 turn / turn-queue 加清两层队列 / turn-queue-tasks 再停后台任务） */
     onAbort: (stopKind: StopKind) => void | Promise<void>;
-    onSwitch: () => void | Promise<void>;
 };
 
 type RpcHandlerManagerLike = {
@@ -41,98 +30,41 @@ type RpcHandlerManagerLike = {
     ): void;
 };
 
+/**
+ * remote 启动器骨架。tui-fork 票 05 起 local 模式退场，会话宿主只剩进程内驱动
+ * 这一条路径：这里不再有终端渲染、模式切换快捷键与 switch RPC——只保留
+ * 主循环、清理与 abort RPC 的装配。
+ */
 export abstract class RemoteLauncherBase {
-    protected readonly messageBuffer: MessageBuffer;
-    protected readonly hasTTY: boolean;
-    protected readonly logPath?: string;
-    protected exitReason: RemoteLauncherExitReason | null = null;
-    protected shouldExit: boolean = false;
-    /** 纯文本展示句柄（ticket-23 起替代 ink render 实例） */
-    private display: RemoteDisplayHandle | null = null;
-
-    protected constructor(logPath?: string) {
-        this.logPath = logPath;
-        this.hasTTY = Boolean(process.stdout.isTTY && process.stdin.isTTY);
-        this.messageBuffer = new MessageBuffer();
-    }
+    /** 非空即表示启动器应结束主循环（进程崩溃等终态由子类置位） */
+    protected exitReason: 'exit' | null = null;
 
     protected abstract runMainLoop(): Promise<void>;
 
     protected abstract cleanup(): Promise<void>;
 
-    protected setupTerminal(handlers: RemoteLauncherTerminalHandlers): void {
-        this.display = attachRemoteDisplay({
-            messageBuffer: this.messageBuffer,
-            logPath: this.logPath,
-            hasTTY: this.hasTTY,
-            onExit: handlers.onExit,
-            onSwitchToLocal: handlers.onSwitchToLocal
-        });
-
-        if (this.hasTTY) {
-            process.stdin.resume();
-            if (process.stdin.isTTY) {
-                process.stdin.setRawMode(true);
-            }
-            process.stdin.setEncoding('utf8');
-        }
-    }
-
     protected setupAbortHandlers(
         rpcHandlerManager: RpcHandlerManagerLike,
         handlers: RemoteLauncherAbortHandlers
     ): void {
-        // abort/switch 是用户显式操作（Web 停止按钮 / 切换模式），必须重置空闲计时——
-        // 漏标会让用户刚点完停止的会话在 ~30s 后休眠退出（黑名单翻白名单时的漏网项）
+        // abort 是用户显式操作（Web 停止按钮），必须重置空闲计时——
+        // 漏标会让用户刚点完停止的会话在 ~30s 后休眠退出
         rpcHandlerManager.registerHandler('abort', async (params: { stopKind?: StopKind }) => {
             // stopKind 入口校验：缺省（旧 daemon / 本地触发）或未知值（未来第 4 档 / 手误字符串）
             // 一律回落 'turn'——isCancelQueued 负向默认下，未知值透传会静默升级为破坏性清队列
             await handlers.onAbort(normalizeStopKind(params?.stopKind));
         }, { countsAsUserActivity: true });
-
-        rpcHandlerManager.registerHandler('switch', async () => {
-            await handlers.onSwitch();
-        }, { countsAsUserActivity: true });
     }
 
     protected clearAbortHandlers(rpcHandlerManager: RpcHandlerManagerLike): void {
         rpcHandlerManager.registerHandler('abort', async () => {});
-        rpcHandlerManager.registerHandler('switch', async () => {});
     }
 
-    protected async requestExit(
-        reason: RemoteLauncherExitReason,
-        handler: () => void | Promise<void>
-    ): Promise<void> {
-        if (!this.exitReason) {
-            this.exitReason = reason;
-        }
-        this.shouldExit = true;
-        await handler();
-    }
-
-    protected finalizeTerminal(): void {
-        restoreTerminalState();
-        if (this.hasTTY) {
-            try {
-                process.stdin.pause();
-            } catch {
-                // 错误可忽略：stdin 已关闭或不可暂停
-            }
-        }
-        this.display?.detach();
-        this.display = null;
-    }
-
-    protected async start(handlers: RemoteLauncherTerminalHandlers): Promise<RemoteLauncherExitReason> {
-        this.setupTerminal(handlers);
+    protected async start(): Promise<void> {
         try {
             await this.runMainLoop();
         } finally {
             await this.cleanup();
-            this.finalizeTerminal();
         }
-
-        return this.exitReason || 'exit';
     }
 }

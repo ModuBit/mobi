@@ -1121,7 +1121,7 @@
       "bypassPermissions": "跳过所有检查立即执行（谨慎）"
     },
     "activate": "恢复会话",
-    "switchToRemote": "切换到远程模式",
+    "localModeReadonly": "该会话在本地终端运行，Web 端仅可查看",
     "dropToUpload": "松开以上传文件",
     "uploadPendingWarning": "请等待文件上传完成",
     "removeQuote": "移除引用",

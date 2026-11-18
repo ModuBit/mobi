@@ -2,6 +2,8 @@
 
 ## Status
 
+superseded（2026-11-18）：local 模式已整体退场，本 ADR 的 transport 分流结论失效。见 [ADR 0013](0013-tui-continuation-via-fork.md)。以下保留为历史决策记录。
+
 accepted（2026-09-06）
 
 ## 背景

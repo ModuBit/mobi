@@ -14,5 +14,10 @@
  * limitations under the License.
  */
 
-/** Bump when CLI↔Server REST/Socket API changes in a breaking way. */
-export const PROTOCOL_VERSION = 1
+/**
+ * CLI↔Server REST/Socket API 发生破坏性变更时提升。
+ *
+ * v2（tui-fork 票 07）：删除模式互切协议面（`switch` RPC 与
+ * `POST /sessions/:id/switch`），会话恒由 daemon/Web 驱动。
+ */
+export const PROTOCOL_VERSION = 2

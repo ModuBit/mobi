@@ -1815,8 +1815,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     void sessionActions.resumeSession().catch(() => messageApi.error(t('chat.error.resumeFailed')))
                 }}
                 activatePending={sessionActions.isResumePending}
-                onSwitchToRemote={() => sessionActions.switchSession()}
-                switchPending={sessionActions.isSwitchPending}
                 extraLeftButtons={extraComposerButtons}
                 extraItems={extraComposerItems}
             />

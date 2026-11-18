@@ -93,7 +93,7 @@ export function buildMobiAppsTools(client: ApiSessionClient) {
 }
 
 export function createMobiAppsServer(client: ApiSessionClient) {
-    // 本 server 的工具都仅挂 remote 壳：local HTTP 壳（startMobiMcpServer / stdio bridge）不挂载
+    // 本 server 只挂进程内 SDK 壳（local transport 已随 tui-fork 票 06 退场）
     return createSdkMcpServer({
         name: MOBI_APPS_SERVER_NAME,
         version: '1.0.0',

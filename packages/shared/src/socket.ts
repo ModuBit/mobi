@@ -396,6 +396,7 @@ export interface ClientToServerEvents {
         sid: string
         time: number
         running: boolean
+        /** @deprecated 会话驱动模式。local 已退场（tui-fork 票 07），新会话恒报 remote */
         mode?: 'local' | 'remote'
         permissionMode?: PermissionMode
         model?: string | null

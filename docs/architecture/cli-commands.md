@@ -5,7 +5,9 @@
 ## 命令总览
 
 ```
-mobi [options]                # 默认命令：启动 Claude Code 会话（远程控制模式）
+mobi                          # 打印帮助（Web / fork / daemon 引导）
+mobi claude [options]         # 内部入口：daemon spawn 会话进程（不面向终端用户）
+mobi fork [query]             # 终端接续：fork 一个 Web 会话到本地 Claude TUI
 mobi setup                    # 交互式首次配置向导
 mobi service <action>         # supervisor 托管 daemon
 mobi daemon <action>          # daemon 进程管理（service daemon 的别名）
@@ -16,27 +18,29 @@ mobi version                  # 版本信息
 mobi upgrade                  # 自升级
 mobi doctor                   # 系统诊断与排障
 mobi mcp                      # MCP stdio 桥接（内部使用）
-mobi hook-forwarder           # SessionStart hook 转发（内部使用）
 ```
 
 > `mobi hub` / `mobi runner` 命令已删除（ticket-22 与 remove-machine 601）：hub 与 runner 合并为单机 daemon，进程级操作统一走 `mobi daemon` / `mobi service`，会话管理走 `mobi sessions`。
 
 ## 命令详解
 
-### `mobi` (默认命令)
+### `mobi` / `mobi claude`（默认命令）
 
-启动一个 Claude Code 会话，经 daemon 实现远程控制。支持透传所有 Claude Code 参数。
+`mobi` 无参打印帮助；`mobi claude …` 是 daemon spawn 会话进程的内部入口（不在用户帮助里）。会话宿主只有 remote 一条路径：经 daemon 由 Web 驱动，支持透传 Claude Code 参数。
 
 | 文件 | `packages/cli/src/commands/claude.ts` |
 |------|------|
-| 启动模式 | `remote`（默认）经 daemon 由 Web 驱动；降级到 `local` 直接运行 claude |
+| 启动模式 | `remote`（唯一）经 daemon 由 Web 驱动；连接失败直接报错，提示 `mobi fork` |
 
 ```
-mobi                          启动会话
-mobi --yolo                   等同 --dangerously-skip-permissions
-mobi --model sonnet           指定模型
-mobi --resume                 恢复上次会话
+mobi claude --yolo            等同 --dangerously-skip-permissions
+mobi claude --model sonnet    指定模型
+mobi claude --resume <id>     恢复（daemon spawn 内部使用）
 ```
+
+### `mobi fork [query]`
+
+终端接续：只读打开 daemon SQLite 选出活跃/休眠会话（可按短 id 或标题过滤），以会话工作目录为 cwd 执行 `claude --resume <nativeSessionId> --fork-session`。daemon 停机时同样可用；fork 出的会话不写 mobi 数据库、不出现在 Web 列表。详见 [ADR 0013](../adr/0013-tui-continuation-via-fork.md)。
 
 ### `mobi setup`
 
@@ -180,14 +184,9 @@ mobi doctor exits [--process daemon|cli] [--limit N]
 
 **可清理的进程类型：** daemon、supervisor、spawned-session、version-check（含 dev 变体）。⚠️ 已知缺口：`daemon start-sync` 进程未被分类规则识别（落 `user-session`，不在清理集合），见 docs/pending.md。
 
-### `mobi mcp` / `mobi hook-forwarder`
+### `mobi mcp`
 
-内部命令，不面向用户。
-
-| 命令 | 文件 | 用途 |
-|------|------|------|
-| `mcp` | `commands/mcp.ts` | MCP stdio 桥接，供 Claude Code 集成 |
-| `hook-forwarder` | `commands/hookForwarder.ts` | 转发 SessionStart hook 到主 CLI 进程 |
+内部命令，不面向用户。`commands/mcp.ts` 提供 MCP stdio 桥接，供 Claude Code 集成。
 
 ## 公共约定
 

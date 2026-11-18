@@ -19,9 +19,7 @@ import type { LauncherDormancyFacts } from "./utils/dormancyGate";
 import type { LiveCapabilityGetter } from "@mobi/node-core/handlers/commands"
 import { MessageQueue } from "@mobi/node-core/utils/MessageQueue"
 import { logger } from "@mobi/node-core/logger"
-import { runLocalRemoteSession } from "../agent/loopBase"
 import { Session } from "./session"
-import { claudeLocalLauncher } from "./claudeLocalLauncher"
 import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
 import { ApiClient } from '@mobi/node-core/api/api'
 import type { SessionModel } from "@mobi/node-core/api/types"
@@ -39,11 +37,9 @@ interface LoopOptions {
     fastMode?: boolean
     /** CC output style（Web spawn 透传；经 applyStartupOutputStyle（applyFlagSettings）注入） */
     outputStyle?: string
-    startingMode?: 'local' | 'remote'
     startedBy?: 'daemon' | 'terminal'
     /** 工作区冻结的额外工作目录（创建时来自工作区 folders，resume 时回放 metadata） */
     additionalDirectories?: string[]
-    onModeChange: (mode: 'local' | 'remote') => void
     mcpServers: Record<string, McpServerConfig>
     apiSession: ApiSessionClient
     api: ApiClient,
@@ -65,12 +61,11 @@ interface LoopOptions {
     onLiveCapabilitySource?: (getter: LiveCapabilityGetter) => void
 }
 
+/**
+ * 会话宿主主循环（tui-fork 票 05）：local 模式退场后只剩 remote 一条驱动路径，
+ * 不再有双模切换。会话由 Web/daemon 驱动，进程内 SDK Query 是唯一执行体。
+ */
 export async function loop(opts: LoopOptions) {
-
-    // Get log path for debug display
-    const logPath = logger.logFilePath;
-    const startedBy = opts.startedBy ?? 'terminal';
-    const startingMode = opts.startingMode ?? 'local';
     const session = new Session({
         api: opts.api,
         client: opts.apiSession,
@@ -79,13 +74,10 @@ export async function loop(opts: LoopOptions) {
         claudeEnvVars: opts.claudeEnvVars,
         claudeArgs: opts.claudeArgs,
         mcpServers: opts.mcpServers,
-        logPath: logPath,
+        logPath: logger.logFilePath,
         messageQueue: opts.messageQueue,
         allowedTools: opts.allowedTools,
-        onModeChange: opts.onModeChange,
-        mode: startingMode,
-        startedBy,
-        startingMode,
+        startedBy: opts.startedBy ?? 'terminal',
         hookSettings: opts.hookSettings,
         permissionMode: opts.permissionMode ?? 'default',
         model: opts.model,
@@ -96,15 +88,15 @@ export async function loop(opts: LoopOptions) {
         forkActivation: opts.forkActivation
     });
 
-    const cleanup = opts.processCleanupRef;
-    const queryControl = opts.queryControlRef;
+    opts.onSessionReady?.(session)
 
-    await runLocalRemoteSession({
+    await claudeRemoteLauncher(
         session,
-        startingMode: opts.startingMode,
-        logTag: 'loop',
-        runLocal: (s) => claudeLocalLauncher(s, cleanup, opts.getSessionConfig),
-        runRemote: (s) => claudeRemoteLauncher(s, cleanup, queryControl, opts.getSessionConfig, opts.flushConfig, opts.onDormancyFacts, opts.onLiveCapabilitySource),
-        onSessionReady: opts.onSessionReady
-    });
+        opts.processCleanupRef,
+        opts.queryControlRef,
+        opts.getSessionConfig,
+        opts.flushConfig,
+        opts.onDormancyFacts,
+        opts.onLiveCapabilitySource,
+    )
 }

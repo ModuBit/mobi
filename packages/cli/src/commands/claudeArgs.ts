@@ -52,10 +52,6 @@ export function parseStartOptions(args: string[]): {
         if (arg === '-h' || arg === '--help') {
             showHelp = true
             unknownArgs.push(arg)
-        } else if (arg === '--mobi-starting-mode') {
-            // 设置启动模式
-            options.startingMode = z.enum(['local', 'remote']).parse(consumeFlagValue(args, i, arg))
-            i += 1
         } else if (arg === '--yolo') {
             // 设置yolo模式
             options.permissionMode = 'bypassPermissions'

@@ -16,7 +16,6 @@
 
 import type { ApiSessionClient } from '../api/apiSession'
 import { logger } from '@mobi/node-core/logger'
-import { restoreTerminalState } from '../ui/terminalState'
 import type { SessionEndReason, SessionPauseTrigger } from '@mobi/shared'
 
 type SessionLifecycleOptions = {
@@ -76,7 +75,6 @@ export function createSessionLifecycle(options: SessionLifecycleOptions): Sessio
 
         cleanupPromise = (async () => {
             logger.debug(`${logPrefix} Cleanup start`)
-            restoreTerminalState()
 
             try {
                 options.stopKeepAlive?.()
@@ -160,16 +158,13 @@ export function createSessionLifecycle(options: SessionLifecycleOptions): Sessio
     }
 }
 
-export function setControlledByUser(apiSession: ApiSessionClient, mode: 'local' | 'remote'): void {
+/**
+ * 标记「会话是否由用户终端驱动」。local 模式退场后恒为 false（tui-fork 票 05）；
+ * 字段保留供 Web 识别历史 local 会话，不再产生新值。
+ */
+export function markControlledByUser(apiSession: ApiSessionClient): void {
     apiSession.updateAgentState((currentState) => ({
         ...currentState,
-        controlledByUser: mode === 'local'
+        controlledByUser: false
     }))
-}
-
-export function createModeChangeHandler(apiSession: ApiSessionClient): (mode: 'local' | 'remote') => void {
-    return (mode) => {
-        apiSession.sendSessionEvent({ type: 'switch', mode })
-        setControlledByUser(apiSession, mode)
-    }
 }

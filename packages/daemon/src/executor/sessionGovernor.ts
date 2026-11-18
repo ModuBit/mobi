@@ -166,7 +166,6 @@ function pickLruIdleVictimCandidate(
     let victim: GovernorCandidate | null = null;
     for (const candidate of candidates) {
         if (candidate.state !== 'idle') continue;
-        if (candidate.mode === 'local') continue; // 裁决 #12：local 只占名额不逐出
         if (candidate.gateBlockers.length > 0) continue;
         if (now - candidate.lastActivityAt < minVictimIdleMs) continue;
         if (!victim || candidate.lastActivityAt < victim.lastActivityAt) {

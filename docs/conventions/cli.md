@@ -77,7 +77,7 @@ SDK 消息通过 `sdkToLogConverter.ts` 转换为 `RawJSONLines` 格式：
 
 - `extractErrorInfo()` 统一错误信息提取
 - `isRetryableConnectionError()` 判断可重试错误（ECONNREFUSED、ETIMEDOUT、5xx）
-- 连接 Hub 失败时自动降级为本地模式（`runLocalMode`）
+- 连接 daemon 失败时给出明确错误并提示 `mobi fork`（local 模式已退场，不再降级裸跑 claude）
 
 ## 进程管理
 

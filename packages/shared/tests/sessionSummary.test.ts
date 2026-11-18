@@ -222,4 +222,10 @@ describe('toSessionSummary', () => {
         expect(summary.metadata?.forkError?.code).toBe('activation-failed')
         expect(summary.metadata?.contextBoundarySeq).toBe(15)
     })
+
+    it('历史 local 会话的 mode 原样透传（只读兼容，tui-fork 票 07）', () => {
+        expect(toSessionSummary(makeSession({ mode: 'local' })).mode).toBe('local')
+        expect(toSessionSummary(makeSession({ mode: 'remote' })).mode).toBe('remote')
+        expect(toSessionSummary(makeSession()).mode).toBeUndefined()
+    })
 })

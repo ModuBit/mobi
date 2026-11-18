@@ -45,6 +45,8 @@ export type SessionSummary = {
     taskProgress: { completed: number; total: number } | null
     pendingRequestsCount: number
     model?: string | null
+    /** @deprecated 会话驱动模式。local 已退场（tui-fork 票 07）：新会话恒为 remote，
+     *  历史 local 行仍原样出现在摘要里供只读展示 */
     mode?: 'local' | 'remote'
     /** 会话置顶（true = 进「置顶」分组） */
     pinned?: boolean

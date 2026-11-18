@@ -35,8 +35,7 @@
 
 import { existsSync, mkdirSync } from 'node:fs'
 import { chmod } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { resolveMobiDataDir, resolveMobiDbPath } from '@mobi/node-core/dbPath'
 import { daemonLogger } from './logger'
 import { getOrCreateCliApiToken } from './config/cliApiToken'
 import { getOrCreateWebApiToken } from './config/webApiToken'
@@ -172,9 +171,8 @@ class Configuration {
     /** Create configuration asynchronously */
     static async create(): Promise<Configuration> {
         // 1. Determine data directory (env only - not persisted)
-        const dataDir = process.env.MOBI_HOME
-            ? process.env.MOBI_HOME.replace(/^~/, homedir())
-            : join(homedir(), '.mobi')
+        // 路径规则单源 @mobi/node-core/dbPath：CLI 的只读会话查询必须与 daemon 指向同一个库
+        const dataDir = resolveMobiDataDir()
 
         // Ensure data directory exists before loading settings
         if (!existsSync(dataDir)) {
@@ -182,9 +180,7 @@ class Configuration {
         }
 
         // 2. Determine DB path (env only - not persisted)
-        const dbPath = process.env.DB_PATH
-            ? process.env.DB_PATH.replace(/^~/, homedir())
-            : join(dataDir, 'mobi.db')
+        const dbPath = resolveMobiDbPath()
 
         // 3. Load daemon settings (with persistence)
         // 拆分迁移前置：旧 settings.json → settings.daemon.json + settings.cli.json（一次性，

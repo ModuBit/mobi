@@ -1,6 +1,8 @@
-# Claude 命令 — 核心会话命令
+# Claude 命令 — 会话宿主与启动链路
 
-CLI 的主要使用方式：`mobi [options]`，所有未匹配子命令的参数都走此命令。启动 Claude Code 会话并通过 daemon 实现远程控制。
+`mobi claude …` 是 daemon spawn 会话进程的内部入口（不出现在用户帮助里）；用户面的 `mobi` 无参只打印帮助。会话宿主只有 **remote 一条驱动路径**：Claude Agent SDK 在 mobi 进程内驱动 Claude，消息经 daemon 中转，Web 远程控制。
+
+终端侧的兜底接续走 `mobi fork`（把 Web 会话上下文 fork 成独立的原生 Claude TUI 会话），详见 [ADR 0013](../../../../adr/0013-tui-continuation-via-fork.md)。
 
 **入口文件**: [`packages/cli/src/commands/claude.ts`](/packages/cli/src/commands/claude.ts)
 
@@ -13,44 +15,40 @@ CLI 的主要使用方式：`mobi [options]`，所有未匹配子命令的参数
 ```
 第 1 步: 本文档（README.md）           ← 你在这里，建立全局认知
     │
-第 2 步: local-mode.md                ← 理解 Local 模式：如何 spawn Claude 进程
+第 2 步: remote-mode.md               ← 理解会话如何通过 SDK 进程内驱动
     │
-第 3 步: remote-mode.md               ← 理解 Remote 模式：如何通过 SDK 远程驱动 Claude
-    │
-第 4 步: 按需阅读
-    ├── message-queue.md              ← 理解入站消息队列：按模式分批收集用户消息
-    ├── outgoing-message-queue.md     ← 理解出站消息队列：有序发送 Claude 输出到 daemon
-    ├── session-scanner.md            ← 理解 Local 模式 JSONL 扫描：增量读取、去重、会话追踪
-    ├── api/ 通信层文档                ← 理解与 daemon 的通信机制
-    └── hook 文档                      ← 理解 SessionStart Hook 转发
+第 3 步: 按需阅读
+    ├── message-queue.md              ← 入站消息队列：分批收集用户消息
+    ├── outgoing-message-queue.md     ← 出站消息队列：有序发送 Claude 输出到 daemon
+    ├── session-scanner.md            ← transcript 增量扫描（观测/唤醒/rewind 判据）
+    ├── api/ 通信层文档                ← 与 daemon 的通信机制
+    └── mcp/ 工具族文档                ← 进程内 MCP server 装配
 ```
 
 ### 前置知识
 
 | 前置内容 | 位置 | 为什么需要 |
 |----------|------|-----------|
-| daemon 架构 | [daemon 架构](../../../daemon/) | Claude 命令通过 daemon 实现远程控制 |
+| daemon 架构 | [daemon 架构](../../../daemon/) | 会话宿主通过 daemon 实现远程控制 |
 | API 通信层 | [docs/architecture/cli/api/](../../api/) | Session 通过 Socket.IO 与 daemon 通信 |
-| MCP 工具族 | [docs/architecture/cli/mcp/](../../mcp/) | Claude 命令装配会话内 MCP 工具（remote 进程内 / local HTTP 壳） |
+| MCP 工具族 | [docs/architecture/cli/mcp/](../../mcp/) | 会话内 MCP 工具（进程内 SDK server） |
 
 ### 术语表
 
 | 术语 | 含义 |
 |------|------|
-| **Local 模式** | 直接 spawn Claude 进程，用户在终端直接交互，不经过 daemon |
-| **Remote 模式** | 通过 Claude Code SDK 驱动 Claude，消息经由 daemon 中转，支持远程控制 |
-| **Session** | 一次 Claude Code 交互会话，包含完整的状态和消息历史 |
-| **Session ID** | Claude Code 的会话标识（UUID），由 Claude 生成，用于 `--resume` |
+| **Remote 模式** | 通过 Claude Code SDK 驱动 Claude，消息经由 daemon 中转，支持远程控制。**当前唯一模式** |
+| **Session** | mobi 会话宿主进程内的状态对象；一次 daemon 会话对应一个宿主进程 |
+| **Claude Session ID** | Claude Code 的原生会话标识（UUID），用于 `--resume` / fork 锚点 |
 | **daemon Session** | daemon 侧的会话记录，一个 daemon Session 可对应多个 Claude Session（如 /clear 后） |
-| **Launcher** | 启动器，封装 Local/Remote 模式的具体实现 |
-| **Mode 切换** | 在 Local 和 Remote 之间切换，通过 daemon 侧的 `switch` RPC 触发 |
-| **PermissionHandler** | Remote 模式下的工具权限审批处理器 |
-| **SessionScanner** | Local 模式下监听 Claude JSONL 文件的扫描器 |
-| **HookServer** | HTTP 服务，接收 Claude 的 SessionStart Hook 通知 |
-| **OutgoingMessageQueue** | Remote 模式下有序发送消息到 daemon 的队列 |
-| **MessageQueue** | 带模式上下文的消息队列，管理用户消息和 mode 切换，支持 localId 追踪与排队取消 |
-| **KeepAlive** | 定时心跳（2 秒），向 daemon 报告会话状态（thinking、mode 等） |
-| **controlledByUser** | AgentState 字段，标记会话当前由用户控制（Local）还是远程控制（Remote） |
+| **Launcher** | 启动器，封装主循环、abort RPC 与清理（当前只有 remote） |
+| **TUI 接续** | `mobi fork`：只读 daemon SQLite 选出会话，以 `claude --resume <nativeId> --fork-session` 在终端开独立分支 |
+| **PermissionHandler** | 工具权限审批处理器 |
+| **SessionScanner** | 监听 Claude transcript JSONL 的扫描器（观测、唤醒与 rewind 判据） |
+| **OutgoingMessageQueue** | 有序发送消息到 daemon 的队列 |
+| **MessageQueue** | 带模式上下文的消息队列，管理用户消息与排队取消，支持 localId 追踪 |
+| **KeepAlive** | 定时心跳（2 秒），向 daemon 报告会话状态 |
+| **controlledByUser** | AgentState 历史字段。local 退场后恒为 `false`，仅历史会话读侧兼容 |
 
 ---
 
@@ -68,17 +66,7 @@ graph TB
         Loop["loop()<br/>packages/session/src/claude/loop.ts"]
     end
 
-    subgraph LoopEngine["模式循环引擎"]
-        LoopBase["runLocalRemoteSession()<br/>packages/session/src/agent/loopBase.ts"]
-    end
-
-    subgraph LocalMode["Local 模式"]
-        LocalLauncher["claudeLocalLauncher()<br/>claude/claudeLocalLauncher.ts"]
-        ClaudeLocal["claudeLocal()<br/>claude/claudeLocal.ts"]
-        Scanner["SessionScanner<br/>监听 JSONL"]
-    end
-
-    subgraph RemoteMode["Remote 模式"]
+    subgraph RemoteMode["会话主循环（remote 单路径）"]
         RemoteLauncher["ClaudeRemoteLauncher<br/>claude/claudeRemoteLauncher.ts"]
         ClaudeRemote["claudeRemote()<br/>claude/claudeRemote.ts"]
         Permission["PermissionHandler<br/>工具权限审批"]
@@ -87,8 +75,7 @@ graph TB
 
     subgraph Support["支撑组件"]
         Session["Session<br/>packages/session/src/claude/session.ts"]
-        MCP["MCP 工具族<br/>mcp/mobiAppsServer.ts + mobiCoreServer.ts<br/>claude/utils/startMobiMcpServer.ts"]
-        HookServer["Hook Server"]
+        MCP["进程内 MCP 工具族<br/>mcp/mobiAppsServer.ts + mobiCoreServer.ts"]
         MessageQ["MessageQueue"]
         OutgoingQ["OutgoingMessageQueue"]
     end
@@ -96,52 +83,40 @@ graph TB
     Cmd --> RunClaude
     RunClaude --> Bootstrap
     RunClaude --> Loop
-    Loop --> LoopBase
-
-    LoopBase -->|"mode === 'local'"| LocalLauncher
-    LoopBase -->|"mode === 'remote'"| RemoteLauncher
-
-    LocalLauncher --> ClaudeLocal
-    LocalLauncher --> Scanner
+    Loop --> RemoteLauncher
     RemoteLauncher --> ClaudeRemote
     RemoteLauncher --> Permission
     ClaudeRemote --> SDK
-
-    RunClaude --> Session & MCP & HookServer & MessageQ
+    RunClaude --> Session & MCP & MessageQ
     RemoteLauncher --> OutgoingQ
 ```
 
 ## 启动流程
 
-`mobi` 命令的完整启动链路：
+`mobi claude …`（daemon spawn）的完整启动链路：
 
 ```mermaid
 flowchart TB
-    Start["mobi [options]"] --> Parse["解析参数<br/>--yolo / --model / --mobi-starting-mode / --started-by"]
+    Start["mobi claude [options]"] --> Parse["解析参数<br/>--yolo / --model / --effort / --permission-mode / --workspace / --started-by"]
     Parse --> Token["initializeToken()<br/>初始化 CLI Token"]
-    Token --> AutoStart["maybeAutoStartServer()<br/>自动启动 daemon（如需要）"]
-    AutoStart --> ProtoCheck{"协议版本匹配?"}
-    ProtoCheck -->|否| VersionHint["提示更新 CLI 或 daemon"]
-    ProtoCheck -->|是| RunClaude["runClaude(options)"]
-    AutoStart --> StartDaemon["ensureDaemonRunning()<br/>自动拉起 daemon（start-sync）"]
-    StartDaemon --> RunClaude
-    StartDaemon --> RunClaude
+    Token --> AutoStart["ensureDaemonRunning()<br/>自动拉起 daemon（如需要）"]
+    AutoStart --> RunClaude["runClaude(options)"]
     RunClaude --> ConnError{"连接 daemon 失败?"}
-    ConnError -->|是| LocalMode["降级到本地模式<br/>直接 spawn claude"]
+    ConnError -->|是| Error["明确报错<br/>提示 mobi fork（不再降级裸跑 claude）"]
     ConnError -->|否| Bootstrap["bootstrapSession()"]
-    Bootstrap --> Loop["loop() → Local/Remote 循环"]
+    Bootstrap --> Transport["进程内 transport 装配<br/>MCP server + 内联 settings + SessionStart hook"]
+    Transport --> Loop["loop() → claudeRemoteLauncher()"]
 ```
 
 ### 阶段一：入口初始化（`claude.ts`）
 
 **文件**: `packages/cli/src/commands/claude.ts`
 
-1. **参数解析** — 提取 mobi 特有参数（`--yolo`、`--model`、`--mobi-starting-mode`、`--started-by`），其余透传给 Claude
-2. **Token 初始化** — `initializeToken()` 确保 CLI_API_TOKEN 可用
-3. **daemon 自动启动** — `maybeAutoStartServer()` 在需要时启动本地 daemon
+1. **参数解析** — 提取 mobi 特有参数（`--yolo`、`--model`、`--effort`、`--permission-mode`、`--fast-mode`、`--output-style`、`--workspace`、`--started-by`），其余透传给 Claude
+2. **提前返回** — 无参数或 `--help` 时只打印 `DEFAULT_HELP_TEXT`（帮助里没有 `mobi claude`，它不是终端用户入口）
+3. **Token 初始化** — `initializeToken()` 确保 CLI_API_TOKEN 可用
 4. **daemon 自动拉起** — `ensureDaemonRunning()` 检查 daemon 是否运行，必要时后台启动
-5. **协议版本检查** — CLI 与 daemon 协议版本不匹配时提示更新
-6. **降级策略** — 连接 daemon 失败时自动降级为纯本地模式（`runLocalMode`），直接 spawn claude 进程
+5. **错误路径** — 连接失败直接报错并提示 `mobi fork`；协议版本不匹配时给出升级提示
 
 **参数说明**：
 
@@ -149,27 +124,26 @@ flowchart TB
 |------|------|
 | `--yolo` | 透传为 `--dangerously-skip-permissions`，跳过权限确认 |
 | `--model <model>` | 指定 Claude 模型 |
-| `--mobi-starting-mode <mode>` | 强制启动模式：`local` / `remote` |
-| `--started-by <source>` | 启动来源：`daemon` / `terminal`（daemon executor 启动时强制 remote） |
-| `--workspace <id>` | 归属工作区 id（Web spawn 透传；终端亦可手动指定） |
+| `--effort <level>` | 指定 reasoning effort |
+| `--permission-mode <mode>` | 指定初始权限模式 |
+| `--fast-mode <true\|false>` | 快速模式预设（mobi 自有 flag，经 `applyFlagSettings` 注入） |
+| `--output-style <style>` | CC output style（mobi 自有 flag，经 `applyFlagSettings` 注入） |
+| `--started-by <source>` | 启动来源：`daemon`（宿主 spawn） |
+| `--workspace <id>` | 归属工作区 id（Web spawn 透传） |
 | 其他参数 | 透传给 Claude Code |
 
 参数解析由 `commands/claudeArgs.ts` 的 `parseStartOptions()` 纯函数完成（mobi 自身 flag 进 options，其余透传 claudeArgs）。
 
 ### 阶段二：会话启动（`runClaude.ts`）
 
-**文件**: `packages/session/src/claude/runClaude.ts:49-385`
+**文件**: `packages/session/src/claude/runClaude.ts`
 
 ```mermaid
 flowchart TB
-    Start["runClaude(options)"] --> Validate["验证 daemon spawn 要求<br/>daemon 启动时强制 remote"]
-    Validate --> Bootstrap["bootstrapSession()<br/>创建 API 客户端、注册会话"]
-    Bootstrap --> Branch{"startingMode<br/>transport 分流（ADR 0001）"}
-    Branch -->|"local"| LocalTransport["startMobiMcpServer()<br/>startHookServer()<br/>generateHookSettingsFile()"]
-    Branch -->|"remote"| RemoteTransport["buildSessionMcpServers()<br/>SDK 进程内 server + SessionStart 回调<br/>内联 settings（零端口零临时文件）"]
-    LocalTransport --> Lifecycle["createSessionLifecycle()<br/>创建生命周期管理器"]
-    RemoteTransport --> Lifecycle
-    Lifecycle --> State["设置初始 AgentState<br/>controlledByUser"]
+    Start["runClaude(options)"] --> Bootstrap["bootstrapSession()<br/>创建 API 客户端、注册会话"]
+    Bootstrap --> Transport["进程内 transport（ADR 0013）<br/>buildSessionMcpServers() + REMOTE_INLINE_HOOK_SETTINGS<br/>零端口零临时文件"]
+    Transport --> Lifecycle["createSessionLifecycle()<br/>创建生命周期管理器"]
+    Lifecycle --> State["设置初始 AgentState<br/>controlledByUser=false"]
     State --> Queue["创建 MessageQueue<br/>带模式上下文的消息队列"]
     Queue --> UserMsg["session.onUserMessage()<br/>注册消息处理器"]
     UserMsg --> RPC["registerHandler('set-session-config')<br/>注册远程配置 RPC"]
@@ -183,61 +157,35 @@ flowchart TB
 |------|------|------|
 | **ApiClient** | `packages/node-core/src/api/api.ts` | HTTP 客户端，与 daemon REST API 通信 |
 | **ApiSessionClient** | `packages/session/src/api/apiSession.ts` | Socket.IO 客户端，实时通信 |
-| **Session** | `packages/session/src/claude/session.ts` | 会话状态管理（ID、mode、model 等） |
-| **MCP 工具族** | remote：`packages/session/src/mcp/mobiAppsServer.ts` + `mobiCoreServer.ts`（进程内）；local：`packages/session/src/claude/utils/startMobiMcpServer.ts`（HTTP 壳，仅 change_title） | 详见 [MCP 模块](../../mcp/) |
-| **Hook Server** | `packages/session/src/claude/utils/startHookServer.ts`（local HTTP）；remote 走 SDK `hooks.SessionStart` 进程内回调 | 接收 Claude SessionStart 通知，绑定守卫见 `claude/utils/sessionIdBinding.ts` |
-| **MessageQueue** | `packages/node-core/src/utils/MessageQueue.ts` | 带模式 hash 的消息队列 |
+| **Session** | `packages/session/src/claude/session.ts` | 会话状态管理（ID、model、权限模式等） |
+| **MCP 工具族** | `packages/session/src/mcp/mobiAppsServer.ts` + `mobiCoreServer.ts` | 进程内 SDK server（mobi-apps / mobi-core） |
+| **SessionStart Hook** | `claudeRemote` 的 SDK 进程内回调 | 捕获 native session id 变化，绑定守卫见 `claude/utils/sessionIdBinding.ts` |
+| **MessageQueue** | `packages/node-core/src/utils/MessageQueue.ts` | 带模式上下文的消息队列 |
 | **SessionLifecycle** | `packages/session/src/agent/sessionLifecycle.ts` | 进程信号处理和清理 |
 
-### 阶段三：模式循环（`loop.ts` + `loopBase.ts`）
+### 阶段三：会话主循环（`loop.ts` → `claudeRemoteLauncher`）
 
-**文件**: `packages/session/src/claude/loop.ts:58-92` → `packages/session/src/agent/loopBase.ts`
+**文件**: `packages/session/src/claude/loop.ts` → `packages/session/src/claude/claudeRemoteLauncher.ts`
 
 ```mermaid
 flowchart TB
     Start["loop(opts)"] --> CreateSession["new Session(opts)<br/>创建会话实例"]
-    CreateSession --> RunLR["runLocalRemoteSession()<br/>进入模式循环"]
+    CreateSession --> Run["claudeRemoteLauncher(session, ...)<br/>进入主循环"]
 
-    RunLR --> Mode{"当前 mode?"}
-    Mode -->|"'local'"| Local["runLocal(session)<br/>claudeLocalLauncher()"]
-    Mode -->|"'remote'"| Remote["runRemote(session)<br/>claudeRemoteLauncher()"]
-
-    Local --> Result1{"返回值?"}
-    Remote --> Result2{"返回值?"}
-
-    Result1 -->|"'exit'"| Done["循环结束"]
-    Result1 -->|"'switch'"| Switch1["mode = 'remote'<br/>onModeChange('remote')"]
-    Result2 -->|"'exit'"| Done
-    Result2 -->|"'switch'"| Switch2["mode = 'local'<br/>onModeChange('local')"]
-
-    Switch1 --> Mode
-    Switch2 --> Mode
+    Run --> Remote["claudeRemote()<br/>SDK query() 驱动一轮"]
+    Remote --> Restart{"restart 请求?"}
+    Restart -->|rewind / resume| Remote
+    Restart -->|崩溃| Done["循环结束"]
 ```
 
-**模式切换**：两种模式通过 Launcher 返回值实现切换。daemon 侧发送 `switch` RPC 触发从 Remote 切到 Local；Local 模式中收到 daemon 消息时自动切换到 Remote。
-
-## Local / Remote 模式对比
-
-| 维度 | Local 模式 | Remote 模式 |
-|------|-----------|-------------|
-| **本质** | 直接 spawn Claude 进程 | 通过 SDK `query()` 驱动 Claude |
-| **终端交互** | 用户直接与 Claude 交互 | 消息经由 daemon 中转 |
-| **消息流向** | Claude → JSONL 文件 → SessionScanner → daemon | SDK → onMessage → OutgoingMessageQueue → daemon |
-| **权限管理** | Claude 自行处理 | PermissionHandler + daemon 侧审批 |
-| **UI** | Claude 原生终端 UI | Ink 渲染的自定义 UI |
-| **适用场景** | 用户在终端本地使用 | 远程控制（手机浏览器等） |
-| **会话恢复** | `--resume` 传递给 Claude 进程 | 通过 SDK `resume` 参数 |
-
-详见 [Local 模式](./local-mode.md) 和 [Remote 模式](./remote-mode.md)。
+local 退场后不再有双模循环与模式切换：主循环在进程生命周期内持续消费用户消息，重启由 rewind / query restart 状态机驱动，直到进程被 daemon 终结或崩溃。
 
 ## 会话生命周期
 
 ```mermaid
 flowchart LR
-    Create["创建<br/>bootstrapSession()"] --> Active["活跃<br/>Local/Remote 循环"]
-    Active --> Switch["模式切换<br/>switch RPC"]
-    Switch --> Active
-    Active --> Archive["归档<br/>cleanupAndExit()"]
+    Create["创建<br/>bootstrapSession()"] --> Active["活跃<br/>remote 主循环"]
+    Active --> Archive["归档 / 休眠<br/>cleanupAndExit()"]
     Archive --> Close["关闭<br/>process.exit()"]
 
     Active --> Crash["崩溃<br/>异常/信号"]
@@ -253,13 +201,11 @@ bootstrapSession({ flavor, startedBy, workingDirectory, workspaceId, ... })
     │
     ├── ApiClient.create()                    ← HTTP 客户端
     ├── buildSessionMetadata(workingDir, ...) ← 构建会话元数据
-    ├── api.getOrCreateSession(metadata, { workspaceId })  ← 创建/获取会话（响应含 workspace 实体）
+    ├── api.getOrCreateSession(...)           ← 创建/获取会话（新会话 mode 恒为 remote）
     ├── resolveAdditionalDirectories(workspace) ← 从 workspace.folders 派生附加目录并冻结进 metadata
     ├── api.sessionSyncClient(sessionInfo)    ← Socket.IO 客户端
-    └── notifyRunnerSessionStarted()          ← 会话自报宿主通道（RUNNER_SESSION_STARTED_PATH，中性保留）
+    └── notifyRunnerSessionStarted()          ← 会话自报宿主通道
 ```
-
-**工作区目录解析（`resolveAdditionalDirectories`）**：带 `workspaceId` 创建会话时，从响应中的 `workspace.folders` 派生附加工作目录（路径解析 + 存在性校验，过滤掉等于 cwd 的项；primary 失效硬失败），冻结进 `metadata.additionalDirectories` 并回写 daemon。后续 resume 时直接回放冻结值、忽略响应中的 workspace——历史会话不受工作区 folders 变更影响。
 
 ### 关闭（cleanupAndExit）
 
@@ -270,17 +216,16 @@ bootstrapSession({ flavor, startedBy, workingDirectory, workspaceId, ... })
 ```
 cleanupAndExit()
     │
-    ├── restoreTerminal()               ← 恢复终端状态
     ├── session.stopKeepAlive()         ← 停止心跳
-    ├── onBeforeClose()                 ← 归档元数据、发送 session-end
+    ├── onBeforeClose()                 ← 终止 SDK Query / 进程树
     ├── session.close()                 ← 关闭 Socket.IO 连接
-    ├── onAfterClose()                  ← 停止 MCP Server、Hook Server、清理配置
+    ├── onAfterClose()                  ← 停止 bridge tap 订阅与监听
     └── process.exit(exitCode)          ← 退出进程
 ```
 
 **退出码**：
-- `0` — 正常退出（用户终止或切换）
-- `1` — 异常退出（崩溃或 Local 模式启动失败）
+- `0` — 正常退出（归档 / 休眠 / 终结）
+- `1` — 异常退出（崩溃）
 
 **信号处理**：注册 SIGTERM、SIGINT、uncaughtException、unhandledRejection 处理器，均触发 `cleanupAndExit()`。
 
@@ -293,14 +238,14 @@ Session 通过 `ApiSessionClient` 与 daemon 保持双向实时通信：
 | 事件 | 方向 | 说明 |
 |------|------|------|
 | `message` | CLI → daemon | 发送用户消息 / Agent 输出 |
-| `session-alive` | CLI → daemon | 心跳（2 秒），报告 thinking 状态和 mode |
+| `session-alive` | CLI → daemon | 心跳（2 秒），报告 thinking 状态（`mode` 为 deprecated 字段） |
 | `update-metadata` | CLI → daemon | 更新会话元数据（版本化，乐观锁） |
 | `update-state` | CLI → daemon | 更新 AgentState（版本化，乐观锁） |
 | `session-end` | CLI → daemon | 通知会话结束 |
-| `messages-facts` | CLI → daemon | 统一消息事实事件（`{ sid, facts: MessageFact[] }`）：pushed / bound / attached / acked / lifecycle 五 kind 批内合并一次往返；旧 4 独立事件已下线，daemon 只受理 messages-facts |
+| `messages-facts` | CLI → daemon | 统一消息事实事件：pushed / bound / attached / acked / lifecycle 五 kind 批内合并 |
 | `cancel-queued-message` | daemon → CLI | RPC：取消 CLI 内存队列中缓冲的排队消息 |
 | `update` | daemon → CLI | 接收状态更新（消息、session） |
-| `rpc-request` | daemon → CLI | RPC 请求（abort、switch、set-session-config 等） |
+| `rpc-request` | daemon → CLI | RPC 请求（abort、set-session-config 等） |
 | `terminal:*` | 双向 | 终端事件（open/write/resize/close） |
 
 ### 状态同步机制
@@ -324,11 +269,12 @@ daemon 可通过 RPC 远程控制 CLI 会话：
 
 | RPC 方法 | 说明 |
 |----------|------|
-| `abort` | 中止当前操作 |
-| `switch` | 切换 Local/Remote 模式 |
-| `set-session-config` | 远程修改 permissionMode 或 model |
-| `cancel-queued-message` | 取消 CLI 内存队列中缓冲的排队消息（两阶段取消的 CLI 侧） |
+| `abort` | 中止当前操作（三档 stopKind） |
+| `set-session-config` | 远程修改 permissionMode / model / effort 等 |
+| `cancel-queued-message` | 取消 CLI 内存队列中缓冲的排队消息 |
 | Common RPC（bash、files、git 等） | 供 daemon 远程执行本地操作 |
+
+模式切换 RPC（`switch`）已随 local 模式删除（协议版本 2，tui-fork 票 07）。
 
 ## 消息处理流程
 
@@ -340,10 +286,7 @@ flowchart TB
 
     Emit -->|"onUserMessage()"| Queue["MessageQueue<br/>带 EnhancedMode 上下文"]
 
-    Queue -->|"Local 模式"| LocalPath["BaseLocalLauncher<br/>触发 switch 或退出"]
-    Queue -->|"Remote 模式"| RemotePath["nextMessage()<br/>等待并取出消息"]
-
-    RemotePath --> SDK["claudeRemote()<br/>SDK query()"]
+    Queue -->|"nextMessage()"| SDK["claudeRemote()<br/>SDK query()"]
     SDK --> OnMsg["onMessage()"]
     OnMsg --> Convert["SDKToLogConverter<br/>转换为日志格式"]
     Convert --> Outgoing["OutgoingMessageQueue<br/>有序发送"]
@@ -352,101 +295,73 @@ flowchart TB
 
 ## 代码结构
 
-会话宿主体现在 `@mobi/session` 包（ticket-13 起从 cli 迁出）；ApiClient 与 RPC 处理器在 `@mobi/node-core`。
+会话宿主体现在 `@mobi/session` 包；ApiClient 与 RPC 处理器在 `@mobi/node-core`。
 
 ```
 packages/cli/src/
-└── commands/
-    ├── claude.ts                         # 命令入口，参数解析、降级策略
-    └── claudeArgs.ts                     # 参数解析纯函数 parseStartOptions()
+├── commands/
+│   ├── claude.ts                         # 内部入口（daemon spawn），参数解析与错误处理
+│   ├── claudeArgs.ts                     # 参数解析纯函数 parseStartOptions()
+│   ├── fork.ts                           # 终端接续：只读 SQLite 选会话 → claude --fork-session
+│   ├── forkPlan.ts                       # 选中解析纯逻辑（短 id / 标题 / 消歧）
+│   ├── sessions.ts                       # sessions list 读只读 SQLite
+│   └── defaultHelp.ts                    # mobi 无参帮助
+└── ...
 
 packages/session/src/
 ├── claude/
 │   ├── runClaude.ts                      # 核心启动流程，组件编排
-│   ├── loop.ts                           # 模式循环入口
+│   ├── loop.ts                           # 会话主循环入口（remote 单路径）
 │   ├── session.ts                        # Session 类（扩展 AgentSessionBase）
-│   ├── claudeLocalLauncher.ts            # Local 模式启动器
-│   ├── claudeRemoteLauncher.ts           # Remote 模式启动器（类）
-│   ├── claudeLocal.ts                    # Local 模式：spawn Claude 进程
-│   ├── claudeRemote.ts                   # Remote 模式：SDK query() 驱动
+│   ├── claudeRemoteLauncher.ts           # 启动器（类）：主循环 + abort RPC + 清理
+│   ├── claudeRemote.ts                   # SDK query() 驱动
 │   ├── model.ts                          # 模型名称规范化
 │   ├── registerKillSessionHandler.ts     # 注册 kill-session RPC
 │   ├── types.ts                          # 类型定义
-│   ├── bridge/                           # CLI↔session 事件桥（type 精确路由；goal / wakeup / forked skill tap）
-│   │   ├── bridgeListener.ts             # per-session HTTP-over-UDS listener（信封按 type 分发）
-│   │   ├── tailReader.ts                 # transcript 尾部反向分块扫（64KB 首块/256KB 封顶）
-│   │   ├── goalTapSubscriber.ts          # goal_status 信号订阅：尾扫读原始行透传 + 补偿扫描（goal.append）
-│   │   ├── wakeupTapSubscriber.ts        # 唤醒行订阅：尾扫解析 wakeupSource 走上报链路，不透传行（wakeup.append）
-│   │   ├── forkedSkillTapSubscriber.ts   # forked /code-review 行装配为主对话行入流（forked-skill.append）
-│   │   ├── forkedSkillTapState.ts        # 会话级已消费 uuid 集合（SDK 流末尾重放的抑制判定）
-│   │   └── boundedUuidSet.ts             # 有容量上限的 uuid 集合（两个订阅者的去重共用）
-│   ├── sdk/
-│   │   ├── index.ts                      # SDK 重导出 + 工具函数
-│   │   ├── types.ts                      # PermissionResult 等类型
-│   │   ├── utils.ts                      # Claude 路径查找、调试日志
-│   │   ├── prompts.ts                    # Plan mode 相关常量
-│   │   └── metadataExtractor.ts          # SDK 元数据 refreshMetadata RPC 兜底提取（headless 进程；首次激活补拉 / SWR 后台刷新触发）
+│   ├── bridge/                           # CLI↔session 事件桥（goal / wakeup / forked skill tap）
 │   └── utils/
-│       ├── capabilityDiscovery.ts         # 会话 Query 三方法能力面发现（onQueryReady 后拉取落 metadata）
-│       ├── permissionHandler.ts          # 工具权限审批处理器（506 行）
-│       ├── sessionScanner.ts             # Local 模式 JSONL 读取（attachment/goal_progress 行按 schema 透传，273 行）
-│       ├── OutgoingMessageQueue.ts       # 有序消息发送队列（207 行）
-│       ├── startMobiMcpServer.ts        # MCP Server（local 模式 HTTP transport 壳）
-│       ├── startHookServer.ts            # Hook HTTP Server（local 模式）
-│       ├── sessionIdBinding.ts          # sessionId 绑定幂等守卫（双 transport 共享核心）
-│       ├── sessionHookForwarder.ts       # Hook 转发器（151 行）
+│       ├── capabilityDiscovery.ts        # 会话 Query 三方法能力面发现
+│       ├── permissionHandler.ts          # 工具权限审批处理器
+│       ├── sessionScanner.ts             # transcript 增量扫描（观测/唤醒/rewind 判据）
+│       ├── OutgoingMessageQueue.ts       # 有序消息发送队列
+│       ├── sessionIdBinding.ts           # sessionId 绑定幂等守卫
 │       ├── sdkToLogConverter.ts          # SDK 消息 → 日志格式转换
-│       ├── systemPrompt.ts               # 系统提示词
-│       ├── mcpConfig.ts                  # MCP 配置生成
-│       ├── claudeSettings.ts             # Claude 设置读写
-│       ├── claudeCheckSession.ts         # 会话有效性检查
-│       ├── getToolDescriptor.ts          # 工具描述生成
-│       └── getToolName.ts               # 工具名称映射
+│       └── ...
 ├── agent/
-│   ├── loopBase.ts                       # Local/Remote 模式循环引擎
 │   ├── sessionBase.ts                    # AgentSessionBase 基类
 │   ├── sessionFactory.ts                 # 会话工厂（bootstrap）
-│   └── sessionLifecycle.ts             # 生命周期管理
-├── modules/common/
-│   ├── launcher/BaseLocalLauncher.ts     # Local 启动器基类
-│   └── remote/RemoteLauncherBase.ts     # Remote 启动器基类
+│   └── sessionLifecycle.ts               # 生命周期管理
+├── modules/common/remote/RemoteLauncherBase.ts  # 启动器基类
 └── api/
     ├── apiSession.ts                     # ApiSessionClient（Socket.IO）
     ├── sessionChannel.ts                 # 会话通道（消息落库/广播的会话侧入口）
     └── sessionTransport.ts               # 传输层装配
-
-packages/node-core/src/
-├── api/api.ts                            # ApiClient（HTTP）
-└── rpc/RpcHandlerManager.ts              # RPC 处理器管理
 ```
 
 ## 环境变量
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `DISABLE_AUTOUPDATER` | `1` | Local/Remote 模式均禁用 Claude 自动更新 |
+| `DISABLE_AUTOUPDATER` | `1` | 禁用 Claude 自动更新 |
 | `DEBUG` | — | 开启时输出详细错误堆栈 |
 | `MOBI_API_URL` | — | 指定 daemon 地址（跳过自动启动） |
 
 ## 错误处理
 
-### 连接错误降级
+### 连接错误
 
 ```mermaid
 flowchart TB
     Try["runClaude()"] --> Error{"连接错误?"}
-    Error -->|ECONNREFUSED| Fallback["runLocalMode()"]
-    Error -->|ETIMEDOUT| Fallback
-    Error -->|ENOTFOUND| Fallback
-    Error -->|Network Error| Fallback
-    Fallback --> Spawn["直接 spawn claude 进程"]
-    Fallback --> Fail["本地模式也失败 → exit(1)"]
+    Error -->|ECONNREFUSED / ETIMEDOUT / ENOTFOUND| Msg["报错 + 提示 mobi fork"]
     Error -->|"401/403"| Auth["认证错误 → 提示 mobi auth login"]
     Error -->|"Protocol mismatch"| Version["版本不匹配 → 提示更新"]
 ```
 
+local 模式退场后不再有「连接失败降级裸跑 claude」的逃生舱：会话必须由 daemon 驱动，终端接续请用 `mobi fork`。
+
 ### 协议版本检查
 
-错误响应中包含 `serverProtocolVersion`，与本地 `PROTOCOL_VERSION` 对比：
+错误响应头 `X-Mobi-Protocol-Version` 携带 daemon 的 `PROTOCOL_VERSION`，与 CLI 侧对比：
 - daemon 版本落后 → 提示更新 daemon
 - CLI 版本落后 → 提示更新 CLI

@@ -21,7 +21,6 @@
 | POST | `/sessions/:id/upload/replace` | 替换上传文件 | 未归档 |
 | POST | `/sessions/:id/save-file` | 保存文件到会话 | 未归档 |
 | POST | `/sessions/:id/abort` | 中止会话（body 可带 `stopKind`：`turn`/`turn-queue`/`turn-queue-tasks`，缺省 `turn`） | 会话活跃 |
-| POST | `/sessions/:id/switch` | 切换到远程模式 | 会话活跃 + 未归档 |
 | POST | `/sessions/:id/rewind/dry-run` | rewind 预检 | 会话活跃 + 未归档 |
 | POST | `/sessions/:id/rewind` | 执行 rewind | 会话活跃 + 未归档 |
 | POST | `/sessions/:id/permission-mode` | 设置权限模式 | 未归档 |

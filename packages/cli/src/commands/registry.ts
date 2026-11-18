@@ -16,13 +16,13 @@
 
 import { authCommand } from './auth'
 import { claudeCommand } from './claude'
+import { forkCommand } from './fork'
 import { sessionsCommand } from './sessions'
 import { doctorCommand } from './doctor'
 import { mcpCommand } from './mcp'
 import { daemonCommand } from './daemon'
 import { serviceCommand } from './service'
 import { logsCommand } from './logs'
-import { hookForwarderCommand } from './hookForwarder'
 import { versionCommand } from './version'
 import { upgradeCommand } from './upgrade'
 import { setupCommand } from './setup'
@@ -37,10 +37,10 @@ const COMMANDS: CommandDefinition[] = [
     logsCommand,
     doctorCommand,
     sessionsCommand,
+    forkCommand,
     versionCommand,
     upgradeCommand,
-    setupCommand,
-    hookForwarderCommand // 用于转发 Claude 的 SessionStart hook
+    setupCommand
 ]
 
 const commandMap = new Map<string, CommandDefinition>()

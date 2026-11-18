@@ -342,10 +342,10 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
                     return false // unreachable/timeout：best-effort 逐出，遥测记失败
                 }
             },
-            // 内存水位（票 2.2）：os 可用率 + remote 会话 rss 汇总双口径（local 不计，裁决 #12）
+            // 内存水位（票 2.2）：os 可用率 + 会话 rss 汇总双口径
+            //（local 已退场，tui-fork 票 07——不再有「local 不计」的特例）
             getMemoryPressure: () => {
                 const rssSum = engine.sessionRegistry.live()
-                    .filter((entry) => entry.mode !== 'local')
                     .reduce((sum, entry) => sum + (entry.rss ?? 0), 0)
                 return evaluateMemoryPressure(readAvailableMemoryBytes(), totalmem(), rssSum)
             },

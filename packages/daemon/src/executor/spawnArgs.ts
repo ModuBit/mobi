@@ -26,7 +26,8 @@ export function buildClaudeSpawnArgs(options: SpawnSessionOptions): string[] {
     if (options.resumeSessionId) {
         args.push('--resume', options.resumeSessionId)
     }
-    args.push('--mobi-starting-mode', 'remote', '--started-by', 'daemon')
+    // local 模式已退场（tui-fork 票 06）：会话恒由 daemon/Web 经进程内 SDK 驱动
+    args.push('--started-by', 'daemon')
     if (options.model) {
         args.push('--model', options.model)
     }

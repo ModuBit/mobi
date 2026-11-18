@@ -16,6 +16,7 @@ graph LR
 
 - **单机假设**：machines 表已删除（remove-machine，见 [ADR 0011](../adr/0011-remove-machine-concept.md)），无任何「他机」概念；executor 状态为内存单例（executorRuntime），经 `/api/daemon/status` 与 `daemon-status` SSE 暴露。
 - **会话子进程**由 daemon 进程内 executor spawn（`cli claude ...`，源码直跑），经**宿主通道**回连 daemon。宿主通道是 loopback-only 的独立 Socket.IO listener（端口 = 主端口 + 10000，`MOBI_HOST_PORT` 覆盖；详见 [ADR 0009](../adr/0009-host-channel-loopback-listener.md)）。
+- **会话宿主只有 remote 一条路径**：Claude Agent SDK 在会话子进程内驱动，hook 与 MCP 走进程内装配；local 模式已退场（[ADR 0013](../adr/0013-tui-continuation-via-fork.md)）。终端接续走 `mobi fork`：只读 daemon SQLite，`claude --resume <nativeId> --fork-session` 开独立分支，不入 mobi 账。
 - **supervisor**（`mobi service supervise`）只托管单个 daemon 组件；daemon 的进程状态单源是 `daemon.state.json`。
 
 ## 六个包
@@ -25,7 +26,7 @@ graph LR
 | **shared** | 跨包共享的 Zod Schema 和类型 | TypeScript + Zod | — |
 | **node-core** | 节点侧共享库（git 簇 / logger / configuration / persistence / handlers / api 四件） | TypeScript + Bun | — |
 | **daemon** | 单机 daemon：Web + Socket.IO + SQLite + spawn 管线（executor），一个进程 | Bun + Hono + Socket.IO + SQLite | [→ daemon/](daemon/) |
-| **session** | 会话宿主：与 Claude Code 会话进程共处的一切（claude/agent/mcp/terminal、local/remote 循环） | TypeScript + Claude Agent SDK | [→ cli/](cli/)（会话宿主叙述） |
+| **session** | 会话宿主：与 Claude Code 会话进程共处的一切（claude/agent/mcp/terminal、remote 主循环） | TypeScript + Claude Agent SDK | [→ cli/](cli/)（会话宿主叙述） |
 | **cli** | 组合根：二进制入口、命令路由、supervisor/setup/upgrader/auth UI | Bun | [→ cli/](cli/) |
 | **web** | 浏览器前端，远程交互界面 | React 19 + Ant Design X + TanStack | [→ web/](web/) |
 

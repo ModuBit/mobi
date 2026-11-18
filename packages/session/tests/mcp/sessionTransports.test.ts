@@ -22,10 +22,8 @@ import type { Settings } from '@anthropic-ai/claude-agent-sdk'
 const fakeClient = { sendClaudeSessionMessage: vi.fn() } as unknown as ApiSessionClient
 
 describe('buildSessionMcpServers', () => {
-    it('remote 模式挂载 mobi-apps + mobi-core 两个 SDK 进程内 server（按职责拆分）', () => {
+    it('挂载 mobi-apps + mobi-core 两个 SDK 进程内 server（按职责拆分）', () => {
         const servers = buildSessionMcpServers({
-            startingMode: 'remote',
-            httpMcpUrl: null,
             client: fakeClient,
             getAgentLocator: () => null,
         })
@@ -39,26 +37,13 @@ describe('buildSessionMcpServers', () => {
         expect(Object.keys(servers).sort()).toEqual(['mobi-apps', 'mobi-core'])
     })
 
-    it('local 模式仅挂 mobi-core（HTTP url 透传）；mobi-apps 不存在（D1），web 工具不挂（local 从未生效）', () => {
+    it('不再产生 HTTP transport（local 模式已退场，tui-fork 票 06）', () => {
         const servers = buildSessionMcpServers({
-            startingMode: 'local',
-            httpMcpUrl: 'http://127.0.0.1:12345',
             client: fakeClient,
             getAgentLocator: () => null,
         })
 
-        expect(servers['mobi-core']).toEqual({ type: 'http', url: 'http://127.0.0.1:12345' })
-        expect(servers['mobi-apps']).toBeUndefined()
-        expect(Object.keys(servers)).toEqual(['mobi-core'])
-    })
-
-    it('local 模式缺 httpMcpUrl 属装配 bug，显式报错而非静默空串', () => {
-        expect(() => buildSessionMcpServers({
-            startingMode: 'local',
-            httpMcpUrl: null,
-            client: fakeClient,
-            getAgentLocator: () => null,
-        })).toThrow(/httpMcpUrl/)
+        expect(Object.values(servers).every((server) => (server as { type: string }).type === 'sdk')).toBe(true)
     })
 })
 

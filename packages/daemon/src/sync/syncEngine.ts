@@ -841,9 +841,6 @@ export class SyncEngine {
         }
         this.factsSink.handleSessionEnd?.({ sid: sessionId, time: Date.now(), ...end })
     }
-    async switchSession(sessionId: string, to: 'remote' | 'local'): Promise<void> {
-        await this.rpcGateway.switchSession(sessionId, to)
-    }
 
     /**
      * Governor 逐出（票 2.2）：pause/governor_evict 单出口——经 killSession RPC 指定

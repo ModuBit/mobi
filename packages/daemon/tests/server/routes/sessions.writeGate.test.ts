@@ -95,7 +95,6 @@ describe('归档禁写闸（票 11）', () => {
         ['POST', '/api/sessions/test-session-1/upload/replace'],
         ['POST', '/api/sessions/test-session-1/rewind/dry-run', { nativeId: 'n1' }],
         ['POST', '/api/sessions/test-session-1/rewind', { nativeId: 'n1', restoreFiles: false }],
-        ['POST', '/api/sessions/test-session-1/switch'],
         // 票 11 补挂：配置写端点（休眠放行、归档挡）+ runtime-state 清除。守卫插桩在
         // body 校验之前，无需合法 body
         ['POST', '/api/sessions/test-session-1/model'],

@@ -4,6 +4,8 @@
 >
 > 基线：`@anthropic-ai/claude-agent-sdk@0.3.218`（cli 包）。代码位置以 `packages/session/src/claude/` 为主。
 > 编写日期：2026-07-29。SDK 迭代很快，落地前请按 README 索引拉最新官方文档复核 API。
+>
+> **2026-11-18 更新**：local 模式已整体退场（[ADR 0013](../adr/0013-tui-continuation-via-fork.md)）。文中涉及 `claudeLocal` / HTTP hook server / `hook-forwarder` 的段落仅作历史分析；当前 remote 会话的 SessionStart hook 走 SDK 进程内 `Options.hooks`，HTTP 链路与临时 settings 已删除。
 
 ---
 

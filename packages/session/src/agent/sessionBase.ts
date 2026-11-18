@@ -20,7 +20,6 @@ import { MessageQueue } from '@mobi/node-core/utils/MessageQueue';
 import type { Metadata, SessionModel, SessionPermissionMode } from '@mobi/node-core/api/types';
 import type { EffortLevel } from '@mobi/shared';
 import { logger } from '@mobi/node-core/logger';
-import { readGitBranch } from '@mobi/node-core/utils/worktreeEnv';
 
 export type AgentSessionBaseOptions<Mode> = {
     api: ApiClient;
@@ -29,8 +28,6 @@ export type AgentSessionBaseOptions<Mode> = {
     logPath: string;
     sessionId: string | null;
     messageQueue: MessageQueue<Mode>;
-    onModeChange: (mode: 'local' | 'remote') => void;
-    mode?: 'local' | 'remote';
     sessionLabel: string;
     sessionIdLabel: string;
     applySessionIdToMetadata: (metadata: Metadata, sessionId: string) => Metadata;
@@ -47,10 +44,10 @@ export class AgentSessionBase<Mode> {
     readonly api: ApiClient;
     readonly client: ApiSessionClient;
     readonly queue: MessageQueue<Mode>;
-    protected readonly _onModeChange: (mode: 'local' | 'remote') => void;
 
     sessionId: string | null;
-    mode: 'local' | 'remote' = 'local';
+    /** 会话驱动模式。local 已退场（tui-fork 票 05），保留字段只为兼容既有 keepAlive 协议 */
+    readonly mode: 'local' | 'remote' = 'remote';
     running: boolean = false;
 
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
@@ -71,11 +68,9 @@ export class AgentSessionBase<Mode> {
         this.logPath = opts.logPath;
         this.sessionId = opts.sessionId;
         this.queue = opts.messageQueue;
-        this._onModeChange = opts.onModeChange;
         this.applySessionIdToMetadata = opts.applySessionIdToMetadata;
         this.sessionLabel = opts.sessionLabel;
         this.sessionIdLabel = opts.sessionIdLabel;
-        this.mode = opts.mode ?? 'local';
         this.permissionMode = opts.permissionMode;
         this.model = opts.model;
         this.effort = opts.effort;
@@ -83,6 +78,7 @@ export class AgentSessionBase<Mode> {
         this.outputStyle = opts.outputStyle;
 
         this.client.keepAlive(this.running, this.mode, this.getKeepAliveRuntime());
+        this.client.startIdleTimer();
         this.keepAliveInterval = setInterval(() => {
             this.client.keepAlive(this.running, this.mode, this.getKeepAliveRuntime());
         }, 2000);
@@ -98,29 +94,6 @@ export class AgentSessionBase<Mode> {
         }
         this.running = running;
         this.client.keepAlive(running, this.mode, this.getKeepAliveRuntime());
-    };
-
-    onModeChange = (mode: 'local' | 'remote') => {
-        this.mode = mode;
-        this.client.keepAlive(this.running, mode, this.getKeepAliveRuntime());
-        const permissionLabel = this.permissionMode ?? 'unset';
-        const modelLabel = this.model === undefined ? 'unset' : (this.model ?? 'auto');
-        logger.debug(`[${this.sessionLabel}] Mode switched to ${mode} (permissionMode=${permissionLabel}, model=${modelLabel})`);
-
-        // 模式切换时控制 IdleTimer
-        if (mode === 'remote') {
-            this.client.startIdleTimer();
-            // 切换到 remote 时刷新 git 分支信息
-            const gitBranch = readGitBranch(this.path);
-            this.client.updateMetadata((metadata) => ({
-                ...metadata,
-                gitBranch: gitBranch ?? undefined,
-            }));
-        } else {
-            this.client.stopIdleTimer();
-        }
-
-        this._onModeChange(mode);
     };
 
     onSessionFound = (sessionId: string) => {

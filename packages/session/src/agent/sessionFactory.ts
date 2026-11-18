@@ -41,7 +41,6 @@ export type SessionBootstrapOptions = {
     model?: string
     effort?: EffortLevel
     claudeArgs?: string[]   // 用于解析 --resume，从而复用已有 daemon session
-    startingMode?: 'local' | 'remote'
     /** 归属工作区（Web spawn 透传；缺省 = 游离） */
     workspaceId?: string
 }
@@ -229,7 +228,8 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
         tag: sessionTag,
         metadata,
         state: agentState,
-        mode: options.startingMode,
+        // local 模式已退场（tui-fork 票 06）：新会话恒为 daemon/Web 驱动的 remote
+        mode: 'remote',
         runtimeState: options.effort ? { effort: options.effort } : undefined,
         workspaceId: options.workspaceId
     })

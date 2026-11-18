@@ -17,8 +17,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect, useImperativeHandle, lazy, Suspense, type Ref } from 'react'
 import styled from '@emotion/styled'
 import { theme, message } from 'antd'
-import { SwapOutlined, InboxOutlined } from '@ant-design/icons'
-import { Button } from '@/ui/base/interactive/button/Button'
+import { InboxOutlined } from '@ant-design/icons'
 import { ChatInput, type ChatInputHandle } from '@/ui/base/interactive/chat-input'
 import { useTranslation } from 'react-i18next'
 import type { AgentState, ContextUsage, EffortLevel, FastModeState, GoalStatus, PermissionMode, Session, StopKind } from '@mobi/shared'
@@ -37,6 +36,7 @@ import { fileRefContext } from '@/core/utils/fileUrl'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { AttachPanel } from '@/features/composer/AttachPanel'
 import { COMPOSER_CARD_HEADER_INSET, composerCard, composerRail } from '@/features/composer/composerSurface.styles'
+import { LocalModeCover } from '@/features/composer/LocalModeCover'
 import { QuoteChipBar } from '@/features/composer/QuoteChipBar'
 import { ComposerInfoPanel } from '@/pages/session/ComposerInfoPanel'
 import { resolveCopyShortcut } from '@/features/composer/copyShortcut'
@@ -136,8 +136,6 @@ interface ChatComposerProps {
     abortPending?: boolean
     onActivate?: () => void
     activatePending?: boolean
-    onSwitchToRemote?: () => void
-    switchPending?: boolean
     /** 上下文用量（来自 session.runtimeState.contextUsage）；无值时不渲染水位圆环 */
     contextUsage?: ContextUsage | null
     /** 水位圆环 Popover 内的「立即压缩」（仅 ≥60% 有效上限时展示） */
@@ -272,8 +270,6 @@ export function ChatComposer(props: ChatComposerProps) {
         abortPending = false,
         onActivate,
         activatePending = false,
-        onSwitchToRemote,
-        switchPending = false,
         contextUsage,
         onCompact,
         compactDisabled = false,
@@ -899,32 +895,8 @@ export function ChatComposer(props: ChatComposerProps) {
                     />
                 )}
 
-                {/* 本地模式覆盖层 */}
-                {showLocalModeCover && (
-                    <div
-                        className="activate-cover-mask"
-                        style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 56,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            borderRadius: 'var(--radius-panel)',
-                            zIndex: 10,
-                        }}
-                    >
-                        <Button
-                            variant="primary"
-                            loading={switchPending}
-                            onClick={onSwitchToRemote}
-                        >
-                            <SwapOutlined /> {t('composer.switchToRemote')}
-                        </Button>
-                    </div>
-                )}
+                {/* 本地模式覆盖层：历史 local 会话只读（该模式已不再产生新会话） */}
+                {showLocalModeCover && <LocalModeCover message={t('composer.localModeReadonly')} />}
 
                 {/* 拖拽上传覆盖层 */}
                 {isDragOver && (

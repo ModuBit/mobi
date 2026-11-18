@@ -241,7 +241,7 @@ const sdkOptions: Options = {
     disallowedTools: mode.disallowedTools,
     toolAliases: {               // web 工具替换（常驻注入）：模型 emit WebSearch/WebFetch
         WebSearch: 'mcp__mobi-core__web_search',   // → 执行层重定向到 mobi-core in-process 工具
-        WebFetch: 'mcp__mobi-core__web_fetch',     // （见 src/webtools/，local 模式不替换）
+        WebFetch: 'mcp__mobi-core__web_fetch',     // （见 src/webtools/）
     },
     canUseTool: canCallTool,     // 权限审批回调
     abortController,

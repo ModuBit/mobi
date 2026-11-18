@@ -1130,7 +1130,7 @@
       "bypassPermissions": "Skip all checks, run immediately (careful)"
     },
     "activate": "Resume",
-    "switchToRemote": "Switch to Remote Mode",
+    "localModeReadonly": "This session runs in the local terminal. Read-only here.",
     "dropToUpload": "Drop files here to upload",
     "uploadPendingWarning": "Please wait for file uploads to complete",
     "removeQuote": "Remove quote",

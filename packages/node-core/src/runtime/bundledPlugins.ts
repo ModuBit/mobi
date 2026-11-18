@@ -221,8 +221,8 @@ export function buildMemoryPluginOptions(): SdkPluginConfig[] {
 
 /**
  * SDK Options 的 plugins 字段：恒挂载内置插件 + env 信号激活的记忆插件。
- * remote 模式直接进 sdkOptions（SDK 自动转成 claude 进程的 --plugin-dir）；
- * local 模式经 claudeLocalLauncher 传给 claudeLocal 拼同义 flag。
+ * 直接进 sdkOptions（SDK 自动转成 claude 进程的 --plugin-dir）；local 模式已退场
+ * （tui-fork 票 05），不再有拼同义 CLI flag 的第二条路径。
  */
 export function buildBundledPluginOptions(): SdkPluginConfig[] {
     return [

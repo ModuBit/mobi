@@ -23,22 +23,15 @@ import { AgentState, SessionModel } from '@mobi/node-core/api/types';
 import { EnhancedMode, PermissionMode, type QueryControlRef, type RawJSONLines } from './types';
 import { MessageQueue } from '@mobi/node-core/utils/MessageQueue';
 import { hashObject } from '@mobi/node-core/utils/deterministicJson';
-import { extractSDKMetadataAsync } from '@mobi/node-core/claudeSdk/metadataExtractor';
 import { parseSpecialCommand } from '../parsers/specialCommands';
 import { getEnvironmentInfo } from '@mobi/node-core/environmentInfo';
-import { startMobiMcpServer } from './utils/startMobiMcpServer';
 import { registerAgentCapabilities, syncAgentRename } from '../agent/agentCapabilities';
 import { claudeCapabilities, claudeLocator, CLAUDE_FLAVOR } from './agentCapabilities';
-import { startHookServer, type HookServer } from './utils/startHookServer';
-import { applySessionIdBinding } from './utils/sessionIdBinding';
-import { buildCacheStatusFromSessionStart } from './utils/cacheStatus';
-import { generateHookSettingsFile, cleanupHookSettingsFile } from '../modules/common/hooks/generateHookSettings';
 import { buildSessionMcpServers, MOBI_PREAUTHORIZED_TOOLS, REMOTE_INLINE_HOOK_SETTINGS } from '../mcp/sessionTransports';
-import { buildClaudeFeatureEnv } from './featureFlags';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
 import { bootstrapSession } from '../agent/sessionFactory';
-import { createModeChangeHandler, createSessionLifecycle, setControlledByUser } from '../agent/sessionLifecycle';
+import { createSessionLifecycle, markControlledByUser } from '../agent/sessionLifecycle';
 import { SESSION_CONFIG_FIELDS, DEFAULT_MODEL, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, buildModelChangeLine, type SessionPauseTrigger, type UserContentBlock } from '@mobi/shared';
 import { PermissionModeSchema } from '@mobi/shared/schemas';
 import { buildPromptFromBlocks, type PromptPayload } from '@mobi/node-core/utils/promptBuilder';
@@ -64,8 +57,6 @@ export interface StartOptions {
     fastMode?: boolean
     /** CC output style（Web spawn 透传；经 Session opts → applyStartupOutputStyle 注入） */
     outputStyle?: string
-    startingMode?: 'local' | 'remote'
-    shouldStartRunner?: boolean
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
     startedBy?: 'daemon' | 'terminal'
@@ -108,22 +99,14 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
     // Log environment info at startup
     logger.debugLargeJson('[START] MOBI process started', getEnvironmentInfo());
-    logger.debug(`[START] Options: startedBy=${startedBy}, startingMode=${options.startingMode}`);
-
-    // daemon spawn ⇒ remote 是派生规则而非静默纠正：daemon 侧 spawn 的会话由
-    // Web 驱动，local（终端直连）物理不可能——强转后的语义就是调用方目标态
-    if (startedBy === 'daemon' && options.startingMode === 'local') {
-        logger.debug('Daemon spawn requested with local mode - forcing remote mode');
-        options.startingMode = 'remote';
-    }
+    logger.debug(`[START] Options: startedBy=${startedBy}`);
 
     const initialState: AgentState = {};
     // 会话态模型留在 mobi 空间（'auto' 哨兵与 web 选项同空间）：Session/keep-alive
     // runtime/applied ack/model_change 行都按 mobi 值读写，进 SDK 前才翻译成 CC 别名
     const initialModel = options.model?.trim() || null;
-    const startingMode = options.startingMode ?? (startedBy === 'daemon' ? 'remote' : 'local');
-    // -c 规范化为显式 --resume（bootstrapSession 的 tag 复用与 claudeLocal 透传都依赖
-    // 显式 --resume 形态；详见 normalizeContinueArg 的 docstring）
+    // -c 规范化为显式 --resume（bootstrapSession 的 tag 复用依赖显式 --resume 形态；
+    // 详见 normalizeContinueArg 的 docstring）
     options.claudeArgs = await normalizeContinueArg(options.claudeArgs, workingDirectory);
     const { api, apiSession, sessionInfo, additionalDirectories } = await bootstrapSession({
         flavor: 'claude',
@@ -133,7 +116,6 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         model: initialModel ?? undefined,
         effort: options.effort,
         claudeArgs: options.claudeArgs,   // 用于 --resume 时复用 daemon session
-        startingMode,
         workspaceId: options.workspaceId
     });
     logger.debug(`Session created: ${sessionInfo.id}`);
@@ -145,95 +127,19 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         logger.debug(`[START] Fork activation pending: parent=${forkActivation.parentNativeId}, anchor=${forkActivation.anchorNativeId}, fork=${forkActivation.forkNativeId}`);
     }
 
-    // 本地模式没有 remote Query，能力面经 headless 提取兜底（批次 G 前的唯一路径，此处收窄为 local 专属）；
-    // 远程模式由 launcher onQueryReady 的 discoverCapabilities 供给（批次 G U-27）
-    if (startingMode === 'local') {
-        extractSDKMetadataAsync(async (extractedMetadata) => {
-            logger.debug('[start] SDK metadata extracted, updating session:', extractedMetadata);
-            try {
-                apiSession.updateMetadata((currentMetadata) => ({
-                    ...currentMetadata,
-                    sdkMetadata: extractedMetadata
-                }));
-            } catch (error) {
-                logger.debug('[start] Failed to update session metadata:', error);
-            }
-        }, workingDirectory);
-    }
-
     // Variable to track current session instance (updated via onSessionReady callback)
-    // 提前到 startMobiMcpServer 之前：MCP change_title handler 需要它回写 agent 侧标题
     const currentSessionRef: { current: Session | null } = { current: null };
 
     // 注册 Claude agent 能力（随会话生命周期常驻；后续 syncAgentRename 等按 flavor 调用）
     registerAgentCapabilities(CLAUDE_FLAVOR, claudeCapabilities);
 
-    // —— transport 分流（ADR 0001）——
-    // remote：SDK 进程内装配（mcpServers 走 createSdkMcpServer、SessionStart hook 走
-    // SDK 进程内回调、settings 内联对象），零端口零临时文件；
-    // local：HTTP MCP server + HTTP Hook server + settings 文件（claude 子进程不可达进程内回调）。
+    // —— transport（ADR 0001）——
+    // SDK 进程内装配：mcpServers 走 createSdkMcpServer、SessionStart hook 走
+    // SDK 进程内回调、settings 内联对象，零端口零临时文件。
     // 用于在信号退出时清理子进程（防止 Claude Code / SDK Query 残留）
     const processCleanupRef = { current: null as (() => void) | null };
 
-    const formatFailureReason = (message: string): string => {
-        const maxLength = 200;
-        if (message.length <= maxLength) {
-            return message;
-        }
-        return `${message.slice(0, maxLength)}...`;
-    };
-
-    let mobiMcpServer: Awaited<ReturnType<typeof startMobiMcpServer>> | null = null;
-    let hookServer: HookServer | null = null;
-    let hookSettingsPath: string | null = null;
-    if (startingMode === 'local') {
-        // 两个 loopback 监听互不依赖，并行拉起；先 resolve 的一侧立即登记进容器，
-        // 便于另一侧失败时手动 stop，避免孤儿监听（lifecycle 此时还未建立）。
-        // 容器属性而非裸 let：TS 控制流不追踪闭包内赋值，属性收窄在读点会重置
-        const localServers: {
-            mcp: Awaited<ReturnType<typeof startMobiMcpServer>> | null;
-            hook: HookServer | null;
-        } = { mcp: null, hook: null };
-        const mcpPromise = startMobiMcpServer(apiSession, () => claudeLocator(currentSessionRef.current))
-            .then((server) => { localServers.mcp = server; return server; });
-        const hookPromise = startHookServer({
-            onSessionHook: (sessionId, data) => {
-                logger.debug(`[START] Session hook received: ${sessionId}`, data);
-                // sessionId 绑定幂等守卫收口于 applySessionIdBinding（remote 的 SDK 进程内 hook 复用同一核心）
-                applySessionIdBinding(() => currentSessionRef.current, sessionId);
-                // 恢复场景缓存信号上报（与 remote 进程内 hook 共用组装核心）；result 清空在
-                // apiSession.sendClaudeSessionMessage 咽喉点统一处理。探针日志供
-                // cache-miss-after-resume 调查 grep（与 remote 侧同前缀同字段）
-                const cacheStatus = buildCacheStatusFromSessionStart(data);
-                logger.info(`[cache-probe] source=${data.source} likelyExpired=${data.prompt_cache_likely_expired} contextTokens=${data.context_tokens} secondsSinceLastResponse=${data.seconds_since_last_response} reported=${cacheStatus !== null}`);
-                if (cacheStatus) apiSession.reportCacheStatus(cacheStatus);
-            }
-        }).then((server) => { localServers.hook = server; return server; });
-
-        try {
-            await Promise.all([mcpPromise, hookPromise]);
-        } catch (error) {
-            localServers.mcp?.stop();
-            localServers.hook?.stop();
-            throw error;
-        }
-        // Promise.all 成功 ⇒ 两侧均已赋值（写入外层变量，onAfterClose 依赖其清理）
-        const mcpServer = localServers.mcp!;
-        hookServer = localServers.hook!;
-        mobiMcpServer = mcpServer;
-        logger.debug(`[START] MOBI MCP server: http at ${mcpServer.url}`);
-        logger.debug(`[START] Hook server started on port ${hookServer.port}`);
-
-        hookSettingsPath = generateHookSettingsFile(hookServer.port, hookServer.token, {
-            filenamePrefix: 'session-hook',
-            logLabel: 'generateHookSettings',
-            env: buildClaudeFeatureEnv()
-        });
-        logger.debug(`[START] Generated hook settings file: ${hookSettingsPath}`);
-    } else {
-        logger.debug('[START] MOBI MCP server: in-process (sdk)');
-    }
-    const hookSettings: string | Settings = hookSettingsPath ?? REMOTE_INLINE_HOOK_SETTINGS;
+    const hookSettings: Settings = REMOTE_INLINE_HOOK_SETTINGS;
 
     // Print log file path
     const logPath = logger.logFilePath;
@@ -257,8 +163,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     };
     try {
         bridgeListener = await startBridgeListener();
-        // session 进程级 env：local（claudeLocal 展开 process.env）与 remote
-        //（sdkOptions.env 展开 process.env）两条 spawn 路径都由此继承
+        // session 进程级 env：claude 子进程由 SDK spawn（sdkOptions.env 展开 process.env），
+        // bridge socket 地址由此继承
         process.env[MOBI_BRIDGE_SOCK_ENV] = bridgeListener.socketPath;
         // goal 订阅者：信号 → transcript 尾部读原始行 → 与 query 消息同一管道透传
         stopGoalTap = registerGoalTapSubscriber(bridgeListener, {
@@ -294,11 +200,6 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             processCleanupRef.current = null;
         },
         onAfterClose: () => {
-            mobiMcpServer?.stop();
-            hookServer?.stop();
-            if (hookSettingsPath) {
-                cleanupHookSettingsFile(hookSettingsPath, 'generateHookSettings');
-            }
             stopGoalTap?.();
             stopForkedSkillTap?.();
             stopWakeupTap?.();
@@ -381,7 +282,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     apiSession.on('idle-timeout', () => handleTimeout('Idle timeout', 'idle_timeout'));
 
     // Set initial agent state
-    setControlledByUser(apiSession, startingMode);
+    markControlledByUser(apiSession);
 
     // Import MessageQueue and create message queue
     // model/permissionMode 不纳入 hash，通过 SDK Query 动态切换
@@ -757,7 +658,6 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
             effort: currentEffort,
             fastMode: currentFastMode,
             outputStyle: options.outputStyle,
-            startingMode,
             additionalDirectories,
             messageQueue,
             api,
@@ -768,7 +668,6 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
             // 在发件方会话里留下工具卡，人可事后审计（收窄手段是权限模式，不是逐次审批）。
             // web 工具是 toolAliases 的重定向目标，不预授权则 default 模式每次弹审批。
             allowedTools: [...MOBI_PREAUTHORIZED_TOOLS],
-            onModeChange: createModeChangeHandler(apiSession),
             onSessionReady: (sessionInstance) => {
                 currentSessionRef.current = sessionInstance;
                 syncSessionModes();
@@ -778,8 +677,6 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
             // 活 Query 能力源回传：refreshMetadata 优先问 Query，活跃会话不再新起探针进程
             onLiveCapabilitySource: (getter) => apiSession.installLiveCapabilitySource(getter),
             mcpServers: buildSessionMcpServers({
-                startingMode,
-                httpMcpUrl: mobiMcpServer?.url ?? null,
                 client: apiSession,
                 getAgentLocator: () => claudeLocator(currentSessionRef.current),
             }),
@@ -812,12 +709,6 @@ const MESSAGE_META_FIELDS: ReadonlyArray<{
         loopError = error;
         loopFailed = true;
         lifecycle.markCrash(error);
-    }
-
-    const localFailure = currentSessionRef.current?.localLaunchFailure;
-    if (localFailure?.exitReason === 'exit') {
-        lifecycle.setExitCode(1);
-        lifecycle.setArchiveReason(`Local launch failed: ${formatFailureReason(localFailure.message)}`);
     }
 
     if (loopFailed) {

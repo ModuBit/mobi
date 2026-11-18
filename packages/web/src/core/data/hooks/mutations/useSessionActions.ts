@@ -91,7 +91,6 @@ function useConfigMutation<T>(
  */
 export function useSessionActions(sessionId: string | null): {
     abortSession: (stopKind?: StopKind) => Promise<void>
-    switchSession: () => Promise<void>
     resumeSession: () => Promise<string>
     setPermissionMode: (mode: string) => Promise<void>
     setModelMode: (mode: string) => Promise<void>
@@ -102,7 +101,6 @@ export function useSessionActions(sessionId: string | null): {
     isPending: boolean
     isAbortPending: boolean
     isResumePending: boolean
-    isSwitchPending: boolean
 } {
     const api = useMobiApi()
     const queryClient = useQueryClient()
@@ -153,17 +151,6 @@ export function useSessionActions(sessionId: string | null): {
             if (!isCancelQueued(stopKind ?? DEFAULT_STOP_KIND)) return
             void fetchLatestMessages(api, sessionId)
         },
-    })
-
-    // 切换会话（remote/local 模式切换）
-    const switchMutation = useMutation({
-        mutationFn: async () => {
-            if (!sessionId) {
-                throw new Error('Session unavailable')
-            }
-            await api.sessions.switch(sessionId)
-        },
-        onSuccess: () => void invalidateSessionDetail(),
     })
 
     // 恢复会话
@@ -220,7 +207,6 @@ export function useSessionActions(sessionId: string | null): {
 
     return {
         abortSession: (stopKind?: StopKind) => abortMutation.mutateAsync(stopKind),
-        switchSession: switchMutation.mutateAsync,
         resumeSession: resumeMutation.mutateAsync,
         setPermissionMode: permissionMutation.mutateAsync,
         setModelMode: modelMutation.mutateAsync,
@@ -230,7 +216,6 @@ export function useSessionActions(sessionId: string | null): {
         deleteSession: deleteMutation.mutateAsync,
         isPending:
             abortMutation.isPending ||
-            switchMutation.isPending ||
             resumeMutation.isPending ||
             permissionMutation.isPending ||
             modelMutation.isPending ||
@@ -240,6 +225,5 @@ export function useSessionActions(sessionId: string | null): {
             deleteMutation.isPending,
         isAbortPending: abortMutation.isPending,
         isResumePending: resumeMutation.isPending,
-        isSwitchPending: switchMutation.isPending,
     }
 }

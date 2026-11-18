@@ -895,6 +895,8 @@ export const SessionSchema = z.object({
     runningAt: z.number(),
     runtimeState: RuntimeStateSchema.optional(),
     permissionMode: PermissionModeSchema.optional(),
+    /** @deprecated 会话驱动模式。local 已退场（tui-fork 票 07）：新会话恒为 remote，
+     *  历史 local 行仍原样序列化供只读展示，不再产生新值 */
     mode: z.enum(['local', 'remote']).optional(),
     tag: z.string().nullable().optional(),   // daemon session 的标签，用于 getOrCreateSession 时复用
     /** 归属工作区（null = 游离，进「最近」） */

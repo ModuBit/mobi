@@ -23,10 +23,11 @@
  */
 
 import chalk from 'chalk'
-import {
-    listExecutorSessions,
-    stopExecutorSession
-} from '@mobi/daemon/executor/controlClient'
+import { stopExecutorSession } from '@mobi/daemon/executor/controlClient'
+import { listForkableSessions, SessionListingError } from '@mobi/daemon/store/sessionListing'
+import { resolveMobiDbPath } from '@mobi/node-core/dbPath'
+import { formatSessionLine } from './forkPlan'
+import { resolveCliNamespace } from './namespace'
 import type { CommandDefinition } from './types'
 
 function showSessionsHelp(): void {
@@ -34,7 +35,7 @@ function showSessionsHelp(): void {
 ${chalk.bold('mobi sessions')} - Manage daemon sessions
 
 ${chalk.bold('Usage:')}
-  mobi sessions list         List active sessions
+  mobi sessions list         List hosted sessions
   mobi sessions stop <id>    Stop a specific session
 
 ${chalk.gray('Sessions run inside the mobi daemon — manage it with')} ${chalk.cyan('mobi daemon')}
@@ -55,16 +56,27 @@ export const sessionsCommand: CommandDefinition = {
 
         if (subcommand === 'list') {
             try {
-                const sessions = await listExecutorSessions()
+                const sessions = listForkableSessions(
+                    resolveMobiDbPath(),
+                    await resolveCliNamespace()
+                )
 
                 if (sessions.length === 0) {
-                    console.log('No active sessions this daemon is aware of')
+                    console.log('没有可列出的托管会话（活跃或休眠、且已产生 Claude 会话）')
                 } else {
-                    console.log('Active sessions:')
-                    console.log(JSON.stringify(sessions, null, 2))
+                    console.log('托管会话（最近活跃优先）：\n')
+                    sessions.forEach((session, index) => {
+                        console.log(formatSessionLine(session, index))
+                    })
+                    console.log('\n在终端接续：mobi fork')
                 }
-            } catch {
-                console.log('No daemon running')
+            } catch (error) {
+                if (error instanceof SessionListingError) {
+                    console.error(chalk.red(error.message))
+                    process.exitCode = 1
+                } else {
+                    console.log('No daemon running')
+                }
             }
             return
         }

@@ -2,45 +2,36 @@
 
 **目录**: [`packages/session/src/mcp/`](/packages/session/src/mcp/)
 
-mobi 会话里的 agent 通过 MCP 工具触达 mobi 自身——接受 UI 呈现指令、操作其他会话、改自己的标题。本模块是这批工具的**工具定义与装配层**：工具工厂写一次（transport 无关），三个壳按模式把它挂到 Claude Code 上。
+mobi 会话里的 agent 通过 MCP 工具触达 mobi 自身——接受 UI 呈现指令、操作其他会话、改自己的标题。本模块是这批工具的**工具定义与装配层**：工具工厂写一次（transport 无关），由进程内 SDK server 挂到 Claude Code 上。
 
-## 三个壳
+## 两个进程内 server
 
-同一批工具核心，按「谁在控制会话」分三种挂载方式（transport 分流，见 [ADR 0001](/docs/adr/0001-transport-split-local-remote.md)）：
+local 模式已退场（[ADR 0013](/docs/adr/0013-tui-continuation-via-fork.md)），同一批工具核心只剩进程内挂载（SDK Query 在 mobi 进程内）：
 
 ```mermaid
 flowchart TB
     Core["工具工厂（transport 无关）<br/>changeTitleTool / openInMobiTool<br/>listSessionsTool / createSessionTool / sendMessageTool"]
 
-    subgraph remote["remote 模式（Web 控制，SDK Query 在 mobi 进程内）"]
-        Apps["mobi-apps<br/>createSdkMcpServer（进程内）"]
-        CoreSrv["mobi-core<br/>createSdkMcpServer（进程内）"]
-    end
-
-    subgraph local["local 模式（终端控制，claude 是独立子进程）"]
-        Http["startMobiMcpServer<br/>HTTP MCP（127.0.0.1 随机端口）"]
+    subgraph inproc["会话进程内"]
+        Apps["mobi-apps<br/>createSdkMcpServer"]
+        CoreSrv["mobi-core<br/>createSdkMcpServer"]
     end
 
     subgraph stdio["stdio bridge（mobi mcp 命令）"]
-        Bridge["mobiMcpStdioBridge<br/>stdio → 转发到 HTTP MCP"]
+        Bridge["mobiMcpStdioBridge<br/>stdio → 转发到外部 HTTP MCP"]
     end
 
     Core --> Apps
     Core --> CoreSrv
-    Core --> Http
-    Bridge -.->|"StreamableHTTPClientTransport"| Http
 ```
 
-| 壳 | 文件 | 模式 | 挂载的工具 | 通信 |
-|------|------|------|-----------|------|
-| **mobi-apps** | [`mcp/mobiAppsServer.ts`](/packages/session/src/mcp/mobiAppsServer.ts) | 仅 remote | A 类 + B 类（4 个） | SDK 进程内，零端口零临时文件 |
-| **mobi-core** | [`mcp/mobiCoreServer.ts`](/packages/session/src/mcp/mobiCoreServer.ts) | remote | change_title / web_search / web_fetch | 同上 |
-| **HTTP 壳** | [`claude/utils/startMobiMcpServer.ts`](/packages/session/src/claude/utils/startMobiMcpServer.ts) | 仅 local | 仅 change_title | StreamableHTTP，stateless（每请求独立 transport） |
-| **stdio bridge** | [`mcp/mobiMcpStdioBridge.ts`](/packages/session/src/mcp/mobiMcpStdioBridge.ts) | 独立命令 | 仅 change_title | stdio → HTTP 转发；**当前无实际使用场景** |
+| 壳 | 文件 | 挂载的工具 | 通信 |
+|------|------|-----------|------|
+| **mobi-apps** | [`mcp/mobiAppsServer.ts`](/packages/session/src/mcp/mobiAppsServer.ts) | A 类 + B 类（4 个） | SDK 进程内，零端口零临时文件 |
+| **mobi-core** | [`mcp/mobiCoreServer.ts`](/packages/session/src/mcp/mobiCoreServer.ts) | change_title / web_search / web_fetch | 同上 |
+| **stdio bridge** | [`mcp/mobiMcpStdioBridge.ts`](/packages/session/src/mcp/mobiMcpStdioBridge.ts) | 仅 change_title | stdio → 外部 HTTP MCP 转发；**当前无实际使用场景** |
 
-装配点在 [`mcp/sessionTransports.ts`](/packages/session/src/mcp/sessionTransports.ts) 的 `buildSessionMcpServers()`：remote 传两个进程内 server 对象，local 传 `{'mobi-core': {type:'http', url}}`。local 模式缺 url 时**抛错而非静默传空串**——那是装配时序 bug（HTTP 壳未先启动）。同一函数还导出 remote 模式的内联 hook settings（`REMOTE_INLINE_HOOK_SETTINGS`，零临时文件）。
-
-local 壳只挂 change_title：A/B 类工具都依赖 daemon 链路，local 不存在；web 工具在 local 模式下本就被 SDK 的 server 序列化过滤，从未生效，故不再挂载。
+装配点在 [`mcp/sessionTransports.ts`](/packages/session/src/mcp/sessionTransports.ts) 的 `buildSessionMcpServers()`：恒返回两个进程内 server 对象。同一文件导出会话的内联 hook settings（`REMOTE_INLINE_HOOK_SETTINGS`，零临时文件）。
 
 ## 命名法：mobi-core / mobi-apps
 
@@ -78,9 +69,8 @@ web 工具由 [`webtools/server.ts`](/packages/session/src/webtools/server.ts) �
 
 这张清单**不是手写的**：每个 server 模块（`mobiAppsServer` / `mobiCoreServer`）的注册表是「一行 = 一个工具的名字 + 怎么造」，`sessionTransports.ts` 从两张表派生 `MOBI_PREAUTHORIZED_TOOLS`（`mcp__<server>__<tool>`），[`claude/runClaude.ts`](/packages/session/src/claude/runClaude.ts) 直接用它。**加一个工具只改它所在 server 的那张表一行**——此前两处各抄一份，漏掉后者的症状是编译过得去、行为退化成逐次弹审批。
 
-- change_title 与 web 工具：避免 default 模式每次弹审批。工具前缀两种模式一致（SDK 按注册名、HTTP 壳按 key 生成），一条预授权覆盖两种 transport。
+- change_title 与 web 工具：避免 default 模式每次弹审批。
 - B 类工具：逐个审批会让编排完全不可用，而编排正是本特性的价值。收窄手段是权限模式，不是逐次审批——调用本身在发件方会话里留下工具卡，人可事后审计。
-- local 模式下 mobi-apps 前缀的预授权不会命中（工具根本没注册），无害；清单不按模式裁剪，免得把「当前是哪个模式」混进这份纯派生里。
 
 ## 工具工厂
 
@@ -131,20 +121,12 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    Start["runClaude()"] --> Branch{"startingMode"}
-    Branch -->|"local"| Local["startMobiMcpServer()<br/>→ HTTP 监听 127.0.0.1 随机端口<br/>mcpServers['mobi-core'] = {type:'http', url}<br/>onAfterClose 调 stop()"]
-    Branch -->|"remote"| Remote["mcpServers['mobi-apps'] / ['mobi-core']<br/>= createSdkMcpServer(...)<br/>进程内，无监听，无清理需求"]
+    Start["runClaude()"] --> Remote["mcpServers['mobi-apps'] / ['mobi-core']<br/>= createSdkMcpServer(...)<br/>进程内，无监听，无清理需求"]
 ```
 
-### 安全机制（local HTTP 壳）
+### 安全机制
 
-| 机制 | 说明 |
-|------|------|
-| **本地绑定** | `127.0.0.1`，外部不可访问 |
-| **随机端口** | 端口由 OS 分配，每次启动不同 |
-| **敏感环境变量过滤** | `TerminalManager` 把 `MOBI_HTTP_MCP_URL` 列入敏感变量，不传给子进程 |
-
-remote 的进程内 server 不经网络，无攻击面。stdio bridge 把 `--url` 换成 `MOBI_HTTP_MCP_URL` 环境变量或命令行参数，**不得写 stdout**（会破坏 MCP stdio 协议），诊断信息一律走 stderr。
+进程内 server 不经网络，无攻击面。stdio bridge 把 `--url` 换成 `MOBI_HTTP_MCP_URL` 环境变量或命令行参数，**不得写 stdout**（会破坏 MCP stdio 协议），诊断信息一律走 stderr。
 
 ## 代码结构
 
@@ -152,13 +134,13 @@ remote 的进程内 server 不经网络，无攻击面。stdio bridge 把 `--url
 packages/session/src/mcp/
 ├── mobiAppsServer.ts        # remote：mobi-apps SDK server 壳（A 类 + B 类）
 ├── mobiCoreServer.ts        # remote：mobi-core SDK server 壳（change_title / web 工具）
-├── sessionTransports.ts     # 按模式装配 server + remote 内联 hook settings
+├── sessionTransports.ts     # 装配进程内 server + 会话内联 hook settings
 ├── mobiMcpStdioBridge.ts    # stdio MCP server，转发到 HTTP MCP（mobi mcp 命令）
 ├── mcpSchemaCompat.ts       # zod ↔ MCP SDK AnySchema 类型桥
 ├── sdkTool.ts               # 工具体 → SDK tool() 定义的形状适配（两个 server 壳共用）
 ├── toolResult.ts            # text-only 结果构造助手
 ├── changeTitleShape.ts      # change_title 的对外形状单源（名/说明/标题/schema，只依赖 zod）
-├── changeTitleTool.ts       # change_title 核心（remote SDK / local HTTP / stdio bridge 共用形状）
+├── changeTitleTool.ts       # change_title 核心（进程内 SDK / stdio bridge 共用形状）
 ├── openInMobiTool.ts        # open_in_mobi（A 类）
 ├── listSessionsTool.ts      # list_sessions（B 类）
 ├── listModelsTool.ts        # list_models（B 类）
@@ -168,7 +150,6 @@ packages/session/src/mcp/
 
 | 相邻入口 | 位置 |
 |----------|------|
-| local HTTP 壳 | [`claude/utils/startMobiMcpServer.ts`](/packages/session/src/claude/utils/startMobiMcpServer.ts) |
 | web 工具核心 | [`webtools/server.ts`](/packages/session/src/webtools/server.ts) |
 | 预授权与装配调用点 | [`claude/runClaude.ts`](/packages/session/src/claude/runClaude.ts) |
 | `mobi mcp` 命令入口 | [`commands/mcp.ts`](/packages/cli/src/commands/mcp.ts) |

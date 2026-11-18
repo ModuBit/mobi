@@ -108,7 +108,6 @@ export type SessionChannelReport =
 /** 自定义事件载荷（session-message event 信封的 data 形状；类型单源——
  *  ApiSessionClient.sendSessionEvent 门面直接引用，新增 variant 只改这里） */
 export type SessionEventPayload =
-    | { type: 'switch'; mode: 'local' | 'remote' }
     | { type: 'message'; message: string }
     | { type: 'context-cleared' }
     /** 压缩开始（手动 /compact 与自动压缩统一 started 信号，launcher 幂等收口后发出） */

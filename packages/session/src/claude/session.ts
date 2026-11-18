@@ -25,12 +25,6 @@ import type { EffortLevel } from '@mobi/shared';
 import type { EnhancedMode, PermissionMode } from './types';
 import { QueryRestartController } from './utils/queryRestart';
 import type { ForkActivationPlan } from './utils/forkActivation';
-import type { LocalLaunchExitReason } from '../agent/localLaunchPolicy';
-
-type LocalLaunchFailure = {
-    message: string;
-    exitReason: LocalLaunchExitReason;
-};
 
 export class Session extends AgentSessionBase<EnhancedMode> {
     readonly claudeEnvVars?: Record<string, string>;
@@ -39,12 +33,10 @@ export class Session extends AgentSessionBase<EnhancedMode> {
     readonly allowedTools?: string[];
     readonly hookSettings: string | Settings;
     readonly startedBy: 'daemon' | 'terminal';
-    readonly startingMode: 'local' | 'remote';
     /** 工作区冻结的额外工作目录（创建时来自工作区 folders，resume 时回放 metadata） */
     readonly additionalDirectories: string[];
     /** Query 重启状态机：隐藏 pending、异步占位、队列清理和退出哨兵配对。 */
     readonly restart: QueryRestartController;
-    localLaunchFailure: LocalLaunchFailure | null = null;
     /**
      * fork 激活计划（fork-session spec §5.2）：bootstrap 从 fork 行 metadata.forkFrom
      * 解析；首条消息触发激活，init 返回预生成 id 时由 launcher 置 null 并上报 daemon
@@ -62,11 +54,8 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         claudeArgs?: string[];
         mcpServers: Record<string, McpServerConfig>;
         messageQueue: MessageQueue<EnhancedMode>;
-        onModeChange: (mode: 'local' | 'remote') => void;
         allowedTools?: string[];
-        mode?: 'local' | 'remote';
         startedBy: 'daemon' | 'terminal';
-        startingMode: 'local' | 'remote';
         hookSettings: string | Settings;
         permissionMode?: PermissionMode;
         model?: SessionModel;
@@ -84,8 +73,6 @@ export class Session extends AgentSessionBase<EnhancedMode> {
             logPath: opts.logPath,
             sessionId: opts.sessionId,
             messageQueue: opts.messageQueue,
-            onModeChange: opts.onModeChange,
-            mode: opts.mode,
             sessionLabel: 'Session',
             sessionIdLabel: 'Claude Code',
             applySessionIdToMetadata: (metadata, sessionId) => ({
@@ -107,7 +94,6 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         this.allowedTools = opts.allowedTools;
         this.hookSettings = opts.hookSettings;
         this.startedBy = opts.startedBy;
-        this.startingMode = opts.startingMode;
         this.additionalDirectories = opts.additionalDirectories ?? [];
         this.forkActivation = opts.forkActivation ?? null;
     }
@@ -130,10 +116,6 @@ export class Session extends AgentSessionBase<EnhancedMode> {
 
     setOutputStyle = (style: string): void => {
         this.outputStyle = style;
-    };
-
-    recordLocalLaunchFailure = (message: string, exitReason: LocalLaunchExitReason): void => {
-        this.localLaunchFailure = { message, exitReason };
     };
 
     /**

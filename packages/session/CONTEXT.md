@@ -1,20 +1,20 @@
 # Session（会话宿主）
 
-会话宿主侧的领域语言：与 Claude Code 会话进程共处一个进程的一切——local/remote 会话、锚点、轮次变更。
+会话宿主侧的领域语言：与 Claude Code 会话进程共处一个进程的一切——会话控制方向、锚点、轮次变更。
 
-会话宿主 = 会话子进程内运行的 mobi 代码（`packages/session/`）。它由 daemon 经宿主通道 spawn 并回连；local 与 remote 的区分标准是**谁在控制会话**（本地终端 vs Web 远程），不是进程拓扑。
+会话宿主 = 会话子进程内运行的 mobi 代码（`packages/session/`）。它由 daemon 经宿主通道 spawn 并回连；会话恒为 remote（Web 驱动），local 模式已退场（ADR 0013）。
 
 ## Language
 
 ### 会话控制方向
 
-**local 模式**:
-本地终端控制——用户在本机终端直接操作，mobi spawn 独立的 claude 子进程，用户与该子进程交互。
-_Avoid_: 交互模式、interactive（旧口头称呼）
-
 **remote 模式**:
-远程控制——会话经 daemon 由 Web 端驱动，Claude 以 SDK Query 形态跑在 mobi 进程内（headless，无终端 UI）。
+远程控制——会话经 daemon 由 Web 端驱动，Claude 以 SDK Query 形态跑在 mobi 进程内（headless，无终端 UI）。**当前唯一模式**。
 _Avoid_: headless 模式（旧口头称呼）
+
+**TUI 接续（mobi fork）**:
+把 Web 会话的上下文复制成一个独立的本地 Claude TUI 会话（`claude --resume <nativeId> --fork-session`）；两条分支此后互不影响，终端分支不写 mobi 数据库、不出现在 Web。见 ADR 0013。
+_Avoid_: 接管（那不是 fork，会与原会话共享 transcript）
 
 ### 锚点
 
@@ -94,15 +94,15 @@ _Avoid_: 测试里构造整套 launcher 才能驱动 claudeRemote
 SDK 消息 → 落库行的转换装配 module（深化候选④票③）：converter（SDKToLogConverter）、出站排队（OutgoingMessageQueue 的 tool_use 配对延迟与 FIFO 仲裁）、流式快照发送器工厂三件单一归属。dispatch 的「result 先入列再触发轮次合成」顺序契约在此锁定（此前靠跨文件时序注释维持）；运行层经 `createSnapshotSender` 消费，不再借 converter。
 _Avoid_: 在 launcher/运行层直接 new converter 或 OutgoingMessageQueue、把停止/撤回语义写进转换链（经 dispatchHooks 注入）
 
-**会话观测三件套（sessionObservability）**:
-goal 状态处理器（GoalStatusHandler 双发）与轮次变更合成器（TurnDiffReporter，含 turn 封口归档/全文目录构造）的单一装配点（`sessionObservability.ts`，架构评审候选⑦）——local/remote 双 launcher 共用；发送 adapter 是双模唯一差异点（local 直发 vs remote 经转换链入列保 FIFO），以 turnDiffSend 注入。scanner 接线（eager vs 惰性/顺序编排）是真差异，留各自 launcher。
-_Avoid_: 在任一 launcher 里再手写 goalHandler/turnDiffReporter 构造（或复制 turnArchive/turnFulltext store 装配）、把 scanner 接线也塞进工厂（两份编排放进同一工厂再参数化是过度收口）
+**轮次变更合成器（TurnDiffReporter）**:
+轮次变更合成与 turn 封口归档（`turnArchive`/`turnFulltext`）在 `claudeRemoteLauncher` 主循环装配一次；合成消息经转换链入列（FIFO，卡片排在 result 与延迟中的 assistant 消息之后）。
+_Avoid_: 把观测构造散到多个消费点；再加模式分支（local 已退场）
 
-**Hook Server**:
-local 模式下接收 Claude 子进程 SessionStart hook 的本地 HTTP server（hook 经 hook-forwarder 命令转发）。
+**SessionStart Hook**:
+SDK 进程内回调（`claudeRemote`）；捕获 native session id 变化，绑定守卫见 `claude/utils/sessionIdBinding.ts`。local 模式与 HTTP hook server 已退场（ADR 0013）。
 
 **mobi MCP Server**:
-承载 `change_title` 等面向模型的工具的 MCP server；local 模式为 HTTP transport，remote 模式为 SDK 进程内 server。
+承载 `change_title` 等面向模型的工具的 MCP server；进程内 SDK server（mobi-apps / mobi-core），零端口零临时文件。
 
 ### goal 观测链（mods-goal-channel）
 

@@ -34,7 +34,6 @@ function makeSession() {
         logPath: '/tmp/log',
         sessionId: null,
         messageQueue: {} as never,
-        onModeChange: () => {},
         sessionLabel: 'test',
         sessionIdLabel: 'test',
         applySessionIdToMetadata: (m) => m,

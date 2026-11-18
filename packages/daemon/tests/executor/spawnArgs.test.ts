@@ -23,8 +23,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildClaudeSpawnArgs } from '@/executor/spawnArgs'
 
-describe('buildClaudeSpawnArgs --workspace', () => {
-    it('带 workspaceId → args 含 [--workspace, id]', () => {
+describe('buildClaudeSpawnArgs --workspace', () => {    it('带 workspaceId → args 含 [--workspace, id]', () => {
         const args = buildClaudeSpawnArgs({
             directory: '/a/mobi',
             workspaceId: 'p1'
@@ -53,5 +52,19 @@ describe('buildClaudeSpawnArgs --fast-mode', () => {
     it('fastMode 缺省 → args 无 --fast-mode', () => {
         const args = buildClaudeSpawnArgs({ directory: '/a/mobi' })
         expect(args.some(a => a === '--fast-mode')).toBe(false)
+    })
+})
+
+describe('buildClaudeSpawnArgs 驱动模式（tui-fork 票 05/06）', () => {
+    it('daemon spawn 标注 started-by daemon', () => {
+        const args = buildClaudeSpawnArgs({ directory: '/a/mobi' })
+        const startedByIndex = args.indexOf('--started-by')
+        expect(startedByIndex).toBeGreaterThan(-1)
+        expect(args[startedByIndex + 1]).toBe('daemon')
+    })
+
+    it('不再携带 --mobi-starting-mode（local 退场后无模式可选）', () => {
+        const args = buildClaudeSpawnArgs({ directory: '/a/mobi', resumeSessionId: 's-1' })
+        expect(args.some(arg => arg === '--mobi-starting-mode' || arg === 'local')).toBe(false)
     })
 })

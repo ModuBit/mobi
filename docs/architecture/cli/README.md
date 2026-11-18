@@ -22,11 +22,11 @@ graph TB
         CmdSetup["setup"]
         CmdUpgrade["upgrade"]
         CmdVersion["version"]
-        CmdHook["hook-forwarder<br/>（内部）"]
+        CmdFork["fork<br/>（终端接续）"]
     end
 
     Entry --> Registry
-    Registry --> CmdDefault & CmdAuth & CmdDaemon & CmdSessions & CmdMcp & CmdDoctor & CmdService & CmdLogs & CmdSetup & CmdUpgrade & CmdVersion & CmdHook
+    Registry --> CmdDefault & CmdAuth & CmdDaemon & CmdSessions & CmdMcp & CmdDoctor & CmdService & CmdLogs & CmdSetup & CmdUpgrade & CmdVersion & CmdFork
 
     CmdDaemon -->|"动态 import daemonEntry"| Daemon["daemon<br/>（单机自足服务器）"]
     CmdDefault -->|"经宿主通道连 daemon"| Daemon
@@ -73,10 +73,11 @@ resolveCommand(args) → { command, context }
 
 | 命令 | 别名 | 运行时资源 | 职责 |
 |------|------|-----------|------|
-| **(default)** | `claude` | ✅ | 启动 Claude Code 会话（session 包装配），经宿主通道连 daemon |
+| **(default)** | `claude` | ✅ | 无参打印帮助；`mobi claude …` 为 daemon spawn 的内部入口 |
 | `auth` | — | ✅ | 认证管理（login / logout / status） |
 | [`daemon`](./commands/daemon) | `service daemon` | ✅ | 启动/管理单机 daemon（经 supervisor 托管） |
-| [`sessions`](./commands/sessions) | — | ✅ | 会话管理工具族（list / stop；进程级操作走 `mobi daemon`） |
+| [`sessions`](./commands/sessions) | — | ✅ | 会话管理工具族（list 直读只读 SQLite / stop；进程级操作走 `mobi daemon`） |
+| `fork` | — | ✅ | 终端接续：只读 SQLite 选会话 → `claude --resume <nativeId> --fork-session` |
 | [`mcp`](./commands/mcp) | — | ❌ | MCP stdio bridge，把 `change_title` 调用转发给已有 HTTP MCP（当前无实际场景） |
 | [`doctor`](./commands/doctor) | — | ✅ | 系统诊断与故障排除 |
 | [`service`](./commands/service) | — | ✅ | supervisor 托管 daemon（start / stop / restart / status） |
@@ -84,15 +85,14 @@ resolveCommand(args) → { command, context }
 | `setup` | — | ✅ | 交互式配置向导（settings / service / 完整 wizard） |
 | `upgrade` | — | ❌ | 版本升级 |
 | `version` | — | ❌ | 版本信息（show / list） |
-| [`hook`](./commands/hook) | — | ❌ | 内部命令，转发 Claude SessionStart hook |
 
 > `mobi hub` / `mobi runner` 命令已删除（ticket-22 与 remove-machine 601，runner 与 hub 已合并为单 daemon）：会话管理走 `mobi sessions`。
 
 ### 命令详解
 
-#### (default) / claude — 核心会话命令
+#### (default) / claude — 会话宿主内部入口
 
-CLI 的主要使用方式：`mobi [options]`，所有未匹配子命令的参数都走此命令。
+`mobi` 无参打印帮助（引导 Web / `mobi fork` / `mobi daemon start`）；所有未匹配子命令的参数都走此命令。`mobi claude …` 保留为 daemon spawn 会话进程的内部入口，不出现在用户帮助里。
 
 **启动流程**：
 
@@ -103,9 +103,7 @@ flowchart TB
     Daemon -->|否| StartDaemon["自动拉起 daemon"]
     Daemon -->|是| RunClaude["runClaude(options)"]
     StartDaemon --> RunClaude
-    RunClaude --> ConnError{"连宿主通道失败?"}
-    ConnError -->|是| LocalMode["降级到本地模式<br/>直接运行 claude"]
-    ConnError -->|否| RemoteMode["远程模式<br/>经 daemon 由 Web 驱动"]
+    RunClaude --> RemoteMode["remote 单路径<br/>经 daemon 由 Web 驱动"]
 ```
 
 **参数处理**：
@@ -114,12 +112,13 @@ flowchart TB
 |------|------|
 | `--yolo` | 透传为 `--dangerously-skip-permissions`，跳过权限确认 |
 | `--model <model>` | 指定 Claude 模型 |
-| `--mobi-starting-mode <mode>` | 启动模式：`local` / `remote` |
-| `--started-by <source>` | 启动来源：`daemon`（宿主 spawn） / `terminal` |
-| `--workspace <id>` | 归属工作区 id（Web spawn 透传；终端亦可手动指定） |
+| `--effort <level>` | 指定 reasoning effort |
+| `--permission-mode <mode>` | 指定初始权限模式 |
+| `--started-by <source>` | 启动来源：`daemon`（宿主 spawn） |
+| `--workspace <id>` | 归属工作区 id（Web spawn 透传） |
 | 其他参数 | 透传给 Claude Code |
 
-**降级策略**：连接 daemon 失败时自动降级为本地模式（`runLocalMode`），直接 `spawn` claude 进程，不提供远程控制功能。
+**错误策略**：连接 daemon 失败时直接报错并提示 `mobi fork`；local 模式退场后不再有「降级裸跑 claude」的逃生舱。
 
 #### auth — 认证管理
 
@@ -156,7 +155,7 @@ Token 优先级：环境变量 `CLI_API_TOKEN` > `~/.mobi/settings.cli.json` > �
 
 启动一个只暴露 `change_title` 的 stdio MCP server，把调用转发给已存在的 mobi HTTP MCP server（`--url` 或 `MOBI_HTTP_MCP_URL`）。当前无实际使用场景。
 
-会话内的 MCP 工具族（remote 进程内 / local HTTP 壳 / 工具工厂）在 session 包，见 [MCP 模块](./mcp/)。
+会话内的 MCP 工具族（进程内 SDK server / 工具工厂）在 session 包，见 [MCP 模块](./mcp/)。
 
 详见 [mcp 命令](./commands/mcp)。
 
@@ -169,12 +168,6 @@ Token 优先级：环境变量 `CLI_API_TOKEN` > `~/.mobi/settings.cli.json` > �
 | `exits` | 查看近期进程退出记录 |
 
 详见 [Doctor 系统诊断](./commands/doctor)。
-
-#### [hook](./commands/hook) — SessionStart Hook 转发
-
-转发 Claude 的 SessionStart hook 到主 CLI 进程。由三个协作组件构成：Hook Server（HTTP 服务）、Hook Settings（配置生成）、Hook Forwarder（stdin → HTTP 桥梁）。
-
-详见 [Hook 系统](./commands/hook)。
 
 #### [service](./commands/service) — supervisor 进程托管
 
@@ -229,11 +222,15 @@ packages/cli/src/
 │   ├── runCli.ts                # CLI 启动流程：版本检查、命令路由、运行时资源
 │   ├── registry.ts              # 命令注册表，resolveCommand()
 │   ├── types.ts                 # CommandDefinition、CommandContext 类型
-│   ├── claude.ts                # 默认命令，启动 Claude 会话
+│   ├── claude.ts                # 默认命令：无参打印帮助；内部入口启动会话
 │   ├── claudeArgs.ts            # claude 命令参数解析（parseStartOptions 纯函数）
+│   ├── defaultHelp.ts           # mobi 无参帮助文本
+│   ├── fork.ts                  # 终端接续（只读 SQLite + claude --fork-session）
+│   ├── forkPlan.ts              # fork 选中解析纯逻辑（短 id / 标题 / 消歧）
+│   ├── namespace.ts             # CLI token → namespace 解析
 │   ├── auth.ts                  # 认证管理命令
 │   ├── daemon.ts                # daemon 管理命令（start / start-sync / stop / restart / status）
-│   ├── sessions.ts              # 会话管理工具族（list / stop）
+│   ├── sessions.ts              # 会话管理工具族（list 直读只读 SQLite / stop）
 │   ├── mcp.ts                   # MCP 命令入口
 │   ├── doctor.ts                # 系统诊断命令
 │   ├── service.ts               # service 命令矩阵 + supervise --sync 入口
@@ -242,8 +239,7 @@ packages/cli/src/
 │   ├── logs.ts                  # 日志路径打印命令
 │   ├── setup.ts                 # 交互式配置向导命令
 │   ├── upgrade.ts               # 版本升级命令
-│   ├── version.ts               # 版本信息命令
-│   └── hookForwarder.ts         # 内部 hook 转发命令
+│   └── version.ts               # 版本信息命令
 ├── supervisor/                  # 进程托管（见 docs/architecture/cli/commands/service/）
 │   ├── index.ts                 # runSupervisor 编排入口
 │   ├── supervisor.ts            # 托管状态机（依赖注入，纯单测）

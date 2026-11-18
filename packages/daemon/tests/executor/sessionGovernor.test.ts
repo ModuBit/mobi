@@ -346,17 +346,17 @@ describe('内存分级（票 2.2）', () => {
 
 import { evaluateMemoryPressure } from '@/executor/sessionGovernor'
 
-describe('local 模式排除（裁决 #12：仅占名额，不逐出）', () => {
+describe('mode 字段不再影响逐出（local 特例随 tui-fork 票 07 删除）', () => {
     const local = (sessionId: string, lastActivityAt: number) => ({
         sessionId, state: 'idle' as const, lastActivityAt, gateBlockers: [], mode: 'local' as const,
     })
 
-    it('local 会话再空闲也不可被逐（候选过滤）', () => {
+    it('历史 local 候选与其他会话同规则参与 LRU', () => {
         const remote = { sessionId: 'r', state: 'idle' as const, lastActivityAt: IDLE_SINCE, gateBlockers: [], mode: 'remote' as const }
-        // local 更久未活动，但不可逐 → 选中 remote
-        expect(pickLruIdleVictim([local('l', NOW - 999_999), remote], NOW)).toBe('r')
-        // 只有 local 候选 → 无受害者
-        expect(pickLruIdleVictim([local('l', IDLE_SINCE)], NOW)).toBeNull()
+        // local 更久未活动 → 按 LRU 选中 local
+        expect(pickLruIdleVictim([local('l', NOW - 999_999), remote], NOW)).toBe('l')
+        // 只有 local 候选 → 同样可逐
+        expect(pickLruIdleVictim([local('l', IDLE_SINCE)], NOW)).toBe('l')
     })
 })
 

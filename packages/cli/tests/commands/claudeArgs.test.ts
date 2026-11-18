@@ -120,14 +120,15 @@ describe('parseStartOptions 既有 flag 回归（锁定搬迁前行为）', () =
         expect(() => parseStartOptions(['--permission-mode', 'bogus'])).toThrow()
     })
 
-    it('--started-by / --mobi-starting-mode 解析', () => {
-        const { options } = parseStartOptions(['--started-by', 'runner', '--mobi-starting-mode', 'remote'])
+    it('--started-by 解析', () => {
+        const { options } = parseStartOptions(['--started-by', 'runner'])
         expect(options.startedBy).toBe('runner')
-        expect(options.startingMode).toBe('remote')
     })
 
-    it('--mobi-starting-mode 非法值 → 抛错', () => {
-        expect(() => parseStartOptions(['--mobi-starting-mode', 'bogus'])).toThrow()
+    it('--mobi-starting-mode 已随 local 模式退场（不再解析，按未知参数透传）', () => {
+        const { options, unknownArgs } = parseStartOptions(['--mobi-starting-mode', 'remote'])
+        expect('startingMode' in options).toBe(false)
+        expect(unknownArgs).toEqual(['--mobi-starting-mode', 'remote'])
     })
 
     it('-h/--help 置 showHelp 并透传；未知 flag 及其取值透传', () => {

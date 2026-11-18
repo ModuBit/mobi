@@ -53,7 +53,8 @@ export const SessionGovernanceSnapshotSchema = z.object({
     lastActivityAt: z.number(),
     gateBlockers: z.array(DormancyBlockerSchema),
     rss: z.number().optional(),
-    /** 会话控制方向（票 2.2，总纲裁决 #12）：local 仅占 Governor 名额，不可被逐出、rss 不计内存汇总 */
+    /** @deprecated 会话控制方向。local 已退场（tui-fork 票 07）：Governor 不再
+     *  需要「local 不逐出 / rss 不计」的特例，字段保留供旧客户端兼容 */
     mode: z.enum(['local', 'remote']).optional(),
 })
 export type SessionGovernanceSnapshot = z.infer<typeof SessionGovernanceSnapshotSchema>

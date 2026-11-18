@@ -183,7 +183,6 @@ export function createMobiApi() {
             // 中断会话：stopKind 三档停止（缺省 'turn' 只停本轮，daemon 侧同款缺省语义）
             abort: (sessionId: string, stopKind?: StopKind) =>
                 client.post(`/api/sessions/${sessionId}/abort`, { stopKind }),
-            switch: (sessionId: string) => client.post(`/api/sessions/${sessionId}/switch`),
             resume: (sessionId: string) => client.post<{ sessionId: string }>(`/api/sessions/${sessionId}/resume`),
             // 停止后台任务
             stopTask: (sessionId: string, taskId: string) =>

@@ -29,7 +29,6 @@ import type { CacheStatus } from "@mobi/shared";
 import type { PushOrigin } from "./utils/stopAction";
 import type { SDKAssistantMessage, SDKControlGetContextUsageResponse, SDKMessage, SDKResultMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
-import { formatClaudeMessageForInk } from "../ui/messageFormatterInk";
 import { logger } from "@mobi/node-core/logger";
 import { applyContextReset } from "./utils/contextReset";
 import { SessionStreamRuntime } from "./claudeSessionRuntime";
@@ -41,6 +40,9 @@ import { ContextUsageTracker } from "./contextUsageTracker";
 import { EnhancedMode, type QueryControlRef } from "./types";
 import type { RawJSONLines } from "./types";
 import { createSessionScanner } from "./utils/sessionScanner";
+import { TurnDiffReporter } from "./turnDiffReporter";
+import { FileTurnArchiveStore, getTurnArchivePath } from "@mobi/node-core/git/turnArchiveStore";
+import { FileTurnFulltextStore, getTurnFulltextRoot } from "@mobi/node-core/git/turnFulltextStore";
 import { createNativeAttachReporter } from "./utils/nativeAttachReporter";
 import { RESTART_EXIT_SENTINEL } from "./utils/queryRestart";
 import { reportRewindCompletion } from "./utils/rewindReport";
@@ -48,7 +50,6 @@ import { handleRewindRefusal } from "./utils/rewindRefusal";
 import { verifyForkAnchorExists, omitForkFrom, withForkError, forkActivationFailureMessage, type ForkActivationFailureReason } from "./utils/forkActivation";
 import type { ApiSessionClient } from "../api/apiSession";
 import type { ForkErrorCode } from "@mobi/shared";
-import { createSessionObservability } from "./sessionObservability";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
 import type { LauncherDormancyFacts } from "./utils/dormancyGate";
 import type { LiveCapabilityGetter } from '@mobi/node-core/handlers/commands';
@@ -60,8 +61,7 @@ import {
     stopBackgroundTasksAllSettled,
 } from './utils/stopAction';
 import {
-    RemoteLauncherBase,
-    type RemoteLauncherExitReason
+    RemoteLauncherBase
 } from "../modules/common/remote/RemoteLauncherBase";
 
 /** commands_changed 触发能力发现的最小间隔 */
@@ -194,7 +194,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         getSessionConfig: () => EnhancedMode = () => ({ permissionMode: 'default' }),
         flushConfig: () => void = () => {},
     ) {
-        super(process.env.DEBUG ? session.logPath : undefined);
+        super();
         this.session = session;
         this.processCleanupRef = processCleanupRef;
         this.queryControlRef = queryControlRef;
@@ -318,29 +318,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
      */
     private emitAbortedEvent(stopKind: StopKind, stillQueuedCount: number): void {
         this.pendingAbortInfo = { stopKind, stillQueuedCount }
-    }
-
-    private async handleSwitchRequest(): Promise<void> {
-        logger.debug('[remote]: doSwitch');
-        await this.requestExit('switch', async () => {
-            this.queryRef?.close();
-            this.queryRef = null;
-            await this.abort();
-        });
-    }
-
-    private async handleExitFromUi(): Promise<void> {
-        logger.debug('[remote]: Exiting client via Ctrl-C');
-        await this.requestExit('exit', async () => {
-            this.queryRef?.close();
-            this.queryRef = null;
-            await this.abort();
-        });
-    }
-
-    private async handleSwitchFromUi(): Promise<void> {
-        logger.debug('[remote]: Switching to local mode via double space');
-        await this.handleSwitchRequest();
     }
 
     /**
@@ -504,33 +481,28 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         this.turnTracking.hasOutput = true
     }
 
-    public async launch(): Promise<RemoteLauncherExitReason> {
-        return this.start({
-            onExit: () => this.handleExitFromUi(),
-            onSwitchToLocal: () => this.handleSwitchFromUi()
-        });
+    public async launch(): Promise<void> {
+        return this.start();
     }
 
     protected async runMainLoop(): Promise<void> {
         logger.debug('[claudeRemoteLauncher] Starting remote launcher');
-        logger.debug(`[claudeRemoteLauncher] TTY available: ${this.hasTTY}`);
 
         const session = this.session;
-        const messageBuffer = this.messageBuffer;
 
         this.setupAbortHandlers(session.client.rpcHandlerManager, {
-            onAbort: (stopKind) => this.handleAbortRequest(stopKind),
-            onSwitch: () => this.handleSwitchRequest()
+            onAbort: (stopKind) => this.handleAbortRequest(stopKind)
         });
 
-        // 观测工厂（架构评审候选⑦）：turnDiff 构造单源（goal 处理器已退役，
-        // mods-goal-channel 票 05——派生收口 daemon 受理点）；
-        // remote 侧 turnDiff 经转换链入列（FIFO，合成卡片排在 result 与延迟中的
-        // assistant 消息之后）——发送 adapter 是双模唯一差异点
-        const { turnDiffReporter } = createSessionObservability(
-            session.client,
+        // turn 封口归档（历史轮回看的事实源）：构造零 I/O，封口失败不阻塞。
+        // 全文目录存储（hydration）：封口落 a/b 全文 + 归档带 ref。
+        // 发送 adapter 走转换链入列（FIFO，合成卡片排在 result 与延迟中的 assistant 消息之后）
+        const turnArchive = new FileTurnArchiveStore(getTurnArchivePath(session.path, session.client.sessionId));
+        const turnFulltext = new FileTurnFulltextStore(getTurnFulltextRoot(session.path, session.client.sessionId), session.path);
+        const turnDiffReporter = new TurnDiffReporter(
             (m) => stream.queue.enqueue(m),
-            session.path,
+            turnArchive,
+            turnFulltext,
         );
         // attach 上报：native session id 变化（首启/新会话 /clear /compact fork）时通知 daemon
         // 批量补写该会话缺 nativeSessionId 的消息行（rewind 判据的数据源）
@@ -860,7 +832,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             if (interceptLifecycleFact(message)) return
             trackBackgroundTasks(message)
             refreshCommandsOnChanged(message)
-            formatClaudeMessageForInk(message, messageBuffer);
             permissionHandler.onMessage(message);
             handleInitSignal(message)
             trackToolUsage(message)
@@ -901,7 +872,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             let previousSessionId: string | null = null;
             while (!this.exitReason) {
                 logger.debug('[remote]: launch');
-                messageBuffer.addMessage('═'.repeat(40), 'status');
 
                 // rewind：rewind RPC 受理后经哨兵退出了上一轮 query，restart 请求已置位。
                 // SDK 的截断由下面 claudeRemote 的 startup 预热承载（resumeSessionAt 加载到
@@ -910,9 +880,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 // 截断失败由下方 catch 补发 completed { error }。rewind 局部变量保留 resumeAt 供传参。
                 const restart = session.restart.current();
                 const rewind = restart?.kind === 'rewind' ? restart : undefined;
-                if (rewind) {
-                    messageBuffer.addMessage(`Rewinding session to anchor ${rewind.resumeAt.slice(0, 8)}...`, 'status');
-                }
 
                 // fork 激活预检（fork-session spec §5.2 步骤 3）：锚点必须仍在 parent transcript 上
                 // （parent 可能已 rewind 深于锚点 / transcript 文件丢失）。失败 → 上报错误态并结束
@@ -929,7 +896,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         logger.warn(`[remote]: fork activation precheck failed (${precheck})`, forkActivation);
                         // 错误态双通道：时间线消息给阅读，metadata.forkError 给 web 错误态渲染
                         reportForkActivationFailure(session.client, 'anchor_gone', undefined, precheck);
-                        messageBuffer.addMessage('Fork activation failed: anchor gone from parent transcript', 'status');
                         return;
                     }
                     logger.debug(`[remote]: fork activation precheck passed (anchor ${forkActivation.anchorNativeId.slice(0, 8)}...)`);
@@ -937,12 +903,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
                 const isNewSession = session.sessionId !== previousSessionId;
                 if (isNewSession) {
-                    messageBuffer.addMessage('Starting new Claude session...', 'status');
                     permissionHandler.reset();
                     stream.converter.resetParentChain();
                     logger.debug(`[remote]: New session detected (previous: ${previousSessionId}, current: ${session.sessionId})`);
                 } else {
-                    messageBuffer.addMessage('Continuing Claude session...', 'status');
                     logger.debug(`[remote]: Continuing existing session: ${session.sessionId}`);
                 }
 
@@ -1324,7 +1288,7 @@ export async function claudeRemoteLauncher(
     onDormancyFacts?: (provider: () => LauncherDormancyFacts) => void,
     /** 活 Query 能力源回传：供 apiSession 的 refreshMetadata 直接问 Query（零新增进程） */
     onLiveCapabilitySource?: (getter: LiveCapabilityGetter) => void,
-): Promise<'switch' | 'exit'> {
+): Promise<void> {
     const launcher = new ClaudeRemoteLauncher(
         session,
         processCleanupRef,

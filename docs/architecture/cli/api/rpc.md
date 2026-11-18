@@ -109,7 +109,6 @@ onSocketDisconnect()
 | 方法 | 说明 |
 |------|------|
 | `abort` | 中止当前轮次 |
-| `switch` | remote/local 模式切换 |
 | `set-session-config` | 会话配置（权限模式等） |
 | `rename-session` | 重命名会话 |
 | `switch-output-style` | 切换 output style |

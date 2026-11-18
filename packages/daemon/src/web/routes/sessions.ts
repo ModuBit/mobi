@@ -696,22 +696,6 @@ export function createSessionsRoutes(
         return c.json({ ok: true })
     })
 
-    app.post('/sessions/:id/switch', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) {
-            return engine
-        }
-
-        // 归档 409 优先于 inactive 409（排序语义收口在 guards.requireSession）
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, requireWritable: true })
-        if (sessionResult instanceof Response) {
-            return sessionResult
-        }
-
-        await engine.switchSession(sessionResult.sessionId, 'remote')
-        return c.json({ ok: true })
-    })
-
     // 用户归档（session-retention 票 04）：前置休眠 + status=archived（清置顶）。
     // namespace 越权校验在此（requireSessionFromParam 单源）；不要求 requireActive——
     // 休眠后的会话、已归档的会话（幂等）都要能响应；前置休眠的 gate 阻塞由
