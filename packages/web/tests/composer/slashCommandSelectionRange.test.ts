@@ -17,8 +17,8 @@
 /**
  * slash 命令面板选中的原子替换区间（useSlashCommandInteraction.selectItem）：
  * - from 含前导普通空格（节点 attrs 还原，CC 的边界识别依赖这个分隔空白）
- * - to 吸收命令词之后的同行空格/制表符（节点自带尾随空格，不吸收会叠加成双空格）
- * - 不吸收制表符作前导（renderText 只还原普通空格，吸收会改写字面量）
+ * - to 吸收命令词之后的普通空格（节点自带尾随空格，不吸收会叠加成双空格）
+ * - 两侧制表符都不吸收（renderText 只还原普通空格，吸收会改写字面量）
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -80,5 +80,26 @@ describe('selectItem 的原子替换区间', () => {
         let selected: ReturnType<typeof result.current.selectItem> = null
         act(() => { selected = result.current.selectItem(handItem, 'foo\t/hand') })
         expect(selected!.slashCommand).toEqual({ command: 'hand', from: 4, to: 9, leadingSpace: false })
+    })
+
+    it('尾随制表符不吸收（吸收后节点还原成普通空格会改写字面量）', () => {
+        const { result } = setup()
+        act(() => { result.current.processChange('/hand\tnext', 5) })
+        let selected: ReturnType<typeof result.current.selectItem> = null
+        act(() => { selected = result.current.selectItem(handItem, '/hand\tnext') })
+        // to 只到命令词尾，\t 留在正文；替换文本 = '/hand ' + '\tnext'
+        expect(selected!.slashCommand).toEqual({ command: 'hand', from: 0, to: 5, leadingSpace: false })
+        expect(selected!.text).toBe('/hand \tnext')
+    })
+
+    it('紧邻旧原子的选中（前分隔是旧原子 renderText 的尾空格）：from/to 原样吸收，文本路径单空格', () => {
+        // wire '/cmd /he'：'/' 前的空格在旧原子 renderText 内部，selectItem 在 wire 层
+        // 看不出区别，照常吸收——落到 doc 的吸收归 ChatInput 的替换区间重建负责
+        const { result } = setup()
+        act(() => { result.current.processChange('/cmd /he', 8) })
+        let selected: ReturnType<typeof result.current.selectItem> = null
+        act(() => { selected = result.current.selectItem({ label: '/cmd2', value: '/cmd2' }, '/cmd /he') })
+        expect(selected!.slashCommand).toEqual({ command: 'cmd2', from: 4, to: 8, leadingSpace: true })
+        expect(selected!.text).toBe('/cmd /cmd2 ')
     })
 })

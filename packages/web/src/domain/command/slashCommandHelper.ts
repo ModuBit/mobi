@@ -68,7 +68,8 @@ export function slashCommandText(
 
 /**
  * 面板选中时把 `/cmd` 收成原子节点的插入参数（纯文本 offset 区间）。
- * from 命中前导空白时含该空白；to 吸收命令词之后的同行空格/制表符。
+ * from 命中前导普通空格时含该空格；to 吸收命令词之后的普通空格
+ * （制表符等其余空白保留在正文——节点 renderText 只还原普通空格）。
  */
 export interface SlashCommandInsert {
     command: string

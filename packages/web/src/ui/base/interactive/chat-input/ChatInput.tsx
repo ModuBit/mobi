@@ -146,31 +146,77 @@ function textLengthBefore(doc: PMNode, pos: number, serializers: ReturnType<type
     return getTextBetween(doc, { from: 0, to: pos }, { blockSeparator: '\n', textSerializers: serializers }).length
 }
 
+/** 纯文本 offset 的映射结果：pos = 文档位置；atomSplit 为原子区间内部的重建信息（见下） */
+interface OffsetMapping {
+    pos: number
+    /**
+     * offset 落进某叶子（原子）wire 区间内部时：区间起点文档位置 + [起点, offset) 段
+     * 已渲染的字面量前缀。替换起点吸收原子 renderText 内部的空白（如旧原子的尾空格）
+     * 时，attrs 在节点内部、替换区间够不到——只有回扩到原子起点整体替换并把前缀还原
+     * 成文本节点，「原子路径」与「文本回落路径」才产出同一字面量（否则叠成双空格）
+     */
+    atomSplit?: { leafPos: number; renderedPrefix: string }
+}
+
 /**
  * 纯文本 offset → 文档位置（与 cursorOffset 同一定义：getTextBetween(0, pos) 长度 === offset）。
- * 只映射文本节点：offset 落在 chip 的降级文本区间时落到其后文本节点起点，不会插进 atom 内部。
- * 空文档/越界返回 null，调用方回落到文档末尾。
+ * 映射所有贡献 wire 文本的节点：text 按文本长度计，带 toText（renderText）的叶子（slash
+ * 命令等原子）按字面量长度计——只认 text 节点时，offset 落在原子区间会映射不到任何位置，
+ * 替换区间两端双双回落文档末尾后 from===to，replaceRangeWith 退化成追加而非替换。
+ * 原子不可分割：offset 落在原子区间时取更近的一端边界（光标进不到命令名中间）。
+ * 无可映射位置（空文档 / offset 超出全文长度）返回 null，调用方回落到文档末尾。
  */
+function mapWireOffset(
+    doc: PMNode,
+    offset: number,
+    serializers: ReturnType<typeof getTextSerializersFromSchema>,
+): OffsetMapping | null {
+    let mapped: OffsetMapping | null = null
+    doc.descendants((node, pos, parent, index) => {
+        if (mapped) return false
+        // 节点自身贡献的 wire 长度（与 getTextBetween 同口径：text 取文本，toText 叶子取字面量）
+        let size = 0
+        let rendered: string | null = null
+        if (node.isText) {
+            size = node.nodeSize
+        } else {
+            const serialize = serializers[node.type.name]
+            // getTextBetween 同款守卫：parent 缺席时不调用序列化器（该节点不计 wire 长度）
+            if (serialize && parent) {
+                rendered = serialize({ node, pos, parent, index, range: { from: pos, to: pos + node.nodeSize } })
+                size = rendered.length
+            }
+        }
+        if (size === 0) return true
+        const before = textLengthBefore(doc, pos, serializers)
+        if (before + size < offset) return true
+        const into = offset - before
+        if (node.isText) {
+            mapped = { pos: Math.max(pos, pos + into) }
+            return false
+        }
+        mapped = {
+            pos: into * 2 <= size ? pos : pos + node.nodeSize,
+            ...(into > 0 && into < size
+                ? { atomSplit: { leafPos: pos, renderedPrefix: rendered!.slice(0, into) } }
+                : {}),
+        }
+        return false
+    })
+    return mapped
+}
+
+/** 同 mapWireOffset，只要位置（setCursorOffset / resolveTextRange 的区间端点用） */
 function positionAtOffset(
     doc: PMNode,
     offset: number,
     serializers: ReturnType<typeof getTextSerializersFromSchema>,
 ): number | null {
-    let target: number | null = null
-    doc.descendants((node, pos) => {
-        if (target != null || !node.isText) return true
-        const before = textLengthBefore(doc, pos, serializers)
-        if (before + node.nodeSize >= offset) {
-            target = Math.max(pos, pos + (offset - before))
-            return false
-        }
-        return true
-    })
-    return target
+    return mapWireOffset(doc, offset, serializers)?.pos ?? null
 }
 
 /**
- * 程序化文本区间 → 文档位置（两端越界各自回落文档末尾）。
+ * 程序化文本区间 → 文档位置（offset 超出全文长度才回落文档末尾）。
  * replaceTextRange / replaceTextRangeWithAtom 共用同一映射口径。
  */
 function resolveTextRange(
@@ -178,11 +224,14 @@ function resolveTextRange(
     from: number,
     to: number,
     serializers: ReturnType<typeof getTextSerializersFromSchema>,
-): { fromPos: number; toPos: number } {
+): { fromPos: number; toPos: number; fromSplit?: OffsetMapping['atomSplit'] } {
     const fallback = TextSelection.atEnd(doc).from
+    const fromMap = mapWireOffset(doc, Math.max(0, from), serializers)
+    const toMap = mapWireOffset(doc, Math.max(0, to), serializers)
     return {
-        fromPos: positionAtOffset(doc, Math.max(0, from), serializers) ?? fallback,
-        toPos: positionAtOffset(doc, Math.max(0, to), serializers) ?? fallback,
+        fromPos: fromMap?.pos ?? fallback,
+        toPos: toMap?.pos ?? fallback,
+        fromSplit: fromMap?.atomSplit,
     }
 }
 
@@ -580,8 +629,9 @@ export function ChatInput({
         },
         /**
          * 光标定位到纯文本 offset（与 onUpdate ctx.cursorOffset 对称的定义：
-         * getTextBetween(0, pos) 长度 === offset，降级文本同源）。doc 顺序扫描文本节点，
-         * 找到累计长度首次覆盖 offset 的节点内部位置；无文本节点（空文档/越界）置尾。
+         * getTextBetween(0, pos) 长度 === offset，降级文本同源）。按 wire 顺序扫描
+         * 贡献文本的节点（text 与 toText 叶子），找到累计长度首次覆盖 offset 的节点；
+         * 原子不可入内，落在原子区间时取更近的边界。无可映射位置（空文档/越界）置尾。
          */
         setCursorOffset: (offset: number) => {
             const ed = editorRef.current
@@ -613,11 +663,21 @@ export function ChatInput({
                 return false
             }
             const doc = ed.state.doc
-            const { fromPos, toPos } = resolveTextRange(doc, from, to, serializersFor(ed.schema))
+            const { fromPos, toPos, fromSplit } = resolveTextRange(doc, from, to, serializersFor(ed.schema))
             if (toPos < fromPos) return false
             const tr = markProgrammatic(ed.state.tr)
-            tr.replaceRangeWith(fromPos, toPos, atom)
-            tr.setSelection(TextSelection.create(tr.doc, Math.min(fromPos + atom.nodeSize, tr.doc.content.size - 1)))
+            if (fromSplit) {
+                // 替换起点落在某原子 renderText 区间内部（如吸收旧原子的尾空格）：替换区间
+                // 回扩到该原子起点整体替换，[原子起点, from) 的已渲染前缀还原成文本节点——
+                // 不重建则旧原子照常渲染尾空格，与新原子的前导空格叠成双空格，而文本回落
+                // 路径（replaceTextRange）是单空格，同一选择两条路径字面量不一致
+                const prefixText = ed.schema.text(fromSplit.renderedPrefix)
+                tr.replaceWith(fromSplit.leafPos, toPos, [prefixText, atom])
+            } else {
+                tr.replaceRangeWith(fromPos, toPos, atom)
+            }
+            const atomEnd = (fromSplit ? fromSplit.leafPos + fromSplit.renderedPrefix.length : fromPos) + atom.nodeSize
+            tr.setSelection(TextSelection.create(tr.doc, Math.min(atomEnd, tr.doc.content.size - 1)))
             ed.view.dispatch(tr)
             return true
         },

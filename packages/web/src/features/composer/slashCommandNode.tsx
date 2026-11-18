@@ -166,11 +166,16 @@ export const SlashCommandNode = Node.create({
                     // range 比实际文本偏移一位（tiptap 内部 +1 只在 textblock 成立）。用文档
                     // 实际文本比对：不是这段匹配的原文就跳过，避免重复插入原子
                     if (state.doc.textBetween(range.from, range.to) !== match[0]) return
+                    // 与 InputRule 同纪律：\s 还命中制表符/NBSP 等空白，而节点 renderText
+                    // 只还原普通空格——只吸收普通空格，其余前导空白保留在正文
+                    // （替换区间从命令词起，避免吸收后把 `\t` 改写成 ` ` 改掉字面量）
+                    const absorbLeading = match[1] === ' '
+                    const replaceFrom = range.from + (absorbLeading ? 0 : match[1].length)
                     const node = createSlashCommandNode(state, match, {
-                        leadingSpace: match[1] !== '',
+                        leadingSpace: absorbLeading,
                         trailingSpace: false,
                     })
-                    state.tr.replaceWith(range.from, range.to, node)
+                    state.tr.replaceWith(replaceFrom, range.to, node)
                 },
             }),
         ]

@@ -30,9 +30,9 @@ export interface SlashSelectionResult {
     cursorPos: number | null
     /**
      * 原子节点插入参数（composer 把命令收成不可拆节点用）。
-     * from/to 为纯文本 offset 区间：命中前导空白时 from 含该空白；
-     * to 吸收命令词之后的同行空格/制表符（节点自带尾随空格，不吸收会叠加成双空格）。
-     * 两者都由节点 attrs 原样还原，文本字面量不变。
+     * from/to 为纯文本 offset 区间：from 命中前导普通空格时含该空格；
+     * to 吸收命令词之后的普通空格（节点自带尾随空格，不吸收会叠加成双空格），
+     * 制表符等其余空白保留在正文。两者都由节点 attrs 原样还原，文本字面量不变。
      */
     slashCommand?: SlashCommandInsert
 }
@@ -117,13 +117,14 @@ export function useSlashCommandInteraction({
         const leadingSpace = slashIndex > 0 && text[slashIndex - 1] === ' '
         // 原子替换的起点：命中前导空格时把该空格一并收进节点
         const from = leadingSpace ? slashIndex - 1 : slashIndex
-        // 原子替换的终点：吸收命令词之后的同行空格/制表符（节点自带尾随空格，
-        // 不吸收会叠加成双空格；换行等更宽的空白留给正文，字面量不变）
+        // 原子替换的终点：吸收命令词之后的普通空格（节点自带尾随空格，
+        // 不吸收会叠加成双空格；制表符等其余空白留给正文——节点 renderText
+        // 只还原普通空格，吸收会改写字面量，纪律与前导侧一致）
         const rawAfter = text.slice(slashIndex + 1 + filter.length)
-        const absorbedGap = (rawAfter.match(/^[ \t]*/) ?? [''])[0]
+        const absorbedGap = (rawAfter.match(/^ */) ?? [''])[0]
         const to = slashIndex + 1 + filter.length + absorbedGap.length
-        // 插入后的参数文本：去掉参数的前导空白，由节点自带的尾随空格作为唯一分隔
-        const after = rawAfter.replace(/^\s+/, '')
+        // 插入后的参数文本：去掉参数的前导普通空格，由节点自带的尾随空格作为唯一分隔
+        const after = rawAfter.replace(/^ +/, '')
         const command = item.value.startsWith('/') ? item.value.slice(1) : item.value
         // 单一口径：原子 attrs → 字面量。fallback 文本与光标都由同一函数派生，
         // 不会再出现「原子路径 / 文本路径」两套空白规则
