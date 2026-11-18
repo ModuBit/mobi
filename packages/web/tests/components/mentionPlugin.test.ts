@@ -100,6 +100,11 @@ describe('mentionPlugin', () => {
         expect(html).toContain('@~/备份(1)/📸图#2+c++.pdf')
     })
 
+    it('中文句读留在引用外，不截断中文路径内容', () => {
+        const html = render('请看：@docs/报告.md，继续复查')
+        expect(html).toContain('>@docs/报告.md</a>，继续复查')
+    })
+
     it('空白终止 mention：空格后的内容不进 badge（路径不支持空格）', () => {
         const html = render('@~/My Docs/a.pdf end')
         expect(html).toContain('@~/My')

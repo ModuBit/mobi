@@ -228,6 +228,11 @@ html[data-theme='dark'] .slash-command-badge {
     color: var(--ant-color-text-secondary);
 }
 
+.mention-directory-icon > svg {
+    vertical-align: -2px;
+    margin-right: 3px;
+}
+
 .x-markdown .mention-directory {
     white-space: nowrap;
 }

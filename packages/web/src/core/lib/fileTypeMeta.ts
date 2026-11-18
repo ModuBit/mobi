@@ -122,7 +122,7 @@ export function resolveFileType(path: string): FileTargetType | null {
     const ext = lastDot > 0 ? base.slice(lastDot + 1).toLowerCase() : ''
 
     if (ext === '') return { kind: 'file', ext: '', label: null, color: FALLBACK_COLOR }
-    const known = EXT_BADGES[ext]
+    const known = Object.hasOwn(EXT_BADGES, ext) ? EXT_BADGES[ext] : undefined
     if (known) return { kind: 'file', ext, label: known.label, color: known.color }
     // 未入表的扩展名：中性色 + 扩展名大写截 4 字符（png→PNG、csv→CSV）
     return { kind: 'file', ext, label: ext.toUpperCase().slice(0, 4), color: FALLBACK_COLOR }

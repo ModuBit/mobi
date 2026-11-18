@@ -32,5 +32,6 @@
  * - `@`：触发符本身。不排除则 token 贪婪吞掉后续 @（`@src/a@docs/b` 被并成
  *   一个指向不存在路径的 mention）；排除后与 email 防误伤同一机制自然截断。
  *   路径名含 @ 的文件不支持 mention（GitHub 同例）
+ * - `，。！？；：、`：中文正文常紧跟引用且不留空格，句读和空白一样结束路径
  */
-export const MENTION_PATH_CHARS = '[^\\s`<"\\\\@]'
+export const MENTION_PATH_CHARS = '[^\\s`<"\\\\@，。！？；：、]'

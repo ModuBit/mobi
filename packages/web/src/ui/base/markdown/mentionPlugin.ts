@@ -43,8 +43,7 @@ import { classifyMention, findMentionStart, matchMentionPrefix } from '@/domain/
  */
 
 /** lucide Folder glyph 不再内联 SVG：raw HTML 形态的 svg 会被 sanitize 剥 <path d>
- *  致空白（slash-command 同坑），目录 mention 输出自定义标签、由 Markdown 组件映射
- *  表渲染真 lucide Folder（DIRECTORY_TINT 同源 FileTypeBadge） */
+ *  致空白，目录 mention 输出自定义标签，由 Markdown 组件层注入同源 glyph。 */
 
 function mention(): TokenizerAndRendererExtension {
     return {

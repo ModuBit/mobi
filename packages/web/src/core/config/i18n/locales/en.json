@@ -1106,6 +1106,7 @@
     ],
     "bashPlaceholder": "Enter shell command...",
     "mentionSuggestions": "File suggestions",
+    "mentionUnsupportedPath": "This path contains characters that @ mentions don't support. Describe it in plain text or attach the file instead.",
     "slashCommandSuggestions": "Slash commands",
     "attach": "Add attachment",
     "abort": "Abort",

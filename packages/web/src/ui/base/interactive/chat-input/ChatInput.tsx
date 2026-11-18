@@ -651,9 +651,9 @@ export function ChatInput({
             const { fromPos, toPos } = resolveTextRange(doc, from, to, serializersFor(ed.schema))
             if (toPos < fromPos) return
             const tr = markProgrammatic(ed.state.tr)
-            if (toPos > fromPos) tr.delete(fromPos, toPos)
+            // 用替换前的区间继承 mark；先删除再插入会丢掉整段格式化文本的 mark。
+            tr.insertText(text, fromPos, toPos)
             const insertAt = Math.min(fromPos, tr.doc.content.size - 1)
-            if (text) tr.insertText(text, insertAt)
             if (meta) {
                 const { key, value } = meta(insertAt)
                 tr.setMeta(key, value)

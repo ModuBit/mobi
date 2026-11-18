@@ -307,6 +307,7 @@ export function NewSessionPage() {
         mention,
         slash,
         bridge,
+        selectMention,
         handlePasteNative,
         placeholder,
         showGhostHint,
@@ -818,7 +819,7 @@ export function NewSessionPage() {
                             loading={mention.isLoading}
                             activeIndex={mention.activeIndex}
                             query={mention.query}
-                            onSelect={(item) => bridge.applySelection(mention.selectItem(item, inputText))}
+                            onSelect={selectMention}
                             onHover={mention.setActiveIndex}
                         />
                     )}

@@ -404,6 +404,7 @@ export function ChatComposer(props: ChatComposerProps) {
         mention,
         slash,
         bridge,
+        selectMention,
         handlePasteNative,
         placeholder,
         showGhostHint,
@@ -871,7 +872,7 @@ export function ChatComposer(props: ChatComposerProps) {
                         loading={mention.isLoading}
                         activeIndex={mention.activeIndex}
                         query={mention.query}
-                        onSelect={(item) => bridge.applySelection(mention.selectItem(item, text))}
+                        onSelect={selectMention}
                         onHover={mention.setActiveIndex}
                     />
                 )}

@@ -14,14 +14,13 @@
  * limitations under the License.
  */
 
-import { Extension, type Editor } from '@tiptap/core'
+import { Extension } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
-import { ReactRenderer } from '@tiptap/react'
 import { mentionPathPrefix, scanMentions } from '@/domain/command/mentionParser'
 import { resolveFileType } from '@/core/lib/fileTypeMeta'
-import { FileMentionIcon } from '@/ui/shared/FileMentionIcon'
+import { fileMentionWidget } from '@/ui/shared/MentionDirectoryIcon'
 
 export interface FileMentionTarget {
     path: string
@@ -72,29 +71,18 @@ function runsFor(block: PMNode): MentionRun[] {
     const cached = mentionRuns.get(block)
     if (cached) return cached
     const runs: MentionRun[] = []
-    let text = ''
-    let from = 0
-    const flush = () => {
-        if (!text) return
-        runs.push({ from, to: from + text.length, matches: scanMentions(text) })
-        text = ''
-    }
     block.forEach((inline, offset) => {
-        if (inline.isText && !inline.marks.some(mark => mark.type.spec.code || mark.type.name === 'link')) {
-            if (!text) from = offset
-            text += inline.text ?? ''
-        } else {
-            flush()
-        }
+        if (!inline.isText || inline.marks.some(mark => mark.type.spec.code || mark.type.name === 'link')) return
+        // PM 合并相邻的同 mark 文本；不同节点的边界对应 Markdown 标记或原子边界。
+        const text = inline.text ?? ''
+        runs.push({ from: offset, to: offset + text.length, matches: scanMentions(text) })
     })
-    flush()
     mentionRuns.set(block, runs)
     return runs
 }
 
-function createDecorations(editor: Editor, doc: PMNode, choices: Mention[]): DecorationSet {
+function createDecorations(doc: PMNode, choices: Mention[]): DecorationSet {
     const decorations: Decoration[] = []
-    const renderers = new WeakMap<Node, { destroy(): void } | null>()
     const decorate = ({ from, to, path, kind: knownKind }: Omit<Mention, 'kind'> & { kind?: Mention['kind'] }) => {
         const type = knownKind === 'directory' ? null : resolveFileType(path)
         const kind = knownKind ?? type?.kind
@@ -102,28 +90,10 @@ function createDecorations(editor: Editor, doc: PMNode, choices: Mention[]): Dec
         const className = kind === 'directory' ? 'mention-directory' : 'mention-file'
         const key = type?.kind === 'file' ? `${className}:${type.ext}` : className
         decorations.push(Decoration.inline(from, to, { class: className }))
-        decorations.push(Decoration.widget(from, view => {
-            const dom = view.dom.ownerDocument.createElement('span')
-            dom.className = kind === 'directory' ? 'file-mention-widget mention-directory' : 'file-mention-widget'
-            dom.setAttribute('aria-hidden', 'true')
-            dom.setAttribute('data-mention-icon', kind)
-            renderers.set(dom, null)
-            // ReactRenderer 初次挂载会 flushSync；放在编辑器 DOM 更新完成后，避免嵌套进页面挂载。
-            queueMicrotask(() => {
-                if (!renderers.has(dom) || editor.isDestroyed) return
-                const renderer = new ReactRenderer(FileMentionIcon, { editor, props: { path, kind }, as: 'span' })
-                renderers.set(dom, renderer)
-                dom.append(renderer.element)
-            })
-            return dom
-        }, {
+        decorations.push(Decoration.widget(from, fileMentionWidget(kind, type), {
             key,
             side: -1,
             ignoreSelection: true,
-            destroy(dom) {
-                renderers.get(dom)?.destroy()
-                renderers.delete(dom)
-            },
         }))
     }
     doc.descendants((block, blockPos) => {
@@ -152,16 +122,15 @@ function createDecorations(editor: Editor, doc: PMNode, choices: Mention[]): Dec
 export const FileMentionDecoration = Extension.create({
     name: 'fileMentionDecoration',
     addProseMirrorPlugins() {
-        const editor = this.editor
         return [new Plugin<FileMentionState>({
             key: pluginKey,
             state: {
-                init: (_, { doc }) => ({ chosen: [], decorations: createDecorations(editor, doc, []) }),
+                init: (_, { doc }) => ({ chosen: [], decorations: createDecorations(doc, []) }),
                 apply: (tr, previous) => {
                     const target = tr.getMeta(FILE_MENTION_CHOICE_META) as Mention | undefined
                     if (!tr.docChanged && !target) return previous
                     const chosen = updateChoices(tr, previous.chosen, target)
-                    return { chosen, decorations: createDecorations(editor, tr.doc, chosen) }
+                    return { chosen, decorations: createDecorations(tr.doc, chosen) }
                 },
             },
             props: { decorations: state => pluginKey.getState(state)?.decorations },

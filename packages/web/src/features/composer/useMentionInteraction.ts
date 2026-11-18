@@ -15,7 +15,7 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import { detectMentionAtCursor, buildMentionPath, mentionPathPrefix } from '@/domain/command/mentionParser'
+import { detectMentionAtCursor, buildMentionPath, isMentionPath, mentionPathPrefix } from '@/domain/command/mentionParser'
 import type { FileMentionTarget } from './fileMentionDecoration'
 import type { CapabilityTarget, SearchFilesFn, ListDirectoryFn } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useFileListing } from './useFileListing'
@@ -33,6 +33,7 @@ interface UseMentionInteractionParams {
     searchFiles: SearchFilesFn | null
     listDirectory: ListDirectoryFn | null
     workingDir: string | undefined
+    onUnsupportedPath?: () => void
 }
 
 /**
@@ -44,11 +45,18 @@ export function useMentionInteraction({
     searchFiles,
     listDirectory,
     workingDir,
+    onUnsupportedPath,
 }: UseMentionInteractionParams) {
     const [isOpen, setIsOpen] = useState(false)
     const [mentionInput, setMentionInput] = useState<FileListingInput | null>(null)
     const [activeIndex, setActiveIndex] = useState(0)
-    const mentionAtIndexRef = useRef(-1)
+    const activeRange = useRef<{ text: string; from: number; to: number; query: string } | null>(null)
+
+    const close = useCallback(() => {
+        setIsOpen(false)
+        setMentionInput(null)
+        activeRange.current = null
+    }, [])
 
     const { items, isLoading } = useFileListing(
         isOpen ? searchFiles : null,
@@ -66,7 +74,12 @@ export function useMentionInteraction({
     const processChange = useCallback((text: string, cursorPos: number): boolean => {
         const mention = detectMentionAtCursor(text, cursorPos)
         if (mention) {
-            mentionAtIndexRef.current = mention.atIndex
+            activeRange.current = {
+                text,
+                from: mention.atIndex,
+                to: cursorPos + mentionPathPrefix(text.slice(cursorPos)).length,
+                query: mention.afterAt,
+            }
             setMentionInput({
                 mentionInput: mention.afterAt,
                 workingDir: workingDir ?? '',
@@ -79,23 +92,28 @@ export function useMentionInteraction({
     }, [workingDir])
 
     const selectItem = useCallback((item: FileSuggestionItem, text: string): MentionSelectionResult | null => {
-        if (!isOpen || !mentionInput) return null
-
-        const from = mentionAtIndexRef.current
-        if (text[from] !== '@') return null
-        const cursor = from + 1 + mentionInput.mentionInput.length
-        // 在词中编辑后选项仍应完成整个引用，不留下未选中的路径后缀。
-        const to = cursor + mentionPathPrefix(text.slice(cursor)).length
-        const selectedPath = item.path ?? buildMentionPath(mentionInput.mentionInput, item.value)
+        const range = activeRange.current
+        if (!isOpen || !mentionInput || !range) return null
+        // 候选只对打开时的正文和查询有效；回填/清空不触发 processChange，不能沿用旧范围。
+        if (range.text !== text || range.query !== mentionInput.mentionInput) {
+            close()
+            return null
+        }
+        const { from, to } = range
+        const selectedPath = item.path ?? buildMentionPath(range.query, item.value)
         const path = item.isDirectory ? selectedPath.replace(/\/+$/, '') + '/' : selectedPath
+        if (!isMentionPath(path)) {
+            onUnsupportedPath?.()
+            return null
+        }
         const literal = `@${path}${item.isDirectory ? '' : ' '}`
 
         if (item.isDirectory) {
+            activeRange.current = { text: text.slice(0, from) + literal + text.slice(to), from, to: from + literal.length, query: path }
             setMentionInput({ mentionInput: path, workingDir: mentionInput.workingDir })
             setActiveIndex(0)
         } else {
-            setIsOpen(false)
-            setMentionInput(null)
+            close()
         }
         return {
             from,
@@ -103,7 +121,7 @@ export function useMentionInteraction({
             insertText: literal,
             mention: { path, kind: item.isDirectory ? 'directory' : 'file' },
         }
-    }, [isOpen, mentionInput])
+    }, [isOpen, mentionInput, onUnsupportedPath, close])
 
     const selectCurrent = useCallback((text: string): MentionSelectionResult | null => {
         if (!isOpen || items.length === 0) return null
@@ -126,18 +144,11 @@ export function useMentionInteraction({
                 return true
             case 'Escape':
                 e.preventDefault()
-                setIsOpen(false)
-                setMentionInput(null)
+                close()
                 return true
         }
         return false
-    }, [isOpen, items.length])
-
-    const close = useCallback(() => {
-        setIsOpen(false)
-        setMentionInput(null)
-        mentionAtIndexRef.current = -1
-    }, [])
+    }, [isOpen, items.length, close])
 
     return useMemo(() => ({
         isOpen,

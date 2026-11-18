@@ -37,6 +37,10 @@ export function mentionPathPrefix(text: string): string {
     return PATH_PREFIX.exec(text)?.[0] ?? ''
 }
 
+export function isMentionPath(path: string): boolean {
+    return path !== '' && MENTION_PATH_CHARS.test(path)
+}
+
 export function findMentionStart(text: string): number {
     return text.search(MENTION_START)
 }
@@ -63,10 +67,12 @@ export function scanMentions(text: string) {
         const lead = [...text.slice(Math.max(0, at - 2), at)].at(-1) ?? ''
         const match = matchMentionPrefix(lead + text.slice(at))
         if (!match) continue
+        // 正文分段已消费 Markdown 定界符；剩余的标点是 @ 的自然左边界。
         const kind = classifyMention(match.lead, match.path)
-        if (kind === 'punctuation') continue
         const to = at + 1 + match.path.length
-        if (kind === 'mention') mentions.push({ from: at, to, path: match.path })
+        if (kind === 'mention' || (kind === 'punctuation' && classifyMention('', match.path) === 'mention')) {
+            mentions.push({ from: at, to, path: match.path })
+        }
         at = to - 1
     }
     return mentions

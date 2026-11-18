@@ -19,7 +19,7 @@
  * 判定单源在 fileTypeMeta（resolveFileType），本组件只管展示。
  *
  * 三种形态：
- * - 目录 → 琥珀 Folder glyph（DIRECTORY_TINT 单源，mention 徽章共用）
+ * - 目录 → 琥珀 Folder glyph（行内 @ 目录引用则随正文色）
  * - 常用扩展名 → Material Icon Theme 真实文件图标（fileTypeIcons.generated.ts，
  *   多彩自带配色、明暗主题通用，VS Code 同款观感）——裸 svg 无底色
  * - 其余 → 扩展名文本色块（GitHub 语言色淡底 + 前景；dark 提亮规则在 base.css
@@ -28,95 +28,108 @@
  * 嵌在链接/chip 行内使用，flexShrink 0 防压缩变形。
  */
 
-import { memo } from 'react'
-import { Folder, FileText } from 'lucide-react'
-import { resolveFileType, FALLBACK_COLOR } from '@/core/lib/fileTypeMeta'
+import { memo, type CSSProperties } from 'react'
+import { resolveFileType, FALLBACK_COLOR, type FileTargetType } from '@/core/lib/fileTypeMeta'
 import { EXT_TO_ICON, FILE_TYPE_ICONS } from './fileTypeIcons.generated'
 
 /** 类型色淡底的 alpha 后缀（15%，hex 拼接——表内色值均为 6 位 hex） */
 const TINT_ALPHA = '26'
-
-/** 目录琥珀色：FileTypeBadge 目录色块单源（mention 徽章 icon 已改随文本色 currentColor，不再共用） */
 export const DIRECTORY_TINT = '#E8A33D'
 
-export const FileTypeBadge = memo(function FileTypeBadge({ path, size = 14, knownFile = false }: { path: string; size?: number; /** 调用方持 fs 事实（如文件树节点 f.type==='file'）时置 true：启发式误判成目录的无扩展名文件（Caddyfile 等）按无扩展名文件呈现，不画目录色块 */ knownFile?: boolean }) {
-    const target = resolveFileType(path)
-    if (!target) return null
+/*! Folder / FileText 路径来自 Lucide；React 与编辑器 DOM 共用。
+ * ISC License — Copyright (c) 2026 Lucide Icons and Contributors
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+const FOLDER_PATH = '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>'
+const FILE_PATH = '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 9H8m8 4H8m8 4H8"/>'
 
-    if (target.kind === 'file') {
-        // 常用扩展名：Material 真实文件图标（静态内联 SVG，非用户内容，innerHTML 安全）
-        const iconName = EXT_TO_ICON[target.ext]
-        const svg = iconName ? FILE_TYPE_ICONS[iconName] : null
-        if (svg) {
-            return (
-                <span
-                    aria-hidden="true"
-                    className="file-type-icon"
-                    style={{ display: 'inline-flex', width: size, height: size, marginRight: 4, verticalAlign: 'middle', flexShrink: 0 }}
-                    dangerouslySetInnerHTML={{ __html: svg }}
-                />
-            )
-        }
+function outlineSvg(glyph: 'folder' | 'file', size: number, stroke: string): string {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${glyph === 'folder' ? FOLDER_PATH : FILE_PATH}</svg>`
+}
+
+/** 行内引用的目录 glyph 随正文色；独立文件类型徽章的目录色块仍为琥珀色。 */
+export const MENTION_FOLDER_SVG = outlineSvg('folder', 13, 'currentColor')
+
+interface BadgePresentation {
+    className?: string
+    style: CSSProperties
+    tint?: string
+    svg?: string
+    label?: string
+}
+
+function badgePresentation(target: FileTargetType, size: number, knownFile: boolean): BadgePresentation {
+    // 用同一份外观数据生成 React 或编辑器 DOM，避免样式/图标分叉。
+    const sizeStyle = {
+        display: 'inline-flex',
+        width: `${size}px`,
+        height: `${size}px`,
+        marginRight: '4px',
+        verticalAlign: 'middle',
+        flexShrink: 0,
+    }
+    if (target.kind === 'file' && Object.hasOwn(EXT_TO_ICON, target.ext)) {
+        const svg = FILE_TYPE_ICONS[EXT_TO_ICON[target.ext]]
+        if (svg) return { className: 'file-type-icon', style: sizeStyle, svg }
     }
 
-    const tint = target.kind === 'directory' ? DIRECTORY_TINT : target.color
-    const box: React.CSSProperties = {
-        display: 'inline-flex',
+    const tint = target.kind === 'file' ? target.color : knownFile ? FALLBACK_COLOR : DIRECTORY_TINT
+    const box = {
+        ...sizeStyle,
         alignItems: 'center',
         justifyContent: 'center',
-        width: size,
-        height: size,
         borderRadius: 'var(--radius-square)',
-        flexShrink: 0,
-        // 右距收进组件：行内消费方（ActionLink / FileChip）都在徽章后紧跟文本，
-        // 调用方各自拼空格会引入文本空格宽度不齐 + 复制带空格的问题
-        marginRight: 4,
-        // middle：盒子垂直中心对齐正文 x-height 中心（负长度值会双重下压——inline-flex
-        // 的 baseline 已随内部文字对到正文 baseline，再 -2px 整体偏下，2026-09-26 真机）
-        verticalAlign: 'middle',
         background: `${tint}${TINT_ALPHA}`,
     }
-
-    if (target.kind === 'directory') {
-        if (knownFile) {
-            // 启发式误判被 fs 事实推翻：按裸 dotfile 同款（中性底 + 通用文件 glyph）
-            return (
-                <span aria-hidden="true" style={{ ...box, background: `${FALLBACK_COLOR}${TINT_ALPHA}` }}>
-                    <FileText size={size - 5} color={FALLBACK_COLOR} strokeWidth={2.4} />
-                </span>
-            )
-        }
-        return (
-            <span aria-hidden="true" style={box}>
-                <Folder size={size - 5} color={tint} strokeWidth={2.4} />
-            </span>
-        )
+    if (target.kind === 'directory' || target.label === null) {
+        const glyph = target.kind === 'directory' && !knownFile ? 'folder' : 'file'
+        return { style: box, svg: outlineSvg(glyph, size - 5, tint) }
     }
-
-    if (target.label === null) {
-        // 裸 dotfile（.env / .gitignore 等，无扩展名）：中性色 + 通用文件 glyph
-        return (
-            <span aria-hidden="true" style={box}>
-                <FileText size={size - 5} color={target.color} strokeWidth={2.4} />
-            </span>
-        )
+    return {
+        className: 'file-type-badge',
+        tint,
+        label: target.label,
+        style: {
+            ...box,
+            color: 'var(--file-type-badge-fg)',
+            fontSize: `${target.label.length > 2 ? size * 0.5 : size * 0.62}px`,
+            fontWeight: 600,
+            lineHeight: 1,
+            letterSpacing: '-0.02em',
+        },
     }
+}
 
-    return (
-        <span
-            aria-hidden="true"
-            className="file-type-badge"
-            style={{
-                ...box,
-                '--badge-fg-base': target.color,
-                color: 'var(--file-type-badge-fg)',
-                fontSize: target.label!.length > 2 ? size * 0.5 : size * 0.62,
-                fontWeight: 600,
-                lineHeight: 1,
-                letterSpacing: '-0.02em',
-            } as React.CSSProperties}
-        >
-            {target.label}
-        </span>
-    )
+/** 编辑器已持有路径类型；标签以文本节点写入，只有本地静态 SVG 进入 innerHTML。 */
+export function createFileBadgeElement(doc: Document, target: FileTargetType): HTMLElement {
+    const { className, style, tint, svg, label } = badgePresentation(target, 14, true)
+    const badge = doc.createElement('span')
+    badge.setAttribute('aria-hidden', 'true')
+    if (className) badge.className = className
+    Object.assign(badge.style, style)
+    if (tint) badge.style.setProperty('--badge-fg-base', tint)
+    if (svg) badge.innerHTML = svg
+    else badge.textContent = label ?? ''
+    return badge
+}
+
+export const FileTypeBadge = memo(function FileTypeBadge({ path, size = 14, knownFile = false }: { path: string; size?: number; /** 文件列表已确认此路径是文件时，覆盖无扩展名的目录启发式。 */ knownFile?: boolean }) {
+    const target = resolveFileType(path)
+    if (!target) return null
+    const { className, style, tint, svg, label } = badgePresentation(target, size, knownFile)
+    return <span
+        aria-hidden="true"
+        className={className}
+        style={tint ? { ...style, '--badge-fg-base': tint } as CSSProperties : style}
+        dangerouslySetInnerHTML={svg ? { __html: svg } : undefined}
+    >{label}</span>
 })

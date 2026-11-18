@@ -28,6 +28,21 @@ async function setup() {
     return { input: ref.current!, editor: ref.current!.getEditor()!, container }
 }
 
+function setupPanel(input: ChatInputHandle) {
+    const shellRef = { current: input }
+    const { result } = renderHook(() => {
+        const mention = useMentionInteraction({ target: null, searchFiles: null, listDirectory: null, workingDir: '/w' })
+        const bridge = useChatInputBridge({ shellRef, mention, slash: { processChange: () => false, close: () => {} } })
+        return { mention, bridge }
+    })
+    const select = (item: Parameters<typeof result.current.mention.selectItem>[0]) => {
+        let picked: MentionSelectionResult | null = null
+        act(() => { picked = result.current.mention.selectItem(item, input.getText()) })
+        act(() => { result.current.bridge.applySelection(picked) })
+    }
+    return { result, select }
+}
+
 afterEach(cleanup)
 
 describe('Sender 的 @ 文件引用', () => {
@@ -63,6 +78,8 @@ describe('Sender 的 @ 文件引用', () => {
         expect(input.getWireText()).toBe('看@src/foo.ts @docs.v2/ [a@b.com](mailto:a@b.com)')
         input.setMarkdown('`@x/a.ts`\n\n```text\n@x/b.ts\n```\n\n**@x/foo**.ts')
         expect(container.querySelector('strong')?.textContent).toBe('@x/foo')
+        expect(container.querySelector('.mention-directory:not(.file-mention-widget)')?.textContent).toBe('@x/foo')
+        expect(container.querySelector('.mention-file')).toBeNull()
         expect(container.querySelectorAll('.file-mention-widget')).toHaveLength(1)
         expect(container.querySelector('code .mention-file')).toBeNull()
     })
@@ -74,6 +91,56 @@ describe('Sender 的 @ 文件引用', () => {
         input.replaceTextRange(0, 2, '改了长度的前文')
         expect(container.querySelector('.mention-file')?.textContent).toBe('@src/file.ts')
         expect(input.getWireText()).toBe('改了长度的前文\n看 @src/file.ts')
+    })
+
+    it('粘贴的标点后引用仍有徽章；图标随正文同步挂载', async () => {
+        const { input, container } = await setup()
+        input.setText('请看：@src/a.ts 然后复查')
+        expect(container.querySelector('.mention-file')?.textContent).toBe('@src/a.ts')
+        expect(container.querySelector('[data-mention-icon="file"] svg')).not.toBeNull()
+    })
+
+    it.each([
+        ['看 @sr，继续测试', '看 @sr', '看 @src/a.ts ，继续测试'],
+        ['@src/a-old.ts 后文', '@src/a', '@src/a.ts  后文'],
+    ])('只替换 %s 中当前引用的路径', async (text, prefix, expected) => {
+        const { input } = await setup()
+        const { result, select } = setupPanel(input)
+        input.setText(text)
+        act(() => { result.current.mention.processChange(input.getText(), prefix.length) })
+        select({ label: 'a.ts', value: 'a.ts', path: 'src/a.ts', isDirectory: false })
+        expect(input.getText()).toBe(expected)
+    })
+
+    it('回填后旧候选不能替换新正文', async () => {
+        const { input } = await setup()
+        const { result, select } = setupPanel(input)
+        input.setText('@verylong')
+        act(() => { result.current.mention.processChange(input.getText(), input.getText().length) })
+        input.setText('@x keep this')
+        select({ label: 'a.ts', value: 'a.ts', path: 'src/a.ts', isDirectory: false })
+        expect(input.getText()).toBe('@x keep this')
+        expect(result.current.mention.isOpen).toBe(false)
+    })
+
+    it('补全替换格式化引用时保留原格式', async () => {
+        const { input, container } = await setup()
+        const { result, select } = setupPanel(input)
+        input.setMarkdown('**@fi** tail')
+        act(() => { result.current.mention.processChange(input.getText(), '@fi'.length) })
+        select({ label: 'file.ts', value: 'file.ts', isDirectory: false })
+        expect(container.querySelector('strong .mention-file')?.textContent).toBe('@file.ts')
+        expect(input.getText()).toBe('@file.ts  tail')
+        expect(input.getWireText()).toBe('**@file.ts**  tail')
+    })
+
+    it('不把无法用现有语法表示的路径当成可补全的引用', async () => {
+        const { input } = await setup()
+        const { result, select } = setupPanel(input)
+        input.setText('@docs/My')
+        act(() => { result.current.mention.processChange(input.getText(), input.getText().length) })
+        select({ label: 'My Report.md', value: 'My Report.md', isDirectory: false })
+        expect(input.getText()).toBe('@docs/My')
     })
 
     it('目录选中后继续下钻；选中的无扩展名文件使用真实类型，编辑后重新识别', async () => {

@@ -16,6 +16,8 @@
 
 import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
+import { message } from 'antd'
+import type { FileSuggestionItem } from './useSessionFileListing'
 import type { ChatInputHandle } from '@/ui/base/interactive/chat-input'
 import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useDirectoryCommands } from './useDirectoryCommands'
@@ -81,6 +83,7 @@ export function useComposerScaffold(params: UseComposerScaffoldParams) {
         searchFiles: capabilities.searchFiles,
         listDirectory: capabilities.listDirectory,
         workingDir,
+        onUnsupportedPath: () => { message.warning(t('composer.mentionUnsupportedPath')) },
     })
     const slash = useSlashCommandInteraction({ commandsData, commandsLoading, workingDir })
 
@@ -98,6 +101,12 @@ export function useComposerScaffold(params: UseComposerScaffoldParams) {
         mention,
         onUpdate: handleEditorUpdate,
     })
+
+    const selectMention = (item: FileSuggestionItem) => {
+        // 点选按编辑器当前值比对候选快照，不读可能还没提交的 React 渲染镜像。
+        const current = shellRef.current
+        if (current) bridge.applySelection(mention.selectItem(item, current.getText()))
+    }
 
     // 粘贴桥接：handlePaste 只消费 clipboardData 与 preventDefault，与原生 ClipboardEvent
     // 运行时同构；返回 defaultPrevented 让 ChatInput 拦下已被消费的粘贴（文件/超阈值转附件），
@@ -157,6 +166,7 @@ export function useComposerScaffold(params: UseComposerScaffoldParams) {
         mention,
         slash,
         bridge,
+        selectMention,
         handlePasteNative,
         placeholder,
         showGhostHint,

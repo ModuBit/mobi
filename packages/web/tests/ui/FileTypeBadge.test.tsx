@@ -98,6 +98,11 @@ describe('FileChip 文件类型徽章', () => {
     })
 })
 
+it('扩展名碰到对象原型属性时仍渲染普通徽章', () => {
+    render(<FileTypeBadge path="src/file.constructor" />)
+    expect(screen.getByText('CONS')).toBeInTheDocument()
+})
+
 describe('FileTypeBadge knownFile（fs 事实覆盖启发式误判）', () => {
     it('无扩展名文件：缺省按启发式画目录琥珀色块', () => {
         const { container } = render(<FileTypeBadge path="Caddyfile" />)

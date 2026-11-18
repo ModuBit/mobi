@@ -15,7 +15,7 @@
  */
 
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react'
-import { MentionDirectoryIcon } from '@/ui/shared/FileMentionIcon'
+import { MentionDirectoryIcon } from '@/ui/shared/MentionDirectoryIcon'
 import type { Config as DOMPurifyConfig } from 'dompurify'
 import { MOBI_URI_SCHEME } from '@mobi/shared'
 import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
