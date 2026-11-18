@@ -51,6 +51,17 @@
     word-wrap: break-word;
 }
 
+/* ProseMirror 光标占位图：node view 无 contentDOM 的内联原子（如 slash 命令）后，
+   PM 会插 <img class="ProseMirror-separator"> 供光标落位。本编辑器 injectCSS:false
+   （样式自管），缺上游这条规则时 Tailwind preflight 的 `img { display: block }`
+   生效——占位图变成块级，原子后强制换行、光标掉到下一行（2026-11-18 真机）。
+   照抄上游 separator 规则即可；gapcursor 已关闭，无需其余注入样式。 */
+.chat-input .ProseMirror img.ProseMirror-separator {
+    display: inline !important;
+    border: none !important;
+    margin: 0 !important;
+}
+
 /* placeholder：官方扩展的 emptyEditorClass（默认 is-editor-empty），::before 悬浮展示不占布局 */
 .chat-input .ProseMirror p.is-editor-empty:first-child::before {
     content: attr(data-placeholder);

@@ -30,7 +30,12 @@ const root = document.querySelector('.tiptap')
 })
 ```
 
-- 输入 `/compact`（无尾空格）→ atoms 0、面板 `#mobi-slash-listbox` 打开；再按 `Space` → atoms 1、badge `/compact`、面板关闭。
+- 输入 `/compact`（无尾空格）→ atoms 0、面板 `#mobi-slash-listbox` 打开；再按 `Space` → atoms 1、badge `compact`、面板关闭。
+- **布局（必须）**：原子化后段落仍是单行——`p.getBoundingClientRect().height === computed line-height`，
+  且 `img.ProseMirror-separator` 的 computed display 必须为 `inline`。PM 在无 contentDOM 的原子后
+  插占位 img；编辑器 `injectCSS:false` 时缺上游 `img.ProseMirror-separator { display:inline !important }`，
+  Tailwind preflight 的 `img{display:block}` 会让徽章独占一行、光标掉到下一行（2026-11-18 用户报，
+  修复在 chat-input.css）。只数 atom/badge 数量查不出这类回归。
 - 不在命令表的命令（`/zzznotacmd`）同样原子化（语法判定）。
 - 句中命令 `please /zzznotacmd then rest` → 1 个 atom（前导空格收进节点）。
 - 代码块：`` ```js `` 建块后输入 `/compact ` → atoms 0、`pre code` 文本原样。
