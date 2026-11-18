@@ -28,6 +28,7 @@ import { listForkableSessions, SessionListingError } from '@mobi/daemon/store/se
 import { resolveMobiDbPath } from '@mobi/node-core/dbPath'
 import { formatSessionLine } from './forkPlan'
 import { resolveCliNamespace } from './namespace'
+import { planStop } from './stopPlan'
 import type { CommandDefinition } from './types'
 
 function showSessionsHelp(): void {
@@ -35,8 +36,8 @@ function showSessionsHelp(): void {
 ${chalk.bold('mobi sessions')} - Manage daemon sessions
 
 ${chalk.bold('Usage:')}
-  mobi sessions list         List hosted sessions
-  mobi sessions stop <id>    Stop a specific session
+  mobi sessions list [--json]  List hosted sessions (--json for machine-readable output)
+  mobi sessions stop <id>      Stop a specific session
 
 ${chalk.gray('Sessions run inside the mobi daemon — manage it with')} ${chalk.cyan('mobi daemon')}
 ${chalk.gray('Clean up all mobi processes:')} ${chalk.cyan('mobi doctor clean')}
@@ -55,14 +56,24 @@ export const sessionsCommand: CommandDefinition = {
         }
 
         if (subcommand === 'list') {
+            // --json = 机器可读通道：旧版进程列表的脚本消费契约（JSON.stringify），
+            // 换 SQLite 只读投影后人类可读文本成为默认档，脚本解析端经此 flag 恢复
+            const asJson = commandArgs.slice(1).includes('--json')
             try {
                 const sessions = listForkableSessions(
                     resolveMobiDbPath(),
                     await resolveCliNamespace()
                 )
 
+                if (asJson) {
+                    // 空清单输出 []（脚本据此区分「空」与「失败」）；行含 nativeSessionId
+                    // 为 null 的未就绪行，由脚本侧自行过滤
+                    console.log(JSON.stringify(sessions, null, 2))
+                    return
+                }
+
                 if (sessions.length === 0) {
-                    console.log('没有可列出的托管会话（活跃或休眠、且已产生 Claude 会话）')
+                    console.log('没有可列出的托管会话（活跃或休眠）')
                 } else {
                     console.log('托管会话（最近活跃优先）：\n')
                     sessions.forEach((session, index) => {
@@ -83,17 +94,52 @@ export const sessionsCommand: CommandDefinition = {
         }
 
         if (subcommand === 'stop') {
-            const sessionId = commandArgs[1]
-            if (!sessionId) {
+            const query = commandArgs[1]
+            if (!query) {
                 console.error('Session ID required')
                 process.exit(1)
             }
 
             try {
-                const success = await stopExecutorSession(sessionId)
-                console.log(success ? 'Session stopped' : 'Failed to stop session')
-            } catch {
-                console.log('No daemon running')
+                // 列表展示的是 8 位短 id（含 dormant 行），executor 追踪表按完整 mobi id
+                // 全等匹配——用户输入必须先经 planStop 折算（与 fork 同一套匹配语义），
+                // 否则照列表抄的短 id 必然落空（发现 C）
+                const sessions = listForkableSessions(resolveMobiDbPath(), await resolveCliNamespace())
+                const plan = planStop(sessions, query)
+
+                if (plan.kind === 'empty' || plan.kind === 'not-found') {
+                    console.error(chalk.red(`未找到会话：${plan.kind === 'empty' ? query : plan.query}`))
+                    console.error(chalk.gray('  运行 mobi sessions list 查看可操作会话（列表展示 8 位短 id）'))
+                    process.exitCode = 1
+                    return
+                }
+
+                if (plan.kind === 'ambiguous') {
+                    console.error(chalk.red('匹配到多个会话，请用更精确的 id 指定：'))
+                    plan.matches.forEach((session, index) => console.log(formatSessionLine(session, index)))
+                    process.exitCode = 1
+                    return
+                }
+
+                if (plan.kind === 'dormant') {
+                    console.log('该会话处于休眠，无进程可停止')
+                    return
+                }
+
+                const success = await stopExecutorSession(plan.session.id)
+                if (success) {
+                    console.log('Session stopped')
+                } else {
+                    console.error(chalk.red('Failed to stop session'))
+                    process.exitCode = 1
+                }
+            } catch (error) {
+                if (error instanceof SessionListingError) {
+                    console.error(chalk.red(error.message))
+                } else {
+                    console.log('No daemon running')
+                }
+                process.exitCode = 1
             }
             return
         }

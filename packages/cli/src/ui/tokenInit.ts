@@ -30,19 +30,37 @@ import { configuration } from '@mobi/node-core/configuration'
 import { readSettings, updateSettings } from '@mobi/node-core/persistence'
 
 /**
- * Initialize CLI API token
- * Must be called before any API operations
+ * 有效 CLI token 解析（单一来源，发现 E）：env（configuration.cliApiToken 初值）
+ * 优先于 settings.cli.json，两者皆缺返回 null。initializeToken 的初始化与
+ * namespace 的只读解析共用这一份优先级链——此前 namespace 手抄镜像，两处漂移时
+ * env 覆盖 token 会查错 namespace。
  */
-export async function initializeToken(): Promise<void> {
+export async function resolveEffectiveCliToken(): Promise<{ token: string; source: 'env' | 'settings' } | null> {
     // 1. Environment variable has highest priority (allows temporary override)
     if (configuration.cliApiToken) {
-        return
+        return { token: configuration.cliApiToken, source: 'env' }
     }
 
     // 2. Read from settings file
     const settings = await readSettings()
     if (settings.cliApiToken) {
-        configuration._setCliApiToken(settings.cliApiToken)
+        return { token: settings.cliApiToken, source: 'settings' }
+    }
+
+    return null
+}
+
+/**
+ * Initialize CLI API token
+ * Must be called before any API operations
+ */
+export async function initializeToken(): Promise<void> {
+    const resolved = await resolveEffectiveCliToken()
+    if (resolved) {
+        // settings 来源回填 configuration：后续 API 调用统一走 configuration.cliApiToken
+        if (resolved.source === 'settings') {
+            configuration._setCliApiToken(resolved.token)
+        }
         return
     }
 

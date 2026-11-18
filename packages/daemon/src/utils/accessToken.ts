@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-const DEFAULT_NAMESPACE = 'default'
+/** 无 namespace 后缀的 token 与解析回落共用的默认 namespace（跨包引用，勿手抄字面量） */
+export const DEFAULT_NAMESPACE = 'default'
 
 export type ParsedAccessToken = {
     baseToken: string

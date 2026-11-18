@@ -23,9 +23,17 @@
 
 import type { ForkableSession } from '@mobi/shared'
 
+/** fork 可解析行：在 ForkableSession 之上收敛出非空 native id（--resume 的目标必须就绪） */
+export type ForkResolvableSession = ForkableSession & { nativeSessionId: string }
+
+/** native id 就绪判定：null = Claude 会话尚未回报（fork 无 --resume 目标，无意义） */
+export function isForkResolvable(session: ForkableSession): session is ForkResolvableSession {
+    return session.nativeSessionId !== null
+}
+
 export type ForkPlan =
-    | { kind: 'resolved'; session: ForkableSession }
-    | { kind: 'ambiguous'; matches: ForkableSession[] }
+    | { kind: 'resolved'; session: ForkResolvableSession }
+    | { kind: 'ambiguous'; matches: ForkResolvableSession[] }
     | { kind: 'empty' }
     | { kind: 'not-found'; query: string; nativeIdLike: boolean }
 
@@ -42,7 +50,7 @@ export function shortSessionId(id: string): string {
     return id.slice(0, SHORT_ID_LENGTH)
 }
 
-function byRecency(sessions: readonly ForkableSession[]): ForkableSession[] {
+function byRecency<T extends ForkableSession>(sessions: readonly T[]): T[] {
     return [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
@@ -54,7 +62,7 @@ function withTitle(session: ForkableSession): string | null {
  * 候选集 → 决策：单一命中 = resolved，多命中 = ambiguous，空集 = 交给下一优先级。
  * 三段匹配（id 前缀 / 标题精确 / 标题包含）共用同一分类，避免逐段抄同一 if 形状。
  */
-function classify(matches: ForkableSession[]): ForkPlan | null {
+function classify(matches: ForkResolvableSession[]): ForkPlan | null {
     if (matches.length === 1) return { kind: 'resolved', session: matches[0] }
     if (matches.length > 1) return { kind: 'ambiguous', matches }
     return null
@@ -67,11 +75,13 @@ function classify(matches: ForkableSession[]): ForkPlan | null {
  * 3. 标题完全一致
  * 4. 标题包含
  * 多命中返回 ambiguous，由命令层交给用户选择；不给 query 时取最近活跃。
+ * native id 未就绪的行在入口先排除——fork 无 --resume 目标无意义，不能当「最近活跃」解析出去。
  */
 export function planFork(sessions: readonly ForkableSession[], query?: string): ForkPlan {
-    if (sessions.length === 0) return { kind: 'empty' }
+    const resolvable = sessions.filter(isForkResolvable)
+    if (resolvable.length === 0) return { kind: 'empty' }
 
-    const ordered = byRecency(sessions)
+    const ordered = byRecency(resolvable)
     const trimmed = query?.trim()
     if (!trimmed) {
         return { kind: 'resolved', session: ordered[0] }
@@ -101,11 +111,11 @@ export function planFork(sessions: readonly ForkableSession[], query?: string): 
     return { kind: 'not-found', query: trimmed, nativeIdLike: UUID_LIKE.test(trimmed) }
 }
 
-/** 交互选择器里的关键字过滤：标题 / 工作区路径 / mobi id 前缀 */
-export function filterSessions(
-    sessions: readonly ForkableSession[],
+/** 交互选择器里的关键字过滤：标题 / 工作区路径 / mobi id 前缀（泛型保住调用方的窄类型） */
+export function filterSessions<T extends ForkableSession>(
+    sessions: readonly T[],
     keyword: string
-): ForkableSession[] {
+): T[] {
     const lowered = keyword.trim().toLowerCase()
     if (!lowered) return [...sessions]
     return sessions.filter(
@@ -121,10 +131,21 @@ export function buildForkSpawnArgs(nativeSessionId: string): string[] {
     return ['--resume', nativeSessionId, '--fork-session']
 }
 
-/** 列表行：序号、标题/短 id、工作区、最近活跃 */
+/**
+ * Claude 子进程 close 事件的失败消息：信号终止（SIGKILL/SIGTERM 等）时 code 为
+ * null，只报 code 会退化成「exited with code null」丢掉死因；有 signal 时带信号名。
+ */
+export function formatClaudeExitError(code: number | null, signal: NodeJS.Signals | null): string {
+    return signal ? `Claude terminated by signal ${signal}` : `Claude exited with code ${code}`
+}
+
+/** 列表行：序号、标题/短 id、工作区、最近活跃；native id 未就绪的行标注不可接续 */
 export function formatSessionLine(session: ForkableSession, index: number): string {
     const label = session.title ?? `(未命名 ${shortSessionId(session.id)})`
     const updated = new Date(session.updatedAt).toLocaleString()
     const online = session.status === 'online' ? ' · 进程在线' : ''
-    return `[${index + 1}] ${label}\n    ${session.path}\n    最近活跃 ${updated} · ${shortSessionId(session.id)}${online}`
+    // 未就绪行只可列示不可 fork（forkPlan.planFork 已将其排除出候选）：标注口径，
+    // 让 sessions list 的读者知道这行不能拿去 fork，避免按序号/标题 fork 落空
+    const notReady = session.nativeSessionId === null ? ' · 不可接续（Claude 会话未就绪）' : ''
+    return `[${index + 1}] ${label}\n    ${session.path}\n    最近活跃 ${updated} · ${shortSessionId(session.id)}${online}${notReady}`
 }

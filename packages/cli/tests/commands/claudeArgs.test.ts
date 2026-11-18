@@ -21,7 +21,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { parseStartOptions } from '@/commands/claudeArgs'
+import { isDaemonSpawnInvocation, parseStartOptions } from '@/commands/claudeArgs'
 
 describe('parseStartOptions --workspace', () => {
     it('解析 --workspace foo 进 options.workspaceId', () => {
@@ -137,5 +137,22 @@ describe('parseStartOptions 既有 flag 回归（锁定搬迁前行为）', () =
         ])
         expect(showHelp).toBe(true)
         expect(unknownArgs).toEqual(['-h', '--verbose', '--unknown-flag', 'its-value', 'bare-arg'])
+    })
+})
+
+describe('isDaemonSpawnInvocation（发现 A：claude 入口的内/外调用分界）', () => {
+    it('daemon executor spawn 命令行形状（--started-by daemon）→ 内部调用', () => {
+        // daemon 侧 buildClaudeSpawnArgs 恒带 --started-by daemon
+        const { options } = parseStartOptions(['--resume', 'native-1', '--started-by', 'daemon', '--model', 'opus'])
+        expect(isDaemonSpawnInvocation(options)).toBe(true)
+    })
+
+    it('人类终端直调（无 --started-by）→ 非内部调用，应被守卫拒绝', () => {
+        expect(isDaemonSpawnInvocation(parseStartOptions(['--continue']).options)).toBe(false)
+        expect(isDaemonSpawnInvocation(parseStartOptions([]).options)).toBe(false)
+    })
+
+    it('--started-by terminal → 非内部调用', () => {
+        expect(isDaemonSpawnInvocation(parseStartOptions(['--started-by', 'terminal']).options)).toBe(false)
     })
 })

@@ -22,12 +22,12 @@
  */
 
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 // 版本号指 mobi CLI 包（安装主体），本模块搬入 node-core 后跨包锚定（与 projectPath 同理）
 import packageJson from '../../cli/package.json'
 import { getCliArgs } from './utils/cliArgs'
 import { localDaemonHostChannelUrl } from './hostChannel'
+import { resolveMobiDataDir } from './dbPath'
 import type { Settings } from './settingsTypes'
 
 class Configuration {
@@ -74,14 +74,10 @@ class Configuration {
         const args = getCliArgs()
         this.isDaemonProcess = args.length >= 2 && args[0] === 'daemon' && (args[1] === 'start-sync')
 
-        // Directory configuration - Priority: MOBI_HOME env > default home dir
-        if (process.env.MOBI_HOME) {
-            // Expand ~ to home directory if present
-            const expandedPath = process.env.MOBI_HOME.replace(/^~/, homedir())
-            this.mobiHomeDir = expandedPath
-        } else {
-            this.mobiHomeDir = join(homedir(), '.mobi')
-        }
+        // Directory configuration：MOBI_HOME（支持 ~ 展开）> ~/.mobi——规则单源在
+        // dbPath.resolveMobiDataDir（daemon 写库与 CLI 只读查询必须指向同一数据目录，
+        // 此前构造器内联同构规则属双份手抄）
+        this.mobiHomeDir = resolveMobiDataDir()
 
         this.logsDir = join(this.mobiHomeDir, 'logs')
         // cli 专属配置（连接凭证/machineId/claudeEnv 等），随 cli 部署位置走；

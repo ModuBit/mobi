@@ -15,6 +15,7 @@
  */
 
 import packageJson from '../../package.json'
+import chalk from 'chalk'
 import { ensureRuntimeAssets } from '@/runtime/assets'
 import { isBunCompiled } from '@mobi/node-core/projectPath'
 import { logger } from '@mobi/node-core/logger'
@@ -45,7 +46,20 @@ export async function runCli(): Promise<void> {
         process.env.DEV = 'false'
     }
 
-    const { command, context } = resolveCommand(args)
+    const resolution = resolveCommand(args)
+
+    // 未知命令明确报错（发现 B）：不再兜底给 `mobi claude` 内部入口——
+    // typo 静默抵达会拉起 daemon 并隐式创建托管会话
+    if (resolution.kind === 'unknown') {
+        console.error(chalk.red(`Unknown command: ${resolution.word}`))
+        if (resolution.suggestions.length > 0) {
+            console.error(chalk.gray(`  Did you mean: mobi ${resolution.suggestions.join(', ')}?`))
+        }
+        console.error(chalk.gray('  Run mobi --help for available commands'))
+        process.exit(1)
+    }
+
+    const { command, context } = resolution
 
     if (command.requiresRuntimeAssets) {
         await ensureRuntimeAssets()

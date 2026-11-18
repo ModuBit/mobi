@@ -15,26 +15,30 @@
  */
 
 /**
- * CLI 侧 namespace 解析：从 CLI token 的 `base:namespace` 形状取出,
- * 与 daemon 的 accessToken 解析同源；缺失/解析失败回落 default。
+ * CLI 侧 namespace 解析：从 CLI token 的 `base:namespace` 形状取出，与 daemon 的
+ * accessToken 解析同源。fork 与 sessions 的只读会话查询共用。
  *
- * fork 与 sessions 的只读会话查询共用，避免两处各写一份回落规则。
+ * token 优先级链收口在 tokenInit.resolveEffectiveCliToken（单一来源，不再手抄
+ * 镜像）；回落 default 必须在 stderr 留一行警告——鉴权/配置问题此前静默呈现为
+ * 「没有可 fork 的会话」，用户无从定位真实原因（发现 E）。
  */
 
-import { configuration } from '@mobi/node-core/configuration'
-import { readSettings } from '@mobi/node-core/persistence'
-import { parseAccessToken } from '@mobi/daemon/utils/accessToken'
+import chalk from 'chalk'
+import { DEFAULT_NAMESPACE, parseAccessToken } from '@mobi/daemon/utils/accessToken'
+import { resolveEffectiveCliToken } from '@/ui/tokenInit'
 
-/**
- * 有效 token 与 initializeToken 同一优先级：env（configuration.cliApiToken 初值）
- * 优先于 settings.cli.json；否则 env 覆盖 token 时这里会查错 namespace。
- */
 export async function resolveCliNamespace(): Promise<string> {
     try {
-        const settings = await readSettings()
-        const token = configuration.cliApiToken || settings.cliApiToken || ''
-        return parseAccessToken(token)?.namespace ?? 'default'
-    } catch {
-        return 'default'
+        const resolved = await resolveEffectiveCliToken()
+        const namespace = resolved ? (parseAccessToken(resolved.token)?.namespace ?? null) : null
+        if (namespace) return namespace
+        console.error(
+            chalk.yellow('CLI namespace 回落 default：CLI_API_TOKEN 未配置，或无法解析出 namespace（base:namespace 形状）')
+        )
+    } catch (error) {
+        console.error(
+            chalk.yellow(`CLI namespace 回落 default：读取 CLI 配置失败（${error instanceof Error ? error.message : String(error)}）`)
+        )
     }
+    return DEFAULT_NAMESPACE
 }

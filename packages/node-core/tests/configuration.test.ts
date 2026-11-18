@@ -16,10 +16,18 @@
 
 import { describe, it, expect } from 'vitest'
 import { configuration } from '@/configuration'
+import { resolveMobiDataDir } from '@/dbPath'
 
 describe('configuration processType', () => {
     it('processType 返回 runner 或 cli，与 isRunnerProcess 一致', () => {
         expect(['runner', 'cli']).toContain(configuration.processType)
         expect(configuration.processType).toBe(configuration.isRunnerProcess ? 'runner' : 'cli')
+    })
+})
+
+describe('configuration mobiHomeDir', () => {
+    it('与 dbPath.resolveMobiDataDir 同一规则派生（MOBI_HOME 规则单源，不再双份手抄）', () => {
+        // 构造器在模块加载时已按当前 env 求值；同一 env 下两者必须逐字符相等
+        expect(configuration.mobiHomeDir).toBe(resolveMobiDataDir())
     })
 })

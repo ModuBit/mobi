@@ -105,3 +105,14 @@ export function parseStartOptions(args: string[]): {
 
     return { options, showHelp, unknownArgs }
 }
+
+/**
+ * claude 入口的内/外调用分界（纯函数，便于单测）：daemon executor spawn 恒带
+ * `--started-by daemon`（daemon 侧 buildClaudeSpawnArgs 无条件追加，上面已消费进
+ * options.startedBy），人类终端直调不会有这个内部 flag。
+ * 不用 stdin.isTTY 判内/外——daemon 前台运行时子进程 stdio 形态不可靠，
+ * 命令行显式标记才是稳定分界。
+ */
+export function isDaemonSpawnInvocation(options: StartOptions): boolean {
+    return options.startedBy === 'daemon'
+}

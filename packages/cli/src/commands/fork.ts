@@ -32,7 +32,7 @@ import { childEnvWithoutDebugger } from '@mobi/node-core/utils/spawnMobiCli'
 import { withBunRuntimeEnv } from '@mobi/node-core/utils/bunRuntime'
 import type { ForkableSession } from '@mobi/shared'
 import { listForkableSessions, SessionListingError } from '@mobi/daemon/store/sessionListing'
-import { buildForkSpawnArgs, filterSessions, formatSessionLine, planFork } from './forkPlan'
+import { buildForkSpawnArgs, filterSessions, formatClaudeExitError, formatSessionLine, isForkResolvable, planFork, type ForkResolvableSession } from './forkPlan'
 import { resolveCliNamespace } from './namespace'
 import type { CommandDefinition } from './types'
 
@@ -67,8 +67,9 @@ const ONLINE_FORK_WARNING = '该会话进程仍在线；若正在执行 turn，�
 /**
  * 交互选择：默认最近活跃（回车）；输入序号选中；输入非数字则按关键字过滤候选。
  * 选中进程在线的会话时要求二次确认（当前轮可能尚未写入 transcript）。
+ * 候选恒为 fork 可解析行（native id 就绪，调用方已过滤）。
  */
-async function promptForSession(initial: readonly ForkableSession[]): Promise<ForkableSession> {
+async function promptForSession(initial: readonly ForkResolvableSession[]): Promise<ForkResolvableSession> {
     let candidates = [...initial]
     const rl = readline.createInterface({ input, output })
 
@@ -81,7 +82,7 @@ async function promptForSession(initial: readonly ForkableSession[]): Promise<Fo
                 )
             ).trim()
 
-            let chosen: ForkableSession
+            let chosen: ForkResolvableSession
             if (!answer) {
                 chosen = candidates[0]
             } else if (/^\d+$/.test(answer)) {
@@ -119,10 +120,10 @@ async function promptForSession(initial: readonly ForkableSession[]): Promise<Fo
  * 非交互环境给出可操作提示并返回 null；否则进入交互选择器。
  */
 async function pickSession(
-    candidates: readonly ForkableSession[],
+    candidates: readonly ForkResolvableSession[],
     nonTtyMessage: string,
     nonTtyHint?: string
-): Promise<ForkableSession | null> {
+): Promise<ForkResolvableSession | null> {
     if (!process.stdin.isTTY) {
         console.error(chalk.red(nonTtyMessage))
         if (nonTtyHint) console.error(chalk.gray(`  ${nonTtyHint}`))
@@ -132,8 +133,8 @@ async function pickSession(
     return promptForSession(candidates)
 }
 
-/** 在会话工作目录启动 Claude；stdio 继承，用户看到原生 TUI */
-async function launchFork(session: ForkableSession): Promise<void> {
+/** 在会话工作目录启动 Claude；stdio 继承，用户看到原生 TUI（行必已过 isForkResolvable） */
+async function launchFork(session: ForkResolvableSession): Promise<void> {
     const args = buildForkSpawnArgs(session.nativeSessionId)
     const claudeCommand = (await getClaudeExecutablePath()) ?? 'claude'
 
@@ -148,9 +149,11 @@ async function launchFork(session: ForkableSession): Promise<void> {
     })
 
     await new Promise<void>((resolve, reject) => {
-        child.on('close', code => {
+        // close 回调同时收 (code, signal)：信号终止时 code 为 null，只报 code 会
+        // 退化成「exited with code null」丢掉死因（发现 D）
+        child.on('close', (code, signal) => {
             if (code === 0) resolve()
-            else reject(new Error(`Claude exited with code ${code}`))
+            else reject(new Error(formatClaudeExitError(code, signal)))
         })
         child.on('error', reject)
     })
@@ -169,7 +172,10 @@ export const forkCommand: CommandDefinition = {
 
         try {
             const namespace = await resolveCliNamespace()
-            const sessions = listForkableSessions(resolveMobiDbPath(), namespace)
+            // 入口先过滤出 fork 可解析行（native id 就绪）：fork 命令的选取器与匹配
+            // 都只消费这类行；未就绪行留给 sessions list 展示（标注不可接续）。
+            // planFork 内部有同谓词防守，此处过滤让交互路径同样不出现未就绪行
+            const sessions = listForkableSessions(resolveMobiDbPath(), namespace).filter(isForkResolvable)
             const plan = planFork(sessions, query)
 
             if (plan.kind === 'empty') {
@@ -191,7 +197,7 @@ export const forkCommand: CommandDefinition = {
                 return
             }
 
-            let session: ForkableSession
+            let session: ForkResolvableSession
 
             if (!query) {
                 const chosen = await pickSession(

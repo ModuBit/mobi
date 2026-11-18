@@ -20,7 +20,7 @@ import { configuration } from '@mobi/node-core/configuration'
 import { initializeToken } from '@/ui/tokenInit'
 import { ensureDaemonRunning } from '@/utils/autoStartServer'
 import { extractErrorInfo } from '@mobi/node-core/utils/errorUtils'
-import { parseStartOptions } from './claudeArgs'
+import { isDaemonSpawnInvocation, parseStartOptions } from './claudeArgs'
 import { DEFAULT_HELP_TEXT } from './defaultHelp'
 import { formatProtocolVersionHint } from './protocolHint'
 import type { CommandDefinition } from './types'
@@ -43,11 +43,8 @@ export const claudeCommand: CommandDefinition = {
     name: 'default',
     requiresRuntimeAssets: true,
     run: async ({ commandArgs }) => {
+        // 显式 'claude' 词已由 registry 剥掉（commandRoute），这里只收剩余参数
         const args = [...commandArgs]
-
-        if (args.length > 0 && args[0] === 'claude') {
-            args.shift()
-        }
 
         // 解析命令行参数（mobi 自身 flag + 透传给 claude code 的参数）
         const { options, showHelp, unknownArgs } = parseStartOptions(args)
@@ -61,6 +58,17 @@ export const claudeCommand: CommandDefinition = {
         // `mobi claude …` 保留为 daemon spawn 的内部入口（不出现在帮助里）
         if (showHelp || args.length === 0) {
             console.log(DEFAULT_HELP_TEXT)
+            return
+        }
+
+        // 带参且非 daemon spawn（发现 A）：local 模式已移除，不再静默起托管会话——
+        // 终端零输出零交互、token 照常消耗、idle 超时后进程静默退出，旧肌肉记忆
+        // （mobi --continue）会被误认为卡死。内/外分界是 --started-by daemon 显式标记
+        if (!isDaemonSpawnInvocation(options)) {
+            console.error(chalk.red('在终端直接启动托管会话的入口已随 local 模式移除'))
+            console.error(chalk.gray('  接续已有会话: mobi fork'))
+            console.error(chalk.gray('  新会话请先从 Web UI 创建（fork 要求库中已有会话）'))
+            process.exitCode = 1
             return
         }
 
