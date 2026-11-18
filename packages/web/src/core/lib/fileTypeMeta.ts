@@ -106,6 +106,7 @@ function basenameOf(path: string): string | null {
 export function resolveFileType(path: string): FileTargetType | null {
     const base = basenameOf(path)
     if (!base) return null
+    if (path.endsWith('/')) return { kind: 'directory' }
 
     // 目录：basename 无 `.`（`src`、`~`）；无扩展名的惯例文件名（Makefile 等）优先按文件；
     // 隐藏 dotfile（`.env`）有 `.`，落到文件分支

@@ -83,3 +83,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [PWA 预缓存分层验证](pwa-precache-verify.md) — 生产构建 preview 起法（5176 代理 2224）/ 壳 26 条与 runtime 按需增长 / 离线深层链接靠 NavigationRoute / caches.match 传 Request 对象 / **chunk 聚合不开启 strictExecutionOrder 会白屏**（2026-11-17）
 - [建议面板验证](suggestion-panel-verify.md) — 斜杠面板需 CLI 连过的会话（dormant dev 会话无命令不弹）/ 追加字符会拼成 `/hand/hand` 不触发、先 Meta+A 重打 / label 截断用 scrollWidth vs clientWidth 断言、PC+390 双视口 / 生产 CSS module 类名可注 style 做前后对照（2026-11-18）
 - [composer slash 原子节点验证](composer-slash-atom-verify.md) — 空格/面板/粘贴触发原子化、代码块跳过、退格整删 / 发送 wire 用 XHR patch 逐字断言 / 消息侧 badge 须带 / / 紧邻双命令不原子化的已知边界（2026-11-18）
+- [Sender @ 文件引用验证](composer-file-mention-verify.md) — 目录下钻 / 点路径正文逐字删 / 原样 wire / 与消息比字体和下划线，浅色反色气泡不比 RGB（2026-11-18）

@@ -62,6 +62,12 @@
     margin: 0 !important;
 }
 
+/* @ 引用的小图标只是装饰，指针仍由编辑区处理。路径文字本身可以逐字选中。 */
+.chat-input .file-mention-widget {
+    pointer-events: none;
+    user-select: none;
+}
+
 /* placeholder：官方扩展的 emptyEditorClass（默认 is-editor-empty），::before 悬浮展示不占布局 */
 .chat-input .ProseMirror p.is-editor-empty:first-child::before {
     content: attr(data-placeholder);

@@ -15,20 +15,9 @@
  */
 
 import type { TokenizerAndRendererExtension } from 'marked'
-import { buildActionUri, MENTION_PATH_CHARS } from '@mobi/shared'
+import { buildActionUri } from '@mobi/shared'
 import { resolveFileType } from '@/core/lib/fileTypeMeta'
-
-/** @ 路径字符集协议单源在 shared（MENTION_PATH_CHARS，排除法，见其文档） */
-const PATH_CHARS = MENTION_PATH_CHARS
-
-/** start() 热路径用：找下一个「@ 后跟路径字符」处——mid-word 的也算，独立/mid-word 分档在 tokenizer 做 */
-const ANY_AT_RE = new RegExp(`@(${PATH_CHARS})`, 'u')
-
-/**
- * 匹配 mention token：@ 前一字符（段首缺省，捕获组可空）+ @ + 路径串。
- * 前字符整体进 raw——它是独立词/mid-word 分档的依据，渲染时原样还回。
- */
-const MENTION_TOKEN_RE = new RegExp(`^(.)?@(${PATH_CHARS}+)`, 'u')
+import { findMentionStart, matchMentionPrefix } from '@/domain/command/mentionParser'
 
 /** HTML entity 转义，防止 XSS */
 function escapeHtml(text: string): string {
@@ -71,43 +60,19 @@ function mention(): TokenizerAndRendererExtension {
         level: 'inline',
         start(src: string) {
             // 停点指到 @ 前一字符（段首停 @ 本身），让 tokenizer 能看到前字符做分档
-            const idx = src.search(ANY_AT_RE)
-            return idx === -1 ? undefined : idx > 0 ? idx - 1 : 0
+            const idx = findMentionStart(src)
+            return idx === -1 ? undefined : Math.max(0, idx - 1)
         },
         tokenizer(src: string) {
-            const match = src.match(MENTION_TOKEN_RE)
+            const match = matchMentionPrefix(src)
             if (!match) return undefined
-            const lead = match[1] ?? ''
-            const path = match[2]
-            const standalone = lead === '' || /[ \t\n]/.test(lead)
-            // mid-word 前字符是标点/符号（markdown 语法字符为主）时不消费：吞掉 `*`/`~`
-            // 会吃掉 em/del 的开定界符（*@src/a.ts* 斜体失效、字面泄漏）——返回 undefined
-            // 交还 marked 处理前字符，游标推进到 @ 后按独立词档重新识别
-            if (!standalone && /[^\p{L}\p{N}\s]/u.test(lead)) return undefined
-            const strongPath = path.includes('/') || path.startsWith('~')
-            if (!(standalone ? strongPath || path.includes('.') : strongPath)) {
-                // 消费式拒绝：整串作为纯文本 token 吃掉（marked 内置 text renderer 按
-                // token.text 输出），游标越过 @ 不再二次触发
-                return { type: 'text', raw: match[0], text: match[0] }
-            }
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const token: any = {
-                type: 'mention',
-                raw: match[0],
-                // 含引导字符的完整文本，供 renderer 还回（保留用户原文）
-                mention: match[0],
-                path,
-            }
-            return token
+            const { raw, lead, path, plain } = match
+            if (plain) return { type: 'text', raw, text: raw }
+            return { type: 'mention', raw, lead, path }
         },
         renderer(token) {
-            // 本扩展 renderer 只收 mention token（marked 按类型分发；消费式拒绝的纯文本
-            // token 走内置 text renderer，不会到达这里）
-            const { mention, path } = token as unknown as { mention: string; path: string }
-
-            // raw 里的引导字符（空白或 mid-word 前字符）原样还回，否则与前文之间的空格被吞
-            const lead = mention.slice(0, mention.length - path.length - 1)
+            // 引导字符（空白或 mid-word 前字符）原样还回，不计入徽章。
+            const { lead, path } = token as unknown as { lead: string; path: string }
             const label = `@${path}`
             // 目录（resolveFileType 判定单源，无 `.` basename / 尾 `/`）：纯展示不可点，
             // glyph 走 <mention-directory> 标签由 Markdown 组件层渲染（见上注）

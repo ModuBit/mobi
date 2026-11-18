@@ -19,6 +19,8 @@ import type { ChatInputHandle, ChatInputUpdateContext } from '@/ui/base/interact
 import { normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash } from '@/domain/command/composerInputNormalization'
 import type { SlashCommandInsert } from '@/domain/command/slashCommandHelper'
 import { slashCommandNodeJSON } from './slashCommandNode'
+import type { FileMentionChoice } from '@/domain/command/mentionParser'
+import { FILE_MENTION_CHOICE_META } from './fileMentionDecoration'
 
 /** 桥接所需的编辑器更新子集（完整载荷见 ui 层 ChatInputUpdateContext） */
 export type TextInputCtx = Pick<ChatInputUpdateContext, 'text' | 'programmatic' | 'cursorOffset'>
@@ -32,6 +34,7 @@ export interface PanelSelectionResult {
      * 编辑器缺该节点时不支持则回落到 text 文本替换
      */
     slashCommand?: SlashCommandInsert
+    mention?: FileMentionChoice
 }
 
 /**
@@ -156,6 +159,14 @@ export function useChatInputBridge({ shellRef, slash, mention, onUpdate }: UseCh
                 slashCommandNodeJSON({ command, leadingSpace, trailingSpace: true }),
             )
             if (inserted) return
+        }
+        if (result.mention) {
+            const { from, to, path, kind } = result.mention
+            shellRef.current?.replaceTextRange(from, to, result.text.slice(from, result.cursorPos ?? undefined), {
+                key: FILE_MENTION_CHOICE_META,
+                value: { path, kind },
+            })
+            return
         }
         applyText(result.text)
         // cursorPos null（契约：无精确落点）落到文本末尾

@@ -25,6 +25,7 @@ import {
     type SlashCommandAttrs,
 } from '@/domain/command/slashCommandHelper'
 import { SlashCommandTag } from '@/ui/shared/SlashCommandTag'
+import { FileMentionDecoration } from './fileMentionDecoration'
 
 /**
  * slash 命令原子节点（composer 专用）。
@@ -186,4 +187,4 @@ export const SlashCommandNode = Node.create({
  * composer 需要注入 ChatInput 的业务扩展集合（模块级稳定引用：
  * useEditor 的 deps 直接持有它，内联数组会让编辑器每次渲染重建）
  */
-export const COMPOSER_EXTRA_EXTENSIONS: Extensions = [SlashCommandNode]
+export const COMPOSER_EXTRA_EXTENSIONS: Extensions = [SlashCommandNode, FileMentionDecoration]

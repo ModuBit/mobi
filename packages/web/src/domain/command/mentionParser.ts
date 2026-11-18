@@ -29,6 +29,53 @@ export function buildMentionPath(mentionInput: string, selectedName: string): st
  * 「整串合法」锚定正则供光标检测使用，与渲染端 mentionPlugin 消费同一字符集
  */
 const MENTION_PATH_CHARS = new RegExp(`^${MENTION_PATH_CHARS_SRC}*$`, 'u')
+const PATH_PREFIX = new RegExp(`^${MENTION_PATH_CHARS_SRC}+`, 'u')
+const MENTION_PREFIX = new RegExp(`^(.)?@(${MENTION_PATH_CHARS_SRC}+)`, 'u')
+const MENTION_START = new RegExp(`@${MENTION_PATH_CHARS_SRC}`, 'u')
+
+export function mentionPathPrefix(text: string): string {
+    return PATH_PREFIX.exec(text)?.[0] ?? ''
+}
+
+export function findMentionStart(text: string): number {
+    return text.search(MENTION_START)
+}
+
+/**
+ * 渲染层共用的判定。undefined 把 Markdown 标点交还给外层解析；plain 则必须
+ * 消费整个候选，防止邮箱被分开后再从 @ 处识别成独立词。
+ */
+export function matchMentionPrefix(text: string) {
+    const match = MENTION_PREFIX.exec(text)
+    if (!match) return undefined
+    const [raw, lead = '', path] = match
+    const standalone = lead === '' || /[ \t\n]/.test(lead)
+    if (!standalone && /[^\p{L}\p{N}\s]/u.test(lead)) return undefined
+    const strongPath = path.includes('/') || path.startsWith('~')
+    return { raw, lead, path, plain: !(strongPath || (standalone && path.includes('.'))) }
+}
+
+/** 已由编辑器划分出正文的文本段：只找范围，不重做 Markdown 分词。 */
+export function scanMentions(text: string) {
+    const mentions: { from: number; to: number; path: string }[] = []
+    for (let at = text.indexOf('@'); at !== -1; at = text.indexOf('@', at + 1)) {
+        const lead = [...text.slice(Math.max(0, at - 2), at)].at(-1) ?? ''
+        const match = matchMentionPrefix(lead + text.slice(at))
+        if (!match) continue
+        const to = at + 1 + match.path.length
+        if (!match.plain) mentions.push({ from: at, to, path: match.path })
+        at = to - 1
+    }
+    return mentions
+}
+
+/** 候选项有真实类型；只在编辑器内为这次文本替换提供呈现提示。 */
+export interface FileMentionChoice {
+    from: number
+    to: number
+    path: string
+    kind: 'file' | 'directory'
+}
 
 /**
  * 在完整文本中找到包含光标位置的 @mention 模式

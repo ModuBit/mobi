@@ -15,7 +15,7 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import { detectMentionAtCursor, buildMentionPath } from '@/domain/command/mentionParser'
+import { detectMentionAtCursor, buildMentionPath, mentionPathPrefix, type FileMentionChoice } from '@/domain/command/mentionParser'
 import type { CapabilityTarget, SearchFilesFn, ListDirectoryFn } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useFileListing } from './useFileListing'
 import type { FileListingInput, FileSuggestionItem } from './useSessionFileListing'
@@ -23,6 +23,7 @@ import type { FileListingInput, FileSuggestionItem } from './useSessionFileListi
 export interface MentionSelectionResult {
     text: string
     cursorPos: number | null
+    mention: FileMentionChoice
 }
 
 interface UseMentionInteractionParams {
@@ -78,31 +79,26 @@ export function useMentionInteraction({
     const selectItem = useCallback((item: FileSuggestionItem, text: string): MentionSelectionResult | null => {
         if (!isOpen || !mentionInput) return null
 
-        const atIndex = mentionAtIndexRef.current
-        const afterLen = mentionInput.mentionInput.length
-        const before = atIndex >= 0 ? text.slice(0, atIndex) : text
-        const after = atIndex >= 0 ? text.slice(atIndex + 1 + afterLen) : ''
+        const from = mentionAtIndexRef.current
+        if (text[from] !== '@') return null
+        const cursor = from + 1 + mentionInput.mentionInput.length
+        // 在词中编辑后选项仍应完成整个引用，不留下未选中的路径后缀。
+        const to = cursor + mentionPathPrefix(text.slice(cursor)).length
+        const selectedPath = item.path ?? buildMentionPath(mentionInput.mentionInput, item.value)
+        const path = item.isDirectory ? selectedPath.replace(/\/+$/, '') + '/' : selectedPath
+        const literal = `@${path}${item.isDirectory ? '' : ' '}`
 
         if (item.isDirectory) {
-            const dirPath = item.path ? item.path + '/' : buildMentionPath(mentionInput.mentionInput, item.value) + '/'
-            mentionAtIndexRef.current = atIndex
-            setMentionInput({
-                mentionInput: dirPath,
-                workingDir: mentionInput.workingDir,
-            })
+            setMentionInput({ mentionInput: path, workingDir: mentionInput.workingDir })
             setActiveIndex(0)
-            return {
-                text: `${before}@${dirPath}${after}`,
-                cursorPos: atIndex + 1 + dirPath.length,
-            }
+        } else {
+            setIsOpen(false)
+            setMentionInput(null)
         }
-
-        const mentionPath = item.path ?? buildMentionPath(mentionInput.mentionInput, item.value)
-        setIsOpen(false)
-        setMentionInput(null)
         return {
-            text: `${before}@${mentionPath} ${after}`,
-            cursorPos: before.length + 1 + mentionPath.length + 1,
+            text: text.slice(0, from) + literal + text.slice(to),
+            cursorPos: from + literal.length,
+            mention: { from, to, path, kind: item.isDirectory ? 'directory' : 'file' },
         }
     }, [isOpen, mentionInput])
 

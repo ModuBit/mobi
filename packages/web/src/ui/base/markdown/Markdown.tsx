@@ -15,7 +15,7 @@
  */
 
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react'
-import { Folder } from 'lucide-react'
+import { MentionDirectoryIcon } from '@/ui/shared/FileMentionIcon'
 import type { Config as DOMPurifyConfig } from 'dompurify'
 import { MOBI_URI_SCHEME } from '@mobi/shared'
 import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
@@ -97,15 +97,10 @@ const SlashCommandBadge: FC<ComponentProps<{ 'data-command'?: string }>> = ({ 'd
     <SlashCommandTag command={command ?? ''} />
 )
 
-/**
- * 目录 mention 徽章（mentionPlugin 的自定义标签映射）：lucide Folder 组件化渲染，
- * 琥珀色同源 FileTypeBadge 的 DIRECTORY_TINT——raw HTML svg 会被 sanitize 剥
- * <path d>（同 slash-command 的坑），组件路由是唯一可靠路径。文本基调
- * （mono 弱于正文、无链接语义）见 markdown.css .mention-directory。
- */
+/** 目录图标用 React 渲染：原始 SVG 的 path 会被 Markdown 的 sanitize 剥除。 */
 const MentionDirectoryBadge: FC<ComponentProps<{ 'data-label'?: string }>> = ({ 'data-label': label }) => (
     <span className="mention-directory">
-        <Folder size={13} strokeWidth={2.4} style={{ verticalAlign: -2, marginRight: 3 }} aria-hidden="true" />
+        <MentionDirectoryIcon />
         {label}
     </span>
 )

@@ -43,7 +43,8 @@
 }
 
 /* 链接样式：虚线下划线（实线视觉太重，虚线更像「可点开的引用」） */
-.x-markdown a {
+.x-markdown a,
+.chat-input .mention-file {
     color: var(--mobi-primary);
     text-decoration: underline dashed;
     text-decoration-color: color-mix(in srgb, var(--mobi-primary) 30%, transparent);
@@ -51,11 +52,18 @@
     transition: opacity 0.2s;
 }
 
+/* 消息正文继承 --font-chat；Sender 只在文件引用上复用该字体，普通正文不变。 */
+.chat-input .mention-file,
+.chat-input [data-mention-icon='file'] {
+    font-family: var(--font-chat);
+}
+
 .x-markdown a:hover {
     opacity: 0.75;
 }
 
-html[data-theme='dark'] .x-markdown a {
+html[data-theme='dark'] .x-markdown a,
+html[data-theme='dark'] .chat-input .mention-file {
     color: var(--mobi-ink-secondary);
     text-decoration-color: color-mix(in srgb, var(--mobi-ink-secondary) 30%, transparent);
 }
@@ -213,12 +221,14 @@ html[data-theme='dark'] .slash-command-badge {
     color: #74c0fc;
 }
 
-/* 目录 mention（@src/ 等）：folder glyph 内联在 renderer 输出里，此处只管文本基调——
-   mono 稍弱于正文、不吃链接语义（无下划线不可点） */
-.x-markdown .mention-directory {
+/* 文件夹图标与 mono 文本由消息与编辑器共用；编辑器的长路径允许换行。 */
+.mention-directory {
     font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
     font-size: 0.9em;
     color: var(--ant-color-text-secondary);
+}
+
+.x-markdown .mention-directory {
     white-space: nowrap;
 }
 
