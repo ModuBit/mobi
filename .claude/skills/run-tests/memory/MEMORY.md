@@ -41,6 +41,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [Bun WS bufferedAmount 陷阱](bun-ws-bufferedamount-trap.md) — 只增不减、排空轮询必死锁；背压用字节差值护栏
 - [Agent drawer 验证](agent-drawer-verify.md) — 运行中/已完成两种 drawer 入口 / 实时增长采样 / 后台任务 runtime_state DB 断言 / fill 不触发 React 状态坑
 - [fork 分叉会话验证](fork-verify.md) — fork API 直调 / 复制完整性 SQL 断言 / 激活探针 / 溯源消息动作链接形态（ADR 0003）+ DOMPurify 剥 href P0 与激活补投 P1 / 锚点须选 transcript 内 uuid 的坑
+- [TUI 接续 fork + 历史 local 只读验证](fork-tui-verify.md) — MOBI_CLAUDE_PATH 假 claude 抓 --resume/--fork-session 与 cwd / 真实 claude 分叉前后 transcript 对比 / legacy local 心跳模拟（宿主端口 12224 注册 mode=local + session-alive）
 - [tool 字段渲染适配点](tool-field-render-adapters.md) — 新增 block.tool 字段须适配 ToolInfo/adaptedBlock/chatBlockToToolCardBlock 三处 + structuredPatch diff 行号验证 recipe
 - [缓存过期 + goal 状态行验证](cache-status-verify.md) — socket 注入（**宿主端口 12224**，2224 报 Invalid namespace）/ 缓存→列表尾行、goal→独占整行 / 空会话看不到尾行 / result 清空时序坑
 - [agent 侧 MCP 工具验证](agent-tool-verify.md) — 探针 prompt 不点名 / tool_use+tool_result DB 断言 / deferred 工具名 init 里可见（描述不参与检索）/ Auto 模式自动放行致预授权断言失效
