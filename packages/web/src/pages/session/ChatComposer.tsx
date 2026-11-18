@@ -36,6 +36,7 @@ import { fileRefContext } from '@/core/utils/fileUrl'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { AttachPanel } from '@/features/composer/AttachPanel'
 import { COMPOSER_CARD_HEADER_INSET, composerCard, composerRail } from '@/features/composer/composerSurface.styles'
+import { COMPOSER_EXTRA_EXTENSIONS } from '@/features/composer/slashCommandNode'
 import { LocalModeCover } from '@/features/composer/LocalModeCover'
 import { QuoteChipBar } from '@/features/composer/QuoteChipBar'
 import { ComposerInfoPanel } from '@/pages/session/ComposerInfoPanel'
@@ -749,6 +750,8 @@ export function ChatComposer(props: ChatComposerProps) {
 
                 <ChatInput
                     ref={shellRef}
+                    // slash 命令原子节点：业务语义由 features 注入，ChatInput 零感知
+                    extraExtensions={COMPOSER_EXTRA_EXTENSIONS}
                     placeholder={isBashMode ? t('composer.bashPlaceholder') : placeholder}
                     submitKey={hasFinePointer ? 'enter' : 'shiftEnter'}
                     disabled={resolveSenderDisabled({ inactiveCover, localModeCover: showLocalModeCover })}

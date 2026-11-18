@@ -106,10 +106,16 @@
     white-space: nowrap;
 }
 
+/* 短标记先让位：flex-shrink 权重远高于主文案，空间不足时它先被截断，
+   主文案（命令名 / 文件名）保持完整。否则长参数提示（如 /handoff 的
+   "What will the next session be used for?"）会把命令名挤成「/…」。 */
 .suffix {
-    flex: none;
+    flex: 0 999 auto;
+    min-width: 0;
+    overflow: hidden;
     color: var(--text-muted);
     font-size: var(--text-xs);
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 

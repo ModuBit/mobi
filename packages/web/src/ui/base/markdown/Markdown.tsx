@@ -15,7 +15,7 @@
  */
 
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react'
-import { Box, Folder } from 'lucide-react'
+import { Folder } from 'lucide-react'
 import type { Config as DOMPurifyConfig } from 'dompurify'
 import { MOBI_URI_SCHEME } from '@mobi/shared'
 import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
@@ -25,6 +25,7 @@ import mention from '@/ui/base/markdown/mentionPlugin'
 import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from '@/ui/base/markdown/footnotePlugin'
 import { directiveExtension, mobiXmlExtension } from '@/ui/base/markdown/directivePlugin'
 import { truncateIncompleteMarkerTails } from '@/domain/chat/directives'
+import { SlashCommandTag } from '@/ui/base/display/SlashCommandTag'
 import { MobiDirective } from '@/ui/shared/quoteDirectiveComponents'
 import { isXMarkdownDebugEnabled } from '@/core/lib/xMarkdownDebug'
 import { useStreamingContent } from '@/ui/shared/useStreamingContent'
@@ -87,18 +88,13 @@ const DOMPURIFY_CONFIG: DOMPurifyConfig = {
 
 /**
  * slash command 徽章（slashCommandPlugin 的自定义标签映射）：
- * lucide Box icon + 命令名。icon 在 React 层渲染为真 SVG——raw HTML 形态的
- * svg 会被 sanitize 剥掉 <path d> 属性致空白，组件化是唯一可靠路径。
- * 样式（mono 蓝字、无底无框）见 markdown.css .slash-command-badge。
+ * 渲染与 composer 原子节点共用的 SlashCommandTag——图标与配色单源，两处天然同步。
+ * data-command 存裸命令名（插件 token 语义），徽章也不带 /：box 图标已表达命令语义。
+ * icon 在 React 层渲染为真 SVG：raw HTML 形态的 svg 会被 sanitize 剥掉 <path d>
+ * 属性致空白，组件化是唯一可靠路径。
  */
 const SlashCommandBadge: FC<ComponentProps<{ 'data-command'?: string }>> = ({ 'data-command': command }) => (
-    // icon 用 verticalAlign 负值微调、badge 走 inline（非 inline-flex）：inline-flex 的
-    // 基线取首个 flex item，SVG 无文本基线 → 以 icon 底边作 badge 基线，文字整体偏离
-    // 与后文不齐。模式同 MentionDirectoryBadge（Folder icon 同款处理）。
-    <span className="slash-command-badge">
-        <Box size={12} strokeWidth={2.4} style={{ verticalAlign: -2, marginRight: 3 }} aria-hidden="true" />
-        {command}
-    </span>
+    <SlashCommandTag command={command ?? ''} />
 )
 
 /**

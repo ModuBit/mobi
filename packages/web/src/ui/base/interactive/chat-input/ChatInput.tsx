@@ -27,8 +27,8 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TextSelection } from '@tiptap/pm/state'
-import type { Node as PMNode } from '@tiptap/pm/model'
-import { getTextBetween, getTextSerializersFromSchema, type JSONContent } from '@tiptap/core'
+import type { Node as PMNode, Slice } from '@tiptap/pm/model'
+import { getTextBetween, getTextSerializersFromSchema, type Extensions, type JSONContent } from '@tiptap/core'
 import { isComposingEvent } from '@/core/lib/inputEnterKeys'
 import { normalizeEditorText } from './chatInputText'
 import { resolveNewlineAction } from './newlinePolicy'
@@ -91,6 +91,9 @@ function isPlainParagraphDoc(doc: PMNode): boolean {
             return
         }
         child.descendants((node) => {
+            // 内联原子节点允许（如 slash 命令）：只要它声明了 toText，纯文本出口
+            // 能精确还原字面量，同样属于「纯文本可送达」的文档
+            if (node.isAtom && typeof node.type.spec.toText === 'function') return false
             if (!node.isText || node.marks.length > 0) {
                 plain = false
                 return false
@@ -198,6 +201,8 @@ export interface ChatInputProps {
     onReady?: () => void
     /** 粘贴事件（消费方分流文件粘贴）；返回 true 阻止默认 */
     onPaste?: (e: ClipboardEvent) => boolean | void
+    /** 消费方扩展（业务节点如 slash 命令原子节点由上层注入，本组件保持零业务语义） */
+    extraExtensions?: Extensions
     className?: string
     style?: CSSProperties
     'aria-label'?: string
@@ -225,6 +230,11 @@ export interface ChatInputHandle {
      * 供面板选中插回/归一写回使用：只换差异段，正文其余部分（富文本结构）不动。
      */
     replaceTextRange(from: number, to: number, text: string): void
+    /**
+     * 程序化把纯文本区间 [from, to) 替换为内联原子节点（消费方注入的业务节点，
+     * 如 slash 命令）；光标落节点之后。节点创建失败/越界返回 false（调用方可回退 replaceTextRange）。
+     */
+    replaceTextRangeWithAtom(from: number, to: number, node: JSONContent): boolean
     /** 把光标移到纯文本 offset 处（与 onUpdate ctx.cursorOffset 同语义；越界/空文档置尾） */
     setCursorOffset(offset: number): void
     /** 编辑器是否已就绪（程序化写入前的判据；未就绪时其余方法均为 no-op） */
@@ -256,6 +266,7 @@ export function ChatInput({
     onUpdate,
     onPaste,
     onReady,
+    extraExtensions,
     className,
     style,
     'aria-label': ariaLabel,
@@ -369,6 +380,21 @@ export function ChatInput({
             }
             return false
         },
+        /**
+         * 纯文本剪贴板：按 schema 的 toText 还原内联原子节点（如 slash 命令）——
+         * 无文本 atom 默认会被序列化成空串，复制命令会丢掉 `/cmd`。
+         * 用 Fragment.textBetween 的 leafText 钩子：顶层叶子节点（单独的 atom）也能取到文本
+         */
+        clipboardTextSerializer: (slice: Slice) => {
+            const schema = slice.content.firstChild?.type.schema
+            const serializers = schema ? serializersFor(schema) : {}
+            return normalizeEditorText(slice.content.textBetween(0, slice.content.size, '\n', (leaf) => {
+                const serialize = serializers[leaf.type.name]
+                return serialize
+                    ? serialize({ node: leaf, pos: 0, parent: leaf, index: 0, range: { from: 0, to: 0 } })
+                    : ''
+            }))
+        },
     }), [ariaLabel, handleKeyDown])
 
     const editorOptions = useMemo(() => ({
@@ -382,8 +408,9 @@ export function ChatInput({
         // getText 段落语义单源
         // 粘贴规则只留 link：StarterKit 的 bold/italic/strike 自带 markPasteRule，会把纯文本里的
         // `*x*`/`**x**`/`~~x~~` 转成 mark（代码粘贴被误渲染）；行内 Markdown 按 spec 须原样保留。
-        // link 保留 = 粘贴裸 URL 自动变链接（linkOnPaste 语义）
-        enablePasteRules: ['link'],
+        // link 保留 = 粘贴裸 URL 自动变链接（linkOnPaste 语义）。
+        // 消费方注入的扩展（extraExtensions）默认启用其粘贴规则：注入即选择（如 slash 命令原子化）
+        enablePasteRules: ['link', ...(extraExtensions ?? []).map(extension => extension.name)],
         extensions: [
             StarterKit.configure({
                 heading: { levels: [1, 2, 3] }, hardBreak: false, horizontalRule: false,
@@ -420,6 +447,8 @@ export function ChatInput({
             Placeholder.configure({
                 placeholder: () => propsRef.current.placeholder ?? '',
             }),
+            // 消费方注入的业务扩展（slash 命令原子节点等）；本组件不感知其语义
+            ...(extraExtensions ?? []),
         ],
         editorProps,
         onUpdate: ({ editor, transaction }: { editor: Editor; transaction: { getMeta: (key: string) => unknown } }) => {
@@ -434,7 +463,7 @@ export function ChatInput({
         // 早于组件下一次渲染对 editorRef 的赋值——否则 onReady 里的 handle 调用全是 no-op
         onCreate: ({ editor }: { editor: Editor }) => { editorRef.current = editor; onReadyRef.current?.() },
         // disabled 入 deps：editable 初值随禁用态快照（运行时切换仍由下方 effect 负责）
-    }), [editorProps, disabled])
+    }), [editorProps, disabled, extraExtensions])
 
     const editor = useEditor(editorOptions)
     // 每渲染同步（挂载后 editor 由 null → 实例触发重渲染，ref 随之就位）
@@ -556,14 +585,41 @@ export function ChatInput({
             tr.setSelection(TextSelection.create(tr.doc, Math.min(insertAt + text.length, tr.doc.content.size - 1)))
             ed.view.dispatch(tr)
         },
+        replaceTextRangeWithAtom: (from, to, node) => {
+            const ed = editorRef.current
+            if (!ed) return false
+            let atom: PMNode
+            try {
+                atom = ed.schema.nodeFromJSON(node)
+            } catch {
+                return false
+            }
+            const doc = ed.state.doc
+            const serializers = serializersFor(ed.schema)
+            const fallback = TextSelection.atEnd(doc).from
+            const fromPos = positionAtOffset(doc, Math.max(0, from), serializers) ?? fallback
+            const toPos = positionAtOffset(doc, Math.max(0, to), serializers) ?? fallback
+            if (toPos < fromPos) return false
+            const tr = ed.state.tr
+            // 与 replaceTextRange 同一程序化通道语义：不再触发面板检测、不污染 undo 栈
+            tr.setMeta(PROGRAMMATIC_META, true)
+            tr.setMeta('addToHistory', false)
+            tr.replaceRangeWith(fromPos, toPos, atom)
+            tr.setSelection(TextSelection.create(tr.doc, Math.min(fromPos + atom.nodeSize, tr.doc.content.size - 1)))
+            ed.view.dispatch(tr)
+            return true
+        },
         isReady: () => editorRef.current != null,
         getWireText: () => {
             const ed = editorRef.current
             if (!ed) return ''
             // 只有格式没有文字（空列表项 / 空引用块）：Markdown 序列化会残留 "-" ">" 等
             // 块标记，不能当作可发送正文——正文存在性以纯文本为准
-            if (ed.state.doc.textContent.trim() === '') return ''
             const plain = normalizeEditorText(ed.getText({ blockSeparator: '\n' }))
+            // 只有格式没有文字（空列表项 / 空引用块）：Markdown 序列化会残留 "-" ">" 等
+            // 块标记，不能当作可发送正文——正文存在性以纯文本为准（原子节点经 toText
+            // 计入 plain，doc.textContent 会把 slash 命令当成空文档）
+            if (plain.trim() === '') return ''
             // 纯文本文档 / 命令语义消息：原样走纯文本。Markdown 序列化的反斜杠转义与
             // HTML 实体编码会改写 bash 命令、斜杠命令与 @路径 的字面语义
             if (isPlainParagraphDoc(ed.state.doc) || looksLikeCommand(plain)) return plain

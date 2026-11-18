@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import type { ChatInputHandle, ChatInputUpdateContext } from '@/ui/base/interactive/chat-input'
 import { normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash } from '@/domain/command/composerInputNormalization'
+import { slashCommandNodeJSON, type SlashCommandAttrs } from './slashCommandNode'
 
 /** 桥接所需的编辑器更新子集（完整载荷见 ui 层 ChatInputUpdateContext） */
 export type TextInputCtx = Pick<ChatInputUpdateContext, 'text' | 'programmatic' | 'cursorOffset'>
@@ -25,6 +26,16 @@ export type TextInputCtx = Pick<ChatInputUpdateContext, 'text' | 'programmatic' 
 export interface PanelSelectionResult {
     text: string
     cursorPos: number | null
+    /**
+     * 原子节点插入参数（slash 命令）：提供时优先走 replaceTextRangeWithAtom，
+     * 编辑器缺该节点时不支持则回落到 text 文本替换
+     */
+    slashCommand?: {
+        command: string
+        from: number
+        to: number
+        leadingSpace: boolean
+    }
 }
 
 /**
@@ -139,6 +150,17 @@ export function useChatInputBridge({ shellRef, slash, mention, onUpdate }: UseCh
 
     const applySelection = useCallback((result: PanelSelectionResult | null) => {
         if (!result) return
+        // slash 命令：整体插入原子节点（退格整删、命令名不可改）。编辑器未注入该
+        // 节点（replaceTextRangeWithAtom 返回 false）时回落到纯文本替换
+        if (result.slashCommand) {
+            const { command, from, to, leadingSpace } = result.slashCommand
+            const inserted = shellRef.current?.replaceTextRangeWithAtom(
+                from,
+                to,
+                slashCommandNodeJSON({ command, leadingSpace, trailingSpace: true } satisfies SlashCommandAttrs),
+            )
+            if (inserted) return
+        }
         applyText(result.text)
         // cursorPos null（契约：无精确落点）落到文本末尾
         shellRef.current?.setCursorOffset(result.cursorPos ?? result.text.length)

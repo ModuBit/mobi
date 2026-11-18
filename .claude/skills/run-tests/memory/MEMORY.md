@@ -81,3 +81,5 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [ConfirmMorph 手势探针](confirm-morph-gesture-probe.md) — 受信慢按+逐帧跳变检测；合成 click 验不了手感；已修：测量污染+窄容器越界
 - [工具行 chip 图标对齐验证](tool-chip-align-verify.md) — seed Read 帧（readfile 写 BLOB 须 CAST AS TEXT 否则 content null）/ canvas cap 中心 / DPR2·3 + 像素复核 / markdown 链接 replica
 - [PWA 预缓存分层验证](pwa-precache-verify.md) — 生产构建 preview 起法（5176 代理 2224）/ 壳 26 条与 runtime 按需增长 / 离线深层链接靠 NavigationRoute / caches.match 传 Request 对象 / **chunk 聚合不开启 strictExecutionOrder 会白屏**（2026-11-17）
+- [建议面板验证](suggestion-panel-verify.md) — 斜杠面板需 CLI 连过的会话（dormant dev 会话无命令不弹）/ 追加字符会拼成 `/hand/hand` 不触发、先 Meta+A 重打 / label 截断用 scrollWidth vs clientWidth 断言、PC+390 双视口 / 生产 CSS module 类名可注 style 做前后对照（2026-11-18）
+- [composer slash 原子节点验证](composer-slash-atom-verify.md) — 空格/面板/粘贴触发原子化、代码块跳过、退格整删 / 发送 wire 用 XHR patch 逐字断言 / 消息侧 badge 须带 / / 紧邻双命令不原子化的已知边界（2026-11-18）

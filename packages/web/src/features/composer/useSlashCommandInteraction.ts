@@ -23,6 +23,18 @@ import type { Command } from '@/core/data/api/types'
 export interface SlashSelectionResult {
     text: string
     cursorPos: number | null
+    /**
+     * 原子节点插入参数（composer 把命令收成不可拆节点用）。
+     * from/to 为纯文本 offset 区间：命中前导空白时 from 含该空白；
+     * to 吸收命令词之后的同行空格/制表符（节点自带尾随空格，不吸收会叠加成双空格）。
+     * 两者都由节点 attrs 原样还原，文本字面量不变。
+     */
+    slashCommand?: {
+        command: string
+        from: number
+        to: number
+        leadingSpace: boolean
+    }
 }
 
 interface UseSlashCommandInteractionParams {
@@ -101,9 +113,16 @@ export function useSlashCommandInteraction({
         // 按 / 触发位置切分：before = / 之前的文本，after = 命令词之后到末尾的文本
         const slashIndex = slashIndexRef.current
         const before = text.slice(0, slashIndex)
+        // 只吸收普通空格作为节点前导分隔（制表符/换行不吸收：节点的 renderText 只会
+        // 还原普通空格，吸收它们会改写字面量；行首本身即是 CC 认可的边界）
+        const leadingSpace = slashIndex > 0 && text[slashIndex - 1] === ' '
         // 去掉参数文本的前导空白，由下方统一插入一个分隔空格，避免与原分隔空白叠加成双空格
-        const after = text.slice(slashIndex + 1 + filter.length).replace(/^\s+/, '')
+        const rawAfter = text.slice(slashIndex + 1 + filter.length)
+        const after = rawAfter.replace(/^\s+/, '')
         const newText = `${before}${item.value} ${after}`
+        // 原子替换要吸收的分隔空白（只含同行空格/制表符——节点只还原普通空格，
+        // 换行等更宽的空白留给正文，字面量不变）
+        const absorbedGap = (rawAfter.match(/^[ \t]*/) ?? [''])[0]
 
         setActiveCommand(
             (item.argumentHint || item.description)
@@ -121,6 +140,14 @@ export function useSlashCommandInteraction({
             text: newText,
             // 光标停在「命令 + 分隔空格」之后，即参数起始（无参数时为文本末尾，便于继续输入）
             cursorPos: before.length + item.value.length + 1,
+            // 原子节点：把 /命令 收成不可拆节点；前导空白一并收进节点，
+            // 由节点的 renderText 还原（CC 的边界识别依赖这个分隔空白）
+            slashCommand: {
+                command: item.value.startsWith('/') ? item.value.slice(1) : item.value,
+                from: leadingSpace ? slashIndex - 1 : slashIndex,
+                to: slashIndex + 1 + filter.length + absorbedGap.length,
+                leadingSpace,
+            },
         }
     }, [isOpen, filter, workingDir])
 

@@ -34,6 +34,7 @@ function makeShell() {
     return {
         setText: vi.fn(),
         replaceTextRange: vi.fn(),
+        replaceTextRangeWithAtom: vi.fn(() => true),
         setCursorOffset: vi.fn(),
         focus: vi.fn(),
     } as unknown as ChatInputHandle
@@ -167,5 +168,41 @@ describe('useChatInputBridge', () => {
         hook.result.current.applySelection(null)
         expect(shell.replaceTextRange).not.toHaveBeenCalled()
         expect(shell.setCursorOffset).not.toHaveBeenCalled()
+    })
+
+    it('applySelection：slashCommand 走原子插入（不整段文本替换，落点由节点 API 决定）', () => {
+        const { shell, hook, feed } = setup()
+        feed(user('/hand'))
+        shell.replaceTextRange.mockClear()
+        shell.setCursorOffset.mockClear()
+
+        hook.result.current.applySelection({
+            text: '/hand 参数',
+            cursorPos: 6,
+            slashCommand: { command: 'hand', from: 0, to: 5, leadingSpace: false },
+        })
+
+        expect(shell.replaceTextRangeWithAtom).toHaveBeenCalledWith(
+            0,
+            5,
+            { type: 'slashCommand', attrs: { command: 'hand', leadingSpace: false, trailingSpace: true } },
+        )
+        expect(shell.replaceTextRange).not.toHaveBeenCalled()
+        expect(shell.setCursorOffset).not.toHaveBeenCalled()
+    })
+
+    it('applySelection：编辑器不支持原子节点（返回 false）时回落文本替换', () => {
+        const { shell, hook, feed } = setup()
+        ;(shell.replaceTextRangeWithAtom as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(false)
+        feed(user('/hand'))
+
+        hook.result.current.applySelection({
+            text: '/hand 参数',
+            cursorPos: 6,
+            slashCommand: { command: 'hand', from: 0, to: 5, leadingSpace: false },
+        })
+
+        expect(shell.replaceTextRange).toHaveBeenCalled()
+        expect(shell.setCursorOffset).toHaveBeenCalledWith(6)
     })
 })

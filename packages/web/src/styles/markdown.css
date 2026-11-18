@@ -194,7 +194,9 @@ html[data-theme='dark'] .x-markdown tbody tr:hover {
    蓝字双档：light 用明亮天蓝（暖纸底上深海军蓝发闷费劲，2026-09-26 真机），
    dark 提亮一档天蓝；同色相家族。mono 600 强调「这是一条命令」。
    icon 由 React 组件渲染（Markdown.tsx SlashCommandBadge），色随 currentColor */
-.x-markdown .slash-command-badge {
+/* slash 命令徽章：消息渲染与 composer 原子节点共用（SlashCommandTag），
+   全局类而非 .x-markdown 作用域——composer 不在 markdown 容器内 */
+.slash-command-badge {
     /* inline 而非 inline-flex：flex 容器基线取首个 item，SVG 无文本基线 → 以 icon 底边
        作基线，文字整体偏离与后文不齐（icon 的对齐在组件层 verticalAlign 微调） */
     display: inline;
@@ -207,7 +209,7 @@ html[data-theme='dark'] .x-markdown tbody tr:hover {
     white-space: nowrap;
 }
 
-html[data-theme='dark'] .x-markdown .slash-command-badge {
+html[data-theme='dark'] .slash-command-badge {
     color: #74c0fc;
 }
 

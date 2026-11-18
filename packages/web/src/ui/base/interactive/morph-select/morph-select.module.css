@@ -49,10 +49,11 @@
 .root[data-ready] .anchor { width: var(--ms-trigger-w); transition: width var(--duration-spring) var(--ease-spring); }
 
 /* One material for both states. The border is an overlay so it never changes a measurement.
-   收起态不带投影（mobi：参数条里 pill 会被滚动渐隐带截断阴影，平面化由描边兜底分隔；
-   展开面板保留 floating 投影提供浮层高度感）。 */
-.shape { position: absolute; top: 0; left: 0; overflow: clip; background: var(--surface); box-shadow: var(--shadow-resting); transition: background-color var(--duration-fast) var(--ease-standard); }
-/* 静默态投影恢复（2026-11-16 上游 diff 审计实锔回归）：改 transition 时误删，收起态触发器变平 */
+   收起态不带投影（mobi）：composer 的参数条里 pill 贴着输入卡，投影会糊成一圈脏边，
+   平面化由 ::after 描边兜底分隔；展开面板保留 floating 投影提供浮层高度感。
+   2026-11-18 用户明确要求去掉收起态阴影——勿再按上游快照补回 resting 投影。 */
+.shape { position: absolute; top: 0; left: 0; overflow: clip; background: var(--surface); transition: background-color var(--duration-fast) var(--ease-standard); }
+/* 收起态描边分隔（2026-11-16 上游 diff 审计实锔回归）：改 transition 时误删，收起态触发器变平 */
 .shape::after { content: ""; position: absolute; inset: 0; z-index: 2; border: 1px solid var(--border); border-radius: inherit; pointer-events: none; transition: border-color var(--duration-fast) var(--ease-standard); }
 .root[data-open] .shape { background: var(--surface-raised); box-shadow: var(--shadow-floating); }
 .root[data-disabled] .shape { opacity: .55; }

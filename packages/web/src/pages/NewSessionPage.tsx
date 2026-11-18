@@ -38,6 +38,7 @@ import { WorkspaceFormModal } from '@/ui/shared/WorkspaceFormModal'
 import { type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { MentionDropdown } from '@/features/composer/MentionDropdown'
 import { SlashCommandDropdown } from '@/features/composer/SlashCommandDropdown'
+import { COMPOSER_EXTRA_EXTENSIONS } from '@/features/composer/slashCommandNode'
 import { CommandHintBar } from '@/features/composer/CommandHintBar'
 import { AttachmentList } from '@/features/composer/attachmentItem'
 import { ResponsiveActionBar, type ActionItem } from '@/features/composer/ResponsiveActionBar'
@@ -720,6 +721,8 @@ export function NewSessionPage() {
 
                     <ChatInput
                         ref={shellRef}
+                        // slash 命令原子节点：业务语义由 features 注入，ChatInput 零感知
+                        extraExtensions={COMPOSER_EXTRA_EXTENSIONS}
                         placeholder={placeholder}
                         submitKey={hasFinePointer ? 'enter' : 'shiftEnter'}
                         disabled={inputDisabled}
